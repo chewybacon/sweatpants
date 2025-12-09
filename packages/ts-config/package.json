@@ -1,0 +1,13 @@
+{
+    "name": "@herp/ts-config",
+    "private": true,
+    "type": "module",
+    "main": "./nitro.config.ts",
+    "files": [
+        "*.json"
+    ],
+    "devDependencies": {
+        "typescript": "^5.9.3",
+        "nitropack": "^2.12.4"
+    }
+}
