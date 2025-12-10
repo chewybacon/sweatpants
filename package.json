@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "pnpm run -r --parallel --aggregate-output dev",
     "build": "pnpm run -r build",
+    "check": "pnpm run -r --parallel check",
     "preview": "pnpm run -r preview",
     "test": "pnpm run -r --parallel test",
     "lint": "pnpm run -r --parallel lint",
