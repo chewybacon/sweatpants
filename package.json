@@ -12,6 +12,6 @@
     "deploy": "pnpm build && pnpm run -r deploy"
   },
   "devDependencies": {
-    "typescript": "^5.9.3"
+    "typescript": "catalog:"
   }
 }

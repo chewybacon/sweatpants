@@ -7,7 +7,7 @@
         "*.json"
     ],
     "devDependencies": {
-        "typescript": "^5.9.3",
-        "nitropack": "^2.12.4"
+        "typescript": "catalog:",
+        "nitropack": "catalog:"
     }
 }
