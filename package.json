@@ -12,6 +12,9 @@
     "deploy": "pnpm build && pnpm run -r deploy"
   },
   "devDependencies": {
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "tsx": "catalog:"
+  },
+  "dependencies": {
   }
 }

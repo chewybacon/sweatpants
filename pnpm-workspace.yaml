@@ -1,45 +1,49 @@
 packages:
-    - packages/*
-    - apps/*
-    - tools/*
-syncInjectedDepsAfterScripts:
-    - build
-injectWorkspacePackages: true
+  - packages/*
+  - apps/*
+  - tools/*
+
 catalog:
-    "@t3-oss/env-core": ^0.13.8
-    "@tailwindcss/vite": ^4.0.6
-    "@tanstack/devtools-vite": ^0.3.11
-    "@tanstack/react-devtools": ^0.7.0
-    "@tanstack/react-router": ^1.132.0
-    "@tanstack/react-router-devtools": ^1.132.0
-    "@tanstack/react-router-ssr-query": ^1.131.7
-    "@tanstack/react-start": ^1.132.0
-    "@tanstack/router-plugin": ^1.132.0
-    "@testing-library/dom": ^10.4.0
-    "@testing-library/react": ^16.2.0
-    "@types/compression": ^1.8.1
-    "@types/express": ^5.0.6
-    "@types/morgan": ^1.9.10
-    "@types/node": ^22.10.2
-    "@types/react": ^19.0.0
-    "@types/react-dom": ^19.2.0
-    "@vitejs/plugin-react": ^5.0.4
-    acorn: ^8.14.0
-    compression: ^1.8.1
-    express: ^5.2.1
-    jsdom: ^27.0.0
-    lucide-react: ^0.544.0
-    magic-string: ^0.30.17
-    morgan: ^1.10.1
-    nitropack: ^2.12.4
-    react: ^19.2.0
-    react-dom: ^19.2.0
-    srvx: ^0.9.7
-    tailwindcss: ^4.0.6
-    tsup: ^8.3.5
-    typescript: ^5.9.3
-    vite: ^7.1.7
-    vite-tsconfig-paths: ^5.1.4
-    vitest: ^3.0.5
-    web-vitals: ^5.1.0
-    zod: ^4.1.13
+  '@t3-oss/env-core': ^0.13.8
+  '@tailwindcss/vite': ^4.0.6
+  '@tanstack/devtools-vite': ^0.3.11
+  '@tanstack/react-devtools': ^0.7.0
+  '@tanstack/react-router': ^1.132.0
+  '@tanstack/react-router-devtools': ^1.132.0
+  '@tanstack/react-router-ssr-query': ^1.131.7
+  '@tanstack/react-start': ^1.132.0
+  '@tanstack/router-plugin': ^1.132.0
+  '@testing-library/dom': ^10.4.0
+  '@testing-library/react': ^16.2.0
+  '@types/compression': ^1.8.1
+  '@types/express': ^5.0.6
+  '@types/morgan': ^1.9.10
+  '@types/node': ^22.10.2
+  '@types/react': ^19.0.0
+  '@types/react-dom': ^19.2.0
+  '@vitejs/plugin-react': ^5.0.4
+  acorn: ^8.14.0
+  compression: ^1.8.1
+  express: ^5.2.1
+  jsdom: ^27.0.0
+  lucide-react: ^0.544.0
+  magic-string: ^0.30.17
+  morgan: ^1.10.1
+  nitropack: ^2.12.4
+  react: ^19.2.0
+  react-dom: ^19.2.0
+  srvx: ^0.9.7
+  tailwindcss: ^4.0.6
+  tsup: ^8.3.5
+  tsx: 4.21.0
+  typescript: ^5.9.3
+  vite: ^7.1.7
+  vite-tsconfig-paths: ^5.1.4
+  vitest: ^3.0.5
+  web-vitals: ^5.1.0
+  zod: ^4.1.13
+
+injectWorkspacePackages: true
+
+syncInjectedDepsAfterScripts:
+  - build
