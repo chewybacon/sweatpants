@@ -1,29 +1,64 @@
 {
-    "name": "hydra",
-    "type": "module",
-    "version": "1.0.0",
-    "description": "",
-    "scripts": {
-        "server": "tsx express-server.ts"
-    },
-    "keywords": [],
-    "author": "",
-    "license": "ISC",
-    "packageManager": "pnpm@10.24.0",
-    "dependencies": {
-    "morgan": "catalog:",
-        "express": "catalog:"
-    },
-    "devDependencies": {
-        "effection": "catalog:",
-        "@effectionx/process": "^0.6.1",
-    "@types/morgan": "catalog:",
-        "@types/express": "catalog:",
-        "@types/node": "catalog:",
-        "tsx": "catalog:",
-        "typescript": "catalog:",
-        "@types/http-proxy": "^1.17.17",
-        "http-proxy": "^1.18.1",
-        "@effectionx/tinyexec": "^0.3.1"
+  "name": "@tanstack/hydra",
+  "version": "0.0.1",
+  "description": "Multiplex HTTP proxy using Effection - dynamically spawns Express servers per hostname",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "tsx start.ts",
+    "server": "tsx express-server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "effection",
+    "proxy",
+    "http",
+    "multiplex",
+    "express",
+    "structured-concurrency"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "effection": ">=4.0.0",
+    "express": ">=4.0.0",
+    "http-proxy": ">=1.0.0"
+  },
+  "dependencies": {
+    "morgan": "catalog:",
+    "express": "catalog:",
+    "http-proxy": "^1.18.1"
+  },
+  "devDependencies": {
+    "effection": "catalog:",
+    "@effectionx/process": "^0.6.1",
+    "@types/morgan": "catalog:",
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "@types/http-proxy": "^1.17.17",
+    "tsx": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "@effectionx/tinyexec": "^0.3.1"
+  }
 }

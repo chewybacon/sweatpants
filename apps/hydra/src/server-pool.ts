@@ -4,8 +4,8 @@
 
 import type { Operation, Task, Context, Scope } from 'effection';
 import { resource, createContext, useScope, suspend, createSignal, call } from 'effection';
-import type { ServerInfo, ServerPool, ServerEvent } from './types.ts';
-import { useExpressServerDaemon } from './server-resource.ts';
+import type { ServerInfo, ServerPool, ServerEvent } from './types';
+import { useExpressServerDaemon } from './server-resource';
 
 /**
  * Context for accessing the server pool from any operation

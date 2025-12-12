@@ -6,7 +6,7 @@ import { resource, call } from 'effection';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import httpProxy from 'http-proxy';
 import type { Server } from 'http';
-import type { SwitchboardConfig, ServerInfo, ServerPool } from './types.ts';
+import type { SwitchboardConfig, ServerInfo, ServerPool } from './types';
 
 export interface SwitchboardHandle {
   app: Express;
