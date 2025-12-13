@@ -406,9 +406,10 @@ The relationship between parent and child scopes has subtle behaviors that can t
 ```typescript
 // hierarchy.ts - Understanding scope lifetime and task execution
 //
-// This example demonstrates 4 key behaviors that can trip you up:
+// This example demonstrates 5 key behaviors that can trip you up:
 // 1. Parent must yield for children to run
 // 2. Spawn is lazy - child starts when parent yields
+// 2b. Waiting for a child to complete before exiting
 // 3. Cleanup happens deepest-first
 // 4. Scope lifetime determines child lifetime
 
@@ -474,6 +475,34 @@ Timeline:
 
 Result: Child started AFTER parent yielded, but was halted when parent exited!
 `);
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Scenario 2b: Waiting for a child to complete
+  // ═══════════════════════════════════════════════════════════════════
+  console.log('═══ Scenario 2b: Ensuring child completes ═══\n');
+
+  yield* spawn(function*() {
+    console.log('[1] Before spawn');
+
+    const task = yield* spawn(function*() {
+      yield* ensure(() => console.log('[child] Exiting'));
+      console.log('[3] Child started');
+      yield* sleep(50);
+      console.log('[child] Finished!'); // NOW this prints!
+      return 'done';
+    });
+
+    console.log('[2] After spawn, before yield');
+
+    // Wait for the child to complete before exiting
+    const result = yield* task;
+    console.log(`[4] Child returned: "${result}"`);
+
+    console.log('[5] Parent exiting');
+  });
+
+  yield* sleep(200);
+  console.log('Result: Parent waited for child - "Finished!" printed before "Exiting"!\n');
 
   // ═══════════════════════════════════════════════════════════════════
   // Scenario 3: Cleanup happens deepest-first
@@ -550,6 +579,17 @@ Timeline:
 
 Result: Child started AFTER parent yielded, but was halted when parent exited!
 
+═══ Scenario 2b: Ensuring child completes ═══
+
+[1] Before spawn
+[2] After spawn, before yield
+[3] Child started
+[child] Finished!
+[child] Exiting
+[4] Child returned: "done"
+[5] Parent exiting
+Result: Parent waited for child - "Finished!" printed before "Exiting"!
+
 ═══ Scenario 3: Cleanup order (deepest first) ═══
 
 [child] Cleanup (first)
@@ -573,8 +613,9 @@ Result: Cleanup ran child → parent → grandparent!
 
 1. **Children need the parent to yield** - If a parent returns immediately after spawning, the child never runs
 2. **Spawn is lazy** - The child doesn't start until the parent yields control (via `sleep`, `suspend`, or another operation)
-3. **Cleanup is deepest-first** - Grandchildren clean up before children, children before parents
-4. **Scope = lifetime** - When a scope ends, all its children are halted immediately
+3. **Wait for children with `yield* task`** - If you need a child to complete before the parent exits, yield the task returned by `spawn()`
+4. **Cleanup is deepest-first** - Grandchildren clean up before children, children before parents
+5. **Scope = lifetime** - When a scope ends, all its children are halted immediately
 
 ---
 
