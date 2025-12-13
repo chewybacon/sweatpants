@@ -33,7 +33,7 @@ const ConfigContext: Context<{ apiUrl: string }> = createContext<{ apiUrl: strin
 
 function* fetchData(): Operation<string> {
   // 3. Access the context value from anywhere in the tree
-  const config = yield* ConfigContext;
+  const config = yield* ConfigContext.expect();
   console.log('Fetching from:', config.apiUrl);
   return `Data from ${config.apiUrl}`;
 }
@@ -64,7 +64,7 @@ Got: Data from https://api.example.com
 
 1. **Create** a context with `createContext<T>(name)`
 2. **Set** the value with `yield* MyContext.set(value)`
-3. **Get** the value with `yield* MyContext`
+3. **Get** the value with `yield* MyContext.expect()` (or `.get()` for optional)
 
 ---
 
@@ -80,7 +80,7 @@ import { main, createContext, spawn, sleep } from 'effection';
 const ThemeContext: Context<string> = createContext<string>('theme');
 
 function* logTheme(label: string): Operation<void> {
-  const theme: string = yield* ThemeContext;
+  const theme: string = yield* ThemeContext.expect();
   console.log(`${label}: theme is "${theme}"`);
 }
 
@@ -140,7 +140,7 @@ function createLogger(prefix: string): Logger {
 }
 
 function* doWork(): Operation<void> {
-  const logger: Logger = yield* LoggerContext;
+  const logger: Logger = yield* LoggerContext.expect();
   logger.log('Starting work...');
   yield* sleep(100);
   logger.log('Work complete!');
@@ -157,7 +157,7 @@ await main(function*() {
   // Set default logger
   yield* LoggerContext.set(createLogger('APP'));
   
-  const logger: Logger = yield* LoggerContext;
+  const logger: Logger = yield* LoggerContext.expect();
   logger.log('Application starting');
   
   // Handle multiple requests concurrently
@@ -218,12 +218,12 @@ function* useDatabase(): Operation<DatabaseConnection> {
 
 // Repository that uses the context
 function* findUsers(): Operation<unknown[]> {
-  const db: DatabaseConnection = yield* DatabaseContext;
+  const db: DatabaseConnection = yield* DatabaseContext.expect();
   return await db.query('SELECT * FROM users');
 }
 
 function* findPosts(): Operation<unknown[]> {
-  const db: DatabaseConnection = yield* DatabaseContext;
+  const db: DatabaseConnection = yield* DatabaseContext.expect();
   return await db.query('SELECT * FROM posts');
 }
 
@@ -274,7 +274,7 @@ const defaultConfig: Config = {
 const ConfigContext: Context<Config> = createContext<Config>('config', defaultConfig);
 
 function* checkConfig(): Operation<void> {
-  const config: Config = yield* ConfigContext;
+  const config: Config = yield* ConfigContext.get();
   console.log('Debug mode:', config.debug);
   console.log('Timeout:', config.timeout);
 }
@@ -324,7 +324,7 @@ interface RequestInfo {
 const RequestContext: Context<RequestInfo> = createContext<RequestInfo>('request');
 
 function* logAccess(resource: string): Operation<void> {
-  const req: RequestInfo = yield* RequestContext;
+  const req: RequestInfo = yield* RequestContext.expect();
   const elapsed = Date.now() - req.startTime;
   console.log(`[${req.id}] User ${req.userId} accessed ${resource} (+${elapsed}ms)`);
 }

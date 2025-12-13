@@ -178,7 +178,7 @@ await main(function*() {
       // Now any operation can access request info
       const user = yield* fetchUser(parseInt(req.params.id));
       
-      const reqInfo: RequestInfo = yield* RequestContext;
+      const reqInfo: RequestInfo = yield* RequestContext.expect();
       const duration = Date.now() - reqInfo.startTime;
       
       console.log(`[${reqInfo.id}] Completed in ${duration}ms`);
@@ -195,7 +195,7 @@ await main(function*() {
 });
 
 function* fetchUser(id: number): Operation<{ id: number; name: string }> {
-  const req: RequestInfo = yield* RequestContext;
+  const req: RequestInfo = yield* RequestContext.expect();
   console.log(`[${req.id}] Fetching user ${id}...`);
   
   yield* sleep(100);

@@ -33,7 +33,7 @@ function* useSocket(): Operation<FakeSocket> {
   socket.connect();
   
   // Wait for connection
-  yield* action<void>(function*(resolve) {
+  yield* action<void>((resolve) => {
     socket.once('connect', resolve);
     return () => {};
   });
@@ -80,7 +80,7 @@ function useSocket(): Operation<FakeSocket> {
     socket.connect();
     
     // Wait for connection
-    yield* action<void>(function*(resolve) {
+    yield* action<void>((resolve) => {
       socket.once('connect', resolve);
       return () => {};
     });

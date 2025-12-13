@@ -33,7 +33,7 @@ import type { Operation } from 'effection';
 import { action } from 'effection';
 
 function sleep(ms: number): Operation<void> {
-  return action(function*(resolve, reject) {
+  return action((resolve) => {
     const timeoutId = setTimeout(resolve, ms);
     return () => clearTimeout(timeoutId);  // Cleanup function - required!
   });
@@ -57,13 +57,13 @@ import type { Operation } from 'effection';
 import { main, action, race } from 'effection';
 
 function sleep(ms: number): Operation<void> {
-  return action(function*(resolve, reject) {
+  return action((resolve) => {
     console.log(`Starting ${ms}ms timer`);
     const timeoutId = setTimeout(() => {
       console.log(`${ms}ms timer completed`);
       resolve();
     }, ms);
-    
+
     return () => {
       console.log(`Cleaning up ${ms}ms timer`);
       clearTimeout(timeoutId);
@@ -91,34 +91,47 @@ Both timers are cleaned up! The 1000ms timer is halted when the 10ms timer wins.
 
 ---
 
-## A More Complex Example: Fetch with XHR
+## A More Complex Example: Fetch with Native fetch + AbortController
 
-Here's how to wrap XHR:
+Here's how to wrap the native `fetch` API with proper cancellation:
 
 ```typescript
 // xhr-fetch.ts
 import type { Operation } from 'effection';
 import { main, action, race } from 'effection';
 
-function* fetch(url: string): Operation<string> {
-  return yield* action<string>(function*(resolve, reject) {
-    const xhr = new XMLHttpRequest();
-    xhr.open("GET", url);
-    xhr.onload = () => resolve(xhr.responseText);
-    xhr.onerror = () => reject(new Error(xhr.statusText));
-    xhr.send();
+function* fetchUrl(url: string): Operation<string> {
+  return yield* action<string>((resolve, reject) => {
+    const controller = new AbortController();
     
-    return () => xhr.abort();  // Cancel request on cleanup!
+    console.log(`Starting request to ${url}`);
+    
+    fetch(url, { signal: controller.signal })
+      .then(response => response.text())
+      .then(text => {
+        console.log(`Completed request to ${url}`);
+        resolve(text);
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          reject(err);
+        }
+      });
+
+    return () => {
+      console.log(`Aborting request to ${url}`);
+      controller.abort();
+    };
   });
 }
 
 // If you race two fetch operations, the loser's HTTP request is actually cancelled!
 await main(function*() {
-  const weather: string = yield* race([
-    fetch('https://api.weather1.com/current'),
-    fetch('https://api.weather2.com/current'),
+  const result: string = yield* race([
+    fetchUrl('https://httpbin.org/delay/1'),
+    fetchUrl('https://httpbin.org/delay/2'),
   ]);
-  console.log(weather);
+  console.log('Winner:', result.slice(0, 100) + '...');
 });
 ```
 
@@ -141,6 +154,8 @@ function action<T>(
 - `reject(error)` - Complete the action with an error
 - Return value - A cleanup function (required!)
 
+**Important**: The executor is a **regular function**, not a generator function!
+
 ---
 
 ## Using `action()` with Event Listeners
@@ -156,11 +171,11 @@ function once<K extends keyof HTMLElementEventMap>(
   target: HTMLElement,
   eventName: K
 ): Operation<HTMLElementEventMap[K]> {
-  return action(function*(resolve, reject) {
+  return action((resolve) => {
     const handler = (event: HTMLElementEventMap[K]) => resolve(event);
-    
+
     target.addEventListener(eventName, handler);
-    
+
     return () => target.removeEventListener(eventName, handler);
   });
 }
@@ -191,13 +206,13 @@ function once<T>(
   emitter: EventEmitter,
   eventName: string
 ): Operation<T> {
-  return action<T>(function*(resolve, reject) {
+  return action<T>((resolve, reject) => {
     const handler = (value: T) => resolve(value);
     const errorHandler = (error: Error) => reject(error);
-    
+
     emitter.on(eventName, handler);
     emitter.on('error', errorHandler);
-    
+
     return () => {
       emitter.off(eventName, handler);
       emitter.off('error', errorHandler);
@@ -208,44 +223,14 @@ function once<T>(
 // Demo
 await main(function*() {
   const emitter = new EventEmitter();
-  
+
   // Schedule an event to fire
   setTimeout(() => emitter.emit('data', { message: 'Hello!' }), 100);
-  
+
   const data: { message: string } = yield* once(emitter, 'data');
   console.log('Received:', data.message);
 });
 ```
-
----
-
-## Yielding Inside Actions
-
-The executor is a generator, so you can yield to other operations:
-
-```typescript
-// delayed-action.ts
-import type { Operation } from 'effection';
-import { main, action, sleep } from 'effection';
-
-function* delayedAction(delay: number): Operation<string> {
-  return yield* action<string>(function*(resolve, reject) {
-    // Do some async setup
-    yield* sleep(delay);
-    
-    // Then set up the callback
-    const id = setTimeout(() => resolve('done!'), 1000);
-    return () => clearTimeout(id);
-  });
-}
-
-await main(function*() {
-  const result: string = yield* delayedAction(500);
-  console.log(result); // 'done!'
-});
-```
-
-This is powerful for complex initialization sequences.
 
 ---
 
@@ -259,14 +244,14 @@ import type { Operation } from 'effection';
 import { main, action } from 'effection';
 
 function loadImage(url: string): Operation<HTMLImageElement> {
-  return action<HTMLImageElement>(function*(resolve, reject) {
+  return action<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
-    
+
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`Failed to load: ${url}`));
-    
+
     img.src = url;
-    
+
     return () => {
       img.src = '';  // Cancel loading
     };
@@ -296,13 +281,13 @@ import { main, action, race } from 'effection';
 
 // Implement sleep using action()
 function sleep(ms: number): Operation<void> {
-  return action(function*(resolve, reject) {
+  return action((resolve) => {
     console.log(`Starting ${ms}ms timer`);
     const id = setTimeout(() => {
       console.log(`${ms}ms timer completed`);
       resolve();
     }, ms);
-    
+
     return () => {
       console.log(`Cleaning up ${ms}ms timer`);
       clearTimeout(id);
@@ -312,13 +297,13 @@ function sleep(ms: number): Operation<void> {
 
 await main(function*() {
   console.log('Racing timers...');
-  
+
   yield* race([
     sleep(100),
     sleep(500),
     sleep(1000),
   ]);
-  
+
   console.log('Race complete!');
 });
 ```
@@ -359,7 +344,7 @@ For ongoing streams of events (multiple clicks, WebSocket messages), you'll want
 1. **`action()` is like the Promise constructor** - but with mandatory cleanup
 2. **Always return a cleanup function** - this is what prevents leaked effects
 3. **Cleanup runs in all cases** - resolve, reject, or halt
-4. **The executor is a generator** - you can yield to other operations inside it
+4. **The executor is a regular function** - not a generator (use regular callbacks)
 5. **Actions are for one-time events** - use Signals for streams
 
 ---
