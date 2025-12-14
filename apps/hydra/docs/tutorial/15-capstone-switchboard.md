@@ -14,8 +14,8 @@ Client Request                     Switchboard                    Backend
      │                                 │  1. Extract hostname       │
      │                                 │  2. pool.getOrCreate()     │
      │                                 │                            │
-     │                                 │  GET / ─────────────────> │ (port 3001)
-     │                                 │ <───────────────── 200 OK │
+     │                                 │  GET / ─────────────────>  │ (port 3001)
+     │                                 │ <───────────────── 200 OK  │
      │ <────────────────── 200 OK      │                            │
 ```
 
@@ -44,17 +44,17 @@ export function useSwitchboard(
 ): Operation<SwitchboardHandle> {
   return resource<SwitchboardHandle>(function* (provide) {
     const { port, defaultHostname = 'default' } = config;
-    
+
     const app: Express = express();
-    
+
     // Create the proxy
     const proxy = httpProxy.createProxyServer({
       changeOrigin: false,
       ws: true,  // WebSocket support
     });
-    
+
     // ... routes and handlers ...
-    
+
     // Start listening
     const server: Server = yield* call(() => new Promise<Server>((resolve, reject) => {
       const srv = app.listen(port, () => {
@@ -63,7 +63,7 @@ export function useSwitchboard(
       });
       srv.on('error', reject);
     }));
-    
+
     try {
       yield* provide({ app, server, port });
     } finally {
@@ -87,19 +87,19 @@ We need to figure out which backend to route to. Multiple options:
 function extractHostname(req: Request, defaultHostname: string): string {
   const host = req.get('host') || '';
   const hostWithoutPort = host.split(':')[0] ?? '';
-  
+
   // Handle "app-a.localhost" -> "app-a"
   if (hostWithoutPort.includes('.')) {
     const parts = hostWithoutPort.split('.');
     return parts[0] ?? defaultHostname;
   }
-  
+
   // Check for X-App-Name header as alternative
   const appHeader = req.get('x-app-name');
   if (appHeader) {
     return appHeader;
   }
-  
+
   return defaultHostname;
 }
 ```
@@ -120,15 +120,15 @@ The main handler uses the pool to get/create servers:
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   try {
     const hostname = extractHostname(req, defaultHostname);
-    
+
     console.log(`[Switchboard] Request for hostname: "${hostname}"`);
-    
+
     // Get or create the backend server
     const serverInfo = await pool.getOrCreate(hostname);
-    
+
     // Proxy to the backend
     const target = `http://localhost:${serverInfo.port}`;
-    
+
     proxy.web(req, res, { target }, (err) => {
       if (err) {
         console.error(`[Switchboard] Proxy failed:`, err.message);
@@ -223,7 +223,7 @@ server.on('upgrade', async (req, socket, head) => {
     const hostname = extractHostname(req as unknown as Request, defaultHostname);
     const serverInfo = await pool.getOrCreate(hostname);
     const target = `http://localhost:${serverInfo.port}`;
-    
+
     proxy.ws(req, socket, head, { target });
   } catch (error) {
     console.error(`[Switchboard] WebSocket upgrade failed:`, error);

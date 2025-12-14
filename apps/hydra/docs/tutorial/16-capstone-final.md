@@ -85,7 +85,7 @@ main()
 ├── useSwitchboard (resource)
 │   └── Express proxy server
 └── suspend()
-    
+
 When pool.getOrCreate() is called:
 ├── useServerPool
 │   └── doSpawnServer (via scope.run)
@@ -207,23 +207,23 @@ When you press Ctrl+C:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                          main()                                  │
-│                                                                  │
+│                          main()                                 │
+│                                                                 │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │                  Switchboard (Port 8000)                    │ │
+│  │                  Switchboard (Port 8000)                   │ │
 │  │  - Receives all incoming HTTP requests                     │ │
 │  │  - Parses Host header to determine target                  │ │
 │  │  - Proxies request to appropriate backend server           │ │
 │  └──────────────────────────┬─────────────────────────────────┘ │
-│                             │                                    │
+│                             │                                   │
 │  ┌──────────────────────────▼─────────────────────────────────┐ │
-│  │                    ServerPool Resource                      │ │
+│  │                    ServerPool Resource                     │ │
 │  │  - Manages Map<hostname, ServerInfo>                       │ │
 │  │  - Spawns new Express servers on demand                    │ │
 │  │  - Assigns dynamic ports (3001, 3002, ...)                 │ │
 │  │  - Emits events via Signal                                 │ │
 │  └──────────────────────────┬─────────────────────────────────┘ │
-│                             │                                    │
+│                             │                                   │
 │     ┌───────────────────────┼───────────────────────┐           │
 │     │                       │                       │           │
 │     ▼                       ▼                       ▼           │
@@ -231,7 +231,7 @@ When you press Ctrl+C:
 │  │app-a │               │app-b │               │app-c │         │
 │  │:3001 │               │:3002 │               │:3003 │         │
 │  └──────┘               └──────┘               └──────┘         │
-│                                                                  │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
