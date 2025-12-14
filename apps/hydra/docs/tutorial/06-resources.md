@@ -36,16 +36,16 @@ class FakeSocket extends EventEmitter {
 function* useSocket(): Operation<FakeSocket> {
   const socket = new FakeSocket();
   socket.connect();
-  
+
   // Wait for connection
   yield* action<void>((resolve) => {
     socket.once('connect', resolve);
     return () => {};
   });
-  
+
   try {
     yield* suspend();  // Stay alive for cleanup...
-    return socket;     
+    return socket;
   } finally {
     socket.close();
   }
@@ -63,7 +63,7 @@ await main(function*() {
 ┌──────────────────────────────────────────────────────────────────┐
 │ main()                                                           │
 │                                                                  │
-│   const socket = yield* useSocket();  <─── Waiting here...      │
+│   const socket = yield* useSocket();  <─── Waiting here...       │
 │                          │                                       │
 │                          v                                       │
 │               ┌─────────────────────┐                            │
@@ -110,15 +110,15 @@ function useSocket(): Operation<FakeSocket> {
   return resource<FakeSocket>(function*(provide) {
     const socket = new FakeSocket();
     socket.connect();
-    
+
     // Wait for connection
     yield* action<void>((resolve) => {
       socket.once('connect', resolve);
       return () => {};
     });
-    
+
     console.log('Socket connected!');
-    
+
     try {
       // provide() gives the socket to the caller AND suspends
       yield* provide(socket);
@@ -130,12 +130,12 @@ function useSocket(): Operation<FakeSocket> {
 
 await main(function*() {
   const socket: FakeSocket = yield* useSocket();
-  
+
   socket.send('hello');
   socket.send('world');
-  
+
   yield* sleep(100);
-  
+
   // When main ends, the resource cleans up
 });
 ```
@@ -157,7 +157,7 @@ To understand why `provide()` is special, let's look at how `yield*` normally be
 When you write `yield*`, control flows INTO the operation and doesn't come back until it completes:
 
 ```
-main()                            useSocket() 
+main()                            useSocket()
   │                                  │
   │                                  │ function* useSocket() {
   │                                  │   try {
@@ -176,7 +176,7 @@ That's why our first attempt hung — `yield* suspend()` never completes, so con
 `yield* provide(socket)` breaks this pattern. The `yield*` sends the socket back to the caller, but the resource keeps running:
 
 ```
-main()                            useSocket() 
+main()                            useSocket()
   │                                  │
   │                                  │ function useSocket() {
   │                                  │   return resource(function*(provide) {
@@ -232,9 +232,9 @@ function useSocket(): Operation<FakeSocket> {
   return resource<FakeSocket>(function*(provide) {
     const socket = new FakeSocket();
     socket.connect();
-    
+
     yield* sleep(50); // Wait for connect
-    
+
     try {
       yield* provide(socket);
     } finally {
@@ -248,7 +248,7 @@ function useHeartbeatSocket(): Operation<FakeSocket> {
   return resource<FakeSocket>(function*(provide) {
     // Use another resource!
     const socket: FakeSocket = yield* useSocket();
-    
+
     // Start heartbeat in background
     yield* spawn(function*(): Operation<void> {
       while (true) {
@@ -256,10 +256,10 @@ function useHeartbeatSocket(): Operation<FakeSocket> {
         socket.send('heartbeat');
       }
     });
-    
+
     // Provide the socket
     yield* provide(socket);
-    
+
     // Cleanup: when this resource ends, the spawned heartbeat
     // is automatically halted (child of this resource)
   });
@@ -267,13 +267,13 @@ function useHeartbeatSocket(): Operation<FakeSocket> {
 
 await main(function*() {
   const socket: FakeSocket = yield* useHeartbeatSocket();
-  
+
   socket.send('hello');
-  
+
   yield* sleep(1200);  // Let some heartbeats happen
-  
+
   socket.send('goodbye');
-  
+
   // When main ends:
   // 1. useHeartbeatSocket's spawn is halted (heartbeat stops)
   // 2. useSocket's finally runs (socket.close())
@@ -310,17 +310,17 @@ function useHttpServer(port: number): Operation<HttpServer> {
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('Hello from Effection!\n');
     });
-    
+
     // Start listening
     server.listen(port);
     console.log(`Server starting on port ${port}...`);
-    
+
     // Ensure cleanup
     yield* ensure(() => {
       console.log('Closing server...');
       server.close();
     });
-    
+
     // Provide the server to the caller
     yield* provide({ server, port });
   });
@@ -328,10 +328,10 @@ function useHttpServer(port: number): Operation<HttpServer> {
 
 await main(function*() {
   const { port }: HttpServer = yield* useHttpServer(3000);
-  
+
   console.log(`Server running at http://localhost:${port}`);
   console.log('Press Ctrl+C to stop\n');
-  
+
   // Keep running until interrupted
   yield* suspend();
 });
@@ -358,16 +358,16 @@ function useDatabase(): Operation<Connection> {
   return resource<Connection>(function*(provide) {
     console.log('Connecting to database...');
     yield* sleep(100); // Simulate connection time
-    
+
     const connection: Connection = {
       query: (sql: string) => `Result of: ${sql}`,
     };
-    
+
     // ensure() is cleaner than try/finally for simple cleanup
     yield* ensure(() => {
       console.log('Disconnecting from database...');
     });
-    
+
     console.log('Database connected!');
     yield* provide(connection);
   });
@@ -375,11 +375,11 @@ function useDatabase(): Operation<Connection> {
 
 await main(function*() {
   const db: Connection = yield* useDatabase();
-  
+
   console.log(db.query('SELECT * FROM users'));
-  
+
   yield* sleep(100);
-  
+
   // cleanup runs when main ends
 });
 ```
@@ -428,9 +428,9 @@ interface FileWatcher {
 function useFileWatcher(directory: string): Operation<FileWatcher> {
   return resource<FileWatcher>(function*(provide) {
     console.log(`Starting file watcher on ${directory}`);
-    
+
     const events = createChannel<FileEvent, void>();
-    
+
     // Simulate file system events
     yield* spawn(function*(): Operation<void> {
       const fakeEvents: FileEvent[] = [
@@ -438,13 +438,13 @@ function useFileWatcher(directory: string): Operation<FileWatcher> {
         { type: 'modify', path: `${directory}/file2.txt` },
         { type: 'delete', path: `${directory}/file3.txt` },
       ];
-      
+
       for (const event of fakeEvents) {
         yield* sleep(300);
         yield* events.send(event);
       }
     });
-    
+
     try {
       yield* provide({ events });
     } finally {
@@ -455,12 +455,12 @@ function useFileWatcher(directory: string): Operation<FileWatcher> {
 
 await main(function*() {
   const watcher: FileWatcher = yield* useFileWatcher('./src');
-  
+
   // Process events for 2 seconds
   yield* spawn(function*(): Operation<void> {
     yield* sleep(2000);
   });
-  
+
   for (const event of yield* each(watcher.events)) {
     console.log(`[${event.type.toUpperCase()}] ${event.path}`);
     yield* each.next();
