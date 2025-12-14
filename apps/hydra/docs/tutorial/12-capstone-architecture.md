@@ -101,7 +101,7 @@ src/
 ├── server-pool.ts        # useServerPool resource  
 ├── switchboard.ts        # useSwitchboard resource
 ├── types.ts              # Shared types
-└── main.ts               # Entry point
+start.ts                  # Entry point
 ```
 
 ---
