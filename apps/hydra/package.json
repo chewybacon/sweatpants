@@ -26,7 +26,6 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "start": "tsx start.ts",
-    "server": "tsx express-server.ts",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
