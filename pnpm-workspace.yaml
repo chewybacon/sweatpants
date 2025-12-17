@@ -24,6 +24,7 @@ catalog:
   '@vitejs/plugin-react': ^5.0.4
   acorn: ^8.14.0
   compression: ^1.8.1
+  effection: next
   express: ^5.2.1
   jsdom: ^27.0.0
   lucide-react: ^0.544.0
@@ -41,8 +42,7 @@ catalog:
   vite-tsconfig-paths: ^5.1.4
   vitest: ^3.0.5
   web-vitals: ^5.1.0
-  zod: ^4.1.13
-  effection: next
+  zod: 4.1.13
 
 injectWorkspacePackages: true
 
