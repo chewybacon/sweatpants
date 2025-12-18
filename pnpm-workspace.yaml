@@ -48,3 +48,5 @@ injectWorkspacePackages: true
 
 syncInjectedDepsAfterScripts:
   - build
+onlyBuiltDependencies:
+  - esbuild
