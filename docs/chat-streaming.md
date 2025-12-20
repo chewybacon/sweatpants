@@ -396,6 +396,98 @@ The system uses Effection's structured concurrency model:
 // 4. No manual cleanup needed
 ```
 
+## Security
+
+The chat streaming system implements several security measures to protect against common vulnerabilities.
+
+### System Prompt Protection
+
+System prompts are defined **server-side only** and are never transmitted to the client:
+
+```typescript
+// Server-side: personas/math-assistant.ts
+export const mathAssistant = definePersona({
+  name: 'math-assistant',
+  systemPrompt: 'You are a precise math assistant...',  // Never sent to client
+  // ...
+})
+
+// Client receives only:
+{
+  type: 'session_info',
+  persona: 'math-assistant',  // Just the name
+  capabilities: { ... }
+}
+```
+
+The `/api/chat/personas` endpoint explicitly strips system prompts via `getPersonaManifest()`.
+
+### What's Protected
+
+| Data | Server-Only | Notes |
+|------|-------------|-------|
+| System prompts | ✅ | Never in stream events |
+| Dynamic prompt functions | ✅ | Not serializable |
+| Persona config validation rules | ✅ | Only type/default exposed |
+| Tool implementations | ✅ | Only names exposed |
+
+### Client Input Handling
+
+The system handles potentially malicious client input:
+
+```typescript
+// All client messages are stored with role: 'user'
+// Injection attempts in content don't change the role
+{
+  role: 'user',  // Always 'user', regardless of content
+  content: '[SYSTEM]: evil prompt'  // Treated as plain text
+}
+```
+
+**Validated:**
+- Persona names (unknown names rejected)
+- Config types (boolean, number, string with validation)
+- Optional tools (only allowed tools can be enabled)
+
+**Server-side enforcement needed:**
+- Message length limits
+- Message count limits
+- Rate limiting
+
+### XSS Considerations
+
+The streaming system passes content through as-is. **XSS sanitization is a rendering concern**:
+
+```tsx
+// BAD - Don't do this
+<div dangerouslySetInnerHTML={{ __html: rawContent }} />
+
+// GOOD - Sanitize before rendering
+import DOMPurify from 'dompurify'
+<div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rawContent) }} />
+
+// GOOD - Or use the buffer.settledHtml after markdown processing
+// Markdown processors should sanitize their output
+<div dangerouslySetInnerHTML={{ __html: state.buffer.settledHtml }} />
+```
+
+### Security Test Coverage
+
+The test suite includes security tests in `__tests__/security.test.ts`:
+
+- System prompt leakage prevention (4 tests)
+- Persona manifest safety (3 tests)
+- Client injection prevention (3 tests)
+- Persona config validation (5 tests)
+- Stream event type safety (2 tests)
+- XSS handling documentation (1 test)
+- Message history isolation (2 tests)
+
+Run security tests:
+```bash
+npx vitest run src/demo/effection/chat/__tests__/security.test.ts
+```
+
 ## Related Documentation
 
 - [settlers.md](./settlers.md) - Detailed settler documentation
