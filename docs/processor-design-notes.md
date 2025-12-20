@@ -142,12 +142,100 @@ dualBufferTransform({
 })
 ```
 
+## Radical Idea: Processors Emit React Components
+
+Instead of processors only emitting HTML strings, what if they could emit React components?
+
+### Use Cases
+
+| Content Type | Current (HTML) | Future (Components) |
+|--------------|----------------|---------------------|
+| Mermaid diagrams | Static SVG | SVG + download button, pan/zoom |
+| Tables | `<table>` HTML | Sortable, filterable React table |
+| Code blocks | Highlighted HTML | Copy button, line numbers, collapse |
+| Math | KaTeX HTML | Click to see LaTeX source |
+| Images | `<img>` tag | Lightbox, zoom, download |
+| Data/JSON | Formatted text | Interactive tree view |
+| Charts | Static image | Interactive d3/recharts |
+
+### Architecture Sketch
+
+```typescript
+// Processor output could be either HTML or a component descriptor
+type ProcessorOutput = 
+  | { type: 'html'; content: string }
+  | { type: 'component'; name: string; props: Record<string, unknown> }
+
+// Example: Mermaid processor
+yield* emit({
+  type: 'component',
+  name: 'MermaidDiagram',
+  props: {
+    source: ctx.chunk,
+    svg: renderedSvg,
+    downloadFilename: 'diagram.svg',
+  }
+})
+
+// Example: Table processor  
+yield* emit({
+  type: 'component',
+  name: 'DataTable',
+  props: {
+    headers: ['Name', 'Age', 'Score'],
+    rows: parsedRows,
+    sortable: true,
+    filterable: true,
+  }
+})
+```
+
+### Rendering Strategy
+
+The reducer/renderer would need to handle component descriptors:
+
+```tsx
+function renderPatch(patch: BufferSettledPatch) {
+  if (patch.component) {
+    const Component = componentRegistry[patch.component.name]
+    return <Component {...patch.component.props} />
+  }
+  return <div dangerouslySetInnerHTML={{ __html: patch.html }} />
+}
+```
+
+### Component Registry
+
+Register components that processors can reference:
+
+```typescript
+const componentRegistry = {
+  MermaidDiagram: MermaidDiagram,
+  DataTable: DataTable,
+  CodeBlock: CodeBlock,
+  MathBlock: MathBlock,
+  ImageViewer: ImageViewer,
+}
+```
+
+### Serialization Concern
+
+Component descriptors must be serializable (no functions, no React elements) because they flow through channels and potentially server→client. This is actually good - it forces a clean separation between data and rendering.
+
+### Questions
+
+1. How do components handle streaming? (e.g., table rows arriving one at a time)
+2. How do components handle the quick→full progressive enhancement pattern?
+3. Should components be lazy-loaded?
+4. How does this interact with SSR?
+
 ## Next Steps
 
 1. Identify all the use cases for processors
 2. Design a composition model that handles them
 3. Decide where state should live
 4. Consider whether dualBuffer should own HTML accumulation
+5. **Prototype component emission for one use case (e.g., code blocks with copy button)**
 
 ## Related Files
 
