@@ -1,0 +1,49 @@
+{
+  "name": "@tanstack/framework",
+  "version": "0.1.0",
+  "description": "Framework utilities for TanStack-based AI apps - tool discovery, codegen, and more",
+  "type": "module",
+  "exports": {
+    "./vite": {
+      "import": {
+        "types": "./dist/vite.d.ts",
+        "default": "./dist/vite.js"
+      },
+      "require": {
+        "types": "./dist/vite.d.cts",
+        "default": "./dist/vite.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
+  },
+  "peerDependencies": {
+    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.2"
+  },
+  "devDependencies": {
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "@types/node": "catalog:",
+    "vitest": "catalog:"
+  },
+  "keywords": [
+    "vite",
+    "tanstack",
+    "framework",
+    "tools",
+    "codegen"
+  ],
+  "license": "MIT"
+}
