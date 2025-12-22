@@ -438,14 +438,20 @@ export function createChatHandler(config: ChatHandlerConfig) {
 
             // Process client outputs (phase 2)
             if (isomorphicClientOutputs.length > 0) {
+              console.log('[server phase 2] Processing', isomorphicClientOutputs.length, 'client outputs')
               for (const clientResult of isomorphicClientOutputs) {
+                console.log('[server phase 2] Processing:', clientResult.toolName, clientResult.callId)
                 const tool = registry.get(clientResult.toolName)
 
                 if (!tool) {
+                  console.log('[server phase 2] Tool not in server registry, checking schema')
                   const schema = schemaByName.get(clientResult.toolName)
+                  console.log('[server phase 2] Schema found:', schema?.name, 'authority:', schema?.authority)
                   if (schema?.authority === 'client') {
                     const validatedResult = clientResult.clientOutput
+                    console.log('[server phase 2] Using clientOutput directly:', validatedResult)
 
+                    let found = false
                     for (const msg of conversationMessages) {
                       if (msg.role === 'tool' && msg.tool_call_id === clientResult.callId) {
                         const content =
@@ -453,6 +459,8 @@ export function createChatHandler(config: ChatHandlerConfig) {
                             ? validatedResult
                             : JSON.stringify(validatedResult)
                         msg.content = content
+                        found = true
+                        console.log('[server phase 2] Updated tool message in conversationMessages')
 
                         emit({
                           type: 'tool_result',
@@ -462,6 +470,10 @@ export function createChatHandler(config: ChatHandlerConfig) {
                         })
                         break
                       }
+                    }
+                    if (!found) {
+                      console.log('[server phase 2] WARNING: Tool message not found for callId:', clientResult.callId)
+                      console.log('[server phase 2] Available tool messages:', conversationMessages.filter(m => m.role === 'tool').map(m => m.tool_call_id))
                     }
                     continue
                   }
