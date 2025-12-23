@@ -93,6 +93,14 @@ describe('calculateImportPath', () => {
     const to = '/project/src/tools/ui-tool.tsx'
     expect(calculateImportPath(from, to)).toBe('../tools/ui-tool')
   })
+
+  describe('nested paths', () => {
+    it('calculates relative path from output to tool file', () => {
+      const from = '/project/src/__generated__/feature/tool-registry.gen.ts'
+      const to = '/project/src/feature/tools/calculator.ts'
+      expect(calculateImportPath(from, to)).toBe('../../feature/tools/calculator')
+    })
+  })
 })
 
 // =============================================================================
@@ -104,7 +112,28 @@ describe('discoverToolsInContent', () => {
     it('discovers export const with createIsomorphicTool', () => {
       const content = `
         import { createIsomorphicTool } from '@/lib/chat/isomorphic-tools'
-        
+
+        export const calculator = createIsomorphicTool('calculator')
+          .description('Calculate something')
+          .parameters(z.object({}))
+          .authority('server')
+          .server(function*() { return { result: 42 } })
+          .build()
+      `
+      const tools = discoverTools(content)
+
+      expect(tools).toHaveLength(1)
+      expect(tools[0]).toMatchObject({
+        toolName: 'calculator',
+        exportName: 'calculator',
+        variableName: 'calculator',
+      })
+    })
+
+    it('discovers export const with createIsomorphicTool any import path', () => {
+      const content = `
+        import { createIsomorphicTool } from '@/herp/derp'
+
         export const calculator = createIsomorphicTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
@@ -302,6 +331,19 @@ describe('discoverToolsInContent', () => {
 
       expect(tools[0].filePath).toBe('nested/my-tool.ts')
       expect(tools[0].absolutePath).toBe('/project/src/tools/nested/my-tool.ts')
+    })
+
+    it('sets correct file paths (island)', () => {
+      const content = `export const foo = createIsomorphicTool('foo')`
+      const tools = discoverToolsInContent(
+        content,
+        '/project/src/feature/tools/my-tool.ts',
+        '/project/src/feature/tools',
+        createOptions()
+      )
+
+      expect(tools[0].filePath).toBe('my-tool.ts')
+      expect(tools[0].absolutePath).toBe('/project/src/feature/tools/my-tool.ts')
     })
   })
 
@@ -561,7 +603,7 @@ describe('integration: toolDiscoveryPlugin', () => {
 
     // Simulate Vite lifecycle
     if (plugin.configResolved) {
-      ;(plugin.configResolved as (config: { root: string }) => void)({ root: tempDir })
+      ; (plugin.configResolved as (config: { root: string }) => void)({ root: tempDir })
     }
     if (plugin.buildStart) {
       await (plugin.buildStart as () => Promise<void>)()

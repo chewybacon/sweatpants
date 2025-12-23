@@ -38,6 +38,7 @@
   "peerDependencies": {
     "vite": "^5.0.0 || ^6.0.0 || ^7.0.0",
     "effection": "^4.0.0",
+    "@effectionx/context-api": "^0.2.1",
     "zod": "^3.24.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
@@ -55,6 +56,7 @@
     "@types/node": "catalog:",
     "vitest": "catalog:",
     "effection": "catalog:",
+    "@effectionx/context-api": "catalog:",
     "zod": "catalog:"
   },
   "keywords": [

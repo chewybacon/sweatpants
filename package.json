@@ -16,6 +16,7 @@
     "typescript": "catalog:"
   },
   "dependencies": {
+    "@effectionx/context-api": "catalog:",
     "effection": "catalog:"
   }
 }

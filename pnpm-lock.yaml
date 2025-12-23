@@ -7,6 +7,9 @@ settings:
 
 catalogs:
   default:
+    '@effectionx/context-api':
+      specifier: ^0.2.1
+      version: 0.2.1
     '@t3-oss/env-core':
       specifier: ^0.13.8
       version: 0.13.8
@@ -129,6 +132,9 @@ importers:
 
   .:
     dependencies:
+      '@effectionx/context-api':
+        specifier: 'catalog:'
+        version: 0.2.1
       effection:
         specifier: 'catalog:'
         version: 4.0.0-beta.3
@@ -142,6 +148,9 @@ importers:
 
   apps/dynobase:
     dependencies:
+      '@effectionx/context-api':
+        specifier: 'catalog:'
+        version: 0.2.1
       '@radix-ui/react-avatar':
         specifier: ^1.1.11
         version: 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
@@ -370,6 +379,9 @@ importers:
         specifier: ^3.3.2
         version: 3.3.3
     devDependencies:
+      '@effectionx/context-api':
+        specifier: 'catalog:'
+        version: 0.2.1
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.2
@@ -653,6 +665,10 @@ packages:
   '@csstools/css-tokenizer@3.0.4':
     resolution: {integrity: sha512-Vd/9EVDiu6PPJt9yAh6roZP6El1xHrdvIVGjyBsHR0RYwNHgL7FJPyIIW4fANJNG6FtyZfvlRPpFI4ZM/lubvw==}
     engines: {node: '>=18'}
+
+  '@effectionx/context-api@0.2.1':
+    resolution: {integrity: sha512-UCEmk/uibrx4PvUh/tm1SWy6e6rAaq2BzpEDLu5XJZ/LaRdazv5VxHqg4F3N+G4AcxgPvosprjS0j3dDSTCzFg==}
+    engines: {node: '>= 16'}
 
   '@effectionx/process@0.6.1':
     resolution: {integrity: sha512-hhVjnhGJ91Evyn1T0UKpgtXNFvW962ou8btrGl69WSKTnb89qI149aMw14XA4hlzV73RC9X07JEqiqr0pxJjCA==}
@@ -5862,6 +5878,10 @@ snapshots:
       postcss: 8.5.6
 
   '@csstools/css-tokenizer@3.0.4': {}
+
+  '@effectionx/context-api@0.2.1':
+    dependencies:
+      effection: 4.0.0-beta.3
 
   '@effectionx/process@0.6.1':
     dependencies:
