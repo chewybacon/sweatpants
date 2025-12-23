@@ -49,7 +49,7 @@ import { z } from 'zod'
 import { defineIsomorphicTool } from '../define'
 import { executeServerPart, executeServerPhase2 } from '../executor'
 import type { ServerAuthorityContext } from '../types'
-import { guessTheCardTool } from '@/routes/demo/effection/magic-trick/-tools'
+import { guessTheCardTool } from './-tools'
 
 describe('V7 Handoff Executor Integration', () => {
   describe('server-authority tool WITH handoff', () => {
@@ -89,7 +89,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1: Execute and halt at handoff
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', { name: 'Alice' }, signal)
       })
 
@@ -104,7 +104,7 @@ describe('V7 Handoff Executor Integration', () => {
       expect(phase1.serverOutput).toEqual({ secret: 42, player: 'Alice' })
 
       // Phase 2: Resume with client output
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -155,14 +155,14 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', {}, signal)
       })
       expect(computeCount).toBe(1)
       expect(phase1.serverOutput).toEqual({ computed: 'result-1' })
 
       // Phase 2 - computation should NOT run again
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -207,12 +207,12 @@ describe('V7 Handoff Executor Integration', () => {
 
       const signal = new AbortController().signal
 
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', {}, signal)
       })
 
       // Wrong guess
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -257,7 +257,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       await expect(
-        run(function* () {
+        run(function*() {
           return yield* executeServerPart(tool, 'call-1', {}, signal)
         })
       ).rejects.toThrow('before() failed')
@@ -289,7 +289,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1 should succeed
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', {}, signal)
       })
       expect(phase1.kind).toBe('handoff')
@@ -298,7 +298,7 @@ describe('V7 Handoff Executor Integration', () => {
 
       // Phase 2 should fail
       await expect(
-        run(function* () {
+        run(function*() {
           return yield* executeServerPhase2(
             tool,
             'call-1',
@@ -332,7 +332,7 @@ describe('V7 Handoff Executor Integration', () => {
 
       const signal = new AbortController().signal
 
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', { message: 'Hello!' }, signal)
       })
 
@@ -366,7 +366,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', {}, signal)
       })
       expect(serverFn).toHaveBeenCalledTimes(1)
@@ -375,7 +375,7 @@ describe('V7 Handoff Executor Integration', () => {
       expect(phase1.usesHandoff).toBe(false)
 
       // Phase 2 - should just return cached output, NOT re-run server
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -419,7 +419,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1 - no server code runs for client authority
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', { question: 'What is 2+2?' }, signal)
       })
 
@@ -433,7 +433,7 @@ describe('V7 Handoff Executor Integration', () => {
       expect(phase1.handoff.authority).toBe('client')
 
       // Phase 2 - server validates client output
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -469,7 +469,7 @@ describe('V7 Handoff Executor Integration', () => {
             *before() {
               // Simulate async fetch
               fetchCount++
-              yield* (function* () {
+              yield* (function*() {
                 return 'fetched'
               })()
               return { data: `fetch-${fetchCount}` }
@@ -487,12 +487,12 @@ describe('V7 Handoff Executor Integration', () => {
 
       const signal = new AbortController().signal
 
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', {}, signal)
       })
       expect(fetchCount).toBe(1)
 
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -553,7 +553,7 @@ describe('V7 Handoff Executor Integration', () => {
 
       const signal = new AbortController().signal
 
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(tool, 'call-1', { difficulty: 'hard' }, signal)
       })
 
@@ -567,7 +567,7 @@ describe('V7 Handoff Executor Integration', () => {
       })
 
       // Correct guess
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -619,13 +619,13 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1 - afterHandoffFn should NOT run
-      await run(function* () {
+      await run(function*() {
         return yield* executeServerPart(tool, 'call-1', {}, signal)
       })
       expect(afterHandoffFn).not.toHaveBeenCalled()
 
       // Phase 2 - afterHandoffFn SHOULD run
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           tool,
           'call-1',
@@ -648,7 +648,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1: Pick the secret card and generate choices
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(
           guessTheCardTool,
           'call-1',
@@ -682,7 +682,7 @@ describe('V7 Handoff Executor Integration', () => {
       expect(handoffData.prompt).toBe('Which card?')
 
       // Phase 2: User guesses correctly
-      const correctResult = await run(function* () {
+      const correctResult = await run(function*() {
         return yield* executeServerPhase2(
           guessTheCardTool,
           'call-1',
@@ -711,7 +711,7 @@ describe('V7 Handoff Executor Integration', () => {
       const signal = new AbortController().signal
 
       // Phase 1
-      const phase1 = await run(function* () {
+      const phase1 = await run(function*() {
         return yield* executeServerPart(
           guessTheCardTool,
           'call-2',
@@ -729,7 +729,7 @@ describe('V7 Handoff Executor Integration', () => {
       const wrongGuess = handoffData.choices.find(c => c !== handoffData.secret)!
 
       // Phase 2: User guesses incorrectly
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           guessTheCardTool,
           'call-2',
@@ -757,11 +757,11 @@ describe('V7 Handoff Executor Integration', () => {
 
       // Run phase 1 twice - should get different secrets each time
       // (proving phase 1 actually picks)
-      const run1 = await run(function* () {
+      const run1 = await run(function*() {
         return yield* executeServerPart(guessTheCardTool, 'call-a', {}, signal)
       })
 
-      const run2 = await run(function* () {
+      const run2 = await run(function*() {
         return yield* executeServerPart(guessTheCardTool, 'call-b', {}, signal)
       })
 
@@ -773,7 +773,7 @@ describe('V7 Handoff Executor Integration', () => {
 
       // Now run phase 2 for run1 with the wrong secret from run2
       // It should validate against run1's secret, not a new pick
-      const result = await run(function* () {
+      const result = await run(function*() {
         return yield* executeServerPhase2(
           guessTheCardTool,
           'call-a',
