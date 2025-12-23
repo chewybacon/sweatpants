@@ -1,0 +1,172 @@
+import type { Operation, Stream, Subscription } from 'effection'
+import { resource, call, useAbortSignal } from 'effection'
+import { parseNDJSON } from '../ndjson'
+import type {
+  OllamaMessage,
+  OllamaChatRequest,
+  OllamaChatChunk,
+  ChatEvent,
+  ChatResult,
+  TokenUsage,
+  ToolCall,
+} from '../types'
+import type { ChatProvider, ChatStreamOptions } from './types'
+import { ChatStreamConfigContext } from './contexts.ts'
+
+type OllamaTool = NonNullable<OllamaChatRequest['tools']>[number]
+
+/**
+ * Ollama chat provider implementation
+ */
+export const ollamaProvider: ChatProvider = {
+  name: 'ollama',
+
+  capabilities: {
+    thinking: true,
+    toolCalling: true,
+  },
+
+  stream(
+    messages: OllamaMessage[],
+    options?: ChatStreamOptions
+  ): Stream<ChatEvent, ChatResult> {
+    return resource(function*(provide) {
+      const signal = yield* useAbortSignal()
+      const config = yield* ChatStreamConfigContext.expect()
+
+      const values = {
+        isomorphicToolSchemas: (
+          options?.isomorphicToolSchemas ??
+          config.isomorphicToolSchemas ?? []
+        ),
+        model: (options?.model ?? config.model),
+        apiUrl: (options?.apiUrl ?? config.apiUrl),
+      }
+
+      // Build tools array from schemas
+      const allTools: OllamaTool[] = values.isomorphicToolSchemas.map(
+        (schema) => ({
+          type: 'function' as const,
+          function: {
+            name: schema.name,
+            description: schema.description,
+            parameters: schema.parameters,
+          },
+        })
+      )
+
+      const request: OllamaChatRequest = {
+        model: values.model,
+        messages,
+        stream: true,
+        ...(allTools.length > 0 && { tools: allTools }),
+      }
+
+      const response = yield* call(() =>
+        fetch(values.apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+          signal,
+        })
+      )
+
+      if (!response.ok) {
+        throw new Error(`Ollama API error: ${response.status}`)
+      }
+      if (!response.body) {
+        throw new Error('No response body')
+      }
+
+      const chunkStream = parseNDJSON<OllamaChatChunk>(response.body)
+      const subscription: Subscription<OllamaChatChunk, void> =
+        yield* chunkStream
+
+      // Accumulators
+      let textBuffer = ''
+      let thinkingBuffer = ''
+      let toolCalls: ToolCall[] = []
+      let usage: TokenUsage = {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      }
+
+      // Queue of events to yield
+      const pendingEvents: ChatEvent[] = []
+
+      yield* provide({
+        *next(): Operation<IteratorResult<ChatEvent, ChatResult>> {
+          // Yield any pending events first
+          if (pendingEvents.length > 0) {
+            return { done: false, value: pendingEvents.shift()! }
+          }
+
+          // Read next chunk from Ollama
+          const next = yield* subscription.next()
+
+          if (next.done) {
+            // Stream finished, return final result
+            return {
+              done: true,
+              value: {
+                text: textBuffer,
+                thinking: thinkingBuffer || undefined,
+                toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+                usage,
+              },
+            }
+          }
+
+          const chunk = next.value
+
+          if (chunk.error) {
+            throw new Error(`Ollama: ${chunk.error}`)
+          }
+
+          // Capture usage from final chunk
+          if (chunk.done) {
+            usage = {
+              promptTokens: chunk.prompt_eval_count ?? 0,
+              completionTokens: chunk.eval_count ?? 0,
+              totalTokens:
+                (chunk.prompt_eval_count ?? 0) + (chunk.eval_count ?? 0),
+            }
+          }
+
+          // Accumulate and emit text
+          if (chunk.message.content) {
+            textBuffer += chunk.message.content
+            pendingEvents.push({ type: 'text', content: chunk.message.content })
+          }
+
+          // Accumulate and emit thinking
+          if (chunk.message.thinking) {
+            thinkingBuffer += chunk.message.thinking
+            pendingEvents.push({
+              type: 'thinking',
+              content: chunk.message.thinking,
+            })
+          }
+
+          // Accumulate and emit tool calls
+          if (chunk.message.tool_calls) {
+            toolCalls = [...toolCalls, ...chunk.message.tool_calls]
+            pendingEvents.push({
+              type: 'tool_calls',
+              toolCalls: chunk.message.tool_calls,
+            })
+          }
+
+          // Return first pending event, or recurse to get next chunk
+          if (pendingEvents.length > 0) {
+            return { done: false, value: pendingEvents.shift()! }
+          }
+
+          // No events from this chunk, get next
+          return yield* this.next()
+        },
+      })
+    })
+  },
+}

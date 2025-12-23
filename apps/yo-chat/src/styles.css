@@ -1,0 +1,267 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+body {
+  @apply m-0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* Dark mode by default using Slate color palette */
+:root {
+  --radius: 0.625rem;
+  /* Slate dark theme - matching existing app colors */
+  --background: oklch(0.129 0.042 264.695); /* slate-950 */
+  --foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --card: oklch(0.208 0.042 265.755); /* slate-800 */
+  --card-foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --popover: oklch(0.208 0.042 265.755); /* slate-800 */
+  --popover-foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --primary: oklch(0.707 0.165 254.624); /* cyan-400 */
+  --primary-foreground: oklch(0.129 0.042 264.695); /* slate-950 */
+  --secondary: oklch(0.279 0.041 264.436); /* slate-700 */
+  --secondary-foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --muted: oklch(0.279 0.041 264.436); /* slate-700 */
+  --muted-foreground: oklch(0.704 0.04 256.788); /* slate-400 */
+  --accent: oklch(0.279 0.041 264.436); /* slate-700 */
+  --accent-foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --destructive: oklch(0.704 0.191 22.216); /* red-500 */
+  --border: oklch(0.279 0.041 264.436); /* slate-700 */
+  --input: oklch(0.279 0.041 264.436); /* slate-700 */
+  --ring: oklch(0.707 0.165 254.624); /* cyan-400 */
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.208 0.042 265.755); /* slate-800 */
+  --sidebar-foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --sidebar-primary: oklch(0.707 0.165 254.624); /* cyan-400 */
+  --sidebar-primary-foreground: oklch(0.129 0.042 264.695); /* slate-950 */
+  --sidebar-accent: oklch(0.279 0.041 264.436); /* slate-700 */
+  --sidebar-accent-foreground: oklch(0.966 0.007 264.542); /* slate-100 */
+  --sidebar-border: oklch(0.279 0.041 264.436); /* slate-700 */
+  --sidebar-ring: oklch(0.707 0.165 254.624); /* cyan-400 */
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Thinking dots animation (iOS-style bounce) */
+@keyframes thinking-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+.thinking-dot {
+  animation: thinking-bounce 1.4s ease-in-out infinite;
+}
+
+/* Tool call dots (smaller, faster) */
+.tool-dot {
+  animation: thinking-bounce 1s ease-in-out infinite;
+}
+
+/* Collapsible animations */
+@keyframes collapsible-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+
+@keyframes collapsible-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+.animate-collapsible-down {
+  animation: collapsible-down 0.2s ease-out;
+}
+
+.animate-collapsible-up {
+  animation: collapsible-up 0.2s ease-out;
+}
+
+/* Quick-highlight classes for progressive syntax highlighting */
+/* These provide instant styling before Shiki takes over */
+
+/* Code block container styles */
+.code-block {
+  @apply bg-slate-900 rounded-lg p-4 overflow-x-auto text-sm font-mono my-4;
+  @apply border border-slate-800;
+}
+
+.code-block.quick-highlight {
+  @apply transition-opacity duration-150;
+}
+
+.code-block.shiki-highlight {
+  /* Shiki replaces the content, no special styles needed */
+}
+
+/* Quick-highlight token styles - mimics github-dark theme */
+/* Scoped to .code-block for specificity over prose styles */
+.code-block .ql-keyword {
+  color: #ff7b72; /* red-ish for keywords */
+}
+
+.code-block .ql-string {
+  color: #a5d6ff; /* light blue for strings */
+}
+
+.code-block .ql-comment {
+  color: #8b949e; /* muted gray for comments */
+  font-style: italic;
+}
+
+.code-block .ql-number {
+  color: #79c0ff; /* blue for numbers */
+}
+
+.code-block .ql-variable {
+  color: #ffa657; /* orange for variables */
+}
+
+.code-block .ql-type {
+  color: #7ee787; /* green for types/classes */
+}
+
+.code-block .ql-property {
+  color: #79c0ff; /* blue for object properties */
+}
+
+.code-block .ql-selector {
+  color: #7ee787; /* green for CSS selectors */
+}
+
+.code-block .ql-color {
+  color: #a5d6ff; /* light blue for color values */
+}
+
+.code-block .ql-tag {
+  color: #7ee787; /* green for HTML tags */
+}
+
+.code-block .ql-attribute {
+  color: #79c0ff; /* blue for HTML attributes */
+}
+
+/* Ensure Shiki output integrates well */
+.shiki {
+  @apply !bg-transparent;
+}
+
+.shiki code {
+  @apply bg-transparent;
+}
+
+/* Mermaid-specific quick-highlight tokens */
+.code-block .ql-operator {
+  color: #ff7b72; /* red for arrows/operators */
+}
+
+/* Mermaid diagram container */
+.mermaid-diagram {
+  @apply bg-slate-900/50 rounded-lg p-4 my-4 overflow-x-auto;
+  @apply border border-slate-800;
+  @apply flex justify-center items-center;
+}
+
+.mermaid-diagram svg {
+  @apply max-w-full h-auto;
+}
+
+/* Mermaid error display */
+.mermaid-error {
+  @apply bg-red-950/50 rounded-lg p-4 my-4;
+  @apply border border-red-900;
+}
+
+.mermaid-error-title {
+  @apply text-red-400 font-semibold mb-2 text-sm;
+}
+
+.mermaid-error-message {
+  @apply text-red-300 text-sm mb-3;
+}
+
+.mermaid-error-code {
+  @apply bg-slate-900 rounded p-3 text-xs overflow-x-auto;
+}
+
+.mermaid-error-code code {
+  @apply text-slate-300;
+}

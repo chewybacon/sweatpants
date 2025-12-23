@@ -47,6 +47,7 @@
     }
   },
   "dependencies": {
+    "react": "catalog:",
     "fast-glob": "^3.3.2"
   },
   "devDependencies": {
@@ -54,6 +55,7 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "vitest": "catalog:",
     "effection": "catalog:",
     "@effectionx/context-api": "catalog:",

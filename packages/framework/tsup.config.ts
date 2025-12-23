@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     vite: 'src/vite/index.ts',
     handler: 'src/handler/index.ts',
+    chat: 'src/lib/chat/index.ts',
   },
   format: ['cjs', 'esm'],
   dts: true,
