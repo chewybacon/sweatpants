@@ -26,19 +26,19 @@ The system implements a **dual buffer pattern** (similar to double buffering in 
 React Component
       │
       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  useChatSession()                                               │
+┌────────────────────────────────────────────────────────────────┐
+│  useChatSession()                                              │
 │  ┌────────────┐    ┌──────────────┐    ┌────────────────────┐  │
 │  │  Commands  │───►│   Session    │───►│  Patches           │  │
 │  │  (Signal)  │    │  Runtime     │    │  (Channel)         │  │
 │  └────────────┘    └──────────────┘    └────────────────────┘  │
-│                           │                     │               │
-│                           ▼                     ▼               │
+│                           │                     │              │
+│                           ▼                     ▼              │
 │                    ┌──────────────┐    ┌────────────────────┐  │
 │                    │  Streamer    │    │  Transform         │  │
 │                    │  (fetch/test)│    │  Pipeline          │  │
 │                    └──────────────┘    └────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────────┘
 ```
 
 ## Quick Start
@@ -62,12 +62,12 @@ function ChatComponent() {
     <div>
       {/* Rendered markdown (settled content) */}
       <div dangerouslySetInnerHTML={{ __html: state.buffer.settledHtml }} />
-      
+
       {/* Typing indicator (pending content) */}
       {state.buffer.pending && (
         <span className="pending">{state.buffer.pending}▊</span>
       )}
-      
+
       <button onClick={() => send('Hello!')}>Send</button>
     </div>
   )
@@ -77,11 +77,11 @@ function ChatComponent() {
 ### With Code Fence Awareness
 
 ```typescript
-import { 
-  useChatSession, 
-  dualBufferTransform, 
-  codeFence, 
-  syntaxHighlight 
+import {
+  useChatSession,
+  dualBufferTransform,
+  codeFence,
+  syntaxHighlight
 } from './chat'
 
 const { state, send } = useChatSession({
@@ -203,19 +203,19 @@ const messageHtml = state.rendered[message.id]?.output
 interface ChatState {
   messages: ChatMessage[]
   rendered: Record<string, { output?: string }>
-  
+
   // Current streaming state
   isStreaming: boolean
   currentResponse: ResponseStep[]
   activeStep: ActiveStep | null
-  
+
   // Dual buffer state (when using dualBufferTransform)
   buffer: {
     settled: string      // Content safe to parse as markdown
     pending: string      // Content still streaming
     settledHtml: string  // Parsed HTML (when using markdown processor)
   }
-  
+
   error: string | null
   capabilities: Capabilities | null
   persona: string | null
@@ -363,18 +363,18 @@ import type { Processor, ProcessorContext, ProcessorEmit } from './types'
 function myProcessor(): Processor {
   return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
     // Quick pass - immediate
-    yield* emit({ 
-      raw: ctx.chunk, 
-      html: quickTransform(ctx.chunk), 
-      pass: 'quick' 
+    yield* emit({
+      raw: ctx.chunk,
+      html: quickTransform(ctx.chunk),
+      pass: 'quick'
     })
 
     // Full pass - after async work
     const html = yield* call(() => expensiveTransform(ctx.chunk))
-    yield* emit({ 
-      raw: ctx.chunk, 
-      html, 
-      pass: 'full' 
+    yield* emit({
+      raw: ctx.chunk,
+      html,
+      pass: 'full'
     })
   }
 }
@@ -491,5 +491,5 @@ npx vitest run src/demo/effection/chat/__tests__/security.test.ts
 ## Related Documentation
 
 - [settlers.md](./settlers.md) - Detailed settler documentation
-- [processors.md](./processors.md) - Detailed processor documentation  
+- [processors.md](./processors.md) - Detailed processor documentation
 - [testing.md](./testing.md) - Testing guide and utilities
