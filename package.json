@@ -13,6 +13,7 @@
     "deploy": "pnpm build && pnpm run -r deploy"
   },
   "devDependencies": {
+    "@tanstack/ts-config": "workspace:*",
     "tsx": "catalog:",
     "typescript": "catalog:"
   },

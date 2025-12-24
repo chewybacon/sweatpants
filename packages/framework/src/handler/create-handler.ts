@@ -738,11 +738,18 @@ export function createChatHandler(config: ChatHandlerConfig) {
                 conversationMessages.push(...toolMessages)
               } else {
                 // No tool calls - final response
-                emit({
-                  type: 'complete',
-                  text: result.text,
-                  usage: result.usage,
-                })
+                if (result.usage) {
+                  emit({
+                    type: 'complete',
+                    text: result.text,
+                    usage: result.usage,
+                  })
+                } else {
+                  emit({
+                    type: 'complete',
+                    text: result.text,
+                  })
+                }
                 break
               }
             }

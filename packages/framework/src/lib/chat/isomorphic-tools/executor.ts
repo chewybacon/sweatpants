@@ -555,12 +555,9 @@ function createClientContext(
     ? createWaitForContext(callId, uiRequestChannel)
     : undefined
 
-  return {
+  const ctx: ClientToolContext = {
     callId,
     signal,
-
-    // Wire up waitFor if channel is provided
-    waitFor: waitForContext?.waitFor.bind(waitForContext),
 
     requestApproval(message: string): Operation<ApprovalResult> {
       return function*() {
@@ -595,6 +592,13 @@ function createClientContext(
       }()
     },
   }
+
+  // Wire up waitFor if channel is provided
+  if (waitForContext) {
+    ctx.waitFor = waitForContext.waitFor.bind(waitForContext)
+  }
+
+  return ctx
 }
 
 // --- Approval Helpers ---
@@ -611,7 +615,9 @@ function* waitForApproval(
       if (value.approved) {
         return { approved: true }
       } else {
-        return { approved: false, reason: value.reason }
+        return value.reason
+          ? { approved: false, reason: value.reason }
+          : { approved: false }
       }
     }
     yield* each.next()

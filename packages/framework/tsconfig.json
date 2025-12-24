@@ -1,13 +1,10 @@
 {
-  "extends": "../ts-config/tsconfig.base.json",
+  "extends": "@tanstack/ts-config/tsconfig.package.json",
   "compilerOptions": {
-    "outDir": "./dist",
     "rootDir": ".",
-    "declaration": true,
-    "declarationMap": true,
-    "noEmit": false,
     "emitDeclarationOnly": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
 }

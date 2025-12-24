@@ -113,5 +113,15 @@ function parseEventBlock(block: string): SSEEvent | null {
     return null
   }
 
-  return { event, data, id, retry }
+    const eventObj: SSEEvent = { data }
+    if (event !== undefined) {
+      eventObj.event = event
+    }
+    if (id !== undefined) {
+      eventObj.id = id
+    }
+    if (retry !== undefined) {
+      eventObj.retry = retry
+    }
+    return eventObj
 }

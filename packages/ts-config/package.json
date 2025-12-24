@@ -1,10 +1,12 @@
 {
-    "name": "@herp/ts-config",
+    "name": "@tanstack/ts-config",
     "private": true,
     "type": "module",
+    "version": "0.1.0",
+    "description": "Shared TypeScript configurations for TanStack monorepo",
     "main": "./nitro.config.ts",
     "files": [
-        "*.json"
+        "tsconfig*.json"
     ],
     "devDependencies": {
         "typescript": "catalog:",

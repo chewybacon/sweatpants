@@ -352,8 +352,6 @@ export function createReactStepContext(
       // No-op if no base context
     },
 
-    waitFor: baseContext?.waitFor,
-
     // --- Step context methods ---
 
     *emit<TPayload>(type: string, payload: TPayload) {
@@ -453,6 +451,10 @@ export function createReactStepContext(
       trail.steps.push(step as Step)
       yield* stepChannel.send({ step: step as Step, respond: () => { } })
     },
+  }
+
+  if (baseContext?.waitFor) {
+    ctx.waitFor = baseContext.waitFor
   }
 
   return ctx

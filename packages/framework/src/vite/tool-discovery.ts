@@ -176,6 +176,7 @@ export function discoverToolsInContent(
   let match: RegExpExecArray | null
   while ((match = namedExportRegex.exec(content)) !== null) {
     const [, exportName, toolName] = match
+    if (!exportName || !toolName) continue
     tools.push({
       filePath: relative(toolsDir, file),
       absolutePath: file,
@@ -194,10 +195,11 @@ export function discoverToolsInContent(
 
   while ((match = defaultExportRegex.exec(content)) !== null) {
     const [, toolName] = match
+    if (!toolName) continue
     tools.push({
       filePath: relative(toolsDir, file),
       absolutePath: file,
-      exportName: undefined, // default export
+        // exportName: undefined, // default export
       toolName,
       variableName: toCamelCase(toolName),
     })
@@ -215,6 +217,7 @@ export function discoverToolsInContent(
   const varDefs = new Map<string, string>()
   while ((match = varDefRegex.exec(content)) !== null) {
     const [, varName, toolName] = match
+    if (!varName || !toolName) continue
     varDefs.set(varName, toolName)
   }
 
@@ -222,6 +225,7 @@ export function discoverToolsInContent(
   const defaultExportVarRegex = /export\s+default\s+(\w+)\s*(?:;|\n|$)/g
   while ((match = defaultExportVarRegex.exec(content)) !== null) {
     const [, varName] = match
+    if (!varName) continue
     const toolName = varDefs.get(varName)
     if (toolName) {
       // Check if we already added this via inline detection
@@ -230,7 +234,7 @@ export function discoverToolsInContent(
         tools.push({
           filePath: relative(toolsDir, file),
           absolutePath: file,
-          exportName: undefined, // default export
+            // exportName: undefined, // default export
           toolName,
           variableName: varName,
         })
@@ -241,12 +245,17 @@ export function discoverToolsInContent(
   // Check for named exports of variables: export { foo } or export { foo as bar }
   const namedExportBraceRegex = /export\s*\{([^}]+)\}/g
   while ((match = namedExportBraceRegex.exec(content)) !== null) {
-    const exports = match[1].split(',').map((s) => s.trim())
+      const exportGroup = match[1]
+      if (!exportGroup) continue
+      const exports = exportGroup.split(',').map((s) => s.trim())
     for (const exp of exports) {
       // Handle 'foo' or 'foo as bar'
-      const parts = exp.split(/\s+as\s+/)
-      const varName = parts[0].trim()
-      const exportName = parts[1]?.trim() ?? varName
+        const parts = exp.split(/\s+as\s+/)
+        const rawVar = parts[0]
+        if (!rawVar) continue
+        const varName = rawVar.trim()
+        const exportName = parts[1]?.trim() ?? varName
+      if (!varName) continue
       const toolName = varDefs.get(varName)
       if (toolName) {
         // Check if we already added this

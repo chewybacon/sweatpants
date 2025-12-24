@@ -53,6 +53,7 @@
     "zod": "4.1.13"
   },
   "devDependencies": {
+    "@tanstack/ts-config": "workspace:*",
     "@types/express": "^5.0.0",
     "@types/http-proxy": "^1.17.17",
     "@types/morgan": "^1.9.10",

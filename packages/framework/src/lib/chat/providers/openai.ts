@@ -137,14 +137,14 @@ export const openaiProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const values = yield* resolveChatStreamConfig(options, {
-        baseUri: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
-        model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-        envApiKeyName: 'OPENAI_API_KEY',
-      })
+        const values = yield* resolveChatStreamConfig(options, {
+          baseUri: process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1',
+          model: process.env['OPENAI_MODEL'] ?? 'gpt-4o-mini',
+          envApiKeyName: 'OPENAI_API_KEY',
+        })
 
       // If no API key is provided via context, try environment (common for server-side)
-      const resolvedApiKey = values.apiKey ?? process.env.OPENAI_API_KEY
+      const resolvedApiKey = values.apiKey ?? process.env['OPENAI_API_KEY']
       if (!resolvedApiKey) {
         throw new Error('OpenAI API key is required. Provide via ChatApiKeyContext or OPENAI_API_KEY env var.')
       }
@@ -228,18 +228,18 @@ export const openaiProvider: ChatProvider = {
           // Read next SSE event
           const next = yield* subscription.next()
 
-          if (next.done) {
-            // Stream finished, return final result
-            return {
-              done: true,
-              value: {
-                text: textBuffer,
-                thinking: thinkingBuffer || undefined,
-                toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-                usage,
-              },
+            if (next.done) {
+              // Stream finished, return final result
+              return {
+                done: true,
+                value: {
+                  text: textBuffer,
+                  ...(thinkingBuffer ? { thinking: thinkingBuffer } : {}),
+                  ...(toolCalls.length > 0 ? { toolCalls } : {}),
+                  usage,
+                },
+              }
             }
-          }
 
           const sseEvent = next.value
 
@@ -255,8 +255,8 @@ export const openaiProvider: ChatProvider = {
           // Handle different event types
           switch (event.type) {
             // Text output deltas
-            case 'response.output_text.delta': {
-              const delta = event.delta as string
+              case 'response.output_text.delta': {
+                const delta = event['delta'] as string
               if (delta) {
                 textBuffer += delta
                 pendingEvents.push({ type: 'text', content: delta })
@@ -265,8 +265,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Reasoning summary text (for "thinking" UI)
-            case 'response.reasoning_summary_text.delta': {
-              const delta = event.delta as string
+              case 'response.reasoning_summary_text.delta': {
+                const delta = event['delta'] as string
               if (delta) {
                 thinkingBuffer += delta
                 pendingEvents.push({ type: 'thinking', content: delta })
@@ -275,8 +275,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Function call output item added - start tracking
-            case 'response.output_item.added': {
-              const item = event.item as {
+              case 'response.output_item.added': {
+                const item = event['item'] as {
                 type: string
                 id: string
                 call_id: string
@@ -294,9 +294,9 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Function call arguments delta
-            case 'response.function_call_arguments.delta': {
-              const itemId = event.item_id as string
-              const delta = event.delta as string
+              case 'response.function_call_arguments.delta': {
+                const itemId = event['item_id'] as string
+                const delta = event['delta'] as string
               const pending = pendingFunctionCalls.get(itemId)
               if (pending && delta) {
                 pending.arguments += delta
@@ -305,8 +305,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Function call arguments done - finalize and emit
-            case 'response.function_call_arguments.done': {
-              const itemId = event.item_id as string
+              case 'response.function_call_arguments.done': {
+                const itemId = event['item_id'] as string
               const pending = pendingFunctionCalls.get(itemId)
               if (pending) {
                 // Parse the arguments JSON
@@ -337,8 +337,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Response completed - extract usage
-            case 'response.completed': {
-              const respUsage = event.response?.usage as {
+              case 'response.completed': {
+                const respUsage = (event['response'] as any)?.usage as {
                 input_tokens?: number
                 output_tokens?: number
                 total_tokens?: number
@@ -354,8 +354,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Error event
-            case 'error': {
-              const message = event.message as string
+              case 'error': {
+                const message = event['message'] as string
               throw new Error(`OpenAI stream error: ${message}`)
             }
 

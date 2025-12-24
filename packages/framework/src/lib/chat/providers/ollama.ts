@@ -32,10 +32,10 @@ export const ollamaProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const values = yield* resolveChatStreamConfig(options, {
-        baseUri: process.env.OLLAMA_URL ?? 'http://localhost:11434',
-        model: process.env.OLLAMA_MODEL ?? 'llama3',
-      })
+        const values = yield* resolveChatStreamConfig(options, {
+          baseUri: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
+          model: process.env['OLLAMA_MODEL'] ?? 'llama3',
+        })
 
       // Build tools array from schemas
       const toolSchemas = values.isomorphicToolSchemas ?? []
@@ -103,18 +103,18 @@ export const ollamaProvider: ChatProvider = {
           // Read next chunk from Ollama
           const next = yield* subscription.next()
 
-          if (next.done) {
-            // Stream finished, return final result
-            return {
-              done: true,
-              value: {
-                text: textBuffer,
-                thinking: thinkingBuffer || undefined,
-                toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-                usage,
-              },
+            if (next.done) {
+              // Stream finished, return final result
+              return {
+                done: true,
+                value: {
+                  text: textBuffer,
+                  ...(thinkingBuffer ? { thinking: thinkingBuffer } : {}),
+                  ...(toolCalls.length > 0 ? { toolCalls } : {}),
+                  usage,
+                },
+              }
             }
-          }
 
           const chunk = next.value
 

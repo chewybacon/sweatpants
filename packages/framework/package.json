@@ -71,6 +71,7 @@
     "fast-glob": "^3.3.2"
   },
   "devDependencies": {
+    "@tanstack/ts-config": "workspace:*",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

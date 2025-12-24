@@ -19,14 +19,19 @@ export interface ExpressServerHandle {
 export class ServerDaemonError extends Error {
   readonly hostname: string;
   readonly port: number;
-  readonly cause?: Error;
+  override readonly cause?: unknown;
 
-  constructor(hostname: string, port: number, cause?: Error) {
-    super(`Server "${hostname}" on port ${port} unexpectedly closed${cause ? `: ${cause.message}` : ''}`);
+  constructor(hostname: string, port: number, cause?: unknown) {
+    const causeMsg = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+    super(`Server "${hostname}" on port ${port} unexpectedly closed${causeMsg ? `: ${causeMsg}` : ''}`);
+    // Pass cause to base Error for structured error chaining
+    if (cause !== undefined) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      (this as { cause?: unknown }).cause = cause;
+    }
     this.name = 'ServerDaemonError';
     this.hostname = hostname;
     this.port = port;
-    this.cause = cause;
   }
 }
 

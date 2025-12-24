@@ -47,7 +47,7 @@ export function resolvePersona(
     name,
     systemPrompt,
     tools,
-    model,
+    ...(model ? { model } : {}),
     capabilities: {
       thinking: persona.requires?.thinking ?? false,
       streaming: persona.requires?.streaming ?? true,
