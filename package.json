@@ -4,6 +4,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "pnpm run -r --parallel --aggregate-output dev",
+    "dev:yo-chat": "pnpm -C packages/framework dev --watch & pnpm -C apps/yo-chat dev",
     "build": "pnpm run -r build",
     "check": "pnpm run -r --parallel check",
     "preview": "pnpm run -r preview",
