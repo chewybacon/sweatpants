@@ -4,7 +4,13 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@tanstack/framework/vite": ["../../packages/framework/src/vite/index.ts"],
+      "@tanstack/framework/handler": ["../../packages/framework/src/handler/index.ts"],
+      "@tanstack/framework/chat": ["../../packages/framework/src/lib/chat/index.ts"],
+      "@tanstack/framework/chat/isomorphic-tools": [
+        "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
+      ]
     }
   },
   "include": [

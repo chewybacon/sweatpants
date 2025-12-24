@@ -10,7 +10,7 @@ export const mathAssistant = definePersona({
 When asked math questions:
 1. Use the calculator tool for ALL arithmetic operations - never calculate mentally
 2. ${
-    config.showSteps
+  config['showSteps']
       ? 'Show your reasoning step by step before using the calculator'
       : 'Be concise and direct'
   }

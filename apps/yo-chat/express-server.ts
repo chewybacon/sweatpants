@@ -5,10 +5,10 @@ import { runWithRequestEnv } from '@tanstack/start-env/server'
 import morgan from "morgan"
 import path from 'node:path'
 
-const PORT = Number.parseInt(process.env.PORT || '3000')
+const PORT = Number.parseInt(process.env['PORT'] || '3000')
 
 // Get base path from environment, ensuring it starts with /
-const rawBasePath = process.env.VITE_BASE_URL || '/'
+const rawBasePath = process.env['VITE_BASE_URL'] || '/'
 const basePath = rawBasePath.startsWith('/') ? rawBasePath : '/' + rawBasePath
 
 const app = express()
@@ -87,7 +87,7 @@ function computeBaseForRequest(req: Request): string {
     return base.endsWith('/') ? base : base + '/'
   }
 
-  const rawEnvBase = process.env.VITE_BASE_URL || '/'
+  const rawEnvBase = process.env['VITE_BASE_URL'] || '/'
   const withLeading = rawEnvBase.startsWith('/') ? rawEnvBase : '/' + rawEnvBase
   return withLeading.endsWith('/') ? withLeading : withLeading + '/'
 }
@@ -126,12 +126,12 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       method: req.method,
       headers: req.headers as any,
       body: isBodyMethod ? (req as any) : undefined,
-      duplex: isBodyMethod ? 'half' : undefined,
+      ...(isBodyMethod ? { duplex: 'half' as const } : {}),
     }
 
     const basePath = computeBaseForRequest(req)
     const publicEnv = getPublicEnv()
-    publicEnv.VITE_BASE_URL = basePath
+    publicEnv['VITE_BASE_URL'] = basePath
 
     await runWithRequestEnv(
       { basePath, publicEnvOverride: publicEnv },

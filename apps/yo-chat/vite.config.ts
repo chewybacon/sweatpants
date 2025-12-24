@@ -8,7 +8,7 @@ import { runtimeBasePlugin } from '@tanstack/start-env/vite'
 import { frameworkPlugin } from '@tanstack/framework/vite'
 import { imagetools } from "vite-imagetools";
 
-const isProd = process.env.NODE_ENV === 'production'
+const isProd = process.env['NODE_ENV'] === 'production'
 
 const config = defineConfig({
   base: isProd ? '/__BASE__/' : '/',
