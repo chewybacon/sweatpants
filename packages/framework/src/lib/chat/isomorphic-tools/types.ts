@@ -173,31 +173,6 @@ export interface ServerToolContext {
  * method for yielding to the client mid-execution.
  */
 export interface ServerAuthorityContext extends ServerToolContext {
-  /**
-   * Yield to client mid-execution.
-   *
-   * This is the V7 handoff API that provides true idempotency:
-   * - `before()` runs only in phase 1 (computes state, returns handoff data)
-   * - `after()` runs only in phase 2 (receives cached handoff + client response)
-   *
-   * @example
-   * ```typescript
-   * const result = yield* ctx.handoff({
-   *   *before() {
-   *     const secret = pickRandomCard()  // Only runs once!
-   *     return { secret, hint: 'Guess my card!' }
-   *   },
-   *   *after(handoff, client: { guess: string }) {
-   *     return {
-   *       secret: handoff.secret,
-   *       correct: client.guess === handoff.secret,
-   *     }
-   *   },
-   * })
-   * ```
-   *
-   * @limitation Only ONE handoff() call per tool execution is supported.
-   */
   handoff: <THandoff, TClient, TResult>(
     config: HandoffConfig<THandoff, TClient, TResult>
   ) => Operation<TResult>

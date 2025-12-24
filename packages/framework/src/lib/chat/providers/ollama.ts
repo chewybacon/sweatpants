@@ -32,15 +32,39 @@ export const ollamaProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const config = yield* ChatStreamConfigContext.expect()
+      const config =
+        options ??
+        (yield* ChatStreamConfigContext.get()) ?? {
+          apiUrl: process.env.OLLAMA_URL ?? 'http://localhost:11434',
+          model: process.env.OLLAMA_MODEL ?? 'llama3',
+          isomorphicToolSchemas: [],
+        }
+
+      const defaultApiUrl = process.env.OLLAMA_URL ?? 'http://localhost:11434/api/chat'
+      const defaultModel = process.env.OLLAMA_MODEL ?? 'llama3'
+
+      const resolvedConfig = {
+        apiUrl: config?.apiUrl ?? defaultApiUrl,
+        model: config?.model ?? defaultModel,
+        isomorphicToolSchemas: config?.isomorphicToolSchemas ?? [],
+      }
+
+      const apiUrlWithPath = (() => {
+        if (!resolvedConfig.apiUrl) return defaultApiUrl
+        // If user supplied host without path, append /api/chat
+        if (!resolvedConfig.apiUrl.includes('/api/chat')) {
+          return `${resolvedConfig.apiUrl.replace(/\/$/, '')}/api/chat`
+        }
+        return resolvedConfig.apiUrl
+      })()
 
       const values = {
         isomorphicToolSchemas: (
           options?.isomorphicToolSchemas ??
-          config.isomorphicToolSchemas ?? []
+          resolvedConfig.isomorphicToolSchemas
         ),
-        model: (options?.model ?? config.model),
-        apiUrl: (options?.apiUrl ?? config.apiUrl),
+        model: (options?.model ?? resolvedConfig.model),
+        apiUrl: (options?.apiUrl ?? apiUrlWithPath),
       }
 
       // Build tools array from schemas

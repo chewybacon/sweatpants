@@ -45,6 +45,7 @@ import type {
   ServerToolContext,
   ServerAuthorityContext,
   IsomorphicHandoffEvent,
+  HandoffConfig,
 } from './types'
 import { HandoffReadyError } from './types'
 import type {
@@ -94,7 +95,7 @@ function createPhase1Context(
 ): ServerAuthorityContext {
   return {
     ...baseContext,
-    *handoff(config) {
+    *handoff<THandoff, TClient, TResult>(config: HandoffConfig<THandoff, TClient, TResult>) {
       const handoffData = yield* config.before()
       throw new HandoffReadyError(handoffData)
     },
@@ -115,9 +116,8 @@ function createPhase2Context(
 ): ServerAuthorityContext {
   return {
     ...baseContext,
-    *handoff(config) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return yield* (config as any).after(cachedHandoff, clientOutput)
+    *handoff<THandoff, TClient, TResult>(config: HandoffConfig<THandoff, TClient, TResult>) {
+      return yield* config.after(cachedHandoff as THandoff, clientOutput as TClient)
     },
   }
 }

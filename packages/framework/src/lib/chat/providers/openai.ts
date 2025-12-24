@@ -136,22 +136,37 @@ export const openaiProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const config = yield* ChatStreamConfigContext.expect()
+        const config =
+          options ??
+          (yield* ChatStreamConfigContext.get()) ?? {
+            apiUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+            model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+            isomorphicToolSchemas: [],
+          }
       const OPENAI_API_KEY = yield* ChatApiKeyContext.expect()
+
+      const defaultApiUrl = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
+      const defaultModel = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
+
+      const resolvedConfig = {
+        apiUrl: config?.apiUrl ?? defaultApiUrl,
+        model: config?.model ?? defaultModel,
+        isomorphicToolSchemas: config?.isomorphicToolSchemas ?? [],
+      }
 
       const values = {
         isomorphicToolSchemas: (
           options?.isomorphicToolSchemas ??
-          config.isomorphicToolSchemas ?? []
+          resolvedConfig.isomorphicToolSchemas
         ),
-        model: (options?.model ?? config.model),
-        apiUrl: (options?.apiUrl ?? config.apiUrl),
+        model: (options?.model ?? resolvedConfig.model),
+        apiUrl: (options?.apiUrl ?? resolvedConfig.apiUrl),
       }
 
-      if (!OPENAI_API_KEY) {
-        throw new Error(
-          'OPENAI_API_KEY is required when using the OpenAI provider'
-        )
+      // If no API key is provided via context, try environment (common for server-side)
+      const resolvedApiKey = OPENAI_API_KEY ?? process.env.OPENAI_API_KEY
+      if (!resolvedApiKey) {
+        throw new Error('OpenAI API key is required. Provide via ChatApiKeyContext or OPENAI_API_KEY env var.')
       }
 
       const request: OpenAIResponsesRequest = {

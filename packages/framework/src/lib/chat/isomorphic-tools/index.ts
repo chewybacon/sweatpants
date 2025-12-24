@@ -142,8 +142,6 @@ export type {
   IsomorphicApprovalConfig,
 
   // Context
-  ServerToolContext,
-  ServerAuthorityContext,
   HandoffConfig,
 
   // Registry
@@ -152,7 +150,6 @@ export type {
   ServerOnlyToolDef,
 
   // Events
-  IsomorphicHandoffEvent,
   IsomorphicClientCompleteEvent,
 
   // Results
@@ -167,6 +164,7 @@ export type {
   IsomorphicToolServerOutput,
   IsomorphicToolClientOutput,
 } from './types'
+
 
 // --- Errors ---
 export { HandoffReadyError } from './types'

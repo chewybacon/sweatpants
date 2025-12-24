@@ -23,6 +23,26 @@
         "types": "./dist/handler.d.cts",
         "default": "./dist/handler.cjs"
       }
+    },
+    "./chat": {
+      "import": {
+        "types": "./dist/chat.d.ts",
+        "default": "./dist/chat.js"
+      },
+      "require": {
+        "types": "./dist/chat.d.cts",
+        "default": "./dist/chat.cjs"
+      }
+    },
+    "./chat/isomorphic-tools": {
+      "import": {
+        "types": "./dist/chat/isomorphic-tools.d.ts",
+        "default": "./dist/chat/isomorphic-tools.js"
+      },
+      "require": {
+        "types": "./dist/chat/isomorphic-tools.d.cts",
+        "default": "./dist/chat/isomorphic-tools.cjs"
+      }
     }
   },
   "files": [

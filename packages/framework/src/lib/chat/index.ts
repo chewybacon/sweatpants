@@ -2,9 +2,12 @@
 export * from './types'
 
 // Stream utilities
-export { parseNDJSON } from './ndjson'
-export { consumeAsync } from './stream'
+export * from './ndjson'
+export * from './stream'
+export * from './sse'
 
 // Providers
-export { getChatProvider } from './providers'
-export type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from './providers'
+export * from './providers'
+
+export * from './personas'
+

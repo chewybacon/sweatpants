@@ -6,6 +6,7 @@
 import { createScope, all } from 'effection'
 import { z } from 'zod'
 import type { Operation } from 'effection'
+import { HandoffReadyError } from '../lib/chat/isomorphic-tools/types'
 import type {
   ChatHandlerConfig,
   ChatRequestBody,
@@ -57,15 +58,7 @@ function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
 // TOOL EXECUTOR
 // =============================================================================
 
-/**
- * Error thrown when a tool calls handoff() to halt execution.
- */
-class HandoffReadyError extends Error {
-  constructor(public handoffData: unknown) {
-    super('Handoff ready')
-    this.name = 'HandoffReadyError'
-  }
-}
+// Use centralized error type from isomorphic-tools to avoid duplication
 
 function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
   const parsed = tool.parameters.safeParse(params)

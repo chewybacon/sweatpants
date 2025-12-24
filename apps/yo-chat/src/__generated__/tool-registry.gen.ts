@@ -5,14 +5,14 @@
  * Regenerate by modifying files in src/tools/
  */
 
-
+import { calculator } from '../tools/calculator'
 
 /**
  * All discovered tools as a const object.
  * Use this for type-safe tool access.
  */
 export const tools = {
-
+  calculator,
 } as const
 
 /**
@@ -24,7 +24,7 @@ export const toolList = Object.values(tools)
  * Union type of all tool names.
  */
 export type ToolName =
-  never
+  | 'calculator'
 
 /**
  * Get a tool by name (type-safe).

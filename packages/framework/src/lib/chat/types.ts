@@ -68,24 +68,7 @@ export interface ConversationStateEvent {
  * 3. For client-authority tools: send result back to server
  * 4. Results are merged and continue the conversation
  */
-export interface IsomorphicHandoffEvent {
-  type: 'isomorphic_handoff'
-  /** Unique ID of this tool call */
-  callId: string
-  /** Name of the isomorphic tool */
-  toolName: string
-  /** Original params from LLM */
-  params: unknown
-  /** Output from server execution (undefined for client-authority) */
-  serverOutput: unknown
-  /** Authority mode determines data flow */
-  authority: 'server' | 'client'
-  /**
-   * Indicates this handoff uses the V7 two-phase pattern.
-   * If true, the server needs to be re-run in phase 2 with clientOutput.
-   */
-  usesHandoff?: boolean
-}
+import type { IsomorphicHandoffEvent } from './isomorphic-tools/types'
 
 
 /**
@@ -166,3 +149,4 @@ export interface OllamaChatChunk {
 
 // Re-export specific types from personas if needed by consumers
 export type { Capabilities } from './personas/types'
+export type { ServerToolContext, ServerAuthorityContext, IsomorphicHandoffEvent } from './isomorphic-tools/types'
