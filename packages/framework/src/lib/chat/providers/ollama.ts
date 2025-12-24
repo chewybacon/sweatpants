@@ -11,7 +11,7 @@ import type {
   ToolCall,
 } from '../types'
 import type { ChatProvider, ChatStreamOptions } from './types'
-import { ChatStreamConfigContext } from './contexts.ts'
+import { resolveChatStreamConfig } from './config'
 
 type OllamaTool = NonNullable<OllamaChatRequest['tools']>[number]
 
@@ -28,47 +28,19 @@ export const ollamaProvider: ChatProvider = {
 
   stream(
     messages: OllamaMessage[],
-    options?: ChatStreamOptions
+    options?: ChatStreamOptions,
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const config =
-        options ??
-        (yield* ChatStreamConfigContext.get()) ?? {
-          apiUrl: process.env.OLLAMA_URL ?? 'http://localhost:11434',
-          model: process.env.OLLAMA_MODEL ?? 'llama3',
-          isomorphicToolSchemas: [],
-        }
-
-      const defaultApiUrl = process.env.OLLAMA_URL ?? 'http://localhost:11434/api/chat'
-      const defaultModel = process.env.OLLAMA_MODEL ?? 'llama3'
-
-      const resolvedConfig = {
-        apiUrl: config?.apiUrl ?? defaultApiUrl,
-        model: config?.model ?? defaultModel,
-        isomorphicToolSchemas: config?.isomorphicToolSchemas ?? [],
-      }
-
-      const apiUrlWithPath = (() => {
-        if (!resolvedConfig.apiUrl) return defaultApiUrl
-        // If user supplied host without path, append /api/chat
-        if (!resolvedConfig.apiUrl.includes('/api/chat')) {
-          return `${resolvedConfig.apiUrl.replace(/\/$/, '')}/api/chat`
-        }
-        return resolvedConfig.apiUrl
-      })()
-
-      const values = {
-        isomorphicToolSchemas: (
-          options?.isomorphicToolSchemas ??
-          resolvedConfig.isomorphicToolSchemas
-        ),
-        model: (options?.model ?? resolvedConfig.model),
-        apiUrl: (options?.apiUrl ?? apiUrlWithPath),
-      }
+      const values = yield* resolveChatStreamConfig(options, {
+        baseUri: process.env.OLLAMA_URL ?? 'http://localhost:11434',
+        model: process.env.OLLAMA_MODEL ?? 'llama3',
+      })
 
       // Build tools array from schemas
-      const allTools: OllamaTool[] = values.isomorphicToolSchemas.map(
+      const toolSchemas = values.isomorphicToolSchemas ?? []
+
+      const allTools: OllamaTool[] = toolSchemas.map(
         (schema) => ({
           type: 'function' as const,
           function: {
@@ -86,8 +58,10 @@ export const ollamaProvider: ChatProvider = {
         ...(allTools.length > 0 && { tools: allTools }),
       }
 
+      const url = `${values.baseUri.replace(/\/$/, '')}/api/chat`
+
       const response = yield* call(() =>
-        fetch(values.apiUrl, {
+        fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(request),

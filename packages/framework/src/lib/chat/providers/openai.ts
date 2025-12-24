@@ -1,7 +1,8 @@
 import type { Operation, Stream, Subscription } from 'effection'
 import { resource, call, useAbortSignal } from 'effection'
 import { parseSSE } from '../sse'
-import { ChatStreamConfigContext, ChatApiKeyContext } from './contexts.ts'
+// (apiKey is now resolved via config helper)
+import { resolveChatStreamConfig } from './config'
 import type {
   OllamaMessage,
   ChatEvent,
@@ -136,35 +137,14 @@ export const openaiProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-        const config =
-          options ??
-          (yield* ChatStreamConfigContext.get()) ?? {
-            apiUrl: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
-            model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-            isomorphicToolSchemas: [],
-          }
-      const OPENAI_API_KEY = yield* ChatApiKeyContext.expect()
-
-      const defaultApiUrl = process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1'
-      const defaultModel = process.env.OPENAI_MODEL ?? 'gpt-4o-mini'
-
-      const resolvedConfig = {
-        apiUrl: config?.apiUrl ?? defaultApiUrl,
-        model: config?.model ?? defaultModel,
-        isomorphicToolSchemas: config?.isomorphicToolSchemas ?? [],
-      }
-
-      const values = {
-        isomorphicToolSchemas: (
-          options?.isomorphicToolSchemas ??
-          resolvedConfig.isomorphicToolSchemas
-        ),
-        model: (options?.model ?? resolvedConfig.model),
-        apiUrl: (options?.apiUrl ?? resolvedConfig.apiUrl),
-      }
+      const values = yield* resolveChatStreamConfig(options, {
+        baseUri: process.env.OPENAI_BASE_URL ?? 'https://api.openai.com/v1',
+        model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+        envApiKeyName: 'OPENAI_API_KEY',
+      })
 
       // If no API key is provided via context, try environment (common for server-side)
-      const resolvedApiKey = OPENAI_API_KEY ?? process.env.OPENAI_API_KEY
+      const resolvedApiKey = values.apiKey ?? process.env.OPENAI_API_KEY
       if (!resolvedApiKey) {
         throw new Error('OpenAI API key is required. Provide via ChatApiKeyContext or OPENAI_API_KEY env var.')
       }
@@ -177,9 +157,9 @@ export const openaiProvider: ChatProvider = {
       }
 
       // Add tools to request
-      const allTools: OpenAIFunctionTool[] = (
-        options?.isomorphicToolSchemas ?? []
-      ).map((schema) => ({
+      const toolSchemas = values.isomorphicToolSchemas ?? []
+
+      const allTools: OpenAIFunctionTool[] = toolSchemas.map((schema) => ({
         type: 'function' as const,
         name: schema.name,
         description: schema.description,
@@ -194,12 +174,14 @@ export const openaiProvider: ChatProvider = {
         request.tools = allTools
       }
 
+      const url = `${values.baseUri.replace(/\/$/, '')}/responses`
+
       const response = yield* call(() =>
-        fetch(`${options?.apiUrl}/responses`, {
+        fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            Authorization: `Bearer ${resolvedApiKey}`,
           },
           body: JSON.stringify(request),
           signal,
