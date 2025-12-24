@@ -46,7 +46,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsup",
@@ -68,7 +69,9 @@
   },
   "dependencies": {
     "react": "catalog:",
-    "fast-glob": "^3.3.2"
+    "fast-glob": "^3.3.2",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.5.2"
   },
   "devDependencies": {
     "@tanstack/ts-config": "workspace:*",
