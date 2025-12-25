@@ -1,0 +1,16 @@
+export * from './types'
+export * from './readNdjson'
+export * from './streamChatOnce'
+export * from './session'
+export * from './useChatSession'
+export * from './usePersonas'
+export * from './ChatProvider'
+export * from './contexts'
+export * from './transforms'
+export * from './dualBuffer'
+export * from './settlers'
+export * from './processors'
+// Shiki module - namespaced to avoid conflicts with settlers (both export codeFence, line)
+export * as shiki from './shiki'
+// Mermaid module - progressive diagram rendering
+export * as mermaid from './mermaid'

@@ -6,6 +6,7 @@ export default defineConfig({
     handler: 'src/handler/index.ts',
     chat: 'src/lib/chat/index.ts',
     'chat/isomorphic-tools': 'src/lib/chat/isomorphic-tools/index.ts',
+    'react/chat': 'src/react/chat/index.ts',
   },
   format: ['cjs', 'esm'],
   dts: {
@@ -14,7 +15,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ['vite', 'effection', 'zod'],
+  external: ['vite', 'effection', 'zod', 'marked', 'shiki', 'katex', 'mermaid', 'react', 'react-dom'],
   treeshake: true,
   skipNodeModulesBundle: true,
   // After bundling, emit unbundled .d.ts with maps for go-to-source

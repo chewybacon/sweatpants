@@ -198,9 +198,10 @@ describe('discoverToolsInContent', () => {
       expect(tools).toHaveLength(1)
       expect(tools[0]).toMatchObject({
         toolName: 'my_default_tool',
-        exportName: undefined, // default export has no export name
         variableName: 'myDefaultTool', // camelCase of tool name
       })
+      // Default export should not have exportName property
+      expect(tools[0]).not.toHaveProperty('exportName')
     })
 
     it('discovers variable + default export pattern', () => {
@@ -218,9 +219,10 @@ describe('discoverToolsInContent', () => {
       expect(tools).toHaveLength(1)
       expect(tools[0]).toMatchObject({
         toolName: 'guess_card',
-        exportName: undefined, // default export
         variableName: 'guessCard', // uses variable name, not camelCase of tool name
       })
+      // Default export should not have exportName property
+      expect(tools[0]).not.toHaveProperty('exportName')
     })
   })
 
@@ -469,7 +471,6 @@ describe('generateRegistryContent', () => {
       {
         filePath: 'my-tool.ts',
         absolutePath: '/project/src/tools/my-tool.ts',
-        exportName: undefined, // default export
         toolName: 'my_tool',
         variableName: 'myTool',
       },

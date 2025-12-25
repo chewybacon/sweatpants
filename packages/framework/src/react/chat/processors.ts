@@ -1,0 +1,305 @@
+/**
+ * processors.ts
+ *
+ * Built-in processors for enriching settled content.
+ *
+ * Processors are Effection Operations that transform settled content.
+ * They can:
+ * - Do async work (yield* sleep(), yield* call())
+ * - Emit multiple times for progressive enhancement (quick pass → full pass)
+ * - Access settler metadata for context-aware processing (e.g., code fence info)
+ *
+ * ## Usage
+ *
+ * ```typescript
+ * import { markdown, passthrough, syntaxHighlight } from './processors'
+ *
+ * // Pass factory functions, NOT called instances
+ * dualBufferTransform({
+ *   settler: paragraph,    // factory reference
+ *   processor: markdown,   // factory reference (not markdown())
+ * })
+ * 
+ * // Progressive syntax highlighting
+ * dualBufferTransform({
+ *   settler: codeFence,
+ *   processor: syntaxHighlight,
+ * })
+ * ```
+ */
+import { marked } from 'marked'
+import katex from 'katex'
+import type { Processor, ProcessorEmit, ProcessorContext, SyncProcessor } from './types'
+
+// --- Math Rendering Utilities ---
+
+/**
+ * Render LaTeX math to HTML using KaTeX.
+ * 
+ * @param latex - The LaTeX expression
+ * @param displayMode - If true, render in display mode (centered, larger)
+ * @returns HTML string
+ */
+function renderMath(latex: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(latex, {
+      displayMode,
+      throwOnError: false,
+      output: 'html',
+    })
+  } catch (e) {
+    // Return the original LaTeX wrapped in a code block on error
+    console.warn('KaTeX error:', e)
+    return `<code class="katex-error">${latex}</code>`
+  }
+}
+
+/**
+ * Process content to render math expressions.
+ * 
+ * Supports:
+ * - Display math: $$...$$, \[...\]
+ * - Inline math: $...$, \(...\)
+ * 
+ * @param content - The content to process
+ * @returns Content with math expressions rendered to HTML
+ */
+function renderMathInContent(content: string): string {
+  // Display math: $$...$$ or \[...\]
+  content = content.replace(/\$\$([\s\S]*?)\$\$/g, (_, latex) => {
+    return renderMath(latex.trim(), true)
+  })
+  content = content.replace(/\\\[([\s\S]*?)\\\]/g, (_, latex) => {
+    return renderMath(latex.trim(), true)
+  })
+  
+  // Inline math: $...$ or \(...\)
+  // Be careful not to match currency ($50) - require at least one non-digit
+  content = content.replace(/\$([^\$\n]+?)\$/g, (match, latex) => {
+    // Skip if it looks like currency (just digits and common currency chars)
+    if (/^[\d,.\s]+$/.test(latex)) {
+      return match
+    }
+    return renderMath(latex.trim(), false)
+  })
+  content = content.replace(/\\\(([\s\S]*?)\\\)/g, (_, latex) => {
+    return renderMath(latex.trim(), false)
+  })
+  
+  return content
+}
+
+// --- Built-in Processors (Operation-based) ---
+
+/**
+ * Passthrough processor - no enrichment.
+ *
+ * Returns the raw content with no additional processing.
+ * This is the default processor.
+ */
+export function passthrough(): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    yield* emit({ raw: ctx.chunk })
+  }
+}
+
+/**
+ * Markdown processor - parse settled content to HTML.
+ *
+ * Parses the full accumulated content (not just the chunk) to HTML.
+ * This ensures proper parsing of multi-paragraph markdown.
+ */
+export function markdown(): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    // marked.parse is synchronous when async option is not set
+    const html = marked.parse(ctx.next, { async: false }) as string
+    yield* emit({
+      raw: ctx.next,
+      html,
+    })
+  }
+}
+
+/**
+ * Incremental markdown processor - parse only the new chunk.
+ *
+ * Faster but may not handle cross-paragraph markdown correctly.
+ * Use when you know each settled chunk is self-contained.
+ */
+export function incrementalMarkdown(): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    const html = marked.parse(ctx.chunk, { async: false }) as string
+    yield* emit({
+      raw: ctx.chunk,
+      html,
+    })
+  }
+}
+
+/**
+ * Smart markdown processor - context-aware markdown parsing.
+ * 
+ * This processor uses settler metadata to make smart decisions:
+ * - Inside code fences: skips markdown parsing (code is handled separately)
+ * - Outside code fences: parses as normal markdown
+ * 
+ * Best used with the codeFence() settler.
+ */
+export function smartMarkdown(): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    // Inside code fences, just pass through raw
+    if (ctx.meta?.inCodeFence) {
+      yield* emit({ raw: ctx.chunk })
+      return
+    }
+
+    // Outside code fences, parse as markdown
+    const html = marked.parse(ctx.next, { async: false }) as string
+    yield* emit({
+      raw: ctx.next,
+      html,
+    })
+  }
+}
+
+/**
+ * Quick regex-based syntax highlighting.
+ * 
+ * Fast but limited - only highlights common keywords.
+ * Used for the "quick pass" in progressive enhancement.
+ */
+function quickHighlight(code: string, _language?: string): string {
+  // Common keywords across multiple languages
+  return code.replace(
+    /\b(def|return|if|else|elif|for|while|in|class|import|from|as|with|try|except|finally|raise|yield|lambda|and|or|not|is|None|True|False|const|let|var|function|async|await|export|default)\b/g,
+    '<span class="kw">$1</span>'
+  )
+}
+
+/**
+ * Syntax highlight processor - progressive enhancement.
+ * 
+ * This processor demonstrates the progressive enhancement pattern:
+ * 1. Quick pass: Instant regex-based highlighting
+ * 2. Full pass: Proper highlighting (simulated async Shiki)
+ * 
+ * The quick pass renders immediately, then the full pass replaces it
+ * once the async work completes.
+ * 
+ * Best used with the codeFence() settler which provides metadata.
+ */
+export function syntaxHighlight(): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    // If not in code fence, just pass through
+    if (!ctx.meta?.inCodeFence) {
+      yield* emit({ raw: ctx.chunk, pass: 'quick' })
+      return
+    }
+
+    // Quick pass - instant regex highlighting
+    const quickHtml = quickHighlight(ctx.chunk, ctx.meta.language)
+    yield* emit({ raw: ctx.chunk, html: quickHtml, pass: 'quick' })
+
+    // Full pass - simulate async Shiki highlighting
+    // In a real implementation, this would call Shiki:
+    //   const html = yield* call(() => shiki.codeToHtml(ctx.chunk, { lang: ctx.meta?.language }))
+    // For now, we simulate with a more detailed regex highlight
+    const fullHtml = ctx.chunk
+      .replace(/\b(def|class|function)\b/g, '<span class="keyword">$1</span>')
+      .replace(/\b(return|if|else|for|while|in)\b/g, '<span class="control">$1</span>')
+      .replace(/\b(\d+)\b/g, '<span class="number">$1</span>')
+      .replace(/'([^']*)'/g, '<span class="string">\'$1\'</span>')
+      .replace(/"([^"]*)"/g, '<span class="string">"$1"</span>')
+
+    yield* emit({ raw: ctx.chunk, html: fullHtml, pass: 'full' })
+  }
+}
+
+// --- Compatibility Layer ---
+
+/**
+ * Wrap a legacy sync processor to work with the new Operation-based API.
+ * 
+ * @deprecated New code should use the Operation-based API directly.
+ */
+export function fromSync(syncProcessor: SyncProcessor): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    const result = syncProcessor(ctx)
+    yield* emit(result)
+  }
+}
+
+/**
+ * Default processor factory: passthrough (no enrichment).
+ * 
+ * This is the factory function used by dualBufferTransform when no processor is specified.
+ */
+export const defaultProcessorFactory = passthrough
+
+// --- Message Renderers (for completed messages) ---
+
+import type { MessageRenderer } from './types'
+
+/**
+ * Markdown message renderer.
+ * 
+ * Renders message content to HTML using marked.
+ * Use this with the `renderer` option in useChatSession.
+ * 
+ * @example
+ * ```typescript
+ * useChatSession({
+ *   renderer: markdownRenderer(),
+ * })
+ * ```
+ */
+export function markdownRenderer(): MessageRenderer {
+  return (content: string) => {
+    return marked.parse(content, { async: false }) as string
+  }
+}
+
+/**
+ * Math-aware markdown message renderer.
+ * 
+ * Renders message content to HTML with both markdown and LaTeX math support.
+ * Uses marked for markdown and KaTeX for math expressions.
+ * 
+ * Supports:
+ * - Display math: $$...$$ or \[...\]
+ * - Inline math: $...$ or \(...\)
+ * 
+ * @example
+ * ```typescript
+ * useChatSession({
+ *   renderer: mathRenderer(),
+ * })
+ * ```
+ */
+export function mathRenderer(): MessageRenderer {
+  return (content: string) => {
+    // First render math expressions
+    const withMath = renderMathInContent(content)
+    // Then parse markdown (math HTML will pass through)
+    return marked.parse(withMath, { async: false }) as string
+  }
+}
+
+/**
+ * Math processor - parse settled content to HTML with math support.
+ *
+ * Like markdown() but also renders LaTeX math expressions using KaTeX.
+ * Parses the full accumulated content (not just the chunk) to HTML.
+ */
+export function mathMarkdown(): Processor {
+  return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
+    // First render math expressions
+    const withMath = renderMathInContent(ctx.next)
+    // Then parse markdown
+    const html = marked.parse(withMath, { async: false }) as string
+    yield* emit({
+      raw: ctx.next,
+      html,
+    })
+  }
+}

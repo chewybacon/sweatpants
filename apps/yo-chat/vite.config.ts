@@ -35,6 +35,11 @@ const config = defineConfig({
       logLevel: 'normal',
     }),
   ],
+  build: {
+    rollupOptions: {
+      external: ['marked', 'shiki', 'katex', 'mermaid']
+    }
+  }
 })
 
 export default config

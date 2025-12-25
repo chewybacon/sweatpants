@@ -43,6 +43,16 @@
         "types": "./dist/chat/isomorphic-tools.d.cts",
         "default": "./dist/chat/isomorphic-tools.cjs"
       }
+    },
+    "./react/chat": {
+      "import": {
+        "types": "./dist/react/chat.d.ts",
+        "default": "./dist/react/chat.js"
+      },
+      "require": {
+        "types": "./dist/react/chat.d.cts",
+        "default": "./dist/react/chat.cjs"
+      }
     }
   },
   "files": [
