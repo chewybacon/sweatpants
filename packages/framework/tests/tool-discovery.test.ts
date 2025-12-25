@@ -416,7 +416,7 @@ describe('discoverToolsInContent', () => {
       )
 
       expect(tools).toHaveLength(1)
-      expect(tools[0].toolName).toBe('ui_dialog')
+      expect(tools[0].toolName).toBe('dialogs/ui_dialog')
       expect(tools[0].filePath).toBe('dialogs/ui-dialog.tsx')
     })
 
@@ -747,7 +747,7 @@ describe('integration: toolDiscoveryPlugin', () => {
       const registry = await readRegistry()
 
       expect(registry).toContain("import { guessCard } from '../tools/games/guess-card'")
-      expect(registry).toContain("| 'guess_card'")
+      expect(registry).toContain("| 'games/guess_card'")
     } finally {
       await cleanup()
     }
@@ -882,7 +882,7 @@ export { varTool }`
       const registry = await readRegistry()
 
       expect(registry).toContain("import { askQuestion } from '../tools/general/ask_question'")
-      expect(registry).toContain("| 'ask_question'")
+      expect(registry).toContain("| 'general/ask_question'")
     } finally {
       await cleanup()
     }
@@ -912,7 +912,7 @@ export { varTool }`
       expect(registry).toContain("import { askQuestion } from '../tools/general/ask_question'")
       expect(registry).toContain('calculator,')
       expect(registry).toContain('askQuestion,')
-      expect(registry).toContain("| 'ask_question'")
+      expect(registry).toContain("| 'general/ask_question'")
       expect(registry).toContain("| 'calculator'")
     } finally {
       await cleanup()

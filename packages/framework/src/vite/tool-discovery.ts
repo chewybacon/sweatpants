@@ -8,11 +8,13 @@
  * - Watches for changes in dev mode
  * - Generates type-safe registry with const assertions
  * - Supports both default and named exports
+ * - Transforms tool names to be unique by path
  */
 import type { Plugin } from 'vite'
 import { readFile, writeFile, mkdir, access } from 'fs/promises'
 import { join, dirname, relative, posix } from 'path'
 import fg from 'fast-glob'
+import { parse, traverse, transformFromAstSync, types as t } from '@babel/core'
 import type {
   ToolDiscoveryOptions,
   ResolvedToolDiscoveryOptions,
@@ -25,6 +27,7 @@ export function toolDiscoveryPlugin(
 ): Plugin {
   const options = resolveToolDiscoveryOptions(userOptions)
   let root: string
+  const usedNames = new Set<string>()
 
   return {
     name: '@tanstack/framework:tool-discovery',
@@ -35,6 +38,68 @@ export function toolDiscoveryPlugin(
 
     async buildStart() {
       await generateRegistry(root, options)
+    },
+
+    transform(code, id) {
+      // Only transform files in the tools directory
+      if (!id.startsWith(join(root, options.dir))) return null
+
+      // Only transform .ts and .tsx files
+      if (!id.endsWith('.ts') && !id.endsWith('.tsx')) return null
+
+      try {
+        const ast = parse(code, {
+          filename: id,
+          presets: ['@babel/preset-typescript'],
+          sourceType: 'module',
+        })
+
+        if (!ast) return null
+
+        let modified = false
+
+        traverse(ast, {
+          CallExpression(path) {
+            const { node } = path
+
+            // Check if this is createIsomorphicTool call
+            if (
+              t.isIdentifier(node.callee) &&
+              node.callee.name === 'createIsomorphicTool' &&
+              node.arguments.length > 0 &&
+              t.isStringLiteral(node.arguments[0])
+            ) {
+              const originalName = node.arguments[0].value
+              const uniqueName = generateUniqueName(id, originalName, join(root, options.dir))
+
+              // Check for conflicts
+              if (usedNames.has(uniqueName)) {
+                throw new Error(`Duplicate tool name detected: '${uniqueName}' (from ${id})`)
+              }
+              usedNames.add(uniqueName)
+
+              // Replace the string literal
+              node.arguments[0] = t.stringLiteral(uniqueName)
+              modified = true
+            }
+          },
+        })
+
+        if (modified) {
+          // Generate code from AST
+          const result = transformFromAstSync(ast, code, {
+            filename: id,
+            presets: ['@babel/preset-typescript'],
+            sourceType: 'module',
+          })
+          return result?.code || code
+        }
+      } catch (error) {
+        // If parsing fails, just return original code
+        console.warn(`Failed to transform ${id}:`, error)
+      }
+
+      return null
     },
 
     configureServer(server) {
@@ -65,6 +130,17 @@ export function toolDiscoveryPlugin(
       })
     },
   }
+}
+
+function generateUniqueName(filePath: string, originalName: string, toolsDir: string): string {
+  const relativePath = relative(toolsDir, filePath)
+  const dir = dirname(relativePath)
+
+  if (dir === '.' || dir === '') {
+    return originalName // Root level: keep original
+  }
+
+  return `${dir}/${originalName}` // Nested: 'feature-a/basic'
 }
 
 function isToolFile(
@@ -175,8 +251,9 @@ export function discoverToolsInContent(
 
   let match: RegExpExecArray | null
   while ((match = namedExportRegex.exec(content)) !== null) {
-    const [, exportName, toolName] = match
-    if (!exportName || !toolName) continue
+    const [, exportName, originalToolName] = match
+    if (!exportName || !originalToolName) continue
+    const toolName = generateUniqueName(file, originalToolName, toolsDir)
     tools.push({
       filePath: relative(toolsDir, file),
       absolutePath: file,
@@ -194,14 +271,15 @@ export function discoverToolsInContent(
   )
 
   while ((match = defaultExportRegex.exec(content)) !== null) {
-    const [, toolName] = match
-    if (!toolName) continue
+    const [, originalToolName] = match
+    if (!originalToolName) continue
+    const toolName = generateUniqueName(file, originalToolName, toolsDir)
     tools.push({
       filePath: relative(toolsDir, file),
       absolutePath: file,
       exportName: undefined, // default export
       toolName,
-      variableName: toCamelCase(toolName),
+      variableName: toCamelCase(originalToolName),
     })
   }
 
@@ -214,11 +292,12 @@ export function discoverToolsInContent(
     'g'
   )
 
-  const varDefs = new Map<string, string>()
+  const varDefs = new Map<string, [string, string]>() // varName -> [originalToolName, uniqueToolName]
   while ((match = varDefRegex.exec(content)) !== null) {
-    const [, varName, toolName] = match
-    if (!varName || !toolName) continue
-    varDefs.set(varName, toolName)
+    const [, varName, originalToolName] = match
+    if (!varName || !originalToolName) continue
+    const uniqueToolName = generateUniqueName(file, originalToolName, toolsDir)
+    varDefs.set(varName, [originalToolName, uniqueToolName])
   }
 
   // Check for default export of a variable
@@ -226,8 +305,9 @@ export function discoverToolsInContent(
   while ((match = defaultExportVarRegex.exec(content)) !== null) {
     const [, varName] = match
     if (!varName) continue
-    const toolName = varDefs.get(varName)
-    if (toolName) {
+    const names = varDefs.get(varName)
+    if (names) {
+      const [, toolName] = names
       // Check if we already added this via inline detection
       const alreadyAdded = tools.some((t) => t.toolName === toolName)
       if (!alreadyAdded) {
@@ -256,8 +336,9 @@ export function discoverToolsInContent(
         const varName = rawVar.trim()
         const exportName = parts[1]?.trim() ?? varName
       if (!varName) continue
-      const toolName = varDefs.get(varName)
-      if (toolName) {
+      const names = varDefs.get(varName)
+      if (names) {
+        const [, toolName] = names
         // Check if we already added this
         const alreadyAdded = tools.some((t) => t.toolName === toolName)
         if (!alreadyAdded) {

@@ -5,16 +5,16 @@
  * Regenerate by modifying files in src/tools/
  */
 
-import { askQuestion } from '../tools/general/ask_question'
 import { calculator } from '../tools/calculator'
+import { askQuestion } from '../tools/general/ask_question'
 
 /**
  * All discovered tools as a const object.
  * Use this for type-safe tool access.
  */
 export const tools = {
-  askQuestion,
   calculator,
+  askQuestion,
 } as const
 
 /**
@@ -26,8 +26,8 @@ export const toolList = Object.values(tools)
  * Union type of all tool names.
  */
 export type ToolName =
-  | 'ask_question'
   | 'calculator'
+  | 'general/ask_question'
 
 /**
  * Get a tool by name (type-safe).
