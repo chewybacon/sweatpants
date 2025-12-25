@@ -199,7 +199,7 @@ export function discoverToolsInContent(
     tools.push({
       filePath: relative(toolsDir, file),
       absolutePath: file,
-        // exportName: undefined, // default export
+      exportName: undefined, // default export
       toolName,
       variableName: toCamelCase(toolName),
     })
@@ -234,7 +234,7 @@ export function discoverToolsInContent(
         tools.push({
           filePath: relative(toolsDir, file),
           absolutePath: file,
-            // exportName: undefined, // default export
+          exportName: undefined, // default export
           toolName,
           variableName: varName,
         })

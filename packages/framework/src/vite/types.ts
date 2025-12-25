@@ -23,7 +23,7 @@ export interface ToolDiscoveryOptions {
 
   /**
    * Files/patterns to ignore.
-   * @default ['**\/*.test.ts', '**\/*.spec.ts', '**\/__tests__/**']
+   * @default ['**\/*.test.ts', '**\/*.test.tsx', '**\/*.spec.ts', '**\/*.spec.tsx', '**\/__tests__/**']
    */
   ignore?: string[]
 
@@ -56,7 +56,7 @@ export function resolveToolDiscoveryOptions(
     dir: options.dir ?? 'src/tools',
     outFile: options.outFile ?? 'src/__generated__/tool-registry.gen.ts',
     pattern: options.pattern ?? '**/*.ts',
-    ignore: options.ignore ?? ['**/*.test.ts', '**/*.spec.ts', '**/__tests__/**'],
+    ignore: options.ignore ?? ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**'],
     exportFunctionName: options.exportFunctionName ?? 'createIsomorphicTool',
     logLevel: options.logLevel ?? 'normal',
   }

@@ -361,6 +361,77 @@ describe('discoverToolsInContent', () => {
       expect(tools[0].toolName).toBe('my_tool')
     })
   })
+
+  describe('.tsx file support', () => {
+    it('discovers .tsx files with named exports', () => {
+      const content = `
+        import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
+
+        export const askQuestion = createIsomorphicTool('ask_question')
+          .description('Ask a question to the user')
+          .parameters(z.object({ question: z.string() }))
+          .authority('server')
+          .build()
+      `
+      const tools = discoverToolsInContent(
+        content,
+        '/project/src/tools/ask_question.tsx',
+        '/project/src/tools',
+        createOptions()
+      )
+
+      expect(tools).toHaveLength(1)
+      expect(tools[0]).toMatchObject({
+        toolName: 'ask_question',
+        exportName: 'askQuestion',
+        variableName: 'askQuestion',
+      })
+    })
+
+    it('discovers nested .tsx files', () => {
+      const content = `
+        export const askQuestion = createIsomorphicTool('ask_question').build()
+      `
+      const tools = discoverToolsInContent(
+        content,
+        '/project/src/tools/general/ask_question.tsx',
+        '/project/src/tools',
+        createOptions()
+      )
+
+      expect(tools).toHaveLength(1)
+      expect(tools[0].filePath).toBe('general/ask_question.tsx')
+      expect(tools[0].absolutePath).toBe('/project/src/tools/general/ask_question.tsx')
+    })
+
+    it('discovers default export .tsx files', () => {
+      const content = `
+        export default createIsomorphicTool('ui_dialog').build()
+      `
+      const tools = discoverToolsInContent(
+        content,
+        '/project/src/tools/dialogs/ui-dialog.tsx',
+        '/project/src/tools',
+        createOptions()
+      )
+
+      expect(tools).toHaveLength(1)
+      expect(tools[0].toolName).toBe('ui_dialog')
+      expect(tools[0].filePath).toBe('dialogs/ui-dialog.tsx')
+    })
+
+    it('calculates correct import paths for .tsx files', () => {
+      const from = '/project/src/__generated__/tool-registry.gen.ts'
+      const to = '/project/src/tools/ask_question.tsx'
+      expect(calculateImportPath(from, to)).toBe('../tools/ask_question')
+    })
+
+    it('calculates correct import paths for nested .tsx files', () => {
+      const from = '/project/src/__generated__/tool-registry.gen.ts'
+      const to = '/project/src/tools/general/ask_question.tsx'
+      expect(calculateImportPath(from, to)).toBe('../tools/general/ask_question')
+    })
+  })
 })
 
 // =============================================================================
@@ -598,6 +669,7 @@ describe('integration: toolDiscoveryPlugin', () => {
     const plugin = toolDiscoveryPlugin({
       dir: 'src/tools',
       outFile: 'src/__generated__/tool-registry.gen.ts',
+      pattern: '**/*.{ts,tsx}',
       logLevel: 'silent',
     })
 
@@ -768,6 +840,104 @@ export { varTool }`
       expect(registry).toContain("import { namedTool } from '../tools/named'")
       expect(registry).toContain("import defaultTool from '../tools/default'")
       expect(registry).toContain("import { varTool } from '../tools/variable'")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  it('discovers .tsx tool files', async () => {
+    await setupTempProject()
+
+    try {
+      await writeToolFile(
+        'ask_question.tsx',
+        `export const askQuestion = createIsomorphicTool('ask_question')
+          .description('Ask a question to the user')
+          .parameters(z.object({ question: z.string() }))
+          .build()`
+      )
+
+      await runPlugin()
+      const registry = await readRegistry()
+
+      expect(registry).toContain("import { askQuestion } from '../tools/ask_question'")
+      expect(registry).toContain('askQuestion,')
+      expect(registry).toContain("| 'ask_question'")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  it('discovers nested .tsx tool files', async () => {
+    await setupTempProject()
+
+    try {
+      await mkdir(join(tempDir, 'src/tools/general'), { recursive: true })
+      await writeFile(
+        join(tempDir, 'src/tools/general/ask_question.tsx'),
+        `export const askQuestion = createIsomorphicTool('ask_question').build()`
+      )
+
+      await runPlugin()
+      const registry = await readRegistry()
+
+      expect(registry).toContain("import { askQuestion } from '../tools/general/ask_question'")
+      expect(registry).toContain("| 'ask_question'")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  it('handles mixed .ts and .tsx tool files', async () => {
+    await setupTempProject()
+
+    try {
+      // TypeScript tool
+      await writeToolFile(
+        'calculator.ts',
+        `export const calculator = createIsomorphicTool('calculator').build()`
+      )
+      // TSX tool in nested directory
+      await mkdir(join(tempDir, 'src/tools/general'), { recursive: true })
+      await writeFile(
+        join(tempDir, 'src/tools/general/ask_question.tsx'),
+        `export const askQuestion = createIsomorphicTool('ask_question').build()`
+      )
+
+      await runPlugin()
+      const registry = await readRegistry()
+
+      // Both should be present
+      expect(registry).toContain("import { calculator } from '../tools/calculator'")
+      expect(registry).toContain("import { askQuestion } from '../tools/general/ask_question'")
+      expect(registry).toContain('calculator,')
+      expect(registry).toContain('askQuestion,')
+      expect(registry).toContain("| 'ask_question'")
+      expect(registry).toContain("| 'calculator'")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  it('ignores .tsx test files', async () => {
+    await setupTempProject()
+
+    try {
+      await writeToolFile(
+        'real-tool.tsx',
+        `export const realTool = createIsomorphicTool('real_tool').build()`
+      )
+      await writeToolFile(
+        'real-tool.test.tsx',
+        `export const testTool = createIsomorphicTool('test_tool').build()`
+      )
+
+      await runPlugin()
+      const registry = await readRegistry()
+
+      expect(registry).toContain('realTool,')
+      expect(registry).not.toContain('testTool')
+      expect(registry).not.toContain('test_tool')
     } finally {
       await cleanup()
     }

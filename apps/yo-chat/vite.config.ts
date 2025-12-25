@@ -26,6 +26,7 @@ const config = defineConfig({
       tools: {
         dir: 'src/tools',
         outFile: 'src/__generated__/tool-registry.gen.ts',
+        pattern: '**/*.{ts,tsx}',
       },
     }),
     // Post-build: transform __BASE__ placeholders to runtime variable lookups
