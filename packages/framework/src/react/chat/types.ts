@@ -336,6 +336,12 @@ export type Processor = (ctx: ProcessorContext, emit: ProcessorEmit) => Operatio
 export type ProcessorFactory = () => Processor
 
 /**
+ * A factory function that creates a chain of processors.
+ * Can be a single processor or an array of processors to run in sequence.
+ */
+export type ProcessorChainFactory = ProcessorFactory | ProcessorFactory[]
+
+/**
  * Legacy sync processor for simple use cases.
  * 
  * @deprecated Use the async Processor type for new code.

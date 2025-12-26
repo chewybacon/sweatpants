@@ -84,11 +84,12 @@ import type {
   ProcessorContext, 
   ProcessedOutput,
   BufferSettledPatch,
-  SettlerFactory,
-  ProcessorFactory,
+   SettlerFactory,
+   ProcessorChainFactory,
 } from './types'
 import { defaultSettlerFactory } from './settlers'
 import { defaultProcessorFactory } from './processors'
+import { createProcessorChain } from './processor-chain'
 
 export interface DualBufferOptions {
   /**
@@ -114,24 +115,38 @@ export interface DualBufferOptions {
    */
   settler?: SettlerFactory
 
-  /**
-   * Factory function that creates a processor instance.
-   * 
-   * Pass the factory function itself, NOT a called instance.
-   * A fresh processor is created on each `streaming_start` to reset state.
-   * 
-   * @example
-   * ```typescript
-   * dualBufferTransform({
-   *   processor: markdown,          // correct: factory reference
-   *   processor: shikiProcessor,    // correct: factory reference
-   *   processor: markdown(),        // WRONG: creates single instance
-   * })
-   * ```
-   * 
-   * Default: passthrough - no enrichment
-   */
-  processor?: ProcessorFactory
+   /**
+    * Factory function(s) that create processor instance(s).
+    *
+    * Can be a single processor factory or an array of processor factories that run in sequence.
+    * Pass the factory function(s) themselves, NOT called instances.
+    * A fresh processor is created on each `streaming_start` to reset state.
+    *
+    * @example Single processor
+    * ```typescript
+    * dualBufferTransform({
+    *   processor: markdown,          // correct: factory reference
+    *   processor: shikiProcessor,    // correct: factory reference
+    * })
+    * ```
+    *
+    * @example Multiple processors (run in sequence)
+    * ```typescript
+    * dualBufferTransform({
+    *   processor: [markdown, syntaxHighlight],  // markdown → syntax highlighting
+    * })
+    * ```
+    *
+    * @example Wrong usage
+    * ```typescript
+    * dualBufferTransform({
+    *   processor: markdown(),        // WRONG: creates single instance
+    * })
+    * ```
+    *
+    * Default: passthrough - no enrichment
+    */
+   processor?: ProcessorChainFactory
 
   /**
    * Enable debug logging.
@@ -164,11 +179,16 @@ function normalizeSettlerResult(result: string | SettleResult): SettleResult {
 export function dualBufferTransform(
   options: DualBufferOptions = {}
 ): PatchTransform {
-  const { 
-    settler: settlerFactory = defaultSettlerFactory, 
-    processor: processorFactory = defaultProcessorFactory, 
-    debug = false 
+  const {
+    settler: settlerFactory = defaultSettlerFactory,
+    processor: processorInput = defaultProcessorFactory,
+    debug = false
   } = options
+
+  // Normalize processor input to always be a ProcessorFactory
+  const processorFactory: () => any = Array.isArray(processorInput)
+    ? createProcessorChain(processorInput)
+    : processorInput
 
   return function* (
     input: Channel<ChatPatch, void>,
