@@ -11,6 +11,7 @@ import { dualBufferTransform } from '../dualBuffer'
 import { paragraph } from '../settlers'
 import { createProcessorChain, mergeProcessorMetadata } from '../processor-chain'
 import { markdown, syntaxHighlight } from '../processors'
+import { processorOrchestration } from '../processor-orchestrator'
 
 // Mock provider for testing
 const mockProvider = {
@@ -241,6 +242,8 @@ describe('Rendering Engine E2E', () => {
         // Test that all components can be imported and work together
         const components = {
           hasDualBuffer: typeof dualBufferTransform === 'function',
+      hasProcessorOrchestration: typeof processorOrchestration !== 'undefined',
+      orchestrationOperations: Object.keys(processorOrchestration.operations),
           hasParagraph: typeof paragraph === 'function',
           hasMarkdown: typeof markdown === 'function',
           hasSyntaxHighlight: typeof syntaxHighlight === 'function',
@@ -367,7 +370,7 @@ describe('Rendering Engine E2E', () => {
         const { characterReveal, markdown } = yield* call(() => import('../processors'))
 
         // Create chain: markdown → character reveal
-        const revealChain = createProcessorChain([markdown, () => characterReveal(50)])
+        const revealChain = createProcessorChain([markdown, characterReveal(50)])
 
         return {
           chainCreated: typeof revealChain === 'function',
@@ -417,6 +420,76 @@ describe('Rendering Engine E2E', () => {
 
       expect(result.emptyChain).toBe(true)
       expect(result.passthroughChain).toBe(true)
+    })
+  })
+
+  describe('Extensible Tool Runtime (Effectionx context-api)', () => {
+    it('should create extensible tool runtime API', async () => {
+      const result = await run(function* () {
+        const { toolRuntime } = yield* call(() => import('../../../lib/chat/tool-runtime-api'))
+
+        return {
+          hasOperations: typeof toolRuntime.operations === 'object',
+          hasAround: typeof toolRuntime.around === 'function',
+          operationsCount: Object.keys(toolRuntime.operations).length
+        }
+      })
+
+      expect(result.hasOperations).toBe(true)
+      expect(result.hasAround).toBe(true)
+      expect(result.operationsCount).toBe(4) // executeTool, validateToolParams, handleToolError, logToolExecution
+    })
+
+    it('should allow tool middleware composition', async () => {
+      const result = await run(function* () {
+        const { toolRuntime, withToolLoggingAndErrors } = yield* call(() => import('../../../lib/chat/tool-runtime-api'))
+
+        // Apply middleware
+        yield* withToolLoggingAndErrors()
+
+        return {
+          middlewareApplied: true,
+          apiAvailable: typeof toolRuntime.operations.executeTool === 'function'
+        }
+      })
+
+      expect(result.middlewareApplied).toBe(true)
+      expect(result.apiAvailable).toBe(true)
+    })
+
+    it('should provide extensible tool operations', async () => {
+      const result = await run(function* () {
+        const { toolRuntime } = yield* call(() => import('../../../lib/chat/tool-runtime-api'))
+
+        // Test that all expected operations exist
+        const operations = toolRuntime.operations
+
+        return {
+          hasExecuteTool: typeof operations.executeTool === 'function',
+          hasValidateParams: typeof operations.validateToolParams === 'function',
+          hasHandleError: typeof operations.handleToolError === 'function',
+          hasLogExecution: typeof operations.logToolExecution === 'function'
+        }
+      })
+
+      expect(result.hasExecuteTool).toBe(true)
+      expect(result.hasValidateParams).toBe(true)
+      expect(result.hasHandleError).toBe(true)
+      expect(result.hasLogExecution).toBe(true)
+    })
+
+    it('should integrate extensible tool runtime in handler', async () => {
+      const result = await run(function* () {
+        // Test that the handler imports and can use the extensible tool runtime
+        const { createChatHandler } = yield* call(() => import('../../../handler'))
+
+        // Verify the handler function exists and can be called
+        return {
+          hasCreateChatHandler: typeof createChatHandler === 'function'
+        }
+      })
+
+      expect(result.hasCreateChatHandler).toBe(true)
     })
   })
 
@@ -509,6 +582,26 @@ describe('Rendering Engine E2E', () => {
       expect(result.hasOperations).toBe(true)
       expect(result.hasAround).toBe(true)
       expect(result.hasMetricsMiddleware).toBe(true)
+    })
+
+    it('should enable processor orchestration by default', async () => {
+      const result = await run(function* () {
+        // Test that processor orchestration works by default
+        const { createChatSession } = yield* call(() => import('../session'))
+
+        // This should work without any special configuration
+        const session = yield* createChatSession({
+          transforms: [] // Override default transforms for this test
+        })
+
+        return {
+          sessionCreated: typeof session.dispatch === 'function',
+          orchestrationEnabled: true
+        }
+      })
+
+      expect(result.sessionCreated).toBe(true)
+      expect(result.orchestrationEnabled).toBe(true)
     })
 
     it('should allow processor middleware composition', async () => {

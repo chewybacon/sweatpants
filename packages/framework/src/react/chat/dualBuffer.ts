@@ -177,20 +177,22 @@ export function dualBufferTransform(
     debug = false
   } = options
 
-  // Create processor chain from array or single processor
-  const processorFactory = createProcessorChain(processorInput)
+   // Create processor chain from array or single processor
+   const processorFactory = createProcessorChain(processorInput)
 
-  return function* (
-    input: Channel<ChatPatch, void>,
-    output: Channel<ChatPatch, void>
-  ): Operation<void> {
-    let settled = ''
-    let pending = ''
-    let done = false
-    
-    // Create initial instances from factories
-    let settler = settlerFactory()
-    let processor = processorFactory()
+   return function* (
+     input: Channel<ChatPatch, void>,
+     output: Channel<ChatPatch, void>
+   ): Operation<void> {
+     let settled = ''
+     let pending = ''
+     let done = false
+
+     // Create initial instances from factories
+     let settler = settlerFactory()
+     let processor = processorFactory()
+
+
 
     const log = debug
       ? (msg: string, data?: unknown) =>
@@ -241,8 +243,8 @@ export function dualBufferTransform(
         }
       }
 
-      // Run the processor - it will yield* emit() to send patches immediately
-      yield* processor(processorCtx, emit)
+       // Run the processor - it will yield* emit() to send patches immediately
+       yield* processor(processorCtx, emit)
 
       log(`settling: "${content.slice(0, 50)}${content.length > 50 ? '...' : ''}"`, {
         prevLen: prev.length,
@@ -380,13 +382,13 @@ export function dualBufferTransform(
         // The reducer uses streaming_text to build activeStep
         yield* output.send(patch)
       } else if (patch.type === 'streaming_start') {
-        // Reset buffers AND create fresh settler/processor instances
-        // This ensures no state leaks between streaming sessions
-        settled = ''
-        pending = ''
-        pendingStartTime = null
-        settler = settlerFactory()
-        processor = processorFactory()
+         // Reset buffers AND create fresh settler/processor instances
+         // This ensures no state leaks between streaming sessions
+         settled = ''
+         pending = ''
+         pendingStartTime = null
+         settler = settlerFactory()
+         processor = processorFactory()
         yield* output.send(patch)
       } else if (patch.type === 'streaming_end') {
         // Settle any remaining content before ending

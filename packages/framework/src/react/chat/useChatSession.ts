@@ -93,6 +93,8 @@ export interface UseChatSessionOptions extends SessionOptions {
    * ```
    */
   enableStepContext?: boolean
+
+
 }
 
 export interface UseChatSessionReturn {

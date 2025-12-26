@@ -343,7 +343,7 @@ export type ProcessorFactory = () => Processor
  * A chain of processors that run in sequence.
  * Each processor receives the output of the previous as input.
  */
-export type ProcessorChain = ProcessorFactory[]
+export type ProcessorChain = ProcessorFactory | ProcessorFactory[]
 
 /**
  * Legacy sync processor for simple use cases.

@@ -8,6 +8,7 @@ import { z } from 'zod'
 import type { Operation } from 'effection'
 import { HandoffReadyError } from '../lib/chat/isomorphic-tools/types'
 import { validateToolParams } from '../lib/chat/utils'
+import { toolRuntime, withToolLoggingAndErrors } from '../lib/chat/tool-runtime-api'
 import type {
   ChatHandlerConfig,
   ChatRequestBody,
@@ -104,9 +105,15 @@ function* executeServerPart(
   params: unknown,
   signal: AbortSignal
 ): Operation<ServerPartResult> {
+  // Apply extensible tool runtime middleware
+  yield* withToolLoggingAndErrors()
+
   const baseContext: ServerToolContext = { callId, signal }
   const authority = tool.authority ?? 'server'
-  const validatedParams = validateToolParams(tool, params)
+
+  // Use extensible validation
+  yield* toolRuntime.operations.validateToolParams(tool, params)
+  const validatedParams = params // Validation is now handled by middleware
 
   // For client authority, we don't execute server code yet
   if (authority === 'client') {
@@ -134,7 +141,19 @@ function* executeServerPart(
   const phase1Context = createPhase1Context(baseContext)
 
   try {
+    // Execute tool through extensible API (provides middleware)
+    yield* toolRuntime.operations.executeTool(tool, validatedParams)
+
+    // Execute the actual server function (complex logic preserved)
     const serverOutput = yield* tool.server(validatedParams, phase1Context)
+
+    // Log successful execution through extensible API
+    yield* toolRuntime.operations.logToolExecution(tool, validatedParams, {
+      callId,
+      toolName: tool.name,
+      ok: true,
+      content: 'Tool executed successfully'
+    })
 
     // If we get here, the tool completed without calling handoff()
     if (!tool.client) {
@@ -172,7 +191,10 @@ function* executeServerPart(
         usesHandoff: true,
       }
     }
-    throw e
+
+    // Use extensible error handling
+    const errorResult = yield* toolRuntime.operations.handleToolError(tool, e as Error, validatedParams)
+    throw errorResult
   }
 }
 

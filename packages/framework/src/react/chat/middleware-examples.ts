@@ -8,7 +8,7 @@
 // Example: Custom processor with logging and validation
 import { processors, withProcessorLogging, withProcessorValidation } from './processor-api'
 import { rendering, withRenderingMetrics, withRenderingValidation } from './rendering-pipeline'
-import type { ProcessorContext, ProcessedOutput } from './types'
+import type { ProcessedOutput } from './types'
 
 export function* useEnhancedProcessing() {
   // Apply multiple middleware layers to processors
@@ -31,21 +31,25 @@ export function* useEnhancedRendering() {
 // Example: Custom processor middleware for caching
 export function* withProcessorCaching(cache: Map<string, ProcessedOutput>) {
   yield* processors.around({
-    process: function* ([ctx], next) {
+    process: function*([ctx, emit], next) {
       const cacheKey = `${ctx.chunk}-${ctx.accumulated.length}`
 
       // Check cache first
       if (cache.has(cacheKey)) {
         console.log('💾 Cache hit for processor')
-        return cache.get(cacheKey)!
+        yield* emit(cache.get(cacheKey)!)
+        return
       }
 
-      // Compute and cache
-      const result = yield* next(ctx)
-      cache.set(cacheKey, result)
+      // Create caching emit wrapper
+      const cachingEmit = function*(output: ProcessedOutput) {
+        cache.set(cacheKey, output)
+        yield* emit(output)
+      }
 
+      // Compute with caching
+      yield* next(ctx, cachingEmit)
       console.log('💾 Cached processor result')
-      return result
     }
   })
 }
@@ -53,7 +57,7 @@ export function* withProcessorCaching(cache: Map<string, ProcessedOutput>) {
 // Example: Custom rendering middleware for A/B testing
 export function* withRenderingABTest(experimentId: string, variant: 'A' | 'B') {
   yield* rendering.around({
-    scheduleReveal: function* ([content, strategy], next) {
+    scheduleReveal: function*([content, strategy], next) {
       const result = yield* next(content, strategy)
 
       // Modify reveal timing based on experiment variant
@@ -71,20 +75,24 @@ export function* withRenderingABTest(experimentId: string, variant: 'A' | 'B') {
 // Example: Custom processor middleware for content transformation
 export function* withContentTransformation(transform: (content: string) => string) {
   yield* processors.around({
-    process: function* ([ctx], next) {
+    process: function*([ctx, emit], next) {
       // Transform the input before processing
       const transformedCtx = {
         ...ctx,
         chunk: transform(ctx.chunk)
       }
 
-      const result = yield* next(transformedCtx)
-
-      // Transform the output after processing
-      return {
-        ...result,
-        raw: transform(result.raw)
+      // Create transforming emit wrapper
+      const transformingEmit = function*(output: ProcessedOutput) {
+        const transformedOutput = {
+          ...output,
+          raw: output.raw ? transform(output.raw) : output.raw
+        }
+        yield* emit(transformedOutput)
       }
+
+      // Process with transformation
+      yield* next(transformedCtx, transformingEmit)
     }
   })
 }
