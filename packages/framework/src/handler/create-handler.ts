@@ -7,6 +7,7 @@ import { createScope, all } from 'effection'
 import { z } from 'zod'
 import type { Operation } from 'effection'
 import { HandoffReadyError } from '../lib/chat/isomorphic-tools/types'
+import { validateToolParams } from '../lib/chat/utils'
 import type {
   ChatHandlerConfig,
   ChatRequestBody,
@@ -60,13 +61,7 @@ function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
 
 // Use centralized error type from isomorphic-tools to avoid duplication
 
-function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
-  const parsed = tool.parameters.safeParse(params)
-  if (!parsed.success) {
-    throw new Error(`Validation failed for tool "${tool.name}": ${parsed.error.message}`)
-  }
-  return parsed.data
-}
+
 
 function createPhase1Context(baseContext: ServerToolContext): ServerAuthorityContext {
   return {

@@ -48,6 +48,7 @@ import type {
   HandoffConfig,
 } from './types'
 import { HandoffReadyError } from './types'
+import { validateToolParams } from '../utils'
 import type {
   ChatPatch,
   AuthorityMode,
@@ -74,13 +75,7 @@ export type { AuthorityMode }
 
 // --- Phase 1 Server Executor (for handoff tools) ---
 
-function validateToolParams(tool: AnyIsomorphicTool, params: unknown): unknown {
-  const parsed = tool.parameters.safeParse(params)
-  if (!parsed.success) {
-    throw new Error(`Validation failed for tool "${tool.name}": ${parsed.error.message}`)
-  }
-  return parsed.data
-}
+
 
 
 /**

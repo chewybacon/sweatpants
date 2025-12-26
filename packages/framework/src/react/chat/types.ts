@@ -1,5 +1,6 @@
 import type { Operation, Channel } from 'effection'
 import type { IsomorphicHandoffEvent } from '../../lib/chat/types'
+export { groupTimelineByToolCall } from '../../lib/chat/isomorphic-tools/runtime/types'
 
 // --- Stream Result Types ---
 
@@ -1048,67 +1049,7 @@ export interface TimelineStep {
   timestamp: number
 }
 
-/**
- * Helper to group timeline items by tool call.
- * 
- * Useful for rendering tool calls with nested steps, instead of flat inline.
- * 
- * @example
- * ```tsx
- * const grouped = groupTimelineByToolCall(timeline)
- * // Returns: Array<TimelineItem | { toolCall: TimelineToolCall, steps: TimelineStep[] }>
- * ```
- */
-export function groupTimelineByToolCall(timeline: TimelineItem[]): Array<
-  | TimelineUserMessage
-  | TimelineAssistantText
-  | TimelineThinking
-  | { type: 'tool_call_group'; toolCall: TimelineToolCall; steps: TimelineStep[] }
-> {
-  const result: Array<
-    | TimelineUserMessage
-    | TimelineAssistantText
-    | TimelineThinking
-    | { type: 'tool_call_group'; toolCall: TimelineToolCall; steps: TimelineStep[] }
-  > = []
 
-  const toolCallMap = new Map<string, { toolCall: TimelineToolCall; steps: TimelineStep[] }>()
-
-  for (const item of timeline) {
-    if (item.type === 'tool_call') {
-      const group = { type: 'tool_call_group' as const, toolCall: item, steps: [] as TimelineStep[] }
-      toolCallMap.set(item.callId, group)
-      result.push(group)
-    } else if (item.type === 'step') {
-      const group = toolCallMap.get(item.callId)
-      if (group) {
-        group.steps.push(item)
-      } else {
-        // Orphan step - shouldn't happen, but handle gracefully
-        // Create a placeholder group
-        const orphanGroup = { 
-          type: 'tool_call_group' as const, 
-          toolCall: { 
-            type: 'tool_call' as const,
-            id: item.callId,
-            callId: item.callId,
-            toolName: 'unknown',
-            input: {},
-            state: 'running' as const,
-            timestamp: item.timestamp,
-          }, 
-          steps: [item] 
-        }
-        toolCallMap.set(item.callId, orphanGroup)
-        result.push(orphanGroup)
-      }
-    } else {
-      result.push(item)
-    }
-  }
-
-  return result
-}
 
 // --- Session State (React-side) ---
 
