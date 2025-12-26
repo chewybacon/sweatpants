@@ -1,13 +1,20 @@
 import type { Operation, Stream } from 'effection'
 import { resource, call, ensure } from 'effection'
 
+export interface ParseNDJSONOptions {
+  /** Optional abort signal to cancel reading */
+  signal?: AbortSignal
+}
+
 /**
  * Parse a ReadableStream of NDJSON into an Effection Stream of objects.
  * Handles partial lines across chunk boundaries.
  */
 export function parseNDJSON<T>(
-  readable: ReadableStream<Uint8Array>
+  readable: ReadableStream<Uint8Array>,
+  options: ParseNDJSONOptions = {}
 ): Stream<T, void> {
+  const { signal } = options
   return resource(function* (provide) {
     const reader = readable.getReader()
     const decoder = new TextDecoder()
@@ -20,6 +27,11 @@ export function parseNDJSON<T>(
     yield* provide({
       *next(): Operation<IteratorResult<T, void>> {
         while (true) {
+          // Check abort signal before processing
+          if (signal?.aborted) {
+            return { done: true, value: undefined }
+          }
+
           // Try to extract a complete line from buffer
           const newlineIndex = buffer.indexOf('\n')
           if (newlineIndex !== -1) {

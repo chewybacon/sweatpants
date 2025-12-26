@@ -1,3 +1,6 @@
 node_modules
 tmp
 packages/framework/dist
+packages/start-env/dist
+packages/ts-config/dist
+apps/hydra/dist

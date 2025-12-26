@@ -6,14 +6,14 @@
  *
  * Responsibilities:
  * - Create abortable fetch using Effection's useAbortSignal
- * - Parse response body via readNdjson async generator
+ * - Parse response body via parseNDJSON Effection stream
  * - Convert to Effection stream and consume with each()
  * - Emit patches for each event
  * - Handle client tool handoff when server requests client-side execution
  */
 import type { Operation, Channel } from 'effection'
-import { call, useAbortSignal, each, stream } from 'effection'
-import { readNdjson } from './readNdjson'
+import { call, useAbortSignal, each } from 'effection'
+import { parseNDJSON } from '../../lib/chat'
 import { BaseUrlContext } from './contexts'
 import type { 
   StreamEvent, 
@@ -108,11 +108,8 @@ export function* streamChatOnce(
     throw new Error('No response body from chat API')
   }
 
-  // Create async generator for NDJSON parsing
-  const ndjsonGenerator = readNdjson<StreamEvent>(response.body, { signal })
-
-  // Bridge to Effection stream
-  const eventStream = stream(ndjsonGenerator)
+  // Create Effection stream for NDJSON parsing
+  const eventStream = parseNDJSON<StreamEvent>(response.body, { signal })
 
   // Accumulate assistant text
   let assistantText = ''
