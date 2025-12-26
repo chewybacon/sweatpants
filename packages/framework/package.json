@@ -32,7 +32,8 @@
       "require": {
         "types": "./dist/chat.d.cts",
         "default": "./dist/chat.cjs"
-      }
+      },
+      "source": "src/chat.ts"
     },
     "./chat/isomorphic-tools": {
       "import": {

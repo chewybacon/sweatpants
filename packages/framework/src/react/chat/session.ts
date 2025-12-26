@@ -67,7 +67,7 @@ import { StreamerContext, ToolRegistryContext, BaseUrlContext } from './contexts
 import type {
   ChatCommand,
   ChatPatch,
-  ChatMessage,
+  Message,
   SessionOptions,
   Streamer,
   StreamResult,
@@ -227,7 +227,7 @@ export function* runChatSession(
   options: ClientToolSessionOptions = {}
 ): Operation<void> {
   // Session state (owned by this operation)
-  const history: ChatMessage[] = []
+  const history: Message[] = []
   let currentRequestTask: Task<StreamResult> | null = null
   
   // Track disabled tools (from denial with 'disable' behavior)
@@ -248,7 +248,7 @@ export function* runChatSession(
         }
 
         // Create user message
-        const userMessage: ChatMessage = {
+        const userMessage: Message = {
           id: crypto.randomUUID(),
           role: 'user',
           content: cmd.content,
@@ -487,7 +487,7 @@ export function* runChatSession(
             yield* streamPatches.close()
 
             // Create assistant message
-            const assistantMessage: ChatMessage = {
+            const assistantMessage: Message = {
               id: crypto.randomUUID(),
               role: 'assistant',
               content: result.type === 'complete' ? result.text : '',
@@ -534,7 +534,7 @@ export function* runChatSession(
         if (preservePartial && cmd.partialContent?.trim()) {
           // Build the partial message with optional suffix
           const contentWithSuffix = cmd.partialContent + suffix
-          const partialMessage: ChatMessage = {
+          const partialMessage: Message = {
             id: crypto.randomUUID(),
             role: 'assistant',
             content: contentWithSuffix,

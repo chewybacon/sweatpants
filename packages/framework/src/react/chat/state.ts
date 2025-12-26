@@ -66,7 +66,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         ...state,
         messages: [...state.messages, patch.message],
         // Store rendered content if provided
-        rendered: patch.rendered
+        rendered: patch.rendered && patch.message.id
           ? { ...state.rendered, [patch.message.id]: { output: patch.rendered } }
           : state.rendered,
         error: null,
@@ -202,7 +202,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         ...state,
         messages: [...state.messages, messageWithSteps],
         // Store rendered content
-        rendered: output
+        rendered: output && patch.message.id
           ? { ...state.rendered, [patch.message.id]: { output } }
           : state.rendered,
         currentResponse: [],
@@ -238,7 +238,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         return {
           ...state,
           messages: [...state.messages, messageWithSteps],
-          rendered: output
+          rendered: output && patch.message.id
             ? { ...state.rendered, [patch.message.id]: { output } }
             : state.rendered,
           currentResponse: [],

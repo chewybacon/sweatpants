@@ -10,7 +10,8 @@ export { openaiProvider } from './openai'
  * Get the chat provider based on environment configuration.
  * Provider is selected via CHAT_PROVIDER env var (default: 'ollama').
  */
-export function getChatProvider(provider: "openai" | "ollama"): ChatProvider {
+export function getChatProvider(): ChatProvider {
+  const provider = process.env["CHAT_PROVIDER"]
   switch (provider) {
     case 'openai':
       return openaiProvider

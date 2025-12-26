@@ -18,7 +18,7 @@ import { BaseUrlContext } from './contexts'
 import type { 
   StreamEvent, 
   ChatPatch, 
-  ChatMessage, 
+  Message, 
   SessionOptions, 
   ApiMessage,
   StreamResult,
@@ -229,7 +229,7 @@ export function* streamChatOnce(
 /**
  * Helper to convert ChatMessage[] to API format
  */
-export function toApiMessages(messages: ChatMessage[]): ApiMessage[] {
+export function toApiMessages(messages: Message[]): ApiMessage[] {
   return messages.map((m) => ({
     role: m.role,
     content: m.content,

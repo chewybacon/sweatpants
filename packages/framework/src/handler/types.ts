@@ -8,6 +8,14 @@ import type { Operation } from 'effection'
 import type { ZodType } from 'zod'
 
 // =============================================================================
+// MESSAGE TYPES
+// =============================================================================
+
+// Message interface is defined in lib/chat (core dependency)
+import type { Message } from '../lib/chat/types'
+export type { Message } from '../lib/chat/types'
+
+// =============================================================================
 // TOOL TYPES
 // =============================================================================
 
@@ -70,22 +78,8 @@ export interface ServerAuthorityContext extends ServerToolContext {
 // PROVIDER TYPES
 // =============================================================================
 
-/**
- * Message format for chat providers.
- */
-export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-  tool_calls?: Array<{
-    id: string
-    type: 'function'
-    function: {
-      name: string
-      arguments: unknown
-    }
-  }>
-  tool_call_id?: string
-}
+// ChatMessage is now an alias for the universal Message interface
+export type ChatMessage = Message
 
 /**
  * Streaming event from chat provider.
@@ -98,7 +92,7 @@ export type ChatProviderEvent =
       type: 'function'
       function: {
         name: string
-        arguments: unknown
+        arguments: Record<string, unknown>
       }
     }> }
 
@@ -112,7 +106,7 @@ export interface ChatProviderResult {
     type: 'function'
     function: {
       name: string
-      arguments: unknown
+      arguments: Record<string, unknown>
     }
   }>
   usage?: {
@@ -149,7 +143,7 @@ export interface ChatStreamOptions {
 export interface ChatProvider {
   name?: string
   stream(
-    messages: ChatMessage[],
+    messages: Message[],
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     options?: any
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -179,10 +173,13 @@ export interface ResolvedPersona {
  * Persona resolver function.
  */
 export type PersonaResolver = (
-  name: string,
-  config?: Record<string, unknown>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  name: any, // Accept any name format
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  config?: any, // Accept any config format
   enableOptionalTools?: string[],
-  effort?: 'auto' | 'low' | 'medium' | 'high'
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  effort?: any // Accept any effort format
 ) => ResolvedPersona
 
 // =============================================================================

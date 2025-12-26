@@ -1,5 +1,6 @@
 import type { Operation, Channel } from 'effection'
 import type { IsomorphicHandoffEvent } from "../../types"
+import type { ToolCall } from "../../types"
 
 // --- Stream Result Types ---
 
@@ -497,13 +498,10 @@ export interface ActiveStep {
 // --- Messages ---
 
 export interface ChatMessage {
-  id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system' | 'tool'
   content: string
-  /** Full step chain for rich rendering (assistant messages only) */
-  steps?: ResponseStep[]
-  /** True if this message was interrupted before completion */
-  partial?: boolean
+  tool_calls?: ToolCall[]
+  tool_call_id?: string
 }
 
 // --- Server Stream Events ---
@@ -876,24 +874,15 @@ export type ExecutionTrailStepResponsePatch = {
 export type ChatPatch =
   | { type: 'session_info'; capabilities: Capabilities; persona: string | null }
   | { type: 'user_message'; message: ChatMessage; rendered?: string }
-  | { type: 'streaming_text'; content: string }
-  | { type: 'streaming_thinking'; content: string }
-  | {
-    type: 'tool_call_start'
-    call: { id: string; name: string; arguments: string }
-  }
-  | { type: 'tool_call_result'; id: string; result: string }
-  | { type: 'tool_call_error'; id: string; error: string }
   | { type: 'assistant_message'; message: ChatMessage; rendered?: string }
   | { type: 'streaming_start' }
+  | { type: 'streaming_text'; content: string }
+  | { type: 'streaming_thinking'; content: string }
   | { type: 'streaming_end' }
-  | {
-    type: 'abort_complete'
-    /** The partial message to add (if preservePartialOnAbort is true and there's content) */
-    message?: ChatMessage
-    /** Rendered HTML for display */
-    rendered?: string
-  }
+  | { type: 'tool_call_start'; call: { id: string; name: string; arguments: string } }
+  | { type: 'tool_call_result'; id: string; result: string }
+  | { type: 'tool_call_error'; id: string; error: string }
+  | { type: 'abort_complete' }
   | { type: 'error'; message: string }
   | { type: 'reset' }
   // Dual buffer patches

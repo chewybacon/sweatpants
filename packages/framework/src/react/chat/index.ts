@@ -9,6 +9,7 @@ export * from './transforms'
 export * from './dualBuffer'
 export * from './settlers'
 export * from './processors'
+export * from './processor-orchestrator'
 // Shiki module - namespaced to avoid conflicts with settlers (both export codeFence, line)
 export * as shiki from './shiki'
 // Mermaid module - progressive diagram rendering

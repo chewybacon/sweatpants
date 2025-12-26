@@ -1,12 +1,30 @@
 
 // --- Message Types ---
 
-export interface OllamaMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool'
+/**
+ * Universal message interface that all chat providers must support.
+ * This provides a common contract for message passing between layers.
+ */
+export interface Message {
+  id?: string
+  role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
-  tool_calls?: ToolCall[]
+  partial?: boolean
+  tool_calls?: Array<{
+    id: string
+    type: 'function'
+    function: {
+      name: string
+      arguments: Record<string, unknown>
+    }
+  }>
   tool_call_id?: string
 }
+
+/**
+ * Ollama-specific message format (alias for Message for backward compatibility).
+ */
+export type OllamaMessage = Message
 
 export interface ToolCall {
   id: string
@@ -76,7 +94,7 @@ import type { IsomorphicHandoffEvent } from './isomorphic-tools/types'
  */
 export interface ConversationState {
   /** Full message history up to this point */
-  messages: OllamaMessage[]
+  messages: Message[]
   /** Text content the assistant generated before requesting tools */
   assistantContent: string
   /** Tool calls the assistant requested (both server and client) - normalized to flat format */
@@ -115,7 +133,7 @@ export interface ClientToolSchema {
 
 export interface OllamaChatRequest {
   model: string
-  messages: OllamaMessage[]
+  messages: Message[]
   stream?: boolean
   tools?: Array<{
     type: 'function'

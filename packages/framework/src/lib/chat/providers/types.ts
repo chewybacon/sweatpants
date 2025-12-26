@@ -1,5 +1,8 @@
 import type { Stream } from 'effection'
-import type { ChatEvent, ChatResult, OllamaMessage } from '../types'
+import type { Message } from '../types'
+
+
+import type { ChatEvent, ChatResult } from '../types'
 import type { IsomorphicToolSchema } from '../isomorphic-tools'
 
 /**
@@ -41,7 +44,7 @@ export interface ChatProvider {
    * Yields ChatEvent for each chunk, returns ChatResult with full response.
    */
   stream(
-    messages: OllamaMessage[],
+    messages: Message[],
     options?: ChatStreamOptions
   ): Stream<ChatEvent, ChatResult>
 }
