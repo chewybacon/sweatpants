@@ -27,9 +27,11 @@
  * })
  * ```
  */
+import { sleep } from 'effection'
+import type { Operation } from 'effection'
 import { marked } from 'marked'
 import katex from 'katex'
-import type { Processor, ProcessorEmit, ProcessorContext, SyncProcessor } from './types'
+import type { Processor, ProcessorEmit, ProcessorContext, SyncProcessor, ProcessorFactory } from './types'
 
 // --- Math Rendering Utilities ---
 
@@ -218,8 +220,85 @@ export function syntaxHighlight(): Processor {
 // --- Compatibility Layer ---
 
 /**
+ * Reveal speed controller - controls how fast content is revealed.
+ *
+ * Creates typewriter effect by emitting content character-by-character
+ * with configurable delays between characters.
+ *
+ * @param ms - Milliseconds delay between each character (default: 50)
+ */
+export function characterReveal(ms: number = 50): ProcessorFactory {
+  return () => function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+    if (!ctx.chunk) return
+
+    const chars = ctx.chunk.split('')
+    let emitted = false
+
+    for (const char of chars) {
+      yield* emit({
+        raw: ctx.next,
+        revealChar: char,
+        revealType: 'character',
+        revealDelay: ms,
+        isComplete: false,
+      })
+      emitted = true
+
+      // Small delay between characters
+      yield* sleep(ms)
+    }
+
+    // Final emission marking completion
+    if (emitted) {
+      yield* emit({
+        raw: ctx.next,
+        revealType: 'character',
+        isComplete: true,
+      })
+    }
+  }
+}
+
+/**
+ * Word-by-word reveal controller.
+ *
+ * @param ms - Milliseconds delay between each word (default: 200)
+ */
+export function wordReveal(ms: number = 200): ProcessorFactory {
+  return () => function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+    if (!ctx.chunk) return
+
+    const words = ctx.chunk.split(/\s+/)
+    let emitted = false
+
+    for (const word of words) {
+      if (word.trim()) {
+        yield* emit({
+          raw: ctx.next,
+          revealWord: word,
+          revealType: 'word',
+          revealDelay: ms,
+          isComplete: false,
+        })
+        emitted = true
+
+        yield* sleep(ms)
+      }
+    }
+
+    if (emitted) {
+      yield* emit({
+        raw: ctx.next,
+        revealType: 'word',
+        isComplete: true,
+      })
+    }
+  }
+}
+
+/**
  * Wrap a legacy sync processor to work with the new Operation-based API.
- * 
+ *
  * @deprecated New code should use the Operation-based API directly.
  */
 export function fromSync(syncProcessor: SyncProcessor): Processor {

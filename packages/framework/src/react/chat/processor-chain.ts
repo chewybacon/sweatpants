@@ -12,10 +12,13 @@ import type { ProcessorContext, ProcessorEmit, ProcessorFactory, ProcessedOutput
  *
  * This enables composition like: markdown → syntax highlighting → animations
  */
-export function createProcessorChain(processors: ProcessorFactory[]): ProcessorFactory {
+export function createProcessorChain(processors: ProcessorFactory | ProcessorFactory[]): ProcessorFactory {
+  // Normalize to array
+  const processorArray = Array.isArray(processors) ? processors : [processors]
+
   return () => {
     // Create instances of all processors in the chain
-    const processorInstances = processors.map(factory => factory())
+    const processorInstances = processorArray.map(factory => factory())
 
     return function* chainedProcessor(ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
       if (processorInstances.length === 0) {

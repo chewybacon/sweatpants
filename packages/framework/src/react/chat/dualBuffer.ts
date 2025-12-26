@@ -75,17 +75,17 @@
  * calls these factories on each `streaming_start` to ensure fresh state.
  */
 import type { Operation, Channel, Subscription } from 'effection'
-import type { 
-  ChatPatch, 
-  PatchTransform, 
-  SettleContext, 
+import type {
+  ChatPatch,
+  PatchTransform,
+  SettleContext,
   SettleResult,
   SettleMeta,
-  ProcessorContext, 
+  ProcessorContext,
   ProcessedOutput,
   BufferSettledPatch,
-   SettlerFactory,
-   ProcessorChainFactory,
+  SettlerFactory,
+  ProcessorChain,
 } from './types'
 import { defaultSettlerFactory } from './settlers'
 import { defaultProcessorFactory } from './processors'
@@ -116,37 +116,29 @@ export interface DualBufferOptions {
   settler?: SettlerFactory
 
    /**
-    * Factory function(s) that create processor instance(s).
+    * Chain of processor factories that run in sequence.
     *
-    * Can be a single processor factory or an array of processor factories that run in sequence.
-    * Pass the factory function(s) themselves, NOT called instances.
-    * A fresh processor is created on each `streaming_start` to reset state.
+    * Can be a single processor factory or an array of factories.
+    * Each processor receives the output of the previous as input.
+    * Pass factory functions, NOT called instances.
     *
     * @example Single processor
     * ```typescript
     * dualBufferTransform({
-    *   processor: markdown,          // correct: factory reference
-    *   processor: shikiProcessor,    // correct: factory reference
+    *   processor: markdown,  // factory reference
     * })
     * ```
     *
-    * @example Multiple processors (run in sequence)
+    * @example Processor chain
     * ```typescript
     * dualBufferTransform({
-    *   processor: [markdown, syntaxHighlight],  // markdown → syntax highlighting
+    *   processor: [markdown, syntaxHighlight, typewriterReveal]
     * })
     * ```
     *
-    * @example Wrong usage
-    * ```typescript
-    * dualBufferTransform({
-    *   processor: markdown(),        // WRONG: creates single instance
-    * })
-    * ```
-    *
-    * Default: passthrough - no enrichment
+    * Default: passthrough (no processing)
     */
-   processor?: ProcessorChainFactory
+   processor?: ProcessorChain
 
   /**
    * Enable debug logging.
@@ -185,10 +177,8 @@ export function dualBufferTransform(
     debug = false
   } = options
 
-  // Normalize processor input to always be a ProcessorFactory
-  const processorFactory: () => any = Array.isArray(processorInput)
-    ? createProcessorChain(processorInput)
-    : processorInput
+  // Create processor chain from array or single processor
+  const processorFactory = createProcessorChain(processorInput)
 
   return function* (
     input: Channel<ChatPatch, void>,

@@ -333,13 +333,17 @@ export type Processor = (ctx: ProcessorContext, emit: ProcessorEmit) => Operatio
  * })
  * ```
  */
+/**
+ * A processor factory creates fresh processor instances.
+ * Processors maintain state and must be recreated per streaming session.
+ */
 export type ProcessorFactory = () => Processor
 
 /**
- * A factory function that creates a chain of processors.
- * Can be a single processor or an array of processors to run in sequence.
+ * A chain of processors that run in sequence.
+ * Each processor receives the output of the previous as input.
  */
-export type ProcessorChainFactory = ProcessorFactory | ProcessorFactory[]
+export type ProcessorChain = ProcessorFactory[]
 
 /**
  * Legacy sync processor for simple use cases.
