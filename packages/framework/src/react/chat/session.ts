@@ -258,10 +258,10 @@ export function* runChatSession(
 
         // Add to history immediately
         history.push(userMessage)
-        yield* patches.send({ 
-          type: 'user_message', 
+        yield* patches.send({
+          type: 'user_message',
           message: userMessage,
-          rendered,
+          ...(rendered !== undefined && { rendered }),
         })
 
         // Start streaming
@@ -361,7 +361,7 @@ export function* runChatSession(
                     const scope = yield* useScope()
                     
                     for (const pendingStep of yield* each(stepChannel)) {
-                      const callId = pendingStep.step.id.split('-step-')[0] // Extract callId from step id
+                       const callId = pendingStep.step.id.split('-step-')[0] as string // Extract callId from step id
                       
                       // Wrap the respond callback to also emit a state update patch
                       const wrappedRespond = (response: unknown) => {
@@ -398,7 +398,7 @@ export function* runChatSession(
                       reactHandlers: options.reactHandlers,
                       handoffResponseSignal: options.handoffResponseSignal,
                       uiRequestChannel,
-                      stepChannel,
+                      ...(stepChannel && { stepChannel }),
                     })
                   : yield* executeIsomorphicToolsClient(
                       handoffsWithTools,
@@ -444,26 +444,26 @@ export function* runChatSession(
                 // Collect outputs for server phase 2 when needed:
                 // - Client-authority tools: server validates client output
                 // - V7 handoff tools: server runs after() with cached handoff + client output
-                for (let i = 0; i < isomorphicResults.length; i++) {
-                  const isoResult = isomorphicResults[i]
-                  const handoff = result.handoffs[i]
-                  
-                  // Add the tool message for this result
-                  conversationMessages.push(formatIsomorphicToolResult(isoResult))
+                 for (let i = 0; i < isomorphicResults.length; i++) {
+                   const isoResult = isomorphicResults[i]!
+                   const handoff = result.handoffs[i]!
+
+                   // Add the tool message for this result
+                   conversationMessages.push(formatIsomorphicToolResult(isoResult))
                   
                   // Determine if we need server phase 2
                   const needsPhase2 = handoff.authority === 'client' || handoff.usesHandoff === true
                   
                   if (needsPhase2 && isoResult.ok && isoResult.clientOutput !== undefined) {
-                    isomorphicClientOutputs.push({
-                      callId: isoResult.callId,
-                      toolName: isoResult.toolName,
-                      params: handoff.params,
-                      clientOutput: isoResult.clientOutput,
-                      // For V7 handoff: pass the cached handoff data (serverOutput from phase 1)
-                      cachedHandoff: handoff.usesHandoff ? handoff.serverOutput : undefined,
-                      usesHandoff: handoff.usesHandoff,
-                    })
+                     isomorphicClientOutputs.push({
+                       callId: isoResult.callId,
+                       toolName: isoResult.toolName,
+                       params: handoff.params,
+                       clientOutput: isoResult.clientOutput,
+                       // For V7 handoff: pass the cached handoff data (serverOutput from phase 1)
+                       cachedHandoff: handoff.usesHandoff ? handoff.serverOutput : undefined,
+                       ...(handoff.usesHandoff !== undefined && { usesHandoff: handoff.usesHandoff }),
+                     })
                   }
                 }
                 // Update current messages for re-initiation
@@ -541,11 +541,11 @@ export function* runChatSession(
           history.push(partialMessage)
           
           // Send to UI with rendered HTML
-          yield* patches.send({
-            type: 'abort_complete',
-            message: partialMessage,
-            rendered: cmd.partialHtml,
-          })
+           yield* patches.send({
+             type: 'abort_complete',
+             message: partialMessage,
+             ...(cmd.partialHtml !== undefined && { rendered: cmd.partialHtml }),
+           })
         } else {
           // No content to preserve, just end streaming
           yield* patches.send({ type: 'streaming_end' })

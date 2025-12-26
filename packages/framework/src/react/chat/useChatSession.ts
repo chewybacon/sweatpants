@@ -17,7 +17,8 @@ import { createChatSession, type ChatSession } from './session'
 import type { ClientToolSessionOptions } from './session'
 import { dualBufferTransform } from './dualBuffer'
 import type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState } from './types'
-import { initialChatState, SessionOptions } from './types'
+import { initialChatState } from './types'
+import type { SessionOptions } from './types'
 import type { IsomorphicToolRegistry, PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
 import { useChatConfig } from './ChatProvider'
 
@@ -227,9 +228,9 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     ...options,
     baseUrl: options.baseUrl ?? config.baseUrl,
     transforms: options.transforms ?? defaultTransforms,
-    isomorphicTools: options.isomorphicTools,
-    reactHandlers: options.reactHandlers,
-    enableStepContext: options.enableStepContext,
+    ...(options.isomorphicTools && { isomorphicTools: options.isomorphicTools }),
+    ...(options.reactHandlers && { reactHandlers: options.reactHandlers }),
+    ...(options.enableStepContext !== undefined && { enableStepContext: options.enableStepContext }),
   }
 
   // Stable ref to options to avoid re-running effect if object identity changes
@@ -319,7 +320,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   }, [])
 
   const deny = useCallback((callId: string, reason?: string) => {
-    sendApprovalRef.current?.({ callId, approved: false, reason })
+    sendApprovalRef.current?.({ callId, approved: false, ...(reason !== undefined && { reason }) })
   }, [])
 
   // Tool handoff response callback

@@ -89,12 +89,12 @@ const QUICK_PATTERNS: Record<string, Array<{ pattern: RegExp; className: string 
 }
 
 // TypeScript uses JavaScript patterns
-QUICK_PATTERNS.typescript = QUICK_PATTERNS.javascript
-QUICK_PATTERNS.tsx = QUICK_PATTERNS.javascript
-QUICK_PATTERNS.jsx = QUICK_PATTERNS.javascript
-QUICK_PATTERNS.sh = QUICK_PATTERNS.bash
-QUICK_PATTERNS.shell = QUICK_PATTERNS.bash
-QUICK_PATTERNS.zsh = QUICK_PATTERNS.bash
+QUICK_PATTERNS['typescript'] = QUICK_PATTERNS['javascript']!
+QUICK_PATTERNS['tsx'] = QUICK_PATTERNS['javascript']!
+QUICK_PATTERNS['jsx'] = QUICK_PATTERNS['javascript']!
+QUICK_PATTERNS['sh'] = QUICK_PATTERNS['bash']!
+QUICK_PATTERNS['shell'] = QUICK_PATTERNS['bash']!
+QUICK_PATTERNS['zsh'] = QUICK_PATTERNS['bash']!
 
 /**
  * Apply quick regex-based highlighting to code.

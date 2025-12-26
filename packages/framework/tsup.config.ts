@@ -15,7 +15,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ['vite', 'effection', 'zod', 'marked', 'shiki', 'katex', 'mermaid', 'react', 'react-dom'],
+  external: ['vite', 'effection', 'zod'],
   treeshake: true,
   skipNodeModulesBundle: true,
   // After bundling, emit unbundled .d.ts with maps for go-to-source

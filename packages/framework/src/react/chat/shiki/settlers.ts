@@ -94,8 +94,8 @@ export function codeFence(): MetadataSettler {
           if (inFence) {
             // Check if this looks like a fence close (``` with optional whitespace)
             const trimmed = content.trim()
-            const isClosingFence = FENCE_END_REGEX.test(trimmed) && 
-              trimmed.startsWith(fenceDelimiter[0]) && 
+            const isClosingFence = FENCE_END_REGEX.test(trimmed) &&
+              fenceDelimiter.length > 0 && trimmed.startsWith(fenceDelimiter[0]!) &&
               trimmed.length >= fenceDelimiter.length
             
             if (isClosingFence) {
@@ -153,7 +153,7 @@ export function codeFence(): MetadataSettler {
         if (startMatch) {
           // Entering a fence
           inFence = true
-          fenceDelimiter = startMatch[1]
+          fenceDelimiter = startMatch[1]!
           language = startMatch[2] || ''
           accumulatedCode = ''
 
@@ -178,7 +178,7 @@ export function codeFence(): MetadataSettler {
       } else {
         // We're inside a fence - check for fence end
         const endMatch = lineContent.match(FENCE_END_REGEX)
-        const isClosingFence = endMatch && endMatch[1].startsWith(fenceDelimiter[0]) && endMatch[1].length >= fenceDelimiter.length
+        const isClosingFence = endMatch && endMatch[1] && fenceDelimiter.length > 0 && endMatch[1].startsWith(fenceDelimiter[0]!) && endMatch[1].length >= fenceDelimiter.length
 
         if (isClosingFence) {
           // Closing the fence - include accumulated code for full highlighting

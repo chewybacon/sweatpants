@@ -220,7 +220,7 @@ function* runTransformChain(
   let current: Channel<ChatPatch, void> = input
 
   for (let i = 0; i < transforms.length; i++) {
-    const transform = transforms[i]
+    const transform = transforms[i]!
     const isLast = i === transforms.length - 1
     const next = isLast ? output : createChannel<ChatPatch, void>()
 

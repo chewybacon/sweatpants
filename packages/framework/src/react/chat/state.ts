@@ -192,7 +192,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       // Create message with step chain
       const messageWithSteps: ChatState['messages'][0] = {
         ...patch.message,
-        steps: consolidatedSteps.length > 0 ? consolidatedSteps : undefined,
+        ...(consolidatedSteps.length > 0 && { steps: consolidatedSteps }),
       }
 
       // Get rendered output from patch (if provided) or from buffer (accumulated during streaming)
@@ -229,7 +229,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         // Create message with step chain
         const messageWithSteps: ChatState['messages'][0] = {
           ...patch.message,
-          steps: consolidatedSteps.length > 0 ? consolidatedSteps : undefined,
+          ...(consolidatedSteps.length > 0 && { steps: consolidatedSteps }),
         }
 
         // Use the rendered HTML from the patch (settled content only)
@@ -314,7 +314,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             ...state.pendingClientTools[patch.id],
             state: 'executing',
           },
-        },
+        } as any,
       }
 
     case 'client_tool_complete': {
@@ -329,7 +329,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'complete',
             result: patch.result,
           },
-        },
+        } as any,
       }
     }
 
@@ -343,7 +343,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'error',
             error: patch.error,
           },
-        },
+        } as any,
       }
     }
 
@@ -357,7 +357,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'denied',
             denialReason: patch.reason,
           },
-        },
+        } as any,
       }
     }
 
@@ -370,7 +370,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             ...state.pendingClientTools[patch.id],
             progressMessage: patch.message,
           },
-        },
+        } as any,
       }
     }
 
@@ -384,7 +384,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'awaiting_approval',
             permissionType: patch.permissionType,
           },
-        },
+        } as any,
       }
     }
 
@@ -457,7 +457,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
               stepId: step.id,
               callId,
               kind: step.kind,
-              type: step.type,
+              ...(step.type !== undefined && { type: step.type }),
               payload: step.payload,
               element: step.element,
               component: step.component, // Include component for factory pattern
@@ -498,7 +498,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             status: patch.error ? 'error' : 'complete',
             completedAt: Date.now(),
             result: patch.result,
-            error: patch.error,
+            ...(patch.error !== undefined && { error: patch.error }),
           },
         },
         pendingSteps: newPendingSteps,

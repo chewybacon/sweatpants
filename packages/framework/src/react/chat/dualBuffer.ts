@@ -206,7 +206,7 @@ export function dualBufferTransform(
         chunk: content,
         accumulated: prev,
         next,
-        meta,
+        ...(meta !== undefined && { meta }),
       }
 
       // Track if processor emitted anything
@@ -222,7 +222,7 @@ export function dualBufferTransform(
               content,
               prev,
               next,
-              meta,
+              ...(meta !== undefined && { meta }),
               ...processed,  // spread processor enrichments (html, ast, pass, etc.)
             }
             log(`emit: pass=${processed.pass || 'none'}, hasHtml=${!!processed.html}`)
@@ -249,7 +249,7 @@ export function dualBufferTransform(
           content,
           prev,
           next,
-          meta,
+          ...(meta !== undefined && { meta }),
         })
       }
     }

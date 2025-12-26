@@ -80,8 +80,12 @@
   "dependencies": {
     "clsx": "^2.1.1",
     "fast-glob": "^3.3.2",
-    "react": "catalog:",
-    "tailwind-merge": "^2.5.2"
+    "react": "^18.0.0",
+    "tailwind-merge": "^2.5.2",
+    "marked": "^17.0.1",
+    "shiki": "^3.20.0",
+    "katex": "^0.16.27",
+    "mermaid": "^11.12.2"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

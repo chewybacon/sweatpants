@@ -21,8 +21,8 @@ import { createTestStreamer } from '../testing'
 import type { ChatCommand, ChatPatch } from '../types'
 
 // Import persona utilities for testing
-import { getPersonaManifest, resolvePersona } from '../../../../lib/chat/personas'
-import type { PersonaName } from '../../../../lib/chat/personas'
+import { getPersonaManifest, resolvePersona } from '../../../lib/chat/personas'
+import type { PersonaName } from '../../../lib/chat/personas'
 
 describe('security', () => {
   describe('system prompt leakage prevention', () => {
