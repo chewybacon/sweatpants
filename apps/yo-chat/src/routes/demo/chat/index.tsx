@@ -58,34 +58,34 @@ function EffectionChatDemo() {
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
-           {state.messages.length === 0 && !state.isStreaming && (
-             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
-               <div className="text-4xl opacity-20">~</div>
-               <p>Send a message to start chatting</p>
-               <div className="flex gap-2 text-xs flex-wrap justify-center">
-                 <button
-                   onClick={() => setInput('Tell me about quantum computing')}
-                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
-                 >
-                   "quantum computing"
-                 </button>
-                 <button
-                   onClick={() => setInput('Write a haiku about code')}
-                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
-                 >
-                   "haiku about code"
-                 </button>
-                 <button
-                   onClick={() => setInput('Explain how React hooks work')}
-                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
-                 >
-                   "React hooks"
-                 </button>
-               </div>
-             </div>
-           )}
+          {state.messages.length === 0 && !state.isStreaming && (
+            <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
+              <div className="text-4xl opacity-20">~</div>
+              <p>Send a message to start chatting</p>
+              <div className="flex gap-2 text-xs flex-wrap justify-center">
+                <button
+                  onClick={() => setInput('Tell me about quantum computing')}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
+                >
+                  "quantum computing"
+                </button>
+                <button
+                  onClick={() => setInput('Write a haiku about code')}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
+                >
+                  "haiku about code"
+                </button>
+                <button
+                  onClick={() => setInput('Explain how React hooks work')}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
+                >
+                  "React hooks"
+                </button>
+              </div>
+            </div>
+          )}
 
-           {state.messages.map((msg) => (
+          {state.messages.map((msg) => (
             <div
               key={msg.id}
               className={`mb-8 ${msg.role === 'user' ? 'text-right' : ''}`}
@@ -100,19 +100,25 @@ function EffectionChatDemo() {
                 >
                   {msg.role === 'user' ? 'You' : 'Assistant'}
                 </div>
-                 <div
-                   className={`p-4 rounded-lg ${msg.role === 'user'
-                       ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
-                       : 'bg-slate-800/50 text-slate-200'
-                     }`}
-                 >
-                   <div
-                     className="leading-relaxed prose prose-invert max-w-none"
-                     dangerouslySetInnerHTML={{
-                       __html: state.rendered[msg.id] || msg.content.replace(/\n/g, '<br>')
-                     }}
-                   />
-                 </div>
+                <div
+                  className={`p-4 rounded-lg ${msg.role === 'user'
+                    ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
+                    : 'bg-slate-800/50 text-slate-200'
+                    }`}
+                >
+                  {msg.role === 'user' ?
+                    (
+                      <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+                        {msg.content}
+                      </div>
+                    )
+                    :
+                    (<div
+                      className="prose prose-invert prose-sm max-w-none leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: state.rendered[msg.id]?.output! }}
+                    />)
+                  }
+                </div>
               </div>
             </div>
           ))}
@@ -123,45 +129,40 @@ function EffectionChatDemo() {
               <div className="text-xs mb-1 font-bold tracking-wider uppercase text-purple-500">
                 Assistant
               </div>
-               <div className="bg-slate-800/50 p-4 rounded-lg">
-                 <div className="leading-relaxed prose prose-invert max-w-none">
-                   {/* Settled content - stable, could be processed */}
-                   {state.buffer.settledHtml ? (
-                     <span
-                       className="text-emerald-300"
-                       dangerouslySetInnerHTML={{ __html: state.buffer.settledHtml }}
-                     />
-                   ) : state.buffer.settled ? (
-                     <span className="text-emerald-300">
-                       {state.buffer.settled}
-                     </span>
-                   ) : null}
-                   {/* Pending content - raw text with cursor */}
-                   {state.buffer.pending && (
-                     <span className="text-slate-400">
-                       {state.buffer.pending}
-                     </span>
-                   )}
-                   {/* Cursor */}
-                   <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-                   {/* Fallback if no buffer content yet */}
-                   {!state.buffer.settled && !state.buffer.pending && (
-                     <span className="text-slate-500 flex items-center gap-2">
-                       <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
-                       Thinking...
-                     </span>
-                   )}
-                 </div>
-               </div>
+              <div className="bg-slate-800/50 p-4 rounded-lg">
+                <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+                  {/* Settled content - stable, could be processed */}
+                  {state.buffer.settledHtml && (
+                    <span
+                      dangerouslySetInnerHTML={{ __html: state.buffer.settledHtml }}
+                    />
+                  )}
+                  {/* Pending content - raw text with cursor */}
+                  {/* {state.buffer.pending && ( */}
+                  {/*   <span className="text-slate-400"> */}
+                  {/*     {state.buffer.pending} */}
+                  {/*   </span> */}
+                  {/* )} */}
+                  {/* Cursor */}
+                  <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
+                  {/* Fallback if no buffer content yet */}
+                  {!state.buffer.settled && !state.buffer.pending && (
+                    <span className="text-slate-500 flex items-center gap-2">
+                      <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
+                      Thinking...
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
-           {/* Error display */}
-           {state.error && (
-             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-               <strong>Error:</strong> {state.error}
-             </div>
-           )}
+          {/* Error display */}
+          {state.error && (
+            <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
+              <strong>Error:</strong> {state.error}
+            </div>
+          )}
 
           <div ref={messagesEndRef} />
         </div>
@@ -203,25 +204,25 @@ function EffectionChatDemo() {
         </form>
 
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
-           <button
-             onClick={reset}
-             disabled={state.isStreaming || state.messages.length === 0}
-             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
-           >
-             Clear History
-           </button>
-           <div className="flex items-center gap-4">
-             <span>
-               <span className="text-emerald-600">settled</span>
-               {' vs '}
-               <span className="text-slate-500">pending</span>
-               {' content'}
-             </span>
-             <span className="text-cyan-400">
-               {state.messages.length} messages
-             </span>
-           </div>
-         </div>
+          <button
+            onClick={reset}
+            disabled={state.isStreaming || state.messages.length === 0}
+            className="hover:text-slate-400 disabled:opacity-50 transition-colors"
+          >
+            Clear History
+          </button>
+          <div className="flex items-center gap-4">
+            <span>
+              <span className="text-emerald-600">settled</span>
+              {' vs '}
+              <span className="text-slate-500">pending</span>
+              {' content'}
+            </span>
+            <span className="text-cyan-400">
+              {state.messages.length} messages
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )

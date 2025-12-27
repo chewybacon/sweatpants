@@ -6,8 +6,8 @@ export * from './ndjson'
 export * from './stream'
 export * from './sse'
 
-// Providers - getChatProvider exported from main chat.ts to avoid conflicts
-export { getChatProvider } from './providers'
+// Providers - exported from main chat.ts to avoid conflicts
+export { getChatProvider, ollamaProvider, openaiProvider } from './providers'
 
 export * from './personas'
 

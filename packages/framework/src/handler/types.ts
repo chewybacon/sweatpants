@@ -267,6 +267,8 @@ export type StreamEvent =
 // HANDLER CONFIG
 // =============================================================================
 
+import type { ProviderRegistry } from '../lib/chat/providers/contexts'
+
 /**
  * Configuration for createChatHandler.
  */
@@ -280,6 +282,12 @@ export interface ChatHandlerConfig {
    * Chat provider instance or getter function.
    */
   provider: ChatProvider | (() => ChatProvider)
+
+  /**
+   * Provider registry for dynamic provider selection.
+   * Optional - if not provided, will be created internally.
+   */
+  providerRegistry?: ProviderRegistry
 
   /**
    * Optional persona resolver.
@@ -314,4 +322,16 @@ export interface ChatRequestBody {
   personaConfig?: Record<string, unknown>
   enableOptionalTools?: string[]
   effort?: 'auto' | 'low' | 'medium' | 'high'
+
+  /**
+   * Override the chat provider for this request.
+   * Defaults to environment configuration.
+   */
+  provider?: 'ollama' | 'openai'
+
+  /**
+   * Override the model for this request.
+   * Defaults to environment configuration.
+   */
+  model?: string
 }

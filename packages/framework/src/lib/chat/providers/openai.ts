@@ -1,10 +1,9 @@
 import type { Operation, Stream, Subscription } from 'effection'
 import { resource, call, useAbortSignal } from 'effection'
 import { parseSSE } from '../sse'
-// (apiKey is now resolved via config helper)
 import { resolveChatStreamConfig } from './config'
 import type {
-  OllamaMessage,
+  Message,
   ChatEvent,
   ChatResult,
   TokenUsage,
@@ -12,7 +11,9 @@ import type {
 } from '../types'
 import type { ChatProvider, ChatStreamOptions } from './types'
 
-type OpenAIFunctionTool = {
+
+
+interface OpenAIFunctionTool {
   type: 'function'
   name: string
   description: string
@@ -81,7 +82,7 @@ interface PendingFunctionCall {
  * - function_call items for tool invocations
  * - function_call_output items for tool results
  */
-function toOpenAIInput(messages: OllamaMessage[]): OpenAIInputItem[] {
+function toOpenAIInput(messages: Message[]): OpenAIInputItem[] {
   const items: OpenAIInputItem[] = []
 
   for (const m of messages) {
@@ -120,6 +121,8 @@ function toOpenAIInput(messages: OllamaMessage[]): OpenAIInputItem[] {
   return items
 }
 
+
+
 /**
  * OpenAI Responses API provider implementation
  */
@@ -132,16 +135,16 @@ export const openaiProvider: ChatProvider = {
   },
 
   stream(
-    messages: OllamaMessage[],
+    messages: Message[],
     options?: ChatStreamOptions
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-        const values = yield* resolveChatStreamConfig(options, {
-          baseUri: process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1',
-          model: process.env['OPENAI_MODEL'] ?? 'gpt-4o-mini',
-          envApiKeyName: 'OPENAI_API_KEY',
-        })
+      const values = yield* resolveChatStreamConfig(options, {
+        baseUri: process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1',
+        model: process.env['OPENAI_MODEL'] ?? 'gpt-4o-mini',
+        envApiKeyName: 'OPENAI_API_KEY',
+      })
 
       // If no API key is provided via context, try environment (common for server-side)
       const resolvedApiKey = values.apiKey ?? process.env['OPENAI_API_KEY']
@@ -157,9 +160,9 @@ export const openaiProvider: ChatProvider = {
       }
 
       // Add tools to request
-      const toolSchemas = values.isomorphicToolSchemas ?? []
-
-      const allTools: OpenAIFunctionTool[] = toolSchemas.map((schema) => ({
+      const allTools: OpenAIFunctionTool[] = (
+        values.isomorphicToolSchemas ?? []
+      ).map((schema) => ({
         type: 'function' as const,
         name: schema.name,
         description: schema.description,
@@ -196,7 +199,29 @@ export const openaiProvider: ChatProvider = {
         throw new Error('No response body')
       }
 
-      const sseStream = parseSSE(response.body)
+      // In Node.js, response.body might be a Node.js Readable, not a Web ReadableStream
+      let readableStream: ReadableStream<Uint8Array>
+      if (response.body instanceof ReadableStream) {
+        readableStream = response.body
+      } else {
+        // Convert Node.js Readable to Web ReadableStream
+        const nodeStream = response.body as any
+        readableStream = new ReadableStream({
+          start(controller) {
+            nodeStream.on('data', (chunk: Buffer) => {
+              controller.enqueue(new Uint8Array(chunk))
+            })
+            nodeStream.on('end', () => {
+              controller.close()
+            })
+            nodeStream.on('error', (err: Error) => {
+              controller.error(err)
+            })
+          }
+        })
+      }
+
+      const sseStream = parseSSE(readableStream)
       const subscription: Subscription<
         { event?: string; data: string },
         void
@@ -228,18 +253,18 @@ export const openaiProvider: ChatProvider = {
           // Read next SSE event
           const next = yield* subscription.next()
 
-            if (next.done) {
-              // Stream finished, return final result
-              return {
-                done: true,
-                value: {
-                  text: textBuffer,
-                  ...(thinkingBuffer ? { thinking: thinkingBuffer } : {}),
-                  ...(toolCalls.length > 0 ? { toolCalls } : {}),
-                  usage,
-                },
-              }
+          if (next.done) {
+            // Stream finished, return final result
+            return {
+              done: true,
+              value: {
+                text: textBuffer,
+                ...(thinkingBuffer ? { thinking: thinkingBuffer } : {}),
+                ...(toolCalls.length > 0 ? { toolCalls } : {}),
+                usage,
+              },
             }
+          }
 
           const sseEvent = next.value
 
@@ -255,28 +280,30 @@ export const openaiProvider: ChatProvider = {
           // Handle different event types
           switch (event.type) {
             // Text output deltas
-              case 'response.output_text.delta': {
-                const delta = event['delta'] as string
-              if (delta) {
-                textBuffer += delta
-                pendingEvents.push({ type: 'text', content: delta })
+            case 'response.output_text.delta': {
+              const delta = event['delta']
+              const textDelta = typeof delta === 'string' ? delta : (delta as any)?.text || ''
+              if (textDelta) {
+                textBuffer += textDelta
+                pendingEvents.push({ type: 'text', content: textDelta })
               }
               break
             }
 
             // Reasoning summary text (for "thinking" UI)
-              case 'response.reasoning_summary_text.delta': {
-                const delta = event['delta'] as string
-              if (delta) {
-                thinkingBuffer += delta
-                pendingEvents.push({ type: 'thinking', content: delta })
+            case 'response.reasoning_summary_text.delta': {
+              const delta = event['delta']
+              const textDelta = typeof delta === 'string' ? delta : (delta as any)?.text || ''
+              if (textDelta) {
+                thinkingBuffer += textDelta
+                pendingEvents.push({ type: 'thinking', content: textDelta })
               }
               break
             }
 
             // Function call output item added - start tracking
-              case 'response.output_item.added': {
-                const item = event['item'] as {
+            case 'response.output_item.added': {
+              const item = event['item'] as {
                 type: string
                 id: string
                 call_id: string
@@ -294,19 +321,20 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Function call arguments delta
-              case 'response.function_call_arguments.delta': {
-                const itemId = event['item_id'] as string
-                const delta = event['delta'] as string
+            case 'response.function_call_arguments.delta': {
+              const itemId = event['item_id'] as string
+              const delta = event['delta']
+              const textDelta = typeof delta === 'string' ? delta : (delta as any)?.text || ''
               const pending = pendingFunctionCalls.get(itemId)
-              if (pending && delta) {
-                pending.arguments += delta
+              if (pending && textDelta) {
+                pending.arguments += textDelta
               }
               break
             }
 
             // Function call arguments done - finalize and emit
-              case 'response.function_call_arguments.done': {
-                const itemId = event['item_id'] as string
+            case 'response.function_call_arguments.done': {
+              const itemId = event['item_id'] as string
               const pending = pendingFunctionCalls.get(itemId)
               if (pending) {
                 // Parse the arguments JSON
@@ -337,8 +365,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Response completed - extract usage
-              case 'response.completed': {
-                const respUsage = (event['response'] as any)?.usage as {
+            case 'response.completed': {
+              const respUsage = event['response']?.usage as {
                 input_tokens?: number
                 output_tokens?: number
                 total_tokens?: number
@@ -354,8 +382,8 @@ export const openaiProvider: ChatProvider = {
             }
 
             // Error event
-              case 'error': {
-                const message = event['message'] as string
+            case 'error': {
+              const message = event['message'] as string
               throw new Error(`OpenAI stream error: ${message}`)
             }
 

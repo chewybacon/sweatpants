@@ -9,6 +9,7 @@ import type { Operation } from 'effection'
 import { HandoffReadyError } from '../lib/chat/isomorphic-tools/types'
 import { validateToolParams } from '../lib/chat/utils'
 import { toolRuntime, withToolLoggingAndErrors } from '../lib/chat/tool-runtime-api'
+import { ChatStreamConfigContext, type ProviderRegistry } from '../lib/chat/providers/contexts'
 import type {
   ChatHandlerConfig,
   ChatRequestBody,
@@ -33,36 +34,11 @@ interface ToolCall {
   }
 }
 
-// =============================================================================
-// TOOL REGISTRY
-// =============================================================================
-
 interface ToolRegistry {
   get(name: string): IsomorphicTool | undefined
   has(name: string): boolean
   names(): string[]
 }
-
-function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
-  const map = new Map<string, IsomorphicTool>()
-  for (const tool of tools) {
-    map.set(tool.name, tool)
-  }
-
-  return {
-    get: (name) => map.get(name),
-    has: (name) => map.has(name),
-    names: () => Array.from(map.keys()),
-  }
-}
-
-// =============================================================================
-// TOOL EXECUTOR
-// =============================================================================
-
-// Use centralized error type from isomorphic-tools to avoid duplication
-
-
 
 function createPhase1Context(baseContext: ServerToolContext): ServerAuthorityContext {
   return {
@@ -84,6 +60,34 @@ function createPhase2Context(
     *handoff(config) {
       return yield* config.after(cachedHandoff as never, clientOutput)
     },
+  }
+}
+
+function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
+  const map = new Map<string, IsomorphicTool>()
+  for (const tool of tools) {
+    map.set(tool.name, tool)
+  }
+  return {
+    get(name: string): IsomorphicTool | undefined {
+      return map.get(name)
+    },
+    has(name: string): boolean {
+      return map.has(name)
+    },
+    names(): string[] {
+      return Array.from(map.keys())
+    },
+  }
+}
+
+// Create the provider registry from available providers
+function createProviderRegistry(): ProviderRegistry {
+  // Import here to avoid circular dependencies
+  const { ollamaProvider, openaiProvider } = require('../lib/chat/providers')
+  return {
+    ollama: ollamaProvider,
+    openai: openaiProvider,
   }
 }
 
@@ -272,9 +276,13 @@ export function createChatHandler(config: ChatHandlerConfig) {
   const {
     tools,
     provider: providerOrGetter,
+    providerRegistry,
     resolvePersona,
     maxToolIterations = 10,
   } = config
+
+  // Create or use provided provider registry
+  const finalProviderRegistry = providerRegistry || createProviderRegistry()
 
   const registry = createToolRegistry(tools)
 
@@ -544,12 +552,28 @@ export function createChatHandler(config: ChatHandlerConfig) {
             while (iterations < maxToolIterations) {
               iterations++
 
-              const provider = getProvider()
-              const providerStream = provider.stream(conversationMessages, combinedTools)
+              // Get the appropriate provider based on request configuration
+              let provider = getProvider()
+              if (body.provider && finalProviderRegistry[body.provider]) {
+                provider = finalProviderRegistry[body.provider]
+              }
+
+              // Set up per-request model override if specified
+              if (body.model) {
+                yield* ChatStreamConfigContext.set({
+                  baseUri: 'placeholder', // Will be overridden by resolveChatStreamConfig
+                  model: body.model!,
+                  apiKey: null,
+                  isomorphicToolSchemas: [],
+                })
+              }
+
+              // Get the provider stream
+              const providerResource = provider.stream(conversationMessages, combinedTools)
 
               // Consume the effection stream
               const result = yield* consumeStream<ChatProviderEvent, ChatProviderResult>(
-                providerStream,
+                providerResource,
                 function* (event: ChatProviderEvent) {
                   if (event.type === 'text' || event.type === 'thinking') {
                     emit(event)

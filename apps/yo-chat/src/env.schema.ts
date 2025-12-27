@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 export const appEnv = createEnv({
   server: {
-    // Chat provider selection
+    // Chat provider selection (defaults to 'ollama' for local development)
     CHAT_PROVIDER: z.enum(['ollama', 'openai']).default('ollama'),
 
     // Ollama configuration
@@ -13,7 +13,7 @@ export const appEnv = createEnv({
 
     // OpenAI configuration (required when CHAT_PROVIDER=openai)
     OPENAI_API_KEY: z.string().optional(),
-    OPENAI_MODEL: z.string().default('gpt-5.2'),
+    OPENAI_MODEL: z.string().default('gpt-5'),
     OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
 
     // Max tool call iterations

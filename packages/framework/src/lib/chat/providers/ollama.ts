@@ -32,10 +32,11 @@ export const ollamaProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-        const values = yield* resolveChatStreamConfig(options, {
-          baseUri: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
-          model: process.env['OLLAMA_MODEL'] ?? 'llama3',
-        })
+      const values = yield* resolveChatStreamConfig(options, {
+        baseUri: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
+        model: process.env['OLLAMA_MODEL'] ?? 'qwen3:30b',
+        envApiKeyName: 'OLLAMA_API_KEY',
+      })
 
       // Build tools array from schemas
       const toolSchemas = values.isomorphicToolSchemas ?? []
@@ -70,13 +71,37 @@ export const ollamaProvider: ChatProvider = {
       )
 
       if (!response.ok) {
-        throw new Error(`Ollama API error: ${response.status}`)
+        const errorText = yield* call(() => response.text())
+        throw new Error(`Ollama API error: ${response.status} - ${errorText}`)
       }
+
       if (!response.body) {
         throw new Error('No response body')
       }
 
-      const chunkStream = parseNDJSON<OllamaChatChunk>(response.body)
+      // In Node.js, response.body might be a Node.js Readable, not a Web ReadableStream
+      let readableStream: ReadableStream<Uint8Array>
+      if (response.body instanceof ReadableStream) {
+        readableStream = response.body
+      } else {
+        // Convert Node.js Readable to Web ReadableStream
+        const nodeStream = response.body as any
+        readableStream = new ReadableStream({
+          start(controller) {
+            nodeStream.on('data', (chunk: Buffer) => {
+              controller.enqueue(new Uint8Array(chunk))
+            })
+            nodeStream.on('end', () => {
+              controller.close()
+            })
+            nodeStream.on('error', (err: Error) => {
+              controller.error(err)
+            })
+          }
+        })
+      }
+
+      const chunkStream = parseNDJSON<OllamaChatChunk>(readableStream)
       const subscription: Subscription<OllamaChatChunk, void> =
         yield* chunkStream
 

@@ -487,10 +487,12 @@ export function* runChatSession(
             yield* streamPatches.close()
 
             // Create assistant message
+            const content = result.type === 'complete' ? String((result as any).text || '') : ''
+
             const assistantMessage: Message = {
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: result.type === 'complete' ? result.text : '',
+              content: content,
             }
 
             // Add to history
