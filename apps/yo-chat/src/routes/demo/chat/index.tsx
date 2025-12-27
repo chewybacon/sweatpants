@@ -106,18 +106,22 @@ function EffectionChatDemo() {
                     : 'bg-slate-800/50 text-slate-200'
                     }`}
                 >
-                  {msg.role === 'user' ?
-                    (
-                      <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-                        {msg.content}
-                      </div>
-                    )
-                    :
-                    (<div
-                      className="prose prose-invert prose-sm max-w-none leading-relaxed"
-                      dangerouslySetInnerHTML={{ __html: state.rendered[msg.id]?.output! }}
-                    />)
-                  }
+                  {msg.role === 'user' ? (
+                    <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+                      {msg.content}
+                    </div>
+                  ) : (
+                    <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+                      {(() => {
+                        const rendered = msg.id ? state.rendered[msg.id] : null
+                        return rendered?.output ? (
+                          <div dangerouslySetInnerHTML={{ __html: rendered.output }} />
+                        ) : (
+                          msg.content
+                        )
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
