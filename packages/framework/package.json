@@ -5,6 +5,10 @@
   "type": "module",
   "exports": {
     "./vite": {
+      "development": {
+        "import": "./src/vite/index.ts",
+        "types": "./src/vite/index.ts"
+      },
       "import": {
         "types": "./dist/vite.d.ts",
         "default": "./dist/vite.js"
@@ -15,6 +19,10 @@
       }
     },
     "./handler": {
+      "development": {
+        "import": "./src/handler/index.ts",
+        "types": "./src/handler/index.ts"
+      },
       "import": {
         "types": "./dist/handler.d.ts",
         "default": "./dist/handler.js"
@@ -25,6 +33,10 @@
       }
     },
     "./chat": {
+      "development": {
+        "import": "./src/lib/chat/index.ts",
+        "types": "./src/lib/chat/index.ts"
+      },
       "import": {
         "types": "./dist/chat.d.ts",
         "default": "./dist/chat.js"
@@ -35,6 +47,10 @@
       }
     },
     "./chat/isomorphic-tools": {
+      "development": {
+        "import": "./src/lib/chat/isomorphic-tools/index.ts",
+        "types": "./src/lib/chat/isomorphic-tools/index.ts"
+      },
       "import": {
         "types": "./dist/chat/isomorphic-tools.d.ts",
         "default": "./dist/chat/isomorphic-tools.js"
@@ -45,6 +61,10 @@
       }
     },
     "./react/chat": {
+      "development": {
+        "import": "./src/react/chat/index.ts",
+        "types": "./src/react/chat/index.ts"
+      },
       "import": {
         "types": "./dist/react/chat.d.ts",
         "default": "./dist/react/chat.js"

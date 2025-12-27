@@ -46,14 +46,7 @@ const config = defineConfig({
   ssr: {
     noExternal: isProd ? [] : workspacePackages,
   },
-  
-  server: {
-    watch: {
-      // Watch the packages directory for changes
-      ignored: isProd ? undefined : ['!**/packages/**'],
-    },
-  },
-  
+
   plugins: [
     devtools(),
     viteTsConfigPaths({
