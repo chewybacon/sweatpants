@@ -11,7 +11,7 @@ import type {
   ToolCall,
 } from '../types'
 import type { ChatProvider, ChatStreamOptions } from './types'
-import { resolveChatStreamConfig } from './config'
+import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config'
 
 type OllamaTool = NonNullable<OllamaChatRequest['tools']>[number]
 
@@ -32,7 +32,7 @@ export const ollamaProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const values = yield* resolveChatStreamConfig(options, {
+      const values: ResolvedChatStreamConfig = yield* resolveChatStreamConfig(options, {
         baseUri: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
         model: process.env['OLLAMA_MODEL'] ?? 'qwen3:30b',
         envApiKeyName: 'OLLAMA_API_KEY',

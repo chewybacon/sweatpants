@@ -41,11 +41,11 @@ export { createChatHandler } from './create-handler'
 export type {
   ChatHandlerConfig,
   ChatRequestBody,
+  InitializerContext,
   ChatProvider,
   ChatMessage,
   ChatProviderEvent,
   ChatProviderResult,
-  ChatStreamOptions,
   IsomorphicTool,
   ToolSchema,
   StreamEvent,

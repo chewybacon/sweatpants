@@ -1,7 +1,7 @@
 import type { Operation, Stream, Subscription } from 'effection'
 import { resource, call, useAbortSignal } from 'effection'
 import { parseSSE } from '../sse'
-import { resolveChatStreamConfig } from './config'
+import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config'
 import type {
   Message,
   ChatEvent,
@@ -140,7 +140,7 @@ export const openaiProvider: ChatProvider = {
   ): Stream<ChatEvent, ChatResult> {
     return resource(function*(provide) {
       const signal = yield* useAbortSignal()
-      const values = yield* resolveChatStreamConfig(options, {
+      const values: ResolvedChatStreamConfig = yield* resolveChatStreamConfig(options, {
         baseUri: process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1',
         model: process.env['OPENAI_MODEL'] ?? 'gpt-4o-mini',
         envApiKeyName: 'OPENAI_API_KEY',

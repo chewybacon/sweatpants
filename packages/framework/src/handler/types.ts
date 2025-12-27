@@ -128,10 +128,28 @@ export interface ToolSchema {
 }
 
 /**
- * Options for provider stream.
+ * Context passed to initializer hooks.
  */
-export interface ChatStreamOptions {
-  isomorphicToolSchemas?: ToolSchema[]
+export interface InitializerContext {
+  request: Request
+  body: ChatRequestBody
+}
+
+/**
+ * Configuration for createChatHandler.
+ */
+export interface ChatHandlerConfig {
+  /**
+   * Array of initializer hooks that set up DI contexts.
+   * Hooks receive request context and can perform async/effection operations.
+   */
+  initializerHooks: Array<(ctx: InitializerContext) => Operation<void>>
+
+  /**
+   * Maximum number of tool execution iterations.
+   * @default 10
+   */
+  maxToolIterations?: number
 }
 
 /**
@@ -267,33 +285,25 @@ export type StreamEvent =
 // HANDLER CONFIG
 // =============================================================================
 
-import type { ProviderRegistry } from '../lib/chat/providers/contexts'
+
+
+/**
+ * Context passed to initializer hooks.
+ */
+export interface InitializerContext {
+  request: Request
+  body: ChatRequestBody
+}
 
 /**
  * Configuration for createChatHandler.
  */
 export interface ChatHandlerConfig {
   /**
-   * Array of isomorphic tool definitions.
+   * Array of initializer hooks that set up DI contexts.
+   * Hooks receive request context and can perform async/effection operations.
    */
-  tools: IsomorphicTool[]
-
-  /**
-   * Chat provider instance or getter function.
-   */
-  provider: ChatProvider | (() => ChatProvider)
-
-  /**
-   * Provider registry for dynamic provider selection.
-   * Optional - if not provided, will be created internally.
-   */
-  providerRegistry?: ProviderRegistry
-
-  /**
-   * Optional persona resolver.
-   * If not provided, persona mode is disabled.
-   */
-  resolvePersona?: PersonaResolver
+  initializerHooks: Array<(ctx: InitializerContext) => Operation<void>>
 
   /**
    * Maximum number of tool execution iterations.

@@ -20,9 +20,9 @@ export interface ProviderCapabilities {
  */
 export interface ChatStreamOptions {
   /** Provider base URI (e.g., http://localhost:11434 or https://api.openai.com/v1) */
-  baseUri: string
+  baseUri?: string
   /** Model identifier for the provider */
-  model: string
+  model?: string
   /** Optional API key when required by provider */
   apiKey?: string | null
   /** Tool schemas to expose to the LLM */

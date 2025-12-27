@@ -8,6 +8,7 @@ export * from './sse'
 
 // Providers - exported from main chat.ts to avoid conflicts
 export { getChatProvider, ollamaProvider, openaiProvider } from './providers'
+export * from './providers/contexts'
 
 export * from './personas'
 

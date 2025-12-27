@@ -9,12 +9,11 @@ import type { Operation } from 'effection'
 import { HandoffReadyError } from '../lib/chat/isomorphic-tools/types'
 import { validateToolParams } from '../lib/chat/utils'
 import { toolRuntime, withToolLoggingAndErrors } from '../lib/chat/tool-runtime-api'
-import { ChatStreamConfigContext, type ProviderRegistry } from '../lib/chat/providers/contexts'
+import { ChatStreamConfigContext, ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../lib/chat/providers/contexts'
 import type {
   ChatHandlerConfig,
   ChatRequestBody,
   ChatMessage,
-  ChatProvider,
   IsomorphicTool,
   StreamEvent,
   ToolSchema,
@@ -22,6 +21,7 @@ import type {
   ServerAuthorityContext,
   ChatProviderEvent,
   ChatProviderResult,
+  InitializerContext,
 } from './types'
 
 // Helper type for tool calls
@@ -81,15 +81,7 @@ function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
   }
 }
 
-// Create the provider registry from available providers
-function createProviderRegistry(): ProviderRegistry {
-  // Import here to avoid circular dependencies
-  const { ollamaProvider, openaiProvider } = require('../lib/chat/providers')
-  return {
-    ollama: ollamaProvider,
-    openai: openaiProvider,
-  }
-}
+
 
 type ServerPartResult =
   | {
@@ -274,36 +266,11 @@ function* consumeStream<T, R>(
  */
 export function createChatHandler(config: ChatHandlerConfig) {
   const {
-    tools,
-    provider: providerOrGetter,
-    providerRegistry,
-    resolvePersona,
+    initializerHooks,
     maxToolIterations = 10,
   } = config
 
-  // Create or use provided provider registry
-  const finalProviderRegistry = providerRegistry || createProviderRegistry()
 
-  const registry = createToolRegistry(tools)
-
-  const getProvider = (): ChatProvider => {
-    return typeof providerOrGetter === 'function' ? providerOrGetter() : providerOrGetter
-  }
-
-  const toToolSchema = (toolName: string): ToolSchema => {
-    const tool = registry.get(toolName)
-    if (!tool) {
-      throw new Error(`Unknown tool: ${toolName}`)
-    }
-
-    return {
-      name: tool.name,
-      description: tool.description,
-      parameters: z.toJSONSchema(tool.parameters) as Record<string, unknown>,
-      isIsomorphic: true,
-      authority: tool.authority ?? 'server',
-    }
-  }
 
   const dedupeSchemas = (schemas: ToolSchema[]): ToolSchema[] => {
     const seen = new Set<string>()
@@ -330,109 +297,10 @@ export function createChatHandler(config: ChatHandlerConfig) {
       isomorphicClientOutputs = [],
     } = body
 
+    const initializerContext: InitializerContext = { request, body }
+
     const encoder = new TextEncoder()
     const clientToolNames = clientIsomorphicTools.map((t) => t.name)
-    const enabledToolNames = new Set<string>()
-
-    // Determine system prompt and enabled tools
-    let systemPrompt: string | undefined
-    let sessionInfo: StreamEvent | undefined
-
-    // Validate: Persona mode vs Manual mode
-    if (body.persona && enabledTools !== undefined) {
-      return new Response(
-        JSON.stringify({ error: 'Cannot specify both "persona" and "enabledTools"' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      )
-    }
-
-    if (body.persona) {
-      // Persona Mode
-      if (!resolvePersona) {
-        return new Response(
-          JSON.stringify({ error: 'Persona mode not supported - no resolver configured' }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        )
-      }
-
-      try {
-        const resolved = resolvePersona(
-          body.persona,
-          body.personaConfig,
-          body.enableOptionalTools,
-          body.effort
-        )
-
-        systemPrompt = resolved.systemPrompt
-
-        for (const toolName of resolved.tools) {
-          if (registry.has(toolName)) {
-            enabledToolNames.add(toolName)
-            continue
-          }
-          if (clientToolNames.includes(toolName)) {
-            continue
-          }
-          throw new Error(`Unknown persona tool: ${toolName}`)
-        }
-
-        sessionInfo = {
-          type: 'session_info',
-          capabilities: {
-            ...resolved.capabilities,
-            tools: Array.from(
-              new Set([
-                ...resolved.capabilities.tools.filter(
-                  (name) => registry.has(name) || clientToolNames.includes(name)
-                ),
-                ...clientToolNames,
-              ])
-            ),
-          },
-          persona: resolved.name,
-        }
-      } catch (error) {
-        return new Response(
-          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
-          { status: 400, headers: { 'Content-Type': 'application/json' } }
-        )
-      }
-    } else {
-      // Manual Mode
-      if (enabledTools === true) {
-        for (const name of registry.names()) {
-          enabledToolNames.add(name)
-        }
-      } else if (Array.isArray(enabledTools) && enabledTools.length > 0) {
-        for (const name of enabledTools) {
-          if (registry.has(name)) {
-            enabledToolNames.add(name)
-          }
-        }
-      }
-
-      if (body.systemPrompt) {
-        systemPrompt = body.systemPrompt
-      }
-
-      sessionInfo = {
-        type: 'session_info',
-        capabilities: {
-          thinking: true,
-          streaming: true,
-          tools: Array.from(
-            new Set([...Array.from(enabledToolNames), ...clientToolNames])
-          ),
-        },
-        persona: null,
-      }
-    }
-
-    // Build final schema list
-    const serverEnabledSchemas = Array.from(enabledToolNames).map(toToolSchema)
-    const toolSchemas = dedupeSchemas([...serverEnabledSchemas, ...clientIsomorphicTools])
-    const toolNames = new Set(toolSchemas.map((t) => t.name))
-    const schemaByName = new Map(toolSchemas.map((s) => [s.name, s] as const))
 
     // Create the streaming response
     const stream = new ReadableStream<Uint8Array>({
@@ -446,12 +314,137 @@ export function createChatHandler(config: ChatHandlerConfig) {
           controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'))
         }
 
-        if (sessionInfo) {
-          emit(sessionInfo)
-        }
-
         try {
           await scope.run(function* (): Operation<void> {
+            // Bootup Phase: Execute initializer hooks sequentially
+            for (const hook of initializerHooks) {
+              yield* hook(initializerContext)
+            }
+
+            // Get dependencies from contexts (with error handling)
+            const provider = yield* ProviderContext.get()
+            if (!provider) {
+              throw new Error('Provider not configured. Ensure a provider initializer hook sets ProviderContext.')
+            }
+
+            const tools = yield* ToolRegistryContext.get()
+            if (!tools) {
+              throw new Error('Tool registry not configured. Ensure a tool registry initializer hook sets ToolRegistryContext.')
+            }
+
+            const resolvePersona = yield* PersonaResolverContext.get()
+            const maxIterations = (yield* MaxIterationsContext.get() ?? maxToolIterations)!
+
+            // Create tool registry from injected tools
+            const registry = createToolRegistry(tools)
+
+            const toToolSchema = (toolName: string): ToolSchema => {
+              const tool = registry.get(toolName)
+              if (!tool) {
+                throw new Error(`Unknown tool: ${toolName}`)
+              }
+
+              return {
+                name: tool.name,
+                description: tool.description,
+                parameters: z.toJSONSchema(tool.parameters) as Record<string, unknown>,
+                isIsomorphic: true,
+                authority: tool.authority ?? 'server',
+              }
+            }
+
+            // Determine system prompt and enabled tools
+            const enabledToolNames = new Set<string>()
+            let systemPrompt: string | undefined
+            let sessionInfo: StreamEvent | undefined
+
+            // Validate: Persona mode vs Manual mode
+            if (body.persona && enabledTools !== undefined) {
+              throw new Error('Cannot specify both "persona" and "enabledTools"')
+            }
+
+            if (body.persona) {
+              // Persona Mode
+              if (!resolvePersona) {
+                throw new Error('Persona mode not supported - no resolver configured')
+              }
+
+              const resolved = resolvePersona(
+                body.persona,
+                body.personaConfig,
+                body.enableOptionalTools,
+                body.effort
+              )
+
+              systemPrompt = resolved.systemPrompt
+
+              for (const toolName of resolved.tools) {
+                if (registry.has(toolName)) {
+                  enabledToolNames.add(toolName)
+                  continue
+                }
+                if (clientToolNames.includes(toolName)) {
+                  continue
+                }
+                throw new Error(`Unknown persona tool: ${toolName}`)
+              }
+
+              sessionInfo = {
+                type: 'session_info',
+                capabilities: {
+                  ...resolved.capabilities,
+                  tools: Array.from(
+                    new Set([
+                      ...resolved.capabilities.tools.filter(
+                        (name) => registry.has(name) || clientToolNames.includes(name)
+                      ),
+                      ...clientToolNames,
+                    ])
+                  ),
+                },
+                persona: resolved.name,
+              }
+            } else {
+              // Manual Mode
+              if (enabledTools === true) {
+                for (const name of registry.names()) {
+                  enabledToolNames.add(name)
+                }
+              } else if (Array.isArray(enabledTools) && enabledTools.length > 0) {
+                for (const name of enabledTools) {
+                  if (registry.has(name)) {
+                    enabledToolNames.add(name)
+                  }
+                }
+              }
+
+              if (body.systemPrompt) {
+                systemPrompt = body.systemPrompt
+              }
+
+              sessionInfo = {
+                type: 'session_info',
+                capabilities: {
+                  thinking: true,
+                  streaming: true,
+                  tools: Array.from(
+                    new Set([...Array.from(enabledToolNames), ...clientToolNames])
+                  ),
+                },
+                persona: null,
+              }
+            }
+
+            // Build final schema list
+            const serverEnabledSchemas = Array.from(enabledToolNames).map(toToolSchema)
+            const toolSchemas = dedupeSchemas([...serverEnabledSchemas, ...clientIsomorphicTools])
+            const toolNames = new Set(toolSchemas.map((t) => t.name))
+            const schemaByName = new Map(toolSchemas.map((s) => [s.name, s] as const))
+
+            if (sessionInfo) {
+              emit(sessionInfo)
+            }
+
             const conversationMessages: ChatMessage[] = [...messages]
 
             // Process client outputs (phase 2)
@@ -545,18 +538,14 @@ export function createChatHandler(config: ChatHandlerConfig) {
               })
             }
 
-            const combinedTools = toolSchemas.length > 0 ? { isomorphicToolSchemas: toolSchemas } : {}
+            const combinedTools = toolSchemas.length > 0 ? { isomorphicToolSchemas: toolSchemas as any } : undefined
 
             let iterations = 0
 
-            while (iterations < maxToolIterations) {
+            while (iterations < maxIterations) {
               iterations++
 
-              // Get the appropriate provider based on request configuration
-              let provider = getProvider()
-              if (body.provider && finalProviderRegistry[body.provider]) {
-                provider = finalProviderRegistry[body.provider]
-              }
+              // Provider is already injected via DI context
 
               // Set up per-request model override if specified
               if (body.model) {

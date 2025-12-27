@@ -15,10 +15,15 @@ export interface ResolveConfigDefaults {
  * 2) context-provided config (ChatStreamConfigContext)
  * 3) environment-derived defaults provided by the caller
  */
+export interface ResolvedChatStreamConfig extends ChatStreamOptions {
+  baseUri: string
+  model: string
+}
+
 export function* resolveChatStreamConfig(
   options: ChatStreamOptions | undefined,
   defaults: ResolveConfigDefaults
-): Operation<ChatStreamOptions> {
+): Operation<ResolvedChatStreamConfig> {
   const ctxConfig = yield* ChatStreamConfigContext.get()
   const ctxApiKey = yield* ChatApiKeyContext.get()
 
