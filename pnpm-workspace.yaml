@@ -5,6 +5,7 @@ packages:
 
 catalog:
   '@effectionx/context-api': ^0.2.1
+  '@effectionx/raf': ^0.1.1
   '@t3-oss/env-core': ^0.13.8
   '@tailwindcss/vite': ^4.0.6
   '@tanstack/devtools-vite': ^0.3.11
