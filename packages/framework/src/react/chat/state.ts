@@ -298,6 +298,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         ...state,
         buffer: {
           ...state.buffer,
+          // Also update settledHtml so it's available when streaming ends
+          ...(patch.html && { settledHtml: patch.html }),
           renderable: {
             prev: patch.prev,
             next: patch.next,
