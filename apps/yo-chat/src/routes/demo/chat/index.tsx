@@ -1,24 +1,23 @@
 /**
- * /demo/chat - Plugin-Based Chat Demo
+ * /demo/chat - Pipeline-Based Chat Demo
  *
- * Demonstrates the new plugin-based rendering engine:
- * - Plugins are resolved in dependency order (DAG)
- * - Settler is negotiated (most specific wins)
- * - Assets are preloaded eagerly on mount
+ * Demonstrates the new Frame-based pipeline rendering engine:
+ * - Immutable Frame snapshots for clean rendering
+ * - Progressive enhancement (quick → full)
+ * - No content duplication bugs
  *
- * Uses the high-level useChat hook with plugin configuration.
+ * Uses the high-level useChat hook with pipeline configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat } from '@tanstack/framework/react/chat'
-import { shikiPlugin, mermaidPlugin } from '@tanstack/framework/react/chat/plugins'
 
 export const Route = createFileRoute('/demo/chat/')({
-  component: PluginChatDemo,
+  component: PipelineChatDemo,
 })
 
-function PluginChatDemo() {
-  // High-level useChat hook with plugin-based configuration
+function PipelineChatDemo() {
+  // High-level useChat hook with pipeline-based configuration
   const { 
     messages, 
     streamingMessage,
@@ -29,10 +28,9 @@ function PluginChatDemo() {
     reset,
     error,
   } = useChat({
-    // Plugins handle markdown, syntax highlighting, and diagrams
-    // - shikiPlugin: progressive syntax highlighting (codeFence settler)
-    // - mermaidPlugin: mermaid diagram rendering (codeFence settler)
-    plugins: [shikiPlugin, mermaidPlugin]
+    // Use the new Frame-based pipeline system
+    // 'full' = markdown + shiki + mermaid
+    pipeline: 'full'
   })
   
   const [input, setInput] = useState('')
@@ -57,18 +55,18 @@ function PluginChatDemo() {
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Plugin-Based Chat
+              Pipeline-Based Chat
             </h1>
             <p className="text-slate-400 text-sm">
-              Using useChat with plugins: shikiPlugin + mermaidPlugin
+              Using useChat with pipeline: 'full' (markdown + shiki + mermaid)
             </p>
           </div>
-          {/* Plugin loading indicator */}
+          {/* Pipeline loading indicator */}
           <div className="text-xs">
             {pluginsReady ? (
-              <span className="text-emerald-500">Plugins ready</span>
+              <span className="text-emerald-500">Pipeline ready</span>
             ) : (
-              <span className="text-amber-500 animate-pulse">Loading plugins...</span>
+              <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
             )}
           </div>
         </div>
@@ -205,8 +203,8 @@ function PluginChatDemo() {
           </button>
           <div className="flex items-center gap-4">
             <span>
-              <span className="text-emerald-600">plugins:</span>
-              {' shiki + mermaid'}
+              <span className="text-emerald-600">pipeline:</span>
+              {' full'}
             </span>
             <span className="text-cyan-400">
               {messages.length} messages

@@ -4,6 +4,9 @@ import {
   Home,
   Menu,
   X,
+  MessageSquare,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import tanstackLogo from '@/assets/tanstack-word-logo-white.svg'
 
@@ -69,6 +72,39 @@ export default function Header() {
             <Home size={20} />
             <span className="font-medium">Home</span>
           </Link>
+
+          {/* Chat Demos Group */}
+          <div className="mt-4">
+            <button
+              onClick={() => toggleGroup('chat')}
+              className="flex items-center justify-between w-full p-3 rounded-lg hover:bg-gray-800 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <MessageSquare size={20} />
+                <span className="font-medium">Chat Demos</span>
+              </div>
+              {groupedExpanded['chat'] ? (
+                <ChevronDown size={16} />
+              ) : (
+                <ChevronRight size={16} />
+              )}
+            </button>
+            {groupedExpanded['chat'] && (
+              <div className="ml-6 mt-1 space-y-1">
+                <Link
+                  to="/demo/chat"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                  activeProps={{
+                    className:
+                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
+                  }}
+                >
+                  <span>Pipeline Chat</span>
+                </Link>
+              </div>
+            )}
+          </div>
         </nav>
       </aside>
 

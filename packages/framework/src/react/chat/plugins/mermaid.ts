@@ -7,11 +7,14 @@
  * - Quick pass: Instant syntax highlighting for mermaid code
  * - Full pass: Rendered SVG diagram when code fence closes
  *
- * IMPORTANT: This plugin is DECOUPLED from shiki. For non-mermaid code blocks,
- * it falls back to basic escaping. If you want full syntax highlighting for
- * other languages, add shikiPlugin to your plugin list.
+ * ## Chaining Behavior
  *
- * Dependencies: none (standalone)
+ * This plugin is designed to work in a processor chain:
+ * - If `ctx.html` is provided (from a previous processor like shiki), it will
+ *   ONLY process mermaid code fences and pass through everything else
+ * - If no previous HTML, it handles markdown + all code fences (standalone mode)
+ *
+ * Dependencies: none (standalone) or after shikiPlugin (for full highlighting)
  * Settler: codeFence (required for language detection)
  */
 import { marked } from 'marked'
@@ -109,29 +112,114 @@ function wrapCodeBlock(html: string, language: string, isQuick: boolean): string
 
 // --- Mermaid Processor ---
 
-interface CodeBlockState {
+interface MermaidBlockState {
   lines: string[]
-  language: string
   quickHtml: string
-  isMermaid: boolean
 }
 
 /**
  * Create the Mermaid processor.
+ *
+ * This processor operates in two modes:
+ *
+ * 1. **Chained mode** (ctx.html present): Only handles mermaid code fences.
+ *    For everything else, passes through the HTML from the previous processor.
+ *
+ * 2. **Standalone mode** (no ctx.html): Handles markdown + all code fences.
+ *    Non-mermaid code gets basic escaping.
  */
 function createMermaidProcessor(): Processor {
-  let currentBlock: CodeBlockState | null = null
-  let markdownBuffer = ''
-  let outputHtml = ''
+  // State for mermaid blocks (used in both modes)
+  let mermaidBlock: MermaidBlockState | null = null
+
+  // State for standalone mode only
+  let standaloneMarkdownBuffer = ''
+  let standaloneOutputHtml = ''
 
   return function* (ctx: ProcessorContext, emit: ProcessorEmit) {
     const meta = ctx.meta as CodeFenceMeta | undefined
+    const hasUpstreamHtml = ctx.html !== undefined
+
+    // --- CHAINED MODE: Previous processor provided HTML ---
+    if (hasUpstreamHtml) {
+      // Check if we're in a mermaid code fence
+      const isMermaidFence = meta?.inCodeFence && meta.language?.toLowerCase() === 'mermaid'
+
+      if (!isMermaidFence) {
+        // Not mermaid - pass through upstream HTML unchanged
+        yield* emit({
+          raw: ctx.chunk,
+          html: ctx.html,
+          pass: 'quick',
+        })
+        return
+      }
+
+      // Mermaid fence start
+      if (meta.fenceStart) {
+        mermaidBlock = { lines: [], quickHtml: '' }
+        // Pass through upstream HTML (which shows the fence opening)
+        yield* emit({
+          raw: ctx.chunk,
+          html: ctx.html,
+          pass: 'quick',
+        })
+        return
+      }
+
+      // Mermaid fence end - render the diagram
+      if (meta.fenceEnd && mermaidBlock) {
+        const fullCode = meta.codeContent || mermaidBlock.lines.join('')
+
+        // Emit quick version first (upstream HTML with our quick highlight)
+        const quickHtml = wrapCodeBlock(mermaidBlock.quickHtml, 'mermaid', true)
+        // Replace the mermaid code block in upstream HTML with our quick version
+        const quickOutput = replaceMermaidBlock(ctx.html!, quickHtml)
+        yield* emit({
+          raw: ctx.chunk,
+          html: quickOutput,
+          pass: 'quick',
+        })
+
+        // Render mermaid diagram
+        const result = yield* renderMermaid(fullCode)
+        const finalBlock = result.success ? result.svg : quickHtml
+        const finalOutput = replaceMermaidBlock(ctx.html!, finalBlock)
+
+        yield* emit({
+          raw: ctx.chunk,
+          html: finalOutput,
+          pass: 'full',
+        })
+
+        mermaidBlock = null
+        return
+      }
+
+      // Regular mermaid code line
+      if (mermaidBlock) {
+        mermaidBlock.lines.push(ctx.chunk)
+        mermaidBlock.quickHtml += quickHighlightMermaid(ctx.chunk)
+
+        // Show progressive quick highlight
+        const quickHtml = wrapCodeBlock(mermaidBlock.quickHtml, 'mermaid', true)
+        const quickOutput = replaceMermaidBlock(ctx.html!, quickHtml)
+        yield* emit({
+          raw: ctx.chunk,
+          html: quickOutput,
+          pass: 'quick',
+        })
+      }
+      return
+    }
+
+    // --- STANDALONE MODE: No upstream HTML, handle everything ---
 
     // Outside code fence: Accumulate for markdown
     if (!meta?.inCodeFence) {
-      markdownBuffer += ctx.chunk
-      const parsedMarkdown = marked.parse(markdownBuffer, { async: false }) as string
-      const fullHtml = outputHtml + parsedMarkdown
+      standaloneMarkdownBuffer += ctx.chunk
+      const parsedMarkdown = marked.parse(standaloneMarkdownBuffer, { async: false }) as string
+      const fullHtml = standaloneOutputHtml + parsedMarkdown
       yield* emit({
         raw: ctx.next,
         html: fullHtml,
@@ -140,80 +228,115 @@ function createMermaidProcessor(): Processor {
       return
     }
 
+    const isMermaid = meta.language?.toLowerCase() === 'mermaid'
+
     // Fence start: Initialize block state
     if (meta.fenceStart) {
-      if (markdownBuffer) {
-        outputHtml += marked.parse(markdownBuffer, { async: false }) as string
-        markdownBuffer = ''
+      if (standaloneMarkdownBuffer) {
+        standaloneOutputHtml += marked.parse(standaloneMarkdownBuffer, { async: false }) as string
+        standaloneMarkdownBuffer = ''
       }
 
-      const language = meta.language || 'text'
-      currentBlock = {
-        lines: [],
-        language,
-        quickHtml: '',
-        isMermaid: language.toLowerCase() === 'mermaid',
+      if (isMermaid) {
+        mermaidBlock = { lines: [], quickHtml: '' }
       }
       return
     }
 
     // Fence end: Render the full block
-    if (meta.fenceEnd && currentBlock) {
-      const fullCode = meta.codeContent || currentBlock.lines.join('')
-      const language = currentBlock.language
+    if (meta.fenceEnd) {
+      const fullCode = meta.codeContent || (mermaidBlock?.lines.join('') ?? '')
+      const language = meta.language || 'text'
 
-      // Emit quick version first
-      const quickHtml = currentBlock.quickHtml
-      const wrappedQuick = wrapCodeBlock(quickHtml, language, true)
-      yield* emit({
-        raw: ctx.next,
-        html: outputHtml + wrappedQuick,
-        pass: 'quick',
-      })
+      if (isMermaid && mermaidBlock) {
+        // Emit quick version first
+        const quickHtml = mermaidBlock.quickHtml
+        const wrappedQuick = wrapCodeBlock(quickHtml, language, true)
+        yield* emit({
+          raw: ctx.next,
+          html: standaloneOutputHtml + wrappedQuick,
+          pass: 'quick',
+        })
 
-      if (currentBlock.isMermaid) {
         // Render mermaid diagram
         const result = yield* renderMermaid(fullCode)
         if (result.success) {
-          outputHtml += result.svg
+          standaloneOutputHtml += result.svg
         } else {
-          // Fallback: use the quick-highlighted code
-          outputHtml += wrappedQuick
+          standaloneOutputHtml += wrappedQuick
         }
+
+        yield* emit({
+          raw: ctx.next,
+          html: standaloneOutputHtml,
+          pass: 'full',
+        })
+
+        mermaidBlock = null
       } else {
-        // Non-mermaid code: just use escaped version
-        // If you want syntax highlighting, add shikiPlugin
-        outputHtml += wrappedQuick
+        // Non-mermaid in standalone mode: just escape
+        const escaped = escapeHtml(fullCode)
+        const wrappedQuick = wrapCodeBlock(escaped, language, true)
+        standaloneOutputHtml += wrappedQuick
+
+        yield* emit({
+          raw: ctx.next,
+          html: standaloneOutputHtml,
+          pass: 'quick',
+        })
       }
-
-      yield* emit({
-        raw: ctx.next,
-        html: outputHtml,
-        pass: 'full',
-      })
-
-      currentBlock = null
       return
     }
 
-    // Regular code line: Quick highlight
-    if (currentBlock) {
-      const lineContent = ctx.chunk
-      currentBlock.lines.push(lineContent)
+    // Regular code line
+    if (isMermaid && mermaidBlock) {
+      mermaidBlock.lines.push(ctx.chunk)
+      mermaidBlock.quickHtml += quickHighlightMermaid(ctx.chunk)
 
-      const quickLine = currentBlock.isMermaid
-        ? quickHighlightMermaid(lineContent)
-        : escapeHtml(lineContent)
-      currentBlock.quickHtml += quickLine
-
-      const wrappedQuick = wrapCodeBlock(currentBlock.quickHtml, currentBlock.language, true)
+      const wrappedQuick = wrapCodeBlock(mermaidBlock.quickHtml, 'mermaid', true)
       yield* emit({
         raw: ctx.next,
-        html: outputHtml + wrappedQuick,
+        html: standaloneOutputHtml + wrappedQuick,
         pass: 'quick',
       })
+    } else {
+      // Non-mermaid code line in standalone mode - accumulate
+      // (will be processed at fence end)
     }
   }
+}
+
+/**
+ * Replace the last mermaid code block in HTML with new content.
+ *
+ * This finds the last <pre> block with language-mermaid and replaces it.
+ * Used in chained mode to swap upstream processor's mermaid block with our rendered version.
+ */
+function replaceMermaidBlock(html: string, replacement: string): string {
+  // Find the last mermaid code block (could be shiki format or generic)
+  // Shiki format: <pre class="shiki..."><code>...</code></pre>
+  // Generic format: <pre...class="...language-mermaid...">...</pre>
+
+  // Try to find and replace the last code block (the one being streamed)
+  // The upstream processor would have just added this block
+
+  // Simple approach: find the last <pre> tag and replace everything from there
+  const lastPreIndex = html.lastIndexOf('<pre')
+  if (lastPreIndex === -1) {
+    // No pre tag found, just append
+    return html + replacement
+  }
+
+  // Find the closing </pre> or </code></pre>
+  const afterPre = html.slice(lastPreIndex)
+  const closePreMatch = afterPre.match(/<\/pre>/)
+  if (!closePreMatch) {
+    // Unclosed pre tag, replace from lastPreIndex
+    return html.slice(0, lastPreIndex) + replacement
+  }
+
+  const closePreIndex = lastPreIndex + closePreMatch.index! + '</pre>'.length
+  return html.slice(0, lastPreIndex) + replacement + html.slice(closePreIndex)
 }
 
 /**

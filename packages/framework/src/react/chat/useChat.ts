@@ -51,6 +51,19 @@ import type { SettleMeta, RenderDelta, RevealHint, SettlerFactory } from './type
 import type { ProcessorPlugin, SettlerPreference } from './plugins/types'
 import { resolvePlugins, preloadPlugins, arePluginsReady } from './plugins/loader'
 import { createProcessorChain } from './processor-chain'
+// New pipeline imports
+import type { PipelineConfig, ProcessorFactory as PipelineProcessorFactory } from './pipeline/types'
+import {
+  createPipelineTransform,
+  createCodeFenceSettler,
+  createMarkdownProcessor,
+  createShikiProcessor,
+  createMermaidProcessor,
+  preloadShiki,
+  preloadMermaid,
+  isShikiReady,
+  isMermaidReady,
+} from './pipeline'
 
 // --- Types ---
 
@@ -103,9 +116,14 @@ export interface StreamingMessage {
  *
  * Most options are inherited from useChatSession, but some defaults differ.
  */
+/**
+ * Pipeline preset names for easy configuration.
+ */
+export type PipelinePreset = 'markdown' | 'shiki' | 'mermaid' | 'full'
+
 export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'> {
   /**
-   * Plugins for the streaming pipeline.
+   * Plugins for the streaming pipeline (legacy plugin system).
    *
    * Plugins are resolved in dependency order and combined into a single
    * transform. The settler is negotiated from all plugins (most specific wins).
@@ -124,10 +142,40 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
   plugins?: ProcessorPlugin[]
 
   /**
+   * Use the new Frame-based pipeline system.
+   *
+   * The pipeline uses immutable Frame snapshots for cleaner rendering:
+   * - Better progressive enhancement (quick → full rendering)
+   * - No content duplication bugs
+   * - Easier debugging via trace
+   *
+   * Can be a preset name or a custom PipelineConfig:
+   * - 'markdown': Basic markdown parsing
+   * - 'shiki': Markdown + Shiki syntax highlighting
+   * - 'mermaid': Markdown + Mermaid diagram rendering
+   * - 'full': Markdown + Shiki + Mermaid
+   *
+   * @example
+   * ```typescript
+   * // Use a preset
+   * useChat({ pipeline: 'full' })
+   *
+   * // Or custom config
+   * useChat({
+   *   pipeline: {
+   *     settler: createCodeFenceSettler,
+   *     processors: [createMarkdownProcessor, createShikiProcessor],
+   *   }
+   * })
+   * ```
+   */
+  pipeline?: PipelinePreset | PipelineConfig
+
+  /**
    * Custom transforms for the streaming pipeline.
    *
-   * If provided, this overrides the `plugins` option.
-   * For most use cases, prefer using `plugins` instead.
+   * If provided, this overrides the `plugins` and `pipeline` options.
+   * For most use cases, prefer using `pipeline` or `plugins` instead.
    *
    * For advanced customization, use useChatSession directly.
    */
@@ -225,6 +273,50 @@ const defaultTransforms = [
   })
 ]
 
+// --- Pipeline Presets ---
+
+/**
+ * Resolve a pipeline preset to a PipelineConfig.
+ */
+function resolvePipelinePreset(preset: PipelinePreset): PipelineConfig {
+  switch (preset) {
+    case 'markdown':
+      return {
+        settler: createCodeFenceSettler,
+        processors: [createMarkdownProcessor],
+      }
+    case 'shiki':
+      return {
+        settler: createCodeFenceSettler,
+        processors: [createMarkdownProcessor, createShikiProcessor],
+      }
+    case 'mermaid':
+      return {
+        settler: createCodeFenceSettler,
+        processors: [createMarkdownProcessor, createMermaidProcessor],
+      }
+    case 'full':
+      return {
+        settler: createCodeFenceSettler,
+        processors: [createMarkdownProcessor, createShikiProcessor, createMermaidProcessor],
+      }
+  }
+}
+
+/**
+ * Check if a pipeline config uses Shiki.
+ */
+function pipelineUsesShiki(config: PipelineConfig): boolean {
+  return config.processors.some(p => p === createShikiProcessor)
+}
+
+/**
+ * Check if a pipeline config uses Mermaid.
+ */
+function pipelineUsesMermaid(config: PipelineConfig): boolean {
+  return config.processors.some(p => p === createMermaidProcessor)
+}
+
 // --- Hook Implementation ---
 
 /**
@@ -254,13 +346,27 @@ const defaultTransforms = [
  * use useChatSession directly.
  */
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const { plugins, transforms: customTransforms, ...sessionOptions } = options
+  const { plugins, pipeline, transforms: customTransforms, ...sessionOptions } = options
 
-  // Resolve plugins into transforms (memoized)
+  // Resolve pipeline config if provided
+  const pipelineConfig = useMemo(() => {
+    if (!pipeline) return null
+    if (typeof pipeline === 'string') {
+      return resolvePipelinePreset(pipeline)
+    }
+    return pipeline
+  }, [pipeline])
+
+  // Resolve plugins/pipeline into transforms (memoized)
   const transforms = useMemo(() => {
     // If custom transforms provided, use them directly
     if (customTransforms) {
       return customTransforms
+    }
+
+    // If pipeline is configured, use the new Frame-based system
+    if (pipelineConfig) {
+      return [createPipelineTransform(pipelineConfig)]
     }
 
     // If no plugins provided, use default markdown transform
@@ -268,7 +374,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       return defaultTransforms
     }
 
-    // Resolve plugins to get settler and processor chain
+    // Resolve plugins to get settler and processor chain (legacy system)
     const resolved = resolvePlugins(plugins)
     const settlerFactory = getSettlerFactory(resolved.settler)
     const processorChain = createProcessorChain(resolved.processors)
@@ -279,24 +385,66 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
         processor: processorChain,
       })
     ]
-  }, [plugins, customTransforms])
+  }, [plugins, pipelineConfig, customTransforms])
 
-  // Track whether plugins are ready
+  // Track whether plugins/pipeline assets are ready
   const [pluginsReady, setPluginsReady] = useState(() => {
+    // Pipeline mode: check Shiki/Mermaid readiness
+    if (pipelineConfig) {
+      const shikiNeeded = pipelineUsesShiki(pipelineConfig)
+      const mermaidNeeded = pipelineUsesMermaid(pipelineConfig)
+      return (!shikiNeeded || isShikiReady()) && (!mermaidNeeded || isMermaidReady())
+    }
+    // Legacy plugin mode
     if (!plugins || plugins.length === 0) return true
     const resolved = resolvePlugins(plugins)
     return arePluginsReady(resolved.plugins)
   })
 
-  // Eager preload of plugin assets on mount
+  // Eager preload of plugin/pipeline assets on mount
   const preloadStarted = useRef(false)
   useEffect(() => {
-    if (!plugins || plugins.length === 0) {
-      setPluginsReady(true)
+    if (preloadStarted.current) {
       return
     }
 
-    if (preloadStarted.current) {
+    // Pipeline mode: preload Shiki/Mermaid
+    if (pipelineConfig) {
+      const shikiNeeded = pipelineUsesShiki(pipelineConfig)
+      const mermaidNeeded = pipelineUsesMermaid(pipelineConfig)
+
+      if (!shikiNeeded && !mermaidNeeded) {
+        setPluginsReady(true)
+        return
+      }
+
+      // Check if already ready
+      if ((!shikiNeeded || isShikiReady()) && (!mermaidNeeded || isMermaidReady())) {
+        setPluginsReady(true)
+        return
+      }
+
+      preloadStarted.current = true
+
+      // Preload in background
+      run(function* () {
+        if (shikiNeeded && !isShikiReady()) {
+          yield* preloadShiki()
+        }
+        if (mermaidNeeded && !isMermaidReady()) {
+          yield* preloadMermaid()
+        }
+        setPluginsReady(true)
+      }).catch((err) => {
+        console.warn('[useChat] Pipeline preload error:', err)
+        setPluginsReady(true)
+      })
+      return
+    }
+
+    // Legacy plugin mode
+    if (!plugins || plugins.length === 0) {
+      setPluginsReady(true)
       return
     }
 
@@ -319,7 +467,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       // Still mark as ready so we don't block forever
       setPluginsReady(true)
     })
-  }, [plugins])
+  }, [plugins, pipelineConfig])
 
   // Use the low-level session hook
   const session = useChatSession({
