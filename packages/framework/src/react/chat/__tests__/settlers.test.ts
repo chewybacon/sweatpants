@@ -312,11 +312,21 @@ describe('settlers', () => {
   })
 
   describe('codeFence() - metadata settler', () => {
-    it('should settle paragraphs outside fences', () => {
+    /**
+     * The codeFence settler now uses the full shiki implementation which:
+     * - Settles line-by-line (not on paragraph breaks)
+     * - Supports both ``` and ~~~ fence styles
+     * - Tracks fenceDelimiter, fenceStart, fenceEnd, codeContent
+     * - Has fenceEnd on closing line (inCodeFence: true, fenceEnd: true)
+     */
+    
+    it('should settle lines outside fences', () => {
       const settler = codeFence()
       const results = [...settler(ctx('Para 1\n\nPara 2'))]
+      // New behavior: settles line-by-line, not on paragraph breaks
       expect(results).toEqual([
-        { content: 'Para 1\n\n' },
+        { content: 'Para 1\n', meta: { inCodeFence: false } },
+        { content: '\n', meta: { inCodeFence: false } },
       ])
     })
 
@@ -324,7 +334,7 @@ describe('settlers', () => {
       const settler = codeFence()
       const results = [...settler(ctx('```python\ncode'))]
       expect(results).toEqual([
-        { content: '```python\n', meta: { inCodeFence: true, language: 'python' } },
+        { content: '```python\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```', fenceStart: true } },
       ])
     })
 
@@ -332,7 +342,7 @@ describe('settlers', () => {
       const settler = codeFence()
       const results = [...settler(ctx('```\ncode'))]
       expect(results).toEqual([
-        { content: '```\n', meta: { inCodeFence: true, language: '' } },
+        { content: '```\n', meta: { inCodeFence: true, fenceDelimiter: '```', fenceStart: true } },
       ])
     })
 
@@ -341,17 +351,17 @@ describe('settlers', () => {
       // First call: open fence
       let results = [...settler(ctx('```python\n'))]
       expect(results).toEqual([
-        { content: '```python\n', meta: { inCodeFence: true, language: 'python' } },
+        { content: '```python\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```', fenceStart: true } },
       ])
       // Second call: code lines (settler is stateful)
       results = [...settler(ctx('def foo():\n    pass\n'))]
       expect(results).toEqual([
-        { content: 'def foo():\n', meta: { inCodeFence: true, language: 'python' } },
-        { content: '    pass\n', meta: { inCodeFence: true, language: 'python' } },
+        { content: 'def foo():\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```' } },
+        { content: '    pass\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```' } },
       ])
     })
 
-    it('should detect fence closing', () => {
+    it('should detect fence closing with codeContent', () => {
       const settler = codeFence()
       // Open fence
       let results = [...settler(ctx('```python\n'))]
@@ -359,10 +369,10 @@ describe('settlers', () => {
       // Code line
       results = [...settler(ctx('code\n'))]
       expect(results.length).toBe(1)
-      // Close fence
+      // Close fence - now includes codeContent and fenceEnd
       results = [...settler(ctx('```\n'))]
       expect(results).toEqual([
-        { content: '```\n', meta: { inCodeFence: false, language: 'python' } },
+        { content: '```\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```', fenceEnd: true, codeContent: 'code\n' } },
       ])
     })
 
@@ -370,18 +380,19 @@ describe('settlers', () => {
       const settler = codeFence()
       const results = [...settler(ctx('```js\nconst x = 1\n```\nafter'))]
       expect(results).toEqual([
-        { content: '```js\n', meta: { inCodeFence: true, language: 'js' } },
-        { content: 'const x = 1\n', meta: { inCodeFence: true, language: 'js' } },
-        { content: '```\n', meta: { inCodeFence: false, language: 'js' } },
+        { content: '```js\n', meta: { inCodeFence: true, language: 'js', fenceDelimiter: '```', fenceStart: true } },
+        { content: 'const x = 1\n', meta: { inCodeFence: true, language: 'js', fenceDelimiter: '```' } },
+        { content: '```\n', meta: { inCodeFence: true, language: 'js', fenceDelimiter: '```', fenceEnd: true, codeContent: 'const x = 1\n' } },
       ])
     })
 
-    it('should handle text before fence', () => {
+    it('should handle text before fence (line-by-line)', () => {
       const settler = codeFence()
       const results = [...settler(ctx('Here is code:\n\n```python\n'))]
       expect(results).toEqual([
-        { content: 'Here is code:\n\n' },
-        { content: '```python\n', meta: { inCodeFence: true, language: 'python' } },
+        { content: 'Here is code:\n', meta: { inCodeFence: false } },
+        { content: '\n', meta: { inCodeFence: false } },
+        { content: '```python\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```', fenceStart: true } },
       ])
     })
 
@@ -401,52 +412,54 @@ describe('settlers', () => {
       // First block
       let results = [...settler(ctx('```js\na\n```\n'))]
       expect(results).toEqual([
-        { content: '```js\n', meta: { inCodeFence: true, language: 'js' } },
-        { content: 'a\n', meta: { inCodeFence: true, language: 'js' } },
-        { content: '```\n', meta: { inCodeFence: false, language: 'js' } },
+        { content: '```js\n', meta: { inCodeFence: true, language: 'js', fenceDelimiter: '```', fenceStart: true } },
+        { content: 'a\n', meta: { inCodeFence: true, language: 'js', fenceDelimiter: '```' } },
+        { content: '```\n', meta: { inCodeFence: true, language: 'js', fenceDelimiter: '```', fenceEnd: true, codeContent: 'a\n' } },
       ])
       
-      // Paragraph break (outside fence now)
+      // Line outside fence
       results = [...settler(ctx('\n\n'))]
-      expect(results).toEqual([{ content: '\n\n' }])
+      expect(results).toEqual([
+        { content: '\n', meta: { inCodeFence: false } },
+        { content: '\n', meta: { inCodeFence: false } },
+      ])
       
       // Second block
       results = [...settler(ctx('```python\nb\n```\n'))]
       expect(results).toEqual([
-        { content: '```python\n', meta: { inCodeFence: true, language: 'python' } },
-        { content: 'b\n', meta: { inCodeFence: true, language: 'python' } },
-        { content: '```\n', meta: { inCodeFence: false, language: 'python' } },
+        { content: '```python\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```', fenceStart: true } },
+        { content: 'b\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```' } },
+        { content: '```\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '```', fenceEnd: true, codeContent: 'b\n' } },
       ])
     })
 
-    describe('limitations of simple codeFence (use shiki/settlers for full support)', () => {
+    describe('advanced features (now supported)', () => {
       /**
-       * The simple codeFence in settlers.ts has known limitations:
-       * - Only handles exactly ``` (3 backticks)
-       * - Doesn't support ~~~ (tilde fences)
-       * - Doesn't support variable-length fences (````, ~~~~~ etc.)
-       * 
-       * For full CommonMark compliance, use codeFence from shiki/settlers.ts
+       * The codeFence settler now supports full CommonMark compliance:
+       * - Supports ~~~ (tilde fences)
+       * - Supports variable-length fences (````, ~~~~~ etc.)
        */
       
-      it.skip('does NOT handle tilde fences (use shiki/settlers instead)', () => {
+      it('should handle tilde fences', () => {
         const settler = codeFence()
         const results = [...settler(ctx('~~~python\ncode\n~~~\n'))]
         
-        // This WILL FAIL - simple codeFence doesn't recognize ~~~
-        // It will treat the whole thing as regular text waiting for \n\n
-        const fenceStart = results.find(r => (r as any).meta?.inCodeFence)
-        expect(fenceStart).toBeDefined() // Would fail - returns undefined
+        expect(results).toEqual([
+          { content: '~~~python\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '~~~', fenceStart: true } },
+          { content: 'code\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '~~~' } },
+          { content: '~~~\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '~~~', fenceEnd: true, codeContent: 'code\n' } },
+        ])
       })
       
-      it.skip('does NOT handle 4-backtick fences (use shiki/settlers instead)', () => {
+      it('should handle 4-backtick fences', () => {
         const settler = codeFence()
         const results = [...settler(ctx('````python\ncode with ``` inside\n````\n'))]
         
-        // This WILL FAIL - simple codeFence only matches exactly ```
-        // The ```` won't be recognized as a fence opener
-        const fenceStart = results.find(r => (r as any).meta?.inCodeFence)
-        expect(fenceStart).toBeDefined() // Would fail
+        expect(results).toEqual([
+          { content: '````python\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '````', fenceStart: true } },
+          { content: 'code with ``` inside\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '````' } },
+          { content: '````\n', meta: { inCodeFence: true, language: 'python', fenceDelimiter: '````', fenceEnd: true, codeContent: 'code with ``` inside\n' } },
+        ])
       })
     })
   })
