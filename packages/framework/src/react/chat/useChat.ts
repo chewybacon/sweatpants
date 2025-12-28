@@ -20,7 +20,7 @@
  * function ChatUI() {
  *   // Use a preset for common setups
  *   const { messages, isStreaming, send } = useChat({
- *     pipeline: 'full'  // markdown + shiki + mermaid
+ *     pipeline: 'full'  // markdown + shiki + mermaid + math
  *   })
  *
  *   // Or specify processors explicitly
@@ -58,11 +58,14 @@ import {
   markdown as markdownProcessor,
   shiki as shikiProcessor,
   mermaid as mermaidProcessor,
+  math as mathProcessor,
   // Preload helpers
   preloadShiki,
   preloadMermaid,
+  preloadMath,
   isShikiReady,
   isMermaidReady,
+  isMathReady,
 } from './pipeline'
 
 // --- Types ---
@@ -114,7 +117,7 @@ export interface StreamingMessage {
 /**
  * Pipeline preset names for easy configuration.
  */
-export type PipelinePreset = 'markdown' | 'shiki' | 'mermaid' | 'full'
+export type PipelinePreset = 'markdown' | 'shiki' | 'mermaid' | 'math' | 'full'
 
 /**
  * Options for useChat hook.
@@ -132,7 +135,8 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
    * - 'markdown': Basic markdown parsing
    * - 'shiki': Markdown + Shiki syntax highlighting
    * - 'mermaid': Markdown + Mermaid diagram rendering
-   * - 'full': Markdown + Shiki + Mermaid
+   * - 'math': Markdown + KaTeX math rendering
+   * - 'full': Markdown + Shiki + Mermaid + Math
    *
    * @example
    * ```typescript
@@ -244,9 +248,13 @@ function resolvePipelinePreset(preset: PipelinePreset): PipelineConfig {
       return {
         processors: [markdownProcessor, mermaidProcessor],
       }
+    case 'math':
+      return {
+        processors: [markdownProcessor, mathProcessor],
+      }
     case 'full':
       return {
-        processors: [markdownProcessor, shikiProcessor, mermaidProcessor],
+        processors: [markdownProcessor, shikiProcessor, mermaidProcessor, mathProcessor],
       }
   }
 }
@@ -279,6 +287,14 @@ function pipelineUsesMermaid(config: PipelineConfig): boolean {
   return processors.some(p => p.name === 'mermaid')
 }
 
+/**
+ * Check if a pipeline config uses Math.
+ */
+function pipelineUsesMath(config: PipelineConfig): boolean {
+  const processors = getProcessors(config)
+  return processors.some(p => p.name === 'math')
+}
+
 // --- Hook Implementation ---
 
 /**
@@ -287,7 +303,7 @@ function pipelineUsesMermaid(config: PipelineConfig): boolean {
  * @example
  * ```tsx
  * const { messages, isStreaming, send } = useChat({
- *   pipeline: 'full'  // markdown + shiki + mermaid
+ *   pipeline: 'full'  // markdown + shiki + mermaid + math
  * })
  *
  * // Messages include both completed and streaming messages
@@ -329,7 +345,12 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
   const [pipelineReady, setPipelineReady] = useState(() => {
     const shikiNeeded = pipelineUsesShiki(pipelineConfig)
     const mermaidNeeded = pipelineUsesMermaid(pipelineConfig)
-    return (!shikiNeeded || isShikiReady()) && (!mermaidNeeded || isMermaidReady())
+    const mathNeeded = pipelineUsesMath(pipelineConfig)
+    return (
+      (!shikiNeeded || isShikiReady()) &&
+      (!mermaidNeeded || isMermaidReady()) &&
+      (!mathNeeded || isMathReady())
+    )
   })
 
   // Eager preload of pipeline assets on mount
@@ -341,14 +362,19 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
     const shikiNeeded = pipelineUsesShiki(pipelineConfig)
     const mermaidNeeded = pipelineUsesMermaid(pipelineConfig)
+    const mathNeeded = pipelineUsesMath(pipelineConfig)
 
-    if (!shikiNeeded && !mermaidNeeded) {
+    if (!shikiNeeded && !mermaidNeeded && !mathNeeded) {
       setPipelineReady(true)
       return
     }
 
     // Check if already ready
-    if ((!shikiNeeded || isShikiReady()) && (!mermaidNeeded || isMermaidReady())) {
+    if (
+      (!shikiNeeded || isShikiReady()) &&
+      (!mermaidNeeded || isMermaidReady()) &&
+      (!mathNeeded || isMathReady())
+    ) {
       setPipelineReady(true)
       return
     }
@@ -362,6 +388,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       }
       if (mermaidNeeded && !isMermaidReady()) {
         yield* preloadMermaid()
+      }
+      if (mathNeeded && !isMathReady()) {
+        yield* preloadMath()
       }
       setPipelineReady(true)
     }).catch((err) => {

@@ -7,6 +7,7 @@ import Header from '../components/Header'
 import favicon from '../assets/favicon.ico?url'
 
 import '../styles.css'
+import 'katex/dist/katex.min.css'
 
 export const Route = createRootRoute({
   head: () => ({

@@ -11,7 +11,7 @@
  * function Chat() {
  *   // Use a preset for common setups
  *   const { messages, send, isStreaming } = useChat({
- *     pipeline: 'full'  // markdown + shiki + mermaid
+ *     pipeline: 'full'  // markdown + shiki + mermaid + math
  *   })
  *   // ...
  * }
@@ -22,7 +22,8 @@
  * - `'markdown'` - Basic markdown parsing
  * - `'shiki'` - Markdown + syntax highlighting
  * - `'mermaid'` - Markdown + diagram rendering
- * - `'full'` - All processors (markdown + shiki + mermaid)
+ * - `'math'` - Markdown + KaTeX math rendering
+ * - `'full'` - All processors (markdown + shiki + mermaid + math)
  *
  * ## Custom Processors
  *
