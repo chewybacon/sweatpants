@@ -1,42 +1,52 @@
 /**
- * /demo/effection/chat - Effection-Powered Chat Demo
+ * /demo/chat - Triple Buffer Chat Demo
  *
- * Demonstrates the dual buffer pattern for streaming:
- * - Settled content: Stable text (could be parsed/rendered)
- * - Pending content: Still streaming, shown as raw text with cursor
+ * Demonstrates the triple buffer rendering engine:
+ * - Raw buffer: Incoming tokens (internal)
+ * - Settled buffer: Content confirmed complete by settlers
+ * - Render buffer: Frame-based output with delta for animation
  *
- * Like double buffering in games - content accumulates in the back buffer
- * (pending) and gets promoted to the front buffer (settled) when safe.
+ * Uses the high-level useChat hook for simple Message[] interface,
+ * with access to streaming message delta for smooth animations.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChatSession, tripleBufferTransform, codeFence, smartMarkdown, syntaxHighlight } from '@tanstack/framework/react/chat'
+import { useChat, tripleBufferTransform, shiki, mermaid } from '@tanstack/framework/react/chat'
 
 export const Route = createFileRoute('/demo/chat/')({
-  component: EffectionChatDemo,
+  component: TripleBufferChatDemo,
 })
 
-function EffectionChatDemo() {
-  // Enhanced chat with triple buffer for smooth rendering
-  const { state, send, abort, reset } = useChatSession({
+function TripleBufferChatDemo() {
+  // High-level useChat hook - simple Message[] interface
+  const { 
+    messages, 
+    streamingMessage,
+    isStreaming, 
+    send, 
+    abort, 
+    reset,
+    error,
+  } = useChat({
     transforms: [
       tripleBufferTransform({
-        chunker: codeFence,
-        enhancer: [smartMarkdown, syntaxHighlight]
+        settler: shiki.codeFence,
+        processor: [mermaid.mermaidProcessor]
       })
     ]
   })
+  
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [state.messages, state.buffer.renderable?.next])
+  }, [messages, streamingMessage?.content])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || state.isStreaming) return
+    if (!input.trim() || isStreaming) return
     send(input.trim())
     setInput('')
   }
@@ -51,14 +61,14 @@ function EffectionChatDemo() {
               Triple Buffer Chat
             </h1>
             <p className="text-slate-400 text-sm">
-              Triple buffering with syntax highlighting: code fences processed line-by-line
+              Using useChat hook - simple Message[] API with streaming support
             </p>
           </div>
         </div>
 
         {/* Messages */}
         <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
-          {state.messages.length === 0 && !state.isStreaming && (
+          {messages.length === 0 && !isStreaming && (
             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
               <div className="text-4xl opacity-20">~</div>
               <p>Send a message to start chatting</p>
@@ -85,7 +95,7 @@ function EffectionChatDemo() {
             </div>
           )}
 
-          {state.messages.map((msg) => (
+          {messages.map((msg) => (
             <div
               key={msg.id}
               className={`mb-8 ${msg.role === 'user' ? 'text-right' : ''}`}
@@ -99,6 +109,9 @@ function EffectionChatDemo() {
                     }`}
                 >
                   {msg.role === 'user' ? 'You' : 'Assistant'}
+                  {msg.isStreaming && (
+                    <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
+                  )}
                 </div>
                 <div
                   className={`p-4 rounded-lg ${msg.role === 'user'
@@ -106,61 +119,33 @@ function EffectionChatDemo() {
                     : 'bg-slate-800/50 text-slate-200'
                     }`}
                 >
-                  {msg.role === 'user' ? (
-                    <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-                      {msg.content}
-                    </div>
-                  ) : (
-                    <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-                      {(() => {
-                        const rendered = msg.id ? state.rendered[msg.id] : null
-                        return rendered?.output ? (
-                          <div dangerouslySetInnerHTML={{ __html: rendered.output }} />
-                        ) : (
-                          msg.content
-                        )
-                      })()}
-                    </div>
-                  )}
+                  <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+                    {msg.html ? (
+                      <div dangerouslySetInnerHTML={{ __html: msg.html }} />
+                    ) : (
+                      msg.content
+                    )}
+                    {/* Cursor for streaming messages */}
+                    {msg.isStreaming && (
+                      <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           ))}
 
-          {/* Streaming indicator with triple buffer */}
-          {state.isStreaming && (
-            <div className="mb-8 w-full">
-              <div className="text-xs mb-1 font-bold tracking-wider uppercase text-purple-500">
-                Assistant
-              </div>
-              <div className="bg-slate-800/50 p-4 rounded-lg">
-                <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-                  {/* Renderable buffer - smooth frame transitions */}
-                  {state.buffer.renderable?.html ? (
-                    <span
-                      dangerouslySetInnerHTML={{ __html: state.buffer.renderable.html }}
-                    />
-                  ) : state.buffer.renderable?.next ? (
-                    <span>{state.buffer.renderable.next}</span>
-                  ) : null}
-                  {/* Cursor */}
-                  <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-                  {/* Fallback if no renderable content yet */}
-                  {!state.buffer.renderable?.next && (
-                    <span className="text-slate-500 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
-                      Thinking...
-                    </span>
-                  )}
-                </div>
-              </div>
+          {/* Show delta info if streaming (debug) */}
+          {streamingMessage?.delta && (
+            <div className="text-xs text-slate-600 mt-2">
+              Delta: +{streamingMessage.delta.added.length} chars at offset {streamingMessage.delta.startOffset}
             </div>
           )}
 
           {/* Error display */}
-          {state.error && (
+          {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
-              <strong>Error:</strong> {state.error}
+              <strong>Error:</strong> {error}
             </div>
           )}
 
@@ -174,16 +159,16 @@ function EffectionChatDemo() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={
-              state.isStreaming
+              isStreaming
                 ? 'Waiting for response...'
                 : 'Type a message...'
             }
-            disabled={state.isStreaming}
+            disabled={isStreaming}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
           <div className="absolute right-2 top-2 bottom-2 flex gap-2">
-            {state.isStreaming ? (
+            {isStreaming ? (
               <button
                 type="button"
                 onClick={abort}
@@ -206,18 +191,18 @@ function EffectionChatDemo() {
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
             onClick={reset}
-            disabled={state.isStreaming || state.messages.length === 0}
+            disabled={isStreaming || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
             Clear History
           </button>
           <div className="flex items-center gap-4">
             <span>
-              <span className="text-emerald-600">renderable</span>
-              {' frames'}
+              <span className="text-emerald-600">useChat</span>
+              {' hook'}
             </span>
             <span className="text-cyan-400">
-              {state.messages.length} messages
+              {messages.length} messages
             </span>
           </div>
         </div>

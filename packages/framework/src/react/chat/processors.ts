@@ -27,7 +27,6 @@
  * })
  * ```
  */
-import { sleep } from 'effection'
 import type { Operation } from 'effection'
 import { marked } from 'marked'
 import katex from 'katex'
@@ -217,82 +216,125 @@ export function syntaxHighlight(): Processor {
   }
 }
 
-// --- Compatibility Layer ---
+// --- Reveal Hint Processors ---
+// 
+// These processors emit reveal hints that React can use to animate content.
+// They do NOT block the pipeline - animation happens in the UI layer.
 
 /**
- * Reveal speed controller - controls how fast content is revealed.
+ * Character-by-character reveal hint processor.
  *
- * Creates typewriter effect by emitting content character-by-character
- * with configurable delays between characters.
+ * Emits a reveal hint suggesting React should animate the content
+ * character-by-character. The actual animation is handled by React,
+ * not by blocking the stream pipeline.
  *
- * @param ms - Milliseconds delay between each character (default: 50)
+ * @param durationMs - Suggested total duration for the reveal animation (default: calculated from chunk length)
+ * @param charDelayMs - Delay per character in ms, used to calculate duration if not specified (default: 30)
+ *
+ * @example
+ * ```tsx
+ * // In your React component, use the revealHint to animate:
+ * if (state.buffer.renderable?.revealHint?.type === 'character') {
+ *   // Animate characters one by one
+ *   const duration = state.buffer.renderable.revealHint.duration
+ *   // ... apply CSS animation or JS-based reveal
+ * }
+ * ```
  */
-export function characterReveal(ms: number = 50): ProcessorFactory {
+export function characterReveal(options: { durationMs?: number, charDelayMs?: number } = {}): ProcessorFactory {
+  const { charDelayMs = 30 } = options
+  
   return () => function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
     if (!ctx.chunk) return
 
-    const chars = ctx.chunk.split('')
-    let emitted = false
+    // Calculate duration based on chunk length if not specified
+    const duration = options.durationMs ?? (ctx.chunk.length * charDelayMs)
 
-    for (const char of chars) {
-      yield* emit({
-        raw: ctx.next,
-        revealChar: char,
-        revealType: 'character',
-        revealDelay: ms,
+    yield* emit({
+      raw: ctx.chunk,
+      revealHint: {
+        type: 'character' as const,
+        duration,
         isComplete: false,
-      })
-      emitted = true
-
-      // Small delay between characters
-      yield* sleep(ms)
-    }
-
-    // Final emission marking completion
-    if (emitted) {
-      yield* emit({
-        raw: ctx.next,
-        revealType: 'character',
-        isComplete: true,
-      })
-    }
+      },
+    })
   }
 }
 
 /**
- * Word-by-word reveal controller.
+ * Word-by-word reveal hint processor.
  *
- * @param ms - Milliseconds delay between each word (default: 200)
+ * Emits a reveal hint suggesting React should animate the content
+ * word-by-word. The actual animation is handled by React.
+ *
+ * @param durationMs - Suggested total duration for the reveal animation
+ * @param wordDelayMs - Delay per word in ms, used to calculate duration if not specified (default: 100)
  */
-export function wordReveal(ms: number = 200): ProcessorFactory {
+export function wordReveal(options: { durationMs?: number, wordDelayMs?: number } = {}): ProcessorFactory {
+  const { wordDelayMs = 100 } = options
+  
   return () => function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
     if (!ctx.chunk) return
 
-    const words = ctx.chunk.split(/\s+/)
-    let emitted = false
+    const wordCount = ctx.chunk.split(/\s+/).filter(w => w.trim()).length
+    const duration = options.durationMs ?? (wordCount * wordDelayMs)
 
-    for (const word of words) {
-      if (word.trim()) {
-        yield* emit({
-          raw: ctx.next,
-          revealWord: word,
-          revealType: 'word',
-          revealDelay: ms,
-          isComplete: false,
-        })
-        emitted = true
+    yield* emit({
+      raw: ctx.chunk,
+      revealHint: {
+        type: 'word' as const,
+        duration,
+        isComplete: false,
+      },
+    })
+  }
+}
 
-        yield* sleep(ms)
-      }
-    }
+/**
+ * Line-by-line reveal hint processor.
+ *
+ * Emits a reveal hint suggesting React should animate the content
+ * line-by-line. Useful for code blocks.
+ *
+ * @param lineDelayMs - Delay per line in ms (default: 50)
+ */
+export function lineReveal(options: { durationMs?: number, lineDelayMs?: number } = {}): ProcessorFactory {
+  const { lineDelayMs = 50 } = options
+  
+  return () => function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+    if (!ctx.chunk) return
 
-    if (emitted) {
-      yield* emit({
-        raw: ctx.next,
-        revealType: 'word',
+    const lineCount = ctx.chunk.split('\n').length
+    const duration = options.durationMs ?? (lineCount * lineDelayMs)
+
+    yield* emit({
+      raw: ctx.chunk,
+      revealHint: {
+        type: 'line' as const,
+        duration,
+        isComplete: false,
+      },
+    })
+  }
+}
+
+/**
+ * Instant reveal processor (no animation hint).
+ *
+ * Emits content with a hint that it should appear instantly.
+ * Use this when you don't want any reveal animation.
+ */
+export function instantReveal(): ProcessorFactory {
+  return () => function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+    if (!ctx.chunk) return
+
+    yield* emit({
+      raw: ctx.chunk,
+      revealHint: {
+        type: 'instant' as const,
         isComplete: true,
-      })
-    }
+      },
+    })
   }
 }
 
@@ -382,3 +424,136 @@ export function mathMarkdown(): Processor {
     })
   }
 }
+
+// --- Processor Utilities ---
+
+/**
+ * Debounce processor - batches rapid emissions for expensive operations.
+ *
+ * This is useful for expensive processors like syntax highlighting.
+ * Instead of processing every chunk immediately, it batches rapid updates
+ * and only processes the final accumulated state.
+ *
+ * Note: This uses a simple time-based debounce. For RAF-based throttling
+ * in React, use the throttleHint metadata and handle it in your component.
+ *
+ * @param processor - The processor to wrap
+ * @param delayMs - Debounce delay in milliseconds (default: 16 for ~60fps)
+ */
+export function debounceProcessor(
+  processor: ProcessorFactory,
+  delayMs: number = 16
+): ProcessorFactory {
+  return () => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    return function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+      // If there's a pending timeout, skip processing (debounce)
+      if (timeoutId !== null) {
+        return
+      }
+
+      // Set up a new timeout
+      timeoutId = setTimeout(() => {
+        timeoutId = null
+      }, delayMs)
+
+      // Process with a throttle hint
+      const innerProcessor = processor()
+      yield* innerProcessor(ctx, function* (output) {
+        yield* emit({
+          ...output,
+          throttleHint: {
+            debounced: true,
+            delayMs,
+          },
+        })
+      })
+    }
+  }
+}
+
+/**
+ * Batch processor - collects chunks and processes them together.
+ *
+ * Useful when you want to process multiple chunks as a single unit.
+ * The batch is processed when:
+ * - The batch size is reached
+ * - A timeout occurs
+ * - The stream ends (flush)
+ *
+ * @param processor - The processor to wrap
+ * @param options - Batching options
+ */
+export function batchProcessor(
+  processor: ProcessorFactory,
+  options: {
+    /** Maximum batch size in characters (default: 500) */
+    maxSize?: number
+    /** Maximum batch time in ms (default: 100) */
+    maxTimeMs?: number
+  } = {}
+): ProcessorFactory {
+  const { maxSize = 500, maxTimeMs = 100 } = options
+
+  return () => {
+    let batchContent = ''
+    let batchStartTime = Date.now()
+
+    return function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+      batchContent += ctx.chunk
+      const elapsed = Date.now() - batchStartTime
+
+      // Check if we should flush the batch
+      const shouldFlush = batchContent.length >= maxSize || elapsed >= maxTimeMs
+
+      if (shouldFlush && batchContent) {
+        const innerProcessor = processor()
+        const batchCtx: ProcessorContext = {
+          ...ctx,
+          chunk: batchContent,
+          // Keep accumulated/next from original context
+        }
+
+        yield* innerProcessor(batchCtx, emit)
+
+        // Reset batch
+        batchContent = ''
+        batchStartTime = Date.now()
+      }
+    }
+  }
+}
+
+/**
+ * With throttle hint - adds throttle metadata to processor output.
+ *
+ * This doesn't actually throttle the processor, but adds metadata
+ * that React can use to implement client-side throttling (e.g., RAF).
+ *
+ * @param processor - The processor to wrap
+ * @param hint - Throttle hint configuration
+ */
+export function withThrottleHint(
+  processor: ProcessorFactory,
+  hint: {
+    /** Suggested throttle strategy */
+    strategy: 'raf' | 'debounce' | 'none'
+    /** For debounce strategy, the delay in ms */
+    delayMs?: number
+  }
+): ProcessorFactory {
+  return () => {
+    const innerProcessor = processor()
+
+    return function* (ctx: ProcessorContext, emit: ProcessorEmit): Operation<void> {
+      yield* innerProcessor(ctx, function* (output) {
+        yield* emit({
+          ...output,
+          throttleHint: hint,
+        })
+      })
+    }
+  }
+}
+

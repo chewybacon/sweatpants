@@ -67,11 +67,11 @@ export function createMarkdownPipeline(): ProcessorFactory {
 }
 
 export function createRevealPipeline(): ProcessorFactory {
-  return createProcessorChain([characterReveal(50)])
+  return createProcessorChain([characterReveal({ charDelayMs: 50 })])
 }
 
 export function createFullProcessingPipeline(): ProcessorFactory {
-  return createProcessorChain([markdown, syntaxHighlight, characterReveal(50)])
+  return createProcessorChain([markdown, syntaxHighlight, characterReveal({ charDelayMs: 50 })])
 }
 
 // Additional convenience pipelines
@@ -84,15 +84,15 @@ export function createSyntaxHighlightOnlyPipeline(): ProcessorFactory {
 }
 
 export function createFastRevealPipeline(): ProcessorFactory {
-  return createProcessorChain([characterReveal(25)])
+  return createProcessorChain([characterReveal({ charDelayMs: 25 })])
 }
 
 export function createSlowRevealPipeline(): ProcessorFactory {
-  return createProcessorChain([characterReveal(100)])
+  return createProcessorChain([characterReveal({ charDelayMs: 100 })])
 }
 
 export function createWordRevealPipeline(): ProcessorFactory {
-  return createProcessorChain([wordReveal(150)])
+  return createProcessorChain([wordReveal({ wordDelayMs: 150 })])
 }
 
 // Middleware for orchestration

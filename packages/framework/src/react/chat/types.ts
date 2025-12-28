@@ -652,13 +652,75 @@ export type BufferRawPatch = {
   content: string   // Current raw buffer (full replacement)
 }
 
+// --- Render Frame Types ---
+
+/**
+ * Delta information for animation support.
+ * 
+ * Contains the new content added since the previous frame,
+ * enabling smooth animations and transitions in React.
+ */
+export interface RenderDelta {
+  /** The new content added since prev frame */
+  added: string
+  /** HTML for just the new content (if available) */
+  addedHtml?: string
+  /** Starting character offset where new content begins */
+  startOffset: number
+}
+
+/**
+ * A single render frame with full animation support.
+ * 
+ * Contains the complete content state plus delta information
+ * for animating transitions between frames.
+ */
+export interface RenderFrame {
+  /** Full content at this frame */
+  content: string
+  /** Processed HTML for full content (if available) */
+  html?: string
+  /** Delta from previous frame - what's new */
+  delta: RenderDelta
+  /** Timestamp when this frame was produced */
+  timestamp: number
+  /** Metadata from settler (e.g., code fence info) */
+  meta?: SettleMeta
+}
+
+/**
+ * Reveal hint for animation control.
+ * 
+ * Processors can emit reveal hints to suggest how React should
+ * animate the appearance of content.
+ */
+export interface RevealHint {
+  /** How to reveal the content */
+  type: 'instant' | 'character' | 'word' | 'line'
+  /** Suggested duration in ms (for non-instant reveals) */
+  duration?: number
+  /** Whether this is the final chunk */
+  isComplete?: boolean
+}
+
 export type BufferRenderablePatch = {
   type: 'buffer_renderable'
-  prev: string      // Previous renderable content
-  next: string      // New renderable content
-  html?: string     // Processed HTML, if enhancer ran
-  meta?: SettleMeta // Metadata from chunkers/enhancers
-  [key: string]: unknown  // Allow additional fields
+  /** Previous frame content */
+  prev: string
+  /** Current frame content */
+  next: string
+  /** Processed HTML for current frame */
+  html?: string
+  /** Delta information for animation */
+  delta?: RenderDelta
+  /** Reveal hint for animation control */
+  revealHint?: RevealHint
+  /** Timestamp when this frame was produced */
+  timestamp?: number
+  /** Metadata from settlers/processors */
+  meta?: SettleMeta
+  /** Allow additional processor fields */
+  [key: string]: unknown
 }
 
 // --- Client Tool Patches ---
@@ -1134,23 +1196,40 @@ export interface ChatState {
 
   /**
    * Buffer state (when using buffer transforms)
-   * - settled: Content that's safe to parse/render as markdown (dual buffer)
-   * - pending: Content still streaming in (render as raw text) (dual buffer)
-   * - settledHtml: Parsed HTML (when using markdownTransform) (dual buffer)
-   * - renderable: Double buffer for smooth frame transitions (triple buffer)
-   *   - prev: Previous frame content
-   *   - next: Current frame content
-   *   - html: Processed HTML for current frame
-   *   - meta: Metadata from chunkers/enhancers
+   * 
+   * The triple buffer architecture:
+   * 1. Raw buffer (not stored in state - ephemeral)
+   * 2. Settled: Content confirmed complete by settlers
+   * 3. Renderable: Frame-based output for React consumption
+   * 
+   * - settled: Content that's safe to parse/render as markdown
+   * - pending: Content still streaming in (raw buffer - deprecated, use renderable)
+   * - settledHtml: Accumulated parsed HTML
+   * - renderable: Current render frame for React to display
    */
   buffer: {
     settled: string
     pending: string
     settledHtml: string
+    /**
+     * Current render frame for React consumption.
+     * 
+     * Contains the current frame plus animation-ready data:
+     * - prev: Previous frame content
+     * - next: Current frame content
+     * - html: Processed HTML for current frame
+     * - delta: What's new since prev (for animation)
+     * - revealHint: How to animate the reveal
+     * - timestamp: When this frame was produced
+     * - meta: Metadata from settlers/processors
+     */
     renderable?: {
       prev: string
       next: string
       html?: string
+      delta?: RenderDelta
+      revealHint?: RevealHint
+      timestamp?: number
       meta?: SettleMeta
     }
   }
