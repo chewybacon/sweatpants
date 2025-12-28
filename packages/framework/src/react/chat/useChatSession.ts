@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { run, each, createSignal } from 'effection'
 import { createChatSession, type ChatSession } from './session'
 import type { ClientToolSessionOptions } from './session'
-import { dualBufferTransform } from './dualBuffer'
+import { tripleBufferTransform } from './tripleBuffer'
 import type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState } from './types'
 import { initialChatState } from './types'
 import type { SessionOptions } from './types'
@@ -23,7 +23,7 @@ import type { IsomorphicToolRegistry, PendingHandoff, ToolHandlerRegistry } from
 import { useChatConfig } from './ChatProvider'
 
 /** Default transforms applied to all sessions */
-const defaultTransforms = [dualBufferTransform()]
+const defaultTransforms = [tripleBufferTransform()]
 
 /**
  * Options for useChatSession hook.

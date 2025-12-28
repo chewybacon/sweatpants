@@ -7,7 +7,7 @@
 import { createApi } from '@effectionx/context-api'
 import type { Operation } from 'effection'
 import type { ProcessorChain, ProcessorFactory } from './types'
-import { dualBufferTransform } from './dualBuffer'
+import { tripleBufferTransform } from './tripleBuffer'
 import { paragraph } from './settlers'
 import { createProcessorChain } from './processor-chain'
 import { withProcessorLogging } from './processor-api'
@@ -30,12 +30,11 @@ const orchestrationApi = createApi<ProcessorOrchestration>(
     },
 
     *createTransform(settler: any = paragraph, processors: ProcessorChain = []): Operation<any> {
-      // Create a dual buffer transform with processor pipeline
+      // Create a triple buffer transform with enhancer pipeline
       yield* withProcessorLogging()
-      const processorChain = yield* orchestrationApi.operations.createPipeline(processors)
-      return dualBufferTransform({
-        settler,
-        processor: processorChain
+      return tripleBufferTransform({
+        chunker: settler,
+        enhancer: processors
       })
     },
 

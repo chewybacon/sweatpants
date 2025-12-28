@@ -647,6 +647,20 @@ export type BufferPendingPatch = {
   content: string   // Current pending buffer (full replacement)
 }
 
+export type BufferRawPatch = {
+  type: 'buffer_raw'
+  content: string   // Current raw buffer (full replacement)
+}
+
+export type BufferRenderablePatch = {
+  type: 'buffer_renderable'
+  prev: string      // Previous renderable content
+  next: string      // New renderable content
+  html?: string     // Processed HTML, if enhancer ran
+  meta?: SettleMeta // Metadata from chunkers/enhancers
+  [key: string]: unknown  // Allow additional fields
+}
+
 // --- Client Tool Patches ---
 
 /**
@@ -892,9 +906,11 @@ export type ChatPatch =
   | { type: 'abort_complete'; message?: Message; rendered?: string }
   | { type: 'error'; message: string }
   | { type: 'reset' }
-  // Dual buffer patches
+  // Buffer patches
   | BufferSettledPatch
   | BufferPendingPatch
+  | BufferRawPatch
+  | BufferRenderablePatch
   // Client tool patches
   | ClientToolAwaitingApprovalPatch
   | ClientToolExecutingPatch
