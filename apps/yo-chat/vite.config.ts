@@ -28,6 +28,7 @@ const config = defineConfig({
       '@tanstack/framework/chat': path.join(packagesDir, 'framework/src/lib/chat/index.ts'),
       '@tanstack/framework/chat/isomorphic-tools': path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts'),
       '@tanstack/framework/react/chat': path.join(packagesDir, 'framework/src/react/chat/index.ts'),
+      '@tanstack/framework/react/chat/plugins': path.join(packagesDir, 'framework/src/react/chat/plugins/index.ts'),
     },
   },
 

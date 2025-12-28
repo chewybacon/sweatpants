@@ -52,11 +52,13 @@ export function tripleBufferTransform(
   const settler = settlerOpt ?? chunkerOpt
   const processor = processorOpt ?? enhancerOpt
 
-  return renderingBufferTransform({
-    settler,
-    processor,
-    debug,
-  })
+  // Build options object, only including defined properties
+  const renderingOptions: RenderingBufferOptions = {}
+  if (settler !== undefined) renderingOptions.settler = settler
+  if (processor !== undefined) renderingOptions.processor = processor
+  if (debug !== undefined) renderingOptions.debug = debug
+
+  return renderingBufferTransform(renderingOptions)
 }
 
 // Re-export the new types for convenience

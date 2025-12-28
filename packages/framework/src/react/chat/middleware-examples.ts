@@ -1,6 +1,14 @@
 /**
  * middleware-examples.ts
  *
+ * @deprecated This file is deprecated. Use the plugin system instead:
+ * ```typescript
+ * import { useChat } from '@tanstack/framework/react/chat'
+ * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
+ *
+ * useChat({ plugins: [markdownPlugin, shikiPlugin] })
+ * ```
+ *
  * Examples of how to use the extensible APIs with middleware.
  * Shows practical usage patterns for the rendering engine.
  */

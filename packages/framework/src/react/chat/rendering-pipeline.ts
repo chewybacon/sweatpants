@@ -1,6 +1,14 @@
 /**
  * rendering-pipeline.ts
  *
+ * @deprecated This file is deprecated. Use the plugin system instead:
+ * ```typescript
+ * import { useChat } from '@tanstack/framework/react/chat'
+ * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
+ *
+ * useChat({ plugins: [markdownPlugin, shikiPlugin] })
+ * ```
+ *
  * Extensible rendering pipeline API using Effectionx context-api.
  * Allows the entire rendering pipeline to be wrapped with middleware.
  */

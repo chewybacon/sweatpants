@@ -1,39 +1,38 @@
 /**
- * /demo/chat - Triple Buffer Chat Demo
+ * /demo/chat - Plugin-Based Chat Demo
  *
- * Demonstrates the triple buffer rendering engine:
- * - Raw buffer: Incoming tokens (internal)
- * - Settled buffer: Content confirmed complete by settlers
- * - Render buffer: Frame-based output with delta for animation
+ * Demonstrates the new plugin-based rendering engine:
+ * - Plugins are resolved in dependency order (DAG)
+ * - Settler is negotiated (most specific wins)
+ * - Assets are preloaded eagerly on mount
  *
- * Uses the high-level useChat hook for simple Message[] interface,
- * with access to streaming message delta for smooth animations.
+ * Uses the high-level useChat hook with plugin configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, tripleBufferTransform, shiki, mermaid } from '@tanstack/framework/react/chat'
+import { useChat } from '@tanstack/framework/react/chat'
+import { shikiPlugin, mermaidPlugin } from '@tanstack/framework/react/chat/plugins'
 
 export const Route = createFileRoute('/demo/chat/')({
-  component: TripleBufferChatDemo,
+  component: PluginChatDemo,
 })
 
-function TripleBufferChatDemo() {
-  // High-level useChat hook - simple Message[] interface
+function PluginChatDemo() {
+  // High-level useChat hook with plugin-based configuration
   const { 
     messages, 
     streamingMessage,
-    isStreaming, 
+    isStreaming,
+    pluginsReady,
     send, 
     abort, 
     reset,
     error,
   } = useChat({
-    transforms: [
-      tripleBufferTransform({
-        settler: shiki.codeFence,
-        processor: [mermaid.mermaidProcessor]
-      })
-    ]
+    // Plugins handle markdown, syntax highlighting, and diagrams
+    // - shikiPlugin: progressive syntax highlighting (codeFence settler)
+    // - mermaidPlugin: mermaid diagram rendering (codeFence settler)
+    plugins: [shikiPlugin, mermaidPlugin]
   })
   
   const [input, setInput] = useState('')
@@ -58,11 +57,19 @@ function TripleBufferChatDemo() {
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Triple Buffer Chat
+              Plugin-Based Chat
             </h1>
             <p className="text-slate-400 text-sm">
-              Using useChat hook - simple Message[] API with streaming support
+              Using useChat with plugins: shikiPlugin + mermaidPlugin
             </p>
+          </div>
+          {/* Plugin loading indicator */}
+          <div className="text-xs">
+            {pluginsReady ? (
+              <span className="text-emerald-500">Plugins ready</span>
+            ) : (
+              <span className="text-amber-500 animate-pulse">Loading plugins...</span>
+            )}
           </div>
         </div>
 
@@ -198,8 +205,8 @@ function TripleBufferChatDemo() {
           </button>
           <div className="flex items-center gap-4">
             <span>
-              <span className="text-emerald-600">useChat</span>
-              {' hook'}
+              <span className="text-emerald-600">plugins:</span>
+              {' shiki + mermaid'}
             </span>
             <span className="text-cyan-400">
               {messages.length} messages

@@ -1,6 +1,14 @@
 /**
  * processor-orchestrator.ts
  *
+ * @deprecated For new code, use the plugin system instead:
+ * ```typescript
+ * import { useChat } from '@tanstack/framework/react/chat'
+ * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
+ *
+ * useChat({ plugins: [markdownPlugin, shikiPlugin] })
+ * ```
+ *
  * High-level processor orchestration API.
  * Coordinates processor pipelines and integrates with the transform system.
  */
