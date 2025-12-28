@@ -10,7 +10,7 @@
  * Only processes code blocks with language="mermaid".
  */
 import type { Operation } from 'effection'
-import type { Frame, Block, Processor, ProcessorFactory } from '../types'
+import type { Frame, Processor } from '../types'
 import {
   updateBlockById,
   setBlockHtml,
@@ -21,6 +21,7 @@ import {
   preloadMermaid as preloadMermaidLoader,
   isMermaidReady as isMermaidReadyLoader,
 } from '../../mermaid/loader'
+import { registerBuiltinProcessor } from '../resolver'
 
 // =============================================================================
 // Quick Highlighting (Regex-based)
@@ -104,16 +105,37 @@ function wrapCodeBlock(html: string, isQuick: boolean): string {
 // =============================================================================
 
 /**
- * Create a Mermaid diagram rendering processor.
+ * Mermaid diagram rendering processor.
  *
- * This processor:
+ * Renders mermaid code blocks as SVG diagrams:
  * 1. Quick pass: Applies mermaid syntax highlighting while streaming
  * 2. Full pass: Renders the diagram as SVG when code block completes
  *
  * Only processes code blocks with language="mermaid".
+ *
+ * @example
+ * ```typescript
+ * import { mermaid } from '@tanstack/framework/react/chat/processors'
+ *
+ * useChat({
+ *   processors: [mermaid]  // markdown will be auto-added as dependency
+ * })
+ * ```
  */
-export const createMermaidProcessor: ProcessorFactory = () => {
-  const processor: Processor = function* (frame: Frame): Operation<Frame> {
+export const mermaid: Processor = {
+  name: 'mermaid',
+  description: 'Render Mermaid diagrams',
+
+  // Depends on markdown for basic code block structure
+  dependencies: ['markdown'],
+
+  *preload() {
+    yield* preloadMermaidLoader()
+  },
+
+  isReady: isMermaidReadyLoader,
+
+  process: function* (frame: Frame): Operation<Frame> {
     let currentFrame = frame
     let changed = false
 
@@ -162,7 +184,7 @@ export const createMermaidProcessor: ProcessorFactory = () => {
             // but mark as full so we don't retry
             currentFrame = updateBlockById(currentFrame, block.id, (b) => ({
               ...b,
-              renderPass: 'full',
+              renderPass: 'full' as const,
               meta: { ...b.meta, mermaidError: result.error },
             }))
             currentFrame = addTrace(currentFrame, 'mermaid', 'error', {
@@ -177,13 +199,14 @@ export const createMermaidProcessor: ProcessorFactory = () => {
     }
 
     return changed ? currentFrame : frame
-  }
-
-  return processor
+  },
 }
 
+// Register as built-in for auto-dependency resolution
+registerBuiltinProcessor('mermaid', () => mermaid)
+
 // =============================================================================
-// Preload Helper
+// Preload Helper (for external use)
 // =============================================================================
 
 /**
@@ -198,7 +221,11 @@ export const preloadMermaid = preloadMermaidLoader
 export const isMermaidReady = isMermaidReadyLoader
 
 // =============================================================================
-// Default Export
+// Legacy Exports (for backward compatibility)
 // =============================================================================
 
+/** @deprecated Use `mermaid` instead */
+export const createMermaidProcessor = () => mermaid.process
+
+/** @deprecated Use `mermaid` instead */
 export const mermaidProcessor = createMermaidProcessor

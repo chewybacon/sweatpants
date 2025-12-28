@@ -149,7 +149,7 @@ function createMermaidProcessor(): Processor {
         // Not mermaid - pass through upstream HTML unchanged
         yield* emit({
           raw: ctx.chunk,
-          html: ctx.html,
+          ...(ctx.html !== undefined && { html: ctx.html }),
           pass: 'quick',
         })
         return
@@ -161,7 +161,7 @@ function createMermaidProcessor(): Processor {
         // Pass through upstream HTML (which shows the fence opening)
         yield* emit({
           raw: ctx.chunk,
-          html: ctx.html,
+          ...(ctx.html !== undefined && { html: ctx.html }),
           pass: 'quick',
         })
         return

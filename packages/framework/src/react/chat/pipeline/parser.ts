@@ -1,23 +1,26 @@
 /**
- * pipeline/settlers.ts
+ * pipeline/parser.ts
  *
- * Settlers parse raw streaming tokens into Frame block structure.
+ * Internal parser for the streaming pipeline.
  *
- * A settler's job is purely structural:
- * - Create new blocks (text/code)
- * - Track code fence boundaries
- * - Determine when blocks are complete vs streaming
+ * The parser is responsible for converting raw streaming text into
+ * a Frame with properly structured blocks. It handles:
  *
- * Settlers do NOT render HTML - that's the processors' job.
+ * - Code fence detection (``` and ~~~)
+ * - Block creation (text vs code)
+ * - Streaming vs complete status
+ *
+ * This is an INTERNAL module - not part of the public API.
+ * Users don't need to think about parsing; they just write processors.
  *
  * ## Code Fence Detection
  *
- * The primary complexity is detecting markdown code fences:
+ * The parser detects markdown code fences:
  * - Opening: ```language or ~~~language
  * - Closing: ``` or ~~~
- * - Content between is code, not markdown
+ * - Content between is a code block, not text
  */
-import type { Settler, SettlerFactory, SettleContext, Frame } from './types'
+import type { Parser, ParserFactory, ParseContext, Frame } from './types'
 import {
   createTextBlock,
   createCodeBlock,
@@ -67,13 +70,13 @@ const matchFenceEnd = (line: string, delimiter: string): boolean => {
 }
 
 // =============================================================================
-// Code Fence Settler
+// Parser State
 // =============================================================================
 
 /**
- * Internal state for the code fence settler.
+ * Internal state for the parser.
  */
-interface FenceState {
+interface ParserState {
   /** Are we currently inside a code fence? */
   inFence: boolean
   /** The fence delimiter (``` or ~~~) */
@@ -84,28 +87,31 @@ interface FenceState {
   lineBuffer: string
 }
 
+// =============================================================================
+// Parser Implementation
+// =============================================================================
+
 /**
- * Create a code fence settler.
+ * Create the internal parser.
  *
- * This settler:
+ * This parser:
  * - Processes content line-by-line
  * - Creates text blocks for content outside fences
  * - Creates code blocks for content inside fences
  * - Tracks fence state across chunks
  *
- * The result is a Frame with properly structured blocks that
- * processors can then enhance with HTML.
+ * @internal
  */
-export const createCodeFenceSettler: SettlerFactory = () => {
+export const createParser: ParserFactory = () => {
   // State persists across calls
-  const state: FenceState = {
+  const state: ParserState = {
     inFence: false,
     delimiter: '',
     language: '',
     lineBuffer: '',
   }
 
-  const settler: Settler = (frame: Frame, chunk: string, ctx: SettleContext): Frame => {
+  const parser: Parser = (frame: Frame, chunk: string, ctx: ParseContext): Frame => {
     let currentFrame = frame
 
     // Add chunk to line buffer
@@ -136,13 +142,13 @@ export const createCodeFenceSettler: SettlerFactory = () => {
     return currentFrame
   }
 
-  return settler
+  return parser
 }
 
 /**
  * Process a complete line (with trailing newline).
  */
-function processLine(frame: Frame, line: string, state: FenceState): Frame {
+function processLine(frame: Frame, line: string, state: ParserState): Frame {
   const lineContent = line.trimEnd() // For matching (keep original for raw)
 
   if (!state.inFence) {
@@ -163,16 +169,16 @@ function processLine(frame: Frame, line: string, state: FenceState): Frame {
       // Create new code block
       const codeBlock = createCodeBlock(language, '', 'streaming')
       currentFrame = addBlock(currentFrame, codeBlock)
-      currentFrame = addTrace(currentFrame, 'settler', 'create', {
+      currentFrame = addTrace(currentFrame, 'parser', 'create', {
         blockId: codeBlock.id,
-        detail: `code fence start: ${language || 'no language'}`,
+        detail: `code fence start: ${language || 'plain'}`,
       })
 
       return currentFrame
     }
 
     // Regular text line - append to current text block
-    return appendTextContent(frame, line, state)
+    return appendTextContent(frame, line)
   } else {
     // Inside fence - check for fence end
     if (matchFenceEnd(lineContent, state.delimiter)) {
@@ -184,7 +190,7 @@ function processLine(frame: Frame, line: string, state: FenceState): Frame {
       // Complete the code block
       const currentFrame = updateActiveBlock(frame, completeBlock)
       const activeBlock = getActiveBlock(currentFrame)
-      return addTrace(currentFrame, 'settler', 'update', {
+      return addTrace(currentFrame, 'parser', 'update', {
         ...(activeBlock && { blockId: activeBlock.id }),
         detail: 'code fence end',
       })
@@ -201,14 +207,14 @@ function processLine(frame: Frame, line: string, state: FenceState): Frame {
 function processContent(
   frame: Frame,
   content: string,
-  state: FenceState,
+  state: ParserState,
   isFlush: boolean
 ): Frame {
   if (!content) return frame
 
   if (!state.inFence) {
     // Text content
-    return appendTextContent(frame, content, state)
+    return appendTextContent(frame, content)
   } else {
     // Code content
     let currentFrame = updateActiveBlock(frame, (block) => appendToBlock(block, content))
@@ -231,7 +237,7 @@ function processContent(
 /**
  * Append text content to the current text block, or create one if needed.
  */
-function appendTextContent(frame: Frame, content: string, _state: FenceState): Frame {
+function appendTextContent(frame: Frame, content: string): Frame {
   const lastBlock = getLastBlock(frame)
 
   // If last block is a streaming text block, append to it
@@ -242,7 +248,7 @@ function appendTextContent(frame: Frame, content: string, _state: FenceState): F
   // Otherwise, create a new text block
   const textBlock = createTextBlock(content, 'streaming')
   let currentFrame = addBlock(frame, textBlock)
-  currentFrame = addTrace(currentFrame, 'settler', 'create', {
+  currentFrame = addTrace(currentFrame, 'parser', 'create', {
     blockId: textBlock.id,
     detail: 'text block',
   })
@@ -265,48 +271,11 @@ function completeCurrentTextBlock(frame: Frame): Frame {
 }
 
 // =============================================================================
-// Simple Line Settler (Alternative)
-// =============================================================================
-
-/**
- * Create a simple line-by-line settler.
- *
- * This settler treats everything as text blocks, settling line by line.
- * Useful for plain text or when code fence detection isn't needed.
- */
-export const createLineSettler: SettlerFactory = () => {
-  let lineBuffer = ''
-
-  return (frame: Frame, chunk: string, ctx: SettleContext): Frame => {
-    let currentFrame = frame
-    lineBuffer += chunk
-
-    while (true) {
-      const newlineIdx = lineBuffer.indexOf('\n')
-
-      if (newlineIdx === -1) {
-        if (ctx.flush && lineBuffer.length > 0) {
-          currentFrame = appendTextContent(currentFrame, lineBuffer, { inFence: false, delimiter: '', language: '', lineBuffer: '' })
-          lineBuffer = ''
-        }
-        break
-      }
-
-      const line = lineBuffer.slice(0, newlineIdx + 1)
-      lineBuffer = lineBuffer.slice(newlineIdx + 1)
-
-      currentFrame = appendTextContent(currentFrame, line, { inFence: false, delimiter: '', language: '', lineBuffer: '' })
-    }
-
-    return currentFrame
-  }
-}
-
-// =============================================================================
 // Default Export
 // =============================================================================
 
 /**
- * Default settler: code fence aware.
+ * Default parser factory.
+ * @internal
  */
-export const defaultSettler = createCodeFenceSettler
+export const defaultParser = createParser

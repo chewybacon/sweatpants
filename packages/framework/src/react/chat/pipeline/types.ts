@@ -9,11 +9,11 @@
  * Each frame represents the complete document state at a point in time.
  *
  * ```
- * Tokens → Settler → Frame₀ → [Processors] → Frame₁ → UI
+ * Tokens → Parser → Frame₀ → [Processors] → Frame₁ → UI
  * ```
  *
- * - **Settler**: Parses raw tokens into block structure
- * - **Processors**: Transform frames (enhance blocks with HTML)
+ * - **Parser**: Internal - parses raw tokens into block structure (code fences)
+ * - **Processors**: User-defined - transform frames (enhance blocks with HTML)
  * - **Frames**: Immutable snapshots that UI can render/animate between
  *
  * ## Progressive Enhancement
@@ -22,9 +22,55 @@
  * - 'quick': Fast initial render (regex highlighting, escaped code)
  * - 'full': Complete render (Shiki, Mermaid SVG, etc.)
  *
- * The UI receives both frames and can animate between them.
+ * The UI receives frames and can animate between render passes.
+ *
+ * ## Annotations
+ *
+ * Blocks can carry annotations - metadata extracted by processors that
+ * doesn't affect visual rendering but can be consumed by other systems
+ * (e.g., TTS directives, math positions, link targets).
  */
 import type { Operation } from 'effection'
+
+// =============================================================================
+// Annotation Types
+// =============================================================================
+
+/**
+ * An annotation is metadata extracted from content by a processor.
+ *
+ * Annotations don't affect visual rendering but can be consumed by
+ * other systems (TTS, accessibility, analytics, etc.).
+ *
+ * @example
+ * // Math annotation
+ * { type: 'math', subtype: 'inline', rawStart: 6, rawEnd: 11, data: { latex: 'x^2' } }
+ *
+ * // TTS directive annotation
+ * { type: 'directive', subtype: 'pause', rawStart: 18, rawEnd: 25, data: { duration: 500 } }
+ */
+export interface Annotation {
+  /** Annotation category (e.g., 'math', 'directive', 'link') */
+  readonly type: string
+
+  /** Annotation subtype (e.g., 'inline', 'block', 'pause', 'laugh') */
+  readonly subtype?: string
+
+  /** Start position in block.raw */
+  readonly rawStart: number
+
+  /** End position in block.raw */
+  readonly rawEnd: number
+
+  /** Start position in block.html (if tracked) */
+  readonly renderedStart?: number
+
+  /** End position in block.html (if tracked) */
+  readonly renderedEnd?: number
+
+  /** Type-specific payload */
+  readonly data?: Readonly<Record<string, unknown>>
+}
 
 // =============================================================================
 // Block Types
@@ -81,6 +127,12 @@ export interface Block {
   readonly language?: string
 
   /**
+   * Annotations extracted by processors.
+   * These don't affect visual rendering but can be consumed by other systems.
+   */
+  readonly annotations?: readonly Annotation[]
+
+  /**
    * Extensible metadata for processors.
    * Processors can attach arbitrary data here.
    */
@@ -122,7 +174,7 @@ export interface TraceEntry {
 /**
  * A Frame is an immutable snapshot of the document at a point in time.
  *
- * Frames are the core unit of the pipeline - settlers create them,
+ * Frames are the core unit of the pipeline - the parser creates them,
  * processors transform them, and the UI renders them.
  */
 export interface Frame {
@@ -140,89 +192,147 @@ export interface Frame {
 
   /**
    * Index of the currently streaming block, or null if none.
-   * Used by settlers to know which block to append to.
+   * Used by parser to know which block to append to.
    */
   readonly activeBlockIndex: number | null
 }
-
-// =============================================================================
-// Settler Types
-// =============================================================================
-
-/**
- * Context provided to settler on each chunk.
- */
-export interface SettleContext {
-  /** Any pending content not yet processed */
-  readonly pending: string
-
-  /** True when this is the final flush at stream end */
-  readonly flush: boolean
-}
-
-/**
- * A Settler parses raw tokens and updates the Frame's block structure.
- *
- * Settlers are responsible for:
- * - Creating new blocks (text/code)
- * - Tracking code fence boundaries
- * - Determining when blocks are complete vs streaming
- *
- * Settlers should NOT do HTML rendering - that's the processors' job.
- *
- * @param frame - Current frame state
- * @param chunk - New raw content to process
- * @param ctx - Additional context (pending buffer, flush flag)
- * @returns Updated frame with new/modified blocks
- */
-export type Settler = (frame: Frame, chunk: string, ctx: SettleContext) => Frame
-
-/**
- * Factory function to create a fresh Settler.
- * Allows settlers to maintain internal state (like fence tracking).
- */
-export type SettlerFactory = () => Settler
 
 // =============================================================================
 // Processor Types
 // =============================================================================
 
 /**
- * A Processor transforms a Frame, typically by enhancing block HTML.
+ * The core processing function - transforms a Frame.
  *
- * Processors are pure functions (given same input, produce same output).
+ * Process functions are pure (given same input, produce same output).
  * They can be async (return Operation) for things like Shiki highlighting.
  *
- * Processors should:
+ * Process functions should:
  * - Only modify blocks they care about
  * - Leave other blocks unchanged (natural passthrough)
- * - Add trace entries for debugging
  * - Be idempotent (running twice should be safe)
  *
  * @param frame - Current frame state
  * @returns Updated frame (or same frame if no changes)
  */
-export type Processor = (frame: Frame) => Operation<Frame>
+export type ProcessFn = (frame: Frame) => Operation<Frame>
 
 /**
- * Factory function to create a fresh Processor.
- * Allows processors to maintain internal state if needed.
+ * A Processor is a self-contained processing unit with metadata.
+ *
+ * Processors declare:
+ * - Their identity (name, description)
+ * - Dependencies on other processors
+ * - Async asset loading (preload, isReady)
+ * - The actual processing logic
+ *
+ * The pipeline resolves dependencies and runs processors in the correct order.
+ *
+ * @example
+ * ```typescript
+ * const shikiProcessor: Processor = {
+ *   name: 'shiki',
+ *   description: 'Syntax highlighting with Shiki',
+ *   dependencies: ['markdown'],
+ *
+ *   *preload() {
+ *     yield* preloadHighlighter()
+ *   },
+ *
+ *   isReady: () => isHighlighterReady(),
+ *
+ *   process: function* (frame) {
+ *     // Transform code blocks...
+ *     return updatedFrame
+ *   },
+ * }
+ * ```
  */
-export type ProcessorFactory = () => Processor
+export interface Processor {
+  /**
+   * Unique identifier for this processor.
+   * Used for dependency resolution and tracing.
+   */
+  readonly name: string
+
+  /**
+   * Human-readable description.
+   */
+  readonly description?: string
+
+  /**
+   * Processors that must run before this one.
+   *
+   * The pipeline performs a topological sort based on dependencies.
+   * If a dependency is missing, it will be auto-added if it's a known processor.
+   *
+   * @example
+   * dependencies: ['markdown'] // Shiki needs markdown to run first
+   */
+  readonly dependencies?: readonly string[]
+
+  /**
+   * Preload async assets (highlighters, renderers, etc.)
+   *
+   * Called eagerly when the pipeline is initialized.
+   * Runs in parallel with other processor preloads.
+   */
+  readonly preload?: () => Operation<void>
+
+  /**
+   * Check if this processor's assets are ready.
+   *
+   * Used to show loading states or defer full rendering.
+   */
+  readonly isReady?: () => boolean
+
+  /**
+   * The processing function.
+   *
+   * Transforms a Frame, typically by enhancing block HTML.
+   * Should be stateless - all state lives in the Frame.
+   */
+  readonly process: ProcessFn
+}
 
 // =============================================================================
 // Pipeline Types
 // =============================================================================
 
 /**
+ * Preset names for common processor combinations.
+ */
+export type ProcessorPreset = 'markdown' | 'shiki' | 'mermaid' | 'full'
+
+/**
+ * Factory function to create a process function.
+ * @deprecated Use Processor interface instead
+ */
+export type ProcessorFactory = () => ProcessFn
+
+/**
  * Configuration for a processing pipeline.
+ *
+ * Users provide processors (or a preset), and the pipeline handles:
+ * - Dependency resolution and ordering
+ * - Internal parsing (code fence detection)
+ * - Frame emission
  */
 export interface PipelineConfig {
-  /** Settler strategy for parsing raw content into blocks */
-  readonly settler: SettlerFactory
+  /**
+   * Processors to run on each frame.
+   *
+   * Can be:
+   * - An array of Processor objects (dependencies auto-resolved)
+   * - An array of ProcessorFactory functions (legacy, for backward compat)
+   * - A preset name ('markdown', 'shiki', 'mermaid', 'full')
+   */
+  readonly processors: readonly Processor[] | readonly ProcessorFactory[] | ProcessorPreset
 
-  /** Ordered list of processors to run on each frame */
-  readonly processors: readonly ProcessorFactory[]
+  /**
+   * @deprecated Parsing is now internal. This field is ignored.
+   */
+  readonly settler?: SettlerFactory
 
   /** Enable debug tracing */
   readonly debug?: boolean
@@ -242,4 +352,67 @@ export interface PipelineResult {
 
   /** Intermediate frames (for progressive enhancement) */
   readonly intermediateFrames: readonly Frame[]
+}
+
+// =============================================================================
+// Internal Types (not part of public API)
+// =============================================================================
+
+/**
+ * Context provided to parser on each chunk.
+ * @internal
+ */
+export interface ParseContext {
+  /** True when this is the final flush at stream end */
+  readonly flush: boolean
+}
+
+/**
+ * Internal parser function type.
+ * @internal
+ */
+export type Parser = (frame: Frame, chunk: string, ctx: ParseContext) => Frame
+
+/**
+ * Factory to create a parser with internal state.
+ * @internal
+ */
+export type ParserFactory = () => Parser
+
+// =============================================================================
+// Legacy Types (deprecated, for backward compatibility)
+// =============================================================================
+
+/**
+ * @deprecated Use ParseContext instead
+ */
+export interface SettleContext {
+  readonly pending: string
+  readonly flush: boolean
+}
+
+/**
+ * @deprecated Parsing is now internal to the pipeline
+ */
+export type Settler = (frame: Frame, chunk: string, ctx: SettleContext) => Frame
+
+/**
+ * @deprecated Parsing is now internal to the pipeline
+ */
+export type SettlerFactory = () => Settler
+
+// =============================================================================
+// Resolved Pipeline (internal)
+// =============================================================================
+
+/**
+ * Result of resolving processors with dependencies.
+ * @internal
+ */
+export interface ResolvedProcessors {
+  /** Processors in dependency order */
+  readonly processors: readonly Processor[]
+
+  /** Any processors that were auto-added as dependencies */
+  readonly addedDependencies: readonly string[]
 }

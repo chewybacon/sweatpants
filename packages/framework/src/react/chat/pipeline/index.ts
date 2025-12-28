@@ -7,12 +7,12 @@
  *
  * The pipeline processes streaming AI content through:
  *
- * 1. **Settler**: Parses raw tokens into block structure (text/code)
- * 2. **Processors**: Enhance blocks with HTML (markdown, syntax highlighting, diagrams)
+ * 1. **Parser**: Internal - parses raw tokens into block structure (text/code)
+ * 2. **Processors**: User-defined - enhance blocks with HTML (markdown, highlighting, diagrams)
  * 3. **Frames**: Immutable snapshots of the document state
  *
  * ```
- * Tokens → Settler → Frame₀ → [Processors] → Frame₁ → UI
+ * Tokens → Parser → Frame₀ → [Processors] → Frame₁ → UI
  * ```
  *
  * ## Progressive Enhancement
@@ -26,29 +26,17 @@
  * ## Example
  *
  * ```typescript
- * import {
- *   createPipeline,
- *   createCodeFenceSettler,
- *   markdownProcessor,
- *   shikiProcessor,
- *   mermaidProcessor,
- *   renderFrameToHtml,
- * } from '@tanstack/framework/react/chat/pipeline'
+ * import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
  *
- * const pipeline = createPipeline({
- *   settler: createCodeFenceSettler,
- *   processors: [markdownProcessor, shikiProcessor, mermaidProcessor],
+ * // Simple - just list processors, dependencies auto-resolved
+ * useChat({
+ *   processors: [markdown, shiki, mermaid]
  * })
  *
- * // Process streaming content
- * for (const chunk of stream) {
- *   const frame = yield* pipeline.process(chunk, { pending: '', flush: false })
- *   const html = renderFrameToHtml(frame)
- *   updateUI(html)
- * }
- *
- * // Flush at end
- * const finalFrame = yield* pipeline.flush()
+ * // Or use a preset
+ * useChat({
+ *   processors: 'full'  // = [markdown, shiki, mermaid]
+ * })
  * ```
  */
 
@@ -57,30 +45,30 @@
 // =============================================================================
 
 export type {
+  // Annotation types
+  Annotation,
+
   // Block types
   Block,
   BlockType,
   BlockStatus,
   RenderPass,
-  
+
   // Frame types
   Frame,
   TraceEntry,
   TraceAction,
-  
-  // Settler types
-  Settler,
-  SettlerFactory,
-  SettleContext,
-  
+
   // Processor types
   Processor,
-  ProcessorFactory,
-  
+  ProcessFn,
+  ProcessorPreset,
+
   // Pipeline types
   PipelineConfig,
   FrameEmitter,
   PipelineResult,
+  ResolvedProcessors,
 } from './types'
 
 // =============================================================================
@@ -92,22 +80,22 @@ export {
   generateFrameId,
   generateBlockId,
   resetIdCounters,
-  
+
   // Frame creation
   emptyFrame,
   updateFrame,
-  
+
   // Block creation
   createBlock,
   createTextBlock,
   createCodeBlock,
-  
+
   // Block updates
   updateBlock,
   appendToBlock,
   completeBlock,
   setBlockHtml,
-  
+
   // Frame block operations
   addBlock,
   updateBlockAt,
@@ -117,11 +105,11 @@ export {
   getLastBlock,
   setActiveBlock,
   clearActiveBlock,
-  
+
   // Trace operations
   addTrace,
   createTrace,
-  
+
   // Frame queries
   hasBlocks,
   hasStreamingBlocks,
@@ -130,26 +118,22 @@ export {
   getTextBlocks,
   findBlockById,
   getBlocksNeedingRender,
-  
+
   // Frame rendering
   renderFrameToHtml,
   renderFrameToRaw,
 } from './frame'
 
 // =============================================================================
-// Settlers
+// Built-in Processors
 // =============================================================================
 
-export {
-  createCodeFenceSettler,
-  createLineSettler,
-  defaultSettler,
-} from './settlers'
+// Canonical exports - use these
+export { markdown } from './processors/markdown'
+export { shiki, preloadShiki, isShikiReady } from './processors/shiki'
+export { mermaid, preloadMermaid, isMermaidReady } from './processors/mermaid'
 
-// =============================================================================
-// Processors
-// =============================================================================
-
+// Legacy exports for backward compatibility
 export {
   createMarkdownProcessor,
   createStreamingMarkdownProcessor,
@@ -159,16 +143,28 @@ export {
 export {
   createShikiProcessor,
   shikiProcessor,
-  preloadShiki,
-  isShikiReady,
 } from './processors/shiki'
 
 export {
   createMermaidProcessor,
   mermaidProcessor,
-  preloadMermaid,
-  isMermaidReady,
 } from './processors/mermaid'
+
+// =============================================================================
+// Processor Resolution
+// =============================================================================
+
+export {
+  resolveProcessors,
+  preloadProcessors,
+  areProcessorsReady,
+  loadProcessors,
+  // Errors
+  ProcessorResolutionError,
+  CircularDependencyError,
+  MissingDependencyError,
+  DuplicateProcessorError,
+} from './resolver'
 
 // =============================================================================
 // Pipeline Runner
@@ -178,8 +174,24 @@ export type { PipelineInstance } from './runner'
 
 export {
   createPipeline,
-  composeProcessors,
+  composeProcessFns,
   createPipelineTransform,
   runPipeline,
   runPipelineWithFrames,
 } from './runner'
+
+// =============================================================================
+// Legacy Exports (settlers - deprecated)
+// =============================================================================
+
+// These are deprecated - parsing is now internal
+// Kept for backward compatibility during migration
+
+/** @deprecated Parsing is now internal to the pipeline */
+export { createCodeFenceSettler, createLineSettler, defaultSettler } from './settlers'
+
+/** @deprecated Use Processor type instead */
+export type { SettlerFactory, Settler, SettleContext } from './types'
+
+// Note: Old ProcessorFactory type is replaced by the Processor interface
+// which includes both metadata and the process function

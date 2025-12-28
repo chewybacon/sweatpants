@@ -67,7 +67,7 @@ export function createProcessorChain(processors: ProcessorFactory | ProcessorFac
               // Update accumulated content
               accumulated: currentContext.accumulated + (lastOutput.raw || ''),
               // Pass HTML from previous processor for enhancement
-              html: lastOutput.html,
+              ...(lastOutput.html !== undefined && { html: lastOutput.html }),
               // Merge metadata
               meta: { ...currentContext.meta, ...mergedMeta } as any,
             }

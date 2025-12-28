@@ -3,26 +3,36 @@
  *
  * Streaming chat rendering with progressive enhancement.
  *
- * ## Recommended API (Plugin-based)
+ * ## Recommended API (Pipeline-based)
  *
  * ```typescript
  * import { useChat } from '@tanstack/framework/react/chat'
- * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
  *
  * function Chat() {
+ *   // Use a preset for common setups
  *   const { messages, send, isStreaming } = useChat({
- *     plugins: [markdownPlugin, shikiPlugin]
+ *     pipeline: 'full'  // markdown + shiki + mermaid
  *   })
  *   // ...
  * }
  * ```
  *
- * ## Available Plugins
+ * ## Pipeline Presets
  *
- * - `markdownPlugin` - Parse markdown to HTML
- * - `shikiPlugin` - Progressive syntax highlighting
- * - `mermaidPlugin` - Progressive diagram rendering
- * - `mathPlugin` - KaTeX math rendering
+ * - `'markdown'` - Basic markdown parsing
+ * - `'shiki'` - Markdown + syntax highlighting
+ * - `'mermaid'` - Markdown + diagram rendering
+ * - `'full'` - All processors (markdown + shiki + mermaid)
+ *
+ * ## Custom Processors
+ *
+ * ```typescript
+ * import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
+ *
+ * useChat({
+ *   pipeline: { processors: [markdown, shiki] }
+ * })
+ * ```
  */
 
 // --- Primary API ---
@@ -30,7 +40,81 @@ export * from './useChat'
 export * from './useChatSession'
 export * from './ChatProvider'
 
-// --- Plugin System (Recommended) ---
+// --- Pipeline System (Recommended) ---
+// Re-export specific items to avoid conflicts
+export {
+  // Types
+  type Annotation,
+  type Block,
+  type BlockType,
+  type BlockStatus,
+  type RenderPass,
+  type Frame,
+  type TraceEntry,
+  type TraceAction,
+  type Processor,
+  type ProcessFn,
+  type ProcessorPreset,
+  type PipelineConfig,
+  type FrameEmitter,
+  type PipelineResult,
+  type ResolvedProcessors,
+  // Frame utilities
+  generateFrameId,
+  generateBlockId,
+  resetIdCounters,
+  emptyFrame,
+  updateFrame,
+  createBlock,
+  createTextBlock,
+  createCodeBlock,
+  updateBlock,
+  appendToBlock,
+  completeBlock,
+  setBlockHtml,
+  addBlock,
+  updateBlockAt,
+  updateBlockById,
+  updateActiveBlock,
+  getActiveBlock,
+  getLastBlock,
+  setActiveBlock,
+  clearActiveBlock,
+  addTrace,
+  createTrace,
+  hasBlocks,
+  hasStreamingBlocks,
+  getBlocksByType,
+  getCodeBlocks,
+  getTextBlocks,
+  findBlockById,
+  getBlocksNeedingRender,
+  renderFrameToHtml,
+  renderFrameToRaw,
+  // Processors
+  markdown as pipelineMarkdown,
+  shiki as pipelineShiki,
+  mermaid as pipelineMermaid,
+  preloadShiki,
+  isShikiReady,
+  preloadMermaid,
+  isMermaidReady,
+  // Resolver
+  resolveProcessors,
+  preloadProcessors,
+  areProcessorsReady,
+  loadProcessors,
+  ProcessorResolutionError,
+  // Runner
+  type PipelineInstance,
+  createPipeline,
+  composeProcessFns,
+  createPipelineTransform,
+  runPipeline,
+  runPipelineWithFrames,
+} from './pipeline'
+
+// --- Plugin System (Legacy - still supported) ---
 export * from './plugins'
 
 // --- Types ---
@@ -62,4 +146,4 @@ export * from './processor-orchestrator'
 // Shiki module - namespaced to avoid conflicts with settlers
 export * as shiki from './shiki'
 // Mermaid module - progressive diagram rendering
-export * as mermaid from './mermaid'
+export * as mermaidLoader from './mermaid'

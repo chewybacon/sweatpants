@@ -12,16 +12,22 @@
  * - `useChat`: Simple API - just messages, send, and streaming state
  * - `useChatSession`: Advanced API - full access to buffers, transforms, patches
  *
- * ## Plugin-Based API
+ * ## Pipeline API (Recommended)
  *
  * ```tsx
  * import { useChat } from '@tanstack/framework/react/chat'
- * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
  *
  * function ChatUI() {
+ *   // Use a preset for common setups
  *   const { messages, isStreaming, send } = useChat({
- *     plugins: [markdownPlugin, shikiPlugin]
+ *     pipeline: 'full'  // markdown + shiki + mermaid
  *   })
+ *
+ *   // Or specify processors explicitly
+ *   // import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
+ *   // const { messages, send } = useChat({
+ *   //   pipeline: { processors: [markdown, shiki] }
+ *   // })
  *
  *   return (
  *     <div>
@@ -42,7 +48,7 @@
  * ```
  */
 import { useMemo, useEffect, useRef, useState } from 'react'
-import { run } from 'effection'
+import { run, call } from 'effection'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
 import { renderingBufferTransform } from './core/rendering-buffer'
 import { markdown } from './processors'
@@ -52,13 +58,14 @@ import type { ProcessorPlugin, SettlerPreference } from './plugins/types'
 import { resolvePlugins, preloadPlugins, arePluginsReady } from './plugins/loader'
 import { createProcessorChain } from './processor-chain'
 // New pipeline imports
-import type { PipelineConfig, ProcessorFactory as PipelineProcessorFactory } from './pipeline/types'
+import type { PipelineConfig, Processor } from './pipeline/types'
 import {
   createPipelineTransform,
-  createCodeFenceSettler,
-  createMarkdownProcessor,
-  createShikiProcessor,
-  createMermaidProcessor,
+  // Built-in processors
+  markdown as markdownProcessor,
+  shiki as shikiProcessor,
+  mermaid as mermaidProcessor,
+  // Preload helpers
   preloadShiki,
   preloadMermaid,
   isShikiReady,
@@ -142,12 +149,12 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
   plugins?: ProcessorPlugin[]
 
   /**
-   * Use the new Frame-based pipeline system.
+   * Configure the streaming pipeline.
    *
-   * The pipeline uses immutable Frame snapshots for cleaner rendering:
-   * - Better progressive enhancement (quick → full rendering)
+   * The pipeline uses immutable Frame snapshots for clean rendering:
+   * - Progressive enhancement (quick → full rendering)
    * - No content duplication bugs
-   * - Easier debugging via trace
+   * - Automatic dependency resolution
    *
    * Can be a preset name or a custom PipelineConfig:
    * - 'markdown': Basic markdown parsing
@@ -160,12 +167,10 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
    * // Use a preset
    * useChat({ pipeline: 'full' })
    *
-   * // Or custom config
+   * // Or with specific processors (dependencies auto-resolved)
+   * import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
    * useChat({
-   *   pipeline: {
-   *     settler: createCodeFenceSettler,
-   *     processors: [createMarkdownProcessor, createShikiProcessor],
-   *   }
+   *   pipeline: { processors: [markdown, shiki] }
    * })
    * ```
    */
@@ -282,39 +287,55 @@ function resolvePipelinePreset(preset: PipelinePreset): PipelineConfig {
   switch (preset) {
     case 'markdown':
       return {
-        settler: createCodeFenceSettler,
-        processors: [createMarkdownProcessor],
+        processors: [markdownProcessor],
       }
     case 'shiki':
       return {
-        settler: createCodeFenceSettler,
-        processors: [createMarkdownProcessor, createShikiProcessor],
+        processors: [markdownProcessor, shikiProcessor],
       }
     case 'mermaid':
       return {
-        settler: createCodeFenceSettler,
-        processors: [createMarkdownProcessor, createMermaidProcessor],
+        processors: [markdownProcessor, mermaidProcessor],
       }
     case 'full':
       return {
-        settler: createCodeFenceSettler,
-        processors: [createMarkdownProcessor, createShikiProcessor, createMermaidProcessor],
+        processors: [markdownProcessor, shikiProcessor, mermaidProcessor],
       }
   }
+}
+
+/**
+ * Get the processors from a pipeline config.
+ */
+function getProcessors(config: PipelineConfig): readonly Processor[] {
+  if (typeof config.processors === 'string') {
+    // It's a preset - resolve it
+    const resolved = resolvePipelinePreset(config.processors as PipelinePreset)
+    return resolved.processors as readonly Processor[]
+  }
+  // Check if it's Processor objects (have 'name' property)
+  const first = config.processors[0]
+  if (first && typeof first === 'object' && 'name' in first) {
+    return config.processors as readonly Processor[]
+  }
+  // Legacy factory functions - can't determine processors
+  return []
 }
 
 /**
  * Check if a pipeline config uses Shiki.
  */
 function pipelineUsesShiki(config: PipelineConfig): boolean {
-  return config.processors.some(p => p === createShikiProcessor)
+  const processors = getProcessors(config)
+  return processors.some(p => p.name === 'shiki')
 }
 
 /**
  * Check if a pipeline config uses Mermaid.
  */
 function pipelineUsesMermaid(config: PipelineConfig): boolean {
-  return config.processors.some(p => p === createMermaidProcessor)
+  const processors = getProcessors(config)
+  return processors.some(p => p.name === 'mermaid')
 }
 
 // --- Hook Implementation ---
@@ -429,7 +450,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
       // Preload in background
       run(function* () {
         if (shikiNeeded && !isShikiReady()) {
-          yield* preloadShiki()
+          yield* call(() => preloadShiki())
         }
         if (mermaidNeeded && !isMermaidReady()) {
           yield* preloadMermaid()

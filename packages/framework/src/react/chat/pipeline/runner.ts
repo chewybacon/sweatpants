@@ -1,36 +1,62 @@
 /**
  * pipeline/runner.ts
  *
- * Pipeline runner - orchestrates settler and processors to produce frames.
+ * Pipeline runner - orchestrates parsing and processors to produce frames.
  *
  * The runner:
  * 1. Receives raw streaming chunks
- * 2. Passes them through the settler (creates block structure)
- * 3. Runs processors in sequence (enhances blocks with HTML)
+ * 2. Parses them into block structure (internal, automatic)
+ * 3. Runs processors in dependency order (enhances blocks with HTML)
  * 4. Emits frames for the UI to render
  *
  * ## Progressive Enhancement
  *
  * The runner supports progressive enhancement by emitting multiple frames:
- * - After settler: Frame with block structure (raw content only)
+ * - After parsing: Frame with block structure (raw content only)
  * - After each processor: Frame with enhanced HTML
  *
  * This allows the UI to show immediate feedback while async processors
  * (like Shiki/Mermaid) complete in the background.
  */
 import type { Operation, Channel, Subscription } from 'effection'
-import { spawn } from 'effection'
 import type {
   Frame,
-  Settler,
-  SettlerFactory,
   Processor,
+  ProcessorPreset,
   ProcessorFactory,
-  SettleContext,
   PipelineConfig,
+  ParseContext,
   FrameEmitter,
+  ProcessFn,
 } from './types'
-import { emptyFrame, renderFrameToHtml, renderFrameToRaw, addTrace } from './frame'
+import { emptyFrame, renderFrameToHtml, renderFrameToRaw } from './frame'
+import { createParser } from './parser'
+import { resolveProcessors } from './resolver'
+
+// Import built-in processors to ensure they register themselves
+import { markdown } from './processors/markdown'
+import { shiki } from './processors/shiki'
+import { mermaid } from './processors/mermaid'
+
+// =============================================================================
+// Presets
+// =============================================================================
+
+/**
+ * Resolve a preset name to an array of processors.
+ */
+function resolvePreset(preset: ProcessorPreset): readonly Processor[] {
+  switch (preset) {
+    case 'markdown':
+      return [markdown]
+    case 'shiki':
+      return [markdown, shiki]
+    case 'mermaid':
+      return [markdown, mermaid]
+    case 'full':
+      return [markdown, shiki, mermaid]
+  }
+}
 
 // =============================================================================
 // Pipeline Instance
@@ -44,13 +70,83 @@ export interface PipelineInstance {
   readonly frame: Frame
 
   /** Process a chunk of raw content */
-  process(chunk: string, ctx: SettleContext): Operation<Frame>
+  process(chunk: string): Operation<Frame>
 
   /** Flush any remaining content (end of stream) */
   flush(): Operation<Frame>
 
   /** Reset the pipeline for a new stream */
   reset(): void
+}
+
+/**
+ * Internal configuration after resolving presets and dependencies.
+ */
+interface ResolvedConfig {
+  processFns: readonly ProcessFn[]
+}
+
+/**
+ * Check if something is a Processor object (has name and process).
+ */
+function isProcessor(x: unknown): x is Processor {
+  return (
+    typeof x === 'object' &&
+    x !== null &&
+    'name' in x &&
+    'process' in x &&
+    typeof (x as Processor).name === 'string' &&
+    typeof (x as Processor).process === 'function'
+  )
+}
+
+/**
+ * Check if something is a ProcessorFactory (function that returns a function).
+ */
+function isProcessorFactory(x: unknown): x is ProcessorFactory {
+  return typeof x === 'function'
+}
+
+/**
+ * Resolve a PipelineConfig to process functions.
+ */
+function resolveConfig(config: PipelineConfig): ResolvedConfig {
+  // Handle preset string
+  if (typeof config.processors === 'string') {
+    const processors = resolvePreset(config.processors)
+    const resolved = resolveProcessors(processors)
+    return {
+      processFns: resolved.processors.map(p => p.process),
+    }
+  }
+
+  // Handle array of processors or factories
+  const items = config.processors
+  if (items.length === 0) {
+    return { processFns: [] }
+  }
+
+  // Check if it's new-style Processor objects or old-style factories
+  const firstItem = items[0]
+
+  if (isProcessor(firstItem)) {
+    // New-style: Processor objects with name, dependencies, process
+    const processors = items as readonly Processor[]
+    const resolved = resolveProcessors(processors)
+    return {
+      processFns: resolved.processors.map(p => p.process),
+    }
+  } else if (isProcessorFactory(firstItem)) {
+    // Old-style: ProcessorFactory functions (deprecated)
+    // Just call each factory to get the process function
+    const factories = items as readonly ProcessorFactory[]
+    return {
+      processFns: factories.map(f => f()),
+    }
+  }
+
+  // Unknown type
+  throw new Error('Invalid processors configuration')
 }
 
 /**
@@ -63,9 +159,14 @@ export function createPipeline(
   config: PipelineConfig,
   onFrame?: FrameEmitter
 ): PipelineInstance {
-  // Create instances from factories
-  const settler = config.settler()
-  const processors = config.processors.map((f) => f())
+  // Resolve config
+  const resolved = resolveConfig(config)
+
+  // Create parser (internal)
+  const parser = createParser()
+
+  // Get process functions
+  const processFns = resolved.processFns
 
   // Current state
   let currentFrame = emptyFrame()
@@ -75,17 +176,18 @@ export function createPipeline(
       return currentFrame
     },
 
-    *process(chunk: string, ctx: SettleContext): Operation<Frame> {
-      // Step 1: Run settler to update block structure
-      const settledFrame = settler(currentFrame, chunk, ctx)
+    *process(chunk: string): Operation<Frame> {
+      // Step 1: Parse chunk into block structure
+      const ctx: ParseContext = { flush: false }
+      const parsedFrame = parser(currentFrame, chunk, ctx)
 
-      // If settler changed the frame, run processors
-      if (settledFrame !== currentFrame) {
-        currentFrame = settledFrame
+      // If parser changed the frame, run processors
+      if (parsedFrame !== currentFrame) {
+        currentFrame = parsedFrame
 
         // Step 2: Run processors in sequence
-        for (const processor of processors) {
-          const processedFrame = yield* processor(currentFrame)
+        for (const processFn of processFns) {
+          const processedFrame = yield* processFn(currentFrame)
 
           // If processor changed the frame, update and optionally emit
           if (processedFrame !== currentFrame) {
@@ -98,7 +200,7 @@ export function createPipeline(
         }
 
         // Emit final frame if we have a callback and haven't emitted yet
-        if (onFrame && processors.length === 0) {
+        if (onFrame && processFns.length === 0) {
           yield* onFrame(currentFrame)
         }
       }
@@ -107,8 +209,26 @@ export function createPipeline(
     },
 
     *flush(): Operation<Frame> {
-      // Process with flush=true to handle any remaining content
-      return yield* this.process('', { pending: '', flush: true })
+      // Parse with flush=true to handle any remaining content
+      const ctx: ParseContext = { flush: true }
+      const parsedFrame = parser(currentFrame, '', ctx)
+
+      if (parsedFrame !== currentFrame) {
+        currentFrame = parsedFrame
+
+        // Run processors on flushed frame
+        for (const processFn of processFns) {
+          const processedFrame = yield* processFn(currentFrame)
+          if (processedFrame !== currentFrame) {
+            currentFrame = processedFrame
+            if (onFrame) {
+              yield* onFrame(currentFrame)
+            }
+          }
+        }
+      }
+
+      return currentFrame
     },
 
     reset(): void {
@@ -120,19 +240,19 @@ export function createPipeline(
 }
 
 // =============================================================================
-// Compose Processors
+// Compose Process Functions
 // =============================================================================
 
 /**
- * Compose multiple processors into a single processor.
- * Processors run in sequence, each receiving the output of the previous.
+ * Compose multiple process functions into one.
+ * Functions run in sequence, each receiving the output of the previous.
  */
-export function composeProcessors(processors: Processor[]): Processor {
+export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
   return function* (frame: Frame): Operation<Frame> {
     let currentFrame = frame
 
-    for (const processor of processors) {
-      currentFrame = yield* processor(currentFrame)
+    for (const fn of fns) {
+      currentFrame = yield* fn(currentFrame)
     }
 
     return currentFrame
@@ -143,10 +263,13 @@ export function composeProcessors(processors: Processor[]): Processor {
 // Pipeline Transform (for integration with existing system)
 // =============================================================================
 
+// Import patch types from the main types
+import type { ChatPatch, BufferRenderablePatch } from '../types'
+
 /**
  * Create a patch transform from a pipeline config.
  *
- * This bridges the new pipeline system with the existing patch-based
+ * This bridges the pipeline system with the existing patch-based
  * streaming infrastructure. It receives streaming patches and emits
  * buffer_renderable patches with Frame-based rendering.
  */
@@ -155,7 +278,6 @@ export function createPipelineTransform(config: PipelineConfig) {
     input: Channel<ChatPatch, void>,
     output: Channel<ChatPatch, void>
   ): Operation<void> {
-    let lastHtml = ''
     let lastRaw = ''
 
     // Create pipeline instance with frame emission
@@ -178,7 +300,6 @@ export function createPipelineTransform(config: PipelineConfig) {
 
       yield* output.send(patch)
 
-      lastHtml = html
       lastRaw = raw
     })
 
@@ -200,12 +321,11 @@ export function createPipelineTransform(config: PipelineConfig) {
       if (patch.type === 'streaming_start') {
         // Reset pipeline for new stream
         pipeline.reset()
-        lastHtml = ''
         lastRaw = ''
         yield* output.send(patch)
       } else if (patch.type === 'streaming_text') {
         // Process chunk through pipeline
-        yield* pipeline.process(patch.content, { pending: '', flush: false })
+        yield* pipeline.process(patch.content)
         // Pass through original patch for raw buffer tracking
         yield* output.send(patch)
       } else if (patch.type === 'streaming_end') {
@@ -219,9 +339,6 @@ export function createPipelineTransform(config: PipelineConfig) {
     }
   }
 }
-
-// Import patch types from the main types
-import type { ChatPatch, BufferRenderablePatch } from '../types'
 
 // =============================================================================
 // Simple Runner (for testing)
@@ -248,7 +365,7 @@ export function* runPipeline(
     const chunk = isLast ? line : line + '\n'
 
     if (chunk) {
-      yield* pipeline.process(chunk, { pending: '', flush: false })
+      yield* pipeline.process(chunk)
     }
   }
 
@@ -279,7 +396,7 @@ export function* runPipelineWithFrames(
     const chunk = isLast ? line : line + '\n'
 
     if (chunk) {
-      yield* pipeline.process(chunk, { pending: '', flush: false })
+      yield* pipeline.process(chunk)
     }
   }
 

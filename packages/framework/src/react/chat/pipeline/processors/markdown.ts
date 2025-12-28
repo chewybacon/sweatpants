@@ -10,14 +10,13 @@
  */
 import type { Operation } from 'effection'
 import { marked } from 'marked'
-import type { Frame, Block, Processor, ProcessorFactory } from '../types'
+import type { Frame, Processor } from '../types'
 import {
-  updateFrame,
   updateBlockById,
   setBlockHtml,
   addTrace,
-  renderFrameToRaw,
 } from '../frame'
+import { registerBuiltinProcessor } from '../resolver'
 
 // =============================================================================
 // HTML Escaping
@@ -47,80 +46,38 @@ const wrapCodeBlock = (code: string, language: string): string => {
 // =============================================================================
 
 /**
- * Create a markdown processor.
+ * Markdown processor.
  *
- * This processor:
- * 1. Parses text blocks through marked (markdown → HTML)
- * 2. Escapes code blocks (basic HTML escaping)
- * 3. Only processes blocks that haven't been rendered yet
+ * Parses text blocks through marked (markdown → HTML) and provides
+ * basic HTML escaping for code blocks. Other processors (shiki, mermaid)
+ * can enhance code blocks later.
  *
- * Other processors (shiki, mermaid) can enhance code blocks later.
+ * @example
+ * ```typescript
+ * import { markdown } from '@tanstack/framework/react/chat/processors'
+ *
+ * useChat({
+ *   processors: [markdown]
+ * })
+ * ```
  */
-export const createMarkdownProcessor: ProcessorFactory = () => {
-  const processor: Processor = function* (frame: Frame): Operation<Frame> {
-    let currentFrame = frame
-    let changed = false
+export const markdown: Processor = {
+  name: 'markdown',
+  description: 'Parse markdown to HTML',
 
-    for (const block of frame.blocks) {
-      // Skip blocks that already have HTML
-      if (block.renderPass !== 'none') {
-        continue
-      }
+  // No dependencies - markdown is typically first
+  dependencies: [],
 
-      if (block.type === 'text') {
-        // Parse markdown
-        const html = marked.parse(block.raw, { async: false }) as string
+  // No async assets to preload - omit preload field
+  isReady: () => true,
 
-        currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-          setBlockHtml(b, html, 'quick')
-        )
-        currentFrame = addTrace(currentFrame, 'markdown', 'update', {
-          blockId: block.id,
-          detail: 'parsed markdown',
-        })
-        changed = true
-      } else if (block.type === 'code') {
-        // Basic HTML escaping for code blocks
-        // Other processors will enhance with syntax highlighting
-        const html = wrapCodeBlock(block.raw, block.language || '')
-
-        currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-          setBlockHtml(b, html, 'quick')
-        )
-        currentFrame = addTrace(currentFrame, 'markdown', 'update', {
-          blockId: block.id,
-          detail: `escaped code: ${block.language || 'no language'}`,
-        })
-        changed = true
-      }
-    }
-
-    // If nothing changed, return original frame (referential equality)
-    return changed ? currentFrame : frame
-  }
-
-  return processor
-}
-
-// =============================================================================
-// Streaming Markdown Processor
-// =============================================================================
-
-/**
- * Create a streaming-aware markdown processor.
- *
- * This is similar to the basic markdown processor, but also handles
- * streaming blocks - rendering partial content with a visual indicator.
- */
-export const createStreamingMarkdownProcessor: ProcessorFactory = () => {
-  const processor: Processor = function* (frame: Frame): Operation<Frame> {
+  process: function* (frame: Frame): Operation<Frame> {
     let currentFrame = frame
     let changed = false
 
     for (const block of frame.blocks) {
       if (block.type === 'text') {
-        // For text blocks, always re-render if content might have changed
-        // (streaming blocks grow over time)
+        // For text blocks, render if no HTML yet or still streaming
         const shouldRender =
           block.renderPass === 'none' ||
           (block.status === 'streaming' && block.raw.length > 0)
@@ -141,7 +98,7 @@ export const createStreamingMarkdownProcessor: ProcessorFactory = () => {
           changed = true
         }
       } else if (block.type === 'code') {
-        // For code blocks, only do basic escaping if not already processed
+        // For code blocks, provide basic escaping
         if (block.renderPass === 'none') {
           const html = wrapCodeBlock(block.raw, block.language || '')
 
@@ -150,7 +107,7 @@ export const createStreamingMarkdownProcessor: ProcessorFactory = () => {
           )
           currentFrame = addTrace(currentFrame, 'markdown', 'update', {
             blockId: block.id,
-            detail: `escaped code: ${block.language || 'no language'}`,
+            detail: `escaped code: ${block.language || 'plain'}`,
           })
           changed = true
         } else if (block.status === 'streaming') {
@@ -160,7 +117,7 @@ export const createStreamingMarkdownProcessor: ProcessorFactory = () => {
           currentFrame = updateBlockById(currentFrame, block.id, (b) => ({
             ...b,
             html,
-            // Keep the same renderPass - don't upgrade
+            // Keep the same renderPass
           }))
           changed = true
         }
@@ -168,13 +125,21 @@ export const createStreamingMarkdownProcessor: ProcessorFactory = () => {
     }
 
     return changed ? currentFrame : frame
-  }
-
-  return processor
+  },
 }
 
+// Register as built-in for auto-dependency resolution
+registerBuiltinProcessor('markdown', () => markdown)
+
 // =============================================================================
-// Default Export
+// Legacy Exports (for backward compatibility)
 // =============================================================================
 
+/** @deprecated Use `markdown` instead */
+export const createMarkdownProcessor = () => markdown.process
+
+/** @deprecated Use `markdown` instead */
+export const createStreamingMarkdownProcessor = () => markdown.process
+
+/** @deprecated Use `markdown` instead */
 export const markdownProcessor = createStreamingMarkdownProcessor

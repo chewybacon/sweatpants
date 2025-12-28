@@ -10,18 +10,19 @@
  * Works on code blocks, enhancing their HTML.
  */
 import type { Operation } from 'effection'
-import type { Frame, Block, Processor, ProcessorFactory } from '../types'
+import { call } from 'effection'
+import type { Frame, Processor } from '../types'
 import {
   updateBlockById,
   setBlockHtml,
   addTrace,
-  updateBlock,
 } from '../frame'
 import {
   highlightCode,
   preloadHighlighter,
   isHighlighterReady,
 } from '../../shiki/loader'
+import { registerBuiltinProcessor } from '../resolver'
 
 // =============================================================================
 // Quick Highlighting (Regex-based)
@@ -64,13 +65,13 @@ const QUICK_PATTERNS: Record<string, Array<{ pattern: RegExp; className: string 
 }
 
 // Language aliases
-QUICK_PATTERNS['typescript'] = QUICK_PATTERNS['javascript']
-QUICK_PATTERNS['tsx'] = QUICK_PATTERNS['javascript']
-QUICK_PATTERNS['jsx'] = QUICK_PATTERNS['javascript']
-QUICK_PATTERNS['sh'] = QUICK_PATTERNS['bash']
-QUICK_PATTERNS['shell'] = QUICK_PATTERNS['bash']
-QUICK_PATTERNS['zsh'] = QUICK_PATTERNS['bash']
-QUICK_PATTERNS['py'] = QUICK_PATTERNS['python']
+QUICK_PATTERNS['typescript'] = QUICK_PATTERNS['javascript']!
+QUICK_PATTERNS['tsx'] = QUICK_PATTERNS['javascript']!
+QUICK_PATTERNS['jsx'] = QUICK_PATTERNS['javascript']!
+QUICK_PATTERNS['sh'] = QUICK_PATTERNS['bash']!
+QUICK_PATTERNS['shell'] = QUICK_PATTERNS['bash']!
+QUICK_PATTERNS['zsh'] = QUICK_PATTERNS['bash']!
+QUICK_PATTERNS['py'] = QUICK_PATTERNS['python']!
 
 /**
  * Apply quick regex-based highlighting to code.
@@ -131,16 +132,35 @@ function wrapCodeBlock(html: string, language: string, isQuick: boolean): string
 // =============================================================================
 
 /**
- * Create a Shiki syntax highlighting processor.
+ * Shiki syntax highlighting processor.
  *
- * This processor:
- * 1. Quick pass: Applies regex-based highlighting to streaming code blocks
- * 2. Full pass: Applies Shiki highlighting when code block completes
+ * Provides progressive syntax highlighting:
+ * 1. Quick pass: Instant regex-based highlighting while streaming
+ * 2. Full pass: Complete Shiki highlighting when code block completes
  *
- * The processor is idempotent - it checks renderPass before processing.
+ * @example
+ * ```typescript
+ * import { shiki } from '@tanstack/framework/react/chat/processors'
+ *
+ * useChat({
+ *   processors: [shiki]  // markdown will be auto-added as dependency
+ * })
+ * ```
  */
-export const createShikiProcessor: ProcessorFactory = () => {
-  const processor: Processor = function* (frame: Frame): Operation<Frame> {
+export const shiki: Processor = {
+  name: 'shiki',
+  description: 'Syntax highlighting with Shiki',
+
+  // Depends on markdown for basic code block structure
+  dependencies: ['markdown'],
+
+  *preload() {
+    yield* call(() => preloadHighlighter())
+  },
+
+  isReady: isHighlighterReady,
+
+  process: function* (frame: Frame): Operation<Frame> {
     let currentFrame = frame
     let changed = false
 
@@ -194,13 +214,14 @@ export const createShikiProcessor: ProcessorFactory = () => {
     }
 
     return changed ? currentFrame : frame
-  }
-
-  return processor
+  },
 }
 
+// Register as built-in for auto-dependency resolution
+registerBuiltinProcessor('shiki', () => shiki)
+
 // =============================================================================
-// Preload Helper
+// Preload Helper (for external use)
 // =============================================================================
 
 /**
@@ -215,7 +236,11 @@ export const preloadShiki = preloadHighlighter
 export const isShikiReady = isHighlighterReady
 
 // =============================================================================
-// Default Export
+// Legacy Exports (for backward compatibility)
 // =============================================================================
 
+/** @deprecated Use `shiki` instead */
+export const createShikiProcessor = () => shiki.process
+
+/** @deprecated Use `shiki` instead */
 export const shikiProcessor = createShikiProcessor
