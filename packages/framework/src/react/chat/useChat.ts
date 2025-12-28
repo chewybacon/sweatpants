@@ -40,7 +40,7 @@
  */
 import { useMemo } from 'react'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
-import { tripleBufferTransform } from './tripleBuffer'
+import { renderingBufferTransform } from './core/rendering-buffer'
 import { markdown } from './processors'
 import type { SettleMeta, RenderDelta, RevealHint } from './types'
 
@@ -161,7 +161,7 @@ export interface UseChatReturn {
 // --- Default Transforms ---
 
 const defaultTransforms = [
-  tripleBufferTransform({
+  renderingBufferTransform({
     processor: markdown,
   })
 ]
