@@ -26,7 +26,7 @@
  */
 import { marked } from 'marked'
 import type { Processor, ProcessorEmit, ProcessorContext } from '../types'
-import type { CodeFenceMeta } from './settlers'
+import type { CodeFenceMeta } from '../settlers/code-fence'
 import { highlightCode } from './loader'
 
 // --- Quick Highlighting (Instant, Regex-based) ---

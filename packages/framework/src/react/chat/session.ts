@@ -75,7 +75,7 @@ import type {
 } from './types'
 import type { ApprovalSignalValue } from './tool-runtime'
 import type { IsomorphicToolRegistry, ToolHandlerRegistry, PendingUIRequest, PendingStep } from '../../lib/chat/isomorphic-tools'
-import { withOrchestrationLogging } from './processor-orchestrator'
+
 import {
   executeIsomorphicToolsClient,
   executeIsomorphicToolsClientWithReactHandlers,
@@ -272,9 +272,6 @@ export function* runChatSession(
         // This lets us cancel it if a new command arrives
         currentRequestTask = yield* spawn(function* () {
           try {
-             // Apply processor orchestration middleware
-             yield* withOrchestrationLogging()
-
              // Create transform pipeline (handles empty transforms with passthrough)
              // The resource pattern ensures transforms are subscribed before we start writing
              const streamPatches = yield* useTransformPipeline(

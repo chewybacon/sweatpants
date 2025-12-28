@@ -1,12 +1,8 @@
 /**
  * settlers.ts
  *
- * Re-exports from the settlers/ directory for backward compatibility.
- * New code should import from './settlers/index'.
+ * Re-exports from the settlers/ directory.
+ * This file exists for convenient imports: `import { paragraph } from './settlers'`
  */
 
 export * from './settlers/index'
-
-// Legacy alias
-import { codeFence } from './settlers/code-fence'
-export const defaultMetadataSettlerFactory = codeFence

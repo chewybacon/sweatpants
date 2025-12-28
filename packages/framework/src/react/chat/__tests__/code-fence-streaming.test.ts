@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest'
 import { run, sleep, type Operation } from 'effection'
 import { paragraph } from '../settlers'
-import { codeFence } from '../shiki/settlers'
+import { codeFence } from '../settlers/code-fence'
 import type { SettleContext } from '../types'
 
 // Simulated stream: assistant returns quicksort with markdown

@@ -4,7 +4,7 @@
  * Shared test utilities for React chat testing.
  */
 import { run } from 'effection'
-import { codeFence } from '../shiki/settlers'
+import { codeFence } from '../settlers/code-fence'
 import type { ProcessorContext, ProcessedOutput, SettleContext, Processor } from '../types'
 
 /**

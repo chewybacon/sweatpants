@@ -11,7 +11,6 @@ import { dualBufferTransform } from '../dualBuffer'
 import { paragraph } from '../settlers'
 import { createProcessorChain, mergeProcessorMetadata } from '../processor-chain'
 import { markdown, syntaxHighlight } from '../processors'
-import { processorOrchestration } from '../processor-orchestrator'
 
 // Mock provider for testing
 const mockProvider = {
@@ -242,8 +241,6 @@ describe('Rendering Engine E2E', () => {
         // Test that all components can be imported and work together
         const components = {
           hasDualBuffer: typeof dualBufferTransform === 'function',
-      hasProcessorOrchestration: typeof processorOrchestration !== 'undefined',
-      orchestrationOperations: Object.keys(processorOrchestration.operations),
           hasParagraph: typeof paragraph === 'function',
           hasMarkdown: typeof markdown === 'function',
           hasSyntaxHighlight: typeof syntaxHighlight === 'function',
@@ -568,22 +565,6 @@ describe('Rendering Engine E2E', () => {
       expect(result.hasLoggingMiddleware).toBe(true)
     })
 
-    it('should create extensible rendering pipeline API', async () => {
-      const result = await run(function* () {
-        const { rendering, withRenderingMetrics } = yield* call(() => import('../rendering-pipeline'))
-
-        return {
-          hasOperations: typeof rendering.operations === 'object',
-          hasAround: typeof rendering.around === 'function',
-          hasMetricsMiddleware: typeof withRenderingMetrics === 'function'
-        }
-      })
-
-      expect(result.hasOperations).toBe(true)
-      expect(result.hasAround).toBe(true)
-      expect(result.hasMetricsMiddleware).toBe(true)
-    })
-
     it('should enable processor orchestration by default', async () => {
       const result = await run(function* () {
         // Test that processor orchestration works by default
@@ -618,18 +599,5 @@ describe('Rendering Engine E2E', () => {
       expect(result.operationsAvailable).toBe(true)
     })
 
-    it('should allow rendering pipeline middleware composition', async () => {
-      const result = await run(function* () {
-        const { rendering } = yield* call(() => import('../rendering-pipeline'))
-
-        return {
-          apiAvailable: typeof rendering.operations === 'object',
-          operationsAvailable: Object.keys(rendering.operations).length > 0
-        }
-      })
-
-      expect(result.apiAvailable).toBe(true)
-      expect(result.operationsAvailable).toBe(true)
-    })
   })
 })

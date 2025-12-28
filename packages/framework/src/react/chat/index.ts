@@ -135,12 +135,8 @@ export * from './contexts'
 // --- Additional Hooks ---
 export * from './usePersonas'
 
-// --- Legacy/Deprecated (kept for backward compatibility) ---
-// tripleBuffer re-exports from core with deprecation notice
-export * from './tripleBuffer'
+// --- Buffer Transforms ---
 export * from './dualBuffer'
-// @deprecated - use plugins instead
-export * from './processor-orchestrator'
 
 // --- Namespaced Modules ---
 // Shiki module - namespaced to avoid conflicts with settlers

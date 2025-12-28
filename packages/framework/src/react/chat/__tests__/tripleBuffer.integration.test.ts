@@ -1,16 +1,16 @@
 /**
  * tripleBuffer.integration.test.ts
  *
- * Integration tests for triple buffer transform with real streaming scenarios.
+ * Integration tests for rendering buffer transform with real streaming scenarios.
  */
 import { describe, it, expect } from 'vitest'
 import { run, createChannel, spawn, each, sleep } from 'effection'
-import { tripleBufferTransform } from '../tripleBuffer'
+import { renderingBufferTransform } from '../core/rendering-buffer'
 import { paragraph } from '../settlers'
 import { markdown } from '../processors'
 import type { ChatPatch } from '../types'
 
-describe('tripleBuffer integration', () => {
+describe('renderingBufferTransform integration', () => {
   it('should process streaming markdown content end-to-end', async () => {
     const result = await run(function* () {
       const input = createChannel<ChatPatch, void>()
@@ -26,9 +26,9 @@ describe('tripleBuffer integration', () => {
       })
 
       yield* spawn(function* () {
-        yield* tripleBufferTransform({
-          chunker: paragraph,
-          enhancer: markdown
+        yield* renderingBufferTransform({
+          settler: paragraph,
+          processor: markdown
         })(input, output)
       })
 
@@ -99,11 +99,11 @@ End of content.`
         }
       })
 
-      // Use line chunker for code fence scenario
+      // Use line settler for code fence scenario
       yield* spawn(function* () {
-        yield* tripleBufferTransform({
-          chunker: () => function* (ctx) {
-            // Simple line-based chunker
+        yield* renderingBufferTransform({
+          settler: () => function* (ctx) {
+            // Simple line-based settler
             if (ctx.pending.includes('\n')) {
               const lines = ctx.pending.split('\n')
               for (let i = 0; i < lines.length - 1; i++) {
@@ -112,7 +112,7 @@ End of content.`
               // Don't yield incomplete last line
             }
           },
-          enhancer: markdown
+          processor: markdown
         })(input, output)
       })
 
@@ -171,8 +171,8 @@ End of example.`
       })
 
       yield* spawn(function* () {
-        yield* tripleBufferTransform({
-          chunker: paragraph
+        yield* renderingBufferTransform({
+          settler: paragraph
         })(input, output)
       })
 

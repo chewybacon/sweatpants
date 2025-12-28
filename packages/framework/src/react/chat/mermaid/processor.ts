@@ -9,7 +9,7 @@
  * 
  * ## How it works
  * 
- * The processor works with the codeFence settler from shiki/settlers:
+ * The processor works with the codeFence settler from settlers/code-fence:
  * 
  * ```
  * settler yields:
@@ -28,7 +28,7 @@
  */
 import { marked } from 'marked'
 import type { Processor, ProcessorEmit, ProcessorContext } from '../types'
-import type { CodeFenceMeta } from '../shiki/settlers'
+import type { CodeFenceMeta } from '../settlers/code-fence'
 import { renderMermaid } from './loader'
 import { highlightCode } from '../shiki/loader'
 

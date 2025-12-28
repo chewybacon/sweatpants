@@ -11,8 +11,9 @@
  * - preloadHighlighter: Preload Shiki for faster first highlight
  */
 
-// Settlers
-export { codeFence, line, type CodeFenceMeta } from './settlers'
+// Settlers (canonical implementation in settlers/ directory)
+export { codeFence, type CodeFenceMeta } from '../settlers/code-fence'
+export { line } from '../settlers/line'
 
 // Processors
 export { shikiProcessor, quickHighlightProcessor } from './processor'

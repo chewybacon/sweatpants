@@ -1,15 +1,15 @@
 /**
  * tripleBuffer.test.ts
  *
- * Unit tests for triple buffer transform.
+ * Unit tests for rendering buffer transform.
  */
 import { describe, it, expect } from 'vitest'
 import { run, createChannel, spawn, each, sleep } from 'effection'
-import { tripleBufferTransform } from '../tripleBuffer'
+import { renderingBufferTransform } from '../core/rendering-buffer'
 import { paragraph } from '../settlers'
 import type { ChatPatch } from '../types'
 
-describe('tripleBufferTransform', () => {
+describe('renderingBufferTransform', () => {
   it('should accumulate raw content in buffer_raw patches', async () => {
     const result = await run(function* () {
       // Create input and output channels
@@ -29,7 +29,7 @@ describe('tripleBufferTransform', () => {
 
       // Spawn the transform
       yield* spawn(function* () {
-        yield* tripleBufferTransform()(input, output)
+        yield* renderingBufferTransform()(input, output)
       })
 
       // Give consumer and transform time to subscribe
@@ -73,7 +73,7 @@ describe('tripleBufferTransform', () => {
       })
 
       yield* spawn(function* () {
-        yield* tripleBufferTransform({ chunker: paragraph })(input, output)
+        yield* renderingBufferTransform({ settler: paragraph })(input, output)
       })
 
       yield* sleep(10)
@@ -114,8 +114,8 @@ describe('tripleBufferTransform', () => {
       })
 
       yield* spawn(function* () {
-        yield* tripleBufferTransform({
-          chunker: paragraph
+        yield* renderingBufferTransform({
+          settler: paragraph
         })(input, output)
       })
 
@@ -156,7 +156,7 @@ describe('tripleBufferTransform', () => {
       })
 
       yield* spawn(function* () {
-        yield* tripleBufferTransform({ chunker: paragraph })(input, output)
+        yield* renderingBufferTransform({ settler: paragraph })(input, output)
       })
 
       yield* sleep(10)
