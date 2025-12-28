@@ -83,6 +83,10 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           settled: '',
           pending: '',
           settledHtml: '',
+          renderable: {
+            prev: '',
+            next: '',
+          },
         },
         // Clear pending steps from previous request
         pendingSteps: {},
@@ -286,6 +290,20 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         buffer: {
           ...state.buffer,
           pending: patch.content,
+        },
+      }
+
+    case 'buffer_renderable':
+      return {
+        ...state,
+        buffer: {
+          ...state.buffer,
+          renderable: {
+            prev: patch.prev,
+            next: patch.next,
+            ...(patch.html && { html: patch.html }),
+            ...(patch.meta && { meta: patch.meta }),
+          },
         },
       }
 

@@ -1133,15 +1133,26 @@ export interface ChatState {
   persona: string | null
 
   /**
-   * Dual buffer state (when using dualBufferTransform)
-   * - settled: Content that's safe to parse/render as markdown
-   * - pending: Content still streaming in (render as raw text)
-   * - settledHtml: Parsed HTML (when using markdownTransform)
+   * Buffer state (when using buffer transforms)
+   * - settled: Content that's safe to parse/render as markdown (dual buffer)
+   * - pending: Content still streaming in (render as raw text) (dual buffer)
+   * - settledHtml: Parsed HTML (when using markdownTransform) (dual buffer)
+   * - renderable: Double buffer for smooth frame transitions (triple buffer)
+   *   - prev: Previous frame content
+   *   - next: Current frame content
+   *   - html: Processed HTML for current frame
+   *   - meta: Metadata from chunkers/enhancers
    */
   buffer: {
     settled: string
     pending: string
     settledHtml: string
+    renderable?: {
+      prev: string
+      next: string
+      html?: string
+      meta?: SettleMeta
+    }
   }
 
   /**
@@ -1251,6 +1262,10 @@ export const initialChatState: ChatState = {
     settled: '',
     pending: '',
     settledHtml: '',
+    renderable: {
+      prev: '',
+      next: '',
+    },
   },
   pendingClientTools: {},
   pendingHandoffs: {},

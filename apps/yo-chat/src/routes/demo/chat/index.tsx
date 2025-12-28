@@ -10,19 +10,19 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChatSession, dualBufferTransform, paragraph, markdown } from '@tanstack/framework/react/chat'
+import { useChatSession, tripleBufferTransform, codeFence, smartMarkdown, syntaxHighlight } from '@tanstack/framework/react/chat'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: EffectionChatDemo,
 })
 
 function EffectionChatDemo() {
-  // Enhanced chat with markdown processing
+  // Enhanced chat with triple buffer for smooth rendering
   const { state, send, abort, reset } = useChatSession({
     transforms: [
-      dualBufferTransform({
-        settler: paragraph,
-        processor: [markdown]
+      tripleBufferTransform({
+        chunker: codeFence,
+        enhancer: [smartMarkdown, syntaxHighlight]
       })
     ]
   })
@@ -32,7 +32,7 @@ function EffectionChatDemo() {
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [state.messages, state.buffer.settled, state.buffer.pending])
+  }, [state.messages, state.buffer.renderable?.next])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -48,10 +48,10 @@ function EffectionChatDemo() {
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Dual Buffer Chat
+              Triple Buffer Chat
             </h1>
             <p className="text-slate-400 text-sm">
-              Double buffering pattern: settled vs pending content
+              Triple buffering with syntax highlighting: code fences processed line-by-line
             </p>
           </div>
         </div>
@@ -127,7 +127,7 @@ function EffectionChatDemo() {
             </div>
           ))}
 
-          {/* Streaming indicator with dual buffers */}
+          {/* Streaming indicator with triple buffer */}
           {state.isStreaming && (
             <div className="mb-8 w-full">
               <div className="text-xs mb-1 font-bold tracking-wider uppercase text-purple-500">
@@ -135,22 +135,18 @@ function EffectionChatDemo() {
               </div>
               <div className="bg-slate-800/50 p-4 rounded-lg">
                 <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-                  {/* Settled content - stable, could be processed */}
-                  {state.buffer.settledHtml && (
+                  {/* Renderable buffer - smooth frame transitions */}
+                  {state.buffer.renderable?.html ? (
                     <span
-                      dangerouslySetInnerHTML={{ __html: state.buffer.settledHtml }}
+                      dangerouslySetInnerHTML={{ __html: state.buffer.renderable.html }}
                     />
-                  )}
-                  {/* Pending content - raw text with cursor */}
-                  {/* {state.buffer.pending && ( */}
-                  {/*   <span className="text-slate-400"> */}
-                  {/*     {state.buffer.pending} */}
-                  {/*   </span> */}
-                  {/* )} */}
+                  ) : state.buffer.renderable?.next ? (
+                    <span>{state.buffer.renderable.next}</span>
+                  ) : null}
                   {/* Cursor */}
                   <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-                  {/* Fallback if no buffer content yet */}
-                  {!state.buffer.settled && !state.buffer.pending && (
+                  {/* Fallback if no renderable content yet */}
+                  {!state.buffer.renderable?.next && (
                     <span className="text-slate-500 flex items-center gap-2">
                       <span className="w-2 h-2 bg-cyan-500 rounded-full animate-pulse" />
                       Thinking...
@@ -217,10 +213,8 @@ function EffectionChatDemo() {
           </button>
           <div className="flex items-center gap-4">
             <span>
-              <span className="text-emerald-600">settled</span>
-              {' vs '}
-              <span className="text-slate-500">pending</span>
-              {' content'}
+              <span className="text-emerald-600">renderable</span>
+              {' frames'}
             </span>
             <span className="text-cyan-400">
               {state.messages.length} messages
