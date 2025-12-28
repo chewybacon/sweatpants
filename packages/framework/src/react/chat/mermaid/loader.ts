@@ -8,6 +8,7 @@
  * - Lazy initialization
  * - SVG rendering from mermaid code
  * - Error handling for invalid diagrams
+ * - Server-side rendering safety (skips rendering on server)
  */
 import { call, type Operation } from 'effection'
 
@@ -17,10 +18,19 @@ let initPromise: Promise<typeof import('mermaid').default> | null = null
 let idCounter = 0
 
 /**
+ * Check if we're running in a browser environment.
+ */
+const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
+
+/**
  * Initialize mermaid with sensible defaults.
  * This is called lazily on first render.
+ * Returns null if not in a browser environment.
  */
-async function initMermaid(): Promise<typeof import('mermaid').default> {
+async function initMermaid(): Promise<typeof import('mermaid').default | null> {
+  // Mermaid requires a DOM - skip on server
+  if (!isBrowser) return null
+  
   if (mermaidInstance) return mermaidInstance
   
   if (initPromise) return initPromise
@@ -68,8 +78,10 @@ async function initMermaid(): Promise<typeof import('mermaid').default> {
 
 /**
  * Check if mermaid is already initialized.
+ * Returns true on server (we skip mermaid rendering there).
  */
 export function isMermaidReady(): boolean {
+  if (!isBrowser) return true // On server, consider it "ready" (will be skipped)
   return mermaidInstance !== null
 }
 
@@ -99,6 +111,7 @@ export type MermaidRenderResult =
  * 3. Returns a result indicating success or failure
  * 
  * On failure, the processor should fall back to quick-highlighted code.
+ * On server, returns a "skip" result (mermaid requires DOM).
  * 
  * @param code - The mermaid diagram code (without fence markers)
  * @returns Result with SVG on success, or error message on failure
@@ -107,6 +120,12 @@ export function renderMermaid(code: string): Operation<MermaidRenderResult> {
   return call(async () => {
     try {
       const mermaid = await initMermaid()
+      
+      // Skip on server - mermaid requires DOM
+      if (!mermaid) {
+        return { success: false, error: 'Mermaid requires browser environment' } as MermaidRenderResult
+      }
+      
       const id = `mermaid-${++idCounter}`
       
       // Validate the diagram first

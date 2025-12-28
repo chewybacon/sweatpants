@@ -179,6 +179,14 @@ export const mermaid: Processor = {
               detail: 'rendered SVG',
               durationMs,
             })
+            changed = true
+          } else if (result.error === 'Mermaid requires browser environment') {
+            // On server - don't mark as full, let client-side render
+            currentFrame = addTrace(currentFrame, 'mermaid', 'skip', {
+              blockId: block.id,
+              detail: 'skipped on server',
+            })
+            // Don't set changed=true, frame is unchanged
           } else {
             // Rendering failed - keep the quick highlighted version
             // but mark as full so we don't retry
@@ -192,8 +200,8 @@ export const mermaid: Processor = {
               detail: `render failed: ${result.error}`,
               durationMs,
             })
+            changed = true
           }
-          changed = true
         }
       }
     }
