@@ -12,13 +12,16 @@
  * - `useChat`: Simple API - just messages, send, and streaming state
  * - `useChatSession`: Advanced API - full access to buffers, transforms, patches
  *
- * ## Usage
+ * ## Plugin-Based API
  *
  * ```tsx
  * import { useChat } from '@tanstack/framework/react/chat'
+ * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
  *
  * function ChatUI() {
- *   const { messages, isStreaming, send } = useChat()
+ *   const { messages, isStreaming, send } = useChat({
+ *     plugins: [markdownPlugin, shikiPlugin]
+ *   })
  *
  *   return (
  *     <div>
@@ -38,11 +41,16 @@
  * }
  * ```
  */
-import { useMemo } from 'react'
+import { useMemo, useEffect, useRef, useState } from 'react'
+import { run } from 'effection'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
 import { renderingBufferTransform } from './core/rendering-buffer'
 import { markdown } from './processors'
-import type { SettleMeta, RenderDelta, RevealHint } from './types'
+import { paragraph, line, sentence, codeFence } from './settlers'
+import type { SettleMeta, RenderDelta, RevealHint, SettlerFactory } from './types'
+import type { ProcessorPlugin, SettlerPreference } from './plugins/types'
+import { resolvePlugins, preloadPlugins, arePluginsReady } from './plugins/loader'
+import { createProcessorChain } from './processor-chain'
 
 // --- Types ---
 
@@ -97,9 +105,30 @@ export interface StreamingMessage {
  */
 export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'> {
   /**
+   * Plugins for the streaming pipeline.
+   *
+   * Plugins are resolved in dependency order and combined into a single
+   * transform. The settler is negotiated from all plugins (most specific wins).
+   *
+   * If not provided, a default markdown plugin is used.
+   *
+   * @example
+   * ```typescript
+   * import { markdownPlugin, shikiPlugin, mermaidPlugin } from '@tanstack/framework/react/chat/plugins'
+   *
+   * useChat({
+   *   plugins: [markdownPlugin, shikiPlugin, mermaidPlugin]
+   * })
+   * ```
+   */
+  plugins?: ProcessorPlugin[]
+
+  /**
    * Custom transforms for the streaming pipeline.
    *
-   * If not provided, a default markdown pipeline is used.
+   * If provided, this overrides the `plugins` option.
+   * For most use cases, prefer using `plugins` instead.
+   *
    * For advanced customization, use useChatSession directly.
    */
   transforms?: UseChatSessionOptions['transforms']
@@ -131,6 +160,17 @@ export interface UseChatReturn {
   isStreaming: boolean
 
   /**
+   * Whether all plugin assets are ready.
+   *
+   * This is true when all plugins with async assets (like Shiki highlighters)
+   * have finished loading. You can use this to show a loading indicator.
+   *
+   * Note: Streaming works even before plugins are ready - the quick pass
+   * provides immediate feedback while full rendering loads in the background.
+   */
+  pluginsReady: boolean
+
+  /**
    * Send a message.
    */
   send: (content: string) => void
@@ -158,6 +198,25 @@ export interface UseChatReturn {
   session: UseChatSessionReturn
 }
 
+// --- Settler Resolution ---
+
+/**
+ * Get the settler factory for a given settler preference.
+ */
+function getSettlerFactory(preference: SettlerPreference): SettlerFactory {
+  switch (preference) {
+    case 'codeFence':
+      return codeFence
+    case 'line':
+      return line
+    case 'sentence':
+      return sentence
+    case 'paragraph':
+    default:
+      return paragraph
+  }
+}
+
 // --- Default Transforms ---
 
 const defaultTransforms = [
@@ -171,12 +230,15 @@ const defaultTransforms = [
 /**
  * High-level chat hook with simple Message[] interface.
  *
- * For advanced use cases (custom transforms, tool approvals, etc.),
- * use useChatSession directly.
+ * Supports a plugin-based API for easy configuration:
  *
  * @example
  * ```tsx
- * const { messages, isStreaming, send } = useChat()
+ * import { markdownPlugin, shikiPlugin } from '@tanstack/framework/react/chat/plugins'
+ *
+ * const { messages, isStreaming, send } = useChat({
+ *   plugins: [markdownPlugin, shikiPlugin]
+ * })
  *
  * // Messages include both completed and streaming messages
  * messages.map(msg => (
@@ -187,9 +249,77 @@ const defaultTransforms = [
  *   </div>
  * ))
  * ```
+ *
+ * For advanced use cases (custom transforms, tool approvals, etc.),
+ * use useChatSession directly.
  */
 export function useChat(options: UseChatOptions = {}): UseChatReturn {
-  const { transforms = defaultTransforms, ...sessionOptions } = options
+  const { plugins, transforms: customTransforms, ...sessionOptions } = options
+
+  // Resolve plugins into transforms (memoized)
+  const transforms = useMemo(() => {
+    // If custom transforms provided, use them directly
+    if (customTransforms) {
+      return customTransforms
+    }
+
+    // If no plugins provided, use default markdown transform
+    if (!plugins || plugins.length === 0) {
+      return defaultTransforms
+    }
+
+    // Resolve plugins to get settler and processor chain
+    const resolved = resolvePlugins(plugins)
+    const settlerFactory = getSettlerFactory(resolved.settler)
+    const processorChain = createProcessorChain(resolved.processors)
+
+    return [
+      renderingBufferTransform({
+        settler: settlerFactory,
+        processor: processorChain,
+      })
+    ]
+  }, [plugins, customTransforms])
+
+  // Track whether plugins are ready
+  const [pluginsReady, setPluginsReady] = useState(() => {
+    if (!plugins || plugins.length === 0) return true
+    const resolved = resolvePlugins(plugins)
+    return arePluginsReady(resolved.plugins)
+  })
+
+  // Eager preload of plugin assets on mount
+  const preloadStarted = useRef(false)
+  useEffect(() => {
+    if (!plugins || plugins.length === 0) {
+      setPluginsReady(true)
+      return
+    }
+
+    if (preloadStarted.current) {
+      return
+    }
+
+    preloadStarted.current = true
+    const resolved = resolvePlugins(plugins)
+
+    // Check if already ready
+    if (arePluginsReady(resolved.plugins)) {
+      setPluginsReady(true)
+      return
+    }
+
+    // Start preloading in background
+    run(function* () {
+      yield* preloadPlugins(resolved.plugins)
+      setPluginsReady(true)
+    }).catch((err) => {
+      // Preload errors are non-fatal, just log them
+      console.warn('[useChat] Plugin preload error:', err)
+      // Still mark as ready so we don't block forever
+      setPluginsReady(true)
+    })
+  }, [plugins])
 
   // Use the low-level session hook
   const session = useChatSession({
@@ -257,6 +387,7 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     messages,
     streamingMessage,
     isStreaming: state.isStreaming,
+    pluginsReady,
     send,
     abort,
     reset,
