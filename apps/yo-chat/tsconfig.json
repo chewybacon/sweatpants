@@ -10,6 +10,12 @@
       "@tanstack/framework/chat": ["../../packages/framework/src/lib/chat/index.ts"],
       "@tanstack/framework/chat/isomorphic-tools": [
         "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
+      ],
+      "@tanstack/framework/react/chat": [
+        "../../packages/framework/src/react/chat/index.ts"
+      ],
+      "@tanstack/framework/react/chat/plugins": [
+        "../../packages/framework/src/react/chat/plugins/index.ts"
       ]
     }
   },

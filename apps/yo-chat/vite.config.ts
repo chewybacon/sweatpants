@@ -21,15 +21,16 @@ const config = defineConfig({
   base: isProd ? '/__BASE__/' : '/',
 
   resolve: isProd ? {} : {
-    alias: {
+    alias: [
       // Framework package - point to source files in dev
-      '@tanstack/framework/vite': path.join(packagesDir, 'framework/src/vite/index.ts'),
-      '@tanstack/framework/handler': path.join(packagesDir, 'framework/src/handler/index.ts'),
-      '@tanstack/framework/chat': path.join(packagesDir, 'framework/src/lib/chat/index.ts'),
-      '@tanstack/framework/chat/isomorphic-tools': path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts'),
-      '@tanstack/framework/react/chat': path.join(packagesDir, 'framework/src/react/chat/index.ts'),
-      '@tanstack/framework/react/chat/plugins': path.join(packagesDir, 'framework/src/react/chat/plugins/index.ts'),
-    },
+      // IMPORTANT: More specific paths must come BEFORE less specific ones
+      { find: '@tanstack/framework/react/chat/plugins', replacement: path.join(packagesDir, 'framework/src/react/chat/plugins/index.ts') },
+      { find: '@tanstack/framework/react/chat', replacement: path.join(packagesDir, 'framework/src/react/chat/index.ts') },
+      { find: '@tanstack/framework/chat/isomorphic-tools', replacement: path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts') },
+      { find: '@tanstack/framework/chat', replacement: path.join(packagesDir, 'framework/src/lib/chat/index.ts') },
+      { find: '@tanstack/framework/handler', replacement: path.join(packagesDir, 'framework/src/handler/index.ts') },
+      { find: '@tanstack/framework/vite', replacement: path.join(packagesDir, 'framework/src/vite/index.ts') },
+    ],
   },
 
   // Prevent Vite from pre-bundling workspace packages (allows HMR)
