@@ -14,6 +14,7 @@ import type {
   RenderPass,
   TraceEntry,
   TraceAction,
+  Annotation,
 } from './types'
 
 // =============================================================================
@@ -158,6 +159,22 @@ export const setBlockHtml = (
   ...block,
   html,
   renderPass,
+})
+
+/**
+ * Add an annotation to a block.
+ */
+export const addAnnotation = (block: Block, annotation: Annotation): Block => ({
+  ...block,
+  annotations: [...(block.annotations ?? []), annotation],
+})
+
+/**
+ * Add multiple annotations to a block.
+ */
+export const addAnnotations = (block: Block, annotations: readonly Annotation[]): Block => ({
+  ...block,
+  annotations: [...(block.annotations ?? []), ...annotations],
 })
 
 // =============================================================================

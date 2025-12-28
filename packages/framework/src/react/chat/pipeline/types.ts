@@ -302,7 +302,7 @@ export interface Processor {
 /**
  * Preset names for common processor combinations.
  */
-export type ProcessorPreset = 'markdown' | 'shiki' | 'mermaid' | 'full'
+export type ProcessorPreset = 'markdown' | 'shiki' | 'mermaid' | 'math' | 'full'
 
 /**
  * Configuration for a processing pipeline.

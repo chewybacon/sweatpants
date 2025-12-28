@@ -18,13 +18,13 @@ export const Route = createFileRoute('/demo/chat/')({
 
 function PipelineChatDemo() {
   // High-level useChat hook with pipeline-based configuration
-  const { 
-    messages, 
+  const {
+    messages,
     streamingMessage,
     isStreaming,
     pipelineReady,
-    send, 
-    abort, 
+    send,
+    abort,
     reset,
     error,
   } = useChat({
@@ -32,7 +32,7 @@ function PipelineChatDemo() {
     // 'full' = markdown + shiki + mermaid
     pipeline: 'full'
   })
-  
+
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 

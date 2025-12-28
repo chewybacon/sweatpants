@@ -36,6 +36,7 @@ import { resolveProcessors } from './resolver'
 import { markdown } from './processors/markdown'
 import { shiki } from './processors/shiki'
 import { mermaid } from './processors/mermaid'
+import { math } from './processors/math'
 
 // =============================================================================
 // Presets
@@ -52,8 +53,10 @@ function resolvePreset(preset: ProcessorPreset): readonly Processor[] {
       return [markdown, shiki]
     case 'mermaid':
       return [markdown, mermaid]
+    case 'math':
+      return [markdown, math]
     case 'full':
-      return [markdown, shiki, mermaid]
+      return [markdown, shiki, mermaid, math]
   }
 }
 

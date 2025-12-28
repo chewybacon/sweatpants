@@ -35,7 +35,7 @@
  *
  * // Or use a preset
  * useChat({
- *   processors: 'full'  // = [markdown, shiki, mermaid]
+ *   processors: 'full'  // = [markdown, shiki, mermaid, math]
  * })
  * ```
  */
@@ -95,6 +95,8 @@ export {
   appendToBlock,
   completeBlock,
   setBlockHtml,
+  addAnnotation,
+  addAnnotations,
 
   // Frame block operations
   addBlock,
@@ -131,6 +133,7 @@ export {
 export { markdown } from './processors/markdown'
 export { shiki, preloadShiki, isShikiReady } from './processors/shiki'
 export { mermaid, preloadMermaid, isMermaidReady } from './processors/mermaid'
+export { math, preloadMath, isMathReady } from './processors/math'
 
 // =============================================================================
 // Processor Resolution
