@@ -23,7 +23,6 @@ import type {
   Frame,
   Processor,
   ProcessorPreset,
-  ProcessorFactory,
   PipelineConfig,
   ParseContext,
   FrameEmitter,
@@ -87,27 +86,6 @@ interface ResolvedConfig {
 }
 
 /**
- * Check if something is a Processor object (has name and process).
- */
-function isProcessor(x: unknown): x is Processor {
-  return (
-    typeof x === 'object' &&
-    x !== null &&
-    'name' in x &&
-    'process' in x &&
-    typeof (x as Processor).name === 'string' &&
-    typeof (x as Processor).process === 'function'
-  )
-}
-
-/**
- * Check if something is a ProcessorFactory (function that returns a function).
- */
-function isProcessorFactory(x: unknown): x is ProcessorFactory {
-  return typeof x === 'function'
-}
-
-/**
  * Resolve a PipelineConfig to process functions.
  */
 function resolveConfig(config: PipelineConfig): ResolvedConfig {
@@ -120,33 +98,16 @@ function resolveConfig(config: PipelineConfig): ResolvedConfig {
     }
   }
 
-  // Handle array of processors or factories
-  const items = config.processors
-  if (items.length === 0) {
+  // Handle array of processors
+  const processors = config.processors
+  if (processors.length === 0) {
     return { processFns: [] }
   }
 
-  // Check if it's new-style Processor objects or old-style factories
-  const firstItem = items[0]
-
-  if (isProcessor(firstItem)) {
-    // New-style: Processor objects with name, dependencies, process
-    const processors = items as readonly Processor[]
-    const resolved = resolveProcessors(processors)
-    return {
-      processFns: resolved.processors.map(p => p.process),
-    }
-  } else if (isProcessorFactory(firstItem)) {
-    // Old-style: ProcessorFactory functions (deprecated)
-    // Just call each factory to get the process function
-    const factories = items as readonly ProcessorFactory[]
-    return {
-      processFns: factories.map(f => f()),
-    }
+  const resolved = resolveProcessors(processors)
+  return {
+    processFns: resolved.processors.map(p => p.process),
   }
-
-  // Unknown type
-  throw new Error('Invalid processors configuration')
 }
 
 /**

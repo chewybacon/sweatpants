@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { run, each, createSignal } from 'effection'
 import { createChatSession, type ChatSession } from './session'
 import type { ClientToolSessionOptions } from './session'
-import { renderingBufferTransform } from './core/rendering-buffer'
+import { createPipelineTransform, markdown } from './pipeline'
 import type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState } from './types'
 import { initialChatState } from './types'
 import type { SessionOptions } from './types'
@@ -23,7 +23,7 @@ import type { IsomorphicToolRegistry, PendingHandoff, ToolHandlerRegistry } from
 import { useChatConfig } from './ChatProvider'
 
 /** Default transforms applied to all sessions */
-const defaultTransforms = [renderingBufferTransform()]
+const defaultTransforms = [createPipelineTransform({ processors: [markdown] })]
 
 /**
  * Options for useChatSession hook.

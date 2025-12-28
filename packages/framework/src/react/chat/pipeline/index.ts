@@ -128,27 +128,9 @@ export {
 // Built-in Processors
 // =============================================================================
 
-// Canonical exports - use these
 export { markdown } from './processors/markdown'
 export { shiki, preloadShiki, isShikiReady } from './processors/shiki'
 export { mermaid, preloadMermaid, isMermaidReady } from './processors/mermaid'
-
-// Legacy exports for backward compatibility
-export {
-  createMarkdownProcessor,
-  createStreamingMarkdownProcessor,
-  markdownProcessor,
-} from './processors/markdown'
-
-export {
-  createShikiProcessor,
-  shikiProcessor,
-} from './processors/shiki'
-
-export {
-  createMermaidProcessor,
-  mermaidProcessor,
-} from './processors/mermaid'
 
 // =============================================================================
 // Processor Resolution
@@ -179,19 +161,3 @@ export {
   runPipeline,
   runPipelineWithFrames,
 } from './runner'
-
-// =============================================================================
-// Legacy Exports (settlers - deprecated)
-// =============================================================================
-
-// These are deprecated - parsing is now internal
-// Kept for backward compatibility during migration
-
-/** @deprecated Parsing is now internal to the pipeline */
-export { createCodeFenceSettler, createLineSettler, defaultSettler } from './settlers'
-
-/** @deprecated Use Processor type instead */
-export type { SettlerFactory, Settler, SettleContext } from './types'
-
-// Note: Old ProcessorFactory type is replaced by the Processor interface
-// which includes both metadata and the process function

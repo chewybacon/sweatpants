@@ -248,26 +248,6 @@ function* runTransformChain(
 }
 
 /**
- * Apply a pipeline of transforms to a patch stream.
- *
- * @deprecated Use `useTransformPipeline` instead for proper subscription timing.
- *
- * This function has timing issues - transforms may not be subscribed
- * before the producer starts writing, causing dropped messages.
- */
-export function* applyTransforms(
-  input: Channel<ChatPatch, void>,
-  output: Channel<ChatPatch, void>,
-  transforms: PatchTransform[] = []
-): Operation<void> {
-  if (transforms.length === 0) {
-    yield* runPassthrough(input, output)
-    return
-  }
-  yield* runTransformChain(input, output, transforms)
-}
-
-/**
  * Create a passthrough transform (useful for debugging or as a base).
  */
 export function passthroughTransform(): PatchTransform {

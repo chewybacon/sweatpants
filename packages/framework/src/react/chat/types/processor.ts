@@ -67,60 +67,6 @@ export interface ProcessorContext<TMeta extends BaseSettleMeta = SettleMeta> {
  */
 export type ProcessorEmit = (output: ProcessedOutput) => Operation<void>
 
-// --- Processor Types ---
-
-/**
- * A processor transforms settled content, adding enrichments like parsed HTML or AST.
- *
- * Processors are Effection Operations that can:
- * - Do async work (yield* sleep(), yield* call())
- * - Emit multiple times for progressive enhancement (yield* emit(...))
- * - Access settler metadata for context-aware processing
- * - Access HTML from previous processor for enhancement
- *
- * ## Examples
- *
- * ```typescript
- * // Passthrough - no processing
- * function passthrough(): Processor {
- *   return function* (ctx, emit) {
- *     yield* emit({ raw: ctx.chunk })
- *   }
- * }
- *
- * // Markdown - parse to HTML
- * function markdown(): Processor {
- *   return function* (ctx, emit) {
- *     const html = marked.parse(ctx.next)
- *     yield* emit({ raw: ctx.next, html })
- *   }
- * }
- * ```
- */
-export type Processor<TMeta extends BaseSettleMeta = SettleMeta> = (
-  ctx: ProcessorContext<TMeta>,
-  emit: ProcessorEmit
-) => Operation<void>
-
-/**
- * A processor factory creates fresh processor instances.
- * Processors maintain state and must be recreated per streaming session.
- */
-export type ProcessorFactory<TMeta extends BaseSettleMeta = SettleMeta> = () => Processor<TMeta>
-
-/**
- * A chain of processors that run in sequence.
- * Each processor receives the output of the previous as input.
- */
-export type ProcessorChain = ProcessorFactory | ProcessorFactory[]
-
-/**
- * Legacy sync processor for simple use cases.
- *
- * @deprecated Use the async Processor type for new code.
- */
-export type SyncProcessor = (ctx: ProcessorContext) => ProcessedOutput
-
 // --- Message Renderer ---
 
 /**

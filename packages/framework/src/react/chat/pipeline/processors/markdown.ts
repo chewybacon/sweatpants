@@ -130,16 +130,3 @@ export const markdown: Processor = {
 
 // Register as built-in for auto-dependency resolution
 registerBuiltinProcessor('markdown', () => markdown)
-
-// =============================================================================
-// Legacy Exports (for backward compatibility)
-// =============================================================================
-
-/** @deprecated Use `markdown` instead */
-export const createMarkdownProcessor = () => markdown.process
-
-/** @deprecated Use `markdown` instead */
-export const createStreamingMarkdownProcessor = () => markdown.process
-
-/** @deprecated Use `markdown` instead */
-export const markdownProcessor = createStreamingMarkdownProcessor

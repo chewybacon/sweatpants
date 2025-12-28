@@ -305,12 +305,6 @@ export interface Processor {
 export type ProcessorPreset = 'markdown' | 'shiki' | 'mermaid' | 'full'
 
 /**
- * Factory function to create a process function.
- * @deprecated Use Processor interface instead
- */
-export type ProcessorFactory = () => ProcessFn
-
-/**
  * Configuration for a processing pipeline.
  *
  * Users provide processors (or a preset), and the pipeline handles:
@@ -324,15 +318,9 @@ export interface PipelineConfig {
    *
    * Can be:
    * - An array of Processor objects (dependencies auto-resolved)
-   * - An array of ProcessorFactory functions (legacy, for backward compat)
    * - A preset name ('markdown', 'shiki', 'mermaid', 'full')
    */
-  readonly processors: readonly Processor[] | readonly ProcessorFactory[] | ProcessorPreset
-
-  /**
-   * @deprecated Parsing is now internal. This field is ignored.
-   */
-  readonly settler?: SettlerFactory
+  readonly processors: readonly Processor[] | ProcessorPreset
 
   /** Enable debug tracing */
   readonly debug?: boolean
@@ -378,28 +366,6 @@ export type Parser = (frame: Frame, chunk: string, ctx: ParseContext) => Frame
  * @internal
  */
 export type ParserFactory = () => Parser
-
-// =============================================================================
-// Legacy Types (deprecated, for backward compatibility)
-// =============================================================================
-
-/**
- * @deprecated Use ParseContext instead
- */
-export interface SettleContext {
-  readonly pending: string
-  readonly flush: boolean
-}
-
-/**
- * @deprecated Parsing is now internal to the pipeline
- */
-export type Settler = (frame: Frame, chunk: string, ctx: SettleContext) => Frame
-
-/**
- * @deprecated Parsing is now internal to the pipeline
- */
-export type SettlerFactory = () => Settler
 
 // =============================================================================
 // Resolved Pipeline (internal)

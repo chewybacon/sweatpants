@@ -40,8 +40,7 @@ export * from './useChat'
 export * from './useChatSession'
 export * from './ChatProvider'
 
-// --- Pipeline System (Recommended) ---
-// Re-export specific items to avoid conflicts
+// --- Pipeline System ---
 export {
   // Types
   type Annotation,
@@ -92,9 +91,9 @@ export {
   renderFrameToHtml,
   renderFrameToRaw,
   // Processors
-  markdown as pipelineMarkdown,
-  shiki as pipelineShiki,
-  mermaid as pipelineMermaid,
+  markdown,
+  shiki,
+  mermaid,
   preloadShiki,
   isShikiReady,
   preloadMermaid,
@@ -114,17 +113,11 @@ export {
   runPipelineWithFrames,
 } from './pipeline'
 
-// --- Plugin System (Legacy - still supported) ---
-export * from './plugins'
-
 // --- Types ---
 export * from './types'
 
-// --- Core Infrastructure ---
-export * from './core'
+// --- Settlers ---
 export * from './settlers'
-export * from './processors'
-export * from './processor-chain'
 
 // --- Session & Streaming ---
 export * from './session'
@@ -134,12 +127,3 @@ export * from './contexts'
 
 // --- Additional Hooks ---
 export * from './usePersonas'
-
-// --- Buffer Transforms ---
-export * from './dualBuffer'
-
-// --- Namespaced Modules ---
-// Shiki module - namespaced to avoid conflicts with settlers
-export * as shiki from './shiki'
-// Mermaid module - progressive diagram rendering
-export * as mermaidLoader from './mermaid'

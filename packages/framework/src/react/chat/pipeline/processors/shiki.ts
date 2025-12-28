@@ -234,13 +234,3 @@ export const preloadShiki = preloadHighlighter
  * Check if Shiki is ready.
  */
 export const isShikiReady = isHighlighterReady
-
-// =============================================================================
-// Legacy Exports (for backward compatibility)
-// =============================================================================
-
-/** @deprecated Use `shiki` instead */
-export const createShikiProcessor = () => shiki.process
-
-/** @deprecated Use `shiki` instead */
-export const shikiProcessor = createShikiProcessor

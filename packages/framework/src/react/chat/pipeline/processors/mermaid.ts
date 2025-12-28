@@ -219,13 +219,3 @@ export const preloadMermaid = preloadMermaidLoader
  * Check if Mermaid is ready.
  */
 export const isMermaidReady = isMermaidReadyLoader
-
-// =============================================================================
-// Legacy Exports (for backward compatibility)
-// =============================================================================
-
-/** @deprecated Use `mermaid` instead */
-export const createMermaidProcessor = () => mermaid.process
-
-/** @deprecated Use `mermaid` instead */
-export const mermaidProcessor = createMermaidProcessor

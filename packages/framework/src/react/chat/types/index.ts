@@ -21,10 +21,6 @@ export type {
   ProcessedOutput,
   ProcessorContext,
   ProcessorEmit,
-  Processor,
-  ProcessorFactory,
-  ProcessorChain,
-  SyncProcessor,
   MessageRenderer,
 } from './processor'
 
