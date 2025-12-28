@@ -24,7 +24,7 @@ const config = defineConfig({
     alias: [
       // Framework package - point to source files in dev
       // IMPORTANT: More specific paths must come BEFORE less specific ones
-      { find: '@tanstack/framework/react/chat/plugins', replacement: path.join(packagesDir, 'framework/src/react/chat/plugins/index.ts') },
+      { find: '@tanstack/framework/react/chat/pipeline', replacement: path.join(packagesDir, 'framework/src/react/chat/pipeline/index.ts') },
       { find: '@tanstack/framework/react/chat', replacement: path.join(packagesDir, 'framework/src/react/chat/index.ts') },
       { find: '@tanstack/framework/chat/isomorphic-tools', replacement: path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts') },
       { find: '@tanstack/framework/chat', replacement: path.join(packagesDir, 'framework/src/lib/chat/index.ts') },

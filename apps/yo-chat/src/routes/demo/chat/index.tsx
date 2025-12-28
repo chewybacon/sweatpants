@@ -22,7 +22,7 @@ function PipelineChatDemo() {
     messages, 
     streamingMessage,
     isStreaming,
-    pluginsReady,
+    pipelineReady,
     send, 
     abort, 
     reset,
@@ -63,7 +63,7 @@ function PipelineChatDemo() {
           </div>
           {/* Pipeline loading indicator */}
           <div className="text-xs">
-            {pluginsReady ? (
+            {pipelineReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
             ) : (
               <span className="text-amber-500 animate-pulse">Loading pipeline...</span>

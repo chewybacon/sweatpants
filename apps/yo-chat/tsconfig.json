@@ -14,8 +14,8 @@
       "@tanstack/framework/react/chat": [
         "../../packages/framework/src/react/chat/index.ts"
       ],
-      "@tanstack/framework/react/chat/plugins": [
-        "../../packages/framework/src/react/chat/plugins/index.ts"
+      "@tanstack/framework/react/chat/pipeline": [
+        "../../packages/framework/src/react/chat/pipeline/index.ts"
       ]
     }
   },
