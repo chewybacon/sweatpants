@@ -204,3 +204,15 @@ export {
   type RenderableProps,
   type CreateStepContextOptions,
 } from './step-context'
+
+// --- Agent Runtime (server-side agent execution) ---
+export {
+  runAsAgent,
+  createAgentLLMClient,
+  createMockAgentContext,
+  createMockAgentContextWithResponder,
+  type AgentLLMClient,
+  type CreateAgentLLMClientOptions,
+  type RunAsAgentOptions,
+  type CreateMockAgentContextOptions,
+} from './agent-runtime'

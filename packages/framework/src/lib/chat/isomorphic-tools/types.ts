@@ -206,7 +206,7 @@ export interface AgentContext extends ClientToolContext {
    * yield* ctx.emit({ type: 'progress', step: 1, total: 5 })
    * ```
    */
-  emit?(event: unknown): Operation<void>
+  emit?: ((event: unknown) => Operation<void>) | undefined
 }
 
 /**
@@ -242,7 +242,7 @@ export interface FlexibleClientContext extends ClientToolContext {
   /**
    * Emit events to parent (optional in both modes).
    */
-  emit?(event: unknown): Operation<void>
+  emit?: ((event: unknown) => Operation<void>) | undefined
 }
 
 // --- Server Context ---
