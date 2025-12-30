@@ -194,22 +194,22 @@ These files use `@dynobase/framework` which is expected until we finalize the pa
 
 ### High Priority (Breakage Risk)
 
-- [ ] Remove re-exports of deprecated settlers from `packages/framework/src/react/chat/index.ts`
-- [ ] Remove unused `transforms.ts` import from index if deprecated
-- [ ] Delete `docs/settlers.md` (duplicated content in migration-guide.md)
-- [ ] Delete `docs/processors.md` (duplicated content in pipeline-guide.md)
+- [x] Remove re-exports of deprecated settlers from `packages/framework/src/react/chat/index.ts` **COMPLETED**
+- [x] Remove unused `transforms.ts` import from index if deprecated **NOT NEEDED** (transforms.ts is active)
+- [x] Delete `docs/settlers.md` (duplicated content in migration-guide.md) **COMPLETED**
+- [x] Delete `docs/processors.md` (duplicated content in pipeline-guide.md) **COMPLETED**
 
 ### Medium Priority (Cleanup)
 
-- [ ] Archive `docs/processor-design-notes.md`
-- [ ] Archive `docs/refactor-plan-effection-chat.md`
-- [ ] Update or archive `docs/chat-streaming.md`
-- [ ] Review and consolidate duplicate types in `packages/framework/src/react/chat/types/`
+- [x] Archive `docs/processor-design-notes.md` **COMPLETED**
+- [x] Archive `docs/refactor-plan-effection-chat.md` **COMPLETED**
+- [x] Archive `docs/chat-streaming.md` **COMPLETED**
+- [x] Review and consolidate duplicate types in `packages/framework/src/react/chat/types/` **REFACTORED** - Created `types/metadata.ts` with generic `ContentMetadata`
 
 ### Low Priority (Nice to Have)
 
 - [ ] Update `docs/framework-design.md` @dynobase references (when package name finalized)
-- [ ] Remove unused settler files from `packages/framework/src/react/chat/settlers/`
+- [x] Remove unused settler files from `packages/framework/src/react/chat/settlers/` **COMPLETED** - Entire settlers/ directory deleted
 - [ ] Consolidate `types/` directory with `pipeline/types.ts`
 - [ ] Archive old design transcripts
 
@@ -288,45 +288,61 @@ After cleanup, verify:
 
 ## 11. Summary
 
-### ✅ Already Completed
+### ✅ FULL CLEANUP COMPLETED (Dec 30, 2025)
 
-- Added `@deprecated` JSDoc to `packages/framework/src/react/chat/settlers.ts`
-- Added deprecation comment for settlers export in `packages/framework/src/react/chat/index.ts`
-- Documented that `transforms.ts` is ACTIVE channel infrastructure (NOT deprecated)
-- Clarified architecture: `transforms.ts` vs `pipeline/runner.ts` serve different purposes
+**All phases executed successfully:**
 
-### ✅ Confirmed: What IS Deprecated
+#### Phase 1: Documentation Archival ✅
+- Archived 5 outdated docs to `/docs/archive/`
+- Created archive README with migration guide
+
+#### Phase 2: Remove Public API Exports ✅
+- Removed settler re-exports from `index.ts`
+- Removed settler types from `types/index.ts`
+- **Refactored:** Created `types/metadata.ts` with generic `ContentMetadata` type
+- Updated all references in `patch.ts`, `useChat.ts`, `state.ts`, `processor.ts`, `types.ts`
+
+#### Phase 3: Delete Test Files ✅
+- Deleted `test-utils.ts` (unused)
+- Deleted `settlers.test.ts` (48 tests - only tested deprecated code)
+- Deleted `code-fence-streaming.test.ts` (19 tests - only tested deprecated code)
+- **Result:** 328 → 263 tests (removed 65 settler-specific tests)
+
+#### Phase 4: Delete Settler Implementation ✅
+- Deleted entire `settlers/` directory (8 files)
+- Deleted `settlers.ts` wrapper
+- Deleted `types/settler.ts`
+- Updated `types.ts` reference to use `ContentMetadata`
+
+### ✅ Final Verification
+
+- `npm run typecheck` → **PASS** (no errors)
+- `npm run test` → **PASS** (263 tests | 1 skipped)
+- `npm run build` → **PASS** (CJS + DTS + TSup)
+
+### ✅ What IS Deprecated (Removed)
 
 | Item | Status | Location |
 |------|--------|----------|
-| Settlers (paragraph, codeFence, etc.) | DEPRECATED | `packages/framework/src/react/chat/settlers/` |
-| dualBufferTransform (rendering) | DEPRECATED | Was in `packages/framework/src/react/chat/` |
-| @dynobase/framework package | DEPRECATED | Rename pending |
+| Settlers (paragraph, codeFence, etc.) | ❌ REMOVED | Was in `settlers/` |
+| Settler types (SettleContext, etc.) | ❌ REMOVED | Was in `types/settler.ts` |
+| dualBufferTransform (rendering) | ❌ REMOVED | Was in `settlers/` |
+| Settler test files | ❌ REMOVED | Deleted 3 test files |
 
-### ✅ Confirmed: What is NOT Deprecated
+### ✅ What is ACTIVE (Kept)
 
 | Item | Status | Location |
 |------|--------|----------|
-| transforms.ts (channel buffering) | ACTIVE | `packages/framework/src/react/chat/transforms.ts` |
-| createPipelineTransform (rendering) | ACTIVE | `packages/framework/src/react/chat/pipeline/runner.ts` |
-| useTransformPipeline (channel chaining) | ACTIVE | `packages/framework/src/react/chat/transforms.ts` |
+| transforms.ts (channel buffering) | ✅ ACTIVE | `packages/framework/src/react/chat/transforms.ts` |
+| createPipelineTransform (rendering) | ✅ ACTIVE | `packages/framework/src/react/chat/pipeline/runner.ts` |
+| useTransformPipeline (channel chaining) | ✅ ACTIVE | `packages/framework/src/react/chat/transforms.ts` |
+| Pipeline processors (markdown, shiki, mermaid, math) | ✅ ACTIVE | `packages/framework/src/react/chat/pipeline/processors/` |
 
-### Remove Immediately (Safe)
+### Remaining Low-Priority Tasks
 
-- [ ] `docs/settlers.md` - Duplicate of migration-guide.md
-- [ ] `docs/processors.md` - Duplicate of pipeline-guide.md
-
-### Review Before Removing
-
-- [ ] `packages/framework/src/react/chat/settlers/` - Keep for tests (with deprecation)
-- [ ] `packages/framework/src/react/chat/transforms.ts` - KEEP (actively used by session.ts)
-- [ ] `docs/chat-streaming.md` - Update or archive
-- [ ] `docs/framework-design.md` - Update @dynobase or archive
-
-### Archive
-
-- [ ] `docs/processor-design-notes.md`
-- [ ] `docs/refactor-plan-effection-chat.md`
+- [ ] Update `docs/framework-design.md` @dynobase references (when package name finalized)
+- [ ] Consolidate `types/` directory with `pipeline/types.ts` (optional refactor)
+- [ ] Add new integration tests for critical paths (recommended)
 
 ### Keep (Not About Rendering)
 
