@@ -44,6 +44,7 @@
  */
 import type { Operation } from 'effection'
 import type { ComponentType, ReactElement } from 'react'
+import type { BaseToolContext, BrowserToolContext } from './contexts'
 import type { ClientToolContext } from './runtime/tool-runtime'
 
 // =============================================================================
@@ -237,12 +238,22 @@ export interface ReactStepContext extends BaseStepContext {
 
 /**
  * Full client context that includes both:
- * - Original ClientToolContext (approval, progress, signal)
+ * - Base tool context (approval, progress, signal)
  * - Step context methods (emit, prompt, render)
+ * - Optional waitFor (available if the underlying context supports it)
  *
  * This is what client generators receive.
  */
-export interface ClientStepContext extends ClientToolContext, ReactStepContext { }
+export interface ClientStepContext extends BaseToolContext, ReactStepContext {
+  /**
+   * Optional waitFor - only available if the base context provides it.
+   * Use this for browser-specific tools that need UI interaction beyond steps.
+   */
+  waitFor?<TPayload, TResponse>(
+    type: string,
+    payload: TPayload
+  ): Operation<TResponse>
+}
 
 // =============================================================================
 // PROPS FOR RENDERABLE COMPONENTS
@@ -303,8 +314,8 @@ export interface CreateStepContextOptions {
   /** Channel to send pending steps through */
   stepChannel: Channel<PendingStep<unknown, unknown>, void>
 
-  /** Base client context (for approval, progress, signal) */
-  baseContext?: ClientToolContext
+  /** Base tool context (for approval, progress, signal). Can be BaseToolContext or BrowserToolContext. */
+  baseContext?: BaseToolContext
 }
 
 /**
@@ -453,8 +464,10 @@ export function createReactStepContext(
     },
   }
 
-  if (baseContext?.waitFor) {
-    ctx.waitFor = baseContext.waitFor
+  // Copy waitFor if the base context provides it (BrowserToolContext)
+  const browserCtx = baseContext as BrowserToolContext | undefined
+  if (browserCtx?.waitFor) {
+    ctx.waitFor = browserCtx.waitFor
   }
 
   return ctx

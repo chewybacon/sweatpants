@@ -1,4 +1,10 @@
-import type { Operation } from 'effection'
+/**
+ * Tool Runtime Types
+ *
+ * This module provides approval/permission types and error classes
+ * for tool execution. Context types are defined in contexts.ts.
+ */
+import type { BrowserToolContext } from '../contexts'
 
 /**
  * Approval configuration for tools.
@@ -8,25 +14,6 @@ import type { Operation } from 'effection'
  * - 'permission': Requires browser permission grant
  */
 export type ApprovalType = 'none' | 'confirm' | 'permission'
-
-/**
- * Result of an approval request.
- */
-export type ApprovalResult =
-  | { approved: true }
-  | { approved: false; reason?: string }
-
-/**
- * Browser permission types that can be requested.
- */
-export type PermissionType =
-  | 'geolocation'
-  | 'clipboard-read'
-  | 'clipboard-write'
-  | 'notifications'
-  | 'camera'
-  | 'microphone'
-  | (string & {})
 
 /**
  * What happens when user denies a tool.
@@ -43,45 +30,17 @@ export interface ApprovalSignalValue {
 }
 
 /**
- * Context passed to client-side tool execution.
+ * @deprecated Use BaseToolContext or BrowserToolContext from contexts.ts instead.
+ * 
+ * This type alias exists for backwards compatibility with existing code
+ * that imports ClientToolContext. It maps to BrowserToolContext since
+ * that's the most common use case (browser-side execution with waitFor).
  */
-export interface ClientToolContext {
-  requestApproval(message: string): Operation<ApprovalResult>
-  requestPermission(type: PermissionType): Operation<ApprovalResult>
-  reportProgress(message: string): Operation<void>
-  signal: AbortSignal
-  callId: string
+export type ClientToolContext = BrowserToolContext
 
-  /**
-   * Suspend the client generator and wait for UI input.
-   *
-   * This enables framework-agnostic client tools - the same tool works with
-   * React, terminal, or any other UI. The platform layer registers handlers
-   * for different request types and responds when the user provides input.
-   *
-   * @param type - Type tag for routing to handlers (e.g., 'select-choice', 'yes-no')
-   * @param payload - Data the UI needs to render
-   * @returns The response from the UI handler
-   *
-   * @example
-   * ```typescript
-   * const response = yield* ctx.waitFor('select-choice', {
-   *   choices: ['A', 'B', 'C'],
-   *   prompt: 'Pick a card',
-   * })
-   * // response is { selectedChoice: 'B' } or whatever the handler returns
-   * ```
-   *
-   * @remarks
-   * This is optional - not all tool executions will have waitFor available.
-   * Tools should check if `ctx.waitFor` exists before using it, or the
-   * tool registry can guarantee it's always available for tools that need it.
-   */
-  waitFor?<TPayload, TResponse>(
-    type: string,
-    payload: TPayload
-  ): Operation<TResponse>
-}
+// Re-export context types for convenience
+export type { BaseToolContext, BrowserToolContext, AgentToolContext } from '../contexts'
+export type { ApprovalResult, PermissionType } from '../contexts'
 
 export class ToolDeniedError extends Error {
   constructor(

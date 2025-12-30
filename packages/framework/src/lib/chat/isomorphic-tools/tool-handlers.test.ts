@@ -28,6 +28,7 @@ const guessTheCardTool = createIsomorphicTool('guess_the_card')
     prompt: z.string().optional(),
     numChoices: z.number().min(2).max(10).optional(),
   }))
+  .context('headless')
   .authority('server')
   .handoff({
     *before(params) {
@@ -59,6 +60,7 @@ const askYesNoTool = createIsomorphicTool('ask_yes_no')
     question: z.string(),
     context: z.string().optional(),
   }))
+  .context('headless')
   .authority('client')
   .client(function* (params, _ctx) {
     return { answer: true, question: params.question }
@@ -77,6 +79,7 @@ const giveHintTool = createIsomorphicTool('give_hint')
     hint: z.string(),
     style: z.enum(['mystical', 'playful', 'dramatic']).default('mystical'),
   }))
+  .context('headless')
   .authority('server')
   .server(function* (params, _ctx) {
     return {

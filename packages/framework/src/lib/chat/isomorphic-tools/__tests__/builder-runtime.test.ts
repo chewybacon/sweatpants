@@ -20,6 +20,7 @@ describe('Isomorphic Tool Builder Runtime', () => {
         max: z.number().default(100),
         prompt: z.string().optional() 
       }))
+      .context('headless')
       .authority('server')
       .handoff({
         *before(params) {
@@ -149,6 +150,7 @@ describe('Isomorphic Tool Builder Runtime', () => {
       const tool = createIsomorphicTool('my_tool')
         .description('A test tool')
         .parameters(z.object({ x: z.number() }))
+        .context('headless')
         .authority('server')
         .server(function*(params) { return { doubled: params.x * 2 } })
         .build()
@@ -162,6 +164,7 @@ describe('Isomorphic Tool Builder Runtime', () => {
       const tool = createIsomorphicTool('handoff_tool')
         .description('Has handoff')
         .parameters(z.object({ input: z.string() }))
+        .context('headless')
         .authority('server')
         .handoff({
           *before() { return { data: 'test' } },
@@ -181,6 +184,7 @@ describe('Isomorphic Tool Builder Runtime', () => {
       const tool = createIsomorphicTool('client_only_passthrough')
         .description('Client only')
         .parameters(z.object({ prompt: z.string() }))
+        .context('headless')
         .authority('client')
         .client(function*(params) {
           return { echoed: params.prompt }
@@ -225,6 +229,7 @@ describe('Isomorphic Tool Builder Runtime', () => {
       const tool1 = createIsomorphicTool('tool_a')
         .description('Tool A')
         .parameters(z.object({ a: z.string() }))
+        .context('headless')
         .authority('server')
         .server(function*() { return { result: 'a' } })
         .build()
@@ -232,9 +237,10 @@ describe('Isomorphic Tool Builder Runtime', () => {
       const tool2 = createIsomorphicTool('tool_b')
         .description('Tool B')
         .parameters(z.object({ b: z.number() }))
+        .context('headless')
         .authority('client')
         .client(function*() { return { choice: 'x' } })
-        .server(function*(_, __, client) { return { validated: true, choice: client.choice } })
+        .server(function*(_params, _ctx, client) { return { validated: true, choice: client.choice } })
 
       // Cast to AnyIsomorphicTool for registry
       const registry = createIsomorphicToolRegistry([

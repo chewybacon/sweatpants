@@ -81,7 +81,7 @@ import type {
  * This allows the handler API to accept tools from either defineIsomorphicTool()
  * or createIsomorphicTool().build()
  */
-export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, any, any, any, any>
+export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, any, any, any, any, any>
 
 /**
  * Extract the client output type from any tool definition.
@@ -91,7 +91,7 @@ export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, a
  */
 type ExtractClientOutput<T> = 
   // FinalizedIsomorphicTool path
-  T extends FinalizedIsomorphicTool<any, any, any, any, infer TClient, any>
+  T extends FinalizedIsomorphicTool<any, any, any, any, any, infer TClient, any>
     ? TClient
   // ClientAuthorityToolDef path
   : T extends ClientAuthorityToolDef<any, any, infer TClient>
@@ -115,9 +115,10 @@ export type HandoffData<T> =
   T extends FinalizedIsomorphicTool<
     any,
     infer TParams,
+    any,  // TContext
     infer TAuthority,
     infer THandoff,
-    any,
+    any,  // TClient
     infer TResult
   >
     ? TAuthority extends 'client'

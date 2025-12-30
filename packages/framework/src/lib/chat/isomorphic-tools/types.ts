@@ -66,7 +66,8 @@
  */
 import type { Operation } from 'effection'
 import type { z } from 'zod'
-import type { ApprovalType, DenialBehavior, ClientToolContext } from './runtime/tool-runtime'
+import type { ApprovalType, DenialBehavior } from './runtime/tool-runtime'
+import type { ContextMode, BaseToolContext } from './contexts'
 
 // --- Authority Modes ---
 
@@ -149,101 +150,21 @@ export interface HandoffConfig<THandoff, TClient, TResult> {
   after: (handoff: THandoff, client: TClient) => Operation<TResult>
 }
 
-// --- Agent Context (Server-side agent execution) ---
+// --- Re-export context types from contexts.ts ---
 
-/**
- * Options for a one-shot structured LLM prompt.
- */
-export interface PromptOptions<T extends z.ZodType> {
-  /** The prompt text to send to the LLM */
-  prompt: string
-  /** Zod schema for the expected response */
-  schema: T
-  /** Optional system prompt */
-  system?: string
-  /** Optional model override */
-  model?: string
-  /** Optional temperature */
-  temperature?: number
-}
+export type {
+  ContextMode,
+  BaseToolContext,
+  BrowserToolContext,
+  AgentToolContext,
+  PromptOptions,
+  ContextForMode,
+  AnyToolContext,
+  ApprovalResult,
+  PermissionType,
+} from './contexts'
 
-/**
- * Context for server-side agent execution.
- *
- * When a tool's `*client()` runs server-side (as an "agent" rather than
- * in a browser), it can have access to LLM capabilities via `prompt()`.
- *
- * This context extends the base ClientToolContext with agent-specific
- * capabilities that are only available when running server-side.
- */
-export interface AgentContext extends ClientToolContext {
-  /**
-   * Execute a one-shot structured LLM prompt.
-   *
-   * This is only available when the tool runs as a server-side agent.
-   * Browser-side execution will not have this method.
-   *
-   * @example
-   * ```typescript
-   * const result = yield* ctx.prompt({
-   *   prompt: 'Analyze this text and extract entities',
-   *   schema: z.object({
-   *     people: z.array(z.string()),
-   *     places: z.array(z.string()),
-   *   }),
-   * })
-   * ```
-   */
-  prompt<T extends z.ZodType>(opts: PromptOptions<T>): Operation<z.infer<T>>
-
-  /**
-   * Emit an event to the parent/orchestrator.
-   *
-   * Use this for streaming progress, status updates, or intermediate results.
-   *
-   * @example
-   * ```typescript
-   * yield* ctx.emit({ type: 'progress', step: 1, total: 5 })
-   * ```
-   */
-  emit?: ((event: unknown) => Operation<void>) | undefined
-}
-
-/**
- * A flexible client context that can work in both browser and agent modes.
- *
- * Tools can check which capabilities are available:
- * - `waitFor` - available in browser for UI interactions
- * - `prompt` - available in agent mode for LLM calls
- * - `emit` - available when parent wants to receive events
- *
- * @example
- * ```typescript
- * *client(data, ctx: FlexibleClientContext) {
- *   if (ctx.prompt) {
- *     // Agent mode - use LLM
- *     return yield* ctx.prompt({ prompt: '...', schema })
- *   }
- *   if (ctx.waitFor) {
- *     // Browser mode - ask user
- *     return yield* ctx.waitFor('pick', { choices: data.choices })
- *   }
- *   // Fallback
- *   return { selected: data.choices[0] }
- * }
- * ```
- */
-export interface FlexibleClientContext extends ClientToolContext {
-  /**
-   * One-shot structured LLM prompt (agent mode only).
-   */
-  prompt?<T extends z.ZodType>(opts: PromptOptions<T>): Operation<z.infer<T>>
-
-  /**
-   * Emit events to parent (optional in both modes).
-   */
-  emit?: ((event: unknown) => Operation<void>) | undefined
-}
+export { canRunIn, validateContextMode } from './contexts'
 
 // --- Server Context ---
 
@@ -351,7 +272,7 @@ export interface IsomorphicToolDef<
 
      */
     input: TServerOutput | z.infer<TParams>,
-    context: ClientToolContext,
+    context: BaseToolContext,
     /**
      * Original params from LLM (always available).
      */
@@ -389,7 +310,7 @@ export type ClientAuthorityToolDef<
   /** Client executes first with params */
   client: (
     params: z.infer<TParams>,
-    context: ClientToolContext,
+    context: BaseToolContext,
     originalParams: z.infer<TParams>
   ) => Operation<TClientOutput>
 
@@ -437,7 +358,7 @@ export type ServerAuthorityToolDef<
   /** Client receives server handoff data (or full serverOutput if no handoff) */
   client: (
     serverOutput: TServerOutput,
-    context: ClientToolContext,
+    context: BaseToolContext,
     params: z.infer<TParams>
   ) => Operation<TClientOutput>
 }
@@ -470,7 +391,10 @@ export interface AnyIsomorphicTool {
   approval?: IsomorphicApprovalConfig
 
   server?(params: any, context: any, clientOutput?: any): Operation<any>
-  client?(input: any, context: ClientToolContext, params: any): Operation<any>
+  client?(input: any, context: BaseToolContext, params: any): Operation<any>
+  
+  /** Execution context mode (required for new tools, optional for legacy) */
+  contextMode?: ContextMode
 }
 
 /**

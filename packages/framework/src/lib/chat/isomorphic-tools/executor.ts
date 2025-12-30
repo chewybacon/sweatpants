@@ -53,11 +53,8 @@ import type {
   ChatPatch,
   AuthorityMode,
 } from './runtime/types'
-import type {
-  ClientToolContext,
-  ApprovalResult,
-  ApprovalSignalValue,
-} from './runtime/tool-runtime'
+import type { ApprovalSignalValue } from './runtime/tool-runtime'
+import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from './contexts'
 import {
   createWaitForContext,
   type PendingUIRequest,
@@ -415,7 +412,7 @@ export function* executeClientPart(
 
   // If step channel is provided, create step context that wraps base context
   // This enables ctx.render(), ctx.emit(), ctx.prompt(), ctx.show()
-  let executionContext: ClientToolContext | ClientStepContext = baseContext
+  let executionContext: BaseToolContext | ClientStepContext = baseContext
   let trail: ExecutionTrail | undefined
 
   if (stepChannel) {
@@ -544,13 +541,13 @@ function createClientContext(
   approvalSignal: Signal<ApprovalSignalValue, void>,
   toolName: string,
   uiRequestChannel?: Channel<PendingUIRequest, void>
-): ClientToolContext {
+): BaseToolContext | BrowserToolContext {
   // Create waitFor context if channel is provided
   const waitForContext = uiRequestChannel
     ? createWaitForContext(callId, uiRequestChannel)
     : undefined
 
-  const ctx: ClientToolContext = {
+  const baseCtx: BaseToolContext = {
     callId,
     signal,
 
@@ -566,7 +563,7 @@ function createClientContext(
       }()
     },
 
-    requestPermission(type): Operation<ApprovalResult> {
+    requestPermission(type: PermissionType): Operation<ApprovalResult> {
       return function*() {
         yield* patches.send({
           type: 'client_tool_permission_request',
@@ -588,12 +585,16 @@ function createClientContext(
     },
   }
 
-  // Wire up waitFor if channel is provided
+  // If waitFor is available, return BrowserToolContext
   if (waitForContext) {
-    ctx.waitFor = waitForContext.waitFor.bind(waitForContext)
+    const browserCtx: BrowserToolContext = {
+      ...baseCtx,
+      waitFor: waitForContext.waitFor.bind(waitForContext),
+    }
+    return browserCtx
   }
 
-  return ctx
+  return baseCtx
 }
 
 // --- Approval Helpers ---

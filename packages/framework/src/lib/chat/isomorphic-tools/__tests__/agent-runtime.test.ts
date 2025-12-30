@@ -10,8 +10,8 @@ import type { Operation } from 'effection'
 import { describe, it, expect } from './vitest-effection'
 import { defineIsomorphicTool } from '../define'
 import { executeServerPart, executeServerPhase2 } from '../executor'
-import { runAsAgent, createMockAgentContext } from '../agent-runtime'
-import type { ServerAuthorityContext, FlexibleClientContext, AgentContext } from '../types'
+import { runAsAgent, createMockAgentToolContext } from '../agent-runtime'
+import type { ServerAuthorityContext, AgentToolContext } from '../types'
 
 // =============================================================================
 // TEST TOOLS
@@ -56,13 +56,13 @@ const textAnalyzerTool = defineIsomorphicTool({
       text: string
       extractTypes: string[]
     }
-    const flexCtx = ctx as FlexibleClientContext
+    const agentCtx = ctx as AgentToolContext
 
-    if (!flexCtx.prompt) {
+    if (!agentCtx.prompt) {
       throw new Error('text_analyzer requires agent context with prompt capability')
     }
 
-      const result = yield* flexCtx.prompt({
+      const result = yield* agentCtx.prompt({
         prompt: `Extract entities from: "${data.text}". Types to extract: ${data.extractTypes.join(', ')}`,
         schema: z.object({
           entities: z.object({
@@ -110,14 +110,14 @@ const researcherTool = defineIsomorphicTool({
 
   *client(handoffData, ctx, _params) {
     const data = handoffData as unknown as { topic: string; depth: string }
-    const flexCtx = ctx as FlexibleClientContext
+    const agentCtx = ctx as AgentToolContext
 
-    if (!flexCtx.prompt) {
+    if (!agentCtx.prompt) {
       throw new Error('researcher requires agent context')
     }
 
     // First research query
-    const initial = yield* flexCtx.prompt({
+    const initial = yield* agentCtx.prompt({
       prompt: `Initial research on: ${data.topic}`,
       schema: z.object({
         findings: z.array(z.string()),
@@ -130,7 +130,7 @@ const researcherTool = defineIsomorphicTool({
 
     // Additional research based on depth
     if (data.depth !== 'shallow' && initial.needsMore) {
-      const deeper = yield* flexCtx.prompt({
+      const deeper = yield* agentCtx.prompt({
         prompt: `Deeper research on: ${data.topic}`,
         schema: z.object({
           findings: z.array(z.string()),
@@ -175,22 +175,22 @@ const parallelAnalyzerTool = defineIsomorphicTool({
 
   *client(handoffData, ctx, _params) {
     const data = handoffData as unknown as { subject: string }
-    const flexCtx = ctx as FlexibleClientContext
+    const agentCtx = ctx as AgentToolContext
 
-    if (!flexCtx.prompt) {
+    if (!agentCtx.prompt) {
       throw new Error('parallel_analyzer requires agent context')
     }
 
     // Spawn parallel analysis tasks
     const techTask = yield* spawn(function* () {
-      return yield* flexCtx.prompt!({
+      return yield* agentCtx.prompt!({
         prompt: `Technical analysis of: ${data.subject}`,
         schema: z.object({ analysis: z.string() }),
       })
     })
 
     const bizTask = yield* spawn(function* () {
-      return yield* flexCtx.prompt!({
+      return yield* agentCtx.prompt!({
         prompt: `Business analysis of: ${data.subject}`,
         schema: z.object({ analysis: z.string() }),
       })
@@ -233,7 +233,7 @@ describe('Agent Runtime', () => {
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
       // Create mock agent context
-      const agentCtx = createMockAgentContext({
+      const agentCtx = createMockAgentToolContext({
         callId: 'call-1',
         llmResponses,
       })
@@ -282,7 +282,7 @@ describe('Agent Runtime', () => {
       )
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
-      const agentCtx = createMockAgentContext({
+      const agentCtx = createMockAgentToolContext({
         callId: 'call-2',
         llmResponses,
       })
@@ -313,7 +313,7 @@ describe('Agent Runtime', () => {
       )
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
-      const agentCtx = createMockAgentContext({
+      const agentCtx = createMockAgentToolContext({
         callId: 'call-3',
         llmResponses,
       })
@@ -355,11 +355,11 @@ describe('Agent Runtime', () => {
 
         *client(handoffData, ctx, _params) {
           const data = handoffData as unknown as { steps: number }
-          const flexCtx = ctx as AgentContext
+          const agentCtx = ctx as AgentToolContext
 
           for (let i = 1; i <= data.steps; i++) {
-            if (flexCtx.emit) {
-              yield* flexCtx.emit({ type: 'progress', step: i, total: data.steps })
+            if (agentCtx.emit) {
+              yield* agentCtx.emit({ type: 'progress', step: i, total: data.steps })
             }
           }
 
@@ -375,7 +375,7 @@ describe('Agent Runtime', () => {
       )
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
-      const agentCtx = createMockAgentContext({
+      const agentCtx = createMockAgentToolContext({
         callId: 'emit-1',
         onEmit: (event) => emittedEvents.push(event),
       })
@@ -402,7 +402,7 @@ describe('Agent Runtime', () => {
 
   describe('error handling', () => {
     it('throws when prompt not found in mock responses', function* () {
-      const agentCtx = createMockAgentContext({
+      const agentCtx = createMockAgentToolContext({
         callId: 'error-1',
         llmResponses: new Map(), // Empty - no responses
       })
@@ -443,7 +443,7 @@ describe('Agent Runtime', () => {
         // No client function!
       }
 
-      const agentCtx = createMockAgentContext({ callId: 'no-client' })
+      const agentCtx = createMockAgentToolContext({ callId: 'no-client' })
 
       try {
         yield* runAsAgent({

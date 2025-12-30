@@ -30,8 +30,8 @@
  */
 import type { Operation, Stream, Subscription } from 'effection'
 import type { z } from 'zod'
-import type { AnyIsomorphicTool, AgentContext, PromptOptions } from './types'
-import type { ApprovalResult } from './runtime/tool-runtime'
+import type { AnyIsomorphicTool } from './types'
+import { type AgentToolContext, type PromptOptions, type ApprovalResult, validateContextMode } from './contexts'
 import type { ChatProvider, ChatStreamOptions } from '../providers/types'
 import type { Message, ChatEvent, ChatResult } from '../types'
 
@@ -40,7 +40,7 @@ import type { Message, ChatEvent, ChatResult } from '../types'
 /**
  * An LLM client that can execute structured prompts.
  *
- * This is injected into AgentContext to provide `ctx.prompt()`.
+ * This is injected into AgentToolContext to provide `ctx.prompt()`.
  */
 export interface AgentLLMClient {
   /**
@@ -209,11 +209,18 @@ export function* runAsAgent(options: RunAsAgentOptions): Operation<unknown> {
     throw new Error(`Tool "${tool.name}" has no client function to run as agent`)
   }
 
+  // Validate that the tool can run in agent context
+  // Tools with 'headless' context can run anywhere (including as agent)
+  // Tools with 'agent' context require agent environment
+  // Tools with 'browser' context cannot run as agent
+  const toolContext = tool.contextMode ?? 'headless' // Legacy tools default to headless
+  validateContextMode(tool.name, toolContext, 'agent')
+
   // Generate a callId if not provided
   const effectiveCallId = callId ?? `agent-${crypto.randomUUID()}`
 
   // Create the agent context
-  const ctx: AgentContext = {
+  const ctx: AgentToolContext = {
     callId: effectiveCallId,
     signal,
 
@@ -255,7 +262,7 @@ export function* runAsAgent(options: RunAsAgentOptions): Operation<unknown> {
 /**
  * Options for creating a mock agent context.
  */
-export interface CreateMockAgentContextOptions {
+export interface CreateMockAgentToolContextOptions {
   /** Unique call ID */
   callId: string
 
@@ -284,7 +291,7 @@ export interface CreateMockAgentContextOptions {
  *   ['summarize', { summary: 'Brief summary' }],
  * ])
  *
- * const ctx = createMockAgentContext({
+ * const ctx = createMockAgentToolContext({
  *   callId: 'test-1',
  *   llmResponses,
  * })
@@ -292,7 +299,7 @@ export interface CreateMockAgentContextOptions {
  * const result = yield* tool.client!(handoffData, ctx, params)
  * ```
  */
-export function createMockAgentContext(options: CreateMockAgentContextOptions): AgentContext {
+export function createMockAgentToolContext(options: CreateMockAgentToolContextOptions): AgentToolContext {
   const {
     callId,
     signal = new AbortController().signal,
@@ -356,12 +363,12 @@ export function createMockAgentContext(options: CreateMockAgentContextOptions): 
  *
  * More flexible than the Map-based version for complex testing scenarios.
  */
-export function createMockAgentContextWithResponder(options: {
+export function createMockAgentToolContextWithResponder(options: {
   callId: string
   signal?: AbortSignal
   respond: <T extends z.ZodType>(opts: PromptOptions<T>) => z.infer<T>
   onEmit?: (event: unknown) => void
-}): AgentContext {
+}): AgentToolContext {
   const { callId, signal = new AbortController().signal, respond, onEmit } = options
 
   return {
