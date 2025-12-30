@@ -5,6 +5,9 @@
  * New code should import from specific type files or types/index.ts.
  */
 
+import { type RenderDelta } from './types/patch'
+import { type ContentMetadata } from './types/metadata'
+
 // Re-export everything from types/index.ts
 export * from './types/index'
 
@@ -23,9 +26,9 @@ export interface RenderFrame {
   /** Processed HTML for full content (if available) */
   html?: string
   /** Delta from previous frame - what's new */
-  delta: import('./types/patch').RenderDelta
+  delta: RenderDelta
   /** Timestamp when this frame was produced */
   timestamp: number
-  /** Metadata from settler (e.g., code fence info) */
-  meta?: import('./types/settler').SettleMeta
+  /** Metadata from processor (e.g., code fence info) */
+  meta?: ContentMetadata
 }

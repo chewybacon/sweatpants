@@ -117,12 +117,10 @@ export {
 // --- Types ---
 export * from './types'
 
-// --- Settlers ---
-export * from './settlers'
-
 // --- Session & Streaming ---
 export * from './session'
 export * from './streamChatOnce'
+// Note: transforms.ts contains channel transform infrastructure (not deprecated)
 export * from './transforms'
 export * from './contexts'
 

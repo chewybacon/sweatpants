@@ -4,7 +4,7 @@
  * Types for processors - functions that transform settled content.
  */
 import type { Operation } from 'effection'
-import type { SettleMeta, BaseSettleMeta } from './settler'
+import type { ContentMetadata, BaseContentMetadata } from './metadata'
 
 // --- Processed Output ---
 
@@ -37,7 +37,7 @@ export interface ProcessedOutput {
 /**
  * Context passed to a processor function.
  */
-export interface ProcessorContext<TMeta extends BaseSettleMeta = SettleMeta> {
+export interface ProcessorContext<TMeta extends BaseContentMetadata = ContentMetadata> {
   /** The chunk of content being settled right now */
   chunk: string
   /** All previously settled content (for parsing context) */

@@ -50,7 +50,8 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { run, call } from 'effection'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
-import type { SettleMeta, RenderDelta, RevealHint } from './types'
+import type { RenderDelta, RevealHint } from './types'
+import type { ContentMetadata } from './types/metadata'
 import type { PipelineConfig, Processor } from './pipeline/types'
 import {
   createPipelineTransform,
@@ -108,8 +109,8 @@ export interface StreamingMessage {
   delta?: RenderDelta
   /** Reveal hint for animation control */
   revealHint?: RevealHint
-  /** Metadata from settler (e.g., code fence info) */
-  meta?: SettleMeta
+  /** Metadata from processor (e.g., code fence info) */
+  meta?: ContentMetadata
   /** Timestamp of last update */
   timestamp?: number
 }

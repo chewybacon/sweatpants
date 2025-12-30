@@ -5,16 +5,11 @@
  * These are implementation details - prefer specific imports.
  */
 
-// Settler types
+// Metadata types
 export type {
-  BaseSettleMeta,
-  SettleMeta,
-  SettleContext,
-  SettleResult,
-  Settler,
-  MetadataSettler,
-  SettlerFactory,
-} from './settler'
+  BaseContentMetadata,
+  ContentMetadata,
+} from './metadata'
 
 // Processor types
 export type {
