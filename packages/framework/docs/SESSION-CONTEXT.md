@@ -42,6 +42,9 @@ The TanStack framework provides a streaming chat rendering system that processes
 
 ### ❌ What's NOT Done
 
+- **Tool types deep dive** - `IsomorphicTool` in handler uses `any` escape hatches
+  - Need proper generics/base interface for type safety at handler boundary
+  - See `CLEANUP.md` for details
 - Reveal speed controllers (character-by-character reveal)
 - Animation system (fade, slide effects)
 - Virtual scrolling for long conversations

@@ -43,7 +43,16 @@ export type ChatMessage = import('../lib/chat/types').Message
  * A finalized isomorphic tool definition.
  * This is what the builder pattern produces.
  * 
- * We use a loose interface here to accept tools from various builder patterns.
+ * NOTE: We use `any` types here intentionally. This interface needs to accept
+ * tools from various builder patterns (FinalizedIsomorphicTool, etc.) which have
+ * specific generic types. Using `unknown` breaks assignability.
+ * 
+ * TODO: This is a code smell. We should:
+ * 1. Create a proper base interface that builder tools extend
+ * 2. Use generics properly so type information flows through
+ * 3. Avoid the need for `any` escape hatches
+ * 
+ * See: Type consolidation task - "deep dive into tools" for proper fix.
  */
 export interface IsomorphicTool {
   name: string
@@ -155,6 +164,9 @@ export interface ResolvedPersona {
 
 /**
  * Persona resolver function.
+ * 
+ * NOTE: Uses `any` for name/config/effort to accept various persona implementations.
+ * TODO: Should use proper generics - see IsomorphicTool note above.
  */
 export type PersonaResolver = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -134,12 +134,26 @@ This document tracks completed cleanup work and provides guidance for future mai
 
 ## Future Maintenance Tasks
 
+### High Priority (Tool Types Deep Dive)
+
+- [ ] Fix `IsomorphicTool` type in `handler/types.ts`
+  - **Problem:** Uses `any` types as escape hatch to accept various tool shapes
+  - **Why:** `FinalizedIsomorphicTool<...>` from builder pattern has specific generics that don't assign to `unknown`
+  - **Impact:** Loses type safety at the handler boundary
+  - **Solution Ideas:**
+    1. Create a proper base interface that builder tools extend
+    2. Use a mapped type or conditional type to erase generics properly
+    3. Consider `AnyIsomorphicTool` pattern from `lib/chat/isomorphic-tools/types.ts`
+  - **Files to examine:**
+    - `handler/types.ts` - `IsomorphicTool`, `PersonaResolver`
+    - `lib/chat/isomorphic-tools/types.ts` - `AnyIsomorphicTool`
+    - `lib/chat/isomorphic-tools/builder.ts` - `FinalizedIsomorphicTool`
+
 ### Low Priority (Can Do Later)
 
-- [ ] Consolidate `types/` directory structure
-  - Current: Types split between `types/` and `pipeline/types.ts`
-  - Possible: Move all chat types to `pipeline/types.ts`
-  - Rationale: Cleaner structure, easier to navigate
+- [ ] ~~Consolidate `types/` directory structure~~ ✅ Done in Phase 8
+  - ~~Current: Types split between `types/` and `pipeline/types.ts`~~
+  - ~~Possible: Move all chat types to `pipeline/types.ts`~~
 
 - [ ] Simplify transform pipeline
   - Current: `useTransformPipeline` wraps `createPipelineTransform`
