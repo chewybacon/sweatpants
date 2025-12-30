@@ -10,8 +10,9 @@ export const calculatorIsomorphicTool = createIsomorphicTool('calculator')
       expression: z.string().describe('A mathematical expression, e.g. "2 + 2"'),
     })
   )
+  .context('headless')
   .authority('server')
-  .server(function* ({ expression }) {
+  .server(function* ({ expression }: { expression: string }) {
     try {
       if (!/^[\d\s+\-*/().]+$/.test(expression)) {
         throw new Error('Invalid expression')
@@ -33,8 +34,9 @@ export const searchIsomorphicTool = createIsomorphicTool('search')
       query: z.string().describe('The search query'),
     })
   )
+  .context('headless')
   .authority('server')
-  .server(function* ({ query }) {
+  .server(function* ({ query }: { query: string }) {
     yield* sleep(300)
     return {
       query,
@@ -63,8 +65,9 @@ export const getWeatherIsomorphicTool = createIsomorphicTool('get_weather')
         .describe('Temperature unit'),
     })
   )
+  .context('headless')
   .authority('server')
-  .server(function* ({ location, unit }) {
+  .server(function* ({ location, unit }: { location: string; unit?: 'celsius' | 'fahrenheit' | undefined }) {
     yield* sleep(500)
     const temp = Math.floor(Math.random() * 30) + 10
     const conditions = ['sunny', 'cloudy', 'rainy', 'windy']

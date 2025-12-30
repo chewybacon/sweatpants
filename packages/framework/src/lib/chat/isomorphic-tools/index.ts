@@ -146,10 +146,14 @@ export type {
   ServerToolContext,
   ServerAuthorityContext,
 
-  // Agent Context (for server-side agent execution)
-  AgentContext,
-  FlexibleClientContext,
+  // Context types (declarative context for tools)
+  ContextMode,
+  BaseToolContext,
+  BrowserToolContext,
+  AgentToolContext,
   PromptOptions,
+  ContextForMode,
+  AnyToolContext,
 
   // Registry
   IsomorphicToolRegistry,
@@ -209,10 +213,10 @@ export {
 export {
   runAsAgent,
   createAgentLLMClient,
-  createMockAgentContext,
-  createMockAgentContextWithResponder,
+  createMockAgentToolContext,
+  createMockAgentToolContextWithResponder,
   type AgentLLMClient,
   type CreateAgentLLMClientOptions,
   type RunAsAgentOptions,
-  type CreateMockAgentContextOptions,
+  type CreateMockAgentToolContextOptions,
 } from './agent-runtime'

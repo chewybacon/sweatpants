@@ -20,6 +20,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('test')
         .description('Test tool')
         .parameters(z.object({ prompt: z.string() }))
+        .context('headless')
         .authority('server')
         .handoff({
           *before(params) {
@@ -56,6 +57,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('card_game')
         .description('Card game')
         .parameters(paramsSchema)
+        .context('headless')
         .authority('server')
         .handoff({
           *before(params) {
@@ -87,6 +89,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('user_input')
         .description('Get user input')
         .parameters(z.object({ options: z.array(z.string()) }))
+        .context('headless')
         .authority('client')
         .client(function*(params, _ctx) {
           expectTypeOf(params.options).toEqualTypeOf<string[]>()
@@ -110,6 +113,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('client_only')
         .description('Client only (passthrough)')
         .parameters(z.object({ prompt: z.string() }))
+        .context('headless')
         .authority('client')
         .client(function*(params) {
           return { echoed: params.prompt }
@@ -130,6 +134,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const builder = createIsomorphicTool('bad_client_handoff')
         .description('Bad')
         .parameters(z.object({ x: z.string() }))
+        .context('headless')
         .authority('client')
 
       // @ts-expect-error handoff is server mode only
@@ -152,6 +157,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('celebrate')
         .description('Celebrate')
         .parameters(z.object({ message: z.string() }))
+        .context('headless')
         .authority('server')
         .server(function*(params, _ctx) {
           return { celebrated: true, message: params.message }
@@ -171,6 +177,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('server_only')
         .description('Server only')
         .parameters(z.object({ data: z.number() }))
+        .context('headless')
         .authority('server')
         .server(function*(params) {
           return { processed: params.data * 2 }
@@ -188,6 +195,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('test')
         .description('Test')
         .parameters(z.object({ x: z.number(), y: z.string() }))
+        .context('headless')
         .authority('server')
         .server(function*(_params) { return { done: true } })
         .build()
@@ -200,6 +208,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('handoff_test')
         .description('Test')
         .parameters(z.object({ input: z.string() }))
+        .context('headless')
         .authority('server')
         .handoff({
           *before() { return { secret: 123, hint: 'test' } },
@@ -217,6 +226,7 @@ describe('Isomorphic Tool Builder Types', () => {
       const tool = createIsomorphicTool('structured')
         .description('A structured tool')
         .parameters(z.object({ id: z.number() }))
+        .context('headless')
         .authority('server')
         .handoff({
           *before(params) { return { computed: params.id * 2 } },

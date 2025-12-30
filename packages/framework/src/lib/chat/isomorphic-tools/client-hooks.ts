@@ -63,21 +63,21 @@ import type { IsomorphicHandoffEvent } from './types'
  * Extract the handoff type (before() return) from a finalized tool.
  */
 export type ExtractHandoff<T> = T extends FinalizedIsomorphicTool<
-  any, any, any, infer THandoff, any, any
+  any, any, any, any, infer THandoff, any, any
 > ? THandoff : unknown
 
 /**
  * Extract the client output type from a finalized tool.
  */
 export type ExtractClientOutput<T> = T extends FinalizedIsomorphicTool<
-  any, any, any, any, infer TClient, any
+  any, any, any, any, any, infer TClient, any
 > ? TClient : unknown
 
 /**
  * Extract the params type from a finalized tool.
  */
 export type ExtractParams<T> = T extends FinalizedIsomorphicTool<
-  any, infer TParams, any, any, any, any
+  any, infer TParams, any, any, any, any, any
 > ? TParams : unknown
 
 // =============================================================================
@@ -150,7 +150,7 @@ export interface TypedHandoffHandler<THandoff, _TParams, TClient> {
  * ```
  */
 export function createHandoffHandler<
-  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any>,
+  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any, any>,
   THandoff = ExtractHandoff<TTool>,
   TParams = ExtractParams<TTool>,
   TClient = ExtractClientOutput<TTool>,
@@ -305,7 +305,7 @@ export interface TypedPendingHandoff<THandoff, TParams, TClient> {
  * ```
  */
 export function createTypedPendingHandoff<
-  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any>,
+  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any, any>,
   THandoff = ExtractHandoff<TTool>,
   TParams = ExtractParams<TTool>,
   TClient = ExtractClientOutput<TTool>,
@@ -360,14 +360,15 @@ export function createTypedPendingHandoff<
  * }
  * ```
  */
-export type ToolHandoffUnion<TTools extends readonly FinalizedIsomorphicTool<any, any, any, any, any, any>[]> = {
+export type ToolHandoffUnion<TTools extends readonly FinalizedIsomorphicTool<any, any, any, any, any, any, any>[]> = {
   [K in keyof TTools]: TTools[K] extends FinalizedIsomorphicTool<
     infer TName,
     infer TParams,
-    any,
+    any,  // TContext
+    any,  // TAuthority
     infer THandoff,
     infer TClient,
-    any
+    any   // TResult
   >
     ? {
         tool: TName
@@ -385,7 +386,7 @@ export type ToolHandoffUnion<TTools extends readonly FinalizedIsomorphicTool<any
  * Returns null if the event doesn't match the tool.
  */
 export function narrowHandoff<
-  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any>,
+  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any, any>,
 >(
   tool: TTool,
   event: IsomorphicHandoffEvent,

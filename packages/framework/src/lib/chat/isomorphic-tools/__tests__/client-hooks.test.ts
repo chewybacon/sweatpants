@@ -29,6 +29,7 @@ const guessCardTool = createIsomorphicTool('guess_card')
     prompt: z.string(),
     difficulty: z.enum(['easy', 'hard']).optional(),
   }))
+  .context('headless')
   .authority('server')
   .handoff({
     *before(params) {
@@ -52,6 +53,7 @@ const guessCardTool = createIsomorphicTool('guess_card')
 const pickNumberTool = createIsomorphicTool('pick_number')
   .description('Pick a number')
   .parameters(z.object({ max: z.number() }))
+  .context('headless')
   .authority('server')
   .handoff({
     *before(params) {
