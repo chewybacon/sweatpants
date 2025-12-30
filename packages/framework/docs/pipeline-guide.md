@@ -163,8 +163,8 @@ const processors = [shiki, mermaid, markdown]
 ### With useChat (Recommended)
 
 ```tsx
-import { useChat } from '@sweatpants/framework/react/chat'
-import { markdown, shiki, mermaid, math } from '@sweatpants/framework/react/chat/pipeline'
+import { useChat } from '@tanstack/framework/react/chat'
+import { markdown, shiki, mermaid, math } from '@tanstack/framework/react/chat/pipeline'
 
 function Chat() {
   const { messages, send } = useChat({
@@ -230,7 +230,7 @@ useChat({
 For optimal performance, preload processor assets early:
 
 ```ts
-import { preloadShiki, preloadMermaid, preloadMath } from '@sweatpants/framework/react/chat/pipeline'
+import { preloadShiki, preloadMermaid, preloadMath } from '@tanstack/framework/react/chat/pipeline'
 
 // In your app initialization
 function App() {
@@ -248,7 +248,7 @@ function App() {
 ### Checking Readiness
 
 ```ts
-import { isShikiReady, isMermaidReady, areProcessorsReady } from '@sweatpants/framework/react/chat/pipeline'
+import { isShikiReady, isMermaidReady, areProcessorsReady } from '@tanstack/framework/react/chat/pipeline'
 
 if (isShikiReady()) {
   // Shiki highlighting is available
@@ -264,7 +264,7 @@ if (areProcessorsReady(['markdown', 'shiki'])) {
 ### Creating Frames
 
 ```ts
-import { emptyFrame, createTextBlock, createCodeBlock } from '@sweatpants/framework/react/chat/pipeline'
+import { emptyFrame, createTextBlock, createCodeBlock } from '@tanstack/framework/react/chat/pipeline'
 
 // Create empty frame
 const frame = emptyFrame()
@@ -279,7 +279,7 @@ const codeBlock = createCodeBlock('const x = 1', 'typescript')
 ### Updating Frames
 
 ```ts
-import { updateFrame, addBlock, updateBlockAt } from '@sweatpants/framework/react/chat/pipeline'
+import { updateFrame, addBlock, updateBlockAt } from '@tanstack/framework/react/chat/pipeline'
 
 // Update all blocks matching a predicate
 const updated = updateFrame(frame, (block) => {
@@ -301,7 +301,7 @@ const modified = updateBlockAt(frame, 0, (block) => {
 ### Querying Frames
 
 ```ts
-import { hasBlocks, getLastBlock, findBlockById, getCodeBlocks, getTextBlocks } from '@sweatpants/framework/react/chat/pipeline'
+import { hasBlocks, getLastBlock, findBlockById, getCodeBlocks, getTextBlocks } from '@tanstack/framework/react/chat/pipeline'
 
 // Check if frame has blocks
 if (hasBlocks(frame)) {
@@ -326,7 +326,7 @@ const textBlocks = getTextBlocks(frame)
 Parses markdown to HTML. Runs first (no dependencies).
 
 ```ts
-import { markdown } from '@sweatpants/framework/react/chat/pipeline'
+import { markdown } from '@tanstack/framework/react/chat/pipeline'
 
 useChat({
   processors: [markdown]
@@ -338,7 +338,7 @@ useChat({
 Syntax highlighting for code blocks using Shiki.
 
 ```ts
-import { shiki, preloadShiki, isShikiReady } from '@sweatpants/framework/react/chat/pipeline'
+import { shiki, preloadShiki, isShikiReady } from '@tanstack/framework/react/chat/pipeline'
 
 useChat({
   processors: [markdown, shiki]
@@ -354,7 +354,7 @@ useChat({
 Renders Mermaid diagrams from text definitions.
 
 ```ts
-import { mermaid, preloadMermaid, isMermaidReady } from '@sweatpants/framework/react/chat/pipeline'
+import { mermaid, preloadMermaid, isMermaidReady } from '@tanstack/framework/react/chat/pipeline'
 
 useChat({
   processors: [markdown, mermaid]
@@ -370,7 +370,7 @@ useChat({
 Renders LaTeX math expressions using KaTeX.
 
 ```ts
-import { math, preloadMath, isMathReady } from '@sweatpants/framework/react/chat/pipeline'
+import { math, preloadMath, isMathReady } from '@tanstack/framework/react/chat/pipeline'
 
 useChat({
   processors: [markdown, math]
@@ -508,7 +508,7 @@ interface TraceEntry {
 For more control, use the pipeline runner directly:
 
 ```ts
-import { createPipeline, runPipeline } from '@sweatpants/framework/react/chat/pipeline'
+import { createPipeline, runPipeline } from '@tanstack/framework/react/chat/pipeline'
 
 const pipeline = createPipeline({
   processors: [markdown, shiki, mermaid],
@@ -527,7 +527,7 @@ const result = yield* runPipeline(pipeline, frame, chunk)
 Process frames as they stream:
 
 ```ts
-import { createPipelineTransform } from '@sweatpants/framework/react/chat/pipeline'
+import { createPipelineTransform } from '@tanstack/framework/react/chat/pipeline'
 
 const transform = createPipelineTransform({
   processors: [markdown, shiki],
@@ -543,7 +543,7 @@ for await (const frame of transform.stream(chunks)) {
 ### Manual Processor Creation
 
 ```ts
-import { defineProcessor } from '@sweatpants/framework/react/chat/pipeline'
+import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
 
 const myProcessor = defineProcessor({
   name: 'my-processor',
@@ -576,7 +576,7 @@ import {
   CircularDependencyError,
   MissingDependencyError,
   DuplicateProcessorError 
-} from '@sweatpants/framework/react/chat/pipeline'
+} from '@tanstack/framework/react/chat/pipeline'
 
 try {
   resolveProcessors([markdown, shiki, myCustom])

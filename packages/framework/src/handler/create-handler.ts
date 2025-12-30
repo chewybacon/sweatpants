@@ -58,7 +58,7 @@ function createPhase2Context(
   return {
     ...baseContext,
     *handoff(config) {
-      return yield* config.after(cachedHandoff as never, clientOutput)
+      return yield* config.after(cachedHandoff as never, clientOutput as never)
     },
   }
 }

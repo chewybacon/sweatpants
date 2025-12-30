@@ -1,5 +1,137 @@
+/**
+ * lib/chat/types.ts
+ *
+ * Core chat types - messages, provider events, and API types.
+ * This file defines types specific to the chat protocol layer.
+ *
+ * For shared primitives, see: core-types.ts
+ * For patches, see: patches/
+ * For state, see: state/
+ * For session config, see: session/
+ */
 
-// --- Message Types ---
+// Re-export shared primitives from core-types
+export type {
+  AuthorityMode,
+  IsomorphicToolState,
+  Capabilities,
+  BaseContentMetadata,
+  ContentMetadata,
+  RenderDelta,
+  RevealHint,
+  TokenUsage,
+  ToolCallInfo,
+  ServerToolResult,
+} from './core-types'
+
+// Re-export from isomorphic-tools
+export type {
+  ServerToolContext,
+  ServerAuthorityContext,
+  IsomorphicHandoffEvent,
+} from './isomorphic-tools/types'
+
+// Re-export from session
+export type {
+  ApiMessage,
+  ConversationState,
+  StreamResult,
+  StreamCompleteResult,
+  StreamIsomorphicHandoffResult,
+  ConversationStateStreamEvent,
+  IsomorphicHandoffStreamEvent,
+  StreamEvent,
+  Streamer,
+  MessageRenderer,
+  PatchTransform,
+  SessionOptions,
+  ChatCommand,
+} from './session'
+
+// Re-export from state
+export type {
+  TimelineUserMessage,
+  TimelineAssistantText,
+  TimelineThinking,
+  TimelineToolCall,
+  TimelineStep,
+  TimelineItem,
+  TimelineToolCallGroup,
+  GroupedTimelineItem,
+  ResponseStep,
+  ActiveStep,
+  RenderedContent,
+  PendingClientToolState,
+  PendingStepState,
+  ExecutionTrailState,
+  ChatState,
+} from './state'
+
+export { groupTimelineByToolCall, initialChatState } from './state'
+
+// Re-export from patches
+export type {
+  // Core patches
+  SessionInfoPatch,
+  UserMessagePatch,
+  AssistantMessagePatch,
+  StreamingStartPatch,
+  StreamingTextPatch,
+  StreamingThinkingPatch,
+  StreamingEndPatch,
+  ToolCallStartPatch,
+  ToolCallResultPatch,
+  ToolCallErrorPatch,
+  AbortCompletePatch,
+  ErrorPatch,
+  ResetPatch,
+  CorePatch,
+  // Buffer patches
+  BufferSettledPatch,
+  BufferPendingPatch,
+  BufferRawPatch,
+  BufferRenderablePatch,
+  BufferPatch,
+  // Client tool patches
+  ClientToolAwaitingApprovalPatch,
+  ClientToolExecutingPatch,
+  ClientToolCompletePatch,
+  ClientToolErrorPatch,
+  ClientToolDeniedPatch,
+  ClientToolProgressPatch,
+  ClientToolPermissionRequestPatch,
+  ClientToolPatch,
+  // Isomorphic tool patches
+  IsomorphicToolStatePatch,
+  IsomorphicToolPatch,
+  // Handoff patches
+  PendingHandoffState,
+  PendingHandoffPatch,
+  HandoffCompletePatch,
+  HandoffPatch,
+  // Execution trail patches
+  ExecutionTrailStepData,
+  ExecutionTrailStartPatch,
+  ExecutionTrailStepPatch,
+  ExecutionTrailCompletePatch,
+  ExecutionTrailStepResponsePatch,
+  ExecutionTrailPatch,
+  // Union
+  ChatPatch,
+} from './patches'
+
+export {
+  isCorePatch,
+  isBufferPatch,
+  isClientToolPatch,
+  isIsomorphicToolPatch,
+  isHandoffPatch,
+  isExecutionTrailPatch,
+} from './patches'
+
+// =============================================================================
+// MESSAGE TYPES (defined here - core to the chat protocol)
+// =============================================================================
 
 /**
  * Universal message interface that all chat providers must support.
@@ -26,6 +158,9 @@ export interface Message {
  */
 export type OllamaMessage = Message
 
+/**
+ * Tool call structure.
+ */
 export interface ToolCall {
   id: string
   function: {
@@ -34,89 +169,31 @@ export interface ToolCall {
   }
 }
 
-// --- Provider Event Types ---
+// =============================================================================
+// PROVIDER EVENT TYPES
+// =============================================================================
 
+/**
+ * Events emitted by chat providers during streaming.
+ */
 export type ChatEvent =
   | { type: 'text'; content: string }
   | { type: 'thinking'; content: string }
   | { type: 'tool_calls'; toolCalls: ToolCall[] }
 
+/**
+ * Final result from a chat provider.
+ */
 export interface ChatResult {
   text: string
   thinking?: string
   toolCalls?: ToolCall[]
-  usage: TokenUsage
+  usage: import('./core-types').TokenUsage
 }
 
-export interface TokenUsage {
-  promptTokens: number
-  completionTokens: number
-  totalTokens: number
-}
-
-// --- Stream Event Types (Server -> Client) ---
-
-export type StreamEvent =
-  | { type: 'session_info'; capabilities: any; persona: string | null } // Using any to avoid circular dep
-  | { type: 'text'; content: string }
-  | { type: 'thinking'; content: string }
-  | { type: 'tool_calls'; calls: ToolCallInfo[] }
-  | { type: 'tool_result'; id: string; name: string; content: string }
-  | { type: 'tool_error'; id: string; name: string; message: string }
-  | { type: 'complete'; text: string; usage?: TokenUsage }
-  | { type: 'error'; message: string; recoverable: boolean }
-  | IsomorphicHandoffEvent
-  | ConversationStateEvent
-
-/**
- * Event emitted to provide full conversation state for client-side processing.
- * Used when isomorphic tools need handoff to client.
- */
-export interface ConversationStateEvent {
-  type: 'conversation_state'
-  conversationState: ConversationState
-}
-
-/**
- * Event emitted when an isomorphic tool's server part completes.
- * 
- * The client should:
- * 1. Look up the tool in its isomorphic registry
- * 2. Execute the client part with the serverOutput
- * 3. For client-authority tools: send result back to server
- * 4. Results are merged and continue the conversation
- */
-import type { IsomorphicHandoffEvent } from './isomorphic-tools/types'
-
-
-/**
- * Snapshot of conversation state when handing off to client for tool execution.
- */
-export interface ConversationState {
-  /** Full message history up to this point */
-  messages: Message[]
-  /** Text content the assistant generated before requesting tools */
-  assistantContent: string
-  /** Tool calls the assistant requested (both server and client) - normalized to flat format */
-  toolCalls: ToolCallInfo[]
-  /** Results from server-side tool execution (already complete) */
-  serverToolResults: ServerToolResult[]
-}
-
-export interface ServerToolResult {
-  id: string
-  name: string
-  content: string
-  isError: boolean
-}
-
-export interface ToolCallInfo {
-  id: string
-  name: string
-  arguments: Record<string, unknown>
-}
-
-// --- Client Tool Schema (sent from client to server) ---
+// =============================================================================
+// CLIENT TOOL SCHEMA
+// =============================================================================
 
 /**
  * Schema for a client-side tool, sent to the server so it can be
@@ -126,11 +203,16 @@ export interface ToolCallInfo {
 export interface ClientToolSchema {
   name: string
   description: string
-  parameters: Record<string, unknown>  // JSON Schema
+  parameters: Record<string, unknown> // JSON Schema
 }
 
-// --- Request Types ---
+// =============================================================================
+// OLLAMA REQUEST/RESPONSE TYPES
+// =============================================================================
 
+/**
+ * Ollama chat request format.
+ */
 export interface OllamaChatRequest {
   model: string
   messages: Message[]
@@ -145,6 +227,9 @@ export interface OllamaChatRequest {
   }>
 }
 
+/**
+ * Ollama chat response chunk.
+ */
 export interface OllamaChatChunk {
   model: string
   created_at: string
@@ -164,7 +249,3 @@ export interface OllamaChatChunk {
   eval_duration?: number
   error?: string
 }
-
-// Re-export specific types from personas if needed by consumers
-export type { Capabilities } from './personas/types'
-export type { ServerToolContext, ServerAuthorityContext, IsomorphicHandoffEvent } from './isomorphic-tools/types'

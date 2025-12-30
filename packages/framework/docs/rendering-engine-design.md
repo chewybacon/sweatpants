@@ -47,8 +47,8 @@ Raw Tokens → Parser (auto) → Frame₀ → [Processors in DAG order] → Fram
 ## Usage
 
 ```tsx
-import { useChat } from '@sweatpants/framework/react/chat'
-import { markdown, shiki, mermaid, math } from '@sweatpants/framework/react/chat/pipeline'
+import { useChat } from '@tanstack/framework/react/chat'
+import { markdown, shiki, mermaid, math } from '@tanstack/framework/react/chat/pipeline'
 
 useChat({
   processors: 'full',  // All processors

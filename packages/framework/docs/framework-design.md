@@ -191,7 +191,7 @@ function useChatSession() {
 
 ```ts
 // src/tools/guess-card.ts
-import { defineIsomorphicTool } from '@sweatpants/framework/tools'
+import { defineIsomorphicTool } from '@tanstack/framework/tools'
 import { z } from 'zod'
 
 export default defineIsomorphicTool({
@@ -313,7 +313,7 @@ export const serverToolRegistry = createServerToolRegistry({
 
 ```ts
 // src/providers/anthropic.ts
-import { defineProvider } from '@sweatpants/framework/providers'
+import { defineProvider } from '@tanstack/framework/providers'
 
 export default defineProvider({
   name: 'anthropic',
@@ -445,7 +445,7 @@ Processors declare dependencies, and the pipeline resolves them via topological 
 
 ```ts
 // src/rendering/processors/markdown.ts
-import { defineProcessor } from '@sweatpants/framework/react/chat/pipeline'
+import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
 
 export const markdown = defineProcessor({
   name: 'markdown',
@@ -559,7 +559,7 @@ export const processors = {
 
 ```ts
 // src/personas/code-reviewer.ts
-import { definePersona } from '@sweatpants/framework/personas'
+import { definePersona } from '@tanstack/framework/personas'
 
 export default definePersona({
   name: 'code-reviewer',
@@ -732,14 +732,14 @@ export type ProcessorName = 'markdown' | 'shiki' | 'mermaid' | 'math' | ...
 
 ## Package Structure
 
-The framework is published as `@sweatpants/framework` with subpath exports:
+The framework is published as `@tanstack/framework` with subpath exports:
 
 ```ts
-import { defineIsomorphicTool } from '@sweatpants/framework/tools'
-import { defineProvider } from '@sweatpants/framework/providers'
-import { definePersona } from '@sweatpants/framework/personas'
-import { markdown, shiki, mermaid } from '@sweatpants/framework/react/chat/pipeline'
-import { useChat } from '@sweatpants/framework/react/chat'
+import { defineIsomorphicTool } from '@tanstack/framework/tools'
+import { defineProvider } from '@tanstack/framework/providers'
+import { definePersona } from '@tanstack/framework/personas'
+import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
+import { useChat } from '@tanstack/framework/react/chat'
 ```
 
 ---
