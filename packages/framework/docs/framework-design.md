@@ -37,8 +37,7 @@ We want to be a framework. Anywhere we currently rely on user code being manuall
 |-----------------|-----------------|
 | **Tools** | `*before()`, `*after()`, `*run()`, `*validate()` - all tool execution is generator-based |
 | **Providers** | `*stream()` returns `Stream<ChatEvent, ChatResult>` - an Effection stream |
-| **Settlers** | `*settle(ctx)` - yields content to settle |
-| **Processors** | `*process(ctx, emit)` - yields to emit progressive enhancements |
+| **Processors** | `*process(frame)` - yields to emit progressive enhancements |
 | **Transforms** | `*(input, output)` - consumes and produces via channels |
 | **Agent Hooks** | `*beforeTurn()`, `*afterTool()`, `*onComplete()` - lifecycle as operations |
 
@@ -148,9 +147,9 @@ function useChatSession() {
 
 1. **Tools** - Isomorphic tools with server/client separation
 2. **Providers** - LLM provider plugins (OpenAI, Ollama, Anthropic, etc.)
-3. **Rendering** - Processors, settlers, transforms for content rendering
+3. **Rendering** - Processors and pipelines for content rendering
 4. **Personas** - Agent personalities with tool/config bundles
-5. **Agents** - Higher-level orchestration patterns
+5. **Agents** - Higher-level orchestration patterns (not yet implemented)
 
 ---
 
@@ -192,7 +191,7 @@ function useChatSession() {
 
 ```ts
 // src/tools/guess-card.ts
-import { defineIsomorphicTool } from '@dynobase/framework/tools'
+import { defineIsomorphicTool } from '@sweatpants/framework/tools'
 import { z } from 'zod'
 
 export default defineIsomorphicTool({
@@ -314,7 +313,7 @@ export const serverToolRegistry = createServerToolRegistry({
 
 ```ts
 // src/providers/anthropic.ts
-import { defineProvider } from '@dynobase/framework/providers'
+import { defineProvider } from '@sweatpants/framework/providers'
 
 export default defineProvider({
   name: 'anthropic',
@@ -374,86 +373,182 @@ const stream = provider.stream(messages, { tools: [...] })
 
 ---
 
-## 3. Rendering
+## 3. Rendering (Frame-Based Pipeline)
 
-### Settler Registration
+The rendering system has been completely redesigned around **immutable frames** and **processor pipelines**.
+
+### Overview
+
+```
+Raw Tokens → Parser → Frame₀ → [Processors] → Frame₁ → Frame₂ → UI
+                                    ↓
+                              Progressive Enhancement
+                              (quick → full passes)
+```
+
+### Core Concepts
+
+#### Frames
+
+A **Frame** is an immutable snapshot of the document at a point in time:
 
 ```ts
-// src/rendering/settlers/json-fence.ts
-import { defineSettler } from '@dynobase/framework/rendering'
-
-export default defineSettler({
-  name: 'json-fence',
-  description: 'Settle JSON code blocks for live preview',
-  
-  // Dependencies on other settlers (for composition)
-  extends: 'code-fence',
-  
-  // The settler implementation
-  *settle(ctx) {
-    if (ctx.meta?.language === 'json') {
-      // Validate JSON as it streams
-      try {
-        JSON.parse(ctx.pending)
-        yield { content: ctx.pending, meta: { ...ctx.meta, validJson: true } }
-      } catch {
-        // Wait for more content
-      }
-    }
-  },
-})
+interface Frame {
+  id: string                    // Unique identifier
+  blocks: Block[]               // Content blocks
+  timestamp: number             // When created
+  trace: TraceEntry[]           // Debug info
+  activeBlockIndex: number|null // Currently streaming block
+}
 ```
+
+Frames are immutable - each update creates a new frame. This eliminates content duplication bugs and enables clean UI rendering.
+
+#### Blocks
+
+A **Block** is the unit of content within a frame:
+
+```ts
+interface Block {
+  id: string           // Stable across frames
+  type: 'text'|'code'  // Block type
+  raw: string          // Raw markdown/code
+  html: string         // Rendered HTML
+  status: 'streaming'|'complete'
+  renderPass: 'none'|'quick'|'full'
+  language?: string    // For code blocks
+  annotations?: Annotation[]
+  meta?: Record<string, unknown>
+}
+```
+
+Blocks are parsed automatically from streaming content. Code fences create `code` blocks; everything else is `text`.
+
+#### Processors
+
+A **Processor** is a self-contained processing unit that transforms frames:
+
+```ts
+interface Processor {
+  name: string
+  description?: string
+  dependencies?: string[]     // Auto-resolved order
+  preload?: () => Operation<void>
+  isReady?: () => boolean
+  process: (frame: Frame) => Operation<Frame>
+}
+```
+
+Processors declare dependencies, and the pipeline resolves them via topological sort.
 
 ### Processor Registration
 
 ```ts
-// src/rendering/processors/latex.ts
-import { defineProcessor } from '@dynobase/framework/rendering'
+// src/rendering/processors/markdown.ts
+import { defineProcessor } from '@sweatpants/framework/react/chat/pipeline'
 
-export default defineProcessor({
-  name: 'latex',
-  description: 'Render LaTeX math expressions',
+export const markdown = defineProcessor({
+  name: 'markdown',
+  description: 'Convert markdown to HTML',
   
-  // When this processor applies
-  match: (ctx) => ctx.meta?.language === 'latex' || ctx.chunk.includes('$$'),
+  // No dependencies - runs first
+  dependencies: [],
   
-  // Dependencies
-  after: ['markdown'],  // Run after markdown processor
+  // Preload async assets
+  *preload() {
+    // Load marked or remark if needed
+  },
   
-  // The processor implementation
-  *process(ctx, emit) {
-    const html = yield* renderLatex(ctx.chunk)
-    yield* emit({ raw: ctx.chunk, html, pass: 'full' })
+  // Check if ready
+  isReady: () => true,
+  
+  // Process frames
+  *process(frame) {
+    return updateFrame(frame, (block) => {
+      if (block.type === 'text' && !block.html) {
+        const html = marked(block.raw)
+        return setBlockHtml(block, html, 'quick')
+      }
+      return block
+    })
   },
 })
 ```
 
-### Transform Composition
+### Built-in Processors
+
+| Processor | Purpose | Dependencies |
+|-----------|---------|--------------|
+| `markdown` | Parse markdown to HTML | none |
+| `shiki` | Syntax highlighting | markdown |
+| `mermaid` | Diagram rendering | markdown |
+| `math` | KaTeX math rendering | markdown |
+
+### Pipeline Configuration
 
 ```ts
-// src/rendering/pipelines/default.ts
-import { definePipeline } from '@dynobase/framework/rendering'
-
-export default definePipeline({
-  name: 'default',
-  
-  transforms: [
-    { name: 'dual-buffer', settler: 'code-fence', processor: 'shiki' },
-    { name: 'mermaid', processor: 'mermaid' },
-  ],
-  
-  // Message renderer for non-streaming content
-  messageRenderer: 'markdown',
+// Simple - list processors, dependencies auto-resolved
+useChat({
+  processors: [markdown, shiki, mermaid]
 })
+
+// Or use a preset
+useChat({
+  processors: 'full'  // = [markdown, shiki, mermaid, math]
+})
+
+// Custom processor with dependencies
+useChat({
+  processors: [
+    markdown,
+    shiki,
+    {
+      name: 'custom-highlight',
+      dependencies: ['markdown', 'shiki'],
+      *process(frame) { /* ... */ }
+    }
+  ]
+})
+```
+
+### Progressive Enhancement
+
+Frames support progressive enhancement via `renderPass`:
+
+| Render Pass | Purpose | Performance |
+|-------------|---------|-------------|
+| `none` | Raw content only | Instant |
+| `quick` | Fast regex-based rendering | ~10-50ms |
+| `full` | Complete async rendering | ~100-500ms+ |
+
+The UI receives frames at each pass level and can animate between them:
+
+```tsx
+function ChatMessage({ frame }) {
+  return (
+    <div className="chat-message">
+      {frame.blocks.map(block => (
+        <div
+          key={block.id}
+          className={`render-${block.renderPass}`}
+          dangerouslySetInnerHTML={{ __html: block.html }}
+        />
+      ))}
+    </div>
+  )
+}
 ```
 
 ### Generated Registry
 
 ```ts
 // renderingRegistry.gen.ts
-export const settlers = { 'code-fence': codeFence, 'json-fence': jsonFence, ... }
-export const processors = { 'shiki': shiki, 'mermaid': mermaid, 'latex': latex, ... }
-export const pipelines = { 'default': defaultPipeline, ... }
+export const processors = {
+  'markdown': markdownProcessor,
+  'shiki': shikiProcessor,
+  'mermaid': mermaidProcessor,
+  'math': mathProcessor,
+}
 ```
 
 ---
@@ -464,7 +559,7 @@ export const pipelines = { 'default': defaultPipeline, ... }
 
 ```ts
 // src/personas/code-reviewer.ts
-import { definePersona } from '@dynobase/framework/personas'
+import { definePersona } from '@sweatpants/framework/personas'
 
 export default definePersona({
   name: 'code-reviewer',
@@ -498,7 +593,7 @@ export default definePersona({
   },
   
   // Rendering pipeline for this persona
-  pipeline: 'code-review',  // Uses custom pipeline with diff highlighting
+  pipeline: 'code-review',
   
   // Provider requirements
   requires: {
@@ -518,55 +613,9 @@ At build time, the framework validates:
 
 ---
 
-## 5. Agents (Future - TBD)
+## 5. Agents (Future - Not Yet Implemented)
 
-Based on the "persona-based" direction, agents could be:
-
-```ts
-// src/agents/code-fixer.ts
-import { defineAgent } from '@dynobase/framework/agents'
-
-export default defineAgent({
-  name: 'code-fixer',
-  description: 'Automatically fix code issues',
-  
-  // Base persona
-  persona: 'code-reviewer',
-  
-  // Agent-specific overrides
-  personaConfig: {
-    focusAreas: ['bugs', 'security'],
-    severityThreshold: 'error',
-  },
-  
-  // Agent orchestration
-  loop: {
-    maxIterations: 10,
-    
-    // When to continue
-    continueIf: (result) => result.toolCalls?.length > 0,
-    
-    // When to stop
-    stopIf: (result) => result.text.includes('All issues fixed'),
-  },
-  
-  // Memory/context management
-  memory: {
-    type: 'sliding-window',
-    maxTokens: 100_000,
-    summarizeAfter: 50_000,
-  },
-  
-  // Hooks for agent lifecycle
-  hooks: {
-    beforeTurn: (ctx) => { /* logging, metrics */ },
-    afterTool: (tool, result) => { /* validation, side effects */ },
-    onComplete: (result) => { /* cleanup, reporting */ },
-  },
-})
-```
-
-This is marked TBD - to be refined once the core framework is in place.
+The Agents extension point is not yet implemented. Once the core framework is stable, agents will provide higher-level orchestration patterns on top of personas.
 
 ---
 
@@ -575,8 +624,8 @@ This is marked TBD - to be refined once the core framework is in place.
 ### Vite Plugin
 
 ```ts
-// packages/dynobase-framework/src/vite/plugin.ts
-export function dynobaseFramework(options?: FrameworkOptions): Plugin[] {
+// packages/framework/src/vite/plugin.ts
+export function sweatpantsFramework(options?: FrameworkOptions): Plugin[] {
   return [
     // Discovery: scan for tools, personas, providers, rendering
     discoveryPlugin(options),
@@ -615,16 +664,14 @@ src/
     math-assistant.ts
   
   rendering/
-    settlers/
-      json-fence.ts
     processors/
-      latex.ts
+      custom.ts
     pipelines/
       default.ts
       code-review.ts
   
   agents/
-    code-fixer.ts
+    code-fixer.ts  // Not yet implemented
 
   # Generated (gitignored)
   __generated__/
@@ -642,38 +689,40 @@ export type ToolName = 'calculator' | 'search' | 'guess_card' | ...
 export type PersonaName = 'general' | 'code-reviewer' | 'math-assistant' | ...
 export type ProviderName = 'ollama' | 'openai' | 'anthropic' | ...
 export type PipelineName = 'default' | 'code-review' | ...
+export type ProcessorName = 'markdown' | 'shiki' | 'mermaid' | 'math' | ...
 ```
 
 ---
 
 ## Migration Path
 
-### Phase 1: Tools Infrastructure
+### Phase 1: Tools Infrastructure (Complete)
 1. Create `defineIsomorphicTool()` unified API
 2. Build Vite plugin for discovery
 3. Build AST transformer for server/client splitting
 4. Generate tool registry
 5. Migrate existing tools
 
-### Phase 2: Providers
+### Phase 2: Providers (Complete)
 1. Create `defineProvider()` API
 2. Add discovery and registry generation
 3. Migrate ollama/openai providers
 4. Add runtime selection
 
-### Phase 3: Rendering
-1. Create `defineSettler()`, `defineProcessor()`, `definePipeline()` APIs
-2. Add discovery for rendering components
-3. Generate rendering registry
-4. Migrate existing settlers/processors
+### Phase 3: Rendering (Complete - New Architecture)
+1. Create `defineProcessor()` API with dependency resolution
+2. Implement frame-based pipeline architecture
+3. Add progressive enhancement (quick → full passes)
+4. Migrate from settlers/processors to pipeline
+5. **Parser now handles structure detection automatically**
 
-### Phase 4: Personas
+### Phase 4: Personas (In Progress)
 1. Create `definePersona()` API with validation
 2. Add discovery and registry generation
 3. Add build-time validation (tool references, etc.)
 4. Migrate existing personas
 
-### Phase 5: Agents
+### Phase 5: Agents (Future)
 1. Design agent orchestration patterns
 2. Create `defineAgent()` API
 3. Implement memory/context management
@@ -681,22 +730,17 @@ export type PipelineName = 'default' | 'code-review' | ...
 
 ---
 
-## Open Questions
+## Package Structure
 
-### Package Structure
-Should this be:
-- A) Single package `@dynobase/framework` with subpath exports (`/tools`, `/providers`, etc.)
-- B) Multiple packages (`@dynobase/tools`, `@dynobase/providers`, etc.)
-- C) Internal patterns first, extract to package later
+The framework is published as `@sweatpants/framework` with subpath exports:
 
-### Naming
-Is `@dynobase/framework` the right name, or something else?
-
-### Priority Ordering
-Does Phase 1-5 ordering make sense, or should we reorder?
-
-### Agent Design
-Should we defer agents entirely until we have real use cases, or sketch more now?
+```ts
+import { defineIsomorphicTool } from '@sweatpants/framework/tools'
+import { defineProvider } from '@sweatpants/framework/providers'
+import { definePersona } from '@sweatpants/framework/personas'
+import { markdown, shiki, mermaid } from '@sweatpants/framework/react/chat/pipeline'
+import { useChat } from '@sweatpants/framework/react/chat'
+```
 
 ---
 
@@ -710,25 +754,41 @@ Should we defer agents entirely until we have real use cases, or sketch more now
 
 ---
 
-## Appendix: Current State Analysis
+## Appendix: Rendering Architecture Migration
 
-### Currently "Library-like" (user wires things together)
+### Old Architecture (Dual Buffer + Settlers)
 
-| Area | Current Pattern | Issue |
-|------|-----------------|-------|
-| **Server Tool Registry** | Hard-coded imports in `api.chat.ts` | Adding a tool requires editing framework file |
-| **Persona Registry** | Hard-coded object in `personas/index.ts` | Adding a persona requires editing framework file |
-| **Processors** | Passed as options to `dualBufferTransform()` | Good, but no discovery mechanism |
-| **Settlers** | Passed as options to `dualBufferTransform()` | Good, but no discovery mechanism |
-| **Client Handoff Handlers** | Created manually via `createHandoffHandler()` | No auto-discovery from tool definitions |
-| **Providers** | Hard-coded list in `getChatProvider()` | Adding provider requires editing framework |
-| **Transforms** | Passed as array to session options | Array is awkward for extensibility |
+```
+Raw Stream → Settler (when to settle?) → Buffer (pending/settled) → Processor → UI
+```
 
-### Currently "Framework-like" (good patterns)
+- **Settlers** decided when content could move from pending to settled
+- **Processors** enhanced settled content linearly
+- **Mutable buffers** caused content duplication bugs at code fence transitions
+- **Manual configuration** of settler/processor pairs
 
-| Area | Pattern | Why it's good |
-|------|---------|---------------|
-| **Isomorphic Tool Definition** | `defineServerOnlyTool()`, etc. | User defines tools, framework discovers schema & executes |
-| **Processor API** | `Processor` type with `ProcessorContext` | Framework calls user code |
-| **Settler API** | `Settler` generator pattern | Framework calls user code |
-| **Session Lifecycle** | `createChatSession()` resource | Framework manages lifecycle |
+### New Architecture (Frame-Based Pipeline)
+
+```
+Raw Tokens → Parser (auto structure) → Frame₀ → [Processors in DAG order] → Frame₁ → UI
+```
+
+- **Parser** automatically detects code fences and creates block structure
+- **Processors** declare dependencies, pipeline resolves order automatically
+- **Immutable frames** eliminate content duplication bugs
+- **Progressive enhancement** built into render passes (quick → full)
+- **Clean separation**: Parser handles structure, processors handle enhancement
+
+### Key Differences
+
+| Aspect | Old | New |
+|--------|-----|-----|
+| State | Mutable buffers | Immutable frames |
+| Structure | Settler negotiation | Automatic parsing |
+| Composition | Linear chains | DAG-based resolution |
+| Enhancement | Separate emissions | Built-in render passes |
+| Content bugs | Common at fences | Impossible (immutability) |
+
+### Migration Guide
+
+See [migration-guide.md](./migration-guide.md) for detailed migration instructions from settlers/dualBufferTransform to the new pipeline.

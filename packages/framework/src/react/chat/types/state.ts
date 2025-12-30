@@ -4,7 +4,7 @@
  * Types for chat session state.
  */
 import type { Message } from '../../../lib/chat/types'
-import type { SettleMeta } from './settler'
+import type { ContentMetadata } from './metadata'
 import type {
   RenderDelta,
   RevealHint,
@@ -175,7 +175,7 @@ export interface ChatState {
       delta?: RenderDelta
       revealHint?: RevealHint
       timestamp?: number
-      meta?: SettleMeta
+      meta?: ContentMetadata
     }
   }
 

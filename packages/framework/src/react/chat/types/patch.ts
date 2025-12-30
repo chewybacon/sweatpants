@@ -4,7 +4,7 @@
  * Types for patches - messages sent from session to React state.
  */
 import type { Message } from '../../../lib/chat/types'
-import type { SettleMeta } from './settler'
+import type { ContentMetadata } from './metadata'
 
 // --- Buffer Patches ---
 
@@ -20,7 +20,7 @@ export type BufferSettledPatch = {
   html?: string // Parsed HTML, if markdown processor ran
   ast?: unknown // Parsed AST, for advanced processing
   pass?: 'quick' | 'full' // Progressive enhancement pass
-  meta?: SettleMeta // Settler metadata (e.g., code fence info)
+  meta?: ContentMetadata // Content metadata (e.g., code fence info)
   [key: string]: unknown // Allow additional processor fields
 }
 
@@ -89,8 +89,8 @@ export type BufferRenderablePatch = {
   revealHint?: RevealHint
   /** Timestamp when this frame was produced */
   timestamp?: number
-  /** Metadata from settlers/processors */
-  meta?: SettleMeta
+  /** Metadata from processors */
+  meta?: ContentMetadata
   /** Allow additional processor fields */
   [key: string]: unknown
 }
