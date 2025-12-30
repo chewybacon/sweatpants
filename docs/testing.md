@@ -67,34 +67,23 @@ const streamer = createImmediateStreamer(
 
 ```typescript
 import { describe, it, expect } from 'vitest'
-import { run, createSignal, createChannel, spawn, each, sleep } from 'effection'
-import { runChatSession, createTestStreamer, dualBufferTransform } from './chat'
-import type { ChatCommand, ChatPatch } from './types'
+import { run } from 'effection'
+import { runPipeline, createPipeline } from '@tanstack/framework/react/chat/pipeline'
 
 describe('chat streaming', () => {
-  it('should stream text and emit patches', async () => {
-    const result = await run(function* () {
-      // Setup
-      const { streamer, controls } = createTestStreamer()
-      const commands = createSignal<ChatCommand, void>()
-      const patches = createChannel<ChatPatch, void>()
-      const received: ChatPatch[] = []
+  it('should stream text and process through pipeline', async () => {
+    const frames: any[] = []
+    const pipeline = createPipeline({ processors: 'markdown' }, function* (frame) {
+      frames.push(frame)
+    })
 
-      // Collect patches
-      yield* spawn(function* () {
-        for (const patch of yield* each(patches)) {
-          received.push(patch)
-          yield* each.next()
-        }
-      })
-
-      // Run session
-      yield* spawn(function* () {
-        yield* runChatSession(commands, patches, {
-          streamer,
-          transforms: [dualBufferTransform()],
-        })
-      })
+    // Run streaming
+    await run(function* () {
+      // Stream content
+      yield* pipeline.process('First paragraph.\n\n')
+      yield* pipeline.process('Second paragraph.')
+      yield* pipeline.flush()
+    })
 
       // Send a message
       commands.send({ type: 'send', content: 'Hello' })
@@ -118,74 +107,42 @@ describe('chat streaming', () => {
 })
 ```
 
-## Testing Settlers
+## Testing the Pipeline System
 
-Settlers are synchronous and can be tested directly:
+The modern pipeline system (with markdown, shiki, mermaid, and math processors) replaces the old settler system. For testing pipeline functionality, use the integration tests in `src/react/chat/__tests__/pipeline-preset-validation.test.ts` and `src/react/chat/__tests__/full-pipeline-e2e.test.ts` as examples.
+
+### Example: Testing Pipeline Processing
 
 ```typescript
-import { paragraph, timeout, sentence, any, all, codeFence } from './settlers'
+import { run } from 'effection'
+import { runPipeline } from '@tanstack/framework/react/chat/pipeline'
 
-describe('paragraph settler', () => {
-  const ctx = (pending: string, elapsed = 0) => ({
-    pending,
-    settled: '',
-    elapsed,
-    patch: { type: 'streaming_text' as const, content: '' }
+describe('pipeline integration', () => {
+  it('should process markdown content', async () => {
+    const content = '# Title\n\nBody text'
+    
+    const frame = await run(function* () {
+      return yield* runPipeline(content, { processors: 'markdown' })
+    })
+    
+    expect(frame.blocks.length).toBeGreaterThan(0)
+    expect(frame.blocks[0].type).toBe('text')
   })
 
-  it('should yield on paragraph breaks', () => {
-    const settler = paragraph()
-    const results = [...settler(ctx('First\n\nSecond\n\nThird'))]
+  it('should detect code blocks', async () => {
+    const content = '```javascript\nconst x = 1\n```'
     
-    expect(results).toEqual(['First\n\n', 'Second\n\n'])
-  })
-
-  it('should yield nothing without breaks', () => {
-    const settler = paragraph()
-    const results = [...settler(ctx('No breaks here'))]
+    const frame = await run(function* () {
+      return yield* runPipeline(content, { processors: 'markdown' })
+    })
     
-    expect(results).toEqual([])
-  })
-})
-
-describe('timeout settler', () => {
-  it('should yield when elapsed >= timeout', () => {
-    const settler = timeout(100)
-    
-    // Not elapsed enough
-    expect([...settler(ctx('pending', 50))]).toEqual([])
-    
-    // Elapsed enough
-    expect([...settler(ctx('pending', 100))]).toEqual(['pending'])
-    expect([...settler(ctx('pending', 150))]).toEqual(['pending'])
-  })
-})
-
-describe('any combinator', () => {
-  it('should use first settler that yields', () => {
-    const settler = any(paragraph(), timeout(100))
-    
-    // Paragraph settles first
-    expect([...settler(ctx('Hello\n\n', 0))]).toEqual(['Hello\n\n'])
-    
-    // Timeout settles when no paragraph
-    expect([...settler(ctx('Hello', 100))]).toEqual(['Hello'])
-  })
-})
-
-describe('codeFence settler', () => {
-  it('should yield metadata for code fences', () => {
-    const settler = codeFence()
-    const results = [...settler(ctx('```python\ndef foo():\n```\n'))]
-    
-    expect(results).toEqual([
-      { content: '```python\n', meta: { inCodeFence: true, language: 'python' } },
-      { content: 'def foo():\n', meta: { inCodeFence: true, language: 'python' } },
-      { content: '```\n', meta: { inCodeFence: false, language: 'python' } },
-    ])
+    const codeBlock = frame.blocks.find((b) => b.type === 'code')
+    expect(codeBlock?.language).toBe('javascript')
   })
 })
 ```
+
+> **Note:** The old settler system is deprecated. See `packages/framework/docs/migration-guide.md` for details on migrating from settlers to the pipeline API.
 
 ## Testing Processors
 
@@ -258,79 +215,16 @@ describe('syntaxHighlight processor', () => {
 })
 ```
 
-## Testing the Dual Buffer
+## Testing with the Pipeline Transform
 
-```typescript
-import { dualBufferTransform } from './dualBuffer'
-import { paragraph, codeFence } from './settlers'
-import { markdown } from './processors'
+The modern streaming pipeline is tested with the pipeline API. See the integration tests for examples:
 
-describe('dualBufferTransform', () => {
-  async function runTransform(
-    options: DualBufferOptions,
-    patches: ChatPatch[]
-  ): Promise<ChatPatch[]> {
-    return run(function* () {
-      const input = createChannel<ChatPatch, void>()
-      const output = createChannel<ChatPatch, void>()
-      const received: ChatPatch[] = []
+- `packages/framework/src/react/chat/__tests__/pipeline-preset-validation.test.ts` - Preset validation
+- `packages/framework/src/react/chat/__tests__/full-pipeline-e2e.test.ts` - End-to-end pipeline tests
 
-      // Collect output
-      yield* spawn(function* () {
-        for (const patch of yield* each(output)) {
-          received.push(patch)
-          yield* each.next()
-        }
-      })
+These tests use `runPipeline()` to process content and emit frames, verifying that processors work correctly with various input types.
 
-      // Run transform
-      yield* spawn(function* () {
-        yield* dualBufferTransform(options)(input, output)
-      })
-
-      // Send patches
-      for (const patch of patches) {
-        yield* input.send(patch)
-      }
-      yield* input.close()
-
-      yield* sleep(50)
-      return received
-    })
-  }
-
-  it('should settle on paragraph breaks', async () => {
-    const result = await runTransform(
-      { settler: paragraph() },
-      [
-        { type: 'streaming_start' },
-        { type: 'streaming_text', content: 'First\n\n' },
-        { type: 'streaming_text', content: 'Second' },
-        { type: 'streaming_end' },
-      ]
-    )
-
-    const settled = result.filter(p => p.type === 'buffer_settled')
-    expect(settled).toHaveLength(2)
-    expect(settled[0].content).toBe('First\n\n')
-    expect(settled[1].content).toBe('Second')
-  })
-
-  it('should include HTML when using markdown processor', async () => {
-    const result = await runTransform(
-      { settler: paragraph(), processor: markdown() },
-      [
-        { type: 'streaming_start' },
-        { type: 'streaming_text', content: '# Hello\n\n' },
-        { type: 'streaming_end' },
-      ]
-    )
-
-    const settled = result.find(p => p.type === 'buffer_settled')
-    expect(settled?.html).toContain('<h1>')
-  })
-})
-```
+> **Legacy Note:** The old `dualBufferTransform` and settler system have been removed. Use the modern pipeline system with `runPipeline()` or `createPipeline()`.
 
 ## Testing Tool Calls
 
@@ -459,56 +353,44 @@ npx vitest src/demo/effection/chat/__tests__/
 npx vitest run --coverage src/demo/effection/chat/__tests__/
 ```
 
-## Test File Structure
+## Test File Structure (Current)
+
+The framework includes comprehensive tests for the modern pipeline system:
 
 ```
-__tests__/
-├── settlers.test.ts           # Settler unit tests (46 tests)
-├── processors.test.ts         # Processor unit tests (34 tests)
-├── session-e2e.test.ts        # Full session e2e tests (15 tests)
-├── edge-cases.test.ts         # Edge case coverage (16 tests)
-├── readNdjson.test.ts         # NDJSON parser tests (27 tests)
-├── streaming-end-flush.test.ts # Buffer flush tests (19 tests)
-├── quick-highlight.test.ts    # Syntax highlight tests (8 tests)
-└── code-fence-streaming.test.ts # Code fence behavior tests
+src/react/chat/__tests__/
+├── full-pipeline-e2e.test.ts              # Full pipeline e2e tests (16 tests)
+├── pipeline-preset-validation.test.ts     # Preset validation (25 tests)
+├── mermaid-e2e.test.ts                    # Mermaid processor tests (6 tests)
+├── math-processor.test.ts                 # Math processor tests (13 tests)
+├── step-lifecycle.test.ts                 # Step state management (4 tests)
+└── state.test.ts                          # Session state tests (5 tests)
 ```
 
 ## Best Practices
 
-1. **Use `yield* sleep()`** - Allow time for async operations to complete
-2. **Collect all patches** - Spawn a collector before running the session
-3. **Test the output, not internals** - Focus on emitted patches
-4. **Use `createImmediateStreamer`** for simple cases - Faster, less setup
-5. **Test settlers directly** - They're sync, no Effection needed
-6. **Use the helper for processors** - `runProcessor()` simplifies async testing
+1. **Use pipeline API** - `runPipeline()` for content processing
+2. **Test with presets** - Verify 'markdown', 'shiki', 'mermaid', 'math', 'full'
+3. **Stream content** - Use `createPipeline()` to test streaming behavior
+4. **Verify block structure** - Check that frames have correct block types
+5. **Test integration points** - Ensure processors compose correctly
 
-## Debugging Tests
+## Debugging Pipeline Tests
 
-Enable debug logging in transforms:
+Use the pipeline's frame emissions to debug:
 
 ```typescript
-dualBufferTransform({ 
-  settler: paragraph(),
-  debug: true  // Logs settle events
+const pipeline = createPipeline({ processors: 'full' }, function* (frame) {
+  console.log('Frame emitted:', {
+    blockCount: frame.blocks.length,
+    blockTypes: frame.blocks.map(b => b.type),
+    totalContent: frame.blocks.map(b => b.raw).join('').length
+  })
 })
 ```
 
-Or use the logging transform:
+## Related Documentation
 
-```typescript
-import { loggingTransform } from './transforms'
-
-useChatSession({
-  transforms: [
-    loggingTransform('before'),
-    dualBufferTransform(),
-    loggingTransform('after'),
-  ]
-})
-```
-
-## Related
-
-- [chat-streaming.md](./chat-streaming.md) - Main system documentation
-- [settlers.md](./settlers.md) - Settler documentation
-- [processors.md](./processors.md) - Processor documentation
+- `packages/framework/docs/pipeline-guide.md` - Pipeline system documentation
+- `packages/framework/docs/migration-guide.md` - Migrating from settlers to pipeline
+- `packages/framework/docs/rendering-engine-design.md` - Architecture details
