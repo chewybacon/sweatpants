@@ -143,6 +143,13 @@ export type {
 
   // Context
   HandoffConfig,
+  ServerToolContext,
+  ServerAuthorityContext,
+
+  // Agent Context (for server-side agent execution)
+  AgentContext,
+  FlexibleClientContext,
+  PromptOptions,
 
   // Registry
   IsomorphicToolRegistry,
