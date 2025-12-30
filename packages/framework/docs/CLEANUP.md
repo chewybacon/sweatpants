@@ -1,376 +1,226 @@
-# Cleanup Checklist
+# Framework Cleanup & Maintenance
 
-This document tracks items that are no longer needed and should be removed or archived.
-
-## 1. Deprecated Files in packages/framework
-
-### 1.1 Old Settler System
-
-**Status:** The settler system is deprecated. The parser now handles structure automatically.
-**Used by:** Tests (`settlers.test.ts`, `code-fence-streaming.test.ts`)
-
-| File | Status | Action |
-|------|--------|--------|
-| `src/react/chat/settlers.ts` | Deprecated | Keep for tests, re-exports only |
-| `src/react/chat/settlers/index.ts` | Deprecated | Keep for tests, re-exports only |
-| `src/react/chat/settlers/paragraph.ts` | Deprecated | Keep for tests |
-| `src/react/chat/settlers/line.ts` | Deprecated | Keep for tests |
-| `src/react/chat/settlers/sentence.ts` | Deprecated | Keep for tests |
-| `src/react/chat/settlers/code-fence.ts` | Deprecated | Keep for tests |
-| `src/react/chat/settlers/timeout.ts` | Deprecated | Keep for tests |
-| `src/react/chat/settlers/max-size.ts` | Deprecated | Keep for tests |
-| `src/react/chat/settlers/combinators.ts` | Deprecated | Keep for tests |
-| `src/react/chat/types/settler.ts` | Deprecated | Keep for tests |
-
-**Note:** Settlers should remain for backward compatibility with tests. They can be removed once tests are migrated to the new pipeline.
-
-**Migration:** Settlers are replaced by the parser. New code should use the pipeline API.
-
-### 1.2 Transform Infrastructure (`transforms.ts`)
-
-**Status:** ACTIVE - Channel infrastructure for buffering and chaining.
-
-| File | Purpose |
-|------|---------|
-| `useBufferedChannel` | Buffers messages until subscriber is ready (solves subscribe-before-send) |
-| `useTransformPipeline` | Chains multiple transforms together with buffered input |
-| `passthroughTransform` | No-op transform for debugging |
-| `loggingTransform` | Debug transform that logs all patches |
-
-**Current Usage:**
-```typescript
-// In session.ts line 277-280
-const streamPatches = yield* useTransformPipeline(
-  patches,
-  options.transforms ?? []  // Usually [createPipelineTransform(config)]
-)
-```
-
-**Architecture:**
-```
-streamChatOnce → [useTransformPipeline: buffered input] → [createPipelineTransform] → patches → React
-                              ↑                                              ↑
-                        Buffers messages                         Processes rendering
-                        Chains transforms                        Emits HTML patches
-```
-
-**What it provides:**
-1. **Buffering** - Messages are queued until the transform subscribes
-2. **Chaining** - Multiple transforms can be composed in sequence
-3. **Passthrough** - If no transforms, just passes through
+This document tracks completed cleanup work and provides guidance for future maintenance.
 
 ---
 
-## Simplification Opportunity
+## ✅ Completed Cleanup (Dec 30, 2025)
 
-The `useTransformPipeline` wrapper adds an extra layer. Currently:
-- `useChat` creates `[createPipelineTransform]`
-- `session.ts` wraps with `useTransformPipeline`
-- `createPipelineTransform` has its own subscription loop
+### Phase 1: Documentation Archival
+- **Action:** Archived 5 outdated documentation files
+- **Location:** `/docs/archive/`
+- **Files:** settlers.md, processors.md, processor-design-notes.md, refactor-plan-effection-chat.md, chat-streaming.md
+- **Status:** ✅ Complete
 
-**Potential simplification:** Move buffering directly into `createPipelineTransform` and remove `useTransformPipeline` wrapper.
+### Phase 2: Remove Deprecated Exports
+- **Action:** Removed settler re-exports from public API
+- **Removed From:**
+  - `packages/framework/src/react/chat/index.ts` - Removed settler exports
+  - `packages/framework/src/react/chat/types/index.ts` - Removed settler types
+  - `packages/framework/src/react/chat/types/settler.ts` - Deleted entire file
+- **Added:** `packages/framework/src/react/chat/types/metadata.ts` - Generic content metadata type
+- **Updated:** patch.ts, useChat.ts, state.ts, processor.ts, types.ts with ContentMetadata
+- **Status:** ✅ Complete
 
-**Before:**
-```
-streamChatOnce → [useTransformPipeline] → [createPipelineTransform] → patches
-```
+### Phase 3: Delete Test Files
+- **Action:** Removed tests that only covered deprecated code
+- **Deleted:**
+  - `test-utils.ts` - Unused settler test helper
+  - `settlers.test.ts` - 48 tests of deprecated API
+  - `code-fence-streaming.test.ts` - 19 tests of deprecated API
+- **Impact:** 328 → 263 tests (kept all pipeline-relevant tests)
+- **Status:** ✅ Complete
 
-**After (simpler):**
-```
-streamChatOnce → [createPipelineTransform with built-in buffering] → patches
-```
+### Phase 4: Delete Settler Implementation
+- **Action:** Removed entire deprecated settler system
+- **Deleted:**
+  - `settlers/` directory (8 implementation files)
+  - `settlers.ts` wrapper file
+  - `types/settler.ts` type definitions
+- **Status:** ✅ Complete
 
-**Benefits:**
-- Fewer abstraction layers
-- Clearer data flow
-- Easier to understand
+### Phase 5: Documentation Updates
+- **Action:** Updated docs to reflect modern pipeline
+- **Updated:**
+  - `CLEANUP.md` - Completion summary (this file)
+  - `docs/testing.md` - Modern pipeline examples
+  - All framework docs - @dynobase/@sweatpants → @tanstack references
+- **Status:** ✅ Complete
 
-**Trade-off:**
-- Loses general-purpose transform chaining (not currently used anyway)
-- Creates coupling between buffering and rendering logic
+### Phase 6: New Integration Tests
+- **Action:** Added critical-path integration tests
+- **Added:** `pipeline-preset-validation.test.ts` (25 new tests)
+- **Coverage:** All presets (markdown, shiki, mermaid, math, full)
+- **Impact:** 263 → 288 tests
+- **Status:** ✅ Complete
 
-**Decision:** Leave as-is for now since it works. Consider simplifying in future refactor.
+### Phase 7: Documentation Consolidation
+- **Action:** Consolidated framework docs
+- **Moved:** Root `/docs/framework-design.md` → `packages/framework/docs/`
+- **Archived:** `packages/framework/docs/transcripts/` → `docs/archive/framework-transcripts/`
+- **Updated:** All package name references to @tanstack/framework
+- **Status:** ✅ Complete
 
-| File | Status | Action |
-|------|--------|--------|
-| `src/react/chat/types/index.ts` | Review | Consolidate with pipeline/types.ts |
-| `src/react/chat/types/processor.ts` | Review | Consolidate with pipeline/types.ts |
-| `src/react/chat/types/session.ts` | Review | Check if needed |
-| `src/react/chat/types/state.ts` | Review | Check if needed |
-
-**Note:** Some types may be duplicated between `types/` and `pipeline/types.ts`.
-
-### 1.4 Old Exports in index.ts
-
-Check `packages/framework/src/react/chat/index.ts`:
-
-```ts
-// Lines to review/remove:
-export * from './settlers'           // Remove - settlers deprecated
-// export * from './transforms'       // Remove or update - transforms deprecated
-```
-
----
-
-## 2. Old Documentation Files
-
-### 2.1 Root /docs Directory (Duplicated/Outdated)
-
-These docs are duplicated or outdated. They should be removed or marked as legacy.
-
-| File | Status | Action |
-|------|--------|--------|
-| `docs/settlers.md` | Outdated | Remove - content moved to `packages/framework/docs/migration-guide.md` |
-| `docs/processors.md` | Outdated | Remove - content moved to `packages/framework/docs/pipeline-guide.md` |
-| `docs/chat-streaming.md` | Uses old API | Update to new pipeline or archive |
-| `docs/framework-design.md` | Uses @dynobase | Update to @sweatpants or archive |
-| `docs/processor-design-notes.md` | Outdated design | Archive or integrate into pipeline-guide.md |
-| `docs/testing.md` | Review | Check if still accurate |
-
-### 2.2 Old Doc References
-
-| File | Status | Action |
-|------|--------|--------|
-| `docs/runtime-base-path.md` | Unrelated | Keep (not about rendering) |
-| `docs/hydra-isomorphic-tools-migration.md` | Unrelated | Keep (not about rendering) |
-| `docs/refactor-plan-effection-chat.md` | Historical | Archive or integrate |
-| `docs/test-prompt.md` | Unrelated | Keep or remove as needed |
-
----
-
-## 3. Legacy Code in apps/dynobase
-
-The dynobase app still uses the old dualBufferTransform. This is expected as it's the prototype.
-
-| File | Status | Action |
-|------|--------|--------|
-| `apps/dynobase/src/demo/effection/chat/dualBuffer.ts` | Legacy | Keep for prototype, don't migrate |
-| `apps/dynobase/src/demo/effection/chat/processors.ts` | Legacy | Keep for prototype |
-| `apps/dynobase/src/demo/effection/chat/settlers.ts` | Legacy | Keep for prototype |
-| All demos using `dualBufferTransform` | Legacy | Keep for prototype, demonstrate old API |
-
-**Note:** Dynobase is the "early prototype" - it doesn't need to be migrated. It's a historical reference.
+### Phase 8: Type Consolidation
+- **Action:** Unified type system with single source of truth in lib/chat
+- **Created:**
+  - `lib/chat/core-types.ts` - Shared primitives (Capabilities, AuthorityMode, TokenUsage, etc.)
+  - `lib/chat/patches/` - Organized patch types by category (base, buffer, tool, handoff)
+  - `lib/chat/state/` - Timeline and ChatState types
+  - `lib/chat/session/` - Streaming and session configuration types
+- **Deleted:**
+  - `react/chat/types/metadata.ts` - Moved to core-types
+  - `react/chat/types/processor.ts` - Deprecated settler-era types
+  - `react/chat/types/patch.ts` - Now in lib/chat/patches
+  - `react/chat/types/state.ts` - Now in lib/chat/state
+  - `react/chat/types/session.ts` - Now in lib/chat/session
+- **Refactored:**
+  - `lib/chat/isomorphic-tools/runtime/types.ts` - From 1314 lines to ~120 lines (re-exports only)
+  - `handler/types.ts` - Removed internal duplicates, now imports from lib/chat
+  - `react/chat/types/index.ts` - Now re-exports from lib/chat
+  - `personas/types.ts` - Now imports Capabilities from core-types
+- **Benefits:**
+  - Single source of truth for all shared types
+  - Types organized by domain (patches, state, session)
+  - ChatPatch union now grouped into sub-categories with type guards
+  - No more duplicate type definitions
+- **Status:** ✅ Complete
 
 ---
 
-## 4. Outdated @dynobase References
+## Current Architecture
 
-### 4.1 Documentation Files
+### Core Systems (All Active)
 
-| File | Status | Action |
-|------|--------|--------|
-| `docs/framework-design.md` | Has @dynobase | Update to @sweatpants or remove |
+| Component | Purpose | Location | Status |
+|-----------|---------|----------|--------|
+| **Parser** | Automatic block structure detection | `pipeline/parser.ts` | ✅ Active |
+| **Pipeline** | Frame-based rendering | `pipeline/runner.ts` | ✅ Active |
+| **Processors** | Content enhancement (markdown, shiki, mermaid, math) | `pipeline/processors/` | ✅ Active |
+| **Transforms** | Channel buffering & chaining | `transforms.ts` | ✅ Active |
+| **Session** | Chat session orchestration | `session.ts` | ✅ Active |
 
-### 4.2 Code References (Expected - Framework Name Pending)
+### Removed Systems
 
-These files use `@dynobase/framework` which is expected until we finalize the package name:
-
-- All files importing from `@dynobase/framework/*` - Update when name finalized
-- Documentation mentioning package name - Update when name finalized
-
----
-
-## 5. Archive Candidates
-
-### 5.1 Design Notes and Transcripts
-
-| File | Status | Action |
-|------|--------|--------|
-| `packages/framework/docs/transcripts/` | Historical | Keep as reference, not main docs |
-| `docs/processor-design-notes.md` | Outdated | Archive |
-| `docs/refactor-plan-effection-chat.md` | Historical | Archive |
-
-### 5.2 Old Documentation
-
-| File | Status | Action |
-|------|--------|--------|
-| `packages/framework/docs/rendering-engine-design.md` | Now reflects implemented | Keep as current docs |
-| `packages/framework/docs/rendering-checklist.md` | Now status tracker | Keep as status tracker |
-| `packages/framework/docs/notes.md` | Archived | Keep as archive note |
+| Component | Removal Date | Reason |
+|-----------|--------------|--------|
+| **Settlers** | Dec 30, 2025 | Replaced by automatic parser |
+| **dualBufferTransform** | Dec 30, 2025 | Part of old settler system |
+| **Old test suite** | Dec 30, 2025 | Only covered deprecated code |
 
 ---
 
-## 6. Priority Cleanup Items
+## Test Coverage
 
-### High Priority (Breakage Risk)
+**Total:** 288 tests (1 skipped)
 
-- [x] Remove re-exports of deprecated settlers from `packages/framework/src/react/chat/index.ts` **COMPLETED**
-- [x] Remove unused `transforms.ts` import from index if deprecated **NOT NEEDED** (transforms.ts is active)
-- [x] Delete `docs/settlers.md` (duplicated content in migration-guide.md) **COMPLETED**
-- [x] Delete `docs/processors.md` (duplicated content in pipeline-guide.md) **COMPLETED**
-
-### Medium Priority (Cleanup)
-
-- [x] Archive `docs/processor-design-notes.md` **COMPLETED**
-- [x] Archive `docs/refactor-plan-effection-chat.md` **COMPLETED**
-- [x] Archive `docs/chat-streaming.md` **COMPLETED**
-- [x] Review and consolidate duplicate types in `packages/framework/src/react/chat/types/` **REFACTORED** - Created `types/metadata.ts` with generic `ContentMetadata`
-
-### Low Priority (Nice to Have)
-
-- [ ] Update `docs/framework-design.md` @dynobase references (when package name finalized)
-- [x] Remove unused settler files from `packages/framework/src/react/chat/settlers/` **COMPLETED** - Entire settlers/ directory deleted
-- [ ] Consolidate `types/` directory with `pipeline/types.ts`
-- [ ] Archive old design transcripts
+### By Category
+- **Rendering Pipeline:** 16 tests (full-pipeline-e2e.test.ts)
+- **Preset Validation:** 25 tests (pipeline-preset-validation.test.ts)
+- **Processor Tests:** 19 tests (math-processor.test.ts, mermaid-e2e.test.ts)
+- **Session & State:** 9 tests (step-lifecycle.test.ts, state.test.ts)
+- **Framework Tools:** 55+ tests (tool-discovery, di-integration, etc.)
+- **Other:** 164 tests (isomorphic-tools, chat integration, etc.)
 
 ---
 
-## 7. Breaking Changes Checklist
+## Verification Status
 
-Before removing deprecated code, verify:
-
-- [ ] `pipeline-guide.md` covers all processor use cases
-- [ ] `migration-guide.md` covers all settler → pipeline migration
-- [ ] No apps depend on deprecated exports
-- [ ] Tests are updated to use new API
-- [ ] TypeScript compiles without deprecated imports
+✅ **TypeScript:** `npm run typecheck` - No errors  
+✅ **Tests:** `npm run test` - 288 pass | 1 skipped  
+✅ **Build:** `npm run build` - CJS + DTS success  
 
 ---
 
-## 8. Safe to Remove (No Dependencies)
+## Future Maintenance Tasks
 
-### 8.1 Files with No External Dependencies
+### Low Priority (Can Do Later)
 
-These files can be safely removed once no imports reference them:
+- [ ] Consolidate `types/` directory structure
+  - Current: Types split between `types/` and `pipeline/types.ts`
+  - Possible: Move all chat types to `pipeline/types.ts`
+  - Rationale: Cleaner structure, easier to navigate
 
-```bash
-# Check for imports before removing
-grep -r "from.*settlers" --include="*.ts" --include="*.tsx" packages/framework/
-grep -r "from.*transforms" --include="*.ts" --include="*.tsx" packages/framework/
-```
+- [ ] Simplify transform pipeline
+  - Current: `useTransformPipeline` wraps `createPipelineTransform`
+  - Proposed: Merge buffering logic into `createPipelineTransform`
+  - Trade-off: Loses general-purpose transform chaining (not currently used)
+  - Status: Works well as-is, refactor only if needed
 
-### 8.2 Documentation Safe to Delete
+- [ ] Add reveal speed controllers
+  - Not yet implemented
+  - Would allow character-by-character, word-by-word reveal
+  - Enhancement-only feature
 
-- `docs/settlers.md` - Replaced by `packages/framework/docs/migration-guide.md`
-- `docs/processors.md` - Replaced by `packages/framework/docs/pipeline-guide.md`
+- [ ] Performance optimizations
+  - Incremental garbage collection
+  - Background processor execution
+  - Virtual scrolling for long conversations
 
----
+### Never Do
 
-## 9. Commands for Cleanup
-
-### Find all references to deprecated exports
-
-```bash
-# Find settlers references
-grep -r "from.*settlers" --include="*.ts" --include="*.tsx" packages/framework/
-
-# Find transforms references  
-grep -r "from.*transforms" --include="*.ts" --include="*.tsx" packages/framework/
-
-# Find dualBufferTransform usage
-grep -r "dualBufferTransform" --include="*.ts" --include="*.tsx" packages/framework/
-```
-
-### Find documentation referencing old API
-
-```bash
-# Find @dynobase in docs
-grep -r "@dynobase" docs/ --include="*.md"
-
-# Find settlers in root docs
-grep -r "settler" docs/ --include="*.md" | grep -v "settlers.md"
-```
+- [ ] Don't re-add settlers - The parser handles all their responsibilities
+- [ ] Don't create new mutable buffer patterns - Frames are intentionally immutable
+- [ ] Don't make processors depend on settlers - They only work with frames
 
 ---
 
-## 10. Post-Cleanup Verification
+## Documentation Structure
 
-After cleanup, verify:
+### Framework Package Docs (`packages/framework/docs/`)
+- **framework-design.md** - Framework philosophy and architecture
+- **pipeline-guide.md** - Complete pipeline API documentation
+- **migration-guide.md** - Migrating from old settler system
+- **rendering-engine-design.md** - Rendering engine implementation
+- **rendering-checklist.md** - Feature implementation status
+- **notes.md** - Archived design notes reference
 
-- [ ] `npm run typecheck` passes
-- [ ] `npm run test` passes
-- [ ] `npm run build` passes
-- [ ] Framework docs build correctly
-- [ ] No broken imports in source files
-- [ ] Documentation links work
+### Root Docs (`docs/`)
+- **testing.md** - Testing patterns and best practices
+- **hydra-isomorphic-tools-migration.md** - Hydra migration guide
+- **runtime-base-path.md** - Runtime base path configuration
+- **archive/** - Archived historical documentation
 
 ---
 
-## 11. Summary
+## Quick Reference
 
-### ✅ FULL CLEANUP COMPLETED (Dec 30, 2025)
+### To Get Up to Speed
 
-**All phases executed successfully:**
+1. **New to the codebase?** Start with `framework-design.md`
+2. **Using the pipeline?** Read `pipeline-guide.md`
+3. **Writing tests?** Check `docs/testing.md`
+4. **Migrating old code?** See `migration-guide.md`
 
-#### Phase 1: Documentation Archival ✅
-- Archived 5 outdated docs to `/docs/archive/`
-- Created archive README with migration guide
+### Key Files by Purpose
 
-#### Phase 2: Remove Public API Exports ✅
-- Removed settler re-exports from `index.ts`
-- Removed settler types from `types/index.ts`
-- **Refactored:** Created `types/metadata.ts` with generic `ContentMetadata` type
-- Updated all references in `patch.ts`, `useChat.ts`, `state.ts`, `processor.ts`, `types.ts`
+| Purpose | File |
+|---------|------|
+| Pipeline types | `pipeline/types.ts` |
+| Parser logic | `pipeline/parser.ts` |
+| Pipeline execution | `pipeline/runner.ts` |
+| Markdown processor | `pipeline/processors/markdown.ts` |
+| Session orchestration | `session.ts` |
+| Channel buffering | `transforms.ts` |
+| Chat hook | `useChat.ts` |
 
-#### Phase 3: Delete Test Files ✅
-- Deleted `test-utils.ts` (unused)
-- Deleted `settlers.test.ts` (48 tests - only tested deprecated code)
-- Deleted `code-fence-streaming.test.ts` (19 tests - only tested deprecated code)
-- **Result:** 328 → 263 tests (removed 65 settler-specific tests)
+---
 
-#### Phase 4: Delete Settler Implementation ✅
-- Deleted entire `settlers/` directory (8 files)
-- Deleted `settlers.ts` wrapper
-- Deleted `types/settler.ts`
-- Updated `types.ts` reference to use `ContentMetadata`
+## Checklist for Future Cleanups
 
-### ✅ Final Verification
+Before starting any cleanup:
 
-- `npm run typecheck` → **PASS** (no errors)
-- `npm run test` → **PASS** (263 tests | 1 skipped)
-- `npm run build` → **PASS** (CJS + DTS + TSup)
+- [ ] Run `npm run typecheck` - Verify no TS errors
+- [ ] Run `npm run test` - Ensure tests pass
+- [ ] Create a branch: `git checkout -b cleanup/DESCRIPTION`
+- [ ] Document changes in this file
+- [ ] Update related documentation
+- [ ] Run tests again
+- [ ] Create a commit with clear message
 
-### ✅ What IS Deprecated (Removed)
+After completing cleanup:
 
-| Item | Status | Location |
-|------|--------|----------|
-| Settlers (paragraph, codeFence, etc.) | ❌ REMOVED | Was in `settlers/` |
-| Settler types (SettleContext, etc.) | ❌ REMOVED | Was in `types/settler.ts` |
-| dualBufferTransform (rendering) | ❌ REMOVED | Was in `settlers/` |
-| Settler test files | ❌ REMOVED | Deleted 3 test files |
-
-### ✅ What is ACTIVE (Kept)
-
-| Item | Status | Location |
-|------|--------|----------|
-| transforms.ts (channel buffering) | ✅ ACTIVE | `packages/framework/src/react/chat/transforms.ts` |
-| createPipelineTransform (rendering) | ✅ ACTIVE | `packages/framework/src/react/chat/pipeline/runner.ts` |
-| useTransformPipeline (channel chaining) | ✅ ACTIVE | `packages/framework/src/react/chat/transforms.ts` |
-| Pipeline processors (markdown, shiki, mermaid, math) | ✅ ACTIVE | `packages/framework/src/react/chat/pipeline/processors/` |
-
-### Remaining Low-Priority Tasks
-
-- [ ] Update `docs/framework-design.md` @dynobase references (when package name finalized)
-- [ ] Consolidate `types/` directory with `pipeline/types.ts` (optional refactor)
-- [ ] Add new integration tests for critical paths (recommended)
-
-### Keep (Not About Rendering)
-
-- [ ] `docs/runtime-base-path.md`
-- [ ] `docs/hydra-isomorphic-tools-migration.md`
-- [ ] `docs/test-prompt.md`
-- [ ] `docs/testing.md`
-- [ ] `packages/framework/docs/transcripts/` - Historical reference
-
-### Keep (Active Code)
-
-- [ ] `packages/framework/src/react/chat/transforms.ts` - Channel infrastructure (NOT deprecated)
-- [ ] `packages/framework/src/react/chat/session.ts` - Session orchestration
-- [ ] All pipeline/ files - Active rendering system
-
-### Remove from Root /docs (Duplicates)
-
-- [ ] `docs/settlers.md` - Replaced by `packages/framework/docs/migration-guide.md`
-- [ ] `docs/processors.md` - Replaced by `packages/framework/docs/pipeline-guide.md`
-
-### Clarification: transforms.ts vs pipeline/
-
-| File | Purpose | Status |
-|------|---------|--------|
-| `transforms.ts` | Channel buffering and chaining | ACTIVE |
-| `pipeline/runner.ts` | Rendering pipeline (createPipelineTransform) | ACTIVE |
-| `settlers/` | Old settler system | DEPRECATED |
-
-These are separate systems:
-- `transforms.ts`: Infrastructure for streaming patches (subscribe-before-send)
-- `pipeline/`: Frame-based rendering system
+- [ ] Verify `npm run build` succeeds
+- [ ] Verify full test suite passes
+- [ ] Update CLEANUP.md with completion info
+- [ ] Create PR with comprehensive description

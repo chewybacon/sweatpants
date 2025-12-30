@@ -165,7 +165,7 @@ export const shikiProcessor = defineProcessor({
 **After:**
 ```ts
 // src/rendering/processors/shiki.ts
-import { defineProcessor } from '@sweatpants/framework/react/chat/pipeline'
+import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
 
 export const shiki = defineProcessor({
   name: 'shiki',
@@ -199,7 +199,7 @@ export const shiki = defineProcessor({
 
 **Before:**
 ```ts
-import { dualBufferTransform } from '@sweatpants/framework/rendering'
+import { dualBufferTransform } from '@tanstack/framework/rendering'
 
 function Chat() {
   const session = useChatSession({
@@ -219,8 +219,8 @@ function Chat() {
 
 **After:**
 ```tsx
-import { useChat } from '@sweatpants/framework/react/chat'
-import { markdown, shiki, mermaid } from '@sweatpants/framework/react/chat/pipeline'
+import { useChat } from '@tanstack/framework/react/chat'
+import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
 
 function Chat() {
   const { messages, send } = useChat({
@@ -445,13 +445,13 @@ const shiki = defineProcessor({
 
 ```ts
 // Old imports
-import { defineSettler, defineProcessor } from '@sweatpants/framework/rendering'
-import { dualBufferTransform } from '@sweatpants/framework/rendering/transforms'
+import { defineSettler, defineProcessor } from '@tanstack/framework/rendering'
+import { dualBufferTransform } from '@tanstack/framework/rendering/transforms'
 
 // New imports
-import { defineProcessor } from '@sweatpants/framework/react/chat/pipeline'
-import { markdown, shiki, mermaid } from '@sweatpants/framework/react/chat/pipeline'
-import { useChat } from '@sweatpants/framework/react/chat'
+import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
+import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
+import { useChat } from '@tanstack/framework/react/chat'
 ```
 
 ## Rollback Compatibility
@@ -459,7 +459,7 @@ import { useChat } from '@sweatpants/framework/react/chat'
 For gradual migration, the old API is still available but deprecated:
 
 ```ts
-import { dualBufferTransform } from '@sweatpants/framework/legacy'
+import { dualBufferTransform } from '@tanstack/framework/legacy'
 
 // Still works, but logs deprecation warning
 const transform = dualBufferTransform({
@@ -505,10 +505,10 @@ const shiki = defineProcessor({
 
 ```ts
 // Old - remove this
-import { defineSettler } from '@sweatpants/framework/rendering'
+import { defineSettler } from '@tanstack/framework/rendering'
 
 // New - use this
-import { defineProcessor } from '@sweatpants/framework/react/chat/pipeline'
+import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
 ```
 
 ### Issue: Cannot find block metadata
@@ -530,8 +530,8 @@ const language = block.language
 - [ ] Update chat configuration to use `processors` instead of `transforms`
 - [ ] Update message rendering to use frames/blocks
 - [ ] Add `dependencies` to processors
-- [ ] Remove old `@sweatpants/framework/rendering` imports
-- [ ] Add new `@sweatpants/framework/react/chat/pipeline` imports
+- [ ] Remove old `@tanstack/framework/rendering` imports
+- [ ] Add new `@tanstack/framework/react/chat/pipeline` imports
 - [ ] Test progressive enhancement (quick → full)
 - [ ] Verify no content duplication at code fences
 - [ ] Update any custom code using ctx.meta

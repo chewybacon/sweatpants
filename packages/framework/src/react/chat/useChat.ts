@@ -50,8 +50,7 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { run, call } from 'effection'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
-import type { RenderDelta, RevealHint } from './types'
-import type { ContentMetadata } from './types/metadata'
+import type { RenderDelta, RevealHint, ContentMetadata } from './types'
 import type { PipelineConfig, Processor } from './pipeline/types'
 import {
   createPipelineTransform,

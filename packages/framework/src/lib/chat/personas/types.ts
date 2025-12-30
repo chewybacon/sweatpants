@@ -1,11 +1,7 @@
 // --- Capabilities ---
-
-/** What the resolved session actually supports */
-export interface Capabilities {
-  thinking: boolean
-  streaming: boolean
-  tools: string[]
-}
+// Import from core-types (single source of truth)
+import type { Capabilities } from '../core-types'
+export type { Capabilities } from '../core-types'
 
 // --- Configuration ---
 

@@ -1,18 +1,15 @@
 /**
- * types.ts
+ * react/chat/types.ts
  *
- * Re-exports from the types/ directory for backward compatibility.
- * New code should import from specific type files or types/index.ts.
+ * Re-exports all types from types/index.ts.
+ * This file exists for convenience - imports like `from './types'` work.
  */
-
-import { type RenderDelta } from './types/patch'
-import { type ContentMetadata } from './types/metadata'
 
 // Re-export everything from types/index.ts
 export * from './types/index'
 
-// Also export RenderFrame which was in the old types but isn't used much
-// Keeping for API compatibility
+// Also export RenderFrame (React-specific type)
+import type { RenderDelta, ContentMetadata } from './types/index'
 
 /**
  * A single render frame with full animation support.

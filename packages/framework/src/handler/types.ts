@@ -1,41 +1,43 @@
 /**
- * Chat Handler Types
+ * handler/types.ts
  *
- * These types define the contract between the framework's chat handler
- * and the user-provided implementations.
+ * Types for the server-side chat handler.
+ * 
+ * Shared types are imported from lib/chat.
+ * Handler-specific types are defined here.
  */
+
 import type { Operation } from 'effection'
 import type { ZodType } from 'zod'
 
 // =============================================================================
-// MESSAGE TYPES
+// RE-EXPORTS FROM lib/chat
 // =============================================================================
 
-// Message interface is defined in lib/chat (core dependency)
-import type { Message } from '../lib/chat/types'
+// Core types
+export type {
+  Capabilities,
+  TokenUsage,
+  AuthorityMode,
+} from '../lib/chat/core-types'
+
+// Message types - re-export for convenience
 export type { Message } from '../lib/chat/types'
 
+// Tool context types
+export type {
+  ServerToolContext,
+  ServerAuthorityContext,
+} from '../lib/chat/isomorphic-tools/types'
+
 // =============================================================================
-// TOOL TYPES
+// HANDLER-SPECIFIC TYPES
 // =============================================================================
 
 /**
- * Server tool execution context.
+ * Chat message alias (matches Message interface).
  */
-export interface ServerToolContext {
-  callId: string
-  signal: AbortSignal
-}
-
-/**
- * Server authority context with handoff capability.
- */
-export interface ServerAuthorityContext extends ServerToolContext {
-  handoff<THandoff, TResult>(config: {
-    before: () => Operation<THandoff>
-    after: (handoff: THandoff, clientOutput: unknown) => Operation<TResult>
-  }): Operation<TResult>
-}
+export type ChatMessage = import('../lib/chat/types').Message
 
 /**
  * A finalized isomorphic tool definition.
@@ -67,19 +69,10 @@ export interface IsomorphicTool {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client?: (input: any, ctx: any, params: any) => Operation<any>
 }
-export interface ServerAuthorityContext extends ServerToolContext {
-  handoff<THandoff, TResult>(config: {
-    before: () => Operation<THandoff>
-    after: (handoff: THandoff, clientOutput: unknown) => Operation<TResult>
-  }): Operation<TResult>
-}
 
 // =============================================================================
 // PROVIDER TYPES
 // =============================================================================
-
-// ChatMessage is now an alias for the universal Message interface
-export type ChatMessage = Message
 
 /**
  * Streaming event from chat provider.
@@ -87,14 +80,17 @@ export type ChatMessage = Message
 export type ChatProviderEvent =
   | { type: 'text'; text: string }
   | { type: 'thinking'; text: string }
-  | { type: 'tool_calls'; toolCalls: Array<{
-      id: string
-      type: 'function'
-      function: {
-        name: string
-        arguments: Record<string, unknown>
-      }
-    }> }
+  | {
+      type: 'tool_calls'
+      toolCalls: Array<{
+        id: string
+        type: 'function'
+        function: {
+          name: string
+          arguments: Record<string, unknown>
+        }
+      }>
+    }
 
 /**
  * Final result from chat provider stream.
@@ -128,44 +124,14 @@ export interface ToolSchema {
 }
 
 /**
- * Context passed to initializer hooks.
- */
-export interface InitializerContext {
-  request: Request
-  body: ChatRequestBody
-}
-
-/**
- * Configuration for createChatHandler.
- */
-export interface ChatHandlerConfig {
-  /**
-   * Array of initializer hooks that set up DI contexts.
-   * Hooks receive request context and can perform async/effection operations.
-   */
-  initializerHooks: Array<(ctx: InitializerContext) => Operation<void>>
-
-  /**
-   * Maximum number of tool execution iterations.
-   * @default 10
-   */
-  maxToolIterations?: number
-}
-
-/**
  * Chat provider interface.
- * 
- * The stream method should return something that can be async iterated
- * and has a result promise. This is compatible with effection Streams.
  */
 export interface ChatProvider {
   name?: string
   stream(
-    messages: Message[],
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    options?: any
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ): any // Accept any stream-like return type
+    messages: import('../lib/chat/types').Message[],
+    options?: unknown
+  ): unknown
 }
 
 // =============================================================================
@@ -192,12 +158,12 @@ export interface ResolvedPersona {
  */
 export type PersonaResolver = (
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  name: any, // Accept any name format
+  name: any,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  config?: any, // Accept any config format
+  config?: any,
   enableOptionalTools?: string[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  effort?: any // Accept any effort format
+  effort?: any
 ) => ResolvedPersona
 
 // =============================================================================
@@ -285,8 +251,6 @@ export type StreamEvent =
 // HANDLER CONFIG
 // =============================================================================
 
-
-
 /**
  * Context passed to initializer hooks.
  */
@@ -301,7 +265,6 @@ export interface InitializerContext {
 export interface ChatHandlerConfig {
   /**
    * Array of initializer hooks that set up DI contexts.
-   * Hooks receive request context and can perform async/effection operations.
    */
   initializerHooks: Array<(ctx: InitializerContext) => Operation<void>>
 
@@ -332,16 +295,6 @@ export interface ChatRequestBody {
   personaConfig?: Record<string, unknown>
   enableOptionalTools?: string[]
   effort?: 'auto' | 'low' | 'medium' | 'high'
-
-  /**
-   * Override the chat provider for this request.
-   * Defaults to environment configuration.
-   */
   provider?: 'ollama' | 'openai'
-
-  /**
-   * Override the model for this request.
-   * Defaults to environment configuration.
-   */
   model?: string
 }

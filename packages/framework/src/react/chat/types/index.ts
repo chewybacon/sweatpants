@@ -1,32 +1,57 @@
 /**
- * types/index.ts
+ * react/chat/types/index.ts
  *
- * Internal re-exports for chat types.
- * These are implementation details - prefer specific imports.
+ * Type exports for the React chat system.
+ * 
+ * All types are now defined in lib/chat and re-exported here for convenience.
+ * This keeps the React layer as a consumer of shared types, not a definer.
  */
 
-// Metadata types
+// =============================================================================
+// RE-EXPORTS FROM lib/chat
+// =============================================================================
+
+// Core types
 export type {
+  AuthorityMode,
+  IsomorphicToolState,
+  Capabilities,
   BaseContentMetadata,
   ContentMetadata,
-} from './metadata'
+  RenderDelta,
+  RevealHint,
+  TokenUsage,
+  ToolCallInfo,
+  ServerToolResult,
+} from '../../../lib/chat/core-types'
 
-// Processor types
-export type {
-  ProcessedOutput,
-  ProcessorContext,
-  ProcessorEmit,
-  MessageRenderer,
-} from './processor'
+// Message types
+export type { Message, ToolCall } from '../../../lib/chat/types'
 
 // Patch types
 export type {
+  // Core patches
+  SessionInfoPatch,
+  UserMessagePatch,
+  AssistantMessagePatch,
+  StreamingStartPatch,
+  StreamingTextPatch,
+  StreamingThinkingPatch,
+  StreamingEndPatch,
+  ToolCallStartPatch,
+  ToolCallResultPatch,
+  ToolCallErrorPatch,
+  AbortCompletePatch,
+  ErrorPatch,
+  ResetPatch,
+  CorePatch,
+  // Buffer patches
   BufferSettledPatch,
   BufferPendingPatch,
   BufferRawPatch,
   BufferRenderablePatch,
-  RenderDelta,
-  RevealHint,
+  BufferPatch,
+  // Client tool patches
   ClientToolAwaitingApprovalPatch,
   ClientToolExecutingPatch,
   ClientToolCompletePatch,
@@ -34,59 +59,76 @@ export type {
   ClientToolDeniedPatch,
   ClientToolProgressPatch,
   ClientToolPermissionRequestPatch,
-  AuthorityMode,
-  IsomorphicToolState,
+  ClientToolPatch,
+  // Isomorphic tool patches
   IsomorphicToolStatePatch,
+  IsomorphicToolPatch,
+  // Handoff patches
   PendingHandoffState,
   PendingHandoffPatch,
   HandoffCompletePatch,
+  HandoffPatch,
+  // Execution trail patches
+  ExecutionTrailStepData,
   ExecutionTrailStartPatch,
   ExecutionTrailStepPatch,
   ExecutionTrailCompletePatch,
   ExecutionTrailStepResponsePatch,
-  Capabilities,
+  ExecutionTrailPatch,
+  // Union
   ChatPatch,
-} from './patch'
+} from '../../../lib/chat/patches'
+
+export {
+  isCorePatch,
+  isBufferPatch,
+  isClientToolPatch,
+  isIsomorphicToolPatch,
+  isHandoffPatch,
+  isExecutionTrailPatch,
+} from '../../../lib/chat/patches'
 
 // State types
 export type {
-  ResponseStep,
-  ActiveStep,
-  RenderedContent,
-  TimelineItem,
   TimelineUserMessage,
   TimelineAssistantText,
   TimelineThinking,
   TimelineToolCall,
   TimelineStep,
+  TimelineItem,
+  TimelineToolCallGroup,
+  GroupedTimelineItem,
+  ResponseStep,
+  ActiveStep,
+  RenderedContent,
   PendingClientToolState,
   PendingStepState,
   ExecutionTrailState,
   ChatState,
-} from './state'
-export { initialChatState } from './state'
+} from '../../../lib/chat/state'
+
+export { groupTimelineByToolCall, initialChatState } from '../../../lib/chat/state'
 
 // Session types
 export type {
+  ApiMessage,
+  ConversationState,
   StreamResult,
   StreamCompleteResult,
   StreamIsomorphicHandoffResult,
-  ApiMessage,
-  ConversationState,
-  ServerToolResult,
-  ToolCallInfo,
-  Streamer,
-  SessionOptions,
-  PatchTransform,
-  TokenUsage,
   ConversationStateStreamEvent,
   IsomorphicHandoffStreamEvent,
   StreamEvent,
+  Streamer,
+  MessageRenderer,
+  PatchTransform,
+  SessionOptions,
   ChatCommand,
-} from './session'
+} from '../../../lib/chat/session'
 
-// Re-export Message from lib
-export type { Message } from '../../../lib/chat/types'
-
-// Re-export groupTimelineByToolCall utility
-export { groupTimelineByToolCall } from '../../../lib/chat/isomorphic-tools/runtime/types'
+// Isomorphic tool types
+export type {
+  ServerToolContext,
+  ServerAuthorityContext,
+  IsomorphicHandoffEvent,
+} from '../../../lib/chat/isomorphic-tools/types'
