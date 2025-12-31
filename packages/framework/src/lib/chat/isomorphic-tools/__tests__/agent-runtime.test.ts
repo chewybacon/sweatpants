@@ -3,67 +3,48 @@
  *
  * Tests for the agent runtime that allows tools to run as server-side agents
  * with LLM capabilities instead of browser-side with UI interactions.
+ *
+ * These tests use the new builder API with `.context('agent')` which provides:
+ * - Full type inference for handoff data
+ * - AgentToolContext with prompt() available without casts
+ * - Runtime validation that agent tools run in agent environments
  */
 import { z } from 'zod'
 import { spawn, all } from 'effection'
 import type { Operation } from 'effection'
 import { describe, it, expect } from './vitest-effection'
-import { defineIsomorphicTool } from '../define'
+import { createIsomorphicTool } from '../builder'
 import { executeServerPart, executeServerPhase2 } from '../executor'
 import { runAsAgent, createMockAgentToolContext } from '../agent-runtime'
-import type { ServerAuthorityContext, AgentToolContext } from '../types'
+import type { AnyIsomorphicTool } from '../types'
 
 // =============================================================================
-// TEST TOOLS
+// TEST TOOLS (using new builder API with .context('agent'))
 // =============================================================================
 
 /**
  * Simple analysis tool that uses ctx.prompt() to analyze text.
+ * With .context('agent'), ctx is typed as AgentToolContext - no casts needed.
  */
-const textAnalyzerTool = defineIsomorphicTool({
-  name: 'text_analyzer',
-  description: 'Analyzes text and extracts entities',
-  parameters: z.object({
+const textAnalyzerTool = createIsomorphicTool('text_analyzer')
+  .description('Analyzes text and extracts entities')
+  .parameters(z.object({
     text: z.string(),
     extractTypes: z.array(z.enum(['people', 'places', 'dates'])),
-  }),
-  authority: 'server',
-
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        return {
-          text: params.text,
-          extractTypes: params.extractTypes,
-        }
-      },
-      *after(
-        _handoff,
-        result: { entities: Record<string, string[]>; confidence: number }
-      ) {
-        return {
-          analyzed: true,
-          entities: result.entities,
-          confidence: result.confidence,
-          extractedTypes: params.extractTypes.length,
-        }
-      },
-    })
-  },
-
-  *client(handoffData, ctx, _params) {
-    const data = handoffData as unknown as {
-      text: string
-      extractTypes: string[]
-    }
-    const agentCtx = ctx as AgentToolContext
-
-    if (!agentCtx.prompt) {
-      throw new Error('text_analyzer requires agent context with prompt capability')
-    }
-
-      const result = yield* agentCtx.prompt({
-        prompt: `Extract entities from: "${data.text}". Types to extract: ${data.extractTypes.join(', ')}`,
+  }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return {
+        text: params.text,
+        extractTypes: params.extractTypes,
+      }
+    },
+    *client(handoff, ctx, _params) {
+      // ctx is AgentToolContext - prompt() is guaranteed available
+      const result = yield* ctx.prompt({
+        prompt: `Extract entities from: "${handoff.text}". Types to extract: ${handoff.extractTypes.join(', ')}`,
         schema: z.object({
           entities: z.object({
             people: z.array(z.string()).optional(),
@@ -73,137 +54,139 @@ const textAnalyzerTool = defineIsomorphicTool({
           confidence: z.number().min(0).max(1),
         }),
       })
-
-    return result
-  },
-})
+      return result
+    },
+    *after(_handoff, result, _ctx, params) {
+      return {
+        analyzed: true,
+        entities: result.entities,
+        confidence: result.confidence,
+        extractedTypes: params.extractTypes.length,
+      }
+    },
+  })
 
 /**
  * Multi-step research tool that chains multiple LLM calls.
  */
-const researcherTool = defineIsomorphicTool({
-  name: 'researcher',
-  description: 'Researches a topic with multiple queries',
-  parameters: z.object({
+const researcherTool = createIsomorphicTool('researcher')
+  .description('Researches a topic with multiple queries')
+  .parameters(z.object({
     topic: z.string(),
     depth: z.enum(['shallow', 'medium', 'deep']),
-  }),
-  authority: 'server',
-
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        return { topic: params.topic, depth: params.depth }
-      },
-      *after(
-        _handoff,
-        result: { findings: string[]; sources: string[] }
-      ) {
-        return {
-          topic: params.topic,
-          summary: result.findings.join('. '),
-          sourceCount: result.sources.length,
-        }
-      },
-    })
-  },
-
-  *client(handoffData, ctx, _params) {
-    const data = handoffData as unknown as { topic: string; depth: string }
-    const agentCtx = ctx as AgentToolContext
-
-    if (!agentCtx.prompt) {
-      throw new Error('researcher requires agent context')
-    }
-
-    // First research query
-    const initial = yield* agentCtx.prompt({
-      prompt: `Initial research on: ${data.topic}`,
-      schema: z.object({
-        findings: z.array(z.string()),
-        needsMore: z.boolean(),
-      }),
-    })
-
-    const allFindings = [...initial.findings]
-    const sources = ['initial']
-
-    // Additional research based on depth
-    if (data.depth !== 'shallow' && initial.needsMore) {
-      const deeper = yield* agentCtx.prompt({
-        prompt: `Deeper research on: ${data.topic}`,
+  }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return { topic: params.topic, depth: params.depth }
+    },
+    *client(handoff, ctx, _params) {
+      // First research query
+      const initial = yield* ctx.prompt({
+        prompt: `Initial research on: ${handoff.topic}`,
         schema: z.object({
           findings: z.array(z.string()),
+          needsMore: z.boolean(),
         }),
       })
-      allFindings.push(...deeper.findings)
-      sources.push('deep')
-    }
 
-    return { findings: allFindings, sources }
-  },
-})
+      const allFindings = [...initial.findings]
+      const sources = ['initial']
+
+      // Additional research based on depth
+      if (handoff.depth !== 'shallow' && initial.needsMore) {
+        const deeper = yield* ctx.prompt({
+          prompt: `Deeper research on: ${handoff.topic}`,
+          schema: z.object({
+            findings: z.array(z.string()),
+          }),
+        })
+        allFindings.push(...deeper.findings)
+        sources.push('deep')
+      }
+
+      return { findings: allFindings, sources }
+    },
+    *after(_handoff, result, _ctx, params) {
+      return {
+        topic: params.topic,
+        summary: result.findings.join('. '),
+        sourceCount: result.sources.length,
+      }
+    },
+  })
 
 /**
  * Parallel analysis tool that spawns concurrent LLM calls.
  */
-const parallelAnalyzerTool = defineIsomorphicTool({
-  name: 'parallel_analyzer',
-  description: 'Analyzes from multiple perspectives in parallel',
-  parameters: z.object({
+const parallelAnalyzerTool = createIsomorphicTool('parallel_analyzer')
+  .description('Analyzes from multiple perspectives in parallel')
+  .parameters(z.object({
     subject: z.string(),
-  }),
-  authority: 'server',
+  }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return { subject: params.subject }
+    },
+    *client(handoff, ctx, _params) {
+      // Spawn parallel analysis tasks
+      const techTask = yield* spawn(function* () {
+        return yield* ctx.prompt({
+          prompt: `Technical analysis of: ${handoff.subject}`,
+          schema: z.object({ analysis: z.string() }),
+        })
+      })
 
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        return { subject: params.subject }
-      },
-      *after(
-        _handoff,
-        result: { technical: string; business: string }
-      ) {
-        return {
-          subject: params.subject,
-          perspectives: result,
-          count: 2,
+      const bizTask = yield* spawn(function* () {
+        return yield* ctx.prompt({
+          prompt: `Business analysis of: ${handoff.subject}`,
+          schema: z.object({ analysis: z.string() }),
+        })
+      })
+
+      const [tech, biz] = yield* all([techTask, bizTask])
+
+      return {
+        technical: tech.analysis,
+        business: biz.analysis,
+      }
+    },
+    *after(_handoff, result, _ctx, params) {
+      return {
+        subject: params.subject,
+        perspectives: result,
+        count: 2,
+      }
+    },
+  })
+
+/**
+ * Progress tool that emits events during execution.
+ */
+const progressTool = createIsomorphicTool('progress_tool')
+  .description('Emits progress events')
+  .parameters(z.object({ steps: z.number() }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return { steps: params.steps }
+    },
+    *client(handoff, ctx, _params) {
+      for (let i = 1; i <= handoff.steps; i++) {
+        if (ctx.emit) {
+          yield* ctx.emit({ type: 'progress', step: i, total: handoff.steps })
         }
-      },
-    })
-  },
-
-  *client(handoffData, ctx, _params) {
-    const data = handoffData as unknown as { subject: string }
-    const agentCtx = ctx as AgentToolContext
-
-    if (!agentCtx.prompt) {
-      throw new Error('parallel_analyzer requires agent context')
-    }
-
-    // Spawn parallel analysis tasks
-    const techTask = yield* spawn(function* () {
-      return yield* agentCtx.prompt!({
-        prompt: `Technical analysis of: ${data.subject}`,
-        schema: z.object({ analysis: z.string() }),
-      })
-    })
-
-    const bizTask = yield* spawn(function* () {
-      return yield* agentCtx.prompt!({
-        prompt: `Business analysis of: ${data.subject}`,
-        schema: z.object({ analysis: z.string() }),
-      })
-    })
-
-    const [tech, biz] = yield* all([techTask, bizTask])
-
-    return {
-      technical: tech.analysis,
-      business: biz.analysis,
-    }
-  },
-})
+      }
+      return { completed: handoff.steps }
+    },
+    *after(_handoff, result) {
+      return result
+    },
+  })
 
 // =============================================================================
 // TESTS
@@ -222,9 +205,12 @@ describe('Agent Runtime', () => {
         }],
       ])
 
+      // Cast to AnyIsomorphicTool for executor (type erasure at runtime)
+      const tool = textAnalyzerTool as unknown as AnyIsomorphicTool
+
       // Phase 1: Get handoff data
       const phase1 = yield* executeServerPart(
-        textAnalyzerTool,
+        tool,
         'call-1',
         { text: 'Alice and Bob went to NYC', extractTypes: ['people', 'places'] },
         signal
@@ -240,7 +226,7 @@ describe('Agent Runtime', () => {
 
       // Run as agent
       const clientResult = (yield* runAsAgent({
-        tool: textAnalyzerTool,
+        tool,
         handoffData: phase1.serverOutput,
         params: { text: 'Alice and Bob went to NYC', extractTypes: ['people', 'places'] },
         signal,
@@ -254,7 +240,7 @@ describe('Agent Runtime', () => {
 
       // Phase 2: Complete with client result
       const result = (yield* executeServerPhase2(
-        textAnalyzerTool,
+        tool,
         'call-1',
         { text: 'Alice and Bob went to NYC', extractTypes: ['people', 'places'] },
         clientResult,
@@ -274,8 +260,10 @@ describe('Agent Runtime', () => {
         ['Deeper research', { findings: ['Deep fact 1'] }],
       ])
 
+      const tool = researcherTool as unknown as AnyIsomorphicTool
+
       const phase1 = yield* executeServerPart(
-        researcherTool,
+        tool,
         'call-2',
         { topic: 'AI', depth: 'deep' },
         signal
@@ -288,7 +276,7 @@ describe('Agent Runtime', () => {
       })
 
       const clientResult = (yield* runAsAgent({
-        tool: researcherTool,
+        tool,
         handoffData: phase1.serverOutput,
         params: { topic: 'AI', depth: 'deep' },
         signal,
@@ -305,8 +293,10 @@ describe('Agent Runtime', () => {
         ['Business analysis', { analysis: 'Good market fit' }],
       ])
 
+      const tool = parallelAnalyzerTool as unknown as AnyIsomorphicTool
+
       const phase1 = yield* executeServerPart(
-        parallelAnalyzerTool,
+        tool,
         'call-3',
         { subject: 'New Product' },
         signal
@@ -319,7 +309,7 @@ describe('Agent Runtime', () => {
       })
 
       const clientResult = (yield* runAsAgent({
-        tool: parallelAnalyzerTool,
+        tool,
         handoffData: phase1.serverOutput,
         params: { subject: 'New Product' },
         signal,
@@ -334,41 +324,10 @@ describe('Agent Runtime', () => {
   describe('event emission', () => {
     it('captures emitted events via onEmit callback', function* () {
       const emittedEvents: unknown[] = []
-
-      // Tool that emits progress
-      const progressTool = defineIsomorphicTool({
-        name: 'progress_tool',
-        description: 'Emits progress events',
-        parameters: z.object({ steps: z.number() }),
-        authority: 'server',
-
-        *server(params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              return { steps: params.steps }
-            },
-            *after(_h, result: { completed: number }) {
-              return result
-            },
-          })
-        },
-
-        *client(handoffData, ctx, _params) {
-          const data = handoffData as unknown as { steps: number }
-          const agentCtx = ctx as AgentToolContext
-
-          for (let i = 1; i <= data.steps; i++) {
-            if (agentCtx.emit) {
-              yield* agentCtx.emit({ type: 'progress', step: i, total: data.steps })
-            }
-          }
-
-          return { completed: data.steps }
-        },
-      })
+      const tool = progressTool as unknown as AnyIsomorphicTool
 
       const phase1 = yield* executeServerPart(
-        progressTool,
+        tool,
         'emit-1',
         { steps: 3 },
         signal
@@ -381,7 +340,7 @@ describe('Agent Runtime', () => {
       })
 
       yield* runAsAgent({
-        tool: progressTool,
+        tool,
         handoffData: phase1.serverOutput,
         params: { steps: 3 },
         signal,
@@ -407,8 +366,10 @@ describe('Agent Runtime', () => {
         llmResponses: new Map(), // Empty - no responses
       })
 
+      const tool = textAnalyzerTool as unknown as AnyIsomorphicTool
+
       const phase1 = yield* executeServerPart(
-        textAnalyzerTool,
+        tool,
         'error-1',
         { text: 'test', extractTypes: ['people'] },
         signal
@@ -417,7 +378,7 @@ describe('Agent Runtime', () => {
 
       try {
         yield* runAsAgent({
-          tool: textAnalyzerTool,
+          tool,
           handoffData: phase1.serverOutput,
           params: { text: 'test', extractTypes: ['people'] },
           signal,
@@ -431,23 +392,22 @@ describe('Agent Runtime', () => {
     })
 
     it('throws when tool has no client function', function* () {
-      // Use a plain object instead of defineIsomorphicTool to avoid type errors
-      const serverOnlyTool = {
-        name: 'server_only',
-        description: 'Server only tool',
-        parameters: z.object({}),
-        authority: 'server' as const,
-        *server(_params: Record<string, never>, _ctx: ServerAuthorityContext) {
+      // A server-only tool (no handoff, no client)
+      const serverOnlyTool = createIsomorphicTool('server_only')
+        .description('Server only tool')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .server(function* () {
           return { result: 'done' }
-        },
-        // No client function!
-      }
+        })
+        .build()
 
       const agentCtx = createMockAgentToolContext({ callId: 'no-client' })
 
       try {
         yield* runAsAgent({
-          tool: serverOnlyTool,
+          tool: serverOnlyTool as unknown as AnyIsomorphicTool,
           handoffData: {},
           params: {},
           signal,

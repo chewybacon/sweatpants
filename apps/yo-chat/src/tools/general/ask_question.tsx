@@ -8,15 +8,17 @@ export const askQuestion = createIsomorphicTool('ask_question')
       question: z.string().describe('Question to ask the user'),
     })
   )
-  .authority("server")
+  .context('browser')
+  .authority('server')
   .handoff({
-    *before(params, ctx) {
+    *before(params) {
       return params
     },
-    *client(handoff, ctx, params) {
-      return params
+    *client(handoff) {
+      return handoff
     },
-    *after(handoff, client, ctx, params) {
-    }
+    *after(handoff, client) {
+      return { question: handoff.question, answer: client.question }
+    },
   })
 
