@@ -13,7 +13,6 @@ import type {
 } from '../core-types'
 import type { PendingHandoffState } from '../patches/handoff'
 import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission'
-import type { TimelineItem } from './timeline'
 
 // Re-export emission types for convenience
 export type { ToolEmissionState, ToolEmissionTrackingState }
@@ -101,15 +100,6 @@ export interface ChatState {
   messages: Message[]
 
   /**
-   * Unified timeline - everything in render order.
-   *
-   * This is the primary data structure for rendering chat UI.
-   * Contains user messages, assistant text, tool calls, and interactive steps
-   * all in one flat array.
-   */
-  timeline: TimelineItem[]
-
-  /**
    * Rendered content for each message, keyed by message ID.
    */
   rendered: Record<string, RenderedContent>
@@ -163,7 +153,6 @@ export interface ChatState {
  */
 export const initialChatState: ChatState = {
   messages: [],
-  timeline: [],
   rendered: {},
   currentResponse: [],
   activeStep: null,
