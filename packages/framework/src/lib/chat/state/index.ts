@@ -31,3 +31,14 @@ export type {
 } from './chat-state'
 
 export { initialChatState } from './chat-state'
+
+// Reducer (framework-agnostic)
+export { chatReducer } from './reducer'
+
+// Message derivation (framework-agnostic)
+export type { ComponentExtractor } from './derive-messages'
+export {
+  deriveMessages,
+  deriveCompletedMessages,
+  deriveStreamingMessage,
+} from './derive-messages'

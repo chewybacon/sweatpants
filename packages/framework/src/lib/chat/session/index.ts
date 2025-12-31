@@ -1,8 +1,40 @@
 /**
  * lib/chat/session/index.ts
  *
- * Session types for the chat system.
+ * Session runtime and types for the chat system.
+ * Framework-agnostic - can be used with React, Vue, Svelte, etc.
  */
+
+// Session runtime
+export {
+  createChatSession,
+  runChatSession,
+  createChatSessionChannels,
+} from './create-session'
+
+export type {
+  ChatSession,
+  ClientToolSessionOptions,
+  HandoffResponseSignalValue,
+} from './create-session'
+
+// Streaming
+export { streamChatOnce, toApiMessages } from './stream-chat'
+export type { StreamChatOptions } from './stream-chat'
+
+// Transforms
+export {
+  useTransformPipeline,
+  passthroughTransform,
+  loggingTransform,
+} from './transforms'
+
+// Contexts
+export {
+  BaseUrlContext,
+  StreamerContext,
+  ToolRegistryContext,
+} from './contexts'
 
 // Streaming types
 export type {
