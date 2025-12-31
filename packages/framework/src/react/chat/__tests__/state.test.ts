@@ -18,37 +18,29 @@ describe('chatReducer (pure logic)', () => {
     expect(nextState.messages.length).toBe(1)
   })
 
-  it('should clear pendingSteps on streaming_start to prevent stale UI elements', () => {
-    // This test documents an important bug fix:
-    // When a user sends a new message, any pending steps from the previous
-    // request must be cleared. Otherwise, stale UI elements (like input boxes)
-    // would persist and appear alongside new ones.
-    const staleStep = {
-      stepId: 'step-123',
-      callId: 'call-abc',
-      kind: 'prompt' as const,
-      type: 'LocationInput',
-      payload: { question: 'Where are you?' },
-      element: null,
-      timestamp: Date.now(),
-      respond: () => {},
-    }
-
+  it('should preserve toolEmissions state on streaming_start', () => {
+    // Tool emissions are tracked separately and persist across streaming sessions.
+    // They're cleaned up when the tool completes via tool_emission_complete patch.
     const startState: ChatState = {
       ...initialChatState,
       messages: [{ id: '1', role: 'user', content: 'first message' }],
       isStreaming: false,
-      pendingSteps: {
-        'step-123': staleStep,
+      toolEmissions: {
+        'call-123': {
+          callId: 'call-123',
+          toolName: 'myTool',
+          emissions: [],
+          status: 'running',
+          startedAt: Date.now(),
+        },
       },
     }
     
     const patch: ChatPatch = { type: 'streaming_start' }
     const nextState = chatReducer(startState, patch)
     
-    // pendingSteps must be cleared so old UI components don't appear
-    expect(nextState.pendingSteps).toEqual({})
-    expect(Object.keys(nextState.pendingSteps)).toHaveLength(0)
+    // toolEmissions should NOT be cleared - they persist until tool_emission_complete
+    expect(nextState.toolEmissions['call-123']).toBeDefined()
   })
 
   it('should accumulate streaming text', () => {

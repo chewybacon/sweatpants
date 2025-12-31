@@ -50,7 +50,7 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { run, call } from 'effection'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
-import type { RenderDelta, RevealHint, ContentMetadata } from './types'
+import type { RenderDelta, RevealHint, ContentMetadata, ToolEmissionTrackingState } from './types'
 import type { PipelineConfig, Processor } from './pipeline/types'
 import {
   createPipelineTransform,
@@ -220,6 +220,41 @@ export interface UseChatReturn {
    * Error message, if any.
    */
   error: string | null
+
+  // --- Tool Emissions API (ctx.render() pattern) ---
+
+  /**
+   * Active tool emissions from tools using ctx.render().
+   *
+   * Each entry tracks all emissions for a tool call including their status.
+   * Emissions with `status: 'pending'` need user interaction.
+   *
+   * @example
+   * ```tsx
+   * {toolEmissions.map(tracking => (
+   *   tracking.emissions.filter(e => e.status === 'pending').map(emission => {
+   *     const Component = emission.payload._component
+   *     return (
+   *       <Component
+   *         key={emission.id}
+   *         {...emission.payload.props}
+   *         onRespond={(value) => respondToEmission(tracking.callId, emission.id, value)}
+   *       />
+   *     )
+   *   })
+   * ))}
+   * ```
+   */
+  toolEmissions: ToolEmissionTrackingState[]
+
+  /**
+   * Respond to a pending emission with user input.
+   *
+   * @param callId - The tool call ID
+   * @param emissionId - The emission ID
+   * @param response - The response value
+   */
+  respondToEmission: (callId: string, emissionId: string, response: unknown) => void
 
   /**
    * Access to the underlying session for advanced use cases.
@@ -461,6 +496,9 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     return [...completedMessages, streamingChatMessage]
   }, [completedMessages, streamingMessage])
 
+  // Tool emissions (surfaced from session for convenience)
+  const { toolEmissions, respondToEmission } = session
+
   return {
     messages,
     streamingMessage,
@@ -470,6 +508,8 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     abort,
     reset,
     error: state.error,
+    toolEmissions,
+    respondToEmission,
     session,
   }
 }

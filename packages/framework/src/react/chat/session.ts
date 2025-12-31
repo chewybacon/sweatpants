@@ -74,7 +74,8 @@ import type {
   ApiMessage,
 } from './types'
 import type { ApprovalSignalValue } from './tool-runtime'
-import type { IsomorphicToolRegistry, ToolHandlerRegistry, PendingUIRequest, PendingStep } from '../../lib/chat/isomorphic-tools'
+import type { IsomorphicToolRegistry, ToolHandlerRegistry, PendingUIRequest } from '../../lib/chat/isomorphic-tools'
+import type { PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions'
 
 import {
   executeIsomorphicToolsClient,
@@ -135,19 +136,6 @@ export interface ClientToolSessionOptions extends SessionOptions {
    * If not provided, the session will create one internally.
    */
   uiRequestChannel?: Channel<PendingUIRequest, void>
-
-  /**
-   * Enable step context for client tools (ctx.render pattern).
-   * 
-   * When enabled, client tools can use:
-   * - ctx.render(<Element />) - Render JSX and wait for response
-   * - ctx.show(<Element />) - Render JSX fire-and-forget
-   * - ctx.emit(type, payload) - Emit a step fire-and-forget
-   * - ctx.prompt(type, payload) - Emit a step and wait for response
-   * 
-   * Pending steps are forwarded via patches and exposed through useChatSession.
-   */
-  enableStepContext?: boolean
 }
 
 
@@ -350,46 +338,52 @@ export function* runChatSession(
                 // Create UI request channel for waitFor() support if not provided
                 const uiRequestChannel = options.uiRequestChannel ?? createUIRequestChannel()
                 
-                // Create step channel for ctx.render() support if enabled
-                const stepChannel = options.enableStepContext 
-                  ? createChannel<PendingStep, void>() 
-                  : undefined
+                // Create emission channel for ctx.render() support
+                // Always create it - tools that don't use it simply won't emit
+                const emissionChannel = createChannel<PendingEmission, void>()
                 
-                // If step channel is enabled, spawn a task to forward steps to patches
-                if (stepChannel) {
-                  yield* spawn(function* () {
-                    // Capture scope to run operations from sync callbacks
-                    const scope = yield* useScope()
+                // Spawn a task to forward emissions to patches
+                yield* spawn(function* () {
+                  // Capture scope to run operations from sync callbacks
+                  const scope = yield* useScope()
+                  
+                  for (const pendingEmission of yield* each(emissionChannel)) {
+                    const { emission, respond } = pendingEmission
+                    // Extract callId from emission id (format: "callId-em-N")
+                    const callId = emission.id.split('-em-')[0] as string
                     
-                    for (const pendingStep of yield* each(stepChannel)) {
-                       const callId = pendingStep.step.id.split('-step-')[0] as string // Extract callId from step id
-                      
-                      // Wrap the respond callback to also emit a state update patch
-                      const wrappedRespond = (response: unknown) => {
-                        // Use scope.run to execute the patch send from sync callback
-                        scope.run(function* () {
-                          yield* patches.send({
-                            type: 'execution_trail_step_response',
-                            stepId: pendingStep.step.id,
-                            callId,
-                            response,
-                          })
+                    // Wrap the respond callback to also emit a state update patch
+                    const wrappedRespond = (response: unknown) => {
+                      // Use scope.run to execute the patch send from sync callback
+                      scope.run(function* () {
+                        yield* patches.send({
+                          type: 'tool_emission_response',
+                          callId,
+                          emissionId: emission.id,
+                          response,
                         })
-                        
-                        // Then, call the original respond to resume the generator
-                        pendingStep.respond(response)
-                      }
+                      })
                       
-                      yield* patches.send({
-                        type: 'execution_trail_step',
-                        callId,
-                        step: pendingStep.step,
-                        respond: wrappedRespond,
-                      } as ChatPatch)
-                      yield* each.next()
+                      // Then, call the original respond to resume the generator
+                      respond(response)
                     }
-                  })
-                }
+                    
+                    // Emit the emission patch with wrapped respond
+                    yield* patches.send({
+                      type: 'tool_emission',
+                      callId,
+                      emission: {
+                        id: emission.id,
+                        type: emission.type,
+                        payload: emission.payload,
+                        status: emission.status,
+                        timestamp: emission.timestamp,
+                      },
+                      respond: wrappedRespond,
+                    } as ChatPatch)
+                    yield* each.next()
+                  }
+                })
                 
                 const isomorphicResults = options.reactHandlers && options.handoffResponseSignal
                   ? yield* executeIsomorphicToolsClientWithReactHandlers({
@@ -399,14 +393,14 @@ export function* runChatSession(
                       reactHandlers: options.reactHandlers,
                       handoffResponseSignal: options.handoffResponseSignal,
                       uiRequestChannel,
-                      ...(stepChannel && { stepChannel }),
+                      emissionChannel,
                     })
                   : yield* executeIsomorphicToolsClient(
                       handoffsWithTools,
                       patches,
                       approvalSignal,
                       uiRequestChannel,
-                      stepChannel
+                      emissionChannel
                     )
                 
                 // Build messages for re-initiation

@@ -16,7 +16,7 @@ import { run, each, createSignal } from 'effection'
 import { createChatSession, type ChatSession } from './session'
 import type { ClientToolSessionOptions } from './session'
 import { createPipelineTransform, markdown } from './pipeline'
-import type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState, ToolEmissionTrackingState } from './types'
+import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState } from './types'
 import { initialChatState } from './types'
 import type { SessionOptions } from './types'
 import type { IsomorphicToolRegistry, PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
@@ -62,39 +62,6 @@ export interface UseChatSessionOptions extends SessionOptions {
    * ```
    */
   reactHandlers?: ToolHandlerRegistry
-
-  /**
-   * Enable step context for client tools (ctx.render pattern).
-   *
-   * When enabled, client tools can use:
-   * - ctx.render(<Element />) - Render JSX and wait for response
-   * - ctx.show(<Element />) - Render JSX fire-and-forget
-   * - ctx.emit(type, payload) - Emit a step fire-and-forget
-   * - ctx.prompt(type, payload) - Emit a step and wait for response
-   *
-   * Pending steps are exposed via `pendingSteps` and can be responded to
-   * via `respondToStep(stepId, value)`.
-   *
-   * @example
-   * ```tsx
-   * const { pendingSteps, respondToStep } = useChatSession({
-   *   enableStepContext: true,
-   *   isomorphicTools: registry,
-   * })
-   *
-   * // Render pending steps inline
-   * {pendingSteps.map(step => (
-   *   <div key={step.stepId}>
-   *     {cloneElement(step.element as ReactElement, {
-   *       onRespond: (value) => respondToStep(step.stepId, value)
-   *     })}
-   *   </div>
-   * ))}
-   * ```
-   */
-  enableStepContext?: boolean
-
-
 }
 
 export interface UseChatSessionReturn {
@@ -158,54 +125,7 @@ export interface UseChatSessionReturn {
    */
   respondToHandoff: (callId: string, output: unknown) => void
 
-  // --- Step Context API (ctx.render pattern) ---
-
-  /**
-   * Pending steps from tools using ctx.render() pattern.
-   *
-   * These are prompt steps that need user input before the tool can continue.
-   * The step may contain:
-   * - `element`: A React element to render (for ctx.render() calls)
-   * - `type` + `payload`: Data for type-based steps (for ctx.prompt() calls)
-   *
-   * @example
-   * ```tsx
-   * // Render pending steps inline
-   * {pendingSteps.map(step => (
-   *   <div key={step.stepId}>
-   *     {step.element
-   *       ? React.cloneElement(step.element as ReactElement, {
-   *           onRespond: (value) => respondToStep(step.stepId, value)
-   *         })
-   *       : <TypeBasedRenderer type={step.type} payload={step.payload}
-   *           onRespond={(value) => respondToStep(step.stepId, value)} />
-   *     }
-   *   </div>
-   * ))}
-   * ```
-   */
-  pendingSteps: PendingStepState[]
-
-  /**
-   * Respond to a pending step with user input.
-   *
-   * Call this when the user completes interaction with a step's UI.
-   * This resumes the tool's generator with the response value.
-   *
-   * @param stepId - The step ID
-   * @param response - The response value (type depends on step)
-   */
-  respondToStep: (stepId: string, response: unknown) => void
-
-  /**
-   * Active execution trails for tools using ctx.render() pattern.
-   *
-   * Use this for displaying all steps (including completed ones) in the chat stream.
-   * Each trail contains all steps for a tool call in order.
-   */
-  executionTrails: ExecutionTrailState[]
-
-  // --- Tool Emissions API (new ctx.render() pattern) ---
+  // --- Tool Emissions API (ctx.render() pattern) ---
 
   /**
    * Active tool emissions from tools using the new ctx.render() pattern.
@@ -272,7 +192,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     transforms: options.transforms ?? defaultTransforms,
     ...(options.isomorphicTools && { isomorphicTools: options.isomorphicTools }),
     ...(options.reactHandlers && { reactHandlers: options.reactHandlers }),
-    ...(options.enableStepContext !== undefined && { enableStepContext: options.enableStepContext }),
   }
 
   // Stable ref to options to avoid re-running effect if object identity changes
@@ -388,21 +307,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     })
   )
 
-  // Get pending steps from state (for ctx.render pattern)
-  const pendingSteps: PendingStepState[] = Object.values(state.pendingSteps)
-
-  // Respond to a pending step
-  const respondToStep = useCallback((stepId: string, response: unknown) => {
-    const step = stateRef.current.pendingSteps[stepId]
-    if (step?.respond) {
-      step.respond(response)
-    }
-  }, [])
-
-  // Get execution trails from state
-  const executionTrails: ExecutionTrailState[] = Object.values(state.executionTrails)
-
-  // Get tool emissions from state (new ctx.render() pattern)
+  // Get tool emissions from state (ctx.render() pattern)
   const toolEmissions: ToolEmissionTrackingState[] = Object.values(state.toolEmissions)
 
   // Respond to a pending emission
@@ -425,9 +330,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     deny,
     pendingHandoffs,
     respondToHandoff,
-    pendingSteps,
-    respondToStep,
-    executionTrails,
     toolEmissions,
     respondToEmission,
   }
