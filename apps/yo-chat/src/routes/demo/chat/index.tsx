@@ -5,21 +5,114 @@
  * - Immutable Frame snapshots for clean rendering
  * - Progressive enhancement (quick → full)
  * - No content duplication bugs
- * - Tool emissions with ctx.render() pattern
+ * - Tool emissions with ctx.render() pattern - now inline in messages!
  *
  * Uses the high-level useChat hook with pipeline configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat } from '@tanstack/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall } from '@tanstack/framework/react/chat'
 import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: PipelineChatDemo,
 })
 
+/**
+ * Renders a tool call with its inline emissions.
+ * Tool calls are now first-class citizens in the message structure.
+ */
+function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
+  return (
+    <div className="my-2">
+      {/* Render emissions inline */}
+      {toolCall.emissions.map((emission) => {
+        const Component = emission.component
+        if (!Component) return null
+
+        return (
+          <Component
+            key={emission.id}
+            {...emission.props}
+            onRespond={emission.onRespond}
+            disabled={emission.status !== 'pending'}
+            response={emission.response}
+          />
+        )
+      })}
+
+      {/* Show tool state if no emissions or tool is running */}
+      {toolCall.emissions.length === 0 && toolCall.state === 'running' && (
+        <div className="text-xs text-slate-500 animate-pulse">
+          Running {toolCall.name}...
+        </div>
+      )}
+
+      {/* Show error if any */}
+      {toolCall.state === 'error' && toolCall.error && (
+        <div className="text-xs text-red-400">
+          Error: {toolCall.error}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Renders a single message with its tool calls inline.
+ */
+function Message({ message }: { message: ChatMessage }) {
+  const isUser = message.role === 'user'
+
+  return (
+    <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
+      <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
+        {/* Role label */}
+        <div
+          className={`text-xs mb-1 font-bold tracking-wider uppercase ${
+            isUser ? 'text-cyan-500' : 'text-purple-500'
+          }`}
+        >
+          {isUser ? 'You' : 'Assistant'}
+          {message.isStreaming && (
+            <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
+          )}
+        </div>
+
+        {/* Message content container */}
+        <div
+          className={`p-4 rounded-lg ${
+            isUser
+              ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
+              : 'bg-slate-800/50 text-slate-200'
+          }`}
+        >
+          {/* Tool calls render FIRST (they triggered this response) */}
+          {message.toolCalls?.map((tc) => (
+            <ToolCallBlock key={tc.id} toolCall={tc} />
+          ))}
+
+          {/* Then text content */}
+          <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
+            {message.html ? (
+              <div dangerouslySetInnerHTML={{ __html: message.html }} />
+            ) : (
+              message.content
+            )}
+            {/* Cursor for streaming messages */}
+            {message.isStreaming && (
+              <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PipelineChatDemo() {
   // High-level useChat hook with pipeline-based configuration
+  // Tool emissions are now inline in messages.toolCalls[].emissions!
   const {
     messages,
     streamingMessage,
@@ -29,8 +122,6 @@ function PipelineChatDemo() {
     abort,
     reset,
     error,
-    toolEmissions,
-    respondToEmission,
   } = useChat({
     // Use the new Frame-based pipeline system
     // 'full' = markdown + shiki + mermaid
@@ -107,68 +198,9 @@ function PipelineChatDemo() {
             </div>
           )}
 
+          {/* Messages with inline tool calls */}
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`mb-8 ${msg.role === 'user' ? 'text-right' : ''}`}
-            >
-              <div
-                className={`inline-block max-w-[85%] ${msg.role === 'user' ? '' : 'w-full'
-                  }`}
-              >
-                <div
-                  className={`text-xs mb-1 font-bold tracking-wider uppercase ${msg.role === 'user' ? 'text-cyan-500' : 'text-purple-500'
-                    }`}
-                >
-                  {msg.role === 'user' ? 'You' : 'Assistant'}
-                  {msg.isStreaming && (
-                    <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
-                  )}
-                </div>
-                <div
-                  className={`p-4 rounded-lg ${msg.role === 'user'
-                    ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
-                    : 'bg-slate-800/50 text-slate-200'
-                    }`}
-                >
-                  <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-                    {msg.html ? (
-                      <div dangerouslySetInnerHTML={{ __html: msg.html }} />
-                    ) : (
-                      msg.content
-                    )}
-                    {/* Cursor for streaming messages */}
-                    {msg.isStreaming && (
-                      <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {/* Render tool emissions (interactive UI from ctx.render()) */}
-          {toolEmissions.map((tracking) => (
-            <div key={tracking.callId} className="mb-4">
-              {tracking.emissions.map((emission) => {
-                // Get the component from the payload
-                const Component = emission.payload._component
-                if (!Component) {
-                  return null
-                }
-
-                // Render with RenderableProps
-                return (
-                  <Component
-                    key={emission.id}
-                    {...emission.payload.props}
-                    onRespond={(value: unknown) => respondToEmission(tracking.callId, emission.id, value)}
-                    disabled={emission.status !== 'pending'}
-                    response={emission.response}
-                  />
-                )
-              })}
-            </div>
+            <Message key={msg.id} message={msg} />
           ))}
 
           {/* Show delta info if streaming (debug) */}
