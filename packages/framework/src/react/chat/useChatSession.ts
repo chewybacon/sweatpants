@@ -16,7 +16,7 @@ import { run, each, createSignal } from 'effection'
 import { createChatSession, type ChatSession } from './session'
 import type { ClientToolSessionOptions } from './session'
 import { createPipelineTransform, markdown } from './pipeline'
-import type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState } from './types'
+import type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState, ToolEmissionTrackingState } from './types'
 import { initialChatState } from './types'
 import type { SessionOptions } from './types'
 import type { IsomorphicToolRegistry, PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
@@ -204,6 +204,46 @@ export interface UseChatSessionReturn {
    * Each trail contains all steps for a tool call in order.
    */
   executionTrails: ExecutionTrailState[]
+
+  // --- Tool Emissions API (new ctx.render() pattern) ---
+
+  /**
+   * Active tool emissions from tools using the new ctx.render() pattern.
+   *
+   * Each entry tracks all emissions for a tool call including their status.
+   * Emissions with `status: 'pending'` need user interaction before the tool can continue.
+   *
+   * @example
+   * ```tsx
+   * // Render pending emissions
+   * {toolEmissions.map(tracking => (
+   *   tracking.emissions.filter(e => e.status === 'pending').map(emission => {
+   *     const Component = emission.payload._component
+   *     return (
+   *       <Component
+   *         key={emission.id}
+   *         {...emission.payload.props}
+   *         onRespond={(value) => respondToEmission(emission.callId, emission.id, value)}
+   *         disabled={false}
+   *       />
+   *     )
+   *   })
+   * ))}
+   * ```
+   */
+  toolEmissions: ToolEmissionTrackingState[]
+
+  /**
+   * Respond to a pending emission with user input.
+   *
+   * Call this when the user completes interaction with an emission's UI.
+   * This resumes the tool's execution with the response value.
+   *
+   * @param callId - The tool call ID
+   * @param emissionId - The emission ID
+   * @param response - The response value (type depends on component)
+   */
+  respondToEmission: (callId: string, emissionId: string, response: unknown) => void
 }
 
 /**
@@ -362,6 +402,18 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   // Get execution trails from state
   const executionTrails: ExecutionTrailState[] = Object.values(state.executionTrails)
 
+  // Get tool emissions from state (new ctx.render() pattern)
+  const toolEmissions: ToolEmissionTrackingState[] = Object.values(state.toolEmissions)
+
+  // Respond to a pending emission
+  const respondToEmission = useCallback((callId: string, emissionId: string, response: unknown) => {
+    const tracking = stateRef.current.toolEmissions[callId]
+    const emission = tracking?.emissions.find(e => e.id === emissionId)
+    if (emission?.respond) {
+      emission.respond(response)
+    }
+  }, [])
+
   return { 
     state, 
     send, 
@@ -376,5 +428,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     pendingSteps,
     respondToStep,
     executionTrails,
+    toolEmissions,
+    respondToEmission,
   }
 }

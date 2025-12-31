@@ -75,6 +75,14 @@ export type {
   ExecutionTrailCompletePatch,
   ExecutionTrailStepResponsePatch,
   ExecutionTrailPatch,
+  // Emission patches (new ctx.render() pattern)
+  ToolEmissionState,
+  ToolEmissionTrackingState,
+  ToolEmissionStartPatch,
+  ToolEmissionPatch,
+  ToolEmissionResponsePatch,
+  ToolEmissionCompletePatch,
+  EmissionPatch,
   // Union
   ChatPatch,
 } from '../../../lib/chat/patches'
@@ -86,6 +94,7 @@ export {
   isIsomorphicToolPatch,
   isHandoffPatch,
   isExecutionTrailPatch,
+  isEmissionPatch,
 } from '../../../lib/chat/patches'
 
 // State types
@@ -104,6 +113,8 @@ export type {
   PendingClientToolState,
   PendingStepState,
   ExecutionTrailState,
+  ToolEmissionState as ToolEmissionStateFromState,
+  ToolEmissionTrackingState as ToolEmissionTrackingStateFromState,
   ChatState,
 } from '../../../lib/chat/state'
 
