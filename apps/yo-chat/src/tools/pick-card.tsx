@@ -150,7 +150,7 @@ export const pickCard = createIsomorphicTool('pick_card')
     /**
      * Client renders the card picker and waits for selection.
      */
-    *client(handoff: { cards: Card[]; prompt: string }, ctx: any) {
+    *client(handoff, ctx: any) {
       const result = yield* ctx.render(CardPicker, {
         cards: handoff.cards,
         prompt: handoff.prompt,
