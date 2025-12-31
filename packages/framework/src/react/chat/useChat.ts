@@ -50,7 +50,13 @@
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { run, call } from 'effection'
 import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
-import type { RenderDelta, RevealHint, ContentMetadata, ToolEmissionState } from './types'
+import { deriveMessages, deriveStreamingMessage } from '../../lib/chat/state/derive-messages'
+import type {
+  ChatMessage as BaseChatMessage,
+  ChatToolCall as BaseChatToolCall,
+  ChatEmission as BaseChatEmission,
+  StreamingMessage as BaseStreamingMessage,
+} from '../../lib/chat/types/chat-message'
 import type { PipelineConfig, Processor } from './pipeline/types'
 import {
   createPipelineTransform,
@@ -68,129 +74,27 @@ import {
   isMathReady,
 } from './pipeline'
 
-// --- Types ---
+// --- React-specific type aliases ---
 
 /**
- * A tool emission - an interactive UI component rendered by a tool via ctx.render().
- * 
- * When a tool calls `yield* ctx.render(Component, props)`, it creates an emission
- * that the UI should render inline. The user interacts with it, and the tool
- * receives the response to continue execution.
+ * A tool emission with React component type.
  */
-export interface ChatEmission {
-  /** Unique emission ID */
-  id: string
-  /** Current status */
-  status: 'pending' | 'complete'
-  /** The React component to render */
-  component: React.ComponentType<any>
-  /** Props to pass to the component (excluding RenderableProps) */
-  props: Record<string, unknown>
-  /** Response value once user completes interaction */
-  response?: unknown | undefined
-  /** Callback to complete the emission - only present when pending */
-  onRespond?: ((value: unknown) => void) | undefined
-}
+export type ChatEmission = BaseChatEmission<React.ComponentType<any>>
 
 /**
- * A tool call made by the assistant.
- * 
- * When the LLM decides to use a tool, it creates a tool call. The tool executes
- * and may emit interactive UI components (emissions) during execution.
+ * A tool call with React component type for emissions.
  */
-export interface ChatToolCall {
-  /** Tool call ID */
-  id: string
-  /** Tool name */
-  name: string
-  /** Arguments passed to the tool */
-  arguments: unknown
-  /** Current execution state */
-  state: 'pending' | 'running' | 'complete' | 'error'
-  /** Tool result (when complete) */
-  result?: unknown | undefined
-  /** Error message (when error) */
-  error?: string | undefined
-  /** Interactive emissions from this tool (e.g., ctx.render() components) */
-  emissions: ChatEmission[]
-}
+export type ChatToolCall = BaseChatToolCall<React.ComponentType<any>>
 
 /**
- * A chat message with resolved content.
- *
- * This is the primary type for rendering chat UI. It includes:
- * - Text content (raw and HTML)
- * - Tool calls made during this assistant turn
- * - Interactive emissions from those tool calls
- * 
- * @example
- * ```tsx
- * function Message({ message }: { message: ChatMessage }) {
- *   return (
- *     <div>
- *       {/* Tool calls with inline emissions *\/}
- *       {message.toolCalls?.map(tc => (
- *         <div key={tc.id}>
- *           {tc.emissions.map(emission => (
- *             <emission.component
- *               key={emission.id}
- *               {...emission.props}
- *               onRespond={emission.onRespond}
- *               disabled={emission.status !== 'pending'}
- *               response={emission.response}
- *             />
- *           ))}
- *         </div>
- *       ))}
- *       
- *       {/* Text content *\/}
- *       {message.html ? (
- *         <div dangerouslySetInnerHTML={{ __html: message.html }} />
- *       ) : message.content}
- *     </div>
- *   )
- * }
- * ```
+ * A chat message with React component type for emissions.
  */
-export interface ChatMessage {
-  /** Unique message ID */
-  id: string
-  /** Message role: 'user', 'assistant', or 'system' */
-  role: 'user' | 'assistant' | 'system'
-  /** Raw text content */
-  content: string
-  /** Rendered HTML (if available) */
-  html?: string
-  /** Whether this message is currently streaming */
-  isStreaming?: boolean
-  /** Timestamp when created */
-  createdAt?: Date
-  /** Tool calls made during this assistant turn (assistant messages only) */
-  toolCalls?: ChatToolCall[]
-}
+export type ChatMessage = BaseChatMessage<React.ComponentType<any>>
 
 /**
- * Streaming message state - the message currently being streamed.
- *
- * This is a special view that includes animation-ready data
- * for smooth rendering during streaming.
+ * Streaming message with React component type for tool calls.
  */
-export interface StreamingMessage {
-  /** Role is always 'assistant' for streaming messages */
-  role: 'assistant'
-  /** Current accumulated content */
-  content: string
-  /** Current accumulated HTML */
-  html?: string
-  /** Delta from last update (for animation) */
-  delta?: RenderDelta
-  /** Reveal hint for animation control */
-  revealHint?: RevealHint
-  /** Metadata from processor (e.g., code fence info) */
-  meta?: ContentMetadata
-  /** Timestamp of last update */
-  timestamp?: number
-}
+export type StreamingMessage = BaseStreamingMessage<React.ComponentType<any>>
 
 /**
  * Pipeline preset names for easy configuration.
@@ -485,133 +389,21 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
 
   const { state, send, abort, reset } = session
 
-  // Helper to convert emission state to ChatEmission
-  const toEmission = (e: ToolEmissionState): ChatEmission => ({
-    id: e.id,
-    status: e.status === 'error' ? 'complete' : e.status, // Treat error as complete for UI
-    component: e.payload._component!,
-    props: e.payload.props,
-    response: e.response,
-    onRespond: e.respond,
-  })
+  // Component extractor for React - extracts the _component from emission payload
+  const extractComponent = (emission: { payload: { _component?: React.ComponentType<any> } }) =>
+    emission.payload._component
 
-  // Helper to build ChatToolCall from tool call data and emissions
-  const buildToolCall = (
-    id: string,
-    name: string,
-    args: unknown,
-    toolState: 'pending' | 'running' | 'complete' | 'error',
-    result?: unknown,
-    error?: string
-  ): ChatToolCall => {
-    // Find emissions for this tool call
-    const tracking = state.toolEmissions[id]
-    const emissions: ChatEmission[] = tracking?.emissions
-      ?.filter(e => e.payload._component) // Only include if component is present
-      .map(toEmission) ?? []
+  // Derive messages using the framework-agnostic derivation function
+  const messages: ChatMessage[] = useMemo(
+    () => deriveMessages<React.ComponentType<any>>(state, extractComponent),
+    [state]
+  )
 
-    return {
-      id,
-      name,
-      arguments: args,
-      state: toolState,
-      result,
-      error,
-      emissions,
-    }
-  }
-
-  // Transform completed messages to ChatMessage format
-  const completedMessages: ChatMessage[] = useMemo(() => {
-    return state.messages
-      .filter(msg => msg.role !== 'tool') // Filter out tool result messages
-      .map((msg): ChatMessage => {
-        const rendered = msg.id ? state.rendered[msg.id] : null
-        
-        // Build tool calls with emissions for assistant messages
-        let toolCalls: ChatToolCall[] | undefined
-        if (msg.role === 'assistant' && msg.tool_calls?.length) {
-          toolCalls = msg.tool_calls.map(tc => {
-            // Look for result in tool messages that follow
-            const toolResultMsg = state.messages.find(
-              m => m.role === 'tool' && m.tool_call_id === tc.id
-            )
-            const hasError = toolResultMsg?.content?.startsWith('Error:')
-            
-            return buildToolCall(
-              tc.id,
-              tc.function.name,
-              tc.function.arguments,
-              toolResultMsg ? (hasError ? 'error' : 'complete') : 'running',
-              toolResultMsg && !hasError ? toolResultMsg.content : undefined,
-              hasError ? toolResultMsg?.content : undefined
-            )
-          })
-        }
-
-        return {
-          id: msg.id ?? `msg-${Date.now()}`,
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-          ...(rendered?.output && { html: rendered.output }),
-          isStreaming: false,
-          ...(toolCalls && { toolCalls }),
-        }
-      })
-  }, [state.messages, state.rendered, state.toolEmissions])
-
-  // Create streaming message from buffer state
-  const streamingMessage: StreamingMessage | null = useMemo(() => {
-    if (!state.isStreaming) return null
-
-    const renderable = state.buffer.renderable
-    if (!renderable) {
-      // Fallback to settled content if no renderable buffer
-      return {
-        role: 'assistant' as const,
-        content: state.buffer.settled,
-        ...(state.buffer.settledHtml && { html: state.buffer.settledHtml }),
-      }
-    }
-
-    return {
-      role: 'assistant' as const,
-      content: renderable.next,
-      ...(renderable.html && { html: renderable.html }),
-      ...(renderable.delta && { delta: renderable.delta }),
-      ...(renderable.revealHint && { revealHint: renderable.revealHint }),
-      ...(renderable.meta && { meta: renderable.meta }),
-      ...(renderable.timestamp && { timestamp: renderable.timestamp }),
-    }
-  }, [state.isStreaming, state.buffer])
-
-  // Combine completed messages with streaming message
-  const messages: ChatMessage[] = useMemo(() => {
-    if (!streamingMessage) return completedMessages
-
-    // Build tool calls from currentResponse during streaming
-    const streamingToolCalls: ChatToolCall[] = state.currentResponse
-      .filter((step): step is Extract<typeof step, { type: 'tool_call' }> => step.type === 'tool_call')
-      .map(step => buildToolCall(
-        step.id,
-        step.name,
-        step.arguments,
-        step.state === 'pending' ? 'running' : step.state,
-        step.result,
-        step.error
-      ))
-
-    const streamingChatMessage: ChatMessage = {
-      id: 'streaming',
-      role: 'assistant',
-      content: streamingMessage.content,
-      ...(streamingMessage.html && { html: streamingMessage.html }),
-      isStreaming: true,
-      ...(streamingToolCalls.length > 0 && { toolCalls: streamingToolCalls }),
-    }
-
-    return [...completedMessages, streamingChatMessage]
-  }, [completedMessages, streamingMessage, state.currentResponse, state.toolEmissions])
+  // Derive streaming message using the framework-agnostic derivation function
+  const streamingMessage: StreamingMessage | null = useMemo(
+    () => deriveStreamingMessage<React.ComponentType<any>>(state, extractComponent),
+    [state]
+  )
 
   return {
     messages,

@@ -13,12 +13,14 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { run, each, createSignal } from 'effection'
-import { createChatSession, type ChatSession } from './session'
-import type { ClientToolSessionOptions } from './session'
+import {
+  createChatSession,
+  type ChatSession,
+  type ClientToolSessionOptions,
+} from '../../lib/chat/session'
+import { initialChatState } from '../../lib/chat/state'
 import { createPipelineTransform, markdown } from './pipeline'
-import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState } from './types'
-import { initialChatState } from './types'
-import type { SessionOptions } from './types'
+import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState, SessionOptions } from './types'
 import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
 import { useChatConfig } from './ChatProvider'
 
