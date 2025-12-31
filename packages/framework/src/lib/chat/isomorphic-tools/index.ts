@@ -4,9 +4,7 @@
  * KEY PRINCIPLE: Server's return value is ALWAYS the final result to the LLM.
  * There is no "merge" function.
  *
- * ## API Options
- *
- * ### Option 1: Type-Safe Builder (RECOMMENDED for new tools)
+ * ## API: Type-Safe Builder
  *
  * ```typescript
  * import { createIsomorphicTool } from '@/lib/chat/isomorphic-tools'
@@ -14,6 +12,7 @@
  * const guessCard = createIsomorphicTool('guess_card')
  *   .description('Pick and guess a card')
  *   .parameters(z.object({ prompt: z.string() }))
+ *   .context('browser')  // declares what context APIs the tool needs
  *   .authority('server')
  *   .handoff({
  *     *before(params) { return { secret: pickCard() } },
@@ -22,7 +21,7 @@
  *   })
  * ```
  *
- * ### Option 2: Type-Safe Client Handlers
+ * ## Type-Safe Client Handlers
  *
  * ```typescript
  * import { createHandoffHandler, createHandoffRegistry } from '@/lib/chat/isomorphic-tools'
@@ -36,21 +35,6 @@
  * // Use in component
  * const registry = createHandoffRegistry([handleGuessCard])
  * const ui = registry.handle(event, onRespond)
- * ```
- *
- * ### Option 3: Object Definition (Legacy, still supported)
- *
- * ```typescript
- * import { defineIsomorphicTool } from '@/lib/chat/isomorphic-tools'
- *
- * const getUserChoice = defineIsomorphicTool({
- *   name: 'get_user_choice',
- *   description: 'Let user choose from options',
- *   parameters: z.object({ options: z.array(z.string()) }),
- *   authority: 'client',
- *   *client(params, ctx) { return { choice: yield* showDialog(params) } },
- *   *server(params, ctx, clientOutput) { return { validated: true } },
- * })
  * ```
  *
  * @packageDocumentation
@@ -96,13 +80,6 @@ export {
   type ToolHandlerRegistry,
   type ToolHandlerBuilder,
 } from './tool-handlers'
-
-// --- Define Functions (Legacy) ---
-export {
-  defineIsomorphicTool,
-  defineServerTool,
-  defineClientFirstTool,
-} from './define'
 
 // --- Registry ---
 export {

@@ -1,60 +1,27 @@
 /**
  * Agent Context Exploration
  *
- * Exploring the idea that the handoff primitive can support both:
- * 1. Browser client (waitFor UI interactions)
- * 2. Server-side agent (ctx.prompt for LLM calls)
+ * Exploring how the handoff primitive supports different context modes:
+ * 1. Browser client (.context('browser') - waitFor UI interactions)
+ * 2. Server-side agent (.context('agent') - ctx.prompt for LLM calls)
+ * 3. Headless (.context('headless') - pure computation, runs anywhere)
  *
- * Same tool definition, different ctx injections.
+ * Uses the new builder API with declarative context types.
  */
 import { z } from 'zod'
 import { spawn, all } from 'effection'
 import type { Operation } from 'effection'
 import { describe, it, expect } from './vitest-effection'
-import { defineIsomorphicTool } from '../define'
+import { createIsomorphicTool } from '../builder'
 import { executeServerPart, executeServerPhase2 } from '../executor'
-import type {
-  ServerAuthorityContext,
-  AgentContext,
-  FlexibleClientContext,
-} from '../types'
-import type { ClientToolContext } from '../runtime/tool-runtime'
-
-// =============================================================================
-// BROWSER CONTEXT TYPE (for waitFor pattern)
-// =============================================================================
-
-/**
- * Browser context - has waitFor for UI interactions.
- * This extends ClientToolContext with required waitFor.
- */
-interface BrowserClientContext extends ClientToolContext {
-  waitFor<Req, Res>(type: string, payload: Req): Operation<Res>
-}
-
-// =============================================================================
-// TYPE NOTES
-// =============================================================================
-//
-// The `as any` casts in test calls are expected and safe:
-//
-// 1. `serverOutput as any` - The handoff data type is erased at runtime.
-//    Tools cast it internally (e.g., `handoffData as unknown as {...}`).
-//
-// 2. `ctx as any` - BrowserClientContext and AgentContext both extend
-//    ClientToolContext, but the tool's type signature expects the base type.
-//    The cast is safe because we're passing a compatible supertype.
-//
-// This is the intended design: tools check for optional capabilities
-// (ctx.prompt, ctx.waitFor) at runtime, not compile time.
-//
+import type { AnyIsomorphicTool, BrowserToolContext, AgentToolContext } from '../types'
 
 // =============================================================================
 // MOCK IMPLEMENTATIONS
 // =============================================================================
 
 /**
- * Base mock context with no-op implementations of required ClientToolContext methods.
+ * Base mock context with no-op implementations of required BaseToolContext methods.
  */
 function createBaseMockContext(callId: string) {
   return {
@@ -81,16 +48,16 @@ function createBaseMockContext(callId: string) {
 function createMockBrowserContext(
   callId: string,
   responses: Map<string, unknown>
-): BrowserClientContext {
+): BrowserToolContext {
   return {
     ...createBaseMockContext(callId),
-    waitFor<Req, Res>(type: string, _payload: Req): Operation<Res> {
+    waitFor<TPayload, TResponse>(type: string, _payload: TPayload): Operation<TResponse> {
       return function* () {
         const response = responses.get(type)
         if (response === undefined) {
           throw new Error(`No mock response for waitFor type: ${type}`)
         }
-        return response as Res
+        return response as TResponse
       }()
     },
   }
@@ -102,7 +69,7 @@ function createMockBrowserContext(
 function createMockAgentContext(
   callId: string,
   llmResponses: Map<string, unknown>
-): AgentContext {
+): AgentToolContext {
   return {
     ...createBaseMockContext(callId),
     prompt<T extends z.ZodType>(opts: {
@@ -121,239 +88,228 @@ function createMockAgentContext(
         throw new Error(`No mock LLM response for prompt: ${opts.prompt}`)
       }()
     },
-    // emit is optional, so we don't need to provide it
   }
 }
 
 // =============================================================================
-// TEST TOOLS
+// TEST TOOLS (using new builder API)
 // =============================================================================
 
 /**
- * A tool that works in BOTH browser and agent contexts.
- *
- * - In browser: uses waitFor to get user choice
- * - As agent: uses prompt to ask LLM for choice
+ * A browser-context tool that uses waitFor for UI interactions.
  */
-const choiceAnalyzerTool = defineIsomorphicTool({
-  name: 'choice_analyzer',
-  description: 'Analyzes a set of choices and picks the best one',
-  parameters: z.object({
+const browserChoiceTool = createIsomorphicTool('browser_choice')
+  .description('Gets user choice via UI')
+  .parameters(z.object({
     choices: z.array(z.string()),
     criteria: z.string(),
-  }),
-  authority: 'server',
+  }))
+  .context('browser')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return {
+        choices: params.choices,
+        criteria: params.criteria,
+        timestamp: Date.now(),
+      }
+    },
+    *client(handoff, ctx, _params) {
+      // ctx is BrowserToolContext - waitFor is available
+      const result = yield* ctx.waitFor<
+        { choices: string[]; criteria: string },
+        { selected: string }
+      >('pick-choice', {
+        choices: handoff.choices,
+        criteria: handoff.criteria,
+      })
+      return { selected: result.selected }
+    },
+    *after(_handoff, clientResult) {
+      return {
+        selected: clientResult.selected,
+        reasoning: 'User selection',
+        decidedAt: Date.now(),
+      }
+    },
+  })
 
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        return {
-          choices: params.choices,
-          criteria: params.criteria,
-          timestamp: Date.now(),
-        }
-      },
-      *after(handoff, clientResult: { selected: string; reasoning?: string }) {
-        return {
-          choices: handoff.choices,
-          criteria: handoff.criteria,
-          selected: clientResult.selected,
-          reasoning: clientResult.reasoning ?? 'No reasoning provided',
-          decidedAt: Date.now(),
-        }
-      },
-    })
-  },
-
-  // The flexible client - works in both environments
-  // Note: We cast ctx to FlexibleClientContext since the tool definition types
-  // ctx as ClientToolContext, but at runtime it may have additional capabilities
-  // (prompt, emit) depending on the execution environment.
-  *client(handoffData, ctx, _params) {
-    // Cast handoff data (TypeScript infers after()'s return type, not before()'s)
-    const data = handoffData as unknown as {
-      choices: string[]
-      criteria: string
-    }
-    // Cast ctx to flexible - it may have prompt (agent) or waitFor (browser)
-    const flexCtx = ctx as FlexibleClientContext
-
-    // Check what capabilities we have
-    if (flexCtx.prompt) {
-      // Agent mode - use LLM
-      const result = yield* flexCtx.prompt({
-        prompt: `Given criteria "${data.criteria}", pick the best choice from: ${data.choices.join(', ')}`,
+/**
+ * An agent-context tool that uses prompt for LLM interactions.
+ */
+const agentChoiceTool = createIsomorphicTool('agent_choice')
+  .description('Gets choice via LLM')
+  .parameters(z.object({
+    choices: z.array(z.string()),
+    criteria: z.string(),
+  }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return {
+        choices: params.choices,
+        criteria: params.criteria,
+        timestamp: Date.now(),
+      }
+    },
+    *client(handoff, ctx, _params) {
+      // ctx is AgentToolContext - prompt is available
+      const result = yield* ctx.prompt({
+        prompt: `Given criteria "${handoff.criteria}", pick the best choice from: ${handoff.choices.join(', ')}`,
         schema: z.object({
           selected: z.string(),
           reasoning: z.string(),
         }),
       })
       return result
-    }
-
-    if (flexCtx.waitFor) {
-      // Browser mode - ask user
-      const result = yield* flexCtx.waitFor<
-        { choices: string[]; criteria: string },
-        { selected: string }
-      >('pick-choice', {
-        choices: data.choices,
-        criteria: data.criteria,
-      })
-      return { selected: result.selected }
-    }
-
-    // Fallback - just pick first
-    return { selected: data.choices[0] }
-  },
-})
+    },
+    *after(_handoff, clientResult) {
+      return {
+        selected: clientResult.selected,
+        reasoning: clientResult.reasoning,
+        decidedAt: Date.now(),
+      }
+    },
+  })
 
 /**
- * A tool that demonstrates agent-only capabilities (nested prompts, spawning)
+ * Research agent - demonstrates sequential LLM calls
  */
-const researchAgentTool = defineIsomorphicTool({
-  name: 'research_agent',
-  description: 'Researches a topic using multiple LLM calls',
-  parameters: z.object({
+const researchAgentTool = createIsomorphicTool('research_agent')
+  .description('Researches a topic using multiple LLM calls')
+  .parameters(z.object({
     topic: z.string(),
     depth: z.enum(['shallow', 'deep']).default('shallow'),
-  }),
-  authority: 'server',
-
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        return { topic: params.topic, depth: params.depth }
-      },
-      *after(
-        _handoff,
-        result: { findings: string[]; sources: string[]; confidence: number }
-      ) {
-        return {
-          summary: result.findings.join('. '),
-          sourceCount: result.sources.length,
-          confidence: result.confidence,
-        }
-      },
-    })
-  },
-
-  *client(handoffData, ctx, _params) {
-    const data = handoffData as unknown as { topic: string; depth: string }
-    const agentCtx = ctx as unknown as AgentContext
-
-    if (!agentCtx.prompt) {
-      throw new Error('research_agent requires agent context with prompt capability')
-    }
-
-    // Initial research
-    const initial = yield* agentCtx.prompt({
-      prompt: `Research topic: ${data.topic}. Provide key findings.`,
-      schema: z.object({
-        findings: z.array(z.string()),
-        needsMoreResearch: z.boolean(),
-      }),
-    })
-
-    let allFindings = [...initial.findings]
-    const sources = ['initial-research']
-
-    // Deep research if requested
-    if (data.depth === 'deep' && initial.needsMoreResearch) {
-      const deeper = yield* agentCtx.prompt({
-        prompt: `Dive deeper into: ${data.topic}. Build on: ${initial.findings.join(', ')}`,
+  }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return { topic: params.topic, depth: params.depth }
+    },
+    *client(handoff, ctx, _params) {
+      // Initial research
+      const initial = yield* ctx.prompt({
+        prompt: `Research topic: ${handoff.topic}. Provide key findings.`,
         schema: z.object({
           findings: z.array(z.string()),
+          needsMoreResearch: z.boolean(),
         }),
       })
-      allFindings = [...allFindings, ...deeper.findings]
-      sources.push('deep-research')
-    }
 
-    return {
-      findings: allFindings,
-      sources,
-      confidence: data.depth === 'deep' ? 0.9 : 0.7,
-    }
-  },
-})
+      let allFindings = [...initial.findings]
+      const sources = ['initial-research']
+
+      // Deep research if requested
+      if (handoff.depth === 'deep' && initial.needsMoreResearch) {
+        const deeper = yield* ctx.prompt({
+          prompt: `Dive deeper into: ${handoff.topic}. Build on: ${initial.findings.join(', ')}`,
+          schema: z.object({
+            findings: z.array(z.string()),
+          }),
+        })
+        allFindings = [...allFindings, ...deeper.findings]
+        sources.push('deep-research')
+      }
+
+      return {
+        findings: allFindings,
+        sources,
+        confidence: handoff.depth === 'deep' ? 0.9 : 0.7,
+      }
+    },
+    *after(_handoff, result) {
+      return {
+        summary: result.findings.join('. '),
+        sourceCount: result.sources.length,
+        confidence: result.confidence,
+      }
+    },
+  })
 
 /**
- * A tool that demonstrates parallel sub-agent execution
+ * Parallel analysis tool - demonstrates spawn + all pattern
  */
-const parallelAnalysisTool = defineIsomorphicTool({
-  name: 'parallel_analysis',
-  description: 'Analyzes a topic from multiple perspectives in parallel',
-  parameters: z.object({
+const parallelAnalysisTool = createIsomorphicTool('parallel_analysis')
+  .description('Analyzes a topic from multiple perspectives in parallel')
+  .parameters(z.object({
     topic: z.string(),
-  }),
-  authority: 'server',
+  }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return { topic: params.topic }
+    },
+    *client(handoff, ctx, _params) {
+      // Spawn parallel analysis tasks
+      const technicalTask = yield* spawn(function* () {
+        return yield* ctx.prompt({
+          prompt: `Analyze "${handoff.topic}" from a technical perspective`,
+          schema: z.object({ analysis: z.string() }),
+        })
+      })
 
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        return { topic: params.topic }
-      },
-      *after(
-        _handoff,
-        result: {
-          technical: string
-          business: string
-          user: string
+      const businessTask = yield* spawn(function* () {
+        return yield* ctx.prompt({
+          prompt: `Analyze "${handoff.topic}" from a business perspective`,
+          schema: z.object({ analysis: z.string() }),
+        })
+      })
+
+      const userTask = yield* spawn(function* () {
+        return yield* ctx.prompt({
+          prompt: `Analyze "${handoff.topic}" from a user perspective`,
+          schema: z.object({ analysis: z.string() }),
+        })
+      })
+
+      // Wait for all to complete
+      const [technical, business, user] = yield* all([
+        technicalTask,
+        businessTask,
+        userTask,
+      ])
+
+      return {
+        technical: technical.analysis,
+        business: business.analysis,
+        user: user.analysis,
+      }
+    },
+    *after(_handoff, result) {
+      return {
+        analysis: result,
+        perspectives: 3,
+      }
+    },
+  })
+
+/**
+ * Progress tool - demonstrates emit capability
+ */
+const progressTool = createIsomorphicTool('progress_tool')
+  .description('Tool that emits progress')
+  .parameters(z.object({ steps: z.number() }))
+  .context('agent')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      return { steps: params.steps }
+    },
+    *client(handoff, ctx, _params) {
+      for (let i = 1; i <= handoff.steps; i++) {
+        if (ctx.emit) {
+          yield* ctx.emit({ type: 'progress', step: i, total: handoff.steps })
         }
-      ) {
-        return {
-          analysis: result,
-          perspectives: 3,
-        }
-      },
-    })
-  },
-
-  *client(handoffData, ctx, _params) {
-    const data = handoffData as unknown as { topic: string }
-    const agentCtx = ctx as unknown as AgentContext
-
-    if (!agentCtx.prompt) {
-      throw new Error('parallel_analysis requires agent context')
-    }
-
-    // Spawn parallel analysis tasks
-    const technicalTask = yield* spawn(function* () {
-      return yield* agentCtx.prompt({
-        prompt: `Analyze "${data.topic}" from a technical perspective`,
-        schema: z.object({ analysis: z.string() }),
-      })
-    })
-
-    const businessTask = yield* spawn(function* () {
-      return yield* agentCtx.prompt({
-        prompt: `Analyze "${data.topic}" from a business perspective`,
-        schema: z.object({ analysis: z.string() }),
-      })
-    })
-
-    const userTask = yield* spawn(function* () {
-      return yield* agentCtx.prompt({
-        prompt: `Analyze "${data.topic}" from a user perspective`,
-        schema: z.object({ analysis: z.string() }),
-      })
-    })
-
-    // Wait for all to complete
-    const [technical, business, user] = yield* all([
-      technicalTask,
-      businessTask,
-      userTask,
-    ])
-
-    return {
-      technical: technical.analysis,
-      business: business.analysis,
-      user: user.analysis,
-    }
-  },
-})
+      }
+      return { completed: handoff.steps }
+    },
+    *after(_handoff, result) {
+      return { done: true, completed: result.completed }
+    },
+  })
 
 // =============================================================================
 // TESTS
@@ -362,16 +318,18 @@ const parallelAnalysisTool = defineIsomorphicTool({
 describe('Agent Context Exploration', () => {
   const signal = new AbortController().signal
 
-  describe('Same tool, different contexts', () => {
+  describe('Browser context tools', () => {
     it('works with browser context (waitFor)', function* () {
       // Set up mock browser context
       const responses = new Map<string, unknown>([
         ['pick-choice', { selected: 'Option B' }],
       ])
 
+      const tool = browserChoiceTool as unknown as AnyIsomorphicTool
+
       // Phase 1
       const phase1 = yield* executeServerPart(
-        choiceAnalyzerTool,
+        tool,
         'call-1',
         { choices: ['Option A', 'Option B', 'Option C'], criteria: 'best value' },
         signal
@@ -381,10 +339,9 @@ describe('Agent Context Exploration', () => {
 
       // Simulate browser client execution
       const browserCtx = createMockBrowserContext('call-1', responses)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const clientResult = (yield* choiceAnalyzerTool.client!(
+      const clientResult = (yield* browserChoiceTool.client!(
         phase1.serverOutput as any,
-        browserCtx as any,
+        browserCtx,
         { choices: ['Option A', 'Option B', 'Option C'], criteria: 'best value' }
       )) as { selected: string }
 
@@ -392,7 +349,7 @@ describe('Agent Context Exploration', () => {
 
       // Phase 2
       const result = (yield* executeServerPhase2(
-        choiceAnalyzerTool,
+        tool,
         'call-1',
         { choices: ['Option A', 'Option B', 'Option C'], criteria: 'best value' },
         clientResult,
@@ -402,9 +359,11 @@ describe('Agent Context Exploration', () => {
       )) as { selected: string; reasoning: string }
 
       expect(result.selected).toBe('Option B')
-      expect(result.reasoning).toBe('No reasoning provided')
+      expect(result.reasoning).toBe('User selection')
     })
+  })
 
+  describe('Agent context tools', () => {
     it('works with agent context (prompt)', function* () {
       // Set up mock agent context with LLM responses
       const llmResponses = new Map<string, unknown>([
@@ -414,9 +373,11 @@ describe('Agent Context Exploration', () => {
         ],
       ])
 
+      const tool = agentChoiceTool as unknown as AnyIsomorphicTool
+
       // Phase 1
       const phase1 = yield* executeServerPart(
-        choiceAnalyzerTool,
+        tool,
         'call-1',
         { choices: ['Option A', 'Option B', 'Option C'], criteria: 'best value' },
         signal
@@ -426,10 +387,9 @@ describe('Agent Context Exploration', () => {
 
       // Simulate agent execution
       const agentCtx = createMockAgentContext('call-1', llmResponses)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const clientResult = (yield* choiceAnalyzerTool.client!(
+      const clientResult = (yield* agentChoiceTool.client!(
         phase1.serverOutput as any,
-        agentCtx as any,
+        agentCtx,
         { choices: ['Option A', 'Option B', 'Option C'], criteria: 'best value' }
       )) as { selected: string; reasoning: string }
 
@@ -438,7 +398,7 @@ describe('Agent Context Exploration', () => {
 
       // Phase 2
       const result = (yield* executeServerPhase2(
-        choiceAnalyzerTool,
+        tool,
         'call-1',
         { choices: ['Option A', 'Option B', 'Option C'], criteria: 'best value' },
         clientResult,
@@ -459,9 +419,11 @@ describe('Agent Context Exploration', () => {
         ['Dive deeper', { findings: ['Deep finding 1'] }],
       ])
 
+      const tool = researchAgentTool as unknown as AnyIsomorphicTool
+
       // Phase 1
       const phase1 = yield* executeServerPart(
-        researchAgentTool,
+        tool,
         'call-1',
         { topic: 'AI agents', depth: 'deep' },
         signal
@@ -470,10 +432,9 @@ describe('Agent Context Exploration', () => {
 
       // Execute agent
       const agentCtx = createMockAgentContext('call-1', llmResponses)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const clientResult = (yield* researchAgentTool.client!(
         phase1.serverOutput as any,
-        agentCtx as any,
+        agentCtx,
         { topic: 'AI agents', depth: 'deep' }
       )) as { findings: string[]; sources: string[]; confidence: number }
 
@@ -483,7 +444,7 @@ describe('Agent Context Exploration', () => {
 
       // Phase 2
       const result = (yield* executeServerPhase2(
-        researchAgentTool,
+        tool,
         'call-1',
         { topic: 'AI agents', depth: 'deep' },
         clientResult,
@@ -504,9 +465,11 @@ describe('Agent Context Exploration', () => {
         ['user perspective', { analysis: 'Users would love this' }],
       ])
 
+      const tool = parallelAnalysisTool as unknown as AnyIsomorphicTool
+
       // Phase 1
       const phase1 = yield* executeServerPart(
-        parallelAnalysisTool,
+        tool,
         'call-1',
         { topic: 'New feature X' },
         signal
@@ -515,10 +478,9 @@ describe('Agent Context Exploration', () => {
 
       // Execute agent (parallel tasks)
       const agentCtx = createMockAgentContext('call-1', llmResponses)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const clientResult = (yield* parallelAnalysisTool.client!(
         phase1.serverOutput as any,
-        agentCtx as any,
+        agentCtx,
         { topic: 'New feature X' }
       )) as { technical: string; business: string; user: string }
 
@@ -528,7 +490,7 @@ describe('Agent Context Exploration', () => {
 
       // Phase 2
       const result = (yield* executeServerPhase2(
-        parallelAnalysisTool,
+        tool,
         'call-1',
         { topic: 'New feature X' },
         clientResult,
@@ -544,43 +506,13 @@ describe('Agent Context Exploration', () => {
 
   describe('Agent with emit (streaming events)', () => {
     it('can emit progress events to parent', function* () {
-      // Tool that emits progress
-      const progressTool = defineIsomorphicTool({
-        name: 'progress_tool',
-        description: 'Tool that emits progress',
-        parameters: z.object({ steps: z.number() }),
-        authority: 'server',
+      const tool = progressTool as unknown as AnyIsomorphicTool
 
-        *server(params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              return { steps: params.steps }
-            },
-            *after(_handoff, result: { completed: number }) {
-              return { done: true, completed: result.completed }
-            },
-          })
-        },
-
-        *client(handoffData, ctx, _params) {
-          const data = handoffData as unknown as { steps: number }
-          const agentCtx = ctx as unknown as AgentContext
-
-          for (let i = 1; i <= data.steps; i++) {
-            if (agentCtx.emit) {
-              yield* agentCtx.emit({ type: 'progress', step: i, total: data.steps })
-            }
-          }
-
-          return { completed: data.steps }
-        },
-      })
-
-      // Simpler approach: collect events synchronously via emit callback
+      // Collect events
       const events: unknown[] = []
 
-      // Create a mock agent context with a simple emit that captures events
-      const agentCtx: AgentContext = {
+      // Create a mock agent context with emit
+      const agentCtx: AgentToolContext = {
         ...createBaseMockContext('call-1'),
         prompt: function* () {
           throw new Error('Not used in this test')
@@ -592,14 +524,13 @@ describe('Agent Context Exploration', () => {
       }
 
       // Phase 1
-      const phase1 = yield* executeServerPart(progressTool, 'call-1', { steps: 3 }, signal)
+      const phase1 = yield* executeServerPart(tool, 'call-1', { steps: 3 }, signal)
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
       // Execute with emit capability
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const clientResult = (yield* progressTool.client!(
         phase1.serverOutput as any,
-        agentCtx as any,
+        agentCtx,
         { steps: 3 }
       )) as { completed: number }
 
@@ -618,95 +549,79 @@ describe('Nested Agents (agent calling agent)', () => {
 
   it('demonstrates agent composition via direct tool execution', function* () {
     // Inner agent - does the actual work
-    const innerAgentTool = defineIsomorphicTool({
-      name: 'inner_agent',
-      description: 'Does specific work',
-      parameters: z.object({ task: z.string() }),
-      authority: 'server',
-
-      *server(params, ctx: ServerAuthorityContext) {
-        return yield* ctx.handoff({
-          *before() {
-            return { task: params.task }
-          },
-          *after(_handoff, result: { output: string }) {
-            return { completed: true, output: result.output }
-          },
-        })
-      },
-
-      *client(handoffData, ctx, _params) {
-        const data = handoffData as unknown as { task: string }
-        const agentCtx = ctx as unknown as AgentContext
-
-        const result = yield* agentCtx.prompt({
-          prompt: `Execute task: ${data.task}`,
-          schema: z.object({ output: z.string() }),
-        })
-
-        return { output: result.output }
-      },
-    })
+    const innerAgentTool = createIsomorphicTool('inner_agent')
+      .description('Does specific work')
+      .parameters(z.object({ task: z.string() }))
+      .context('agent')
+      .authority('server')
+      .handoff({
+        *before(params) {
+          return { task: params.task }
+        },
+        *client(handoff, ctx, _params) {
+          const result = yield* ctx.prompt({
+            prompt: `Execute task: ${handoff.task}`,
+            schema: z.object({ output: z.string() }),
+          })
+          return { output: result.output }
+        },
+        *after(_handoff, result) {
+          return { completed: true, output: result.output }
+        },
+      })
 
     // Outer agent - orchestrates multiple inner agents
-    const outerAgentTool = defineIsomorphicTool({
-      name: 'outer_agent',
-      description: 'Orchestrates multiple tasks',
-      parameters: z.object({ tasks: z.array(z.string()) }),
-      authority: 'server',
+    const outerAgentTool = createIsomorphicTool('outer_agent')
+      .description('Orchestrates multiple tasks')
+      .parameters(z.object({ tasks: z.array(z.string()) }))
+      .context('agent')
+      .authority('server')
+      .handoff({
+        *before(params) {
+          return { tasks: params.tasks }
+        },
+        *client(handoff, ctx, _params) {
+          const innerTool = innerAgentTool as unknown as AnyIsomorphicTool
 
-      *server(params, ctx: ServerAuthorityContext) {
-        return yield* ctx.handoff({
-          *before() {
-            return { tasks: params.tasks }
-          },
-          *after(_handoff, result: { results: string[] }) {
-            return { allDone: true, results: result.results }
-          },
-        })
-      },
+          // Execute inner agents in parallel using spawn + all pattern
+          function* executeInner(task: string) {
+            // Execute inner agent's full lifecycle
+            const innerPhase1 = yield* executeServerPart(
+              innerTool,
+              `inner-${task}`,
+              { task },
+              ctx.signal
+            )
+            if (innerPhase1.kind !== 'handoff') throw new Error('Expected handoff')
 
-      *client(handoffData, ctx, _params) {
-        const data = handoffData as unknown as { tasks: string[] }
-        const agentCtx = ctx as unknown as AgentContext
+            // Run inner agent's client with same ctx
+            const innerClientResult = yield* innerAgentTool.client!(
+              innerPhase1.serverOutput as any,
+              ctx,
+              { task }
+            )
 
-        // Execute inner agents in parallel using spawn + all pattern
-        function* executeInner(task: string) {
-          // Execute inner agent's full lifecycle
-          const innerPhase1 = yield* executeServerPart(
-            innerAgentTool,
-            `inner-${task}`,
-            { task },
-            agentCtx.signal
-          )
-          if (innerPhase1.kind !== 'handoff') throw new Error('Expected handoff')
+            // Complete inner agent
+            const innerResult = (yield* executeServerPhase2(
+              innerTool,
+              `inner-${task}`,
+              { task },
+              innerClientResult,
+              innerPhase1.serverOutput,
+              ctx.signal,
+              true
+            )) as { completed: boolean; output: string }
 
-          // Run inner agent's client with same ctx
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const innerClientResult = yield* innerAgentTool.client!(
-            innerPhase1.serverOutput as any,
-            agentCtx as any,
-            { task }
-          )
+            return innerResult
+          }
 
-          // Complete inner agent
-          const innerResult = (yield* executeServerPhase2(
-            innerAgentTool,
-            `inner-${task}`,
-            { task },
-            innerClientResult,
-            innerPhase1.serverOutput,
-            agentCtx.signal,
-            true
-          )) as { completed: boolean; output: string }
-
-          return innerResult
-        }
-
-        const results = (yield* all(data.tasks.map((t) => executeInner(t)))) as { completed: boolean; output: string }[]
-        return { results: results.map((r) => r.output) }
-      },
-    })
+          const results = (yield* all(handoff.tasks.map((t) => executeInner(t)))) as { completed: boolean; output: string }[]
+          return { results: results.map((r) => r.output) }
+        },
+        *after(_handoff, result) {
+          return { allDone: true, results: result.results }
+        },
+      })
 
     // Set up mock responses for all tasks
     const llmResponses = new Map<string, unknown>([
@@ -715,9 +630,11 @@ describe('Nested Agents (agent calling agent)', () => {
       ['task C', { output: 'Result C' }],
     ])
 
+    const tool = outerAgentTool as unknown as AnyIsomorphicTool
+
     // Execute outer agent
     const phase1 = yield* executeServerPart(
-      outerAgentTool,
+      tool,
       'outer-1',
       { tasks: ['task A', 'task B', 'task C'] },
       signal
@@ -725,10 +642,9 @@ describe('Nested Agents (agent calling agent)', () => {
     if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
     const agentCtx = createMockAgentContext('outer-1', llmResponses)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const clientResult = (yield* outerAgentTool.client!(
       phase1.serverOutput as any,
-      agentCtx as any,
+      agentCtx,
       { tasks: ['task A', 'task B', 'task C'] }
     )) as { results: string[] }
 
@@ -738,7 +654,7 @@ describe('Nested Agents (agent calling agent)', () => {
 
     // Complete outer agent
     const result = (yield* executeServerPhase2(
-      outerAgentTool,
+      tool,
       'outer-1',
       { tasks: ['task A', 'task B', 'task C'] },
       clientResult,

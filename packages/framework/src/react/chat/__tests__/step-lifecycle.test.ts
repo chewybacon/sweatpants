@@ -19,7 +19,7 @@ import { describe, it, expect } from 'vitest'
 import { run, spawn, each, sleep, createSignal, call } from 'effection'
 import { createChatSession } from '../session'
 import { createTestStreamer } from '../testing'
-import { createIsomorphicToolRegistry, defineIsomorphicTool } from '../../../lib/chat/isomorphic-tools'
+import { createIsomorphicToolRegistry, createIsomorphicTool } from '../../../lib/chat/isomorphic-tools'
 import type { RenderableProps, ClientStepContext } from '../../../lib/chat/isomorphic-tools'
 import type { ChatState, PendingStepState, ExecutionTrailState } from '../types'
 import { z } from 'zod'
@@ -37,25 +37,21 @@ function TestDisplay(_props: TestDisplayProps) {
   return null // Not actually rendered in tests
 }
 
-const testDisplayTool = defineIsomorphicTool({
-  name: 'test_display',
-  description: 'Display a test message',
-  parameters: z.object({
+const testDisplayTool = createIsomorphicTool('test_display')
+  .description('Display a test message')
+  .parameters(z.object({
     message: z.string(),
-  }),
-  authority: 'client',
-  approval: { server: 'none', client: 'none' },
-
-  *client(params, ctx) {
+  }))
+  .context('browser')
+  .authority('client')
+  .client(function* (params, ctx) {
     const stepCtx = ctx as ClientStepContext
     yield* stepCtx.step(TestDisplay, { message: params.message })
     return { displayed: true, message: params.message }
-  },
-
-  *server(_params, _ctx, clientOutput) {
+  })
+  .server(function* (_params, _ctx, clientOutput) {
     return { success: true, ...clientOutput }
-  },
-})
+  })
 
 // =============================================================================
 // HELPER: Collect states and find specific moments
@@ -212,7 +208,7 @@ describe('Step Lifecycle', () => {
       }
 
       // Find the snapshot after step was responded to
-      const lastSnapshot = snapshots[snapshots.length - 1]
+      const lastSnapshot = snapshots[snapshots.length - 1]!
 
       // After response, pendingSteps should be empty
       expect(lastSnapshot.pendingStepIds).toHaveLength(0)
@@ -397,7 +393,7 @@ describe('Step Lifecycle', () => {
       })
       
       // After response, step status in trail should be 'complete'
-      const afterResponse = snapshots[snapshots.length - 1]
+      const afterResponse = snapshots[snapshots.length - 1]!
       const stepStatus = afterResponse.trailStepStatuses.find(s => s.id.includes('step-1'))
       expect(stepStatus?.status).toBe('complete')
     })

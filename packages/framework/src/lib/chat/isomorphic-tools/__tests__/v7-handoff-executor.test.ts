@@ -5,51 +5,112 @@
  * This verifies that the handoff({ before, after }) API works correctly with
  * executeServerPart() and executeServerPhase2().
  *
- * ## The V7 Pattern
- *
- * Server-authority tools can use ctx.handoff() to yield to the client:
- *
- * ```typescript
- * *server(params, ctx) {
- *   return yield* ctx.handoff({
- *     *before() {
- *       const secret = expensiveCompute()  // Only runs in phase 1
- *       return { secret, hint: '...' }
- *     },
- *     *after(handoff, client: { guess: string }) {
- *       return {                            // Only runs in phase 2
- *         secret: handoff.secret,
- *         correct: client.guess === handoff.secret,
- *       }
- *     },
- *   })
- * }
- * ```
- *
- * ## Execution Phases
- *
- * Phase 1 (executeServerPart):
- * - Creates phase 1 context where handoff() runs before() and throws HandoffReadyError
- * - Catches the error and returns { handoff, serverOutput, usesHandoff: true }
- *
- * Phase 2 (executeServerPhase2):
- * - Creates phase 2 context where handoff() skips before() and runs after()
- * - Returns the final result for the LLM
- *
- * ## Key Guarantees
- *
- * - before() only runs once (in phase 1)
- * - after() only runs once (in phase 2)
- * - Expensive/non-idempotent code in before() is safe
- * - ONE handoff per tool (documented limitation)
+ * Uses the new builder API with declarative context types.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { run } from 'effection'
+import { run, sleep } from 'effection'
 import { z } from 'zod'
-import { defineIsomorphicTool } from '../define'
+import { createIsomorphicTool } from '../builder'
 import { executeServerPart, executeServerPhase2 } from '../executor'
-import type { ServerAuthorityContext } from '../types'
-import { guessTheCardTool } from './-tools'
+import type { AnyIsomorphicTool } from '../types'
+
+// =============================================================================
+// TEST FIXTURES
+// =============================================================================
+
+// Card helpers for the guessTheCard test
+const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'] as const
+const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const
+
+type Card = { suit: (typeof SUITS)[number]; rank: (typeof RANKS)[number] }
+
+function randomCard(): Card {
+  const suit = SUITS[Math.floor(Math.random() * SUITS.length)]
+  const rank = RANKS[Math.floor(Math.random() * RANKS.length)]
+  return { suit, rank }
+}
+
+function cardName(card: Card): string {
+  return `${card.rank} of ${card.suit}`
+}
+
+function cardColor(card: Card): 'red' | 'black' {
+  return card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black'
+}
+
+function generateCardChoices(secret: Card, numChoices: number): Card[] {
+  const choices = [secret]
+  while (choices.length < numChoices) {
+    const card = randomCard()
+    if (!choices.some(c => c.suit === card.suit && c.rank === card.rank)) {
+      choices.push(card)
+    }
+  }
+  // Shuffle
+  return choices.sort(() => Math.random() - 0.5)
+}
+
+/**
+ * guessTheCardTool - V7 handoff pattern with builder API
+ */
+const guessTheCardTool = createIsomorphicTool('guess_the_card')
+  .description('A complete card guessing game in one call')
+  .parameters(z.object({
+    prompt: z.string().optional(),
+    numChoices: z.number().min(2).max(10).optional(),
+  }))
+  .context('headless')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      yield* sleep(50) // Short pause
+
+      const secret = randomCard()
+      const choices = generateCardChoices(secret, params.numChoices ?? 4)
+      const choiceNames = choices.map(c => cardName(c))
+      const hint = `I'm thinking of a ${cardColor(secret)} card...`
+
+      return {
+        secret: cardName(secret),
+        secretColor: cardColor(secret),
+        choices: choiceNames,
+        hint,
+        prompt: params.prompt ?? 'Which card am I thinking of?',
+      }
+    },
+    *client(_handoff, _ctx, _params) {
+      // In real usage, would get user input here
+      return { guess: 'placeholder' }
+    },
+    *after(handoff, clientOutput) {
+      const isCorrect = clientOutput.guess === handoff.secret
+
+      let feedback: string
+      if (isCorrect) {
+        feedback = `Incredible! You correctly guessed the ${handoff.secret}!`
+      } else {
+        const guessColor = clientOutput.guess.includes('hearts') || clientOutput.guess.includes('diamonds') ? 'red' : 'black'
+        if (guessColor !== handoff.secretColor) {
+          feedback = `Not quite! You guessed a ${guessColor} card, but the secret was a ${handoff.secretColor} card: ${handoff.secret}`
+        } else {
+          feedback = `Close! The ${clientOutput.guess} is also ${handoff.secretColor}, but the secret was ${handoff.secret}`
+        }
+      }
+
+      return {
+        guess: clientOutput.guess,
+        secret: handoff.secret,
+        isCorrect,
+        feedback,
+        hint: handoff.hint,
+        guessNumber: 1,
+      }
+    },
+  })
+
+// =============================================================================
+// TESTS
+// =============================================================================
 
 describe('V7 Handoff Executor Integration', () => {
   describe('server-authority tool WITH handoff', () => {
@@ -57,40 +118,36 @@ describe('V7 Handoff Executor Integration', () => {
       const beforeFn = vi.fn()
       const afterFn = vi.fn()
 
-      const tool = defineIsomorphicTool({
-        name: 'test_handoff',
-        description: 'Test tool with handoff',
-        parameters: z.object({ name: z.string() }),
-        authority: 'server',
+      const tool = createIsomorphicTool('test_handoff')
+        .description('Test tool with handoff')
+        .parameters(z.object({ name: z.string() }))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before(params) {
+            beforeFn()
+            return { secret: 42, player: params.name }
+          },
+          *client(_handoff, _ctx, _params) {
+            return { guess: 0 }
+          },
+          *after(handoff, client) {
+            afterFn()
+            return {
+              player: handoff.player,
+              secret: handoff.secret,
+              guess: client.guess,
+              correct: client.guess === handoff.secret,
+            }
+          },
+        })
 
-        *server(params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              beforeFn()
-              return { secret: 42, player: params.name }
-            },
-            *after(handoff, client: { guess: number }) {
-              afterFn()
-              return {
-                player: handoff.player,
-                secret: handoff.secret,
-                guess: client.guess,
-                correct: client.guess === handoff.secret,
-              }
-            },
-          })
-        },
-
-        *client(serverOutput, _ctx, _params) {
-          return { displayed: true, received: serverOutput }
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1: Execute and halt at handoff
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', { name: 'Alice' }, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', { name: 'Alice' }, signal)
       })
 
       expect(beforeFn).toHaveBeenCalledTimes(1)
@@ -104,9 +161,9 @@ describe('V7 Handoff Executor Integration', () => {
       expect(phase1.serverOutput).toEqual({ secret: 42, player: 'Alice' })
 
       // Phase 2: Resume with client output
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           { name: 'Alice' },
           { guess: 42 }, // client output
@@ -129,42 +186,38 @@ describe('V7 Handoff Executor Integration', () => {
     it('should NOT re-run expensive computation in phase 2', async () => {
       let computeCount = 0
 
-      const tool = defineIsomorphicTool({
-        name: 'expensive_tool',
-        description: 'Tool with expensive computation',
-        parameters: z.object({}),
-        authority: 'server',
+      const tool = createIsomorphicTool('expensive_tool')
+        .description('Tool with expensive computation')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before() {
+            computeCount++
+            return { computed: `result-${computeCount}` }
+          },
+          *client(_handoff, _ctx, _params) {
+            return { ack: true }
+          },
+          *after(handoff, client) {
+            return { value: handoff.computed, ack: client.ack }
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              computeCount++
-              return { computed: `result-${computeCount}` }
-            },
-            *after(handoff, client: { ack: boolean }) {
-              return { value: handoff.computed, ack: client.ack }
-            },
-          })
-        },
-
-        *client() {
-          return {}
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', {}, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', {}, signal)
       })
       expect(computeCount).toBe(1)
       expect(phase1.serverOutput).toEqual({ computed: 'result-1' })
 
       // Phase 2 - computation should NOT run again
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           {},
           { ack: true },
@@ -179,42 +232,38 @@ describe('V7 Handoff Executor Integration', () => {
     })
 
     it('should handle incorrect guess correctly', async () => {
-      const tool = defineIsomorphicTool({
-        name: 'guess_game',
-        description: 'Guessing game',
-        parameters: z.object({}),
-        authority: 'server',
+      const tool = createIsomorphicTool('guess_game')
+        .description('Guessing game')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before() {
+            return { secret: 'apple' }
+          },
+          *client(_handoff, _ctx, _params) {
+            return { guess: 'placeholder' }
+          },
+          *after(handoff, client) {
+            return {
+              secret: handoff.secret,
+              guess: client.guess,
+              correct: client.guess === handoff.secret,
+            }
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              return { secret: 'apple' }
-            },
-            *after(handoff, client: { guess: string }) {
-              return {
-                secret: handoff.secret,
-                guess: client.guess,
-                correct: client.guess === handoff.secret,
-              }
-            },
-          })
-        },
-
-        *client() {
-          return {}
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', {}, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', {}, signal)
       })
 
       // Wrong guess
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           {},
           { guess: 'banana' },
@@ -232,65 +281,57 @@ describe('V7 Handoff Executor Integration', () => {
     })
 
     it('should propagate errors from before()', async () => {
-      const tool = defineIsomorphicTool({
-        name: 'error_before',
-        description: 'Tool that errors in before',
-        parameters: z.object({}),
-        authority: 'server',
+      const tool = createIsomorphicTool('error_before')
+        .description('Tool that errors in before')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before(): Generator<never, { x: number }> {
+            throw new Error('before() failed')
+          },
+          *client(_handoff, _ctx, _params) {
+            return {}
+          },
+          *after(handoff) {
+            return { result: handoff.x }
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before(): Generator<never, { x: number }> {
-              throw new Error('before() failed')
-            },
-            *after(handoff) {
-              return { result: handoff.x }
-            },
-          })
-        },
-
-        *client() {
-          return { displayed: true }
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       await expect(
-        run(function*() {
-          return yield* executeServerPart(tool, 'call-1', {}, signal)
+        run(function* () {
+          return yield* executeServerPart(anyTool, 'call-1', {}, signal)
         })
       ).rejects.toThrow('before() failed')
     })
 
     it('should propagate errors from after()', async () => {
-      const tool = defineIsomorphicTool({
-        name: 'error_after',
-        description: 'Tool that errors in after',
-        parameters: z.object({}),
-        authority: 'server',
+      const tool = createIsomorphicTool('error_after')
+        .description('Tool that errors in after')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before() {
+            return { x: 1 }
+          },
+          *client(_handoff, _ctx, _params) {
+            return {}
+          },
+          *after(_handoff): Generator<never, { result: number }> {
+            throw new Error('after() failed')
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              return { x: 1 }
-            },
-            *after(_handoff): Generator<never, { result: number }> {
-              throw new Error('after() failed')
-            },
-          })
-        },
-
-        *client() {
-          return { displayed: true }
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1 should succeed
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', {}, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', {}, signal)
       })
       expect(phase1.kind).toBe('handoff')
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
@@ -298,9 +339,9 @@ describe('V7 Handoff Executor Integration', () => {
 
       // Phase 2 should fail
       await expect(
-        run(function*() {
+        run(function* () {
           return yield* executeServerPhase2(
-            tool,
+            anyTool,
             'call-1',
             {},
             {},
@@ -315,25 +356,23 @@ describe('V7 Handoff Executor Integration', () => {
 
   describe('server-authority tool WITHOUT handoff (simple)', () => {
     it('should complete in phase 1 with usesHandoff=false', async () => {
-      const tool = defineIsomorphicTool({
-        name: 'simple_server',
-        description: 'Simple server tool without handoff',
-        parameters: z.object({ message: z.string() }),
-        authority: 'server',
+      const tool = createIsomorphicTool('simple_server')
+        .description('Simple server tool without handoff')
+        .parameters(z.object({ message: z.string() }))
+        .context('headless')
+        .authority('server')
+        .server(function* (params) {
+          return { celebrated: true, message: params.message }
+        })
+        .client(function* (serverOutput, _ctx, _params) {
+          return { displayed: true, message: (serverOutput as { message: string }).message }
+        })
 
-        *server({ message }) {
-          return { celebrated: true, message }
-        },
-
-        *client(serverOutput) {
-          return { displayed: true, message: serverOutput.message }
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', { message: 'Hello!' }, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', { message: 'Hello!' }, signal)
       })
 
       expect(phase1.kind).toBe('handoff')
@@ -347,27 +386,25 @@ describe('V7 Handoff Executor Integration', () => {
     it('should return cached serverOutput in phase 2 for simple tools', async () => {
       const serverFn = vi.fn()
 
-      const tool = defineIsomorphicTool({
-        name: 'simple_server',
-        description: 'Simple server tool',
-        parameters: z.object({}),
-        authority: 'server',
-
-        *server() {
+      const tool = createIsomorphicTool('simple_server')
+        .description('Simple server tool')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .server(function* () {
           serverFn()
           return { result: 'computed' }
-        },
-
-        *client() {
+        })
+        .client(function* () {
           return {}
-        },
-      })
+        })
 
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', {}, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', {}, signal)
       })
       expect(serverFn).toHaveBeenCalledTimes(1)
       expect(phase1.kind).toBe('handoff')
@@ -375,9 +412,9 @@ describe('V7 Handoff Executor Integration', () => {
       expect(phase1.usesHandoff).toBe(false)
 
       // Phase 2 - should just return cached output, NOT re-run server
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           {},
           { clientData: true },
@@ -396,31 +433,29 @@ describe('V7 Handoff Executor Integration', () => {
     it('should skip phase 1 server execution and run in phase 2', async () => {
       const serverFn = vi.fn()
 
-      const tool = defineIsomorphicTool({
-        name: 'client_first',
-        description: 'Client authority tool',
-        parameters: z.object({ question: z.string() }),
-        authority: 'client',
-
-        *client(params) {
+      const tool = createIsomorphicTool('client_first')
+        .description('Client authority tool')
+        .parameters(z.object({ question: z.string() }))
+        .context('headless')
+        .authority('client')
+        .client(function* (params, _ctx) {
           return { answer: `Response to: ${params.question}` }
-        },
-
-        *server(params, _ctx, clientOutput) {
+        })
+        .server(function* (params, _ctx, clientOutput) {
           serverFn()
           return {
             question: params.question,
-            answer: clientOutput!.answer,
+            answer: clientOutput.answer,
             validated: true,
           }
-        },
-      })
+        })
 
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1 - no server code runs for client authority
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', { question: 'What is 2+2?' }, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', { question: 'What is 2+2?' }, signal)
       })
 
       expect(serverFn).not.toHaveBeenCalled()
@@ -433,9 +468,9 @@ describe('V7 Handoff Executor Integration', () => {
       expect(phase1.handoff.authority).toBe('client')
 
       // Phase 2 - server validates client output
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           { question: 'What is 2+2?' },
           { answer: '4' }, // client output
@@ -458,43 +493,37 @@ describe('V7 Handoff Executor Integration', () => {
     it('should handle async operations in before()', async () => {
       let fetchCount = 0
 
-      const tool = defineIsomorphicTool({
-        name: 'async_before',
-        description: 'Tool with async before',
-        parameters: z.object({}),
-        authority: 'server',
+      const tool = createIsomorphicTool('async_before')
+        .description('Tool with async before')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before() {
+            // Simulate async fetch
+            fetchCount++
+            yield* sleep(10)
+            return { data: `fetch-${fetchCount}` }
+          },
+          *client(_handoff, _ctx, _params) {
+            return { ok: true }
+          },
+          *after(handoff, client) {
+            return { data: handoff.data, clientOk: client.ok }
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              // Simulate async fetch
-              fetchCount++
-              yield* (function*() {
-                return 'fetched'
-              })()
-              return { data: `fetch-${fetchCount}` }
-            },
-            *after(handoff, client: { ok: boolean }) {
-              return { data: handoff.data, clientOk: client.ok }
-            },
-          })
-        },
-
-        *client() {
-          return {}
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', {}, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', {}, signal)
       })
       expect(fetchCount).toBe(1)
 
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           {},
           { ok: true },
@@ -509,52 +538,48 @@ describe('V7 Handoff Executor Integration', () => {
     })
 
     it('should handle complex data structures in handoff', async () => {
-      interface Card {
+      interface CardType {
         suit: string
         rank: string
       }
 
-      const tool = defineIsomorphicTool({
-        name: 'card_game',
-        description: 'Card game tool',
-        parameters: z.object({ difficulty: z.string() }),
-        authority: 'server',
+      const tool = createIsomorphicTool('card_game')
+        .description('Card game tool')
+        .parameters(z.object({ difficulty: z.string() }))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before(params) {
+            const cards: CardType[] = [
+              { suit: 'hearts', rank: 'A' },
+              { suit: 'spades', rank: 'K' },
+            ]
+            return {
+              secret: cards[0],
+              options: cards,
+              difficulty: params.difficulty,
+            }
+          },
+          *client(_handoff, _ctx, _params) {
+            return { selectedIndex: 0 }
+          },
+          *after(handoff, client) {
+            const selected = handoff.options[client.selectedIndex]
+            return {
+              secret: handoff.secret,
+              selected,
+              correct:
+                selected?.suit === handoff.secret.suit &&
+                selected?.rank === handoff.secret.rank,
+            }
+          },
+        })
 
-        *server(params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              const cards: Card[] = [
-                { suit: 'hearts', rank: 'A' },
-                { suit: 'spades', rank: 'K' },
-              ]
-              return {
-                secret: cards[0],
-                options: cards,
-                difficulty: params.difficulty,
-              }
-            },
-            *after(handoff, client: { selectedIndex: number }) {
-              const selected = handoff.options[client.selectedIndex]
-              return {
-                secret: handoff.secret,
-                selected,
-                correct:
-                  selected?.suit === handoff.secret.suit &&
-                  selected?.rank === handoff.secret.rank,
-              }
-            },
-          })
-        },
-
-        *client() {
-          return {}
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      const phase1 = await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', { difficulty: 'hard' }, signal)
+      const phase1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', { difficulty: 'hard' }, signal)
       })
 
       expect(phase1.serverOutput).toEqual({
@@ -567,9 +592,9 @@ describe('V7 Handoff Executor Integration', () => {
       })
 
       // Correct guess
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           { difficulty: 'hard' },
           { selectedIndex: 0 },
@@ -589,45 +614,38 @@ describe('V7 Handoff Executor Integration', () => {
     it('should handle code after handoff() that only runs in phase 2', async () => {
       const afterHandoffFn = vi.fn()
 
-      const tool = defineIsomorphicTool({
-        name: 'post_handoff',
-        description: 'Tool with code after handoff',
-        parameters: z.object({}),
-        authority: 'server',
+      const tool = createIsomorphicTool('post_handoff')
+        .description('Tool with code after handoff')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before() {
+            return { x: 1 }
+          },
+          *client(_handoff, _ctx, _params) {
+            return { y: 2 }
+          },
+          *after(handoff, client) {
+            // Post-process happens here
+            afterHandoffFn({ x: handoff.x, y: client.y })
+            return { x: handoff.x, y: client.y, postProcessed: true }
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          const result = yield* ctx.handoff({
-            *before() {
-              return { x: 1 }
-            },
-            *after(handoff, client: { y: number }) {
-              return { x: handoff.x, y: client.y }
-            },
-          })
-
-          // This only runs in phase 2!
-          afterHandoffFn(result)
-
-          return { ...result, postProcessed: true }
-        },
-
-        *client() {
-          return {}
-        },
-      })
-
+      const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      // Phase 1 - afterHandoffFn should NOT run
-      await run(function*() {
-        return yield* executeServerPart(tool, 'call-1', {}, signal)
+      // Phase 1 - afterHandoffFn should NOT run (it's in after())
+      await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-1', {}, signal)
       })
       expect(afterHandoffFn).not.toHaveBeenCalled()
 
       // Phase 2 - afterHandoffFn SHOULD run
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          tool,
+          anyTool,
           'call-1',
           {},
           { y: 2 },
@@ -645,12 +663,13 @@ describe('V7 Handoff Executor Integration', () => {
 
   describe('guessTheCardTool (real V7 tool)', () => {
     it('should pick a card in phase 1 and validate guess in phase 2', async () => {
+      const anyTool = guessTheCardTool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1: Pick the secret card and generate choices
-      const phase1 = await run(function*() {
+      const phase1 = await run(function* () {
         return yield* executeServerPart(
-          guessTheCardTool,
+          anyTool,
           'call-1',
           { prompt: 'Which card?', numChoices: 4 },
           signal
@@ -682,9 +701,9 @@ describe('V7 Handoff Executor Integration', () => {
       expect(handoffData.prompt).toBe('Which card?')
 
       // Phase 2: User guesses correctly
-      const correctResult = await run(function*() {
+      const correctResult = await run(function* () {
         return yield* executeServerPhase2(
-          guessTheCardTool,
+          anyTool,
           'call-1',
           { prompt: 'Which card?', numChoices: 4 },
           { guess: handoffData.secret }, // Correct guess!
@@ -708,12 +727,13 @@ describe('V7 Handoff Executor Integration', () => {
     })
 
     it('should detect incorrect guess in phase 2', async () => {
+      const anyTool = guessTheCardTool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Phase 1
-      const phase1 = await run(function*() {
+      const phase1 = await run(function* () {
         return yield* executeServerPart(
-          guessTheCardTool,
+          anyTool,
           'call-2',
           {},
           signal
@@ -729,9 +749,9 @@ describe('V7 Handoff Executor Integration', () => {
       const wrongGuess = handoffData.choices.find(c => c !== handoffData.secret)!
 
       // Phase 2: User guesses incorrectly
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          guessTheCardTool,
+          anyTool,
           'call-2',
           {},
           { guess: wrongGuess },
@@ -753,16 +773,17 @@ describe('V7 Handoff Executor Integration', () => {
     })
 
     it('should preserve secret across phases (idempotency)', async () => {
+      const anyTool = guessTheCardTool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
       // Run phase 1 twice - should get different secrets each time
       // (proving phase 1 actually picks)
-      const run1 = await run(function*() {
-        return yield* executeServerPart(guessTheCardTool, 'call-a', {}, signal)
+      const run1 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-a', {}, signal)
       })
 
-      const run2 = await run(function*() {
-        return yield* executeServerPart(guessTheCardTool, 'call-b', {}, signal)
+      const run2 = await run(function* () {
+        return yield* executeServerPart(anyTool, 'call-b', {}, signal)
       })
 
       // These MIGHT be the same (52 cards), but the point is they're independent
@@ -773,9 +794,9 @@ describe('V7 Handoff Executor Integration', () => {
 
       // Now run phase 2 for run1 with the wrong secret from run2
       // It should validate against run1's secret, not a new pick
-      const result = await run(function*() {
+      const result = await run(function* () {
         return yield* executeServerPhase2(
-          guessTheCardTool,
+          anyTool,
           'call-a',
           {},
           { guess: secret2 },

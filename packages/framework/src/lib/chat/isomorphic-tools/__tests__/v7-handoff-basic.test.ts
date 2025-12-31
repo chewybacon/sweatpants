@@ -3,12 +3,14 @@
  *
  * Clean tests for the V7 handoff pattern using vitest-effection adapter.
  * Demonstrates how to test isomorphic tools with generators.
+ *
+ * Uses the new builder API with declarative context types.
  */
 import { z } from 'zod'
 import { describe, it, expect } from './vitest-effection'
-import { defineIsomorphicTool } from '../define'
+import { createIsomorphicTool } from '../builder'
 import { executeServerPart, executeServerPhase2 } from '../executor'
-import type { ServerAuthorityContext } from '../types'
+import type { AnyIsomorphicTool } from '../types'
 
 // =============================================================================
 // TEST FIXTURES
@@ -20,73 +22,63 @@ import type { ServerAuthorityContext } from '../types'
  * Phase 1: Server generates a count and timestamp
  * Phase 2: Server receives client response and computes final result
  */
-const counterTool = defineIsomorphicTool({
-  name: 'counter',
-  description: 'A simple counter tool for testing',
-  parameters: z.object({
+const counterTool = createIsomorphicTool('counter')
+  .description('A simple counter tool for testing')
+  .parameters(z.object({
     start: z.number().default(0),
-  }),
-  authority: 'server',
-
-  *server(params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        // This runs exactly once in phase 1
-        return {
-          count: params.start,
-          timestamp: Date.now(),
-        }
-      },
-      *after(handoff, client: { increment: number }) {
-        // This runs exactly once in phase 2
-        return {
-          originalCount: handoff.count,
-          increment: client.increment,
-          finalCount: handoff.count + client.increment,
-          timestamp: handoff.timestamp,
-        }
-      },
-    })
-  },
-
-  *client(handoffData, _ctx, _params) {
-    // Client receives handoff data from before()
-    // Cast because TypeScript infers TServerOutput as after()'s return type
-    const data = handoffData as unknown as { count: number; timestamp: number }
-    return { displayed: true, receivedCount: data.count }
-  },
-})
+  }))
+  .context('headless')
+  .authority('server')
+  .handoff({
+    *before(params) {
+      // This runs exactly once in phase 1
+      return {
+        count: params.start,
+        timestamp: Date.now(),
+      }
+    },
+    *client(handoff, _ctx, _params) {
+      // Client receives handoff data from before()
+      // Returns increment for after() to use
+      return { increment: 1, displayed: true, receivedCount: handoff.count }
+    },
+    *after(handoff, client) {
+      // This runs exactly once in phase 2
+      return {
+        originalCount: handoff.count,
+        increment: client.increment,
+        finalCount: handoff.count + client.increment,
+        timestamp: handoff.timestamp,
+      }
+    },
+  })
 
 /**
  * Secret keeper tool - demonstrates caching of non-idempotent operations.
  */
-const secretKeeperTool = defineIsomorphicTool({
-  name: 'secret_keeper',
-  description: 'Keeps a randomly generated secret',
-  parameters: z.object({}),
-  authority: 'server',
-
-  *server(_params, ctx: ServerAuthorityContext) {
-    return yield* ctx.handoff({
-      *before() {
-        // Random secret - should only be generated once!
-        const secret = Math.random().toString(36).substring(2, 10)
-        return { secret }
-      },
-      *after(handoff, client: { guess: string }) {
-        return {
-          secret: handoff.secret,
-          guess: client.guess,
-          correct: client.guess === handoff.secret,
-        }
-      },
-    })
-  },
-
-  *client() {
-    return {}
-  },
-})
+const secretKeeperTool = createIsomorphicTool('secret_keeper')
+  .description('Keeps a randomly generated secret')
+  .parameters(z.object({}))
+  .context('headless')
+  .authority('server')
+  .handoff({
+    *before() {
+      // Random secret - should only be generated once!
+      const secret = Math.random().toString(36).substring(2, 10)
+      return { secret }
+    },
+    *client(_handoff, _ctx, _params) {
+      // Return a guess (in real usage this would come from UI/agent)
+      return { guess: 'placeholder' }
+    },
+    *after(handoff, client) {
+      return {
+        secret: handoff.secret,
+        guess: client.guess,
+        correct: client.guess === handoff.secret,
+      }
+    },
+  })
 
 // =============================================================================
 // TESTS
@@ -97,8 +89,10 @@ describe('V7 Handoff - Basic', () => {
 
   describe('two-phase execution', () => {
     it('executes before() in phase 1 and after() in phase 2', function* () {
+      const tool = counterTool as unknown as AnyIsomorphicTool
+
       // Phase 1: Execute server part
-      const phase1 = yield* executeServerPart(counterTool, 'call-1', { start: 10 }, signal)
+      const phase1 = yield* executeServerPart(tool, 'call-1', { start: 10 }, signal)
 
       expect(phase1.kind).toBe('handoff')
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
@@ -108,7 +102,7 @@ describe('V7 Handoff - Basic', () => {
 
       // Phase 2: Complete with client output
       const result = yield* executeServerPhase2(
-        counterTool,
+        tool,
         'call-1',
         { start: 10 },
         { increment: 5 }, // client output
@@ -125,15 +119,17 @@ describe('V7 Handoff - Basic', () => {
     })
 
     it('preserves before() data across phases (no re-execution)', function* () {
+      const tool = secretKeeperTool as unknown as AnyIsomorphicTool
+
       // Phase 1: Generate random secret
-      const phase1 = yield* executeServerPart(secretKeeperTool, 'call-1', {}, signal)
+      const phase1 = yield* executeServerPart(tool, 'call-1', {}, signal)
 
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
       const secret = (phase1.serverOutput as { secret: string }).secret
 
       // Phase 2: Verify same secret is used
       const result = yield* executeServerPhase2(
-        secretKeeperTool,
+        tool,
         'call-1',
         {},
         { guess: secret }, // Correct guess
@@ -150,13 +146,15 @@ describe('V7 Handoff - Basic', () => {
     })
 
     it('handles incorrect guesses', function* () {
-      const phase1 = yield* executeServerPart(secretKeeperTool, 'call-1', {}, signal)
+      const tool = secretKeeperTool as unknown as AnyIsomorphicTool
+
+      const phase1 = yield* executeServerPart(tool, 'call-1', {}, signal)
 
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
       const secret = (phase1.serverOutput as { secret: string }).secret
 
       const result = yield* executeServerPhase2(
-        secretKeeperTool,
+        tool,
         'call-1',
         {},
         { guess: 'wrong-guess' },
@@ -175,7 +173,8 @@ describe('V7 Handoff - Basic', () => {
 
   describe('handoff metadata', () => {
     it('marks handoff events with usesHandoff: true', function* () {
-      const phase1 = yield* executeServerPart(counterTool, 'call-1', { start: 0 }, signal)
+      const tool = counterTool as unknown as AnyIsomorphicTool
+      const phase1 = yield* executeServerPart(tool, 'call-1', { start: 0 }, signal)
 
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
@@ -185,7 +184,8 @@ describe('V7 Handoff - Basic', () => {
     })
 
     it('includes tool name and call ID in handoff event', function* () {
-      const phase1 = yield* executeServerPart(counterTool, 'my-unique-call-id', { start: 0 }, signal)
+      const tool = counterTool as unknown as AnyIsomorphicTool
+      const phase1 = yield* executeServerPart(tool, 'my-unique-call-id', { start: 0 }, signal)
 
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
@@ -196,31 +196,28 @@ describe('V7 Handoff - Basic', () => {
 
   describe('error handling', () => {
     it('propagates errors from before()', function* () {
-      const errorTool = defineIsomorphicTool({
-        name: 'error_before',
-        description: 'Errors in before()',
-        parameters: z.object({}),
-        authority: 'server',
+      const errorTool = createIsomorphicTool('error_before')
+        .description('Errors in before()')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before(): Generator<never, { x: number }> {
+            throw new Error('before() exploded')
+          },
+          *client(_handoff, _ctx, _params) {
+            return {}
+          },
+          *after(handoff) {
+            return { x: handoff.x }
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before(): Generator<never, { x: number }> {
-              throw new Error('before() exploded')
-            },
-            *after(handoff) {
-              return { x: handoff.x }
-            },
-          })
-        },
-
-        *client() {
-          return {}
-        },
-      })
+      const tool = errorTool as unknown as AnyIsomorphicTool
 
       let caught: Error | undefined
       try {
-        yield* executeServerPart(errorTool, 'call-1', {}, signal)
+        yield* executeServerPart(tool, 'call-1', {}, signal)
       } catch (e) {
         caught = e as Error
       }
@@ -230,37 +227,34 @@ describe('V7 Handoff - Basic', () => {
     })
 
     it('propagates errors from after()', function* () {
-      const errorTool = defineIsomorphicTool({
-        name: 'error_after',
-        description: 'Errors in after()',
-        parameters: z.object({}),
-        authority: 'server',
+      const errorTool = createIsomorphicTool('error_after')
+        .description('Errors in after()')
+        .parameters(z.object({}))
+        .context('headless')
+        .authority('server')
+        .handoff({
+          *before() {
+            return { x: 1 }
+          },
+          *client(_handoff, _ctx, _params) {
+            return {}
+          },
+          *after(_handoff): Generator<never, { result: number }> {
+            throw new Error('after() exploded')
+          },
+        })
 
-        *server(_params, ctx: ServerAuthorityContext) {
-          return yield* ctx.handoff({
-            *before() {
-              return { x: 1 }
-            },
-            *after(_handoff): Generator<never, { result: number }> {
-              throw new Error('after() exploded')
-            },
-          })
-        },
-
-        *client() {
-          return {}
-        },
-      })
+      const tool = errorTool as unknown as AnyIsomorphicTool
 
       // Phase 1 succeeds
-      const phase1 = yield* executeServerPart(errorTool, 'call-1', {}, signal)
+      const phase1 = yield* executeServerPart(tool, 'call-1', {}, signal)
       expect(phase1.kind).toBe('handoff')
 
       // Phase 2 throws
       let caught: Error | undefined
       try {
         yield* executeServerPhase2(
-          errorTool,
+          tool,
           'call-1',
           {},
           {},
@@ -282,23 +276,21 @@ describe('Server-authority without handoff', () => {
   const signal = new AbortController().signal
 
   it('completes in phase 1 with usesHandoff: false', function* () {
-    const simpleTool = defineIsomorphicTool({
-      name: 'simple',
-      description: 'Simple tool without handoff',
-      parameters: z.object({ message: z.string() }),
-      authority: 'server',
-
-      *server({ message }) {
+    const simpleTool = createIsomorphicTool('simple')
+      .description('Simple tool without handoff')
+      .parameters(z.object({ message: z.string() }))
+      .context('headless')
+      .authority('server')
+      .server(function* (params) {
         // No ctx.handoff() - just return directly
-        return { echoed: message }
-      },
+        return { echoed: params.message }
+      })
+      .client(function* (serverOutput, _ctx, _params) {
+        return { displayed: true, message: (serverOutput as { echoed: string }).echoed }
+      })
 
-      *client(serverOutput) {
-        return { displayed: true, message: serverOutput.echoed }
-      },
-    })
-
-    const phase1 = yield* executeServerPart(simpleTool, 'call-1', { message: 'hello' }, signal)
+    const tool = simpleTool as unknown as AnyIsomorphicTool
+    const phase1 = yield* executeServerPart(tool, 'call-1', { message: 'hello' }, signal)
 
     expect(phase1.kind).toBe('handoff')
     if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
@@ -311,29 +303,28 @@ describe('Server-authority without handoff', () => {
   it('returns cached serverOutput in phase 2 (no re-execution)', function* () {
     let callCount = 0
 
-    const countingTool = defineIsomorphicTool({
-      name: 'counting',
-      description: 'Counts server calls',
-      parameters: z.object({}),
-      authority: 'server',
-
-      *server() {
+    const countingTool = createIsomorphicTool('counting')
+      .description('Counts server calls')
+      .parameters(z.object({}))
+      .context('headless')
+      .authority('server')
+      .server(function* () {
         callCount++
         return { callNumber: callCount }
-      },
-
-      *client() {
+      })
+      .client(function* () {
         return {}
-      },
-    })
+      })
+
+    const tool = countingTool as unknown as AnyIsomorphicTool
 
     // Phase 1
-    const phase1 = yield* executeServerPart(countingTool, 'call-1', {}, signal)
+    const phase1 = yield* executeServerPart(tool, 'call-1', {}, signal)
     expect(callCount).toBe(1)
 
     // Phase 2 - should NOT re-run server
     const result = yield* executeServerPhase2(
-      countingTool,
+      tool,
       'call-1',
       {},
       { ack: true },
@@ -353,28 +344,27 @@ describe('Client-authority tools', () => {
   it('skips server execution in phase 1', function* () {
     let serverCalled = false
 
-    const clientFirstTool = defineIsomorphicTool({
-      name: 'client_first',
-      description: 'Client runs first',
-      parameters: z.object({ question: z.string() }),
-      authority: 'client',
-
-      *client(params) {
+    const clientFirstTool = createIsomorphicTool('client_first')
+      .description('Client runs first')
+      .parameters(z.object({ question: z.string() }))
+      .context('headless')
+      .authority('client')
+      .client(function* (params, _ctx) {
         return { answer: `Yes to: ${params.question}` }
-      },
-
-      *server(params, _ctx, clientOutput) {
+      })
+      .server(function* (params, _ctx, clientOutput) {
         serverCalled = true
         return {
           question: params.question,
-          answer: clientOutput!.answer,
+          answer: clientOutput.answer,
           validated: true,
         }
-      },
-    })
+      })
+
+    const tool = clientFirstTool as unknown as AnyIsomorphicTool
 
     // Phase 1 - no server execution
-    const phase1 = yield* executeServerPart(clientFirstTool, 'call-1', { question: 'test?' }, signal)
+    const phase1 = yield* executeServerPart(tool, 'call-1', { question: 'test?' }, signal)
 
     expect(serverCalled).toBe(false)
     expect(phase1.kind).toBe('handoff')
@@ -384,7 +374,7 @@ describe('Client-authority tools', () => {
 
     // Phase 2 - server validates
     const result = yield* executeServerPhase2(
-      clientFirstTool,
+      tool,
       'call-1',
       { question: 'test?' },
       { answer: 'Yes to: test?' },
