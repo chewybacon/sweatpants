@@ -19,7 +19,7 @@ import { createPipelineTransform, markdown } from './pipeline'
 import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState } from './types'
 import { initialChatState } from './types'
 import type { SessionOptions } from './types'
-import type { IsomorphicToolRegistry, PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
+import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
 import { useChatConfig } from './ChatProvider'
 
 /** Default transforms applied to all sessions */
@@ -29,15 +29,6 @@ const defaultTransforms = [createPipelineTransform({ processors: [markdown] })]
  * Options for useChatSession hook.
  */
 export interface UseChatSessionOptions extends SessionOptions {
-  /**
-   * Isomorphic tools.
-   *
-   * These tools have both server and client parts. The server executes
-   * its part and sends a handoff event. The session then executes the
-   * client part and merges the results.
-   */
-  isomorphicTools?: IsomorphicToolRegistry
-
   /**
    * Registry of React tool handlers.
    *
@@ -54,7 +45,7 @@ export interface UseChatSessionOptions extends SessionOptions {
    *   .build()
    *
    * const { pendingHandoffs, respondToHandoff } = useChatSession({
-   *   isomorphicTools: registry,
+   *   tools: [guessCardTool],
    *   reactHandlers: toolHandlers,
    * })
    *
@@ -190,7 +181,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     ...options,
     baseUrl: options.baseUrl ?? config.baseUrl,
     transforms: options.transforms ?? defaultTransforms,
-    ...(options.isomorphicTools && { isomorphicTools: options.isomorphicTools }),
     ...(options.reactHandlers && { reactHandlers: options.reactHandlers }),
   }
 
