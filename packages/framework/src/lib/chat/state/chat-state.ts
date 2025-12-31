@@ -86,60 +86,8 @@ export interface PendingClientToolState {
   permissionType?: string
 }
 
-/**
- * State of a pending step waiting for user response.
- */
-export interface PendingStepState {
-  /** The step ID */
-  stepId: string
-  /** The tool call ID this step belongs to */
-  callId: string
-  /** Step kind (should be 'prompt' for pending steps) */
-  kind: 'emit' | 'prompt'
-  /** Step type for routing (or '__react__' for render steps) */
-  type?: string
-  /** Payload for type-based steps */
-  payload?: unknown
-  /** React element for render steps */
-  element?: unknown
-  /** React component for factory pattern (ctx.step) */
-  component?: unknown
-  /** Timestamp */
-  timestamp: number
-  /** Respond function - call this to complete the step */
-  respond: (response: unknown) => void
-}
-
-/**
- * State of an execution trail for a tool call.
- */
-export interface ExecutionTrailState {
-  /** The tool call ID */
-  callId: string
-  /** The tool name */
-  toolName: string
-  /** All steps in order */
-  steps: Array<{
-    id: string
-    kind: 'emit' | 'prompt'
-    type?: string
-    payload?: unknown
-    element?: unknown
-    timestamp: number
-    status: 'pending' | 'complete'
-    response?: unknown
-  }>
-  /** Trail status */
-  status: 'running' | 'complete' | 'error'
-  /** Start timestamp */
-  startedAt: number
-  /** End timestamp */
-  completedAt?: number
-  /** Result if complete */
-  result?: unknown
-  /** Error if failed */
-  error?: string
-}
+// NOTE: PendingStepState and ExecutionTrailState were removed in favor of ToolEmissionState
+// The new emission system uses toolEmissions instead of pendingSteps/executionTrails
 
 // =============================================================================
 // CHAT STATE
@@ -201,12 +149,6 @@ export interface ChatState {
   /** Pending tool handoffs waiting for React UI handlers */
   pendingHandoffs: Record<string, PendingHandoffState>
 
-  /** Pending steps from tools using ctx.render() pattern */
-  pendingSteps: Record<string, PendingStepState>
-
-  /** Active execution trails for tools using ctx.render() pattern */
-  executionTrails: Record<string, ExecutionTrailState>
-
   /**
    * Active tool emissions from ctx.render() pattern.
    * Keyed by tool call ID.
@@ -240,7 +182,5 @@ export const initialChatState: ChatState = {
   },
   pendingClientTools: {},
   pendingHandoffs: {},
-  pendingSteps: {},
-  executionTrails: {},
   toolEmissions: {},
 }

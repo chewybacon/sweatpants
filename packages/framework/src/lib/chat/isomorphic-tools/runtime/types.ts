@@ -103,9 +103,9 @@ export type {
   ActiveStep,
   RenderedContent,
   PendingClientToolState,
-  PendingStepState,
-  ExecutionTrailState,
   ChatState,
+  ToolEmissionState,
+  ToolEmissionTrackingState,
 } from '../../state'
 
 export { groupTimelineByToolCall, initialChatState } from '../../state'

@@ -1,7 +1,7 @@
-import type { ChatState, ChatPatch, ResponseStep, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState, ToolEmissionState, ToolEmissionTrackingState } from './types'
+import type { ChatState, ChatPatch, ResponseStep, PendingClientToolState, PendingHandoffState, ToolEmissionState, ToolEmissionTrackingState } from './types'
 import { initialChatState as initialChatStateBase } from './types'
 
-export type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState, ToolEmissionState, ToolEmissionTrackingState }
+export type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionState, ToolEmissionTrackingState }
 
 export const initialChatState = initialChatStateBase
 
@@ -88,8 +88,6 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             next: '',
           },
         },
-        // Clear pending steps from previous request
-        pendingSteps: {},
       }
 
     case 'streaming_thinking': {
@@ -432,134 +430,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       }
     }
 
-    // --- Execution Trail Patches (for ctx.render pattern) ---
-
-    case 'execution_trail_start': {
-      return {
-        ...state,
-        executionTrails: {
-          ...state.executionTrails,
-          [patch.callId]: {
-            callId: patch.callId,
-            toolName: patch.toolName,
-            steps: [],
-            status: 'running',
-            startedAt: Date.now(),
-          },
-        },
-      }
-    }
-
-    case 'execution_trail_step': {
-      const step = patch.step
-      const callId = patch.callId
-
-      // Add step to the execution trail
-      const trail = state.executionTrails[callId]
-      const updatedTrail = trail
-        ? { ...trail, steps: [...trail.steps, step] }
-        : {
-            callId,
-            toolName: '',
-            steps: [step],
-            status: 'running' as const,
-            startedAt: step.timestamp,
-          }
-
-      // If it's a prompt step (waiting for response), also add to pendingSteps
-      if (step.kind === 'prompt' && step.status === 'pending' && patch.respond) {
-        return {
-          ...state,
-          executionTrails: {
-            ...state.executionTrails,
-            [callId]: updatedTrail,
-          },
-          pendingSteps: {
-            ...state.pendingSteps,
-            [step.id]: {
-              stepId: step.id,
-              callId,
-              kind: step.kind,
-              ...(step.type !== undefined && { type: step.type }),
-              payload: step.payload,
-              element: step.element,
-              component: step.component, // Include component for factory pattern
-              timestamp: step.timestamp,
-              respond: patch.respond,
-            },
-          },
-        }
-      }
-
-      return {
-        ...state,
-        executionTrails: {
-          ...state.executionTrails,
-          [callId]: updatedTrail,
-        },
-      }
-    }
-
-    case 'execution_trail_complete': {
-      const { [patch.callId]: _completed, ...remainingSteps } = state.pendingSteps
-      
-      // Remove any pending steps for this call
-      const newPendingSteps = Object.fromEntries(
-        Object.entries(remainingSteps).filter(([_, step]) => step.callId !== patch.callId)
-      )
-
-      // Update trail status
-      const trail = state.executionTrails[patch.callId]
-      if (!trail) return state
-
-      return {
-        ...state,
-        executionTrails: {
-          ...state.executionTrails,
-          [patch.callId]: {
-            ...trail,
-            status: patch.error ? 'error' : 'complete',
-            completedAt: Date.now(),
-            result: patch.result,
-            ...(patch.error !== undefined && { error: patch.error }),
-          },
-        },
-        pendingSteps: newPendingSteps,
-      }
-    }
-
-    case 'execution_trail_step_response': {
-      const { stepId, callId, response } = patch
-      
-      // Update step status in executionTrails
-      const trail = state.executionTrails[callId]
-      if (!trail) {
-        return state
-      }
-      
-      const updatedSteps = trail.steps.map(step => 
-        step.id === stepId 
-          ? { ...step, status: 'complete' as const, response }
-          : step
-      )
-      
-      // Remove from pendingSteps
-      const { [stepId]: _removed, ...remainingPendingSteps } = state.pendingSteps
-      
-      return {
-        ...state,
-        executionTrails: {
-          ...state.executionTrails,
-          [callId]: {
-            ...trail,
-            steps: updatedSteps,
-          },
-        },
-        pendingSteps: remainingPendingSteps,
-      }
-    }
-
-    // --- Tool Emission Patches (new ctx.render() pattern) ---
+    // --- Tool Emission Patches (ctx.render() pattern) ---
 
     case 'tool_emission_start': {
       return {

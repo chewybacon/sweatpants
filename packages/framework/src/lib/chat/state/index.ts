@@ -24,10 +24,8 @@ export type {
   ActiveStep,
   RenderedContent,
   PendingClientToolState,
-  PendingStepState,
-  ExecutionTrailState,
   ChatState,
-  // New emission types
+  // Emission types (ctx.render pattern)
   ToolEmissionState,
   ToolEmissionTrackingState,
 } from './chat-state'

@@ -111,11 +111,8 @@ export type {
   ActiveStep,
   RenderedContent,
   PendingClientToolState,
-  PendingStepState,
-  ExecutionTrailState,
-  ToolEmissionState as ToolEmissionStateFromState,
-  ToolEmissionTrackingState as ToolEmissionTrackingStateFromState,
   ChatState,
+  // Note: ToolEmissionState and ToolEmissionTrackingState are exported from patches
 } from '../../../lib/chat/state'
 
 export { groupTimelineByToolCall, initialChatState } from '../../../lib/chat/state'

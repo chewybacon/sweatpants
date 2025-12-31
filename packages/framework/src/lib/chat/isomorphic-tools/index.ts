@@ -172,7 +172,7 @@ export {
   type UIResponseValue,
 } from './ui-requests'
 
-// --- Step Context (ctx.render pattern) ---
+// --- Step Context (ctx.render pattern - legacy) ---
 export {
   createReactStepContext,
   createExecutionTrail,
@@ -182,9 +182,16 @@ export {
   type BaseStepContext,
   type ReactStepContext,
   type ClientStepContext,
-  type RenderableProps,
   type CreateStepContextOptions,
 } from './step-context'
+
+// --- Emission Runtime (ctx.render pattern - new) ---
+export {
+  type RenderableProps,
+  type ExtractResponse,
+  type UserProps,
+  type BrowserRenderContext,
+} from './runtime/browser-context'
 
 // --- Agent Runtime (server-side agent execution) ---
 export {

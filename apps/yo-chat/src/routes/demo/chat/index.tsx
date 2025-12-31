@@ -5,12 +5,14 @@
  * - Immutable Frame snapshots for clean rendering
  * - Progressive enhancement (quick → full)
  * - No content duplication bugs
+ * - Tool emissions with ctx.render() pattern
  *
  * Uses the high-level useChat hook with pipeline configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type ComponentType } from 'react'
 import { useChat } from '@tanstack/framework/react/chat'
+import type { RenderableProps } from '@tanstack/framework/chat/isomorphic-tools'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: PipelineChatDemo,
@@ -27,6 +29,8 @@ function PipelineChatDemo() {
     abort,
     reset,
     error,
+    toolEmissions,
+    respondToEmission,
   } = useChat({
     // Use the new Frame-based pipeline system
     // 'full' = markdown + shiki + mermaid
@@ -137,6 +141,30 @@ function PipelineChatDemo() {
                   </div>
                 </div>
               </div>
+            </div>
+          ))}
+
+          {/* Render tool emissions (interactive UI from ctx.render()) */}
+          {toolEmissions.map((tracking) => (
+            <div key={tracking.callId} className="mb-4">
+              {tracking.emissions.map((emission) => {
+                // Get the component from the payload
+                const Component = emission.payload._component
+                if (!Component) {
+                  return null
+                }
+
+                // Render with RenderableProps
+                return (
+                  <Component
+                    key={emission.id}
+                    {...emission.payload.props}
+                    onRespond={(value: unknown) => respondToEmission(tracking.callId, emission.id, value)}
+                    disabled={emission.status !== 'pending'}
+                    response={emission.response}
+                  />
+                )
+              })}
             </div>
           ))}
 

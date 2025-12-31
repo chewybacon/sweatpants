@@ -60,12 +60,15 @@ import {
   type PendingUIRequest,
 } from './ui-requests'
 import {
-  createReactStepContext,
-  createExecutionTrail,
-  type PendingStep,
-  type ExecutionTrail,
-  type ClientStepContext,
-} from './step-context'
+  createRuntime,
+  type PendingEmission,
+  type RuntimeConfig,
+  COMPONENT_EMISSION_TYPE,
+} from './runtime/emissions'
+import {
+  createBrowserContext,
+  type BrowserRenderContext,
+} from './runtime/browser-context'
 
 // Re-export AuthorityMode for internal use
 export type { AuthorityMode }
@@ -332,7 +335,7 @@ export function* executeServerValidation(
  * @param patches - Channel to emit patches
  * @param approvalSignal - Signal for approval from React UI
  * @param uiRequestChannel - Optional channel for waitFor UI requests
- * @param stepChannel - Optional channel for step context (ctx.render pattern)
+ * @param emissionChannel - Optional channel for emissions (ctx.render pattern)
  */
 export function* executeClientPart(
   tool: AnyIsomorphicTool,
@@ -340,7 +343,7 @@ export function* executeClientPart(
   patches: Channel<ChatPatch, void>,
   approvalSignal: Signal<ApprovalSignalValue, void>,
   uiRequestChannel?: Channel<PendingUIRequest, void>,
-  stepChannel?: Channel<PendingStep, void>
+  emissionChannel?: Channel<PendingEmission, void>
 ): Operation<IsomorphicToolResult> {
   const abortSignal = yield* useAbortSignal()
   const { callId, params, serverOutput, authority } = handoff
@@ -410,23 +413,35 @@ export function* executeClientPart(
     uiRequestChannel
   )
 
-  // If step channel is provided, create step context that wraps base context
-  // This enables ctx.render(), ctx.emit(), ctx.prompt(), ctx.show()
-  let executionContext: BaseToolContext | ClientStepContext = baseContext
-  let trail: ExecutionTrail | undefined
+  // If emission channel is provided, create browser context with render() support
+  let executionContext: BaseToolContext | BrowserRenderContext = baseContext
 
-  if (stepChannel) {
-    trail = createExecutionTrail(callId, tool.name)
-    executionContext = createReactStepContext({
+  if (emissionChannel) {
+    // Create runtime with emission channel for React integration
+    const runtimeConfig: RuntimeConfig = {
+      handlers: {
+        // Component emissions are handled via the channel, not inline handlers
+        [COMPONENT_EMISSION_TYPE]: () => {
+          // No-op - response comes from channel consumer
+        },
+      },
+      emissionChannel,
+      fallback: 'error',
+    }
+
+    const runtime = createRuntime(runtimeConfig, callId)
+
+    executionContext = createBrowserContext({
+      runtime,
       callId,
-      trail,
-      stepChannel,
+      toolName: tool.name,
       baseContext,
+      signal: abortSignal,
     })
 
-    // Emit trail_start patch so UI knows a step-enabled tool is running
+    // Emit tool_emission_start patch so UI knows an emission-enabled tool is running
     yield* patches.send({
-      type: 'execution_trail_start',
+      type: 'tool_emission_start',
       callId,
       toolName: tool.name,
     } as ChatPatch)
@@ -647,18 +662,18 @@ function getApprovalMessage(
  * @param patches - Channel to emit patches
  * @param approvalSignal - Signal for approval from React UI
  * @param uiRequestChannel - Optional channel for waitFor UI requests
- * @param stepChannel - Optional channel for step context (ctx.render pattern)
+ * @param emissionChannel - Optional channel for emissions (ctx.render pattern)
  */
 export function* executeIsomorphicToolsClient(
   handoffs: Array<{ tool: AnyIsomorphicTool; handoff: IsomorphicHandoffEvent }>,
   patches: Channel<ChatPatch, void>,
   approvalSignal: Signal<ApprovalSignalValue, void>,
   uiRequestChannel?: Channel<PendingUIRequest, void>,
-  stepChannel?: Channel<PendingStep, void>
+  emissionChannel?: Channel<PendingEmission, void>
 ): Operation<IsomorphicToolResult[]> {
   return yield* all(
     handoffs.map(({ tool, handoff }) =>
-      executeClientPart(tool, handoff, patches, approvalSignal, uiRequestChannel, stepChannel)
+      executeClientPart(tool, handoff, patches, approvalSignal, uiRequestChannel, emissionChannel)
     )
   )
 }
@@ -693,10 +708,10 @@ export interface ReactHandlerExecutionOptions {
    */
   uiRequestChannel?: Channel<PendingUIRequest, void>
   /**
-   * Channel for step context (ctx.render pattern).
-   * When provided, tools can use ctx.render(), ctx.emit(), ctx.prompt(), ctx.show().
+   * Channel for emissions (ctx.render pattern).
+   * When provided, tools can use ctx.render() to render React components.
    */
-  stepChannel?: Channel<PendingStep, void>
+  emissionChannel?: Channel<PendingEmission, void>
 }
 
 /**
@@ -800,7 +815,7 @@ function* executeViaReactHandler(
 export function* executeIsomorphicToolsClientWithReactHandlers(
   options: ReactHandlerExecutionOptions
 ): Operation<IsomorphicToolResult[]> {
-  const { handoffs, patches, approvalSignal, reactHandlers, handoffResponseSignal, uiRequestChannel, stepChannel } = options
+  const { handoffs, patches, approvalSignal, reactHandlers, handoffResponseSignal, uiRequestChannel, emissionChannel } = options
 
   return yield* all(
     handoffs.map(({ tool, handoff }) => {
@@ -808,8 +823,8 @@ export function* executeIsomorphicToolsClientWithReactHandlers(
       if (reactHandlers?.has(tool.name) && handoffResponseSignal) {
         return executeViaReactHandler(tool, handoff, patches, handoffResponseSignal)
       }
-      // Fall back to normal *client() execution with optional waitFor and step context support
-      return executeClientPart(tool, handoff, patches, approvalSignal, uiRequestChannel, stepChannel)
+      // Fall back to normal *client() execution with optional waitFor and emission support
+      return executeClientPart(tool, handoff, patches, approvalSignal, uiRequestChannel, emissionChannel)
     })
   )
 }

@@ -7,6 +7,7 @@
 
 import { calculator } from '../tools/calculator'
 import { askQuestion } from '../tools/general/ask_question'
+import { pickCard } from '../tools/pick-card'
 
 /**
  * All discovered tools as a const object.
@@ -15,6 +16,7 @@ import { askQuestion } from '../tools/general/ask_question'
 export const tools = {
   calculator,
   askQuestion,
+  pickCard,
 } as const
 
 /**
@@ -28,6 +30,7 @@ export const toolList = Object.values(tools)
 export type ToolName =
   | 'calculator'
   | 'general/ask_question'
+  | 'pick_card'
 
 /**
  * Get a tool by name (type-safe).
