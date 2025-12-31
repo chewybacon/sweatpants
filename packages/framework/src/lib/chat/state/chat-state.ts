@@ -12,7 +12,11 @@ import type {
   RevealHint,
 } from '../core-types'
 import type { PendingHandoffState } from '../patches/handoff'
+import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission'
 import type { TimelineItem } from './timeline'
+
+// Re-export emission types for convenience
+export type { ToolEmissionState, ToolEmissionTrackingState }
 
 // =============================================================================
 // RESPONSE STEPS
@@ -202,6 +206,14 @@ export interface ChatState {
 
   /** Active execution trails for tools using ctx.render() pattern */
   executionTrails: Record<string, ExecutionTrailState>
+
+  /**
+   * Active tool emissions from ctx.render() pattern.
+   * Keyed by tool call ID.
+   * 
+   * When a tool completes, emissions collapse into a trace in the tool message.
+   */
+  toolEmissions: Record<string, ToolEmissionTrackingState>
 }
 
 /**
@@ -230,4 +242,5 @@ export const initialChatState: ChatState = {
   pendingHandoffs: {},
   pendingSteps: {},
   executionTrails: {},
+  toolEmissions: {},
 }

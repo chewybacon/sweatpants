@@ -63,11 +63,23 @@ export type {
   ExecutionTrailPatch,
 } from './handoff'
 
+export type {
+  // Emission patches (new ctx.render() pattern)
+  ToolEmissionState,
+  ToolEmissionTrackingState,
+  ToolEmissionStartPatch,
+  ToolEmissionPatch,
+  ToolEmissionResponsePatch,
+  ToolEmissionCompletePatch,
+  EmissionPatch,
+} from './emission'
+
 // Import for union type construction
 import type { CorePatch } from './base'
 import type { BufferPatch } from './buffer'
 import type { ClientToolPatch, IsomorphicToolPatch } from './tool'
 import type { HandoffPatch, ExecutionTrailPatch } from './handoff'
+import type { EmissionPatch } from './emission'
 
 /**
  * All chat patches - the complete union of all patch types.
@@ -78,7 +90,8 @@ import type { HandoffPatch, ExecutionTrailPatch } from './handoff'
  * - ClientToolPatch: Browser-side tool execution
  * - IsomorphicToolPatch: Server+client tool state
  * - HandoffPatch: Tool handoff to React UI
- * - ExecutionTrailPatch: ctx.render() pattern steps
+ * - ExecutionTrailPatch: ctx.render() pattern steps (legacy)
+ * - EmissionPatch: Tool emissions (new ctx.render() pattern)
  */
 export type ChatPatch =
   | CorePatch
@@ -87,6 +100,7 @@ export type ChatPatch =
   | IsomorphicToolPatch
   | HandoffPatch
   | ExecutionTrailPatch
+  | EmissionPatch
 
 // =============================================================================
 // TYPE GUARDS
@@ -163,5 +177,17 @@ export function isExecutionTrailPatch(patch: ChatPatch): patch is ExecutionTrail
     'execution_trail_step',
     'execution_trail_complete',
     'execution_trail_step_response',
+  ].includes(patch.type)
+}
+
+/**
+ * Check if a patch is an emission patch.
+ */
+export function isEmissionPatch(patch: ChatPatch): patch is EmissionPatch {
+  return [
+    'tool_emission_start',
+    'tool_emission',
+    'tool_emission_response',
+    'tool_emission_complete',
   ].includes(patch.type)
 }

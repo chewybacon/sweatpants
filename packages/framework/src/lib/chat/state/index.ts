@@ -27,6 +27,9 @@ export type {
   PendingStepState,
   ExecutionTrailState,
   ChatState,
+  // New emission types
+  ToolEmissionState,
+  ToolEmissionTrackingState,
 } from './chat-state'
 
 export { initialChatState } from './chat-state'

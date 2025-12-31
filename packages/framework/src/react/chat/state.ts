@@ -1,7 +1,7 @@
-import type { ChatState, ChatPatch, ResponseStep, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState } from './types'
+import type { ChatState, ChatPatch, ResponseStep, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState, ToolEmissionState, ToolEmissionTrackingState } from './types'
 import { initialChatState as initialChatStateBase } from './types'
 
-export type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState }
+export type { ChatState, PendingClientToolState, PendingHandoffState, PendingStepState, ExecutionTrailState, ToolEmissionState, ToolEmissionTrackingState }
 
 export const initialChatState = initialChatStateBase
 
@@ -556,6 +556,108 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           },
         },
         pendingSteps: remainingPendingSteps,
+      }
+    }
+
+    // --- Tool Emission Patches (new ctx.render() pattern) ---
+
+    case 'tool_emission_start': {
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            callId: patch.callId,
+            toolName: patch.toolName,
+            emissions: [],
+            status: 'running',
+            startedAt: Date.now(),
+          },
+        },
+      }
+    }
+
+    case 'tool_emission': {
+      const tracking = state.toolEmissions[patch.callId]
+      
+      // Build the emission state, only including respond if defined
+      const newEmission: ToolEmissionState = {
+        ...patch.emission,
+        callId: patch.callId,
+        toolName: tracking?.toolName ?? '',
+      }
+      if (patch.respond) {
+        newEmission.respond = patch.respond
+      }
+      
+      if (!tracking) {
+        // Auto-create tracking if not started explicitly
+        return {
+          ...state,
+          toolEmissions: {
+            ...state.toolEmissions,
+            [patch.callId]: {
+              callId: patch.callId,
+              toolName: '',
+              emissions: [newEmission],
+              status: 'running',
+              startedAt: Date.now(),
+            },
+          },
+        }
+      }
+
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            ...tracking,
+            emissions: [...tracking.emissions, newEmission],
+          },
+        },
+      }
+    }
+
+    case 'tool_emission_response': {
+      const tracking = state.toolEmissions[patch.callId]
+      if (!tracking) return state
+
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            ...tracking,
+            emissions: tracking.emissions.map((emission): ToolEmissionState => {
+              if (emission.id !== patch.emissionId) {
+                return emission
+              }
+              // Create completed emission without respond callback
+              const { respond: _respond, ...rest } = emission
+              return {
+                ...rest,
+                status: 'complete',
+                response: patch.response,
+              }
+            }),
+          },
+        },
+      }
+    }
+
+    case 'tool_emission_complete': {
+      const tracking = state.toolEmissions[patch.callId]
+      if (!tracking) return state
+
+      // Remove from active emissions
+      const { [patch.callId]: _completed, ...remainingEmissions } = state.toolEmissions
+
+      return {
+        ...state,
+        toolEmissions: remainingEmissions,
+        // Note: The trace should be included in the tool result message
+        // That's handled separately when the tool call completes
       }
     }
 
