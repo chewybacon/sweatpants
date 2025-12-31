@@ -503,23 +503,41 @@ export function createChatHandler(config: ChatHandlerConfig) {
                     clientResult.usesHandoff ?? false
                   )
 
+
+                  const content =
+                    typeof validatedResult === 'string'
+                      ? validatedResult
+                      : JSON.stringify(validatedResult)
+
+                  // For phase 2 tools, the client doesn't send the tool message
+                  // We need to ADD it here with the *after() result
+                  // First, check if the message already exists (backward compatibility)
+                  let found = false
                   for (const msg of conversationMessages) {
                     if (msg.role === 'tool' && msg.tool_call_id === clientResult.callId) {
-                      const content =
-                        typeof validatedResult === 'string'
-                          ? validatedResult
-                          : JSON.stringify(validatedResult)
                       msg.content = content
+                      found = true
 
-                      emit({
-                        type: 'tool_result',
-                        id: clientResult.callId,
-                        name: clientResult.toolName,
-                        content,
-                      })
                       break
                     }
                   }
+
+                  // If not found, add the tool message
+                  if (!found) {
+
+                    conversationMessages.push({
+                      role: 'tool',
+                      tool_call_id: clientResult.callId,
+                      content,
+                    })
+                  }
+
+                  emit({
+                    type: 'tool_result',
+                    id: clientResult.callId,
+                    name: clientResult.toolName,
+                    content,
+                  })
                 } catch (error) {
                   emit({
                     type: 'tool_error',
@@ -538,6 +556,8 @@ export function createChatHandler(config: ChatHandlerConfig) {
                 content: systemPrompt,
               })
             }
+
+
 
             const combinedTools = toolSchemas.length > 0 ? { isomorphicToolSchemas: toolSchemas as any } : undefined
 

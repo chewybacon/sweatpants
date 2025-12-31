@@ -437,23 +437,29 @@ export function* runChatSession(
                  for (let i = 0; i < isomorphicResults.length; i++) {
                    const isoResult = isomorphicResults[i]!
                    const handoff = result.handoffs[i]!
-
-                   // Add the tool message for this result
-                   conversationMessages.push(formatIsomorphicToolResult(isoResult))
                   
-                  // Determine if we need server phase 2
+                   // Determine if we need server phase 2
                   const needsPhase2 = handoff.authority === 'client' || handoff.usesHandoff === true
                   
-                  if (needsPhase2 && isoResult.ok && isoResult.clientOutput !== undefined) {
-                     isomorphicClientOutputs.push({
-                       callId: isoResult.callId,
-                       toolName: isoResult.toolName,
-                       params: handoff.params,
-                       clientOutput: isoResult.clientOutput,
-                       // For V7 handoff: pass the cached handoff data (serverOutput from phase 1)
-                       cachedHandoff: handoff.usesHandoff ? handoff.serverOutput : undefined,
-                       ...(handoff.usesHandoff !== undefined && { usesHandoff: handoff.usesHandoff }),
-                     })
+                  if (needsPhase2) {
+                    // For phase 2 tools, DON'T add the tool message here.
+                    // The server will add the proper result after running *after().
+                    // We just need to send the client output for the server to process.
+                    if (isoResult.ok && isoResult.clientOutput !== undefined) {
+                      isomorphicClientOutputs.push({
+                        callId: isoResult.callId,
+                        toolName: isoResult.toolName,
+                        params: handoff.params,
+                        clientOutput: isoResult.clientOutput,
+                        // For V7 handoff: pass the cached handoff data (serverOutput from phase 1)
+                        cachedHandoff: handoff.usesHandoff ? handoff.serverOutput : undefined,
+                        usesHandoff: handoff.usesHandoff ?? false,
+                      })
+                    }
+                  } else {
+                    // For non-phase-2 tools (server authority without handoff),
+                    // the result is already final - add the tool message
+                    conversationMessages.push(formatIsomorphicToolResult(isoResult))
                   }
                 }
                 // Update current messages for re-initiation

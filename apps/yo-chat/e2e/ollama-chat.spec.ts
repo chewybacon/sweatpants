@@ -174,4 +174,124 @@ test.describe('Ollama tool calling', () => {
       expect(responseText).toBeTruthy()
     }
   })
+
+  test('pick_card tool: LLM response reflects the card user picked', async ({ page }) => {
+    /**
+     * This test verifies the complete pick_card flow:
+     * 
+     * 1. User asks to pick a card
+     * 2. Server runs *before() - draws random cards
+     * 3. Client renders CardPicker via ctx.render()
+     * 4. User clicks a specific card (e.g., "5♥")
+     * 5. Client returns { picked: card } from *client()
+     * 6. Server runs *after(handoff, clientOutput) - returns "You selected the 5 of Hearts!"
+     * 7. LLM sees the *after() result and responds accordingly
+     * 8. LLM's final message should acknowledge the SELECTION, not just list the cards
+     * 
+     * This tests that the handoff pattern works correctly end-to-end.
+     */
+    
+    const input = page.getByPlaceholder('Type a message...')
+    await input.fill('Use pick_card with count=3. After I pick, tell me which card I chose.')
+    
+    await page.getByRole('button', { name: 'Send' }).click()
+    
+    // Wait for card picker to appear
+    const cardButton = page.locator('button').filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ }).first()
+    await expect(cardButton).toBeVisible({ timeout: 60000 })
+    
+    // Remember which card we're clicking
+    const cardText = await cardButton.textContent()
+    console.log(`Clicking card: ${cardText}`)
+    
+    // Click the card
+    await cardButton.click()
+    
+    // Wait for the "You picked:" confirmation in the CardPicker component
+    await expect(page.getByText(/You picked:/)).toBeVisible({ timeout: 15000 })
+    
+    // Now wait for the LLM to respond with a message about the card we picked
+    // The streaming should complete
+    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+    
+    // The final assistant message should mention the card we picked
+    // Get the last .prose element which is the final assistant response
+    const assistantMessages = page.locator('.prose').last()
+    const finalResponse = await assistantMessages.textContent()
+    
+    console.log(`Final LLM response: ${finalResponse?.slice(0, 500)}`)
+    
+    // The LLM should acknowledge the selection, not just list cards
+    // The *after() returns: { message: "You selected the ${rank} of ${suit}!", ... }
+    // The LLM sees this result and should respond with something like:
+    // "You chose the 6 of Diamonds" or "You picked the 6 of Diamonds"
+    
+    // The final response from LLM
+    const cleanResponse = finalResponse?.trim()
+    console.log(`LLM response: ${cleanResponse?.slice(0, 200)}`)
+    
+    // CRITICAL: The response should indicate a SELECTION was made
+    // Not just list the available cards (which is what *before() returns)
+    // AND should NOT be prompting for a selection
+    const positiveIndicators = ['selected', 'chose', 'picked', 'your choice', 'chosen']
+    const negativeIndicators = ['please pick', 'pick one', 'choose one', 'which card', 'please choose']
+    
+    const hasPositive = positiveIndicators.some(
+      indicator => cleanResponse?.toLowerCase().includes(indicator)
+    )
+    const hasNegative = negativeIndicators.some(
+      indicator => cleanResponse?.toLowerCase().includes(indicator)
+    )
+    
+    // Must have positive indicators AND no negative prompts
+    const hasSelectionLanguage = hasPositive && !hasNegative
+    
+    console.log(`Has selection language: ${hasSelectionLanguage}`)
+    
+    // This assertion should FAIL until we fix the bug
+    // Currently the LLM only sees the *before() result (card list)
+    // not the *after() result (selection confirmation)
+    expect(hasSelectionLanguage).toBe(true)
+  })
+
+  test('pick_card tool: CardPicker appears inline in chat timeline', async ({ page }) => {
+    /**
+     * This test verifies that the CardPicker component appears in the 
+     * correct position in the chat timeline:
+     * 
+     * Expected order:
+     * 1. User message: "Use pick_card..."
+     * 2. Assistant thinking/streaming indicator
+     * 3. CardPicker component (interactive)
+     * 4. After picking: Assistant's final response
+     * 
+     * The CardPicker should NOT appear in a separate area - it should
+     * be part of the natural conversation flow.
+     */
+    
+    const input = page.getByPlaceholder('Type a message...')
+    await input.fill('Use pick_card with count=3')
+    
+    await page.getByRole('button', { name: 'Send' }).click()
+    
+    // Wait for card picker
+    const cardPicker = page.locator('button').filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ }).first()
+    await expect(cardPicker).toBeVisible({ timeout: 60000 })
+    
+    // The card picker should appear AFTER the user message
+    // Check the DOM order: user message should come before card picker
+    const userMessage = page.getByText('Use pick_card with count=3')
+    
+    // Get bounding boxes to verify visual order
+    const userMessageBox = await userMessage.boundingBox()
+    const cardPickerBox = await cardPicker.boundingBox()
+    
+    expect(userMessageBox).toBeTruthy()
+    expect(cardPickerBox).toBeTruthy()
+    
+    // Card picker should be below user message (higher Y coordinate)
+    expect(cardPickerBox!.y).toBeGreaterThan(userMessageBox!.y)
+    
+    console.log('CardPicker appears inline after user message ✓')
+  })
 })
