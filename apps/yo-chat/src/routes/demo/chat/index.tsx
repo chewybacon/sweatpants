@@ -10,9 +10,9 @@
  * Uses the high-level useChat hook with pipeline configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect, type ComponentType } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useChat } from '@tanstack/framework/react/chat'
-import type { RenderableProps } from '@tanstack/framework/chat/isomorphic-tools'
+import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: PipelineChatDemo,
@@ -34,7 +34,10 @@ function PipelineChatDemo() {
   } = useChat({
     // Use the new Frame-based pipeline system
     // 'full' = markdown + shiki + mermaid
-    pipeline: 'full'
+    pipeline: 'full',
+    // Explicitly pass the tools you want to enable
+    // Only these tools will be available to the LLM
+    tools: [tools.pickCard, tools.calculator],
   })
 
   const [input, setInput] = useState('')

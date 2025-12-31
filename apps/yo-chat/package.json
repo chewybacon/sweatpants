@@ -9,6 +9,8 @@
     "build:server": "esbuild express-server.ts --bundle --platform=node --format=esm --outfile=dist/express-server.js --packages=external --external:./server/*",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "deploy": "vite build",
     "server": "node dist/express-server.js",
     "server:dev": "tsx express-server.ts"
@@ -21,6 +23,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@t3-oss/env-core": "catalog:",
     "@tailwindcss/vite": "catalog:",
+    "@tanstack/framework": "workspace:*",
     "@tanstack/react-devtools": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-devtools": "catalog:",
@@ -28,7 +31,6 @@
     "@tanstack/react-start": "catalog:",
     "@tanstack/router-plugin": "catalog:",
     "@tanstack/start-env": "workspace:*",
-    "@tanstack/framework": "workspace:*",
     "@types/katex": "^0.16.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -53,9 +55,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@tanstack/ts-config": "workspace:*",
+    "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "0.5.0-alpha.3",
     "@tanstack/devtools-vite": "catalog:",
+    "@tanstack/ts-config": "workspace:*",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/compression": "catalog:",

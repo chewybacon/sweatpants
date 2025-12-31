@@ -74,7 +74,7 @@ import type {
   ApiMessage,
 } from './types'
 import type { ApprovalSignalValue } from './tool-runtime'
-import type { IsomorphicToolRegistry, ToolHandlerRegistry, PendingUIRequest } from '../../lib/chat/isomorphic-tools'
+import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../../lib/chat/isomorphic-tools'
 import type { PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions'
 
 import {
@@ -82,6 +82,7 @@ import {
   executeIsomorphicToolsClientWithReactHandlers,
   formatIsomorphicToolResult,
   createUIRequestChannel,
+  createIsomorphicToolRegistry,
 } from '../../lib/chat/isomorphic-tools'
 
 /** Default streamer - uses fetch to call the chat API */
@@ -99,15 +100,6 @@ export interface HandoffResponseSignalValue {
  * Extended session options with isomorphic tool support.
  */
 export interface ClientToolSessionOptions extends SessionOptions {
-  /**
-   * Registry of isomorphic tools.
-   *
-   * These tools have both server and client parts. The server executes
-   * its part and sends a handoff event. The session then executes the
-   * client part and merges the results.
-   */
-  isomorphicTools?: IsomorphicToolRegistry
-
   /**
    * Signal for receiving approval/denial from React UI.
    */
@@ -160,6 +152,11 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
     const patches = createChannel<ChatPatch, void>()
     const stateSignal = createSignal<ChatState, void>()
 
+    // Build tool registry from provided tools
+    const toolsRegistry = options.tools?.length
+      ? createIsomorphicToolRegistry(options.tools as AnyIsomorphicTool[])
+      : undefined
+
     // Provide contexts from options (if specified)
     // This allows callers to configure via options OR via parent context
     if (options.baseUrl) {
@@ -168,8 +165,8 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
     if (options.streamer) {
       yield* StreamerContext.set(options.streamer)
     }
-    if (options.isomorphicTools) {
-      yield* ToolRegistryContext.set(options.isomorphicTools)
+    if (toolsRegistry) {
+      yield* ToolRegistryContext.set(toolsRegistry)
     }
 
     // Spawn the core session logic (commands -> patches)
@@ -267,15 +264,13 @@ export function* runChatSession(
                options.transforms ?? []
              )
 
-            // Get isomorphic tools registry from context or options
-            // Context takes precedence, options is fallback for backwards compatibility
-            const contextRegistry = yield* ToolRegistryContext.get()
-            const isomorphicToolsRegistry = contextRegistry ?? options.isomorphicTools
+            // Get isomorphic tools registry from context (set from options.tools above)
+            const isomorphicToolsRegistry = yield* ToolRegistryContext.get()
 
             // Build isomorphic tool schemas (excluding disabled tools)
             const isomorphicToolSchemas = isomorphicToolsRegistry
               ? isomorphicToolsRegistry.toToolSchemas().filter(
-                  (schema) => !disabledToolNames.has(schema.name)
+                  (schema: { name: string }) => !disabledToolNames.has(schema.name)
                 )
               : undefined
 

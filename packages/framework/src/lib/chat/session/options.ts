@@ -67,6 +67,23 @@ export interface SessionOptions {
   baseUrl?: string
 
   /**
+   * Tools to enable for this session.
+   *
+   * Import tools directly and pass them here:
+   * ```typescript
+   * import { pickCard, calculator } from '@/__generated__/tool-registry.gen'
+   *
+   * useChat({
+   *   tools: [pickCard, calculator],
+   * })
+   * ```
+   *
+   * Only these tools will be available to the LLM.
+   */
+  tools?: unknown[] // Will be typed as AnyIsomorphicTool[] in the hooks
+
+  /**
+   * @deprecated Use `tools` instead.
    * Tools to enable (manual mode).
    * Can be an array of tool names or `true` to enable all.
    */
@@ -80,7 +97,7 @@ export interface SessionOptions {
 
   /**
    * Persona name (persona mode).
-   * Mutually exclusive with enabledTools.
+   * Mutually exclusive with tools/enabledTools.
    */
   persona?: string
 

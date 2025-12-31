@@ -27,7 +27,10 @@ export function toolDiscoveryPlugin(
 ): Plugin {
   const options = resolveToolDiscoveryOptions(userOptions)
   let root: string
-  const usedNames = new Set<string>()
+  // Track which files have been transformed (for duplicate detection in build mode)
+  // Note: In dev mode (HMR), the same file may be transformed multiple times,
+  // which is expected. We track by file+name to allow re-transforms of the same file.
+  const transformedTools = new Map<string, string>() // file -> toolName
 
   return {
     name: '@tanstack/framework:tool-discovery',
@@ -37,6 +40,8 @@ export function toolDiscoveryPlugin(
     },
 
     async buildStart() {
+      // Clear tracking on build start (fresh build)
+      transformedTools.clear()
       await generateRegistry(root, options)
     },
 
@@ -72,11 +77,13 @@ export function toolDiscoveryPlugin(
               const originalName = node.arguments[0].value
               const uniqueName = generateUniqueName(id, originalName, join(root, options.dir))
 
-              // Check for conflicts
-              if (usedNames.has(uniqueName)) {
-                throw new Error(`Duplicate tool name detected: '${uniqueName}' (from ${id})`)
+              // Check for conflicts with DIFFERENT files only
+              // Allow same file to be transformed multiple times (HMR)
+              const existingFile = transformedTools.get(uniqueName)
+              if (existingFile && existingFile !== id) {
+                throw new Error(`Duplicate tool name detected: '${uniqueName}' (from ${id}, conflicts with ${existingFile})`)
               }
-              usedNames.add(uniqueName)
+              transformedTools.set(uniqueName, id)
 
               // Replace the string literal
               node.arguments[0] = t.stringLiteral(uniqueName)

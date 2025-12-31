@@ -8,7 +8,6 @@ import { z } from 'zod'
 import type { Operation } from 'effection'
 import { HandoffReadyError } from '../lib/chat/isomorphic-tools/types'
 import { validateToolParams } from '../lib/chat/utils'
-import { toolRuntime, withToolLoggingAndErrors } from '../lib/chat/tool-runtime-api'
 import { ChatStreamConfigContext, ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../lib/chat/providers/contexts'
 import type {
   ChatHandlerConfig,
@@ -101,15 +100,11 @@ function* executeServerPart(
   params: unknown,
   signal: AbortSignal
 ): Operation<ServerPartResult> {
-  // Apply extensible tool runtime middleware
-  yield* withToolLoggingAndErrors()
-
   const baseContext: ServerToolContext = { callId, signal }
   const authority = tool.authority ?? 'server'
 
-  // Use extensible validation
-  yield* toolRuntime.operations.validateToolParams(tool, params)
-  const validatedParams = params // Validation is now handled by middleware
+  // Validate params using the tool's schema
+  const validatedParams = validateToolParams(tool, params)
 
   // For client authority, we don't execute server code yet
   if (authority === 'client') {
@@ -137,19 +132,8 @@ function* executeServerPart(
   const phase1Context = createPhase1Context(baseContext)
 
   try {
-    // Execute tool through extensible API (provides middleware)
-    yield* toolRuntime.operations.executeTool(tool, validatedParams)
-
-    // Execute the actual server function (complex logic preserved)
+    // Execute the server function
     const serverOutput = yield* tool.server(validatedParams, phase1Context)
-
-    // Log successful execution through extensible API
-    yield* toolRuntime.operations.logToolExecution(tool, validatedParams, {
-      callId,
-      toolName: tool.name,
-      ok: true,
-      content: 'Tool executed successfully'
-    })
 
     // If we get here, the tool completed without calling handoff()
     if (!tool.client) {
@@ -188,9 +172,8 @@ function* executeServerPart(
       }
     }
 
-    // Use extensible error handling
-    const errorResult = yield* toolRuntime.operations.handleToolError(tool, e as Error, validatedParams)
-    throw errorResult
+    // Re-throw the error to be handled by the caller
+    throw e
   }
 }
 
@@ -406,9 +389,29 @@ export function createChatHandler(config: ChatHandlerConfig) {
               }
             } else {
               // Manual Mode
-              if (enabledTools === true) {
-                for (const name of registry.names()) {
+              // The client sends isomorphicTools schemas for tools it wants to use.
+              // These are the ONLY tools that will be enabled.
+              // The server registry is used to look up server implementations.
+              
+              // Enable tools that:
+              // 1. Client requested (in clientToolNames from isomorphicTools schemas)
+              // 2. Have a server implementation in the registry
+              for (const name of clientToolNames) {
+                if (registry.has(name)) {
                   enabledToolNames.add(name)
+                }
+              }
+
+              // Legacy support: if enabledTools is provided (deprecated), merge them
+              // But only enable tools that exist in the registry
+              if (enabledTools === true) {
+                // Enable all server-only tools (tools without client functions)
+                // These don't need client registration
+                for (const name of registry.names()) {
+                  const tool = registry.get(name)
+                  if (tool && !tool.client) {
+                    enabledToolNames.add(name)
+                  }
                 }
               } else if (Array.isArray(enabledTools) && enabledTools.length > 0) {
                 for (const name of enabledTools) {
@@ -427,9 +430,7 @@ export function createChatHandler(config: ChatHandlerConfig) {
                 capabilities: {
                   thinking: true,
                   streaming: true,
-                  tools: Array.from(
-                    new Set([...Array.from(enabledToolNames), ...clientToolNames])
-                  ),
+                  tools: Array.from(enabledToolNames),
                 },
                 persona: null,
               }

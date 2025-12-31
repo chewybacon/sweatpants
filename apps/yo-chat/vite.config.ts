@@ -71,6 +71,11 @@ const config = defineConfig({
     rollupOptions: {
       external: ['marked', 'shiki', 'katex', 'mermaid']
     }
+  },
+
+  test: {
+    // Exclude Playwright e2e tests from Vitest
+    exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
   }
 })
 

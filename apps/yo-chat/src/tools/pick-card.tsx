@@ -134,6 +134,7 @@ export const pickCard = createIsomorphicTool('pick_card')
   )
   .context('browser')
   .authority('server')
+  .approval({ client: 'none' }) // Skip approval for demo - the card picker IS the user interaction
   .handoff({
     /**
      * Server draws random cards.
