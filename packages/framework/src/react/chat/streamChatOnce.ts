@@ -45,6 +45,8 @@ export interface StreamChatOptions extends SessionOptions {
     toolName: string
     params: unknown
     clientOutput: unknown
+    cachedHandoff?: unknown
+    usesHandoff?: boolean
   }>
 }
 
