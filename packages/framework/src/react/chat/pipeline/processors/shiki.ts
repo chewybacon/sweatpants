@@ -14,7 +14,7 @@ import { call } from 'effection'
 import type { Frame, Processor } from '../types'
 import {
   updateBlockById,
-  setBlockHtml,
+  setBlockRendered,
   addTrace,
 } from '../frame'
 import {
@@ -179,10 +179,10 @@ export const shiki: Processor = {
         // Streaming: apply quick highlighting
         if (block.renderPass === 'none' || block.renderPass === 'quick') {
           const highlighted = quickHighlight(block.raw, block.language || '')
-          const html = wrapCodeBlock(highlighted, block.language || '', true)
+          const rendered = wrapCodeBlock(highlighted, block.language || '', true)
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockHtml(b, html, 'quick')
+            setBlockRendered(b, rendered, 'quick')
           )
 
           if (block.renderPass === 'none') {
@@ -197,11 +197,11 @@ export const shiki: Processor = {
         // Complete: apply full Shiki highlighting if not already done
         if (block.renderPass !== 'full') {
           const startTime = Date.now()
-          const html = yield* highlightCode(block.raw, block.language || '')
+          const rendered = yield* highlightCode(block.raw, block.language || '')
           const durationMs = Date.now() - startTime
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockHtml(b, html, 'full')
+            setBlockRendered(b, rendered, 'full')
           )
           currentFrame = addTrace(currentFrame, 'shiki', 'update', {
             blockId: block.id,

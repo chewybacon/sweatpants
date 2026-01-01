@@ -393,6 +393,9 @@ importers:
       '@effectionx/jsonl-store':
         specifier: ^0.3.1
         version: 0.3.1
+      '@shikijs/cli':
+        specifier: ^3.20.0
+        version: 3.20.0
       '@tanstack/framework':
         specifier: workspace:*
         version: file:packages/framework(@effectionx/context-api@0.2.1)(@effectionx/raf@0.1.1)(effection@4.0.0)(katex@0.16.27)(marked@17.0.1)(mermaid@11.12.2)(react@19.2.1)(shiki@3.20.0)(tailwind-merge@3.4.0)(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0))(zod@4.1.13)
@@ -414,9 +417,15 @@ importers:
       ink-text-input:
         specifier: ^6.0.0
         version: 6.0.0(ink@6.6.0(@types/react@19.2.7)(react@19.2.1))(react@19.2.1)
+      marked:
+        specifier: ^17.0.1
+        version: 17.0.1
       react:
         specifier: 'catalog:'
         version: 19.2.1
+      shiki:
+        specifier: ^3.20.0
+        version: 3.20.0
       zod:
         specifier: 'catalog:'
         version: 4.1.13
@@ -2335,6 +2344,10 @@ packages:
     resolution: {integrity: sha512-UhTd8u31dXadv0MopwGgNOBpUVROFKWVQgAg5N1ESyCz8AuBcMqm4AuTjrwgQKGDfoFuz02EuMRHQIw/frmYKQ==}
     cpu: [x64]
     os: [win32]
+
+  '@shikijs/cli@3.20.0':
+    resolution: {integrity: sha512-1sBQ4PY5rZmE2KSl1DDTTFN85qxc2fc83gho4hifXQTWxAPCRxIjP3nAh+Bv8HElATII9EJI17B3yriDOKPdzQ==}
+    hasBin: true
 
   '@shikijs/core@3.20.0':
     resolution: {integrity: sha512-f2ED7HYV4JEk827mtMDwe/yQ25pRiXZmtHjWF8uzZKuKiEsJR7Ce1nuQ+HhV9FzDcbIo4ObBCD9GPTzNuy9S1g==}
@@ -7321,6 +7334,13 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.53.3':
     optional: true
+
+  '@shikijs/cli@3.20.0':
+    dependencies:
+      '@shikijs/vscode-textmate': 10.0.2
+      ansis: 4.2.0
+      cac: 6.7.14
+      shiki: 3.20.0
 
   '@shikijs/core@3.20.0':
     dependencies:

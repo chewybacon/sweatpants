@@ -13,7 +13,7 @@ import { marked } from 'marked'
 import type { Frame, Processor } from '../types'
 import {
   updateBlockById,
-  setBlockHtml,
+  setBlockRendered,
   addTrace,
 } from '../frame'
 import { registerBuiltinProcessor } from '../resolver'
@@ -83,10 +83,10 @@ export const markdown: Processor = {
           (block.status === 'streaming' && block.raw.length > 0)
 
         if (shouldRender) {
-          const html = marked.parse(block.raw, { async: false }) as string
+          const rendered = marked.parse(block.raw, { async: false }) as string
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockHtml(b, html, 'quick')
+            setBlockRendered(b, rendered, 'quick')
           )
 
           if (block.renderPass === 'none') {
@@ -100,10 +100,10 @@ export const markdown: Processor = {
       } else if (block.type === 'code') {
         // For code blocks, provide basic escaping
         if (block.renderPass === 'none') {
-          const html = wrapCodeBlock(block.raw, block.language || '')
+          const rendered = wrapCodeBlock(block.raw, block.language || '')
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockHtml(b, html, 'quick')
+            setBlockRendered(b, rendered, 'quick')
           )
           currentFrame = addTrace(currentFrame, 'markdown', 'update', {
             blockId: block.id,
@@ -111,12 +111,12 @@ export const markdown: Processor = {
           })
           changed = true
         } else if (block.status === 'streaming') {
-          // Code block is still streaming - update the escaped HTML
-          const html = wrapCodeBlock(block.raw, block.language || '')
+          // Code block is still streaming - update the escaped output
+          const rendered = wrapCodeBlock(block.raw, block.language || '')
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) => ({
             ...b,
-            html,
+            rendered,
             // Keep the same renderPass
           }))
           changed = true

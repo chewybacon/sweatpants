@@ -13,7 +13,7 @@ import type { Operation } from 'effection'
 import type { Frame, Processor } from '../types'
 import {
   updateBlockById,
-  setBlockHtml,
+  setBlockRendered,
   addTrace,
 } from '../frame'
 import {
@@ -149,10 +149,10 @@ export const mermaid: Processor = {
         // Streaming: apply quick highlighting
         if (block.renderPass === 'none' || block.renderPass === 'quick') {
           const highlighted = quickHighlightMermaid(block.raw)
-          const html = wrapCodeBlock(highlighted, true)
+          const rendered = wrapCodeBlock(highlighted, true)
 
           currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-            setBlockHtml(b, html, 'quick')
+            setBlockRendered(b, rendered, 'quick')
           )
 
           if (block.renderPass === 'none') {
@@ -172,7 +172,7 @@ export const mermaid: Processor = {
 
           if (result.success) {
             currentFrame = updateBlockById(currentFrame, block.id, (b) =>
-              setBlockHtml(b, result.svg, 'full')
+              setBlockRendered(b, result.svg, 'full')
             )
             currentFrame = addTrace(currentFrame, 'mermaid', 'update', {
               blockId: block.id,

@@ -23,7 +23,7 @@ describe('Pipeline Preset Validation', () => {
       })
 
       expect(frame.blocks.length).toBeGreaterThan(0)
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<h1') // markdown processed
     })
 
@@ -46,7 +46,7 @@ describe('Pipeline Preset Validation', () => {
         return yield* runPipeline(content, { processors: 'markdown' })
       })
 
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<ul') // unordered list
     })
 
@@ -57,7 +57,7 @@ describe('Pipeline Preset Validation', () => {
         return yield* runPipeline(content, { processors: 'markdown' })
       })
 
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<strong') // bold
       expect(html).toContain('<em') // italic
     })
@@ -69,7 +69,7 @@ describe('Pipeline Preset Validation', () => {
         return yield* runPipeline(content, { processors: 'markdown' })
       })
 
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<blockquote')
     })
 
@@ -80,7 +80,7 @@ describe('Pipeline Preset Validation', () => {
         return yield* runPipeline(content, { processors: 'markdown' })
       })
 
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<a') // link tag
     })
   })
@@ -122,7 +122,7 @@ def hello():
         return yield* runPipeline(content, { processors: 'full' })
       })
 
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<strong') // markdown processed
     })
 
@@ -147,7 +147,7 @@ def hello():
         return yield* runPipeline(content, { processors: 'markdown' })
       })
 
-      const html = frame.blocks.map((b) => b.html).join('')
+      const html = frame.blocks.map((b) => b.rendered).join('')
       expect(html).toContain('<h1') // markdown must be present
     })
 
@@ -178,7 +178,7 @@ def hello():
 
       expect(frames.length).toBeGreaterThan(0)
       const lastFrame = frames[frames.length - 1]
-      const html = lastFrame.blocks.map((b: any) => b.html).join('')
+      const html = lastFrame.blocks.map((b: any) => b.rendered).join('')
       expect(html).toContain('<h1') // markdown processed
     })
 

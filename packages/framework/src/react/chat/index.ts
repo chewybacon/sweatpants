@@ -71,7 +71,7 @@ export {
   updateBlock,
   appendToBlock,
   completeBlock,
-  setBlockHtml,
+  setBlockRendered,
   addBlock,
   updateBlockAt,
   updateBlockById,
@@ -89,7 +89,7 @@ export {
   getTextBlocks,
   findBlockById,
   getBlocksNeedingRender,
-  renderFrameToHtml,
+  renderFrameToRendered,
   renderFrameToRaw,
   // Processors
   markdown,

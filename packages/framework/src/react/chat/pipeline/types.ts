@@ -62,10 +62,10 @@ export interface Annotation {
   /** End position in block.raw */
   readonly rawEnd: number
 
-  /** Start position in block.html (if tracked) */
+  /** Start position in block.rendered (if tracked) */
   readonly renderedStart?: number
 
-  /** End position in block.html (if tracked) */
+  /** End position in block.rendered (if tracked) */
   readonly renderedEnd?: number
 
   /** Type-specific payload */
@@ -114,8 +114,8 @@ export interface Block {
   /** Raw source content (markdown text or code) */
   readonly raw: string
 
-  /** Rendered HTML (empty string if not yet rendered) */
-  readonly html: string
+  /** Rendered output (HTML for browser, ANSI for terminal, empty if not yet rendered) */
+  readonly rendered: string
 
   /** Processing status */
   readonly status: BlockStatus
