@@ -2,14 +2,15 @@
  * Message List Component
  *
  * Displays the chat message history with newest messages at the bottom.
- * Implements virtual scrolling to show only messages that fit in the viewport.
+ * Uses Scrollable component for auto-scroll-to-bottom behavior.
  *
  * Uses FrameRenderer for assistant messages to display rendered markdown/code.
  */
-import React, { useMemo } from 'react'
+import React from 'react'
 import { Box, Text } from 'ink'
 import Spinner from 'ink-spinner'
 import { FrameRenderer, type Frame } from '../pipeline/index.ts'
+import { Scrollable } from './Scrollable.tsx'
 
 export interface Message {
   id: string
@@ -29,94 +30,7 @@ interface MessageListProps {
   currentFrame?: Frame | null
 }
 
-/**
- * Estimate how many lines a message will take.
- * This is approximate - wrapping depends on terminal width.
- */
-function estimateMessageHeight(message: Message, width: number): number {
-  const contentWidth = Math.max(width - 6, 20) // Account for padding/prefix/borders
-  
-  // If message has a frame, estimate based on blocks
-  if (message.frame && message.frame.blocks.length > 0) {
-    let totalLines = 0
-    
-    // Add 1 for "Assistant:" header
-    if (message.role === 'assistant') {
-      totalLines += 1
-    }
-    
-    for (const block of message.frame.blocks) {
-      const content = block.rendered || block.raw
-      const lines = content.split('\n')
-      
-      for (const line of lines) {
-        // Strip ANSI codes for length calculation
-        const plainLine = line.replace(/\x1b\[[0-9;]*m/g, '')
-        totalLines += Math.max(1, Math.ceil(plainLine.length / contentWidth))
-      }
-      
-      if (block.type === 'code') {
-        // Code blocks have: language label (1) + top border (1) + bottom border (1) + margins (2)
-        totalLines += 5
-      }
-      
-      // Block margin
-      totalLines += 1
-    }
-    
-    return totalLines
-  }
-  
-  // Fallback: estimate from raw content
-  const lines = message.content.split('\n')
-  let totalLines = 0
-  
-  for (const line of lines) {
-    totalLines += Math.max(1, Math.ceil(line.length / contentWidth))
-  }
-  
-  // Add 1 for role prefix line (assistant has separate line)
-  if (message.role === 'assistant') {
-    totalLines += 1
-  }
-  
-  // Add 1 for marginBottom
-  totalLines += 1
-  
-  return totalLines
-}
-
 export function MessageList({ messages, isStreaming = false, height = 20, currentFrame }: MessageListProps) {
-  // Calculate which messages to show based on available height
-  const visibleMessages = useMemo(() => {
-    if (messages.length === 0) return []
-    
-    // Reserve space for streaming indicator and some buffer
-    const availableHeight = Math.max(height - 4, 5)
-    
-    // Work backwards from newest messages
-    const result: Message[] = []
-    let usedHeight = 0
-    const terminalWidth = 80
-    
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]!
-      const msgHeight = estimateMessageHeight(msg, terminalWidth)
-      
-      // Always include at least the most recent message
-      if (result.length === 0 || usedHeight + msgHeight <= availableHeight) {
-        result.unshift(msg)
-        usedHeight += msgHeight
-      } else {
-        break
-      }
-    }
-    
-    return result
-  }, [messages, height])
-
-  const hiddenCount = messages.length - visibleMessages.length
-
   if (messages.length === 0 && !isStreaming) {
     return (
       <Box 
@@ -136,41 +50,36 @@ export function MessageList({ messages, isStreaming = false, height = 20, curren
   }
 
   return (
-    <Box 
-      flexDirection="column" 
-      justifyContent="flex-end" 
-      flexGrow={1}
-      padding={1}
-    >
-      {hiddenCount > 0 && (
-        <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            ↑ {hiddenCount} earlier message{hiddenCount > 1 ? 's' : ''}
-          </Text>
-        </Box>
-      )}
-      {visibleMessages.map((message, index) => (
-        <MessageBubble 
-          key={message.id} 
-          message={message}
-          // Pass frame to the last assistant message if it's streaming
-          frame={
-            isStreaming && 
-            message.role === 'assistant' && 
-            index === visibleMessages.length - 1 
-              ? currentFrame 
-              : undefined
-          }
-        />
-      ))}
-      {isStreaming && (
-        <Box>
-          <Text color="cyan">
-            <Spinner type="dots" />
-            {' '}Thinking...
-          </Text>
-        </Box>
-      )}
+    <Box flexDirection="column" flexGrow={1} padding={1}>
+      <Scrollable
+        height={height - 2} // Account for padding
+        scrollToBottom={true}
+        flexGrow={1}
+        scrollbarThumbColor="cyan"
+      >
+        {messages.map((message, index) => (
+          <MessageBubble 
+            key={message.id} 
+            message={message}
+            // Pass frame to the last assistant message if it's streaming
+            frame={
+              isStreaming && 
+              message.role === 'assistant' && 
+              index === messages.length - 1 
+                ? currentFrame 
+                : undefined
+            }
+          />
+        ))}
+        {isStreaming && (
+          <Box>
+            <Text color="cyan">
+              <Spinner type="dots" />
+              {' '}Thinking...
+            </Text>
+          </Box>
+        )}
+      </Scrollable>
     </Box>
   )
 }

@@ -15,7 +15,8 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@tanstack/framework/*": ["../../packages/framework/src/*"]
+      "@tanstack/framework/*": ["../../packages/framework/src/*"],
+      "ink": ["./node_modules/ink"]
     }
   },
   "include": ["src/**/*"],
