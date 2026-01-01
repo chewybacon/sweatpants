@@ -1,4 +1,4 @@
-# Framework Design Plan
+# Framework Design
 
 ## Vision
 
@@ -6,6 +6,15 @@ A full-featured AI framework where:
 - **User code is discovered and executed by the framework** (not manually wired)
 - **Build-time code splitting** separates server/client code automatically
 - **Extension points are pluggable** without editing framework internals
+
+## Reference Applications
+
+Two demo applications showcase the framework in action:
+
+- **yo-chat** (`apps/yo-chat/`) - Browser-based chat with interactive tools
+- **yo-agent** (`apps/yo-agent/`) - CLI-based agent (coming soon)
+
+See [reference-apps.md](./reference-apps.md) for details.
 
 ---
 
@@ -189,121 +198,103 @@ function useChatSession() {
 
 ### Definition API
 
+Tools use the `createIsomorphicTool()` builder pattern. See [isomorphic-tools.md](./isomorphic-tools.md) for the complete API.
+
 ```ts
-// src/tools/guess-card.ts
-import { defineIsomorphicTool } from '@tanstack/framework/tools'
+// src/tools/pick-card.tsx
+import { createIsomorphicTool, RenderableProps } from '@tanstack/framework/chat/isomorphic-tools'
 import { z } from 'zod'
 
-export default defineIsomorphicTool({
-  name: 'guess_card',
-  description: 'Play a card guessing game',
-  parameters: z.object({
-    difficulty: z.enum(['easy', 'hard']).default('easy'),
-  }),
-  authority: 'server',
-  
-  // Server-only code (extracted to server bundle)
-  server: {
-    *before({ difficulty }) {
-      const secret = pickRandomCard(difficulty)
-      const choices = generateChoices(secret, difficulty)
-      return { secret, choices }  // → handoff to client
-    },
-    *after(handoff, clientOutput) {
-      const correct = clientOutput.guess === handoff.secret
-      return { correct, secret: handoff.secret }  // → LLM result
-    },
-  },
-  
-  // Client-only code (stays in client bundle)
-  client: {
-    // Effection operation for headless execution
-    *run(handoff, ctx) {
-      // Default client behavior (can be overridden by UI)
-      return { guess: handoff.choices[0] }
-    },
-    // Optional React component for interactive UI
-    component: GuessCardUI,
-  },
-})
-
 // Co-located React component
-function GuessCardUI({ handoff, params, respond }: ToolUIProps<typeof tool>) {
+interface CardPickerProps extends RenderableProps<{ picked: Card }> {
+  cards: Card[]
+  prompt: string
+}
+
+function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPickerProps) {
+  if (disabled && response) {
+    return <div>You picked: {response.picked.display}</div>
+  }
   return (
     <div>
-      <h3>Pick a card!</h3>
-      {handoff.choices.map(card => (
-        <button key={card} onClick={() => respond({ guess: card })}>
-          {card}
+      <h3>{prompt}</h3>
+      {cards.map(card => (
+        <button key={card.display} onClick={() => onRespond({ picked: card })}>
+          {card.display}
         </button>
       ))}
     </div>
   )
 }
+
+// Tool definition using builder pattern
+export const pickCard = createIsomorphicTool('pick_card')
+  .description('Draw random cards and let the user pick one')
+  .parameters(z.object({
+    count: z.number().min(2).max(10).default(5),
+  }))
+  .context('browser')      // Requires UI interaction
+  .authority('server')     // Server executes first
+  .handoff({
+    // Phase 1: Server draws cards (runs once)
+    *before(params) {
+      const cards = drawUniqueCards(params.count)
+      return { cards, prompt: `Pick one of these ${cards.length} cards:` }
+    },
+    
+    // Client phase: User picks via rendered component
+    *client(handoff, ctx) {
+      return yield* ctx.render(CardPicker, {
+        cards: handoff.cards,
+        prompt: handoff.prompt,
+      })
+    },
+    
+    // Phase 2: Server returns result to LLM
+    *after(handoff, client) {
+      return `The user selected the ${client.picked.rank} of ${client.picked.suit}.`
+    },
+  })
 ```
 
-### Build-Time Extraction
+See: `apps/yo-chat/src/tools/pick-card.tsx` for the complete implementation.
+
+### Build-Time Discovery
 
 The Vite plugin:
 
-1. **Discovers** files matching `src/tools/**/*.ts`
-2. **Parses** AST to find `defineIsomorphicTool()` calls
-3. **Extracts** `server` block to server-only module
-4. **Replaces** `server` in client bundle with RPC stub
-5. **Generates** `toolRegistry.gen.ts` with all discovered tools
-
-**Server bundle output:**
-```ts
-// tools/guess-card.server.ts (generated)
-export const guessCard_server = {
-  *before({ difficulty }) { /* original code */ },
-  *after(handoff, clientOutput) { /* original code */ },
-}
-```
-
-**Client bundle output:**
-```ts
-// tools/guess-card.ts (transformed)
-export default {
-  name: 'guess_card',
-  description: '...',
-  parameters: /* schema */,
-  authority: 'server',
-  server: null,  // Removed - server code not in client bundle
-  client: {
-    *run(handoff, ctx) { /* original code */ },
-    component: GuessCardUI,
-  },
-}
-```
+1. **Discovers** files matching `src/tools/**/*.ts(x)`
+2. **Parses** AST to find `createIsomorphicTool()` calls
+3. **Generates** `tool-registry.gen.ts` with all discovered tools
 
 **Generated registry:**
 ```ts
-// toolRegistry.gen.ts
-import guessCard from './tools/guess-card'
-import calculator from './tools/calculator'
+// __generated__/tool-registry.gen.ts
+import { pickCard } from '../tools/pick-card'
+import { startTttGame, tttMove, tttWinner } from '../tools/games/tic-tac-toe'
 // ... auto-discovered
 
-export const toolRegistry = createToolRegistry([
-  guessCard,
-  calculator,
+export const tools = [
+  pickCard,
+  startTttGame,
+  tttMove,
+  tttWinner,
   // ...
-])
-
-export const serverToolRegistry = createServerToolRegistry({
-  'guess_card': () => import('./tools/guess-card.server'),
-  'calculator': () => import('./tools/calculator.server'),
-})
+]
 ```
+
+See: `apps/yo-chat/src/__generated__/tool-registry.gen.ts`
 
 ### Tool Categories
 
-| Type | Authority | Server Code | Client Code | Example |
-|------|-----------|-------------|-------------|---------|
-| Server-only | server | `server()` | none | calculator, search |
-| Server-authority with handoff | server | `before()` + `after()` | `client.run()` + `component` | guess_card |
-| Client-authority | client | `validate()` (optional) | `client.run()` + `component` | file_picker |
-| Client-only | client | none | `client.run()` + `component` | clipboard |
+| Type | Authority | Context | Example |
+|------|-----------|---------|---------|
+| Server-only | server | headless | calculator, search |
+| Server with handoff | server | browser | pick_card, tic-tac-toe |
+| Agent tool | server | agent | sentiment analyzer |
+| Client-authority | client | browser | file_picker |
+
+See [isomorphic-tools.md](./isomorphic-tools.md) for detailed patterns.
 
 ---
 
@@ -441,23 +432,20 @@ interface Processor {
 
 Processors declare dependencies, and the pipeline resolves them via topological sort.
 
-### Processor Registration
+### Processor Definition
+
+Processors are objects implementing the `Processor` interface:
 
 ```ts
-// src/rendering/processors/markdown.ts
-import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
+// src/react/chat/pipeline/processors/markdown.ts
+import type { Processor } from '../types'
 
-export const markdown = defineProcessor({
+export const markdown: Processor = {
   name: 'markdown',
   description: 'Convert markdown to HTML',
   
   // No dependencies - runs first
   dependencies: [],
-  
-  // Preload async assets
-  *preload() {
-    // Load marked or remark if needed
-  },
   
   // Check if ready
   isReady: () => true,
@@ -472,8 +460,10 @@ export const markdown = defineProcessor({
       return block
     })
   },
-})
+}
 ```
+
+See: `src/react/chat/pipeline/processors/` for built-in processors.
 
 ### Built-in Processors
 
@@ -487,29 +477,22 @@ export const markdown = defineProcessor({
 ### Pipeline Configuration
 
 ```ts
-// Simple - list processors, dependencies auto-resolved
+import { useChat } from '@tanstack/framework/react/chat'
+
+// Use a preset
 useChat({
-  processors: [markdown, shiki, mermaid]
+  pipeline: 'full'  // = markdown + shiki + mermaid + math
 })
 
-// Or use a preset
-useChat({
-  processors: 'full'  // = [markdown, shiki, mermaid, math]
-})
+// Or explicit processors
+import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
 
-// Custom processor with dependencies
 useChat({
-  processors: [
-    markdown,
-    shiki,
-    {
-      name: 'custom-highlight',
-      dependencies: ['markdown', 'shiki'],
-      *process(frame) { /* ... */ }
-    }
-  ]
+  pipeline: { processors: [markdown, shiki, mermaid] }
 })
 ```
+
+See: `src/react/chat/useChat.ts` for pipeline options.
 
 ### Progressive Enhancement
 
@@ -694,53 +677,49 @@ export type ProcessorName = 'markdown' | 'shiki' | 'mermaid' | 'math' | ...
 
 ---
 
-## Migration Path
+## Implementation Status
 
-### Phase 1: Tools Infrastructure (Complete)
-1. Create `defineIsomorphicTool()` unified API
-2. Build Vite plugin for discovery
-3. Build AST transformer for server/client splitting
-4. Generate tool registry
-5. Migrate existing tools
+### Complete
 
-### Phase 2: Providers (Complete)
-1. Create `defineProvider()` API
-2. Add discovery and registry generation
-3. Migrate ollama/openai providers
-4. Add runtime selection
+- **Tools Infrastructure** - `createIsomorphicTool()` builder API, Vite plugin discovery, registry generation
+- **Rendering Pipeline** - Frame-based architecture, processors, progressive enhancement
+- **React Integration** - `useChat()` / `useChatSession()` hooks
+- **Context Modes** - `headless`, `browser`, `agent` with type-safe contexts
+- **Browser Interaction** - `ctx.render()` pattern with `RenderableProps<T>`
+- **Agent Runtime** - `runAsAgent()` for server-side agent execution
 
-### Phase 3: Rendering (Complete - New Architecture)
-1. Create `defineProcessor()` API with dependency resolution
-2. Implement frame-based pipeline architecture
-3. Add progressive enhancement (quick → full passes)
-4. Migrate from settlers/processors to pipeline
-5. **Parser now handles structure detection automatically**
+### In Progress
 
-### Phase 4: Personas (In Progress)
-1. Create `definePersona()` API with validation
-2. Add discovery and registry generation
-3. Add build-time validation (tool references, etc.)
-4. Migrate existing personas
+- **yo-agent CLI** - CLI-based agent application (`apps/yo-agent/`)
 
-### Phase 5: Agents (Future)
-1. Design agent orchestration patterns
-2. Create `defineAgent()` API
-3. Implement memory/context management
-4. Add agent lifecycle hooks
+### Future
+
+- **Personas** - Agent personality bundles with tool/config presets
+- **Memory/Context** - Persistent agent memory across sessions
 
 ---
 
 ## Package Structure
 
-The framework is published as `@tanstack/framework` with subpath exports:
+The framework exports:
 
 ```ts
-import { defineIsomorphicTool } from '@tanstack/framework/tools'
-import { defineProvider } from '@tanstack/framework/providers'
-import { definePersona } from '@tanstack/framework/personas'
-import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
-import { useChat } from '@tanstack/framework/react/chat'
+// Isomorphic tools
+import { 
+  createIsomorphicTool,
+  RenderableProps,
+} from '@tanstack/framework/chat/isomorphic-tools'
+
+// Pipeline processors
+import { 
+  markdown, shiki, mermaid, math 
+} from '@tanstack/framework/react/chat/pipeline'
+
+// React hooks
+import { useChat, useChatSession } from '@tanstack/framework/react/chat'
 ```
+
+See: `src/lib/chat/isomorphic-tools/index.ts` for full exports.
 
 ---
 
@@ -789,6 +768,10 @@ Raw Tokens → Parser (auto structure) → Frame₀ → [Processors in DAG order
 | Enhancement | Separate emissions | Built-in render passes |
 | Content bugs | Common at fences | Impossible (immutability) |
 
-### Migration Guide
+## Documentation Index
 
-See [migration-guide.md](./migration-guide.md) for detailed migration instructions from settlers/dualBufferTransform to the new pipeline.
+- [README.md](./README.md) - Quick start and overview
+- [isomorphic-tools.md](./isomorphic-tools.md) - Tool builder API and patterns
+- [pipeline-guide.md](./pipeline-guide.md) - Streaming pipeline details
+- [rendering-engine-design.md](./rendering-engine-design.md) - Internal rendering architecture
+- [reference-apps.md](./reference-apps.md) - yo-chat and yo-agent details
