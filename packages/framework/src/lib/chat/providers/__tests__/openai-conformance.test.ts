@@ -6,10 +6,11 @@
  * 
  * Tests use mock SSE streams that mimic the exact format of OpenAI's Responses API.
  */
-import { describe, it, expect, vi } from 'vitest'
-import { run } from 'effection'
+import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection'
+import { vi } from 'vitest'
 import { openaiProvider } from '../openai'
 import type { Message } from '../../types'
+import type { Operation } from 'effection'
 
 // =============================================================================
 // MOCK SSE STREAM UTILITIES
@@ -136,32 +137,30 @@ function buildToolCallEvents(
 // HELPER TO CONSUME PROVIDER STREAM
 // =============================================================================
 
-async function consumeProviderStream(
+function* consumeProviderStream(
   messages: Message[],
   mockFetch: ReturnType<typeof createMockFetch>
-) {
+): Operation<{ events: Array<{ type: string; [key: string]: unknown }>; result: any }> {
   // Replace global fetch
   const originalFetch = globalThis.fetch
   globalThis.fetch = mockFetch as unknown as typeof fetch
 
   try {
-    return await run(function* () {
-      const stream = openaiProvider.stream(messages, {
-        apiKey: 'test-api-key',
-        baseUri: 'https://api.openai.com/v1',
-      })
-
-      const subscription = yield* stream
-      const events: Array<{ type: string; [key: string]: unknown }> = []
-
-      while (true) {
-        const next = yield* subscription.next()
-        if (next.done) {
-          return { events, result: next.value }
-        }
-        events.push(next.value as { type: string; [key: string]: unknown })
-      }
+    const stream = openaiProvider.stream(messages, {
+      apiKey: 'test-api-key',
+      baseUri: 'https://api.openai.com/v1',
     })
+
+    const subscription = yield* stream
+    const events: Array<{ type: string; [key: string]: unknown }> = []
+
+    while (true) {
+      const next = yield* subscription.next()
+      if (next.done) {
+        return { events, result: next.value }
+      }
+      events.push(next.value as { type: string; [key: string]: unknown })
+    }
   } finally {
     globalThis.fetch = originalFetch
   }
@@ -173,10 +172,10 @@ async function consumeProviderStream(
 
 describe('OpenAI Provider Conformance', () => {
   describe('basic streaming', () => {
-    it('should stream text responses', async () => {
+    it('should stream text responses', function* () {
       const mockFetch = createMockFetch(buildTextResponseEvents('Hello, world!'))
 
-      const { events, result } = await consumeProviderStream(
+      const { events, result } = yield* consumeProviderStream(
         [{ role: 'user', content: 'Say hello' }],
         mockFetch
       )
@@ -198,12 +197,12 @@ describe('OpenAI Provider Conformance', () => {
   })
 
   describe('tool calling', () => {
-    it('should emit tool_calls event when model requests a tool', async () => {
+    it('should emit tool_calls event when model requests a tool', function* () {
       const mockFetch = createMockFetch(
         buildToolCallEvents('call_123', 'item_abc', 'get_weather', { location: 'NYC' })
       )
 
-      const { events, result } = await consumeProviderStream(
+      const { events, result } = yield* consumeProviderStream(
         [{ role: 'user', content: 'What is the weather in NYC?' }],
         mockFetch
       )
@@ -231,13 +230,13 @@ describe('OpenAI Provider Conformance', () => {
       expect(result.toolCalls?.[0]?.function.name).toBe('get_weather')
     })
 
-    it('should handle tool results in subsequent messages', async () => {
+    it('should handle tool results in subsequent messages', function* () {
       // First call: model requests a tool
       const firstMockFetch = createMockFetch(
         buildToolCallEvents('call_123', 'item_abc', 'get_weather', { location: 'NYC' })
       )
 
-      const firstResult = await consumeProviderStream(
+      const firstResult = yield* consumeProviderStream(
         [{ role: 'user', content: 'What is the weather in NYC?' }],
         firstMockFetch
       )
@@ -250,7 +249,7 @@ describe('OpenAI Provider Conformance', () => {
         buildTextResponseEvents('The weather in NYC is sunny and 72°F.')
       )
 
-      const secondResult = await consumeProviderStream(
+      const secondResult = yield* consumeProviderStream(
         [
           { role: 'user', content: 'What is the weather in NYC?' },
           {
@@ -295,13 +294,13 @@ describe('OpenAI Provider Conformance', () => {
      * the tool_calls on the assistant message might be stripped, causing the
      * model to not understand the context.
      */
-    it('should handle multi-turn tool calling with correct message history', async () => {
+    it('should handle multi-turn tool calling with correct message history', function* () {
       // Turn 1: User asks, model calls first tool
       const turn1Fetch = createMockFetch(
         buildToolCallEvents('call_step1', 'item_1', 'step_one', { input: 'start' })
       )
 
-      const turn1 = await consumeProviderStream(
+      const turn1 = yield* consumeProviderStream(
         [{ role: 'user', content: 'Do the multi-step process' }],
         turn1Fetch
       )
@@ -335,7 +334,7 @@ describe('OpenAI Provider Conformance', () => {
         },
       ]
 
-      const turn2 = await consumeProviderStream(turn2Messages, turn2Fetch)
+      const turn2 = yield* consumeProviderStream(turn2Messages, turn2Fetch)
 
       // This is the key assertion - model should be calling the second tool
       expect(turn2.result.toolCalls).toBeDefined()
@@ -383,13 +382,13 @@ describe('OpenAI Provider Conformance', () => {
         },
       ]
 
-      const turn3 = await consumeProviderStream(turn3Messages, turn3Fetch)
+      const turn3 = yield* consumeProviderStream(turn3Messages, turn3Fetch)
 
       expect(turn3.result.text).toBe('Process complete! Both steps finished successfully.')
       expect(turn3.result.toolCalls).toBeUndefined()
     })
 
-    it('should correctly convert message history to OpenAI format', async () => {
+    it('should correctly convert message history to OpenAI format', function* () {
       /**
        * This test verifies that when we send a conversation with tool_calls
        * and tool results, the OpenAI provider correctly converts them to
@@ -417,7 +416,7 @@ describe('OpenAI Provider Conformance', () => {
         },
       ]
 
-      await consumeProviderStream(messages, mockFetch)
+      yield* consumeProviderStream(messages, mockFetch)
 
       // Verify the request body sent to OpenAI
       expect(mockFetch).toHaveBeenCalled()
@@ -444,7 +443,7 @@ describe('OpenAI Provider Conformance', () => {
       ])
     })
 
-    it('should verify request format matches OpenAI Responses API spec', async () => {
+    it('should verify request format matches OpenAI Responses API spec', function* () {
       /**
        * This test captures what we're actually sending to OpenAI and verifies it matches
        * the Responses API format. This helps debug issues where OpenAI isn't responding
@@ -475,7 +474,7 @@ describe('OpenAI Provider Conformance', () => {
         },
       ]
 
-      const { result } = await consumeProviderStream(messages, mockFetch)
+      const { result } = yield* consumeProviderStream(messages, mockFetch)
 
       // Verify the request format
       const call = mockFetch.mock.calls[0] as [string, { body: string }]
@@ -504,7 +503,7 @@ describe('OpenAI Provider Conformance', () => {
       expect(result.toolCalls).toHaveLength(1)
     })
 
-    it('should include tools in the request when provided', async () => {
+    it('should include tools in the request when provided', function* () {
       /**
        * Verify that isomorphicToolSchemas are included in the OpenAI request.
        */
@@ -514,30 +513,28 @@ describe('OpenAI Provider Conformance', () => {
       globalThis.fetch = mockFetch as unknown as typeof fetch
 
       try {
-        await run(function* () {
-          const stream = openaiProvider.stream(
-            [{ role: 'user', content: 'Use the tool' }],
-            {
-              apiKey: 'test-api-key',
-              baseUri: 'https://api.openai.com/v1',
-              isomorphicToolSchemas: [
-                {
-                  name: 'my_tool',
-                  description: 'A test tool',
-                  parameters: { type: 'object', properties: { x: { type: 'number' } } },
-                  isIsomorphic: true as const,
-                  authority: 'server' as const,
-                },
-              ],
-            }
-          )
-
-          const subscription = yield* stream
-          while (true) {
-            const next = yield* subscription.next()
-            if (next.done) break
+        const stream = openaiProvider.stream(
+          [{ role: 'user', content: 'Use the tool' }],
+          {
+            apiKey: 'test-api-key',
+            baseUri: 'https://api.openai.com/v1',
+            isomorphicToolSchemas: [
+              {
+                name: 'my_tool',
+                description: 'A test tool',
+                parameters: { type: 'object', properties: { x: { type: 'number' } } },
+                isIsomorphic: true as const,
+                authority: 'server' as const,
+              },
+            ],
           }
-        })
+        )
+
+        const subscription = yield* stream
+        while (true) {
+          const next = yield* subscription.next()
+          if (next.done) break
+        }
       } finally {
         globalThis.fetch = originalFetch
       }
@@ -553,7 +550,7 @@ describe('OpenAI Provider Conformance', () => {
       expect(requestBody.tools[0].type).toBe('function')
     })
 
-    it('should handle assistant message with both text and tool_calls', async () => {
+    it('should handle assistant message with both text and tool_calls', function* () {
       /**
        * Sometimes the model responds with text AND makes a tool call.
        * Both should be preserved in the message history.
@@ -580,7 +577,7 @@ describe('OpenAI Provider Conformance', () => {
         },
       ]
 
-      await consumeProviderStream(messages, mockFetch)
+      yield* consumeProviderStream(messages, mockFetch)
 
       const call2 = mockFetch.mock.calls[0] as [string, { body: string }]
       const requestBody = JSON.parse(call2[1].body)

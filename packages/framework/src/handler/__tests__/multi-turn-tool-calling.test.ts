@@ -112,21 +112,6 @@ function buildAssistantMessage(result: ChatResult): Message {
 
 describe('Multi-turn tool calling message format', () => {
   describe('Message.tool_calls structure', () => {
-    it('should have correct tool_calls shape with function wrapper', function* () {
-      const toolCall: ToolCall = {
-        id: 'call_123',
-        function: {
-          name: 'test_tool',
-          arguments: { x: 1 },
-        },
-      }
-
-      // Verify the shape
-      expect(toolCall.id).toBe('call_123')
-      expect(toolCall.function.name).toBe('test_tool')
-      expect(toolCall.function.arguments).toEqual({ x: 1 })
-    })
-
     it('should preserve tool_calls when building conversation history', function* () {
       // Simulate what the handler does when adding an assistant message with tool_calls
       const assistantMessage: Message = {
