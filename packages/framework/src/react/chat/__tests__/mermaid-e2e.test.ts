@@ -136,7 +136,7 @@ A-->B
         const mermaidBlock = frame.blocks.find(
           (b: any) => b.type === 'code' && b.language === 'mermaid'
         )
-        return mermaidBlock?.html?.includes('quick-highlight')
+        return mermaidBlock?.rendered?.includes('quick-highlight')
       })
 
       expect(mermaidHighlightedFrames.length).toBeGreaterThan(0)
@@ -147,7 +147,7 @@ A-->B
           (b: any) => b.type === 'code' && b.language === 'mermaid'
         )
         expect(mermaidBlock?.renderPass).toBe('quick')
-        expect(mermaidBlock?.html).toContain('mermaid-code')
+        expect(mermaidBlock?.rendered).toContain('mermaid-code')
       }
 
       // Final frame should have complete block
@@ -224,7 +224,7 @@ A-->B
         const block = f.blocks.find((b: any) => 
           b.type === 'code' && 
           b.language === 'mermaid' &&
-          b.html?.includes('quick-highlight') &&
+          b.rendered?.includes('quick-highlight') &&
           b.raw?.includes('graph') // Has actual content
         )
         return block !== undefined
@@ -238,7 +238,7 @@ A-->B
         )
         
         // Quick highlight should have keyword spans for graph/subgraph
-        expect(mermaidBlock?.html).toContain('ql-keyword')
+        expect(mermaidBlock?.rendered).toContain('ql-keyword')
       }
     })
   })

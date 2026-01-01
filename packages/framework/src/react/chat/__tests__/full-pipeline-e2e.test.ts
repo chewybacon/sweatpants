@@ -63,7 +63,7 @@ Done!`
 
       // Python block should have shiki highlighting
       expect(pythonBlock?.renderPass).toBe('full')
-      expect(pythonBlock?.html).toContain('shiki')
+      expect(pythonBlock?.rendered).toContain('shiki')
 
       // Mermaid block should be processed (will error in test env, but should be marked)
       expect(mermaidBlock?.status).toBe('complete')
@@ -84,7 +84,7 @@ Done!`
 
       // Verify markdown rendered (headers should be h1/h2)
       const firstTextBlock = frame.blocks.find((b) => b.type === 'text')
-      expect(firstTextBlock?.html).toContain('<h1')
+      expect(firstTextBlock?.rendered).toContain('<h1')
     })
 
     it('should handle streaming of complex content', async () => {
@@ -371,7 +371,7 @@ A-->B
 
       // Python should have shiki highlighting
       const pythonBlock = codeBlocks.find((b) => b.language === 'python')
-      expect(pythonBlock?.html).toContain('shiki')
+      expect(pythonBlock?.rendered).toContain('shiki')
     })
   })
 
@@ -515,7 +515,7 @@ flowchart TD
       expect(mermaidBlock).toBeDefined()
 
       // Python should have full shiki rendering
-      expect(pythonBlock?.html).toContain('shiki')
+      expect(pythonBlock?.rendered).toContain('shiki')
       expect(pythonBlock?.renderPass).toBe('full')
 
       // Should have math annotation

@@ -94,7 +94,7 @@ export {
   updateBlock,
   appendToBlock,
   completeBlock,
-  setBlockHtml,
+  setBlockRendered,
   addAnnotation,
   addAnnotations,
 
@@ -122,7 +122,7 @@ export {
   getBlocksNeedingRender,
 
   // Frame rendering
-  renderFrameToHtml,
+  renderFrameToRendered,
   renderFrameToRaw,
 } from './frame'
 

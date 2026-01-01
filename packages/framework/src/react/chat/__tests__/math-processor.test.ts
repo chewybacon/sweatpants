@@ -215,7 +215,7 @@ Einstein's equation above.`
       const block = frame.blocks[0]!
 
       // Should have math-inline class (either from KaTeX render or fallback)
-      expect(block.html).toMatch(/math-inline/)
+      expect(block.rendered).toMatch(/math-inline/)
     })
 
     it('should wrap block math in div', async () => {
@@ -230,7 +230,7 @@ Einstein's equation above.`
       const block = frame.blocks[0]!
 
       // Should have math-block class (either from KaTeX render or fallback)
-      expect(block.html).toMatch(/math-block/)
+      expect(block.rendered).toMatch(/math-block/)
     })
   })
 

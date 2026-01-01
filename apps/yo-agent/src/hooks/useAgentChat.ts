@@ -4,11 +4,15 @@
  * Provides chat functionality for yo-agent.
  * - Plan mode: Uses real framework with dev server (HMR-enabled tools)
  * - Build mode: Mock HAL 9000 responses
+ *
+ * Integrates the terminal pipeline for markdown/code rendering.
  */
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
+import { run } from 'effection'
 import type { AgentMode } from '../components/App.tsx'
 import type { Message } from '../components/MessageList.tsx'
 import { useAgent } from '../lib/agent-context.tsx'
+import { createTerminalPipeline, type Frame, type PipelineInstance } from '../pipeline/index.ts'
 
 // HAL 9000 quotes for build mode
 const HAL_QUOTES = [
@@ -32,6 +36,8 @@ interface UseAgentChatReturn {
   messages: Message[]
   isStreaming: boolean
   error: string | null
+  /** Current frame for the streaming assistant message */
+  currentFrame: Frame | null
   send: (content: string) => void
   reset: () => void
 }
@@ -46,7 +52,9 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
   const [messages, setMessages] = useState<Message[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [currentFrame, setCurrentFrame] = useState<Frame | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const pipelineRef = useRef<PipelineInstance | null>(null)
 
   const send = useCallback(async (content: string) => {
     // Add user message
@@ -119,6 +127,10 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
       let assistantContent = ''
       let assistantMessageId = generateMessageId()
 
+      // Create a new pipeline for this response
+      pipelineRef.current = createTerminalPipeline()
+      setCurrentFrame(null)
+
       // Add placeholder assistant message
       setMessages(prev => [...prev, {
         id: assistantMessageId,
@@ -140,6 +152,16 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
             switch (event.type) {
               case 'text':
                 assistantContent += event.content
+                
+                // Process through pipeline
+                if (pipelineRef.current) {
+                  await run(function* () {
+                    yield* pipelineRef.current!.process(event.content)
+                  })
+                  setCurrentFrame(pipelineRef.current.frame)
+                }
+                
+                // Update message with raw content (frame has rendered version)
                 setMessages(prev => prev.map(m =>
                   m.id === assistantMessageId
                     ? { ...m, content: assistantContent }
@@ -173,7 +195,23 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
                 break
 
               case 'complete':
-                // Final message
+                // Flush the pipeline on completion
+                if (pipelineRef.current) {
+                  await run(function* () {
+                    yield* pipelineRef.current!.flush()
+                  })
+                  const finalFrame = pipelineRef.current.frame
+                  setCurrentFrame(finalFrame)
+                  
+                  // Store frame in message
+                  setMessages(prev => prev.map(m =>
+                    m.id === assistantMessageId
+                      ? { ...m, frame: finalFrame }
+                      : m
+                  ))
+                }
+                
+                // Final message content
                 if (event.text && !assistantContent) {
                   assistantContent = event.text
                   setMessages(prev => prev.map(m =>
@@ -188,6 +226,22 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
             // Ignore malformed JSON lines
           }
         }
+      }
+      
+      // Final flush if we exited the loop
+      if (pipelineRef.current) {
+        await run(function* () {
+          yield* pipelineRef.current!.flush()
+        })
+        const finalFrame = pipelineRef.current.frame
+        setCurrentFrame(finalFrame)
+        
+        // Store the final frame in the message so it persists after streaming ends
+        setMessages(prev => prev.map(m =>
+          m.id === assistantMessageId
+            ? { ...m, frame: finalFrame }
+            : m
+        ))
       }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
@@ -213,15 +267,21 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
     // Abort any in-flight request
     abortControllerRef.current?.abort()
     
+    // Reset pipeline
+    pipelineRef.current?.reset()
+    pipelineRef.current = null
+    
     setMessages([])
     setError(null)
     setIsStreaming(false)
+    setCurrentFrame(null)
   }, [])
 
   return {
     messages,
     isStreaming,
     error,
+    currentFrame,
     send,
     reset,
   }

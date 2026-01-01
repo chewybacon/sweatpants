@@ -383,15 +383,15 @@ export const math: Processor = {
         annotations: [...nonMathAnnotations, ...annotations],
       }
 
-      // Render math in HTML
-      if (block.html) {
+      // Render math in rendered output
+      if (block.rendered) {
         const katexReady = isKatexReadyLoader()
-        const newHtml = yield* renderMathInHtml(block.html, matches, katexReady)
+        const newRendered = yield* renderMathInHtml(block.rendered, matches, katexReady)
 
-        if (newHtml !== block.html) {
+        if (newRendered !== block.rendered) {
           updatedBlock = {
             ...updatedBlock,
-            html: newHtml,
+            rendered: newRendered,
             // Keep same renderPass - we're enhancing, not changing quality level
           }
         }

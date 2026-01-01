@@ -80,7 +80,7 @@ export const updateFrame = (
 export interface CreateBlockOptions {
   type: BlockType
   raw?: string
-  html?: string
+  rendered?: string
   status?: BlockStatus
   renderPass?: RenderPass
   language?: string
@@ -94,7 +94,7 @@ export const createBlock = (options: CreateBlockOptions): Block => ({
   id: generateBlockId(),
   type: options.type,
   raw: options.raw ?? '',
-  html: options.html ?? '',
+  rendered: options.rendered ?? '',
   status: options.status ?? 'streaming',
   renderPass: options.renderPass ?? 'none',
   ...(options.language !== undefined && { language: options.language }),
@@ -149,15 +149,15 @@ export const completeBlock = (block: Block): Block => ({
 })
 
 /**
- * Set HTML on a block with a render pass.
+ * Set rendered output on a block with a render pass.
  */
-export const setBlockHtml = (
+export const setBlockRendered = (
   block: Block,
-  html: string,
+  rendered: string,
   renderPass: RenderPass
 ): Block => ({
   ...block,
-  html,
+  rendered,
   renderPass,
 })
 
@@ -367,11 +367,11 @@ export const getBlocksNeedingRender = (
 // =============================================================================
 
 /**
- * Render a frame to a single HTML string.
- * Concatenates all block HTML in order.
+ * Render a frame to a single rendered string.
+ * Concatenates all block rendered output in order.
  */
-export const renderFrameToHtml = (frame: Frame): string =>
-  frame.blocks.map((b) => b.html).join('')
+export const renderFrameToRendered = (frame: Frame): string =>
+  frame.blocks.map((b) => b.rendered).join('')
 
 /**
  * Render a frame to raw text.

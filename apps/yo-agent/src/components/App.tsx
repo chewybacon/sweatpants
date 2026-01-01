@@ -29,7 +29,7 @@ export function App() {
   const { stdout } = useStdout()
   const agent = useAgent()
   const [mode, setMode] = useState<AgentMode>('plan')
-  const { messages, isStreaming, send, error } = useAgentChat({ mode })
+  const { messages, isStreaming, send, error, currentFrame } = useAgentChat({ mode })
 
   // Get terminal dimensions
   const width = stdout?.columns ?? 80
@@ -75,7 +75,7 @@ export function App() {
           borderStyle="single"
           borderColor="gray"
         >
-          <MessageList messages={messages} isStreaming={isStreaming} height={messageListHeight} />
+          <MessageList messages={messages} isStreaming={isStreaming} height={messageListHeight} currentFrame={currentFrame} />
         </Box>
 
         {/* Sidebar - 20% */}

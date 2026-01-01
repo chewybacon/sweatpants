@@ -28,7 +28,7 @@ import type {
   FrameEmitter,
   ProcessFn,
 } from './types'
-import { emptyFrame, renderFrameToHtml, renderFrameToRaw } from './frame'
+import { emptyFrame, renderFrameToRendered, renderFrameToRaw } from './frame'
 import { createParser } from './parser'
 import { resolveProcessors } from './resolver'
 
@@ -246,7 +246,7 @@ export function createPipelineTransform(config: PipelineConfig) {
 
     // Create pipeline instance with frame emission
     const pipeline = createPipeline(config, function* (frame) {
-      const html = renderFrameToHtml(frame)
+      const html = renderFrameToRendered(frame)
       const raw = renderFrameToRaw(frame)
 
       // Emit buffer_renderable patch with frame data
