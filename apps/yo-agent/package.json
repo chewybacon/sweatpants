@@ -1,0 +1,36 @@
+{
+  "name": "yo-agent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "yo-agent": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.tsx",
+    "build": "tsup src/cli.tsx --format esm --dts --outDir dist",
+    "start": "node dist/cli.js",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@effectionx/jsonl-store": "^0.3.1",
+    "@tanstack/framework": "workspace:*",
+    "chalk": "^5.4.1",
+    "effection": "catalog:",
+    "fast-glob": "^3.3.2",
+    "ink": "^6.0.0",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@tanstack/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "tsup": "^8.5.0",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:"
+  }
+}
