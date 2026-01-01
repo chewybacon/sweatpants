@@ -60,57 +60,61 @@ pnpm dev
 
 **Location:** `apps/yo-agent/`
 
-**Status:** Coming Soon
+**Status:** In Development - Basic TUI complete, framework integration in progress.
 
-A CLI-based agent demonstrating headless and agent tools without a browser.
+A CLI-based agentic AI application - an MVP OpenCode clone TUI.
 
-### Planned Features
+### Current Features
 
-- **Headless Tools** - `.context('headless')` for pure computation
-- **Agent Tools** - `.context('agent')` with `ctx.prompt()` for LLM calls
-- **runAsAgent()** - Autonomous agent execution
-- **Structured Output** - Zod schemas for type-safe LLM responses
-- **CLI Interface** - stdin/stdout interaction
+- **Ink/React TUI** - Terminal UI with React paradigms
+- **Two Modes** - `plan` (read-only) and `build` (HAL 9000 mock for now)
+- **In-Process Handler** - Same framework backend as yo-chat, no HTTP layer
+- **Message History** - Chat-style display with input at bottom
 
-### Tool Pattern
+### Architecture
 
-```typescript
-// Agent tool with ctx.prompt()
-const analyzerTool = createIsomorphicTool('analyze')
-  .description('Analyze text sentiment')
-  .parameters(z.object({ text: z.string() }))
-  .context('agent')
-  .authority('server')
-  .handoff({
-    *before(params) {
-      return { text: params.text }
-    },
-    *client(handoff, ctx) {
-      return yield* ctx.prompt({
-        prompt: `Analyze sentiment: "${handoff.text}"`,
-        schema: z.object({
-          sentiment: z.enum(['positive', 'negative', 'neutral']),
-          confidence: z.number(),
-        }),
-      })
-    },
-    *after(handoff, client) {
-      return { analyzed: true, ...client }
-    },
-  })
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         yo-agent TUI                             │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                    Ink/React UI                            │  │
+│  │  - StatusBar (mode indicator)                             │  │
+│  │  - MessageList (chat history)                             │  │
+│  │  - TextInput (fixed at bottom)                            │  │
+│  └─────────────────────────┬─────────────────────────────────┘  │
+│                            │ (in-process, no HTTP)               │
+│  ┌─────────────────────────▼─────────────────────────────────┐  │
+│  │                   Framework Backend                        │  │
+│  │  - createInProcessHandler() adapter                       │  │
+│  │  - Isomorphic tools                                       │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Planned Usage
+### Usage
 
 ```bash
 cd apps/yo-agent
 pnpm install
 pnpm dev
-
-# Interactive mode
-> analyze "This product is amazing!"
-{ sentiment: 'positive', confidence: 0.95 }
 ```
+
+### Key Bindings
+
+| Key | Action |
+|-----|--------|
+| ESC | Toggle plan/build mode |
+| Enter | Send message |
+| Ctrl+C | Exit |
+
+### Roadmap
+
+- [x] Basic TUI with Ink
+- [x] Mode switching
+- [x] HAL 9000 mock (build mode)
+- [ ] Integrate framework with in-process handler
+- [ ] Plan mode tools (read_file, glob, grep, git)
+- [ ] Session persistence
 
 ---
 
