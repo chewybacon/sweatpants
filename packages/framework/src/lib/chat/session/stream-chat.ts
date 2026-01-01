@@ -120,6 +120,10 @@ export function* streamChatOnce(
   const isomorphicHandoffs: IsomorphicHandoffStreamEvent[] = []
   // Collect conversation state (sent when isomorphic tools are involved)
   let conversationState: any | null = null
+  // Track tool results from phase 2 processing (for history sync)
+  const toolResults: Array<{ id: string; name: string; content: string }> = []
+  // Track tool calls for history sync
+  const toolCalls: Array<{ id: string; name: string; arguments: unknown }> = []
 
   // Consume the stream using Effection's each() pattern
   // Important: must call yield* each.next() at end of each iteration
@@ -147,6 +151,12 @@ export function* streamChatOnce(
 
       case 'tool_calls':
         for (const call of event.calls) {
+          // Track for history sync
+          toolCalls.push({
+            id: call.id,
+            name: call.name,
+            arguments: call.arguments,
+          })
           yield* patches.send({
             type: 'tool_call_start',
             call: {
@@ -159,6 +169,12 @@ export function* streamChatOnce(
         break
 
       case 'tool_result':
+        // Track for history sync (especially important for phase 2 tools)
+        toolResults.push({
+          id: event.id,
+          name: event.name,
+          content: event.content,
+        })
         yield* patches.send({
           type: 'tool_call_result',
           id: event.id,
@@ -225,15 +241,40 @@ export function* streamChatOnce(
     }
   }
 
-  return { type: 'complete', text: assistantText }
+  return { 
+    type: 'complete', 
+    text: assistantText,
+    // Include tool history for session to sync to history
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    ...(toolResults.length > 0 ? { toolResults } : {}),
+  }
 }
 
 /**
- * Helper to convert ChatMessage[] to API format
+ * Helper to convert ChatMessage[] to API format.
+ * 
+ * IMPORTANT: This must preserve tool_calls and tool_call_id fields
+ * so that multi-turn tool conversations work correctly with all providers.
+ * Without these fields, providers (especially OpenAI) can't see the tool
+ * call history and can't continue tool-based conversations properly.
  */
 export function toApiMessages(messages: Message[]): ApiMessage[] {
-  return messages.map((m) => ({
-    role: m.role,
-    content: m.content,
-  }))
+  return messages.map((m) => {
+    const apiMsg: ApiMessage = {
+      role: m.role,
+      content: m.content,
+    }
+    
+    // Preserve tool_calls on assistant messages
+    if (m.tool_calls && m.tool_calls.length > 0) {
+      apiMsg.tool_calls = m.tool_calls
+    }
+    
+    // Preserve tool_call_id on tool result messages
+    if (m.tool_call_id) {
+      apiMsg.tool_call_id = m.tool_call_id
+    }
+    
+    return apiMsg
+  })
 }

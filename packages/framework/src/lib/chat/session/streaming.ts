@@ -63,6 +63,10 @@ export interface StreamCompleteResult {
   type: 'complete'
   /** Final assistant text content */
   text: string
+  /** Tool calls made during this turn (for history sync) */
+  toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
+  /** Tool results from this turn (for history sync) */
+  toolResults?: Array<{ id: string; name: string; content: string }>
 }
 
 /**

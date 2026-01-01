@@ -160,9 +160,13 @@ export type OllamaMessage = Message
 
 /**
  * Tool call structure.
+ * Note: The 'type' field is optional for backward compatibility with providers
+ * that don't include it, but when sending to OpenAI/Anthropic APIs, the
+ * 'type: function' field must be added.
  */
 export interface ToolCall {
   id: string
+  type?: 'function'
   function: {
     name: string
     arguments: Record<string, unknown>

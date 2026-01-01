@@ -408,6 +408,7 @@ export function* runChatSession(
                 // Add assistant message with tool_calls
                 const allToolCalls = result.conversationState.toolCalls.map(tc => ({
                   id: tc.id,
+                  type: 'function' as const,
                   function: {
                     name: tc.name,
                     arguments: tc.arguments,
@@ -477,16 +478,75 @@ export function* runChatSession(
             // Close the input channel (transform will finish processing)
             yield* streamPatches.close()
 
-            // Create assistant message
-            const content = result.type === 'complete' ? String((result as any).text || '') : ''
+            // Sync history with currentMessages which accumulated during the loop
+            // currentMessages contains the full conversation including:
+            // - Original user message
+            // - Assistant messages with tool_calls (from isomorphic handoffs)
+            // - Tool result messages (may have empty content if phase 2)
+            // - The final response will be added below
+            
+            // Get tool results from the complete result (these have the actual content
+            // from phase 2 processing that the server did)
+            const completeResult = result as { 
+              type: 'complete'
+              text: string
+              toolResults?: Array<{ id: string; name: string; content: string }>
+            }
+            
+            // Build a map of tool results for quick lookup
+            const toolResultsMap = new Map<string, string>()
+            if (completeResult.toolResults) {
+              for (const tr of completeResult.toolResults) {
+                toolResultsMap.set(tr.id, tr.content)
+              }
+            }
+            
+            // Find new messages that need to be added to history
+            const originalHistoryLength = history.length
+            
+            // Add any new messages from currentMessages
+            for (let i = originalHistoryLength; i < currentMessages.length; i++) {
+              const apiMsg = currentMessages[i]!
+              
+              // For tool results, check if we have updated content from phase 2
+              let content = apiMsg.content
+              if (apiMsg.role === 'tool' && apiMsg.tool_call_id) {
+                const updatedContent = toolResultsMap.get(apiMsg.tool_call_id)
+                if (updatedContent) {
+                  content = updatedContent
+                }
+              }
+              
+              const msg: Message = {
+                id: crypto.randomUUID(),
+                role: apiMsg.role,
+                content: content,
+              }
+              
+              // Preserve tool_calls with proper type field
+              if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
+                msg.tool_calls = apiMsg.tool_calls.map(tc => ({
+                  id: tc.id,
+                  type: 'function' as const,
+                  function: 'function' in tc ? tc.function : { name: (tc as any).name, arguments: (tc as any).arguments },
+                }))
+              }
+              
+              // Preserve tool_call_id
+              if (apiMsg.tool_call_id) {
+                msg.tool_call_id = apiMsg.tool_call_id
+              }
+              
+              history.push(msg)
+            }
 
+            // Create final assistant message with the response text
+            const finalContent = completeResult.text || ''
             const assistantMessage: Message = {
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: content,
+              content: finalContent,
             }
-
-            // Add to history
             history.push(assistantMessage)
             
             // Assistant message goes directly to patches (not through transforms)
