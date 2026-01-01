@@ -3,6 +3,10 @@
  *
  * Factory function that creates a portable fetch handler for AI chat.
  */
+
+// Debug flag - set via environment variable
+const DEBUG_CHAT_HANDLER = process.env['DEBUG_CHAT_HANDLER'] === 'true'
+
 import { createScope, all } from 'effection'
 import { z } from 'zod'
 import type { Operation } from 'effection'
@@ -566,6 +570,22 @@ export function createChatHandler(config: ChatHandlerConfig) {
             while (iterations < maxIterations) {
               iterations++
 
+              // Debug logging (enabled via DEBUG_CHAT_HANDLER=true)
+              if (DEBUG_CHAT_HANDLER) {
+                console.log('\n========== CHAT HANDLER DEBUG ==========')
+                console.log(`[iteration ${iterations}] Sending to provider:`)
+                console.log('Messages:', JSON.stringify(conversationMessages.map(m => ({
+                  role: m.role,
+                  content: typeof m.content === 'string' && m.content.length > 200 
+                    ? m.content.slice(0, 200) + '...' 
+                    : m.content,
+                  tool_calls: m.tool_calls?.map((tc: any) => ({ id: tc.id, name: tc.function?.name })),
+                  tool_call_id: m.tool_call_id,
+                })), null, 2))
+                console.log('Tools:', toolSchemas.map(t => t.name))
+                console.log('==========================================\n')
+              }
+
               // Provider is already injected via DI context
 
               // Set up per-request model override if specified
@@ -600,6 +620,20 @@ export function createChatHandler(config: ChatHandlerConfig) {
                   }
                 }
               )
+
+              // Debug logging (enabled via DEBUG_CHAT_HANDLER=true)
+              if (DEBUG_CHAT_HANDLER) {
+                console.log('\n========== PROVIDER RESULT ==========')
+                console.log('Text:', result.text?.slice(0, 200))
+                console.log('Tool calls:', result.toolCalls?.map((tc: ToolCall) => ({
+                  id: tc.id,
+                  name: tc.function.name,
+                  args: typeof tc.function.arguments === 'string' 
+                    ? tc.function.arguments.slice(0, 200)
+                    : JSON.stringify(tc.function.arguments).slice(0, 200),
+                })))
+                console.log('=====================================\n')
+              }
 
               if (result.toolCalls?.length) {
                 const toolCalls = result.toolCalls.filter((tc: ToolCall) =>
@@ -707,6 +741,9 @@ export function createChatHandler(config: ChatHandlerConfig) {
                   }
 
                   if (r.kind === 'handoff') {
+                    if (DEBUG_CHAT_HANDLER) {
+                      console.log(`[HANDOFF] Tool ${r.toolName} (${r.callId}) handing off to client`)
+                    }
                     emit(r.handoff)
                     continue
                   }
@@ -715,6 +752,10 @@ export function createChatHandler(config: ChatHandlerConfig) {
                     typeof r.serverOutput === 'string'
                       ? r.serverOutput
                       : JSON.stringify(r.serverOutput)
+
+                  if (DEBUG_CHAT_HANDLER) {
+                    console.log(`[TOOL RESULT] ${r.toolName} (${r.callId}):`, content.slice(0, 300))
+                  }
 
                   emit({
                     type: 'tool_result',
@@ -783,7 +824,11 @@ export function createChatHandler(config: ChatHandlerConfig) {
                 conversationMessages.push({
                   role: 'assistant',
                   content: result.text,
-                  tool_calls: result.toolCalls,
+                  tool_calls: result.toolCalls.map(tc => ({
+                    id: tc.id,
+                    type: 'function' as const,
+                    function: tc.function,
+                  })),
                 })
 
                 conversationMessages.push(...toolMessages)

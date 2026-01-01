@@ -147,7 +147,9 @@ function generateUniqueName(filePath: string, originalName: string, toolsDir: st
     return originalName // Root level: keep original
   }
 
-  return `${dir}/${originalName}` // Nested: 'feature-a/basic'
+  // Use underscores for path separators (OpenAI requires ^[a-zA-Z0-9_-]+$)
+  const normalizedDir = dir.replace(/[/\\]/g, '_')
+  return `${normalizedDir}_${originalName}` // Nested: 'games_start_ttt_game'
 }
 
 function isToolFile(

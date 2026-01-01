@@ -81,8 +81,11 @@ interface PendingFunctionCall {
  * - Messages with role (user/assistant/system)
  * - function_call items for tool invocations
  * - function_call_output items for tool results
+ *
+ * IMPORTANT: This function must preserve tool_calls and tool_call_id
+ * so that multi-turn tool conversations work correctly.
  */
-function toOpenAIInput(messages: Message[]): OpenAIInputItem[] {
+export function toOpenAIInput(messages: Message[]): OpenAIInputItem[] {
   const items: OpenAIInputItem[] = []
 
   for (const m of messages) {
@@ -142,7 +145,7 @@ export const openaiProvider: ChatProvider = {
       const signal = yield* useAbortSignal()
       const values: ResolvedChatStreamConfig = yield* resolveChatStreamConfig(options, {
         baseUri: process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1',
-        model: process.env['OPENAI_MODEL'] ?? 'gpt-4o-mini',
+        model: process.env['OPENAI_MODEL'] ?? 'gpt-5-chat-latest',
         envApiKeyName: 'OPENAI_API_KEY',
       })
 

@@ -6,6 +6,9 @@
  */
 
 import { calculator } from '../tools/calculator'
+import { startTttGame } from '../tools/games/tic-tac-toe'
+import { tttMove } from '../tools/games/tic-tac-toe'
+import { tttWinner } from '../tools/games/tic-tac-toe'
 import { askQuestion } from '../tools/general/ask_question'
 import { pickCard } from '../tools/pick-card'
 
@@ -15,6 +18,9 @@ import { pickCard } from '../tools/pick-card'
  */
 export const tools = {
   calculator,
+  startTttGame,
+  tttMove,
+  tttWinner,
   askQuestion,
   pickCard,
 } as const
@@ -29,7 +35,10 @@ export const toolList = Object.values(tools)
  */
 export type ToolName =
   | 'calculator'
-  | 'general/ask_question'
+  | 'games_start_ttt_game'
+  | 'games_ttt_move'
+  | 'games_ttt_winner'
+  | 'general_ask_question'
   | 'pick_card'
 
 /**
