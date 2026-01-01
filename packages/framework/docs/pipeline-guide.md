@@ -1,6 +1,8 @@
 # Frame-Based Pipeline Guide
 
-The frame-based pipeline is the new rendering architecture for sweatpants. This guide covers the core concepts, architecture, and how to work with the pipeline.
+The frame-based pipeline is the rendering architecture for streaming AI content. This guide covers the core concepts, architecture, and how to work with the pipeline.
+
+See: `src/react/chat/pipeline/` for implementation.
 
 ## Overview
 
@@ -164,24 +166,29 @@ const processors = [shiki, mermaid, markdown]
 
 ```tsx
 import { useChat } from '@tanstack/framework/react/chat'
-import { markdown, shiki, mermaid, math } from '@tanstack/framework/react/chat/pipeline'
 
 function Chat() {
   const { messages, send } = useChat({
-    processors: 'full',  // = [markdown, shiki, mermaid, math]
+    pipeline: 'full',  // = markdown + shiki + mermaid + math
   })
 
   return (
     <div>
       {messages.map(msg => (
         <div key={msg.id}>
-          {msg.content}
+          {msg.html ? (
+            <div dangerouslySetInnerHTML={{ __html: msg.html }} />
+          ) : (
+            msg.content
+          )}
         </div>
       ))}
     </div>
   )
 }
 ```
+
+See: `src/react/chat/useChat.ts` for all options.
 
 ### Architecture: How It Works
 
@@ -209,19 +216,23 @@ You don't need to understand this detail for normal use - `useChat` handles it a
 ### Custom Processor Array
 
 ```tsx
+import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
+
 useChat({
-  processors: [
-    markdown,
-    shiki,
-    {
-      name: 'custom',
-      dependencies: ['markdown', 'shiki'],
-      *process(frame) {
-        // Custom processing...
-        return frame
+  pipeline: {
+    processors: [
+      markdown,
+      shiki,
+      {
+        name: 'custom',
+        dependencies: ['markdown', 'shiki'],
+        *process(frame) {
+          // Custom processing...
+          return frame
+        }
       }
-    }
-  ]
+    ]
+  }
 })
 ```
 
@@ -540,12 +551,14 @@ for await (const frame of transform.stream(chunks)) {
 }
 ```
 
-### Manual Processor Creation
+### Creating Custom Processors
+
+Processors are objects implementing the `Processor` interface:
 
 ```ts
-import { defineProcessor } from '@tanstack/framework/react/chat/pipeline'
+import type { Processor } from '@tanstack/framework/react/chat/pipeline'
 
-const myProcessor = defineProcessor({
+const myProcessor: Processor = {
   name: 'my-processor',
   description: 'My custom processor',
   dependencies: ['markdown'],  // Run after markdown
@@ -563,8 +576,10 @@ const myProcessor = defineProcessor({
     // Transform the frame
     return frame
   },
-})
+}
 ```
+
+See: `src/react/chat/pipeline/processors/` for built-in examples.
 
 ## Error Handling
 
@@ -659,7 +674,7 @@ If you're migrating from the old dual-buffer/settler system:
 | settle() callback | Parser handles structure |
 | emit() in processor | Return frame with renderPass |
 
-See [migration-guide.md](./migration-guide.md) for detailed migration instructions.
+See `docs/archive/` for historical context on the migration.
 
 ## API Reference
 
