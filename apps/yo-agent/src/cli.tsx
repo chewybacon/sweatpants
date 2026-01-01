@@ -16,6 +16,7 @@ import { render } from 'ink'
 import { main, spawn, each, call, suspend } from 'effection'
 import { App } from './components/App.tsx'
 import { AgentProvider, type AgentContextValue } from './lib/agent-context.tsx'
+import { MouseProvider } from './lib/MouseProvider.tsx'
 import { useDevServer, type DevServerHandle } from './lib/dev-server.ts'
 import type { AgentMode } from './components/App.tsx'
 
@@ -63,9 +64,11 @@ function AgentApp({
   }
 
   return (
-    <AgentProvider value={contextValue}>
-      <App />
-    </AgentProvider>
+    <MouseProvider enabled={true}>
+      <AgentProvider value={contextValue}>
+        <App />
+      </AgentProvider>
+    </MouseProvider>
   )
 }
 
