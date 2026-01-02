@@ -3,61 +3,169 @@
  *
  * Pure reducer for chat state. Framework-agnostic - can be used with
  * React, Vue, Svelte, or any state management system.
+ *
+ * ## Parts-Based Model
+ *
+ * The reducer handles a parts-based streaming model:
+ * - streaming_text → TextPart
+ * - streaming_reasoning → ReasoningPart
+ * - tool_call_start → ToolCallPart
+ * - part_frame → Updates a part's Frame
+ *
+ * When content type switches, the current part is finalized and a new one starts.
  */
-import type { ChatState, ResponseStep, ToolEmissionState, ToolEmissionTrackingState } from './chat-state'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, StreamingPartsState } from './chat-state'
 import { initialChatState } from './chat-state'
-import type { ChatPatch } from '../patches'
+import type { ChatPatch, ContentPartType } from '../patches'
+import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
+import { generatePartId } from '../types/chat-message'
+// Frame type is used via the patch types
 
 // Re-export types for convenience
 export type { ChatState, ToolEmissionState, ToolEmissionTrackingState }
 export { initialChatState }
 
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
 /**
- * Helper to commit the active step to the current response.
- * Returns the updated currentResponse array.
+ * Create a new text part.
  */
-function commitActiveStep(
-  currentResponse: ResponseStep[],
-  activeStep: ChatState['activeStep']
-): ResponseStep[] {
-  if (!activeStep) return currentResponse
-  return [...currentResponse, activeStep]
+function createTextPart(content: string): TextPart {
+  return {
+    id: generatePartId(),
+    type: 'text',
+    content,
+  }
 }
 
 /**
- * Consolidate the step chain for final display.
- * - Merges all text steps into a single text step (final answer)
- * - Keeps thinking and tool_call steps as-is
+ * Create a new reasoning part.
  */
-function consolidateSteps(steps: ResponseStep[]): ResponseStep[] {
-  const consolidated: ResponseStep[] = []
-  let mergedText = ''
+function createReasoningPart(content: string): ReasoningPart {
+  return {
+    id: generatePartId(),
+    type: 'reasoning',
+    content,
+  }
+}
 
-  for (const step of steps) {
-    if (step.type === 'text') {
-      // Accumulate all text content
-      mergedText += step.content
-    } else {
-      // Keep thinking and tool_call steps
-      consolidated.push(step)
+/**
+ * Create a new tool call part.
+ */
+function createToolCallPart(callId: string, name: string, args: string): ToolCallPart {
+  return {
+    id: generatePartId(),
+    type: 'tool-call',
+    callId,
+    name,
+    arguments: args,
+    state: 'pending',
+    emissions: [],
+  }
+}
+
+/**
+ * Find a part by ID in the streaming parts.
+ */
+function findPart(parts: MessagePart[], partId: string): MessagePart | undefined {
+  return parts.find(p => p.id === partId)
+}
+
+/**
+ * Update a part by ID.
+ */
+function updatePart(
+  parts: MessagePart[],
+  partId: string,
+  updater: (part: MessagePart) => MessagePart
+): MessagePart[] {
+  return parts.map(p => (p.id === partId ? updater(p) : p))
+}
+
+/**
+ * Get the active content part (text or reasoning).
+ */
+function getActiveContentPart(
+  streaming: StreamingPartsState
+): TextPart | ReasoningPart | null {
+  if (!streaming.activePartId) return null
+  const part = findPart(streaming.parts, streaming.activePartId)
+  if (part?.type === 'text' || part?.type === 'reasoning') {
+    return part
+  }
+  return null
+}
+
+/**
+ * Handle content streaming (text or reasoning).
+ * Manages part switching when content type changes.
+ */
+function handleContentStreaming(
+  state: ChatState,
+  content: string,
+  partType: ContentPartType
+): ChatState {
+  const { streaming } = state
+
+  // If we're already streaming the same type, append
+  if (streaming.activePartType === partType && streaming.activePartId) {
+    const activePart = getActiveContentPart(streaming)
+    if (activePart) {
+      return {
+        ...state,
+        streaming: {
+          ...streaming,
+          parts: updatePart(streaming.parts, streaming.activePartId, (p) => ({
+            ...p,
+            content: (p as TextPart | ReasoningPart).content + content,
+          })),
+        },
+      }
     }
   }
 
-  // Add merged text as final step if we have any
-  if (mergedText) {
-    consolidated.push({ type: 'text', content: mergedText })
-  }
+  // Content type changed or first content - create new part
+  const newPart = partType === 'text'
+    ? createTextPart(content)
+    : createReasoningPart(content)
 
-  return consolidated
+  return {
+    ...state,
+    streaming: {
+      ...streaming,
+      parts: [...streaming.parts, newPart],
+      activePartId: newPart.id,
+      activePartType: partType,
+    },
+  }
 }
+
+/**
+ * Finalize the streaming message and convert to a completed message.
+ */
+function finalizeStreamingMessage(state: ChatState): ChatState {
+  // The streaming parts become part of a message
+  // For now, we'll let the derive-messages function handle the conversion
+  return {
+    ...state,
+    isStreaming: false,
+    streaming: initialChatState.streaming,
+  }
+}
+
+// =============================================================================
+// REDUCER
+// =============================================================================
 
 /**
  * Apply a patch to the chat state (pure reducer).
  *
- * Uses a step chain model:
- * - `currentResponse` accumulates completed steps
- * - `activeStep` holds the currently streaming step
- * - On step type transitions, activeStep is committed to currentResponse
+ * Uses a parts-based model:
+ * - streaming.parts accumulates parts as content streams in
+ * - streaming.activePartId tracks the currently active part
+ * - Part type switches create new parts
  */
 export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
   switch (patch.type) {
@@ -72,10 +180,6 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       return {
         ...state,
         messages: [...state.messages, patch.message],
-        // Store rendered content if provided
-        rendered: patch.rendered && patch.message.id
-          ? { ...state.rendered, [patch.message.id]: { output: patch.rendered } }
-          : state.rendered,
         error: null,
       }
 
@@ -83,177 +187,137 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       return {
         ...state,
         isStreaming: true,
-        currentResponse: [],
-        activeStep: null,
-        error: null,
-        buffer: {
-          settled: '',
-          pending: '',
-          settledHtml: '',
-          renderable: {
-            prev: '',
-            next: '',
-          },
+        streaming: {
+          parts: [],
+          activePartId: null,
+          activePartType: null,
         },
+        error: null,
       }
 
-    case 'streaming_thinking': {
-      // If we're already streaming thinking, append
-      if (state.activeStep?.type === 'thinking') {
-        return {
-          ...state,
-          activeStep: {
-            type: 'thinking',
-            content: state.activeStep.content + patch.content,
-          },
-        }
-      }
-      // Otherwise, commit current step and start new thinking step
+    case 'streaming_reasoning':
+      return handleContentStreaming(state, patch.content, 'reasoning')
+
+    // Legacy: treat streaming_thinking as streaming_reasoning
+    case 'streaming_thinking':
+      return handleContentStreaming(state, patch.content, 'reasoning')
+
+    case 'streaming_text':
+      return handleContentStreaming(state, patch.content, 'text')
+
+    case 'part_frame': {
+      // Update the frame for a specific part
+      const part = findPart(state.streaming.parts, patch.partId)
+      if (!part) return state
+
       return {
         ...state,
-        currentResponse: commitActiveStep(
-          state.currentResponse,
-          state.activeStep
-        ),
-        activeStep: { type: 'thinking', content: patch.content },
+        streaming: {
+          ...state.streaming,
+          parts: updatePart(state.streaming.parts, patch.partId, (p) => ({
+            ...p,
+            frame: patch.frame,
+          })),
+        },
       }
     }
 
-    case 'streaming_text': {
-      // If we're already streaming text, append
-      if (state.activeStep?.type === 'text') {
-        return {
-          ...state,
-          activeStep: {
-            type: 'text',
-            content: state.activeStep.content + patch.content,
-          },
-        }
-      }
-      // Otherwise, commit current step and start new text step
+    case 'part_end': {
+      // Finalize a part with its final frame
+      const part = findPart(state.streaming.parts, patch.partId)
+      if (!part) return state
+
       return {
         ...state,
-        currentResponse: commitActiveStep(
-          state.currentResponse,
-          state.activeStep
-        ),
-        activeStep: { type: 'text', content: patch.content },
+        streaming: {
+          ...state.streaming,
+          parts: updatePart(state.streaming.parts, patch.partId, (p) => ({
+            ...p,
+            frame: patch.frame,
+          })),
+          // Clear active part if this was it
+          activePartId: state.streaming.activePartId === patch.partId 
+            ? null 
+            : state.streaming.activePartId,
+          activePartType: state.streaming.activePartId === patch.partId 
+            ? null 
+            : state.streaming.activePartType,
+        },
       }
     }
 
     case 'tool_call_start': {
-      // Tool calls interrupt streaming - commit active step first
-      const newResponse = commitActiveStep(
-        state.currentResponse,
-        state.activeStep
+      // Tool calls interrupt content streaming
+      // Create a new tool-call part
+      const toolPart = createToolCallPart(
+        patch.call.id,
+        patch.call.name,
+        patch.call.arguments
       )
-
-      // Add the tool call as a pending step
-      const toolStep: ResponseStep = {
-        type: 'tool_call',
-        id: patch.call.id,
-        name: patch.call.name,
-        arguments: patch.call.arguments,
-        state: 'pending',
-      }
 
       return {
         ...state,
-        currentResponse: [...newResponse, toolStep],
-        activeStep: null,
+        streaming: {
+          ...state.streaming,
+          parts: [...state.streaming.parts, toolPart],
+          // Tool call becomes the "active" part (not content though)
+          activePartId: null,
+          activePartType: 'tool-call',
+        },
       }
     }
 
     case 'tool_call_result': {
-      // Update matching tool call in currentResponse
+      // Update matching tool call part
       return {
         ...state,
-        currentResponse: state.currentResponse.map((step) =>
-          step.type === 'tool_call' && step.id === patch.id
-            ? { ...step, state: 'complete' as const, result: patch.result }
-            : step
-        ),
+        streaming: {
+          ...state.streaming,
+          parts: state.streaming.parts.map((part) =>
+            part.type === 'tool-call' && part.callId === patch.id
+              ? { ...part, state: 'complete' as const, result: patch.result }
+              : part
+          ),
+        },
       }
     }
 
     case 'tool_call_error': {
-      // Update matching tool call in currentResponse
+      // Update matching tool call part
       return {
         ...state,
-        currentResponse: state.currentResponse.map((step) =>
-          step.type === 'tool_call' && step.id === patch.id
-            ? { ...step, state: 'error' as const, error: patch.error }
-            : step
-        ),
+        streaming: {
+          ...state.streaming,
+          parts: state.streaming.parts.map((part) =>
+            part.type === 'tool-call' && part.callId === patch.id
+              ? { ...part, state: 'error' as const, error: patch.error }
+              : part
+          ),
+        },
       }
     }
 
     case 'assistant_message': {
-      // Commit final active step
-      const finalResponse = commitActiveStep(
-        state.currentResponse,
-        state.activeStep
-      )
-
-      // Consolidate steps (merge all text into single final text step)
-      const consolidatedSteps = consolidateSteps(finalResponse)
-
-      // Create message with step chain
-      const messageWithSteps: ChatState['messages'][0] = {
-        ...patch.message,
-        ...(consolidatedSteps.length > 0 && { steps: consolidatedSteps }),
-      }
-
-      // Get rendered output from patch (if provided) or from buffer (accumulated during streaming)
-      const output = patch.rendered || state.buffer.settledHtml || undefined
-
+      // Streaming complete - add message
+      // The streaming parts should already be finalized
       return {
         ...state,
-        messages: [...state.messages, messageWithSteps],
-        // Store rendered content
-        rendered: output && patch.message.id
-          ? { ...state.rendered, [patch.message.id]: { output } }
-          : state.rendered,
-        currentResponse: [],
-        activeStep: null,
+        messages: [...state.messages, patch.message],
+        streaming: initialChatState.streaming,
       }
     }
 
     case 'streaming_end':
-      return {
-        ...state,
-        isStreaming: false,
-      }
+      return finalizeStreamingMessage(state)
 
     case 'abort_complete': {
       // User aborted - preserve partial content if message provided
       if (patch.message) {
-        // Commit any active step
-        const finalResponse = commitActiveStep(
-          state.currentResponse,
-          state.activeStep
-        )
-        const consolidatedSteps = consolidateSteps(finalResponse)
-
-        // Create message with step chain
-        const messageWithSteps: ChatState['messages'][0] = {
-          ...patch.message,
-          ...(consolidatedSteps.length > 0 && { steps: consolidatedSteps }),
-        }
-
-        // Use the rendered HTML from the patch (settled content only)
-        const output = patch.rendered || state.buffer.settledHtml || undefined
-
         return {
           ...state,
-          messages: [...state.messages, messageWithSteps],
-          rendered: output && patch.message.id
-            ? { ...state.rendered, [patch.message.id]: { output } }
-            : state.rendered,
-          currentResponse: [],
-          activeStep: null,
+          messages: [...state.messages, patch.message],
+          streaming: initialChatState.streaming,
           isStreaming: false,
-          buffer: initialChatState.buffer, // Reset buffer
         }
       }
 
@@ -261,9 +325,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       return {
         ...state,
         isStreaming: false,
-        currentResponse: [],
-        activeStep: null,
-        buffer: initialChatState.buffer,
+        streaming: initialChatState.streaming,
       }
     }
 
@@ -277,45 +339,14 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     case 'reset':
       return initialChatState
 
-    // Dual buffer patches
+    // --- Buffer patches (legacy - may be removed) ---
     case 'buffer_settled':
-      return {
-        ...state,
-        buffer: {
-          ...state.buffer,
-          settled: patch.next,
-          // If processor enriched with HTML, update settledHtml too
-          settledHtml: patch.html ?? state.buffer.settledHtml,
-        },
-      }
-
     case 'buffer_pending':
-      return {
-        ...state,
-        buffer: {
-          ...state.buffer,
-          pending: patch.content,
-        },
-      }
-
+    case 'buffer_raw':
     case 'buffer_renderable':
-      return {
-        ...state,
-        buffer: {
-          ...state.buffer,
-          // Also update settledHtml so it's available when streaming ends
-          ...(patch.html && { settledHtml: patch.html }),
-          renderable: {
-            prev: patch.prev,
-            next: patch.next,
-            ...(patch.html && { html: patch.html }),
-            ...(patch.delta && { delta: patch.delta }),
-            ...(patch.revealHint && { revealHint: patch.revealHint }),
-            ...(patch.timestamp && { timestamp: patch.timestamp }),
-            ...(patch.meta && { meta: patch.meta }),
-          },
-        },
-      }
+      // These are handled by the parts/frames now
+      // Just pass through for backwards compatibility
+      return state
 
     // --- Client Tool Patches ---
 
@@ -342,22 +373,21 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             ...state.pendingClientTools[patch.id],
             state: 'executing',
           },
-        } as any,
+        } as ChatState['pendingClientTools'],
       }
 
     case 'client_tool_complete': {
-      // Remove from pending and we could track completed tools elsewhere if needed
-      const { [patch.id]: completed, ...remaining } = state.pendingClientTools
+      const completed = state.pendingClientTools[patch.id]
       return {
         ...state,
         pendingClientTools: {
-          ...remaining,
+          ...state.pendingClientTools,
           [patch.id]: {
             ...completed,
             state: 'complete',
             result: patch.result,
           },
-        } as any,
+        } as ChatState['pendingClientTools'],
       }
     }
 
@@ -371,7 +401,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'error',
             error: patch.error,
           },
-        } as any,
+        } as ChatState['pendingClientTools'],
       }
     }
 
@@ -385,7 +415,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'denied',
             denialReason: patch.reason,
           },
-        } as any,
+        } as ChatState['pendingClientTools'],
       }
     }
 
@@ -398,7 +428,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             ...state.pendingClientTools[patch.id],
             progressMessage: patch.message,
           },
-        } as any,
+        } as ChatState['pendingClientTools'],
       }
     }
 
@@ -412,7 +442,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             state: 'awaiting_approval',
             permissionType: patch.permissionType,
           },
-        } as any,
+        } as ChatState['pendingClientTools'],
       }
     }
 
@@ -429,7 +459,6 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     }
 
     case 'handoff_complete': {
-      // Remove the completed handoff from pending state
       const { [patch.callId]: _completed, ...remaining } = state.pendingHandoffs
       return {
         ...state,
@@ -457,8 +486,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
 
     case 'tool_emission': {
       const tracking = state.toolEmissions[patch.callId]
-      
-      // Build the emission state, only including respond if defined
+
+      // Build the emission state
       const newEmission: ToolEmissionState = {
         ...patch.emission,
         callId: patch.callId,
@@ -467,7 +496,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       if (patch.respond) {
         newEmission.respond = patch.respond
       }
-      
+
       if (!tracking) {
         // Auto-create tracking if not started explicitly
         return {
@@ -485,8 +514,28 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         }
       }
 
+      // Also update the tool-call part's emissions if it exists
+      const updatedParts = state.streaming.parts.map((part) => {
+        if (part.type === 'tool-call' && part.callId === patch.callId) {
+          return {
+            ...part,
+            emissions: [...part.emissions, {
+              id: patch.emission.id,
+              status: patch.emission.status as 'pending' | 'complete',
+              component: patch.emission.payload._component,
+              props: patch.emission.payload.props,
+            }],
+          }
+        }
+        return part
+      })
+
       return {
         ...state,
+        streaming: {
+          ...state.streaming,
+          parts: updatedParts,
+        },
         toolEmissions: {
           ...state.toolEmissions,
           [patch.callId]: {
@@ -525,17 +574,11 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     }
 
     case 'tool_emission_complete': {
-      const tracking = state.toolEmissions[patch.callId]
-      if (!tracking) return state
-
-      // Remove from active emissions
       const { [patch.callId]: _completed, ...remainingEmissions } = state.toolEmissions
 
       return {
         ...state,
         toolEmissions: remainingEmissions,
-        // Note: The trace should be included in the tool result message
-        // That's handled separately when the tool call completes
       }
     }
 

@@ -30,14 +30,19 @@ export type { Message, ToolCall } from '../../../lib/chat/types'
 
 // Patch types
 export type {
+  // Content part type
+  ContentPartType,
   // Core patches
   SessionInfoPatch,
   UserMessagePatch,
   AssistantMessagePatch,
   StreamingStartPatch,
   StreamingTextPatch,
+  StreamingReasoningPatch,
   StreamingThinkingPatch,
   StreamingEndPatch,
+  PartFramePatch,
+  PartEndPatch,
   ToolCallStartPatch,
   ToolCallResultPatch,
   ToolCallErrorPatch,
@@ -107,11 +112,13 @@ export type {
   TimelineItem,
   TimelineToolCallGroup,
   GroupedTimelineItem,
+  StreamingPartsState,
+  PendingClientToolState,
+  ChatState,
+  // Legacy (deprecated)
   ResponseStep,
   ActiveStep,
   RenderedContent,
-  PendingClientToolState,
-  ChatState,
   // Note: ToolEmissionState and ToolEmissionTrackingState are exported from patches
 } from '../../../lib/chat/state'
 

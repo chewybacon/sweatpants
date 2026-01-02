@@ -3,7 +3,7 @@ import { initialChatState, chatReducer } from '../state'
 import type { ChatState, ChatPatch } from '../types'
 
 describe('chatReducer (pure logic)', () => {
-  it('should handle streaming_start by resetting buffer and active step', () => {
+  it('should handle streaming_start by resetting streaming parts', () => {
     const startState: ChatState = {
       ...initialChatState,
       messages: [{ id: '1', role: 'user', content: 'hi' }],
@@ -14,7 +14,9 @@ describe('chatReducer (pure logic)', () => {
     const nextState = chatReducer(startState, patch)
     
     expect(nextState.isStreaming).toBe(true)
-    expect(nextState.buffer.settled).toBe('')
+    expect(nextState.streaming.parts).toEqual([])
+    expect(nextState.streaming.activePartId).toBeNull()
+    expect(nextState.streaming.activePartType).toBeNull()
     expect(nextState.messages.length).toBe(1)
   })
 
@@ -43,43 +45,70 @@ describe('chatReducer (pure logic)', () => {
     expect(nextState.toolEmissions['call-123']).toBeDefined()
   })
 
-  it('should accumulate streaming text', () => {
+  it('should accumulate streaming text into a text part', () => {
+    // Start with streaming active, one text part already created
     const startState: ChatState = {
       ...initialChatState,
       isStreaming: true,
-      activeStep: { type: 'text', content: 'Hell' }
+      streaming: {
+        parts: [{ id: 'part-1', type: 'text', content: 'Hell' }],
+        activePartId: 'part-1',
+        activePartType: 'text',
+      },
     }
     
     const patch: ChatPatch = { type: 'streaming_text', content: 'o' }
     const nextState = chatReducer(startState, patch)
     
-    expect(nextState.activeStep?.content).toBe('Hello')
+    // Should append to existing text part
+    expect(nextState.streaming.parts.length).toBe(1)
+    const textPart = nextState.streaming.parts[0]!
+    expect(textPart.type).toBe('text')
+    expect((textPart as { content: string }).content).toBe('Hello')
   })
 
-  it('should transition from thinking to text', () => {
+  it('should transition from reasoning to text by creating new part', () => {
+    // Start with a reasoning part active
     const startState: ChatState = {
       ...initialChatState,
       isStreaming: true,
-      activeStep: { type: 'thinking', content: 'Hmmm' },
-      currentResponse: []
+      streaming: {
+        parts: [{ id: 'part-1', type: 'reasoning', content: 'Hmmm' }],
+        activePartId: 'part-1',
+        activePartType: 'reasoning',
+      },
     }
     
     const patch: ChatPatch = { type: 'streaming_text', content: 'Hi' }
     const nextState = chatReducer(startState, patch)
     
-    // Should commit thinking step
-    expect(nextState.currentResponse.length).toBe(1)
-    expect(nextState.currentResponse[0]).toEqual({ type: 'thinking', content: 'Hmmm' })
-    // Should start text step
-    expect(nextState.activeStep).toEqual({ type: 'text', content: 'Hi' })
+    // Should now have two parts: reasoning and text
+    expect(nextState.streaming.parts.length).toBe(2)
+    
+    const reasoningPart = nextState.streaming.parts[0]!
+    const textPart = nextState.streaming.parts[1]!
+    expect(reasoningPart.type).toBe('reasoning')
+    expect((reasoningPart as { content: string }).content).toBe('Hmmm')
+    expect(textPart.type).toBe('text')
+    expect((textPart as { content: string }).content).toBe('Hi')
+    
+    // Active part should now be the text part
+    expect(nextState.streaming.activePartId).toBe(textPart.id)
+    expect(nextState.streaming.activePartType).toBe('text')
   })
 
   it('should finalize message on assistant_message', () => {
     const startState: ChatState = {
       ...initialChatState,
       isStreaming: true,
-      activeStep: { type: 'text', content: 'Hello world' },
-      currentResponse: [{ type: 'thinking', content: 'Thinking' }]
+      streaming: {
+        parts: [
+          { id: 'part-1', type: 'reasoning', content: 'Thinking' },
+          { id: 'part-2', type: 'text', content: 'Hello world' },
+        ],
+        activePartId: 'part-2',
+        activePartType: 'text',
+      },
     }
     
     const patch: ChatPatch = { 
@@ -88,12 +117,13 @@ describe('chatReducer (pure logic)', () => {
     }
     const nextState = chatReducer(startState, patch)
     
-    expect(nextState.isStreaming).toBe(true) // streaming_end comes later
+    // Message should be added
     expect(nextState.messages.length).toBe(1)
+    expect(nextState.messages[0]!.content).toBe('Hello world')
     
-    const msg = nextState.messages[0]
-    expect(msg.steps).toHaveLength(2) // Thinking + Text
-    expect(msg.content).toBe('Hello world')
-    expect(nextState.activeStep).toBeNull()
+    // Streaming state should be reset
+    expect(nextState.streaming.parts).toEqual([])
+    expect(nextState.streaming.activePartId).toBeNull()
+    expect(nextState.streaming.activePartType).toBeNull()
   })
 })
