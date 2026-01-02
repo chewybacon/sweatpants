@@ -19,6 +19,7 @@ import {
   type ClientToolSessionOptions,
 } from '../../lib/chat/session'
 import { initialChatState } from '../../lib/chat/state'
+import type { TextPart, ReasoningPart } from '../../lib/chat/types/chat-message'
 import { createPipelineTransform, markdown } from './pipeline'
 import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState, SessionOptions } from './types'
 import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
@@ -251,15 +252,19 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
 
   const abort = useCallback(() => {
     const currentState = stateRef.current
-    // Collect partial content from the buffer (settled + pending)
-    const partialContent = currentState.buffer.settled + currentState.buffer.pending
-    // Use only the settled HTML for display (safe, fully rendered)
-    const partialHtml = currentState.buffer.settledHtml
+    
+    // In the parts-based model, collect content from streaming parts
+    // Concatenate all text and reasoning parts for partial content
+    const partialContent = currentState.streaming.parts
+      .filter((p): p is TextPart | ReasoningPart => 
+        p.type === 'text' || p.type === 'reasoning'
+      )
+      .map(p => p.content)
+      .join('')
     
     dispatchRef.current?.({ 
       type: 'abort',
       partialContent,
-      partialHtml,
     })
   }, [])
 

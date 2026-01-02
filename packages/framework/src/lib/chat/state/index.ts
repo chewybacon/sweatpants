@@ -25,6 +25,7 @@ export type {
   RenderedContent,
   PendingClientToolState,
   ChatState,
+  StreamingPartsState,
   // Emission types (ctx.render pattern)
   ToolEmissionState,
   ToolEmissionTrackingState,

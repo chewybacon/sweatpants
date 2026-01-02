@@ -4,33 +4,29 @@
  * Pure functions to derive ChatMessage[] from ChatState.
  * No framework dependencies - just data transformation.
  *
- * These functions enable framework-agnostic message derivation that can be
- * used by React, Vue, Svelte, or any other UI framework.
+ * ## Parts-Based Model
+ *
+ * Messages are composed of ordered parts (text, reasoning, tool-call).
+ * Each part can have its own Frame from the pipeline.
  *
  * @example React
  * ```tsx
  * const messages = useMemo(() =>
- *   deriveMessages<React.ComponentType<any>>(
- *     state,
- *     (emission) => emission.payload._component
- *   ),
+ *   deriveMessages<React.ComponentType<any>>(state),
  *   [state]
- * )
- * ```
- *
- * @example Vue
- * ```ts
- * const messages = computed(() =>
- *   deriveMessages<Component>(
- *     state.value,
- *     (emission) => emission.payload._component
- *   )
  * )
  * ```
  */
 
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, ResponseStep } from './chat-state'
-import type { ChatMessage, ChatToolCall, ChatEmission, StreamingMessage } from '../types/chat-message'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState } from './chat-state'
+import type {
+  ChatMessage,
+  MessagePart,
+  TextPart,
+  ToolCallPart,
+  ChatEmission,
+  StreamingMessage,
+} from '../types/chat-message'
 
 // =============================================================================
 // COMPONENT EXTRACTOR TYPE
@@ -78,47 +74,64 @@ function toEmission<TComponent>(
 }
 
 /**
- * Build a ChatToolCall from tool call data and emissions.
+ * Build emissions for a tool call part from the toolEmissions state.
  */
-function buildToolCall<TComponent>(
-  id: string,
-  name: string,
-  args: unknown,
-  toolState: 'pending' | 'running' | 'complete' | 'error',
+function buildEmissionsForToolCall<TComponent>(
+  callId: string,
   toolEmissions: Record<string, ToolEmissionTrackingState>,
-  extractComponent: ComponentExtractor<TComponent>,
-  result?: unknown,
-  error?: string
-): ChatToolCall<TComponent> {
-  // Find emissions for this tool call
-  const tracking = toolEmissions[id]
-  const emissions: ChatEmission<TComponent>[] = []
+  extractComponent: ComponentExtractor<TComponent>
+): ChatEmission<TComponent>[] {
+  const tracking = toolEmissions[callId]
+  if (!tracking?.emissions) return []
 
-  if (tracking?.emissions) {
-    for (const e of tracking.emissions) {
-      const emission = toEmission(e, extractComponent)
-      if (emission) {
-        emissions.push(emission)
-      }
+  const emissions: ChatEmission<TComponent>[] = []
+  for (const e of tracking.emissions) {
+    const emission = toEmission(e, extractComponent)
+    if (emission) {
+      emissions.push(emission)
     }
   }
+  return emissions
+}
 
-  const toolCall: ChatToolCall<TComponent> = {
-    id,
-    name,
-    arguments: args,
-    state: toolState,
-    emissions,
+/**
+ * Enrich a tool call part with emissions from the toolEmissions state.
+ */
+function enrichToolCallPart<TComponent>(
+  part: ToolCallPart<TComponent>,
+  toolEmissions: Record<string, ToolEmissionTrackingState>,
+  extractComponent: ComponentExtractor<TComponent>
+): ToolCallPart<TComponent> {
+  const emissions = buildEmissionsForToolCall(
+    part.callId,
+    toolEmissions,
+    extractComponent
+  )
+
+  if (emissions.length === 0 && part.emissions.length === 0) {
+    return part
   }
 
-  if (result !== undefined) {
-    toolCall.result = result
+  return {
+    ...part,
+    emissions: emissions.length > 0 ? emissions : part.emissions,
   }
-  if (error !== undefined) {
-    toolCall.error = error
-  }
+}
 
-  return toolCall
+/**
+ * Enrich all parts with emissions.
+ */
+function enrichParts<TComponent>(
+  parts: MessagePart<TComponent>[],
+  toolEmissions: Record<string, ToolEmissionTrackingState>,
+  extractComponent: ComponentExtractor<TComponent>
+): MessagePart<TComponent>[] {
+  return parts.map((part) => {
+    if (part.type === 'tool-call') {
+      return enrichToolCallPart(part, toolEmissions, extractComponent)
+    }
+    return part
+  })
 }
 
 // =============================================================================
@@ -129,7 +142,7 @@ function buildToolCall<TComponent>(
  * Derive completed messages from ChatState.
  *
  * Transforms the internal message representation into the UI-friendly
- * ChatMessage format, including tool calls and their emissions.
+ * ChatMessage format.
  *
  * @param state - The current ChatState
  * @param extractComponent - Function to extract the component from an emission
@@ -142,38 +155,59 @@ export function deriveCompletedMessages<TComponent>(
   return state.messages
     .filter((msg) => msg.role !== 'tool') // Filter out tool result messages
     .map((msg): ChatMessage<TComponent> => {
-      const rendered = msg.id ? state.rendered[msg.id] : null
+      // Convert internal message to ChatMessage with parts
+      // For now, messages from history just have a single text part
+      const parts: MessagePart<TComponent>[] = []
 
-      // Build tool calls with emissions for assistant messages
-      let toolCalls: ChatToolCall<TComponent>[] | undefined
-      if (msg.role === 'assistant' && msg.tool_calls?.length) {
-        toolCalls = msg.tool_calls.map((tc) => {
+      if (msg.content) {
+        parts.push({
+          id: `${msg.id}-text`,
+          type: 'text',
+          content: msg.content,
+        } as TextPart)
+      }
+
+      // Add tool calls from the message if present
+      if (msg.tool_calls?.length) {
+        for (const tc of msg.tool_calls) {
           // Look for result in tool messages that follow
           const toolResultMsg = state.messages.find(
             (m) => m.role === 'tool' && m.tool_call_id === tc.id
           )
           const hasError = toolResultMsg?.content?.startsWith('Error:')
 
-          return buildToolCall<TComponent>(
-            tc.id,
-            tc.function.name,
-            tc.function.arguments,
-            toolResultMsg ? (hasError ? 'error' : 'complete') : 'running',
+          const toolPart: ToolCallPart<TComponent> = {
+            id: `${msg.id}-tool-${tc.id}`,
+            type: 'tool-call',
+            callId: tc.id,
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+            state: toolResultMsg ? (hasError ? 'error' : 'complete') : 'running',
+            emissions: [],
+          }
+
+          if (toolResultMsg && !hasError && toolResultMsg.content) {
+            toolPart.result = toolResultMsg.content
+          }
+          if (hasError && toolResultMsg?.content) {
+            toolPart.error = toolResultMsg.content
+          }
+
+          // Enrich with emissions
+          const enrichedPart = enrichToolCallPart(
+            toolPart,
             state.toolEmissions,
-            extractComponent,
-            toolResultMsg && !hasError ? toolResultMsg.content : undefined,
-            hasError ? toolResultMsg?.content : undefined
+            extractComponent
           )
-        })
+          parts.push(enrichedPart)
+        }
       }
 
       return {
         id: msg.id ?? `msg-${Date.now()}`,
         role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
-        ...(rendered?.output && { html: rendered.output }),
+        parts,
         isStreaming: false,
-        ...(toolCalls && { toolCalls }),
       }
     })
 }
@@ -182,9 +216,10 @@ export function deriveCompletedMessages<TComponent>(
  * Derive the streaming message from ChatState.
  *
  * Returns null if not currently streaming, otherwise returns the
- * StreamingMessage with animation-ready data.
+ * StreamingMessage with the current parts.
  *
  * @param state - The current ChatState
+ * @param extractComponent - Function to extract the component from an emission
  * @returns StreamingMessage or null
  */
 export function deriveStreamingMessage<TComponent>(
@@ -193,43 +228,17 @@ export function deriveStreamingMessage<TComponent>(
 ): StreamingMessage<TComponent> | null {
   if (!state.isStreaming) return null
 
-  const renderable = state.buffer.renderable
-  
-  // Build tool calls from currentResponse during streaming
-  const streamingToolCalls: ChatToolCall<TComponent>[] = state.currentResponse
-    .filter((step): step is Extract<ResponseStep, { type: 'tool_call' }> => step.type === 'tool_call')
-    .map((step) =>
-      buildToolCall<TComponent>(
-        step.id,
-        step.name,
-        step.arguments,
-        step.state === 'pending' ? 'running' : step.state,
-        state.toolEmissions,
-        extractComponent,
-        step.result,
-        step.error
-      )
-    )
-
-  if (!renderable) {
-    // Fallback to settled content if no renderable buffer
-    return {
-      role: 'assistant' as const,
-      content: state.buffer.settled,
-      ...(state.buffer.settledHtml && { html: state.buffer.settledHtml }),
-      ...(streamingToolCalls.length > 0 && { toolCalls: streamingToolCalls }),
-    }
-  }
+  // Enrich parts with emissions
+  const parts = enrichParts(
+    state.streaming.parts as MessagePart<TComponent>[],
+    state.toolEmissions,
+    extractComponent
+  )
 
   return {
-    role: 'assistant' as const,
-    content: renderable.next,
-    ...(renderable.html && { html: renderable.html }),
-    ...(renderable.delta && { delta: renderable.delta }),
-    ...(renderable.revealHint && { revealHint: renderable.revealHint }),
-    ...(renderable.meta && { meta: renderable.meta }),
-    ...(renderable.timestamp && { timestamp: renderable.timestamp }),
-    ...(streamingToolCalls.length > 0 && { toolCalls: streamingToolCalls }),
+    role: 'assistant',
+    parts,
+    activePartId: state.streaming.activePartId,
   }
 }
 
@@ -258,12 +267,8 @@ export function deriveMessages<TComponent>(
   const streamingChatMessage: ChatMessage<TComponent> = {
     id: 'streaming',
     role: 'assistant',
-    content: streamingMessage.content,
-    ...(streamingMessage.html && { html: streamingMessage.html }),
+    parts: streamingMessage.parts,
     isStreaming: true,
-    ...(streamingMessage.toolCalls && streamingMessage.toolCalls.length > 0 && {
-      toolCalls: streamingMessage.toolCalls,
-    }),
   }
 
   return [...completedMessages, streamingChatMessage]

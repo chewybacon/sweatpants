@@ -55,7 +55,7 @@ import type {
   ParseContext,
   ProcessFn,
 } from './types'
-import { emptyFrame, renderFrameToRendered, renderFrameToRaw } from './frame'
+import { emptyFrame } from './frame'
 import { createParser } from './parser'
 import { resolveProcessors } from './resolver'
 
@@ -297,31 +297,10 @@ export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
 // Pipeline Transform (for integration with existing system)
 // =============================================================================
 
-// Import patch types from the main types
-import type { ChatPatch, BufferRenderablePatch } from '../types'
-
-/**
- * Helper to create a buffer_renderable patch from a frame.
- */
-function createFramePatch(
-  frame: Frame,
-  lastRaw: string
-): BufferRenderablePatch {
-  const html = renderFrameToRendered(frame)
-  const raw = renderFrameToRaw(frame)
-
-  return {
-    type: 'buffer_renderable',
-    prev: lastRaw,
-    next: raw,
-    html,
-    delta: {
-      added: raw.slice(lastRaw.length),
-      startOffset: lastRaw.length,
-    },
-    timestamp: Date.now(),
-  }
-}
+// Import patch types
+import type { ChatPatch } from '../types'
+import type { ContentPartType, PartFramePatch, PartEndPatch } from '../../../lib/chat/patches'
+import { generatePartId } from '../../../lib/chat/types/chat-message'
 
 /**
  * Create a patch transform from a pipeline config.
@@ -329,49 +308,107 @@ function createFramePatch(
  * This bridges the lazy pipeline with the existing patch-based
  * streaming infrastructure.
  *
- * ## Behavior
+ * ## Per-Segment Pipelines
  *
- * The transform:
- * 1. Pushes incoming `streaming_text` content to the pipeline buffer
- * 2. Pulls a frame and emits `buffer_renderable` patch
- * 3. Flushes on `streaming_end`
+ * The transform manages a separate pipeline for each content segment:
+ * - streaming_text → text segment
+ * - streaming_reasoning → reasoning segment
  *
- * ## Batching / Throttling
+ * When content type switches (reasoning → text, text → tool_call), the
+ * current pipeline is flushed and a `part_end` patch is emitted. A new
+ * pipeline is created for the next segment.
  *
- * This transform does NOT throttle - it processes each incoming patch.
- * If you need frame-rate limiting (e.g., for React), implement it in
- * your UI framework adapter layer.
+ * ## Patches Emitted
  *
- * The pipeline itself is lazy - tokens accumulate in the buffer until
- * `pull()` is called. This transform pulls on each `streaming_text` patch.
+ * - `part_frame` - Frame update for the current part
+ * - `part_end` - Part finalized with its final frame
+ *
+ * Original patches (streaming_text, etc.) are passed through.
  */
 export function createPipelineTransform(config: PipelineConfig) {
   return function* pipelineTransform(
     input: Channel<ChatPatch, void>,
     output: Channel<ChatPatch, void>
   ): Operation<void> {
-    let lastRaw = ''
-    let lastHtml = ''
-
-    const pipeline = createPipeline(config)
+    // Current segment state
+    let currentPartType: ContentPartType | null = null
+    let currentPartId: string | null = null
+    let pipeline: Pipeline | null = null
 
     /**
-     * Pull a frame and emit if content changed.
+     * Flush the current segment and emit part_end.
      */
-    function* pullAndEmit(): Operation<void> {
-      if (!pipeline.hasPending) {
+    function* flushCurrentSegment(): Operation<void> {
+      if (!pipeline || !currentPartId || !currentPartType) {
         return
       }
 
-      const frame = yield* pipeline.pull()
-      const html = renderFrameToRendered(frame)
-      const raw = renderFrameToRaw(frame)
+      const frame = yield* pipeline.flush()
 
-      if (raw !== lastRaw || html !== lastHtml) {
-        yield* output.send(createFramePatch(frame, lastRaw))
-        lastRaw = raw
-        lastHtml = html
+      const partEndPatch: PartEndPatch = {
+        type: 'part_end',
+        partId: currentPartId,
+        frame,
       }
+      yield* output.send(partEndPatch)
+
+      // Reset segment state
+      pipeline = null
+      currentPartId = null
+      currentPartType = null
+    }
+
+    /**
+     * Start a new segment with the given type.
+     */
+    function startNewSegment(partType: ContentPartType): void {
+      currentPartType = partType
+      currentPartId = generatePartId()
+      pipeline = createPipeline(config)
+    }
+
+    /**
+     * Push content and emit part_frame for the current segment.
+     */
+    function* pushAndEmitFrame(content: string): Operation<void> {
+      if (!pipeline || !currentPartId || !currentPartType) {
+        return
+      }
+
+      pipeline.push(content)
+
+      if (pipeline.hasPending) {
+        const frame = yield* pipeline.pull()
+
+        const partFramePatch: PartFramePatch = {
+          type: 'part_frame',
+          partType: currentPartType,
+          partId: currentPartId,
+          frame,
+        }
+        yield* output.send(partFramePatch)
+      }
+    }
+
+    /**
+     * Handle content streaming (text or reasoning).
+     */
+    function* handleContentPatch(
+      content: string,
+      partType: ContentPartType
+    ): Operation<void> {
+      // If content type changed, flush previous segment
+      if (currentPartType !== null && currentPartType !== partType) {
+        yield* flushCurrentSegment()
+      }
+
+      // Start new segment if needed
+      if (currentPartType !== partType) {
+        startNewSegment(partType)
+      }
+
+      // Push content and emit frame
+      yield* pushAndEmitFrame(content)
     }
 
     // Subscribe to input
@@ -382,47 +419,34 @@ export function createPipelineTransform(config: PipelineConfig) {
       const next = yield* subscription.next()
 
       if (next.done) {
-        // Stream ended - flush pipeline
-        const frame = yield* pipeline.flush()
-        const html = renderFrameToRendered(frame)
-        const raw = renderFrameToRaw(frame)
-
-        if (raw !== lastRaw || html !== lastHtml) {
-          yield* output.send(createFramePatch(frame, lastRaw))
-        }
+        // Stream ended - flush current segment
+        yield* flushCurrentSegment()
         break
       }
 
       const patch = next.value
 
       if (patch.type === 'streaming_start') {
-        // Reset pipeline for new stream
-        pipeline.reset()
-        lastRaw = ''
-        lastHtml = ''
+        // Reset for new stream
+        yield* flushCurrentSegment()
         yield* output.send(patch)
       } else if (patch.type === 'streaming_text') {
-        // Push to buffer
-        pipeline.push(patch.content)
-
-        // Pull and emit frame
-        yield* pullAndEmit()
-
-        // Pass through original patch for raw buffer tracking
+        // Handle text content
+        yield* handleContentPatch(patch.content, 'text')
+        // Pass through original patch
+        yield* output.send(patch)
+      } else if (patch.type === 'streaming_reasoning' || patch.type === 'streaming_thinking') {
+        // Handle reasoning content
+        yield* handleContentPatch(patch.content, 'reasoning')
+        // Pass through original patch
+        yield* output.send(patch)
+      } else if (patch.type === 'tool_call_start') {
+        // Tool calls interrupt content - flush current segment
+        yield* flushCurrentSegment()
         yield* output.send(patch)
       } else if (patch.type === 'streaming_end') {
-        // Flush any remaining buffered content
-        yield* pullAndEmit()
-
-        // Then flush the pipeline (handles incomplete blocks)
-        const frame = yield* pipeline.flush()
-        const html = renderFrameToRendered(frame)
-        const raw = renderFrameToRaw(frame)
-
-        if (raw !== lastRaw || html !== lastHtml) {
-          yield* output.send(createFramePatch(frame, lastRaw))
-        }
-
+        // Flush current segment
+        yield* flushCurrentSegment()
         yield* output.send(patch)
       } else {
         // Pass through other patches unchanged
