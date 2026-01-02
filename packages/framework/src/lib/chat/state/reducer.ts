@@ -19,6 +19,7 @@ import { initialChatState } from './chat-state'
 import type { ChatPatch, ContentPartType } from '../patches'
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
 import { generatePartId } from '../types/chat-message'
+import type { Message } from '../types'
 // Frame type is used via the patch types
 
 // Re-export types for convenience
@@ -143,16 +144,15 @@ function handleContentStreaming(
 }
 
 /**
- * Finalize the streaming message and convert to a completed message.
+ * Find the last message with a given role.
  */
-function finalizeStreamingMessage(state: ChatState): ChatState {
-  // The streaming parts become part of a message
-  // For now, we'll let the derive-messages function handle the conversion
-  return {
-    ...state,
-    isStreaming: false,
-    streaming: initialChatState.streaming,
+function findLastMessageByRole(messages: Message[], role: string): Message | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === role) {
+      return messages[i]
+    }
   }
+  return undefined
 }
 
 // =============================================================================
@@ -206,15 +206,36 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       return handleContentStreaming(state, patch.content, 'text')
 
     case 'part_frame': {
-      // Update the frame for a specific part
-      const part = findPart(state.streaming.parts, patch.partId)
-      if (!part) return state
+      // Update the frame for the active part of the given type.
+      // The partId from the pipeline transform may not match the reducer's part ID,
+      // so we match by part type instead (there's only one active part of each type).
+      const activePartId = state.streaming.activePartId
+      const activePartType = state.streaming.activePartType
+      
+      // Match by part type - the pipeline transform tells us which type this frame is for
+      if (!activePartId || activePartType !== patch.partType) {
+        // No matching active part - maybe it's for a previous part, try by ID
+        const part = findPart(state.streaming.parts, patch.partId)
+        if (!part) return state
+        
+        return {
+          ...state,
+          streaming: {
+            ...state.streaming,
+            parts: updatePart(state.streaming.parts, patch.partId, (p) => ({
+              ...p,
+              frame: patch.frame,
+            })),
+          },
+        }
+      }
 
+      // Update the active part with the frame
       return {
         ...state,
         streaming: {
           ...state.streaming,
-          parts: updatePart(state.streaming.parts, patch.partId, (p) => ({
+          parts: updatePart(state.streaming.parts, activePartId, (p) => ({
             ...p,
             frame: patch.frame,
           })),
@@ -223,23 +244,40 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     }
 
     case 'part_end': {
-      // Finalize a part with its final frame
-      const part = findPart(state.streaming.parts, patch.partId)
-      if (!part) return state
+      // Finalize a part with its final frame.
+      // Match by part type first (like part_frame), fall back to ID.
+      const activePartId = state.streaming.activePartId
+      const activePartType = state.streaming.activePartType
+      
+      // Determine which part to update
+      let targetPartId: string | null = null
+      
+      if (activePartId && activePartType === patch.partType) {
+        // Active part matches the type being finalized
+        targetPartId = activePartId
+      } else {
+        // Try by ID (for cases where part type already changed)
+        const part = findPart(state.streaming.parts, patch.partId)
+        if (part) {
+          targetPartId = patch.partId
+        }
+      }
+      
+      if (!targetPartId) return state
 
       return {
         ...state,
         streaming: {
           ...state.streaming,
-          parts: updatePart(state.streaming.parts, patch.partId, (p) => ({
+          parts: updatePart(state.streaming.parts, targetPartId, (p) => ({
             ...p,
             frame: patch.frame,
           })),
           // Clear active part if this was it
-          activePartId: state.streaming.activePartId === patch.partId 
+          activePartId: state.streaming.activePartId === targetPartId 
             ? null 
             : state.streaming.activePartId,
-          activePartType: state.streaming.activePartId === patch.partId 
+          activePartType: state.streaming.activePartId === targetPartId 
             ? null 
             : state.streaming.activePartType,
         },
@@ -298,17 +336,47 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     }
 
     case 'assistant_message': {
-      // Streaming complete - add message
-      // The streaming parts should already be finalized
+      // Add the message to history. Don't finalize parts here - that happens in streaming_end
+      // which comes AFTER part_end has attached the final frames.
+      const messageId = patch.message.id ?? `msg-${Date.now()}`
+      
+      // Ensure the message has an ID
+      const messageWithId = patch.message.id 
+        ? patch.message 
+        : { ...patch.message, id: messageId }
+      
+      
       return {
         ...state,
-        messages: [...state.messages, patch.message],
-        streaming: initialChatState.streaming,
+        messages: [...state.messages, messageWithId],
+        // Don't reset streaming yet - wait for streaming_end
       }
     }
 
-    case 'streaming_end':
-      return finalizeStreamingMessage(state)
+    case 'streaming_end': {
+      // Streaming complete - save the finalized parts (with frames) and reset streaming state
+      // At this point, part_end has already been processed so parts have their final frames.
+      
+      // Find the last assistant message to get its ID
+      const lastMessage = findLastMessageByRole(state.messages, 'assistant')
+      const messageId = lastMessage?.id
+      
+      
+      // Save finalized parts if we have a message ID and parts
+      const newFinalizedParts = messageId && state.streaming.parts.length > 0
+        ? {
+            ...state.finalizedParts,
+            [messageId]: [...state.streaming.parts],
+          }
+        : state.finalizedParts
+      
+      return {
+        ...state,
+        isStreaming: false,
+        finalizedParts: newFinalizedParts,
+        streaming: initialChatState.streaming,
+      }
+    }
 
     case 'abort_complete': {
       // User aborted - preserve partial content if message provided

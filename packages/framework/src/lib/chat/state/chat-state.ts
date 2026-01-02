@@ -88,6 +88,13 @@ export interface ChatState {
   /** All completed messages in the conversation */
   messages: Message[]
 
+  /**
+   * Finalized parts for completed messages.
+   * Keyed by message ID. Stores the rendered parts (with frames) when a message completes.
+   * This is separate from Message because Message is for LLM API, parts are for UI rendering.
+   */
+  finalizedParts: Record<string, MessagePart[]>
+
   /** Whether we're currently streaming a response */
   isStreaming: boolean
 
@@ -126,6 +133,7 @@ export interface ChatState {
  */
 export const initialChatState: ChatState = {
   messages: [],
+  finalizedParts: {},
   isStreaming: false,
   streaming: {
     parts: [],

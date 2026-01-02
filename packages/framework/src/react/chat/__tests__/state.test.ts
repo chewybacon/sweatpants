@@ -97,7 +97,7 @@ describe('chatReducer (pure logic)', () => {
     expect(nextState.streaming.activePartType).toBe('text')
   })
 
-  it('should finalize message on assistant_message', () => {
+  it('should finalize message on assistant_message and streaming_end', () => {
     const startState: ChatState = {
       ...initialChatState,
       isStreaming: true,
@@ -111,19 +111,32 @@ describe('chatReducer (pure logic)', () => {
       },
     }
     
-    const patch: ChatPatch = { 
+    // First: assistant_message adds the message but doesn't reset streaming
+    const assistantPatch: ChatPatch = { 
       type: 'assistant_message', 
-      message: { id: '2', role: 'assistant', content: 'Hello world' } 
+      message: { id: 'msg-2', role: 'assistant', content: 'Hello world' } 
     }
-    const nextState = chatReducer(startState, patch)
+    const afterAssistant = chatReducer(startState, assistantPatch)
     
     // Message should be added
-    expect(nextState.messages.length).toBe(1)
-    expect(nextState.messages[0]!.content).toBe('Hello world')
+    expect(afterAssistant.messages.length).toBe(1)
+    expect(afterAssistant.messages[0]!.content).toBe('Hello world')
     
-    // Streaming state should be reset
+    // Streaming state is NOT yet reset (parts still there for streaming_end to capture)
+    expect(afterAssistant.streaming.parts.length).toBe(2)
+    
+    // Second: streaming_end finalizes parts and resets streaming state
+    const endPatch: ChatPatch = { type: 'streaming_end' }
+    const nextState = chatReducer(afterAssistant, endPatch)
+    
+    // Streaming state should now be reset
     expect(nextState.streaming.parts).toEqual([])
     expect(nextState.streaming.activePartId).toBeNull()
     expect(nextState.streaming.activePartType).toBeNull()
+    expect(nextState.isStreaming).toBe(false)
+    
+    // Finalized parts should be saved
+    expect(nextState.finalizedParts['msg-2']).toBeDefined()
+    expect(nextState.finalizedParts['msg-2']!.length).toBe(2)
   })
 })

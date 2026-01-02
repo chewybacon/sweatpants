@@ -9,11 +9,20 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@tanstack/framework/react/chat'
+import type { Frame } from '@tanstack/framework/react/chat/pipeline'
 import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/demo/tic-tac-toe/')({
   component: TicTacToeDemo,
 })
+
+/**
+ * Extract HTML from a Frame by joining all block rendered content.
+ */
+function getFrameHtml(frame: Frame | undefined): string | null {
+  if (!frame || !frame.blocks.length) return null
+  return frame.blocks.map(b => b.rendered).join('')
+}
 
 /**
  * Debug panel showing raw message history
@@ -130,7 +139,7 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
         )
       })}
 
-      {toolCall.emissions.length === 0 && toolCall.state === 'running' && (
+      {toolCall.emissions.length === 0 && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
         </div>
@@ -144,10 +153,15 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 }
 
 /**
- * Renders a single message with its tool calls inline.
+ * Renders a single message with its parts.
  */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
+
+  // Extract parts by type
+  const textParts = message.parts.filter(p => p.type === 'text')
+  const toolCallParts = message.parts.filter((p): p is ChatToolCall => p.type === 'tool-call')
+  const hasTextContent = textParts.some(p => (p as { content?: string }).content)
 
   return (
     <div className={`mb-6 ${isUser ? 'text-right' : ''}`}>
@@ -170,21 +184,31 @@ function Message({ message }: { message: ChatMessage }) {
               : 'bg-slate-800/50 text-slate-200'
           }`}
         >
-          {message.toolCalls?.map((tc) => (
+          {/* Tool calls with emissions */}
+          {toolCallParts.map((tc) => (
             <ToolCallBlock key={tc.id} toolCall={tc} />
           ))}
 
-          {message.content && (
+          {/* Text content */}
+          {hasTextContent && (
             <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-              {message.html ? (
-                <div dangerouslySetInnerHTML={{ __html: message.html }} />
-              ) : (
-                message.content
-              )}
+              {textParts.map((part, i) => {
+                const html = getFrameHtml((part as { frame?: Frame }).frame)
+                const content = (part as { content?: string }).content
+                return (
+                  <div key={part.id || i}>
+                    {html ? (
+                      <div dangerouslySetInnerHTML={{ __html: html }} />
+                    ) : (
+                      content
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
 
-          {message.isStreaming && !message.content && (
+          {message.isStreaming && !hasTextContent && toolCallParts.length === 0 && (
             <span className="inline-block w-2 h-4 bg-cyan-500 animate-pulse" />
           )}
         </div>
@@ -243,7 +267,7 @@ You can chat with the user between moves, but ALL game actions must go through t
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingMessage?.content])
+  }, [messages, streamingMessage?.parts.length])
 
   // Find any pending emission (for the chat input to respond to)
   const pendingEmission = useMemo(() => {

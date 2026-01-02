@@ -255,6 +255,9 @@ export function* runChatSession(
         // Spawn the streaming request as a child task
         // This lets us cancel it if a new command arrives
         currentRequestTask = yield* spawn(function* () {
+          // Track whether we've already sent streaming_end to avoid duplicates
+          let streamingEndSent = false
+          
           try {
              // Create transform pipeline (handles empty transforms with passthrough)
              // The resource pattern ensures transforms are subscribed before we start writing
@@ -471,20 +474,6 @@ export function* runChatSession(
               break
             }
 
-            // Send streaming_end THROUGH the transform to trigger final settle
-            // This ensures all pending content is flushed before we finalize
-            yield* streamPatches.send({ type: 'streaming_end' })
-            
-            // Close the input channel (transform will finish processing)
-            yield* streamPatches.close()
-
-            // Sync history with currentMessages which accumulated during the loop
-            // currentMessages contains the full conversation including:
-            // - Original user message
-            // - Assistant messages with tool_calls (from isomorphic handoffs)
-            // - Tool result messages (may have empty content if phase 2)
-            // - The final response will be added below
-            
             // Get tool results from the complete result (these have the actual content
             // from phase 2 processing that the server did)
             const completeResult = result as { 
@@ -549,13 +538,26 @@ export function* runChatSession(
             }
             history.push(assistantMessage)
             
-            // Assistant message goes directly to patches (not through transforms)
-            // because it's a finalization signal, not streaming content.
-            // At this point the transform has already flushed via streaming_end.
+            // IMPORTANT ORDER: assistant_message MUST come before streaming_end!
+            // The reducer needs the message ID to save finalized parts to finalizedParts.
+            // If streaming_end comes first, there's no message ID and parts are lost.
+            //
+            // The sequence is:
+            // 1. assistant_message - adds message to state.messages (gives us messageId)
+            // 2. streaming_end through transform - triggers part_end with frames
+            // 3. streaming_end forwarded - saves parts to finalizedParts[messageId]
             yield* patches.send({
               type: 'assistant_message',
               message: assistantMessage,
             })
+
+            // Now send streaming_end THROUGH the transform to trigger final settle
+            // This ensures all pending content is flushed and parts get their final frames
+            yield* streamPatches.send({ type: 'streaming_end' })
+            streamingEndSent = true
+            
+            // Close the input channel (transform will finish processing)
+            yield* streamPatches.close()
 
             return result
           } catch (error) {
@@ -563,9 +565,15 @@ export function* runChatSession(
             const message =
               error instanceof Error ? error.message : 'Unknown error'
             yield* patches.send({ type: 'error', message })
+            // Send streaming_end on error (not sent in try block if we got here)
+            yield* patches.send({ type: 'streaming_end' })
+            streamingEndSent = true
             throw error
           } finally {
-            yield* patches.send({ type: 'streaming_end' })
+            // Send streaming_end if not already sent (e.g., when task is halted/aborted)
+            if (!streamingEndSent) {
+              yield* patches.send({ type: 'streaming_end' })
+            }
             currentRequestTask = null
           }
         })

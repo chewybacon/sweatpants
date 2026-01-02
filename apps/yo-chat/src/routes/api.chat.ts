@@ -23,6 +23,7 @@ const setupProvider = function*(ctx: InitializerContext): Operation<void> {
   }
 
   const selectedProvider = providerMap[providerName as keyof typeof providerMap]
+  console.log({ selectedProvider })
   if (!selectedProvider) {
     throw new Error(`Unknown provider: ${providerName}`)
   }

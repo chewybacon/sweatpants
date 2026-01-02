@@ -347,6 +347,7 @@ export function createPipelineTransform(config: PipelineConfig) {
 
       const partEndPatch: PartEndPatch = {
         type: 'part_end',
+        partType: currentPartType,
         partId: currentPartId,
         frame,
       }
