@@ -74,6 +74,8 @@ const config = defineConfig({
   },
 
   test: {
+    // Use jsdom for DOM testing with Interactors
+    environment: 'jsdom',
     // Exclude Playwright e2e tests from Vitest
     exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
   }
