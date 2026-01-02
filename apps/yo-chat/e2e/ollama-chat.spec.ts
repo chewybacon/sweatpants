@@ -84,6 +84,102 @@ test.describe('Ollama chat integration', () => {
     await expect(page.locator('pre code')).toBeVisible({ timeout: 10000 })
   })
 
+  test('rendered markdown persists after streaming completes', async ({ page }) => {
+    // This test verifies that the pipeline-rendered HTML (with syntax highlighting)
+    // persists after streaming ends. Previously, frames were lost when streaming
+    // completed, causing the content to revert to raw markdown.
+    
+    const input = page.getByPlaceholder('Type a message...')
+    await input.fill('Write a Python hello world in a code block')
+    
+    // Send and wait for streaming to start
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
+    
+    // Wait for code block to appear during streaming
+    await expect(page.locator('pre code')).toBeVisible({ timeout: 30000 })
+    
+    // Capture that we have rendered HTML (not raw markdown)
+    // During streaming, the code block should be syntax highlighted
+    const codeBlockDuringStreaming = page.locator('pre code')
+    await expect(codeBlockDuringStreaming).toBeVisible()
+    
+    // Wait for streaming to complete
+    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+    
+    // CRITICAL: After streaming completes, the code block should STILL be rendered
+    // This was the bug - frames were lost on streaming_end, reverting to raw markdown
+    await expect(page.locator('pre code')).toBeVisible({ timeout: 5000 })
+    
+    // Verify it's not showing raw markdown (```python should not be visible as text)
+    // The backticks should be parsed, not displayed
+    const rawMarkdownVisible = await page.locator('text=/```python/').count()
+    expect(rawMarkdownVisible).toBe(0)
+    
+    // The message should show as completed (not streaming)
+    await expect(page.getByText('2 messages')).toBeVisible()
+  })
+
+  test('rendered markdown persists across multiple messages', async ({ page }) => {
+    // Capture console logs
+    const logs: string[] = []
+    page.on('console', msg => {
+      if (msg.text().includes('[deriveMessages]') || msg.text().includes('[reducer')) {
+        logs.push(msg.text())
+      }
+    })
+    
+    // This test verifies that when multiple messages are sent, each message
+    // retains its rendered HTML after subsequent messages complete.
+    
+    const input = page.getByPlaceholder('Type a message...')
+    
+    // First message: ask for a code block
+    await input.fill('Write a Python hello world in a code block')
+    await page.getByRole('button', { name: 'Send' }).click()
+    
+    // Wait for first response to complete
+    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+    
+    // First message should have a code block
+    await expect(page.locator('pre code').first()).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText('2 messages')).toBeVisible()
+    
+    console.log('=== After first message ===')
+    console.log(`Total logs: ${logs.length}`)
+    // Don't clear - keep accumulating
+    
+    // Second message: ask for something with markdown
+    await input.fill('List the planets in a markdown bullet list')
+    await page.getByRole('button', { name: 'Send' }).click()
+    
+    // Wait for second response to complete
+    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+    
+    // Should now have 4 messages
+    await expect(page.getByText('4 messages')).toBeVisible({ timeout: 5000 })
+    
+    console.log('=== After second message ===')
+    console.log(`Total logs: ${logs.length}`)
+    // Print all logs at the end
+    logs.forEach((l, i) => console.log(`[${i}] ${l}`))
+    
+    // CRITICAL: First message's code block should STILL be rendered
+    // This was the bug - when message 2 finalized, message 1 would revert to raw markdown
+    await expect(page.locator('pre code').first()).toBeVisible({ timeout: 5000 })
+    
+    // Second message should have rendered markdown (bullet list)
+    // Look for list items in the second assistant message
+    const assistantMessages = page.locator('[class*="bg-slate-800"]')
+    await expect(assistantMessages).toHaveCount(2, { timeout: 5000 })
+    
+    // Check that no raw markdown is showing (no visible ``` or - at start of content)
+    const rawBackticks = await page.locator('text=/^```/').count()
+    expect(rawBackticks).toBe(0)
+  })
+
   test('can reset the conversation', async ({ page }) => {
     // Send a message
     const input = page.getByPlaceholder('Type a message...')

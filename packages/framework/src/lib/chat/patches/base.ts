@@ -128,6 +128,8 @@ export interface PartFramePatch {
  */
 export interface PartEndPatch {
   type: 'part_end'
+  /** Part type (text or reasoning) */
+  partType: ContentPartType
   /** Part ID that was finalized */
   partId: string
   /** Final frame for this part */

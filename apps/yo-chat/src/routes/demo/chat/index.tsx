@@ -11,7 +11,8 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@tanstack/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall, type StreamingMessage } from '@tanstack/framework/react/chat'
+import type { Frame } from '@tanstack/framework/react/chat/pipeline'
 import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/demo/chat/')({
@@ -19,8 +20,16 @@ export const Route = createFileRoute('/demo/chat/')({
 })
 
 /**
- * Renders a tool call with its inline emissions.
- * Tool calls are now first-class citizens in the message structure.
+ * Extract HTML from a Frame by joining all block rendered content.
+ */
+function getFrameHtml(frame: Frame | undefined): string | null {
+  if (!frame || !frame.blocks.length) return null
+  return frame.blocks.map(b => b.rendered).join('')
+}
+
+/**
+ * Renders a tool call part with its inline emissions.
+ * Tool calls are now first-class parts in the message structure.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   return (
@@ -42,7 +51,7 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
       })}
 
       {/* Show tool state if no emissions or tool is running */}
-      {toolCall.emissions.length === 0 && toolCall.state === 'running' && (
+      {toolCall.emissions.length === 0 && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
         </div>
@@ -59,10 +68,16 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 }
 
 /**
- * Renders a single message with its tool calls inline.
+ * Renders a single message with its parts.
+ * Parts are rendered in order: reasoning, text, tool-calls, etc.
  */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
+
+  // Extract text content from parts for display
+  const textParts = message.parts.filter(p => p.type === 'text')
+  const toolCallParts = message.parts.filter((p): p is ChatToolCall => p.type === 'tool-call')
+  const reasoningParts = message.parts.filter(p => p.type === 'reasoning')
 
   return (
     <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
@@ -87,18 +102,48 @@ function Message({ message }: { message: ChatMessage }) {
               : 'bg-slate-800/50 text-slate-200'
           }`}
         >
-          {/* Tool calls render FIRST (they triggered this response) */}
-          {message.toolCalls?.map((tc) => (
+          {/* Reasoning parts (collapsible thinking) */}
+          {reasoningParts.length > 0 && (
+            <details className="mb-3 text-xs">
+              <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
+                Thinking...
+              </summary>
+              <div className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic">
+                {reasoningParts.map((part, i) => {
+                  const html = getFrameHtml((part as { frame?: Frame }).frame)
+                  return (
+                    <div key={part.id || i}>
+                      {html ? (
+                        <div dangerouslySetInnerHTML={{ __html: html }} />
+                      ) : (
+                        (part as { content?: string }).content
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </details>
+          )}
+
+          {/* Tool calls render inline */}
+          {toolCallParts.map((tc) => (
             <ToolCallBlock key={tc.id} toolCall={tc} />
           ))}
 
-          {/* Then text content */}
+          {/* Text content */}
           <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-            {message.html ? (
-              <div dangerouslySetInnerHTML={{ __html: message.html }} />
-            ) : (
-              message.content
-            )}
+            {textParts.map((part, i) => {
+              const html = getFrameHtml((part as { frame?: Frame }).frame)
+              return (
+                <div key={part.id || i}>
+                  {html ? (
+                    <div dangerouslySetInnerHTML={{ __html: html }} />
+                  ) : (
+                    (part as { content?: string }).content
+                  )}
+                </div>
+              )
+            })}
             {/* Cursor for streaming messages */}
             {message.isStreaming && (
               <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
@@ -134,10 +179,10 @@ function PipelineChatDemo() {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom - trigger on messages or streaming parts changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingMessage?.content])
+  }, [messages, streamingMessage?.parts.length])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -203,10 +248,10 @@ function PipelineChatDemo() {
             <Message key={msg.id} message={msg} />
           ))}
 
-          {/* Show delta info if streaming (debug) */}
-          {streamingMessage?.delta && (
+          {/* Show streaming info (debug) */}
+          {streamingMessage && streamingMessage.parts.length > 0 && (
             <div className="text-xs text-slate-600 mt-2">
-              Delta: +{streamingMessage.delta.added.length} chars at offset {streamingMessage.delta.startOffset}
+              Streaming: {streamingMessage.parts.length} parts, active: {streamingMessage.activePartId ?? 'none'}
             </div>
           )}
 

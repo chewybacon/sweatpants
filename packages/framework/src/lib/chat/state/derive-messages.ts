@@ -144,6 +144,9 @@ function enrichParts<TComponent>(
  * Transforms the internal message representation into the UI-friendly
  * ChatMessage format.
  *
+ * Uses finalizedParts when available (for messages with rendered frames),
+ * falling back to constructing parts from message content.
+ *
  * @param state - The current ChatState
  * @param extractComponent - Function to extract the component from an emission
  * @returns Array of ChatMessage objects for completed messages
@@ -155,13 +158,34 @@ export function deriveCompletedMessages<TComponent>(
   return state.messages
     .filter((msg) => msg.role !== 'tool') // Filter out tool result messages
     .map((msg): ChatMessage<TComponent> => {
-      // Convert internal message to ChatMessage with parts
-      // For now, messages from history just have a single text part
+      const messageId = msg.id ?? `msg-${Date.now()}`
+      
+      // Check if we have finalized parts with frames for this message
+      const storedParts = state.finalizedParts[messageId]
+      
+      
+      if (storedParts && storedParts.length > 0) {
+        // Use the stored parts (they have frames from the pipeline)
+        const enrichedParts = enrichParts(
+          storedParts as MessagePart<TComponent>[],
+          state.toolEmissions,
+          extractComponent
+        )
+        
+        return {
+          id: messageId,
+          role: msg.role as 'user' | 'assistant' | 'system',
+          parts: enrichedParts,
+          isStreaming: false,
+        }
+      }
+      
+      // Fallback: construct parts from message content (no frames)
       const parts: MessagePart<TComponent>[] = []
 
       if (msg.content) {
         parts.push({
-          id: `${msg.id}-text`,
+          id: `${messageId}-text`,
           type: 'text',
           content: msg.content,
         } as TextPart)
@@ -177,7 +201,7 @@ export function deriveCompletedMessages<TComponent>(
           const hasError = toolResultMsg?.content?.startsWith('Error:')
 
           const toolPart: ToolCallPart<TComponent> = {
-            id: `${msg.id}-tool-${tc.id}`,
+            id: `${messageId}-tool-${tc.id}`,
             type: 'tool-call',
             callId: tc.id,
             name: tc.function.name,
@@ -204,7 +228,7 @@ export function deriveCompletedMessages<TComponent>(
       }
 
       return {
-        id: msg.id ?? `msg-${Date.now()}`,
+        id: messageId,
         role: msg.role as 'user' | 'assistant' | 'system',
         parts,
         isStreaming: false,
