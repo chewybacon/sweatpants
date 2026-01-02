@@ -138,8 +138,9 @@ export const expectedSimple = {
   } satisfies ContentMatcher,
 
   echoHello: {
+    // Note: maxLength removed because LLM may include thinking content
+    // which we can't control the length of
     contains: ['hello'],
-    maxLength: 50,
   } satisfies ContentMatcher,
 }
 
