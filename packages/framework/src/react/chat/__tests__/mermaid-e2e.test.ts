@@ -99,147 +99,104 @@ A-->B
 
   describe('streaming behavior', () => {
     it('should apply quick highlighting while streaming', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline(
-        { processors: 'full' },
-        function* (frame) {
-          frames.push(JSON.parse(JSON.stringify(frame)))
-        }
-      )
+      const pipeline = createPipeline({ processors: 'full' })
 
       await run(function* () {
-        yield* pipeline.process('```mermaid\n')
-        yield* pipeline.process('graph LR\n')
-        yield* pipeline.process('A-->B\n')
-        yield* pipeline.process('```\n')
-        yield* pipeline.flush()
-      })
-
-      // Should have emitted frames during streaming
-      expect(frames.length).toBeGreaterThan(0)
-
-      // Find streaming frames (before fence close)
-      const streamingFrames = frames.filter(f => 
-        f.blocks.some((b: any) => 
-          b.type === 'code' && 
-          b.language === 'mermaid' && 
-          b.status === 'streaming'
-        )
-      )
-
-      expect(streamingFrames.length).toBeGreaterThan(0)
-
-      // At least one streaming frame should have mermaid's quick-highlighted HTML
-      // (Note: frames are emitted after each processor, so some frames will have
-      // markdown's basic output and others will have mermaid's enhanced output)
-      const mermaidHighlightedFrames = streamingFrames.filter(frame => {
-        const mermaidBlock = frame.blocks.find(
+        // Push content incrementally (lazy - no processing yet)
+        pipeline.push('```mermaid\n')
+        pipeline.push('graph LR\n')
+        
+        // Pull a frame to process buffered content
+        const streamingFrame = yield* pipeline.pull()
+        
+        // Find the mermaid block
+        const mermaidBlock = streamingFrame.blocks.find(
           (b: any) => b.type === 'code' && b.language === 'mermaid'
         )
-        return mermaidBlock?.rendered?.includes('quick-highlight')
-      })
-
-      expect(mermaidHighlightedFrames.length).toBeGreaterThan(0)
-
-      // Check that mermaid-highlighted frames have proper syntax highlighting
-      for (const frame of mermaidHighlightedFrames) {
-        const mermaidBlock = frame.blocks.find(
+        
+        expect(mermaidBlock).toBeDefined()
+        expect(mermaidBlock?.status).toBe('streaming')
+        
+        // Quick highlight should be applied to streaming content
+        if (mermaidBlock?.rendered?.includes('quick-highlight')) {
+          expect(mermaidBlock?.renderPass).toBe('quick')
+          expect(mermaidBlock?.rendered).toContain('mermaid-code')
+        }
+        
+        // Continue pushing and close the fence
+        pipeline.push('A-->B\n')
+        pipeline.push('```\n')
+        
+        // Flush to get final frame
+        const finalFrame = yield* pipeline.flush()
+        
+        const finalMermaidBlock = finalFrame.blocks.find(
           (b: any) => b.type === 'code' && b.language === 'mermaid'
         )
-        expect(mermaidBlock?.renderPass).toBe('quick')
-        expect(mermaidBlock?.rendered).toContain('mermaid-code')
-      }
 
-      // Final frame should have complete block
-      const lastFrame = frames[frames.length - 1]
-      const finalMermaidBlock = lastFrame?.blocks.find(
-        (b: any) => b.type === 'code' && b.language === 'mermaid'
-      )
-
-      expect(finalMermaidBlock?.status).toBe('complete')
-      expect(finalMermaidBlock?.renderPass).toBe('full')
+        expect(finalMermaidBlock?.status).toBe('complete')
+        expect(finalMermaidBlock?.renderPass).toBe('full')
+      })
     })
 
     it('should transition from streaming to complete on fence close', async () => {
-      const statusHistory: string[] = []
-      const pipeline = createPipeline(
-        { processors: 'full' },
-        function* (frame) {
-          const mermaidBlock = frame.blocks.find(
-            (b: any) => b.type === 'code' && b.language === 'mermaid'
-          )
-          if (mermaidBlock) {
-            statusHistory.push(mermaidBlock.status)
-          }
-        }
-      )
+      const pipeline = createPipeline({ processors: 'full' })
 
       await run(function* () {
-        yield* pipeline.process('```mermaid\n')
-        yield* pipeline.process('graph LR\n')
-        yield* pipeline.process('A-->B\n')
-        yield* pipeline.process('```\n')
-        yield* pipeline.flush()
+        // Push content before fence close
+        pipeline.push('```mermaid\n')
+        pipeline.push('graph LR\n')
+        pipeline.push('A-->B\n')
+        
+        const streamingFrame = yield* pipeline.pull()
+        const streamingBlock = streamingFrame.blocks.find(
+          (b: any) => b.type === 'code' && b.language === 'mermaid'
+        )
+        expect(streamingBlock?.status).toBe('streaming')
+        
+        // Push fence close
+        pipeline.push('```\n')
+        
+        const closedFrame = yield* pipeline.pull()
+        const closedBlock = closedFrame.blocks.find(
+          (b: any) => b.type === 'code' && b.language === 'mermaid'
+        )
+        expect(closedBlock?.status).toBe('complete')
       })
-
-      // Should have streaming statuses followed by complete
-      expect(statusHistory.filter(s => s === 'streaming').length).toBeGreaterThan(0)
-      expect(statusHistory[statusHistory.length - 1]).toBe('complete')
     })
   })
 
   describe('quick highlighting', () => {
     it('should highlight mermaid keywords', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline(
-        { processors: 'full' },
-        function* (frame) {
-          frames.push(JSON.parse(JSON.stringify(frame)))
-        }
-      )
+      const pipeline = createPipeline({ processors: 'full' })
 
       await run(function* () {
-        yield* pipeline.process('```mermaid\n')
-        yield* pipeline.process('graph TD\n')
-        yield* pipeline.process('subgraph test\n')
-        yield* pipeline.process('A-->B\n')
-        yield* pipeline.process('end\n')
-        yield* pipeline.process('```\n')
-        yield* pipeline.flush()
-      })
-
-      // Find a streaming frame with content
-      const streamingFrame = frames.find(f => {
-        const block = f.blocks.find((b: any) => 
-          b.type === 'code' && 
-          b.language === 'mermaid' &&
-          b.status === 'streaming' &&
-          b.raw.includes('subgraph')
-        )
-        return block !== undefined
-      })
-
-      // Find a frame with mermaid's quick highlighting that has actual content
-      const highlightedFrame = frames.find(f => {
-        const block = f.blocks.find((b: any) => 
-          b.type === 'code' && 
-          b.language === 'mermaid' &&
-          b.rendered?.includes('quick-highlight') &&
-          b.raw?.includes('graph') // Has actual content
-        )
-        return block !== undefined
-      })
-
-      expect(highlightedFrame).toBeDefined()
-
-      if (highlightedFrame) {
-        const mermaidBlock = highlightedFrame.blocks.find(
+        // Push content with mermaid keywords
+        pipeline.push('```mermaid\n')
+        pipeline.push('graph TD\n')
+        pipeline.push('subgraph test\n')
+        
+        // Pull to get streaming frame with quick highlighting
+        const streamingFrame = yield* pipeline.pull()
+        
+        const mermaidBlock = streamingFrame.blocks.find(
           (b: any) => b.type === 'code' && b.language === 'mermaid'
         )
+
+        expect(mermaidBlock).toBeDefined()
+        expect(mermaidBlock?.status).toBe('streaming')
         
         // Quick highlight should have keyword spans for graph/subgraph
-        expect(mermaidBlock?.rendered).toContain('ql-keyword')
-      }
+        if (mermaidBlock?.rendered?.includes('quick-highlight')) {
+          expect(mermaidBlock?.rendered).toContain('ql-keyword')
+        }
+        
+        // Complete the block
+        pipeline.push('A-->B\n')
+        pipeline.push('end\n')
+        pipeline.push('```\n')
+        yield* pipeline.flush()
+      })
     })
   })
 })

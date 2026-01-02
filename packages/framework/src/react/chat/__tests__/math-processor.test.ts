@@ -236,28 +236,25 @@ Einstein's equation above.`
 
   describe('streaming behavior', () => {
     it('should process math as content streams in', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline(
-        { processors: [markdown, math] },
-        function* (frame) {
-          frames.push(JSON.parse(JSON.stringify(frame)))
-        }
-      )
+      const pipeline = createPipeline({ processors: [markdown, math] })
 
       await run(function* () {
-        yield* pipeline.process('The value is ')
-        yield* pipeline.process('$x = ')
-        yield* pipeline.process('42$ ')
-        yield* pipeline.process('done.')
-        yield* pipeline.flush()
+        // Push content incrementally
+        pipeline.push('The value is ')
+        pipeline.push('$x = ')
+        pipeline.push('42$ ')
+        pipeline.push('done.')
+        
+        // Pull and flush to get final frame
+        yield* pipeline.pull()
+        const finalFrame = yield* pipeline.flush()
+
+        // Final frame should have math annotation
+        const block = finalFrame.blocks[0]
+
+        expect(block?.annotations?.length).toBeGreaterThan(0)
+        expect(block?.annotations?.[0]?.data?.latex).toBe('x = 42')
       })
-
-      // Final frame should have math annotation
-      const lastFrame = frames[frames.length - 1]
-      const block = lastFrame?.blocks[0]
-
-      expect(block?.annotations?.length).toBeGreaterThan(0)
-      expect(block?.annotations?.[0]?.data?.latex).toBe('x = 42')
     })
   })
 

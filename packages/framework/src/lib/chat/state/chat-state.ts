@@ -2,59 +2,51 @@
  * lib/chat/state/chat-state.ts
  *
  * Chat state types for the React chat session.
+ *
+ * ## Parts-Based Model
+ *
+ * The state uses a parts-based model where streaming content is organized
+ * into ordered parts (text, reasoning, tool-call, etc.). Each content part
+ * can have its own Frame from the pipeline.
+ *
+ * During streaming:
+ * - `streamingParts` accumulates completed and active parts
+ * - `activePartId` indicates which part is currently receiving content
+ * - When content type switches, the active part is finalized and a new one starts
+ *
+ * On streaming end:
+ * - All parts are finalized
+ * - A complete ChatMessage is added to `messages`
  */
 
 import type { Message } from '../types'
-import type {
-  Capabilities,
-  ContentMetadata,
-  RenderDelta,
-  RevealHint,
-} from '../core-types'
+import type { Capabilities } from '../core-types'
 import type { PendingHandoffState } from '../patches/handoff'
 import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission'
+import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
+import type { ContentPartType } from '../patches/base'
 
 // Re-export emission types for convenience
 export type { ToolEmissionState, ToolEmissionTrackingState }
 
 // =============================================================================
-// RESPONSE STEPS
+// STREAMING PARTS STATE
 // =============================================================================
 
 /**
- * A completed step in the response chain.
- * Steps accumulate as the model thinks, calls tools, and generates text.
+ * State for the currently streaming message.
+ *
+ * Parts are accumulated as the response streams in. When content type
+ * switches (reasoning → text, text → tool_call), the current part is
+ * finalized and a new one starts.
  */
-export type ResponseStep =
-  | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_call'
-      id: string
-      name: string
-      arguments: string
-      result?: string
-      error?: string
-      state: 'pending' | 'complete' | 'error'
-    }
-  | { type: 'text'; content: string }
-
-/**
- * The currently streaming step (actively receiving chunks).
- */
-export interface ActiveStep {
-  type: 'thinking' | 'text'
-  content: string
-}
-
-// =============================================================================
-// RENDERED CONTENT
-// =============================================================================
-
-/**
- * Rendered output for a message.
- */
-export interface RenderedContent {
-  output?: string
+export interface StreamingPartsState {
+  /** Parts accumulated so far (includes active part) */
+  parts: MessagePart[]
+  /** ID of the currently streaming part (null if none active) */
+  activePartId: string | null
+  /** Type of the currently streaming part */
+  activePartType: ContentPartType | 'tool-call' | null
 }
 
 // =============================================================================
@@ -85,9 +77,6 @@ export interface PendingClientToolState {
   permissionType?: string
 }
 
-// NOTE: PendingStepState and ExecutionTrailState were removed in favor of ToolEmissionState
-// The new emission system uses toolEmissions instead of pendingSteps/executionTrails
-
 // =============================================================================
 // CHAT STATE
 // =============================================================================
@@ -96,42 +85,26 @@ export interface PendingClientToolState {
  * Complete chat session state.
  */
 export interface ChatState {
-  /** All messages in the conversation */
+  /** All completed messages in the conversation */
   messages: Message[]
 
-  /**
-   * Rendered content for each message, keyed by message ID.
-   */
-  rendered: Record<string, RenderedContent>
-
-  /** Completed steps in the current response being built */
-  currentResponse: ResponseStep[]
-
-  /** Currently streaming step (actively receiving chunks) */
-  activeStep: ActiveStep | null
-
+  /** Whether we're currently streaming a response */
   isStreaming: boolean
-  error: string | null
-  capabilities: Capabilities | null
-  persona: string | null
 
   /**
-   * Buffer state for rendering transforms.
+   * State for the currently streaming message.
+   * Only meaningful when isStreaming is true.
    */
-  buffer: {
-    settled: string
-    pending: string
-    settledHtml: string
-    renderable?: {
-      prev: string
-      next: string
-      html?: string
-      delta?: RenderDelta
-      revealHint?: RevealHint
-      timestamp?: number
-      meta?: ContentMetadata
-    }
-  }
+  streaming: StreamingPartsState
+
+  /** Current error, if any */
+  error: string | null
+
+  /** Model/provider capabilities */
+  capabilities: Capabilities | null
+
+  /** Active persona name */
+  persona: string | null
 
   /** Pending client tools awaiting approval or executing */
   pendingClientTools: Record<string, PendingClientToolState>
@@ -142,7 +115,7 @@ export interface ChatState {
   /**
    * Active tool emissions from ctx.render() pattern.
    * Keyed by tool call ID.
-   * 
+   *
    * When a tool completes, emissions collapse into a trace in the tool message.
    */
   toolEmissions: Record<string, ToolEmissionTrackingState>
@@ -153,23 +126,106 @@ export interface ChatState {
  */
 export const initialChatState: ChatState = {
   messages: [],
-  rendered: {},
-  currentResponse: [],
-  activeStep: null,
   isStreaming: false,
+  streaming: {
+    parts: [],
+    activePartId: null,
+    activePartType: null,
+  },
   error: null,
   capabilities: null,
   persona: null,
-  buffer: {
-    settled: '',
-    pending: '',
-    settledHtml: '',
-    renderable: {
-      prev: '',
-      next: '',
-    },
-  },
   pendingClientTools: {},
   pendingHandoffs: {},
   toolEmissions: {},
+}
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Get the currently active content part (text or reasoning).
+ */
+export function getActiveContentPart(state: ChatState): TextPart | ReasoningPart | null {
+  if (!state.streaming.activePartId) return null
+
+  const part = state.streaming.parts.find(p => p.id === state.streaming.activePartId)
+  if (!part) return null
+
+  if (part.type === 'text' || part.type === 'reasoning') {
+    return part
+  }
+
+  return null
+}
+
+/**
+ * Get all tool call parts from the streaming state.
+ */
+export function getStreamingToolCalls(state: ChatState): ToolCallPart[] {
+  return state.streaming.parts.filter(
+    (p): p is ToolCallPart => p.type === 'tool-call'
+  )
+}
+
+/**
+ * Find a streaming part by ID.
+ */
+export function findStreamingPart(state: ChatState, partId: string): MessagePart | undefined {
+  return state.streaming.parts.find(p => p.id === partId)
+}
+
+/**
+ * Update a streaming part by ID.
+ */
+export function updateStreamingPart(
+  state: ChatState,
+  partId: string,
+  updater: (part: MessagePart) => MessagePart
+): ChatState {
+  return {
+    ...state,
+    streaming: {
+      ...state.streaming,
+      parts: state.streaming.parts.map(p =>
+        p.id === partId ? updater(p) : p
+      ),
+    },
+  }
+}
+
+// =============================================================================
+// LEGACY TYPE ALIASES (for migration)
+// =============================================================================
+
+/**
+ * @deprecated Use StreamingPartsState instead.
+ */
+export type ResponseStep =
+  | { type: 'thinking'; content: string }
+  | {
+      type: 'tool_call'
+      id: string
+      name: string
+      arguments: string
+      result?: string
+      error?: string
+      state: 'pending' | 'complete' | 'error'
+    }
+  | { type: 'text'; content: string }
+
+/**
+ * @deprecated Use StreamingPartsState instead.
+ */
+export interface ActiveStep {
+  type: 'thinking' | 'text'
+  content: string
+}
+
+/**
+ * @deprecated No longer needed with parts-based model.
+ */
+export interface RenderedContent {
+  output?: string
 }

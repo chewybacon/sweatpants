@@ -3,10 +3,32 @@
  *
  * Base types for the patch system.
  * Patches are messages sent from the session layer to React state.
+ *
+ * ## Parts-Based Model
+ *
+ * The streaming patches support a parts-based model where content is organized
+ * into ordered parts (text, reasoning, tool-call, etc.). Each content part
+ * can have its own Frame from the pipeline.
+ *
+ * Part switching happens implicitly:
+ * - streaming_text with no prior content → starts 'text' part
+ * - streaming_reasoning with no prior content → starts 'reasoning' part
+ * - streaming_text after streaming_reasoning → commits reasoning, starts text
+ * - tool_call_start after streaming_text → commits text, starts tool-call
  */
 
 import type { Message } from '../types'
 import type { Capabilities } from '../core-types'
+import type { Frame } from '../../../react/chat/pipeline/types'
+
+// =============================================================================
+// CONTENT PART TYPES
+// =============================================================================
+
+/**
+ * Types of content that can be streamed through the pipeline.
+ */
+export type ContentPartType = 'text' | 'reasoning'
 
 // =============================================================================
 // CORE PATCHES
@@ -55,7 +77,18 @@ export interface StreamingTextPatch {
 }
 
 /**
- * Streaming thinking patch - sent for thinking/reasoning chunks.
+ * Streaming reasoning patch - sent for reasoning/thinking chunks.
+ *
+ * Note: This replaces 'streaming_thinking' - we use 'reasoning' to align
+ * with Vercel AI SDK naming conventions.
+ */
+export interface StreamingReasoningPatch {
+  type: 'streaming_reasoning'
+  content: string
+}
+
+/**
+ * @deprecated Use StreamingReasoningPatch instead.
  */
 export interface StreamingThinkingPatch {
   type: 'streaming_thinking'
@@ -67,6 +100,38 @@ export interface StreamingThinkingPatch {
  */
 export interface StreamingEndPatch {
   type: 'streaming_end'
+}
+
+/**
+ * Part frame patch - sent when a content part's frame is updated.
+ *
+ * This is emitted by the pipeline transform when it processes content
+ * and produces a new frame for the current part.
+ */
+export interface PartFramePatch {
+  type: 'part_frame'
+  /** Which type of part this frame is for */
+  partType: ContentPartType
+  /** Part ID (stable identifier) */
+  partId: string
+  /** The rendered frame */
+  frame: Frame
+}
+
+/**
+ * Part end patch - sent when a content part is finalized.
+ *
+ * This happens when:
+ * - Content type switches (reasoning → text)
+ * - Streaming ends
+ * - Tool call starts
+ */
+export interface PartEndPatch {
+  type: 'part_end'
+  /** Part ID that was finalized */
+  partId: string
+  /** Final frame for this part */
+  frame: Frame
 }
 
 /**
@@ -132,8 +197,11 @@ export type CorePatch =
   | AssistantMessagePatch
   | StreamingStartPatch
   | StreamingTextPatch
-  | StreamingThinkingPatch
+  | StreamingReasoningPatch
+  | StreamingThinkingPatch  // deprecated, kept for backwards compat
   | StreamingEndPatch
+  | PartFramePatch
+  | PartEndPatch
   | ToolCallStartPatch
   | ToolCallResultPatch
   | ToolCallErrorPatch

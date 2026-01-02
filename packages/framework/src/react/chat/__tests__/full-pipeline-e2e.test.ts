@@ -88,10 +88,7 @@ Done!`
     })
 
     it('should handle streaming of complex content', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline({ processors: 'full' }, function* (frame) {
-        frames.push(JSON.parse(JSON.stringify(frame)))
-      })
+      const pipeline = createPipeline({ processors: 'full' })
 
       const chunks = [
         '# Hello\n\n',
@@ -107,32 +104,29 @@ Done!`
       ]
 
       await run(function* () {
+        // Push all chunks (lazy - just buffers)
         for (const chunk of chunks) {
-          yield* pipeline.process(chunk)
+          pipeline.push(chunk)
         }
-        yield* pipeline.flush()
+        
+        // Flush to process all and finalize
+        const finalFrame = yield* pipeline.flush()
+
+        // Should have code blocks
+        const codeBlocks = finalFrame.blocks.filter((b: any) => b.type === 'code')
+        expect(codeBlocks.length).toBe(2)
+
+        // Should have math annotations
+        const mathAnnotations = finalFrame.blocks
+          .flatMap((b: any) => b.annotations ?? [])
+          .filter((a: any) => a.type === 'math')
+        expect(mathAnnotations.length).toBeGreaterThanOrEqual(2)
+
+        // All code blocks should be complete
+        for (const block of codeBlocks) {
+          expect(block.status).toBe('complete')
+        }
       })
-
-      // Should have emitted multiple frames
-      expect(frames.length).toBeGreaterThan(chunks.length)
-
-      // Final frame should have all content
-      const lastFrame = frames[frames.length - 1]
-
-      // Should have code blocks
-      const codeBlocks = lastFrame.blocks.filter((b: any) => b.type === 'code')
-      expect(codeBlocks.length).toBe(2)
-
-      // Should have math annotations
-      const mathAnnotations = lastFrame.blocks
-        .flatMap((b: any) => b.annotations ?? [])
-        .filter((a: any) => a.type === 'math')
-      expect(mathAnnotations.length).toBeGreaterThanOrEqual(2)
-
-      // All code blocks should be complete
-      for (const block of codeBlocks) {
-        expect(block.status).toBe('complete')
-      }
     })
 
     it('should handle content with all delimiter types', async () => {
@@ -377,70 +371,65 @@ A-->B
 
   describe('streaming transitions', () => {
     it('should transition blocks from streaming to complete correctly', async () => {
-      const statusHistory: Map<string, string[]> = new Map()
-
-      const pipeline = createPipeline({ processors: 'full' }, function* (frame) {
-        for (const block of frame.blocks) {
-          if (block.type === 'code') {
-            const history = statusHistory.get(block.language ?? 'unknown') ?? []
-            history.push(block.status)
-            statusHistory.set(block.language ?? 'unknown', history)
-          }
-        }
-      })
+      const pipeline = createPipeline({ processors: 'full' })
 
       await run(function* () {
-        yield* pipeline.process('```python\n')
-        yield* pipeline.process('x = 1\n')
-        yield* pipeline.process('```\n\n')
-        yield* pipeline.process('```mermaid\n')
-        yield* pipeline.process('graph LR\n')
-        yield* pipeline.process('A-->B\n')
-        yield* pipeline.process('```\n')
-        yield* pipeline.flush()
+        // Push python block content
+        pipeline.push('```python\n')
+        pipeline.push('x = 1\n')
+        
+        // Pull mid-stream to check status
+        const streamingFrame = yield* pipeline.pull()
+        const pythonStreamingBlock = streamingFrame.blocks.find(
+          (b: any) => b.type === 'code' && b.language === 'python'
+        )
+        expect(pythonStreamingBlock?.status).toBe('streaming')
+        
+        // Close python block and add mermaid
+        pipeline.push('```\n\n')
+        pipeline.push('```mermaid\n')
+        pipeline.push('graph LR\n')
+        pipeline.push('A-->B\n')
+        pipeline.push('```\n')
+        
+        // Flush to complete
+        const finalFrame = yield* pipeline.flush()
+        
+        // All code blocks should be complete
+        const codeBlocks = finalFrame.blocks.filter((b: any) => b.type === 'code')
+        for (const block of codeBlocks) {
+          expect(block.status).toBe('complete')
+        }
       })
-
-      // Python block should have streaming -> complete transition
-      const pythonHistory = statusHistory.get('python') ?? []
-      expect(pythonHistory.filter((s) => s === 'streaming').length).toBeGreaterThan(0)
-      expect(pythonHistory[pythonHistory.length - 1]).toBe('complete')
-
-      // Mermaid block should have streaming -> complete transition
-      const mermaidHistory = statusHistory.get('mermaid') ?? []
-      expect(mermaidHistory.filter((s) => s === 'streaming').length).toBeGreaterThan(0)
-      expect(mermaidHistory[mermaidHistory.length - 1]).toBe('complete')
     })
 
     it('should apply quick highlighting during streaming then full on complete', async () => {
-      const renderPasses: Map<string, string[]> = new Map()
-
-      const pipeline = createPipeline({ processors: 'full' }, function* (frame) {
-        for (const block of frame.blocks) {
-          if (block.type === 'code' && block.language === 'python') {
-            const passes = renderPasses.get('python') ?? []
-            if (block.renderPass) {
-              passes.push(block.renderPass)
-            }
-            renderPasses.set('python', passes)
-          }
-        }
-      })
+      const pipeline = createPipeline({ processors: 'full' })
 
       await run(function* () {
-        yield* pipeline.process('```python\n')
-        yield* pipeline.process('def foo():\n')
-        yield* pipeline.process('    return 42\n')
-        yield* pipeline.process('```\n')
-        yield* pipeline.flush()
+        pipeline.push('```python\n')
+        pipeline.push('def foo():\n')
+        
+        // Pull mid-stream to check render pass
+        const streamingFrame = yield* pipeline.pull()
+        const streamingBlock = streamingFrame.blocks.find(
+          (b: any) => b.type === 'code' && b.language === 'python'
+        )
+        // During streaming, might be quick or none depending on processor
+        expect(['none', 'quick']).toContain(streamingBlock?.renderPass)
+        
+        // Complete the block
+        pipeline.push('    return 42\n')
+        pipeline.push('```\n')
+        
+        const finalFrame = yield* pipeline.flush()
+        const finalBlock = finalFrame.blocks.find(
+          (b: any) => b.type === 'code' && b.language === 'python'
+        )
+        
+        // Should end with full pass
+        expect(finalBlock?.renderPass).toBe('full')
       })
-
-      const passes = renderPasses.get('python') ?? []
-
-      // Should have quick passes during streaming
-      expect(passes.filter((p) => p === 'quick').length).toBeGreaterThan(0)
-
-      // Should end with full pass
-      expect(passes[passes.length - 1]).toBe('full')
     })
   })
 

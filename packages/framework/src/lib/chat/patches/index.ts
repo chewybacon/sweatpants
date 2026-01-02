@@ -7,14 +7,19 @@
 
 // Re-export all patch types
 export type {
+  // Content part types
+  ContentPartType,
   // Core patches
   SessionInfoPatch,
   UserMessagePatch,
   AssistantMessagePatch,
   StreamingStartPatch,
   StreamingTextPatch,
-  StreamingThinkingPatch,
+  StreamingReasoningPatch,
+  StreamingThinkingPatch,  // deprecated
   StreamingEndPatch,
+  PartFramePatch,
+  PartEndPatch,
   ToolCallStartPatch,
   ToolCallResultPatch,
   ToolCallErrorPatch,
@@ -116,8 +121,11 @@ export function isCorePatch(patch: ChatPatch): patch is CorePatch {
     'assistant_message',
     'streaming_start',
     'streaming_text',
-    'streaming_thinking',
+    'streaming_reasoning',
+    'streaming_thinking',  // deprecated
     'streaming_end',
+    'part_frame',
+    'part_end',
     'tool_call_start',
     'tool_call_result',
     'tool_call_error',
