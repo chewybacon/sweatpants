@@ -1,22 +1,50 @@
 /**
  * pipeline/runner.ts
  *
- * Pipeline runner - orchestrates parsing and processors to produce frames.
+ * Lazy pipeline runner - orchestrates parsing and processors to produce frames.
  *
- * The runner:
- * 1. Receives raw streaming chunks
- * 2. Parses them into block structure (internal, automatic)
- * 3. Runs processors in dependency order (enhances blocks with HTML)
- * 4. Emits frames for the UI to render
+ * The pipeline is **lazy by design**:
+ * - `push(chunk)` buffers tokens without processing
+ * - `pull()` parses buffered content and runs processors
+ * - Consumers control when processing happens (backpressure)
  *
- * ## Progressive Enhancement
+ * This enables efficient batching - tokens accumulate between pulls,
+ * reducing the number of processor invocations.
  *
- * The runner supports progressive enhancement by emitting multiple frames:
- * - After parsing: Frame with block structure (raw content only)
- * - After each processor: Frame with enhanced HTML
+ * ## Usage Patterns
  *
- * This allows the UI to show immediate feedback while async processors
- * (like Shiki/Mermaid) complete in the background.
+ * **React (RAF-paced):**
+ * ```typescript
+ * const pipeline = createPipeline(config)
+ *
+ * // Push tokens as they arrive (fast, just buffers)
+ * onToken(token => pipeline.push(token))
+ *
+ * // Pull frames at RAF rate
+ * function animate() {
+ *   const frame = yield* pipeline.pull()
+ *   setFrame(frame)
+ *   if (!done) requestAnimationFrame(animate)
+ * }
+ * ```
+ *
+ * **TUI (fixed interval):**
+ * ```typescript
+ * while (streaming) {
+ *   yield* sleep(33) // ~30fps
+ *   const frame = yield* pipeline.pull()
+ *   render(frame)
+ * }
+ * ```
+ *
+ * **TTS (on-demand):**
+ * ```typescript
+ * while (streaming) {
+ *   yield* waitForSpeechBufferLow()
+ *   const frame = yield* pipeline.pull()
+ *   queueSpeech(frame)
+ * }
+ * ```
  */
 import type { Operation, Channel, Subscription } from 'effection'
 import type {
@@ -25,7 +53,6 @@ import type {
   ProcessorPreset,
   PipelineConfig,
   ParseContext,
-  FrameEmitter,
   ProcessFn,
 } from './types'
 import { emptyFrame, renderFrameToRendered, renderFrameToRaw } from './frame'
@@ -65,19 +92,43 @@ function resolvePreset(preset: ProcessorPreset): readonly Processor[] {
 // =============================================================================
 
 /**
- * A pipeline instance manages state for a single streaming session.
+ * A lazy pipeline instance.
+ *
+ * Tokens are pushed in (buffered), frames are pulled out (processed on-demand).
+ * This enables backpressure - consumers control processing rate.
  */
-export interface PipelineInstance {
-  /** Current frame state */
+export interface Pipeline {
+  /** Current frame state (last pulled frame, or empty if never pulled) */
   readonly frame: Frame
 
-  /** Process a chunk of raw content */
-  process(chunk: string): Operation<Frame>
+  /** Whether there's buffered content that hasn't been processed yet */
+  readonly hasPending: boolean
 
-  /** Flush any remaining content (end of stream) */
+  /** Whether the stream has ended (flush was called) */
+  readonly isDone: boolean
+
+  /**
+   * Push a chunk of raw content into the buffer.
+   * This is synchronous and does NOT trigger processing.
+   */
+  push(chunk: string): void
+
+  /**
+   * Pull the next frame by processing all buffered content.
+   * Runs parser + all processors on accumulated buffer.
+   * Returns the same frame if nothing new was buffered.
+   */
+  pull(): Operation<Frame>
+
+  /**
+   * Signal end of stream and pull final frame.
+   * After this, hasPending will be false and isDone will be true.
+   */
   flush(): Operation<Frame>
 
-  /** Reset the pipeline for a new stream */
+  /**
+   * Reset the pipeline for a new stream.
+   */
   reset(): void
 }
 
@@ -114,36 +165,57 @@ function resolveConfig(config: PipelineConfig): ResolvedConfig {
 }
 
 /**
- * Create a pipeline instance.
+ * Create a lazy pipeline instance.
  *
- * @param config - Pipeline configuration
- * @param onFrame - Optional callback for each frame produced
+ * @param config - Pipeline configuration (processors or preset)
  */
-export function createPipeline(
-  config: PipelineConfig,
-  onFrame?: FrameEmitter
-): PipelineInstance {
+export function createPipeline(config: PipelineConfig): Pipeline {
   // Resolve config
   const resolved = resolveConfig(config)
 
-  // Create parser (internal)
+  // Create parser (internal) - maintains fence state across chunks
   const parser = createParser()
 
   // Get process functions
   const processFns = resolved.processFns
 
-  // Current state
+  // Pipeline state
   let currentFrame = emptyFrame()
+  let buffer = ''
+  let isDone = false
 
-  const instance: PipelineInstance = {
+  const instance: Pipeline = {
     get frame() {
       return currentFrame
     },
 
-    *process(chunk: string): Operation<Frame> {
-      // Step 1: Parse chunk into block structure
+    get hasPending() {
+      return buffer.length > 0
+    },
+
+    get isDone() {
+      return isDone
+    },
+
+    push(chunk: string): void {
+      if (isDone) {
+        throw new Error('Cannot push to a finished pipeline. Call reset() first.')
+      }
+      buffer += chunk
+    },
+
+    *pull(): Operation<Frame> {
+      // Nothing to process
+      if (buffer.length === 0) {
+        return currentFrame
+      }
+
+      // Step 1: Parse buffered content into block structure
       const ctx: ParseContext = { flush: false }
-      const parsedFrame = parser(currentFrame, chunk, ctx)
+      const chunkToProcess = buffer
+      buffer = '' // Clear buffer before processing
+
+      const parsedFrame = parser(currentFrame, chunkToProcess, ctx)
 
       // If parser changed the frame, run processors
       if (parsedFrame !== currentFrame) {
@@ -152,20 +224,9 @@ export function createPipeline(
         // Step 2: Run processors in sequence
         for (const processFn of processFns) {
           const processedFrame = yield* processFn(currentFrame)
-
-          // If processor changed the frame, update and optionally emit
           if (processedFrame !== currentFrame) {
             currentFrame = processedFrame
-
-            if (onFrame) {
-              yield* onFrame(currentFrame)
-            }
           }
-        }
-
-        // Emit final frame if we have a callback and haven't emitted yet
-        if (onFrame && processFns.length === 0) {
-          yield* onFrame(currentFrame)
         }
       }
 
@@ -173,7 +234,16 @@ export function createPipeline(
     },
 
     *flush(): Operation<Frame> {
-      // Parse with flush=true to handle any remaining content
+      if (isDone) {
+        return currentFrame
+      }
+
+      // Process any remaining buffer first
+      if (buffer.length > 0) {
+        yield* instance.pull()
+      }
+
+      // Parse with flush=true to handle any incomplete content
       const ctx: ParseContext = { flush: true }
       const parsedFrame = parser(currentFrame, '', ctx)
 
@@ -185,18 +255,18 @@ export function createPipeline(
           const processedFrame = yield* processFn(currentFrame)
           if (processedFrame !== currentFrame) {
             currentFrame = processedFrame
-            if (onFrame) {
-              yield* onFrame(currentFrame)
-            }
           }
         }
       }
 
+      isDone = true
       return currentFrame
     },
 
     reset(): void {
       currentFrame = emptyFrame()
+      buffer = ''
+      isDone = false
     },
   }
 
@@ -231,11 +301,49 @@ export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
 import type { ChatPatch, BufferRenderablePatch } from '../types'
 
 /**
+ * Helper to create a buffer_renderable patch from a frame.
+ */
+function createFramePatch(
+  frame: Frame,
+  lastRaw: string
+): BufferRenderablePatch {
+  const html = renderFrameToRendered(frame)
+  const raw = renderFrameToRaw(frame)
+
+  return {
+    type: 'buffer_renderable',
+    prev: lastRaw,
+    next: raw,
+    html,
+    delta: {
+      added: raw.slice(lastRaw.length),
+      startOffset: lastRaw.length,
+    },
+    timestamp: Date.now(),
+  }
+}
+
+/**
  * Create a patch transform from a pipeline config.
  *
- * This bridges the pipeline system with the existing patch-based
- * streaming infrastructure. It receives streaming patches and emits
- * buffer_renderable patches with Frame-based rendering.
+ * This bridges the lazy pipeline with the existing patch-based
+ * streaming infrastructure.
+ *
+ * ## Behavior
+ *
+ * The transform:
+ * 1. Pushes incoming `streaming_text` content to the pipeline buffer
+ * 2. Pulls a frame and emits `buffer_renderable` patch
+ * 3. Flushes on `streaming_end`
+ *
+ * ## Batching / Throttling
+ *
+ * This transform does NOT throttle - it processes each incoming patch.
+ * If you need frame-rate limiting (e.g., for React), implement it in
+ * your UI framework adapter layer.
+ *
+ * The pipeline itself is lazy - tokens accumulate in the buffer until
+ * `pull()` is called. This transform pulls on each `streaming_text` patch.
  */
 export function createPipelineTransform(config: PipelineConfig) {
   return function* pipelineTransform(
@@ -243,29 +351,28 @@ export function createPipelineTransform(config: PipelineConfig) {
     output: Channel<ChatPatch, void>
   ): Operation<void> {
     let lastRaw = ''
+    let lastHtml = ''
 
-    // Create pipeline instance with frame emission
-    const pipeline = createPipeline(config, function* (frame) {
+    const pipeline = createPipeline(config)
+
+    /**
+     * Pull a frame and emit if content changed.
+     */
+    function* pullAndEmit(): Operation<void> {
+      if (!pipeline.hasPending) {
+        return
+      }
+
+      const frame = yield* pipeline.pull()
       const html = renderFrameToRendered(frame)
       const raw = renderFrameToRaw(frame)
 
-      // Emit buffer_renderable patch with frame data
-      const patch: BufferRenderablePatch = {
-        type: 'buffer_renderable',
-        prev: lastRaw,
-        next: raw,
-        html,
-        delta: {
-          added: raw.slice(lastRaw.length),
-          startOffset: lastRaw.length,
-        },
-        timestamp: Date.now(),
+      if (raw !== lastRaw || html !== lastHtml) {
+        yield* output.send(createFramePatch(frame, lastRaw))
+        lastRaw = raw
+        lastHtml = html
       }
-
-      yield* output.send(patch)
-
-      lastRaw = raw
-    })
+    }
 
     // Subscribe to input
     const subscription: Subscription<ChatPatch, void> = yield* input
@@ -275,8 +382,14 @@ export function createPipelineTransform(config: PipelineConfig) {
       const next = yield* subscription.next()
 
       if (next.done) {
-        // Stream ended - flush any remaining content
-        yield* pipeline.flush()
+        // Stream ended - flush pipeline
+        const frame = yield* pipeline.flush()
+        const html = renderFrameToRendered(frame)
+        const raw = renderFrameToRaw(frame)
+
+        if (raw !== lastRaw || html !== lastHtml) {
+          yield* output.send(createFramePatch(frame, lastRaw))
+        }
         break
       }
 
@@ -286,15 +399,30 @@ export function createPipelineTransform(config: PipelineConfig) {
         // Reset pipeline for new stream
         pipeline.reset()
         lastRaw = ''
+        lastHtml = ''
         yield* output.send(patch)
       } else if (patch.type === 'streaming_text') {
-        // Process chunk through pipeline
-        yield* pipeline.process(patch.content)
+        // Push to buffer
+        pipeline.push(patch.content)
+
+        // Pull and emit frame
+        yield* pullAndEmit()
+
         // Pass through original patch for raw buffer tracking
         yield* output.send(patch)
       } else if (patch.type === 'streaming_end') {
-        // Flush any remaining content
-        yield* pipeline.flush()
+        // Flush any remaining buffered content
+        yield* pullAndEmit()
+
+        // Then flush the pipeline (handles incomplete blocks)
+        const frame = yield* pipeline.flush()
+        const html = renderFrameToRendered(frame)
+        const raw = renderFrameToRaw(frame)
+
+        if (raw !== lastRaw || html !== lastHtml) {
+          yield* output.send(createFramePatch(frame, lastRaw))
+        }
+
         yield* output.send(patch)
       } else {
         // Pass through other patches unchanged
@@ -321,36 +449,24 @@ export function* runPipeline(
 ): Operation<Frame> {
   const pipeline = createPipeline(config)
 
-  // Process content line by line (simulating streaming)
-  const lines = content.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!
-    const isLast = i === lines.length - 1
-    const chunk = isLast ? line : line + '\n'
+  // Push all content
+  pipeline.push(content)
 
-    if (chunk) {
-      yield* pipeline.process(chunk)
-    }
-  }
-
-  // Flush any remaining content
-  yield* pipeline.flush()
-
-  return pipeline.frame
+  // Pull and flush
+  yield* pipeline.pull()
+  return yield* pipeline.flush()
 }
 
 /**
- * Run a pipeline and collect all intermediate frames (for testing).
+ * Run a pipeline simulating streaming (for testing).
+ * Pushes content line by line and pulls after each.
  */
-export function* runPipelineWithFrames(
+export function* runPipelineStreaming(
   content: string,
   config: PipelineConfig
 ): Operation<{ frames: Frame[]; final: Frame }> {
   const frames: Frame[] = []
-
-  const pipeline = createPipeline(config, function* (frame) {
-    frames.push(frame)
-  })
+  const pipeline = createPipeline(config)
 
   // Process content line by line
   const lines = content.split('\n')
@@ -360,12 +476,15 @@ export function* runPipelineWithFrames(
     const chunk = isLast ? line : line + '\n'
 
     if (chunk) {
-      yield* pipeline.process(chunk)
+      pipeline.push(chunk)
+      const frame = yield* pipeline.pull()
+      frames.push(frame)
     }
   }
 
   // Flush
-  yield* pipeline.flush()
+  const final = yield* pipeline.flush()
+  frames.push(final)
 
-  return { frames, final: pipeline.frame }
+  return { frames, final }
 }

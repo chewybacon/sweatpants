@@ -66,7 +66,6 @@ export type {
 
   // Pipeline types
   PipelineConfig,
-  FrameEmitter,
   PipelineResult,
   ResolvedProcessors,
 } from './types'
@@ -155,12 +154,12 @@ export {
 // Pipeline Runner
 // =============================================================================
 
-export type { PipelineInstance } from './runner'
+export type { Pipeline } from './runner'
 
 export {
   createPipeline,
   composeProcessFns,
   createPipelineTransform,
   runPipeline,
-  runPipelineWithFrames,
+  runPipelineStreaming,
 } from './runner'

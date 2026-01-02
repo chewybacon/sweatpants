@@ -12,7 +12,7 @@ import { run } from 'effection'
 import type { AgentMode } from '../components/App.tsx'
 import type { Message } from '../components/MessageList.tsx'
 import { useAgent } from '../lib/agent-context.tsx'
-import { createTerminalPipeline, type Frame, type PipelineInstance } from '../pipeline/index.ts'
+import { createTerminalPipeline, type Frame, type Pipeline } from '../pipeline/index.ts'
 
 // HAL 9000 quotes for build mode
 const HAL_QUOTES = [
@@ -54,7 +54,7 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
   const [error, setError] = useState<string | null>(null)
   const [currentFrame, setCurrentFrame] = useState<Frame | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const pipelineRef = useRef<PipelineInstance | null>(null)
+  const pipelineRef = useRef<Pipeline | null>(null)
 
   const send = useCallback(async (content: string) => {
     // Add user message
@@ -153,10 +153,13 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
               case 'text':
                 assistantContent += event.content
                 
-                // Process through pipeline
+                // Push to pipeline buffer (lazy - no processing yet)
                 if (pipelineRef.current) {
+                  pipelineRef.current.push(event.content)
+                  
+                  // Pull a frame (processes buffered content)
                   await run(function* () {
-                    yield* pipelineRef.current!.process(event.content)
+                    yield* pipelineRef.current!.pull()
                   })
                   setCurrentFrame(pipelineRef.current.frame)
                 }

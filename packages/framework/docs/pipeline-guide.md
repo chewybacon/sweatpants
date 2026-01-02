@@ -6,18 +6,27 @@ See: `src/react/chat/pipeline/` for implementation.
 
 ## Overview
 
-The pipeline processes streaming AI content through a series of transforms:
+The pipeline is **lazy by design** - tokens are buffered and only processed when frames are pulled:
 
 ```
-Raw Tokens → Parser → Frame₀ → [Processors] → Frame₁ → Frame₂ → UI
-                                    ↓
-                              Progressive Enhancement
-                              (none → quick → full)
+Tokens → Buffer (lazy) → pull() → Parser → Frame₀ → [Processors] → Frame₁ → UI
+                                                          ↓
+                                                    Progressive Enhancement
+                                                    (none → quick → full)
 ```
 
+- **Buffer**: Accumulates tokens until a frame is requested
 - **Parser**: Internal - parses raw tokens into block structure (text/code)
 - **Processors**: User-defined - enhance blocks with HTML (markdown, highlighting, diagrams)
 - **Frames**: Immutable snapshots of the document state
+
+## Why Lazy?
+
+The lazy design provides:
+
+1. **Batching**: Multiple tokens accumulate between pulls, reducing processor runs
+2. **Backpressure**: Slow consumers naturally batch more (fewer frames, larger batches)
+3. **Efficiency**: 500 tokens at 60fps = ~30 pulls instead of 500 eager runs
 
 ## Core Concepts
 
@@ -514,42 +523,113 @@ interface TraceEntry {
 
 ## Advanced Usage
 
-### Custom Pipeline Runner
+### Direct Pipeline Usage
 
-For more control, use the pipeline runner directly:
+For more control, use the pipeline directly with the lazy push/pull API:
 
 ```ts
-import { createPipeline, runPipeline } from '@tanstack/framework/react/chat/pipeline'
+import { createPipeline } from '@tanstack/framework/react/chat/pipeline'
 
 const pipeline = createPipeline({
   processors: [markdown, shiki, mermaid],
-  debug: true
 })
 
-// Process a chunk
-const result = yield* runPipeline(pipeline, frame, chunk)
+// Push tokens (lazy - just buffers, no processing)
+pipeline.push('# Hello\n')
+pipeline.push('```python\n')
+pipeline.push('x = 1\n')
+pipeline.push('```\n')
 
-// result.frame - final frame after all processors
-// result.intermediateFrames - frames from each processor
+// Pull a frame (triggers parsing + processing)
+const frame = yield* pipeline.pull()
+
+// Flush to finalize (handles incomplete blocks)
+const finalFrame = yield* pipeline.flush()
 ```
 
-### Frame Emitter
+### Pipeline API
 
-Process frames as they stream:
+```ts
+interface Pipeline {
+  /** Current frame state */
+  readonly frame: Frame
+  
+  /** Whether there's buffered content not yet processed */
+  readonly hasPending: boolean
+  
+  /** Whether flush() has been called */
+  readonly isDone: boolean
+  
+  /** Push content to buffer (sync, no processing) */
+  push(chunk: string): void
+  
+  /** Pull frame by processing buffered content */
+  pull(): Operation<Frame>
+  
+  /** Signal end of stream, flush remaining content */
+  flush(): Operation<Frame>
+  
+  /** Reset for a new stream */
+  reset(): void
+}
+```
+
+### Usage Patterns
+
+**React (via useChat):**
+```tsx
+const { messages } = useChat({
+  pipeline: 'full',
+})
+```
+
+**TUI (fixed interval):**
+```ts
+const pipeline = createPipeline({ processors: 'full' })
+
+while (streaming) {
+  yield* sleep(33)  // ~30fps
+  const frame = yield* pipeline.pull()
+  render(frame)
+}
+```
+
+**TTS (on-demand):**
+```ts
+const pipeline = createPipeline({ processors: 'markdown' })
+
+while (streaming) {
+  yield* waitForSpeechBufferLow()
+  const frame = yield* pipeline.pull()
+  queueSpeech(frame)
+}
+```
+
+### Pipeline Transform
+
+The `createPipelineTransform` bridges lazy pipelines with the patch-based streaming system:
 
 ```ts
 import { createPipelineTransform } from '@tanstack/framework/react/chat/pipeline'
 
 const transform = createPipelineTransform({
   processors: [markdown, shiki],
-  debug: true
 })
 
-// Stream processing
-for await (const frame of transform.stream(chunks)) {
-  setFrame(frame)  // Update UI
-}
+// Use with session transforms
+const session = createChatSession({
+  transforms: [transform],
+})
 ```
+
+The transform:
+1. Pushes incoming `streaming_text` content to the pipeline buffer
+2. Pulls a frame after each push
+3. Emits `buffer_renderable` patches with rendered HTML
+
+**Note:** The transform does not throttle frame emission. If you need
+frame-rate limiting for performance, implement it in your UI framework
+adapter layer (e.g., using `requestAnimationFrame` in React).
 
 ### Creating Custom Processors
 

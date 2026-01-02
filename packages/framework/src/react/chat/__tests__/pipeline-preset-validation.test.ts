@@ -165,40 +165,30 @@ def hello():
 
   describe('streaming with presets', () => {
     it('markdown preset should work with streaming', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline({ processors: 'markdown' }, function* (frame) {
-        frames.push(frame)
-      })
+      const pipeline = createPipeline({ processors: 'markdown' })
 
       await run(function* () {
-        yield* pipeline.process('# Title\n')
-        yield* pipeline.process('Body text')
-        yield* pipeline.flush()
-      })
+        pipeline.push('# Title\n')
+        pipeline.push('Body text')
+        const finalFrame = yield* pipeline.flush()
 
-      expect(frames.length).toBeGreaterThan(0)
-      const lastFrame = frames[frames.length - 1]
-      const html = lastFrame.blocks.map((b: any) => b.rendered).join('')
-      expect(html).toContain('<h1') // markdown processed
+        const html = finalFrame.blocks.map((b: any) => b.rendered).join('')
+        expect(html).toContain('<h1') // markdown processed
+      })
     })
 
     it('full preset should work with streaming', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline({ processors: 'full' }, function* (frame) {
-        frames.push(frame)
-      })
+      const pipeline = createPipeline({ processors: 'full' })
 
       await run(function* () {
-        yield* pipeline.process('# Title\n')
-        yield* pipeline.process('```js\n')
-        yield* pipeline.process('code\n')
-        yield* pipeline.process('```')
-        yield* pipeline.flush()
-      })
+        pipeline.push('# Title\n')
+        pipeline.push('```js\n')
+        pipeline.push('code\n')
+        pipeline.push('```')
+        const finalFrame = yield* pipeline.flush()
 
-      expect(frames.length).toBeGreaterThan(0)
-      const lastFrame = frames[frames.length - 1]
-      expect(lastFrame.blocks.some((b: any) => b.type === 'code')).toBe(true)
+        expect(finalFrame.blocks.some((b: any) => b.type === 'code')).toBe(true)
+      })
     })
   })
 
@@ -302,42 +292,40 @@ def hello():
 
   describe('progressive rendering', () => {
     it('should emit frames during processing', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline({ processors: 'markdown' }, function* (frame) {
-        frames.push(frame)
-      })
+      const pipeline = createPipeline({ processors: 'markdown' })
 
       await run(function* () {
-        // Send multiple chunks
+        // Push multiple chunks (lazy - just buffers)
         for (let i = 0; i < 5; i++) {
-          yield* pipeline.process(`Chunk ${i}\n`)
+          pipeline.push(`Chunk ${i}\n`)
         }
-        yield* pipeline.flush()
+        
+        // Pull to process all buffered content
+        const frame = yield* pipeline.pull()
+        expect(frame.blocks.length).toBeGreaterThan(0)
+        
+        // Flush to finalize
+        const finalFrame = yield* pipeline.flush()
+        expect(finalFrame.blocks.length).toBeGreaterThan(0)
       })
-
-      // Should have multiple frames (one per process call + flush)
-      expect(frames.length).toBeGreaterThan(0)
     })
 
     it('should accumulate content across streaming calls', async () => {
-      const frames: any[] = []
-      const pipeline = createPipeline({ processors: 'markdown' }, function* (frame) {
-        frames.push(JSON.parse(JSON.stringify(frame)))
-      })
+      const pipeline = createPipeline({ processors: 'markdown' })
 
       await run(function* () {
-        yield* pipeline.process('Line 1\n')
-        yield* pipeline.process('Line 2\n')
-        yield* pipeline.process('Line 3')
-        yield* pipeline.flush()
-      })
+        pipeline.push('Line 1\n')
+        pipeline.push('Line 2\n')
+        pipeline.push('Line 3')
+        
+        const finalFrame = yield* pipeline.flush()
 
-      // Last frame should have all content
-      const lastFrame = frames[frames.length - 1]!
-      const totalText = lastFrame.blocks.map((b: any) => b.raw).join('')
-      expect(totalText).toContain('Line 1')
-      expect(totalText).toContain('Line 2')
-      expect(totalText).toContain('Line 3')
+        // Final frame should have all content
+        const totalText = finalFrame.blocks.map((b: any) => b.raw).join('')
+        expect(totalText).toContain('Line 1')
+        expect(totalText).toContain('Line 2')
+        expect(totalText).toContain('Line 3')
+      })
     })
   })
 })

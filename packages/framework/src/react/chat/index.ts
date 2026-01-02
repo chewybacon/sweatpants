@@ -56,7 +56,6 @@ export {
   type ProcessFn,
   type ProcessorPreset,
   type PipelineConfig,
-  type FrameEmitter,
   type PipelineResult,
   type ResolvedProcessors,
   // Frame utilities
@@ -106,12 +105,12 @@ export {
   loadProcessors,
   ProcessorResolutionError,
   // Runner
-  type PipelineInstance,
+  type Pipeline,
   createPipeline,
   composeProcessFns,
   createPipelineTransform,
   runPipeline,
-  runPipelineWithFrames,
+  runPipelineStreaming,
 } from './pipeline'
 
 // --- Types ---

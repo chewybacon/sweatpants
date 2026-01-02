@@ -1,26 +1,59 @@
 /**
  * lib/chat/types/chat-message.ts
  *
- * Framework-agnostic message types for chat UIs.
+ * Parts-based message types for chat UIs.
  *
- * These types use generics to allow different UI frameworks to specify their
- * component type (React.ComponentType, Vue Component, Svelte Component, etc.)
+ * Messages are composed of ordered parts, where each part represents
+ * a distinct segment of content (text, reasoning, tool calls, etc.).
  *
- * @example React
+ * This model:
+ * - Handles mode switching (reasoning → text → tool → text)
+ * - Allows each content part to have its own rendered Frame
+ * - Keeps tool emissions nested within their tool-call parts
+ * - Aligns with Vercel AI SDK v6's parts model
+ *
+ * @example
  * ```tsx
- * import type { ChatMessage } from '@tanstack/framework/lib/chat'
- * type ReactChatMessage = ChatMessage<React.ComponentType<any>>
- * ```
- *
- * @example Vue
- * ```ts
- * import type { ChatMessage } from '@tanstack/framework/lib/chat'
- * import type { Component } from 'vue'
- * type VueChatMessage = ChatMessage<Component>
+ * function Message({ message }: { message: ChatMessage }) {
+ *   return (
+ *     <div>
+ *       {message.parts.map((part, i) => {
+ *         switch (part.type) {
+ *           case 'text':
+ *             return <FrameRenderer key={part.id} frame={part.frame} />
+ *           case 'reasoning':
+ *             return <ThinkingBlock key={part.id} frame={part.frame} collapsed />
+ *           case 'tool-call':
+ *             return <ToolCallBlock key={part.id} part={part} />
+ *         }
+ *       })}
+ *     </div>
+ *   )
+ * }
  * ```
  */
 
-import type { RenderDelta, RevealHint, ContentMetadata } from '../core-types'
+import type { Frame } from '../../../react/chat/pipeline/types'
+
+// =============================================================================
+// PART ID GENERATION
+// =============================================================================
+
+let partIdCounter = 0
+
+/**
+ * Generate a unique part ID.
+ */
+export function generatePartId(): string {
+  return `part-${++partIdCounter}-${Date.now()}`
+}
+
+/**
+ * Reset part ID counter (for testing).
+ */
+export function resetPartIdCounter(): void {
+  partIdCounter = 0
+}
 
 // =============================================================================
 // EMISSION TYPES
@@ -51,20 +84,56 @@ export interface ChatEmission<TComponent = unknown> {
 }
 
 // =============================================================================
-// TOOL CALL TYPES
+// MESSAGE PART TYPES
 // =============================================================================
 
 /**
- * A tool call made by the assistant.
+ * Base interface for all message parts.
+ */
+interface BaseMessagePart {
+  /** Unique part identifier (stable across updates) */
+  id: string
+}
+
+/**
+ * A text content part.
  *
- * When the LLM decides to use a tool, it creates a tool call. The tool executes
- * and may emit interactive UI components (emissions) during execution.
+ * Contains the main response text from the model, rendered through the pipeline.
+ */
+export interface TextPart extends BaseMessagePart {
+  type: 'text'
+  /** Raw text content */
+  content: string
+  /** Rendered frame (contains blocks with HTML) */
+  frame?: Frame
+}
+
+/**
+ * A reasoning/thinking content part.
+ *
+ * Contains model reasoning (e.g., Claude's extended thinking, DeepSeek-R1).
+ * Also rendered through the pipeline for markdown/code highlighting.
+ */
+export interface ReasoningPart extends BaseMessagePart {
+  type: 'reasoning'
+  /** Raw reasoning content */
+  content: string
+  /** Rendered frame (contains blocks with HTML) */
+  frame?: Frame
+}
+
+/**
+ * A tool call part.
+ *
+ * Represents a tool invocation by the model. Tool emissions (interactive
+ * components from ctx.render()) are nested within this part.
  *
  * @typeParam TComponent - The UI framework's component type
  */
-export interface ChatToolCall<TComponent = unknown> {
-  /** Tool call ID */
-  id: string
+export interface ToolCallPart<TComponent = unknown> extends BaseMessagePart {
+  type: 'tool-call'
+  /** Tool call ID (from the model) */
+  callId: string
   /** Tool name */
   name: string
   /** Arguments passed to the tool */
@@ -79,41 +148,64 @@ export interface ChatToolCall<TComponent = unknown> {
   emissions: ChatEmission<TComponent>[]
 }
 
+/**
+ * A tool result part (for multi-turn conversations where tool results
+ * are sent back to the model).
+ */
+export interface ToolResultPart extends BaseMessagePart {
+  type: 'tool-result'
+  /** ID of the tool call this result is for */
+  callId: string
+  /** The result value */
+  result: unknown
+}
+
+/**
+ * Union of all message part types.
+ *
+ * @typeParam TComponent - The UI framework's component type
+ */
+export type MessagePart<TComponent = unknown> =
+  | TextPart
+  | ReasoningPart
+  | ToolCallPart<TComponent>
+  | ToolResultPart
+
+/**
+ * Content part types that go through the pipeline.
+ */
+export type ContentPart = TextPart | ReasoningPart
+
+/**
+ * Type guard for content parts (text or reasoning).
+ */
+export function isContentPart(part: MessagePart): part is ContentPart {
+  return part.type === 'text' || part.type === 'reasoning'
+}
+
 // =============================================================================
 // MESSAGE TYPES
 // =============================================================================
 
 /**
- * A chat message with resolved content.
+ * A chat message composed of ordered parts.
  *
- * This is the primary type for rendering chat UI. It includes:
- * - Text content (raw and HTML)
- * - Tool calls made during this assistant turn
- * - Interactive emissions from those tool calls
+ * This is the primary type for rendering chat UI. Parts are rendered in order,
+ * allowing natural representation of:
+ * - Reasoning followed by text
+ * - Text followed by tool calls
+ * - Tool results followed by more text
  *
  * @typeParam TComponent - The UI framework's component type
  *
  * @example
  * ```tsx
- * function Message({ message }: { message: ChatMessage<React.ComponentType> }) {
+ * function Message({ message }: { message: ChatMessage }) {
  *   return (
- *     <div>
- *       {message.toolCalls?.map(tc => (
- *         <div key={tc.id}>
- *           {tc.emissions.map(emission => (
- *             <emission.component
- *               key={emission.id}
- *               {...emission.props}
- *               onRespond={emission.onRespond}
- *               disabled={emission.status !== 'pending'}
- *               response={emission.response}
- *             />
- *           ))}
- *         </div>
+ *     <div className={message.role}>
+ *       {message.parts.map(part => (
+ *         <PartRenderer key={part.id} part={part} />
  *       ))}
- *       {message.html ? (
- *         <div dangerouslySetInnerHTML={{ __html: message.html }} />
- *       ) : message.content}
  *     </div>
  *   )
  * }
@@ -122,18 +214,16 @@ export interface ChatToolCall<TComponent = unknown> {
 export interface ChatMessage<TComponent = unknown> {
   /** Unique message ID */
   id: string
-  /** Message role: 'user', 'assistant', or 'system' */
+  /** Message role */
   role: 'user' | 'assistant' | 'system'
-  /** Raw text content */
-  content: string
-  /** Rendered HTML (if available) */
-  html?: string
+  /** Ordered list of message parts */
+  parts: MessagePart<TComponent>[]
   /** Whether this message is currently streaming */
-  isStreaming?: boolean
+  isStreaming: boolean
   /** Timestamp when created */
   createdAt?: Date
-  /** Tool calls made during this assistant turn (assistant messages only) */
-  toolCalls?: ChatToolCall<TComponent>[]
+  /** Extensible metadata */
+  metadata?: Record<string, unknown>
 }
 
 // =============================================================================
@@ -143,26 +233,120 @@ export interface ChatMessage<TComponent = unknown> {
 /**
  * Streaming message state - the message currently being streamed.
  *
- * This is a special view that includes animation-ready data
- * for smooth rendering during streaming.
+ * This is always an assistant message with parts being built up.
  *
- * @typeParam TComponent - The UI framework's component type (for toolCalls)
+ * @typeParam TComponent - The UI framework's component type
  */
 export interface StreamingMessage<TComponent = unknown> {
   /** Role is always 'assistant' for streaming messages */
   role: 'assistant'
-  /** Current accumulated content */
-  content: string
-  /** Current accumulated HTML */
-  html?: string
-  /** Delta from last update (for animation) */
-  delta?: RenderDelta
-  /** Reveal hint for animation control */
-  revealHint?: RevealHint
-  /** Metadata from processor (e.g., code fence info) */
-  meta?: ContentMetadata
-  /** Timestamp of last update */
-  timestamp?: number
-  /** Tool calls in progress during streaming */
-  toolCalls?: ChatToolCall<TComponent>[]
+  /** Parts accumulated so far (last one may be actively streaming) */
+  parts: MessagePart<TComponent>[]
+  /** ID of the currently streaming part (if any) */
+  activePartId: string | null
 }
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Create a new text part.
+ */
+export function createTextPart(content: string = '', frame?: Frame): TextPart {
+  const part: TextPart = {
+    id: generatePartId(),
+    type: 'text',
+    content,
+  }
+  if (frame !== undefined) {
+    part.frame = frame
+  }
+  return part
+}
+
+/**
+ * Create a new reasoning part.
+ */
+export function createReasoningPart(content: string = '', frame?: Frame): ReasoningPart {
+  const part: ReasoningPart = {
+    id: generatePartId(),
+    type: 'reasoning',
+    content,
+  }
+  if (frame !== undefined) {
+    part.frame = frame
+  }
+  return part
+}
+
+/**
+ * Create a new tool call part.
+ */
+export function createToolCallPart<TComponent = unknown>(
+  callId: string,
+  name: string,
+  args: unknown
+): ToolCallPart<TComponent> {
+  return {
+    id: generatePartId(),
+    type: 'tool-call',
+    callId,
+    name,
+    arguments: args,
+    state: 'pending',
+    emissions: [],
+  }
+}
+
+/**
+ * Create a new tool result part.
+ */
+export function createToolResultPart(callId: string, result: unknown): ToolResultPart {
+  return {
+    id: generatePartId(),
+    type: 'tool-result',
+    callId,
+    result,
+  }
+}
+
+/**
+ * Get all text content from a message (for search, copy, etc.).
+ */
+export function getMessageTextContent(message: ChatMessage): string {
+  return message.parts
+    .filter((part): part is TextPart => part.type === 'text')
+    .map(part => part.content)
+    .join('\n')
+}
+
+/**
+ * Get all reasoning content from a message.
+ */
+export function getMessageReasoningContent(message: ChatMessage): string {
+  return message.parts
+    .filter((part): part is ReasoningPart => part.type === 'reasoning')
+    .map(part => part.content)
+    .join('\n')
+}
+
+/**
+ * Get all tool calls from a message.
+ */
+export function getMessageToolCalls<TComponent = unknown>(
+  message: ChatMessage<TComponent>
+): ToolCallPart<TComponent>[] {
+  return message.parts.filter(
+    (part): part is ToolCallPart<TComponent> => part.type === 'tool-call'
+  )
+}
+
+// =============================================================================
+// LEGACY TYPE ALIASES (for migration)
+// =============================================================================
+
+/**
+ * @deprecated Use ToolCallPart instead. This alias exists for migration.
+ */
+export type ChatToolCall<TComponent = unknown> = ToolCallPart<TComponent>
