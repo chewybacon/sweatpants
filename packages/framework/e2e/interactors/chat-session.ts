@@ -5,6 +5,7 @@
  * Provides actions and filters for the overall session state.
  */
 import { createInteractor, type Interactor } from '@interactors/html'
+import { fireEvent } from '@testing-library/react'
 
 /**
  * ChatSession interactor targets the main chat container element.
@@ -89,6 +90,7 @@ export const ChatSession = createInteractor<HTMLElement>('ChatSession')
   .actions({
     /**
      * Type text into the chat input.
+     * Uses fireEvent.change to properly trigger React's controlled component updates.
      */
     typeInInput: (interactor: Interactor<HTMLElement, any>, text: string) =>
       interactor.perform((element) => {
@@ -96,17 +98,16 @@ export const ChatSession = createInteractor<HTMLElement>('ChatSession')
         if (!input) {
           throw new Error('Chat input not found')
         }
-        // Clear existing value
-        input.value = ''
-        input.dispatchEvent(new Event('input', { bubbles: true }))
+        // Clear existing value using fireEvent
+        fireEvent.change(input, { target: { value: '' } })
 
-        // Type new value
-        input.value = text
-        input.dispatchEvent(new Event('input', { bubbles: true }))
+        // Type new value using fireEvent
+        fireEvent.change(input, { target: { value: text } })
       }),
 
     /**
      * Click the send button.
+     * Uses fireEvent.click for React compatibility.
      */
     clickSend: (interactor: Interactor<HTMLElement, any>) =>
       interactor.perform((element) => {
@@ -114,32 +115,33 @@ export const ChatSession = createInteractor<HTMLElement>('ChatSession')
         if (!button) {
           throw new Error('Send button not found')
         }
-        button.click()
+        fireEvent.click(button)
       }),
 
     /**
      * Send a message (type + click send).
+     * Uses fireEvent for React compatibility.
      */
     sendMessage: (interactor: Interactor<HTMLElement, any>, text: string) =>
       interactor.perform((element) => {
-        // Find and fill the input
+        // Find and fill the input using fireEvent.change
         const input = element.querySelector('[data-testid="chat-input"]') as HTMLInputElement | null
         if (!input) {
           throw new Error('Chat input not found')
         }
-        input.value = text
-        input.dispatchEvent(new Event('input', { bubbles: true }))
+        fireEvent.change(input, { target: { value: text } })
 
-        // Find and click the send button
+        // Find and click the send button using fireEvent.click
         const button = element.querySelector('[data-testid="send-button"]') as HTMLButtonElement | null
         if (!button) {
           throw new Error('Send button not found')
         }
-        button.click()
+        fireEvent.click(button)
       }),
 
     /**
      * Submit the form (for enter key behavior).
+     * Uses fireEvent.submit for React compatibility.
      */
     submitForm: (interactor: Interactor<HTMLElement, any>) =>
       interactor.perform((element) => {
@@ -147,11 +149,12 @@ export const ChatSession = createInteractor<HTMLElement>('ChatSession')
         if (!form) {
           throw new Error('Chat input form not found')
         }
-        form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+        fireEvent.submit(form)
       }),
 
     /**
      * Click the abort button (if visible).
+     * Uses fireEvent.click for React compatibility.
      */
     abort: (interactor: Interactor<HTMLElement, any>) =>
       interactor.perform((element) => {
@@ -159,11 +162,12 @@ export const ChatSession = createInteractor<HTMLElement>('ChatSession')
         if (!button) {
           throw new Error('Abort button not found')
         }
-        button.click()
+        fireEvent.click(button)
       }),
 
     /**
      * Click the reset button.
+     * Uses fireEvent.click for React compatibility.
      */
     reset: (interactor: Interactor<HTMLElement, any>) =>
       interactor.perform((element) => {
@@ -171,6 +175,6 @@ export const ChatSession = createInteractor<HTMLElement>('ChatSession')
         if (!button) {
           throw new Error('Reset button not found')
         }
-        button.click()
+        fireEvent.click(button)
       }),
   })

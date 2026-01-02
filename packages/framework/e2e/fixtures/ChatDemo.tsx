@@ -23,6 +23,8 @@ export interface ChatDemoProps extends Omit<UseChatOptions, 'onError'> {
   sessionId?: string
   /** Initial messages to display */
   initialMessages?: Array<{ role: 'user' | 'assistant'; content: string }>
+  /** Base URL for the chat API (defaults to /api/chat) */
+  baseUrl?: string
 }
 
 /**
@@ -138,8 +140,9 @@ function MessageBlock({ message }: { message: ChatMessage }) {
 /**
  * Minimal Chat Demo component for E2E testing.
  */
-export function ChatDemo({ sessionId = 'default', ...options }: ChatDemoProps) {
-  const { messages, isStreaming, send, abort, reset, error } = useChat(options)
+export function ChatDemo({ sessionId = 'default', baseUrl, ...options }: ChatDemoProps) {
+  const chatOptions = baseUrl ? { ...options, baseUrl } : options
+  const { messages, isStreaming, send, abort, reset, error } = useChat(chatOptions)
 
   const [input, setInput] = useState('')
 

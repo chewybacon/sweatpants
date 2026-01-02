@@ -87,6 +87,34 @@
         "types": "./dist/react/chat/plugins.d.cts",
         "default": "./dist/react/chat/plugins.cjs"
       }
+    },
+    "./react/chat/pipeline": {
+      "development": {
+        "import": "./src/react/chat/pipeline/index.ts",
+        "types": "./src/react/chat/pipeline/index.ts"
+      },
+      "import": {
+        "types": "./dist/react/chat/pipeline.d.ts",
+        "default": "./dist/react/chat/pipeline.js"
+      },
+      "require": {
+        "types": "./dist/react/chat/pipeline.d.cts",
+        "default": "./dist/react/chat/pipeline.cjs"
+      }
+    },
+    "./ink/chat": {
+      "development": {
+        "import": "./src/ink/chat/index.ts",
+        "types": "./src/ink/chat/index.ts"
+      },
+      "import": {
+        "types": "./dist/ink/chat.d.ts",
+        "default": "./dist/ink/chat.js"
+      },
+      "require": {
+        "types": "./dist/ink/chat.d.cts",
+        "default": "./dist/ink/chat.cjs"
+      }
     }
   },
   "files": [
