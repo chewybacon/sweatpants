@@ -104,7 +104,9 @@ export interface TextPart extends BaseMessagePart {
   type: 'text'
   /** Raw text content */
   content: string
-  /** Rendered frame (contains blocks with HTML) */
+  /** Rendered HTML from the pipeline (or escaped content as fallback) */
+  rendered: string
+  /** Rendered frame (contains blocks with HTML) - internal, use `rendered` instead */
   frame?: Frame
 }
 
@@ -118,7 +120,9 @@ export interface ReasoningPart extends BaseMessagePart {
   type: 'reasoning'
   /** Raw reasoning content */
   content: string
-  /** Rendered frame (contains blocks with HTML) */
+  /** Rendered HTML from the pipeline (or escaped content as fallback) */
+  rendered: string
+  /** Rendered frame (contains blocks with HTML) - internal, use `rendered` instead */
   frame?: Frame
 }
 
@@ -251,13 +255,24 @@ export interface StreamingMessage<TComponent = unknown> {
 // =============================================================================
 
 /**
+ * Extract rendered HTML from a Frame.
+ * Joins all block rendered content into a single HTML string.
+ */
+export function getRenderedFromFrame(frame: Frame | undefined): string | null {
+  if (!frame || !frame.blocks.length) return null
+  return frame.blocks.map(b => b.rendered).join('')
+}
+
+/**
  * Create a new text part.
  */
 export function createTextPart(content: string = '', frame?: Frame): TextPart {
+  const rendered = getRenderedFromFrame(frame) ?? content
   const part: TextPart = {
     id: generatePartId(),
     type: 'text',
     content,
+    rendered,
   }
   if (frame !== undefined) {
     part.frame = frame
@@ -269,10 +284,12 @@ export function createTextPart(content: string = '', frame?: Frame): TextPart {
  * Create a new reasoning part.
  */
 export function createReasoningPart(content: string = '', frame?: Frame): ReasoningPart {
+  const rendered = getRenderedFromFrame(frame) ?? content
   const part: ReasoningPart = {
     id: generatePartId(),
     type: 'reasoning',
     content,
+    rendered,
   }
   if (frame !== undefined) {
     part.frame = frame
