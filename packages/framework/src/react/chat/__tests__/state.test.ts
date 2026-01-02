@@ -51,7 +51,7 @@ describe('chatReducer (pure logic)', () => {
       ...initialChatState,
       isStreaming: true,
       streaming: {
-        parts: [{ id: 'part-1', type: 'text', content: 'Hell' }],
+        parts: [{ id: 'part-1', type: 'text', content: 'Hell', rendered: 'Hell' }],
         activePartId: 'part-1',
         activePartType: 'text',
       },
@@ -73,7 +73,7 @@ describe('chatReducer (pure logic)', () => {
       ...initialChatState,
       isStreaming: true,
       streaming: {
-        parts: [{ id: 'part-1', type: 'reasoning', content: 'Hmmm' }],
+        parts: [{ id: 'part-1', type: 'reasoning', content: 'Hmmm', rendered: 'Hmmm' }],
         activePartId: 'part-1',
         activePartType: 'reasoning',
       },
@@ -103,8 +103,8 @@ describe('chatReducer (pure logic)', () => {
       isStreaming: true,
       streaming: {
         parts: [
-          { id: 'part-1', type: 'reasoning', content: 'Thinking' },
-          { id: 'part-2', type: 'text', content: 'Hello world' },
+          { id: 'part-1', type: 'reasoning', content: 'Thinking', rendered: 'Thinking' },
+          { id: 'part-2', type: 'text', content: 'Hello world', rendered: 'Hello world' },
         ],
         activePartId: 'part-2',
         activePartType: 'text',

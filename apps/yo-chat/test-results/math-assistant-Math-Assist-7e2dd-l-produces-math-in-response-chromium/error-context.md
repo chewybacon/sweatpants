@@ -1,0 +1,53 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - button "Open menu" [ref=e3]:
+      - img [ref=e4]
+    - heading "TanStack Logo" [level=1] [ref=e5]:
+      - link "TanStack Logo" [ref=e6] [cursor=pointer]:
+        - /url: /
+        - img "TanStack Logo" [ref=e7]
+  - complementary [ref=e8]:
+    - generic [ref=e9]:
+      - heading "Navigation" [level=2] [ref=e10]
+      - button "Close menu" [ref=e11]:
+        - img [ref=e12]
+    - navigation [ref=e15]:
+      - link "Home" [ref=e16] [cursor=pointer]:
+        - /url: /
+        - img [ref=e17]
+        - generic [ref=e20]: Home
+      - button "Chat Demos" [ref=e22]:
+        - generic [ref=e23]:
+          - img [ref=e24]
+          - generic [ref=e26]: Chat Demos
+        - img [ref=e27]
+  - generic [ref=e30]:
+    - generic [ref=e31]:
+      - generic [ref=e32]:
+        - heading "Math Assistant" [level=1] [ref=e33]
+        - paragraph [ref=e34]: "Parts-based model with pipeline: 'math' (markdown + KaTeX)"
+      - generic [ref=e35]: Pipeline ready
+    - generic [ref=e36]:
+      - generic [ref=e37]: calculator
+      - generic [ref=e38]: reasoning
+    - generic [ref=e40]:
+      - generic [ref=e41]: "*"
+      - paragraph [ref=e42]: Ask me a math question...
+      - generic [ref=e43]:
+        - button "\"sqrt(12345) * pi\"" [ref=e44]
+        - button "\"Solve 2x + 5 = 15\"" [ref=e45]
+        - button "\"integral of x^2\"" [ref=e46]
+    - generic [ref=e47]:
+      - textbox "Type a math problem..." [ref=e48]
+      - button "Solve" [disabled] [ref=e50]
+    - generic [ref=e51]:
+      - button "Clear History" [disabled] [ref=e52]
+      - generic [ref=e53]:
+        - generic [ref=e54]: "pipeline: math"
+        - generic [ref=e55]: 0 messages
+  - button "Open TanStack Devtools" [ref=e56] [cursor=pointer]:
+    - img "TanStack Devtools" [ref=e57]
+```

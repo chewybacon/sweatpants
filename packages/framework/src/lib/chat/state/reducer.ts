@@ -18,9 +18,8 @@ import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, Streaming
 import { initialChatState } from './chat-state'
 import type { ChatPatch, ContentPartType } from '../patches'
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
-import { generatePartId } from '../types/chat-message'
+import { generatePartId, getRenderedFromFrame } from '../types/chat-message'
 import type { Message } from '../types'
-// Frame type is used via the patch types
 
 // Re-export types for convenience
 export type { ChatState, ToolEmissionState, ToolEmissionTrackingState }
@@ -38,6 +37,7 @@ function createTextPart(content: string): TextPart {
     id: generatePartId(),
     type: 'text',
     content,
+    rendered: content, // Will be updated with frame HTML when available
   }
 }
 
@@ -49,6 +49,7 @@ function createReasoningPart(content: string): ReasoningPart {
     id: generatePartId(),
     type: 'reasoning',
     content,
+    rendered: content, // Will be updated with frame HTML when available
   }
 }
 
@@ -114,14 +115,21 @@ function handleContentStreaming(
   if (streaming.activePartType === partType && streaming.activePartId) {
     const activePart = getActiveContentPart(streaming)
     if (activePart) {
+      const newContent = activePart.content + content
       return {
         ...state,
         streaming: {
           ...streaming,
-          parts: updatePart(streaming.parts, streaming.activePartId, (p) => ({
-            ...p,
-            content: (p as TextPart | ReasoningPart).content + content,
-          })),
+          parts: updatePart(streaming.parts, streaming.activePartId, (p) => {
+            const contentPart = p as TextPart | ReasoningPart
+            return {
+              ...p,
+              content: newContent,
+              // Update rendered with raw content if no frame yet
+              // Once a frame is applied, rendered will be the HTML
+              rendered: contentPart.frame ? contentPart.rendered : newContent,
+            }
+          }),
         },
       }
     }
@@ -212,6 +220,9 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       const activePartId = state.streaming.activePartId
       const activePartType = state.streaming.activePartType
       
+      // Compute rendered HTML from the frame
+      const rendered = getRenderedFromFrame(patch.frame)
+      
       // Match by part type - the pipeline transform tells us which type this frame is for
       if (!activePartId || activePartType !== patch.partType) {
         // No matching active part - maybe it's for a previous part, try by ID
@@ -225,6 +236,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             parts: updatePart(state.streaming.parts, patch.partId, (p) => ({
               ...p,
               frame: patch.frame,
+              ...(rendered !== null && { rendered }),
             })),
           },
         }
@@ -238,6 +250,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           parts: updatePart(state.streaming.parts, activePartId, (p) => ({
             ...p,
             frame: patch.frame,
+            ...(rendered !== null && { rendered }),
           })),
         },
       }
@@ -248,6 +261,9 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       // Match by part type first (like part_frame), fall back to ID.
       const activePartId = state.streaming.activePartId
       const activePartType = state.streaming.activePartType
+      
+      // Compute rendered HTML from the frame
+      const rendered = getRenderedFromFrame(patch.frame)
       
       // Determine which part to update
       let targetPartId: string | null = null
@@ -272,6 +288,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           parts: updatePart(state.streaming.parts, targetPartId, (p) => ({
             ...p,
             frame: patch.frame,
+            ...(rendered !== null && { rendered }),
           })),
           // Clear active part if this was it
           activePartId: state.streaming.activePartId === targetPartId 

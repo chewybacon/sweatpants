@@ -188,6 +188,7 @@ export function deriveCompletedMessages<TComponent>(
           id: `${messageId}-text`,
           type: 'text',
           content: msg.content,
+          rendered: msg.content, // No frame available, use raw content
         } as TextPart)
       }
 

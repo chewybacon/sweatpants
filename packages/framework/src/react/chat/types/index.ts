@@ -28,6 +28,30 @@ export type {
 // Message types
 export type { Message, ToolCall } from '../../../lib/chat/types'
 
+// Chat message part types (parts-based model)
+// Note: ChatEmission, ChatToolCall, ChatMessage, StreamingMessage are exported from useChat.ts
+// with React-specific component types. We export the base types here with different names.
+export type {
+  TextPart,
+  ReasoningPart,
+  ToolCallPart,
+  ToolResultPart,
+  MessagePart,
+  ContentPart,
+} from '../../../lib/chat/types/index'
+
+export {
+  getRenderedFromFrame,
+  isContentPart,
+  getMessageTextContent,
+  getMessageReasoningContent,
+  getMessageToolCalls,
+  createTextPart,
+  createReasoningPart,
+  createToolCallPart,
+  createToolResultPart,
+} from '../../../lib/chat/types/chat-message'
+
 // Patch types
 export type {
   // Content part type

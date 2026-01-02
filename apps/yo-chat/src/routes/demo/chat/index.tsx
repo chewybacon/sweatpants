@@ -11,21 +11,12 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall, type StreamingMessage } from '@tanstack/framework/react/chat'
-import type { Frame } from '@tanstack/framework/react/chat/pipeline'
+import { useChat, type ChatMessage, type ChatToolCall } from '@tanstack/framework/react/chat'
 import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: PipelineChatDemo,
 })
-
-/**
- * Extract HTML from a Frame by joining all block rendered content.
- */
-function getFrameHtml(frame: Frame | undefined): string | null {
-  if (!frame || !frame.blocks.length) return null
-  return frame.blocks.map(b => b.rendered).join('')
-}
 
 /**
  * Renders a tool call part with its inline emissions.
@@ -69,15 +60,10 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 
 /**
  * Renders a single message with its parts.
- * Parts are rendered in order: reasoning, text, tool-calls, etc.
+ * Parts are rendered in order in the timeline.
  */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
-
-  // Extract text content from parts for display
-  const textParts = message.parts.filter(p => p.type === 'text')
-  const toolCallParts = message.parts.filter((p): p is ChatToolCall => p.type === 'tool-call')
-  const reasoningParts = message.parts.filter(p => p.type === 'reasoning')
 
   return (
     <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
@@ -102,53 +88,43 @@ function Message({ message }: { message: ChatMessage }) {
               : 'bg-slate-800/50 text-slate-200'
           }`}
         >
-          {/* Reasoning parts (collapsible thinking) */}
-          {reasoningParts.length > 0 && (
-            <details className="mb-3 text-xs">
-              <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
-                Thinking...
-              </summary>
-              <div className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic">
-                {reasoningParts.map((part, i) => {
-                  const html = getFrameHtml((part as { frame?: Frame }).frame)
-                  return (
-                    <div key={part.id || i}>
-                      {html ? (
-                        <div dangerouslySetInnerHTML={{ __html: html }} />
-                      ) : (
-                        (part as { content?: string }).content
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </details>
-          )}
-
-          {/* Tool calls render inline */}
-          {toolCallParts.map((tc) => (
-            <ToolCallBlock key={tc.id} toolCall={tc} />
-          ))}
-
-          {/* Text content */}
-          <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-            {textParts.map((part, i) => {
-              const html = getFrameHtml((part as { frame?: Frame }).frame)
+          {/* Render parts in timeline order */}
+          {message.parts.map((part) => {
+            if (part.type === 'reasoning') {
               return (
-                <div key={part.id || i}>
-                  {html ? (
-                    <div dangerouslySetInnerHTML={{ __html: html }} />
-                  ) : (
-                    (part as { content?: string }).content
-                  )}
-                </div>
+                <details key={part.id} className="mb-3 text-xs">
+                  <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
+                    Thinking...
+                  </summary>
+                  <div 
+                    className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic"
+                    dangerouslySetInnerHTML={{ __html: part.rendered }}
+                  />
+                </details>
               )
-            })}
-            {/* Cursor for streaming messages */}
-            {message.isStreaming && (
-              <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-            )}
-          </div>
+            }
+            
+            if (part.type === 'tool-call') {
+              return <ToolCallBlock key={part.id} toolCall={part} />
+            }
+            
+            if (part.type === 'text') {
+              return (
+                <div 
+                  key={part.id}
+                  className="prose prose-invert prose-sm max-w-none leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: part.rendered }}
+                />
+              )
+            }
+            
+            return null
+          })}
+          
+          {/* Cursor for streaming messages */}
+          {message.isStreaming && (
+            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
+          )}
         </div>
       </div>
     </div>

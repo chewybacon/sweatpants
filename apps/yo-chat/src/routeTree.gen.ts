@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiChatRouteImport } from './routes/api.chat'
 import { Route as DemoTicTacToeIndexRouteImport } from './routes/demo/tic-tac-toe/index'
+import { Route as DemoMathIndexRouteImport } from './routes/demo/math/index'
 import { Route as DemoChatIndexRouteImport } from './routes/demo/chat/index'
 
 const IndexRoute = IndexRouteImport.update({
@@ -29,6 +30,11 @@ const DemoTicTacToeIndexRoute = DemoTicTacToeIndexRouteImport.update({
   path: '/demo/tic-tac-toe/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DemoMathIndexRoute = DemoMathIndexRouteImport.update({
+  id: '/demo/math/',
+  path: '/demo/math/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DemoChatIndexRoute = DemoChatIndexRouteImport.update({
   id: '/demo/chat/',
   path: '/demo/chat/',
@@ -39,12 +45,14 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/demo/chat': typeof DemoChatIndexRoute
+  '/demo/math': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/demo/chat': typeof DemoChatIndexRoute
+  '/demo/math': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
 }
 export interface FileRoutesById {
@@ -52,20 +60,33 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/demo/chat/': typeof DemoChatIndexRoute
+  '/demo/math/': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe/': typeof DemoTicTacToeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/chat' | '/demo/chat' | '/demo/tic-tac-toe'
+  fullPaths:
+    | '/'
+    | '/api/chat'
+    | '/demo/chat'
+    | '/demo/math'
+    | '/demo/tic-tac-toe'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/chat' | '/demo/chat' | '/demo/tic-tac-toe'
-  id: '__root__' | '/' | '/api/chat' | '/demo/chat/' | '/demo/tic-tac-toe/'
+  to: '/' | '/api/chat' | '/demo/chat' | '/demo/math' | '/demo/tic-tac-toe'
+  id:
+    | '__root__'
+    | '/'
+    | '/api/chat'
+    | '/demo/chat/'
+    | '/demo/math/'
+    | '/demo/tic-tac-toe/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
   DemoChatIndexRoute: typeof DemoChatIndexRoute
+  DemoMathIndexRoute: typeof DemoMathIndexRoute
   DemoTicTacToeIndexRoute: typeof DemoTicTacToeIndexRoute
 }
 
@@ -92,6 +113,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoTicTacToeIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/demo/math/': {
+      id: '/demo/math/'
+      path: '/demo/math'
+      fullPath: '/demo/math'
+      preLoaderRoute: typeof DemoMathIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/demo/chat/': {
       id: '/demo/chat/'
       path: '/demo/chat'
@@ -106,6 +134,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
   DemoChatIndexRoute: DemoChatIndexRoute,
+  DemoMathIndexRoute: DemoMathIndexRoute,
   DemoTicTacToeIndexRoute: DemoTicTacToeIndexRoute,
 }
 export const routeTree = rootRouteImport
