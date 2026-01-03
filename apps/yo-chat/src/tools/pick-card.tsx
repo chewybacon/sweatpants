@@ -155,14 +155,17 @@ export const pickCard = createIsomorphicTool('pick_card')
         cards: handoff.cards,
         prompt: handoff.prompt,
       })
-      return result
+      return {
+        ...result.picked
+      } as Card
     },
 
     /**
      * Server confirms the selection.
      */
-    *after(handoff, client: { picked: Card }) {
+    *after(handoff, client) {
       // Return a clear string message for the LLM
-      return `The user selected the ${client.picked.rank} of ${client.picked.suit}. Please acknowledge their choice.`
+      return `The user selected the ${client.rank} of ${client.suit}. Please acknowledge their choice.`
     },
   })
+
