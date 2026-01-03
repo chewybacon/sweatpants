@@ -20,6 +20,19 @@ export { createPullStream, writeFromStreamToBuffer } from '../pull-stream'
 
 export { createWebStreamFromBuffer } from '../web-stream-bridge'
 
+// Re-export DI helpers for test convenience
+export {
+  setupInMemoryDurableStreams,
+  setupDurableStreams,
+  type DurableStreamsSetup,
+} from '../setup'
+
+export {
+  useSessionRegistry,
+  useTokenBufferStore,
+  useSessionRegistryStore,
+} from '../use'
+
 // =============================================================================
 // MOCK LLM STREAM
 // =============================================================================

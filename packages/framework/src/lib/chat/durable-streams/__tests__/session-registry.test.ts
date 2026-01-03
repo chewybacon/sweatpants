@@ -22,21 +22,36 @@ import { sleep, resource } from 'effection'
 import type { Operation, Subscription, Stream } from 'effection'
 import type { TokenFrame } from '../types'
 import {
-  createInMemoryBufferStore,
-  createInMemoryRegistryStore,
   createPullStream,
   createMockLLMStream,
+  setupInMemoryDurableStreams,
+  useSessionRegistry,
+  useTokenBufferStore,
+  useSessionRegistryStore,
 } from './test-utils'
-import { createSessionRegistry } from '../session-registry'
 
 // =============================================================================
-// TEST HELPER: Create test registry with proper scoping
+// TEST HELPER: Create test registry with DI pattern
 // =============================================================================
 
 function* useTestRegistry() {
-  const bufferStore = createInMemoryBufferStore<string>()
-  const registryStore = createInMemoryRegistryStore<string>()
-  const registry = yield* createSessionRegistry(bufferStore, registryStore)
+  // Setup DI contexts - returns the setup for direct access
+  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>()
+  return { registry, bufferStore, registryStore }
+}
+
+/**
+ * Alternative helper that uses context accessors.
+ * Demonstrates the pure DI pattern where you only call setup once
+ * and then use context accessors everywhere else.
+ */
+function* useTestRegistryViaContext() {
+  yield* setupInMemoryDurableStreams<string>()
+
+  // Access via context - this is the recommended pattern for production code
+  const registry = yield* useSessionRegistry<string>()
+  const bufferStore = yield* useTokenBufferStore<string>()
+  const registryStore = yield* useSessionRegistryStore<string>()
 
   return { registry, bufferStore, registryStore }
 }
@@ -46,6 +61,36 @@ function* useTestRegistry() {
 // =============================================================================
 
 describe('Session Registry', () => {
+  describe('DI Pattern', () => {
+    it('should work with context accessors after setup', function* () {
+      // This test demonstrates the pure DI pattern
+      const { registry, bufferStore } = yield* useTestRegistryViaContext()
+
+      const session = yield* registry.acquire('di-test-1', {
+        source: createMockLLMStream('Hello DI'),
+      })
+
+      expect(session.id).toBe('di-test-1')
+      expect(yield* bufferStore.get('di-test-1')).not.toBe(null)
+
+      yield* sleep(50)
+      expect(yield* session.status()).toBe('complete')
+    })
+
+    it('should throw helpful error when contexts not configured', function* () {
+      // Don't call setup - try to use accessor directly
+      let errorThrown = false
+      try {
+        yield* useSessionRegistry<string>()
+      } catch (err) {
+        errorThrown = true
+        expect((err as Error).message).toContain('SessionRegistry not configured')
+        expect((err as Error).message).toContain('setupDurableStreams')
+      }
+      expect(errorThrown).toBe(true)
+    })
+  })
+
   describe('Basic Lifecycle', () => {
     it('should create new session on first acquire', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()

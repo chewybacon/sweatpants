@@ -23,23 +23,20 @@ import { sleep, call, resource, useScope } from 'effection'
 import type { Operation, Stream, Subscription, Scope } from 'effection'
 import type { TokenFrame } from '../types'
 import {
-  createInMemoryBufferStore,
-  createInMemoryRegistryStore,
   createMockLLMStream,
   createWebStreamFromBuffer,
   consumeResponse,
   createPullStream,
+  setupInMemoryDurableStreams,
 } from './test-utils'
-import { createSessionRegistry } from '../session-registry'
 
 // =============================================================================
 // TEST HELPERS
 // =============================================================================
 
 function* useTestRegistry() {
-  const bufferStore = createInMemoryBufferStore<string>()
-  const registryStore = createInMemoryRegistryStore<string>()
-  const registry = yield* createSessionRegistry(bufferStore, registryStore)
+  // Use the DI setup helper - sets contexts and returns the setup
+  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>()
   return { registry, bufferStore, registryStore }
 }
 
