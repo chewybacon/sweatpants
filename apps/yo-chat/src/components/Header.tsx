@@ -113,6 +113,17 @@ export default function Header() {
                 >
                   <span>Tic-Tac-Toe</span>
                 </Link>
+                <Link
+                  to="/demo/math"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                  activeProps={{
+                    className:
+                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
+                  }}
+                >
+                  <span>Math</span>
+                </Link>
               </div>
             )}
           </div>
