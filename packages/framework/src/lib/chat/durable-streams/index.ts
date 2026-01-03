@@ -7,22 +7,23 @@
  * - Multi-client support (fan-out via pull-based readers)
  * - Reconnection from last LSN (Log Sequence Number)
  * - Web Stream bridge for HTTP responses
+ * - IoC/DI via Effection contexts
+ *
+ * ## Quick Start (with DI)
  *
  * @example
  * ```typescript
  * import {
- *   createInMemoryBufferStore,
- *   createInMemoryRegistryStore,
- *   createSessionRegistry,
+ *   setupInMemoryDurableStreams,
+ *   useSessionRegistry,
  *   createWebStreamFromBuffer,
  * } from './durable-streams'
  *
- * // At server startup
- * const bufferStore = createInMemoryBufferStore()
- * const registryStore = createInMemoryRegistryStore()
- * const registry = yield* createSessionRegistry(bufferStore, registryStore)
+ * // At server startup - sets up contexts for DI
+ * yield* setupInMemoryDurableStreams<string>()
  *
- * // In request handler
+ * // In request handler - access via context
+ * const registry = yield* useSessionRegistry<string>()
  * const session = yield* registry.acquire(sessionId, { source: llmStream })
  * yield* ensure(() => registry.release(sessionId))
  *
@@ -31,6 +32,21 @@
  * return new Response(webStream, {
  *   headers: { 'content-type': 'application/x-ndjson' }
  * })
+ * ```
+ *
+ * ## Manual Setup (without DI)
+ *
+ * @example
+ * ```typescript
+ * import {
+ *   createInMemoryBufferStore,
+ *   createInMemoryRegistryStore,
+ *   createSessionRegistry,
+ * } from './durable-streams'
+ *
+ * const bufferStore = createInMemoryBufferStore()
+ * const registryStore = createInMemoryRegistryStore()
+ * const registry = yield* createSessionRegistry(bufferStore, registryStore)
  * ```
  */
 
@@ -68,3 +84,29 @@ export { createSessionRegistry } from './session-registry'
 
 // Web stream bridge
 export { createWebStreamFromBuffer } from './web-stream-bridge'
+
+// =============================================================================
+// IoC/DI - Contexts, Accessors, and Setup Helpers
+// =============================================================================
+
+// Contexts (raw Effection contexts for advanced use)
+export {
+  TokenBufferStoreContext,
+  SessionRegistryStoreContext,
+  SessionRegistryContext,
+} from './contexts'
+
+// Typed accessor operations (recommended for most use)
+export {
+  useTokenBufferStore,
+  useSessionRegistryStore,
+  useSessionRegistry,
+} from './use'
+
+// Setup helpers (recommended entry point)
+export {
+  setupDurableStreams,
+  setupInMemoryDurableStreams,
+  type DurableStreamsConfig,
+  type DurableStreamsSetup,
+} from './setup'
