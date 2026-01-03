@@ -2,8 +2,7 @@
  * Durable Streams Tests
  *
  * These tests validate the design of the durable streams system by
- * implementing in-memory versions of the interfaces and testing
- * the core scenarios:
+ * testing the in-memory implementations and core scenarios:
  *
  * 1. Basic write/read flow
  * 2. Multiple clients reading at different rates
@@ -17,108 +16,26 @@ import { resource, spawn, sleep, createSignal, each, ensure, createScope, call }
 import type { Operation, Stream, Subscription, Signal } from 'effection'
 import type {
   TokenBuffer,
-  TokenBufferStore,
   Session,
   SessionStore,
   SessionManager,
   SessionStatus,
   CreateSessionOptions,
+  TokenFrame,
 } from '../types'
+import {
+  createInMemoryBuffer,
+  createInMemoryBufferStore,
+  createPullStream,
+} from './test-utils'
 
 // =============================================================================
-// IN-MEMORY IMPLEMENTATIONS
+// IN-MEMORY SESSION STORE (test-only, not in library)
 // =============================================================================
 
 /**
- * In-memory TokenBuffer using effection Signal for change notification.
- */
-function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
-  const tokens: T[] = []
-  let completed = false
-  let error: Error | null = null
-  const changeSignal: Signal<void, void> = createSignal<void, void>()
-
-  const buffer: TokenBuffer<T> = {
-    id,
-
-    *append(newTokens: T[]): Operation<number> {
-      if (completed || error) {
-        throw new Error('Buffer is closed')
-      }
-      tokens.push(...newTokens)
-      changeSignal.send()
-      return tokens.length
-    },
-
-    *complete(): Operation<void> {
-      completed = true
-      changeSignal.send()
-    },
-
-    *fail(err: Error): Operation<void> {
-      error = err
-      changeSignal.send()
-    },
-
-    *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
-      return {
-        tokens: tokens.slice(afterLSN),
-        lsn: tokens.length,
-      }
-    },
-
-    *isComplete(): Operation<boolean> {
-      return completed
-    },
-
-    *getError(): Operation<Error | null> {
-      return error
-    },
-
-    *waitForChange(afterLSN: number): Operation<void> {
-      // If there's already new data or stream is done, return immediately
-      if (tokens.length > afterLSN || completed || error) {
-        return
-      }
-      // Wait for next change signal
-      for (const _ of yield* each(changeSignal)) {
-        // Got a signal, break out
-        break
-      }
-    },
-  }
-
-  return buffer
-}
-
-/**
- * In-memory TokenBufferStore
- */
-function createInMemoryBufferStore<T>(): TokenBufferStore<T> {
-  const buffers = new Map<string, TokenBuffer<T>>()
-
-  return {
-    *create(id: string): Operation<TokenBuffer<T>> {
-      if (buffers.has(id)) {
-        throw new Error(`Buffer ${id} already exists`)
-      }
-      const buffer = createInMemoryBuffer<T>(id)
-      buffers.set(id, buffer)
-      return buffer
-    },
-
-    *get(id: string): Operation<TokenBuffer<T> | null> {
-      return buffers.get(id) ?? null
-    },
-
-    *delete(id: string): Operation<void> {
-      buffers.delete(id)
-    },
-  }
-}
-
-/**
- * In-memory SessionStore
+ * In-memory SessionStore for testing the old SessionManager pattern.
+ * Note: The SessionRegistry pattern is preferred for production use.
  */
 function createInMemorySessionStore<T>(): SessionStore<T> {
   const sessions = new Map<string, Session<T>>()
@@ -137,6 +54,10 @@ function createInMemorySessionStore<T>(): SessionStore<T> {
     },
   }
 }
+
+// =============================================================================
+// ACTIVE SESSION (test helper for Session with writer task)
+// =============================================================================
 
 /**
  * Create a Session that actively writes from a source stream.
@@ -255,11 +176,16 @@ function* createRehydratedSession<T>(
   }
 }
 
+// =============================================================================
+// SESSION MANAGER (test helper using old pattern)
+// =============================================================================
+
 /**
- * In-memory SessionManager
+ * In-memory SessionManager for testing.
+ * Note: The SessionRegistry pattern is preferred for production use.
  */
 function createSessionManager<T>(
-  bufferStore: TokenBufferStore<T>,
+  bufferStore: ReturnType<typeof createInMemoryBufferStore<T>>,
   sessionStore: SessionStore<T> = createInMemorySessionStore<T>()
 ): SessionManager<T> {
   return {
@@ -305,48 +231,6 @@ function createSessionManager<T>(
   }
 }
 
-/**
- * Create a pull-based stream from a buffer.
- * Each call returns an independent stream with its own cursor.
- */
-function createPullStream<T>(
-  buffer: TokenBuffer<T>,
-  startLSN = 0
-): Stream<T, void> {
-  return resource(function* (provide) {
-    let cursor = startLSN
-
-    yield* provide({
-      *next(): Operation<IteratorResult<T, void>> {
-        while (true) {
-          const { tokens } = yield* buffer.read(cursor)
-
-          if (tokens.length > 0) {
-            // Return first available token, advance cursor
-            cursor++
-            return { done: false, value: tokens[0]! }
-          }
-
-          // Check if stream is done
-          const complete = yield* buffer.isComplete()
-          const error = yield* buffer.getError()
-
-          if (error) {
-            throw error
-          }
-
-          if (complete) {
-            return { done: true, value: undefined }
-          }
-
-          // Wait for more data
-          yield* buffer.waitForChange(cursor)
-        }
-      },
-    })
-  })
-}
-
 // =============================================================================
 // RESOURCE WRAPPERS (with automatic cleanup via ensure)
 // =============================================================================
@@ -377,14 +261,14 @@ function useDurableSession<T>(
 /**
  * Use a pull stream as a resource.
  * The stream is automatically cleaned up when scope ends.
- * (This is mostly for symmetry - createPullStream already returns a resource)
+ * Returns TokenFrame<T> with token and LSN for reconnect support.
  */
 function usePullStream<T>(
   buffer: TokenBuffer<T>,
   startLSN = 0
-): Operation<Subscription<T, void>> {
+): Operation<Subscription<TokenFrame<T>, void>> {
   return resource(function* (provide) {
-    const subscription: Subscription<T, void> = yield* createPullStream(buffer, startLSN)
+    const subscription: Subscription<TokenFrame<T>, void> = yield* createPullStream(buffer, startLSN)
     yield* provide(subscription)
   })
 }
@@ -510,7 +394,7 @@ describe('Durable Streams', () => {
   describe('PullStream', () => {
     it('should read tokens as they become available', function* () {
       const buffer = createInMemoryBuffer<string>('pull-1')
-      const pullStream: Subscription<string, void> = yield* createPullStream(buffer)
+      const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
 
       // Append some tokens
       yield* buffer.append(['one', 'two'])
@@ -518,11 +402,11 @@ describe('Durable Streams', () => {
       // Read them
       const result1 = yield* pullStream.next()
       expect(result1.done).toBe(false)
-      expect(result1.value).toBe('one')
+      expect((result1.value as TokenFrame<string>).token).toBe('one')
 
       const result2 = yield* pullStream.next()
       expect(result2.done).toBe(false)
-      expect(result2.value).toBe('two')
+      expect((result2.value as TokenFrame<string>).token).toBe('two')
 
       // Complete the buffer
       yield* buffer.complete()
@@ -539,16 +423,58 @@ describe('Durable Streams', () => {
       yield* buffer.complete()
 
       // Start from LSN 2 (skip 'a', 'b')
-      const pullStream: Subscription<string, void> = yield* createPullStream(buffer, 2)
+      const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 2)
 
       const result1 = yield* pullStream.next()
-      expect(result1.value).toBe('c')
+      expect((result1.value as TokenFrame<string>).token).toBe('c')
 
       const result2 = yield* pullStream.next()
-      expect(result2.value).toBe('d')
+      expect((result2.value as TokenFrame<string>).token).toBe('d')
 
       const result3 = yield* pullStream.next()
       expect(result3.done).toBe(true)
+    })
+
+    it('should return correct LSN with each token', function* () {
+      const buffer = createInMemoryBuffer<string>('pull-lsn')
+
+      yield* buffer.append(['a', 'b', 'c'])
+      yield* buffer.complete()
+
+      const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
+
+      const result1 = yield* pullStream.next()
+      expect((result1.value as TokenFrame<string>).token).toBe('a')
+      expect((result1.value as TokenFrame<string>).lsn).toBe(1)
+
+      const result2 = yield* pullStream.next()
+      expect((result2.value as TokenFrame<string>).token).toBe('b')
+      expect((result2.value as TokenFrame<string>).lsn).toBe(2)
+
+      const result3 = yield* pullStream.next()
+      expect((result3.value as TokenFrame<string>).token).toBe('c')
+      expect((result3.value as TokenFrame<string>).lsn).toBe(3)
+
+      const result4 = yield* pullStream.next()
+      expect(result4.done).toBe(true)
+    })
+
+    it('should return correct LSN when starting from offset', function* () {
+      const buffer = createInMemoryBuffer<string>('pull-lsn-offset')
+
+      yield* buffer.append(['a', 'b', 'c', 'd', 'e'])
+      yield* buffer.complete()
+
+      // Start from LSN 3 (skip 'a', 'b', 'c')
+      const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 3)
+
+      const result1 = yield* pullStream.next()
+      expect((result1.value as TokenFrame<string>).token).toBe('d')
+      expect((result1.value as TokenFrame<string>).lsn).toBe(4)
+
+      const result2 = yield* pullStream.next()
+      expect((result2.value as TokenFrame<string>).token).toBe('e')
+      expect((result2.value as TokenFrame<string>).lsn).toBe(5)
     })
   })
 
@@ -660,8 +586,8 @@ describe('Durable Streams', () => {
       const buffer = createInMemoryBuffer<string>('multi-client')
 
       // Create two pull streams
-      const client1: Subscription<string, void> = yield* createPullStream(buffer)
-      const client2: Subscription<string, void> = yield* createPullStream(buffer)
+      const client1: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
+      const client2: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
 
       // Add tokens
       yield* buffer.append(['shared', 'data'])
@@ -671,14 +597,14 @@ describe('Durable Streams', () => {
       const c1r1 = yield* client1.next()
       const c2r1 = yield* client2.next()
 
-      expect(c1r1.value).toBe('shared')
-      expect(c2r1.value).toBe('shared')
+      expect((c1r1.value as TokenFrame<string>).token).toBe('shared')
+      expect((c2r1.value as TokenFrame<string>).token).toBe('shared')
 
       const c1r2 = yield* client1.next()
       const c2r2 = yield* client2.next()
 
-      expect(c1r2.value).toBe('data')
-      expect(c2r2.value).toBe('data')
+      expect((c1r2.value as TokenFrame<string>).token).toBe('data')
+      expect((c2r2.value as TokenFrame<string>).token).toBe('data')
     })
 
     it('should allow clients to read at different positions', function* () {
@@ -688,16 +614,16 @@ describe('Durable Streams', () => {
       yield* buffer.complete()
 
       // Client 1 starts from beginning
-      const client1: Subscription<string, void> = yield* createPullStream(buffer, 0)
+      const client1: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 0)
 
       // Client 2 starts from middle (simulating reconnect)
-      const client2: Subscription<string, void> = yield* createPullStream(buffer, 2)
+      const client2: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 2)
 
       const c1r1 = yield* client1.next()
       const c2r1 = yield* client2.next()
 
-      expect(c1r1.value).toBe('a')
-      expect(c2r1.value).toBe('c')
+      expect((c1r1.value as TokenFrame<string>).token).toBe('a')
+      expect((c2r1.value as TokenFrame<string>).token).toBe('c')
     })
   })
 
@@ -716,7 +642,7 @@ describe('Durable Streams', () => {
       yield* sleep(50)
 
       // Simulate client 1 reading first 2 tokens then disconnecting
-      const client1: Subscription<string, void> = yield* createPullStream(session.buffer)
+      const client1: Subscription<TokenFrame<string>, void> = yield* createPullStream(session.buffer)
       yield* client1.next() // token1
       yield* client1.next() // token2
       // Client 1 disconnects at LSN 2
@@ -724,10 +650,10 @@ describe('Durable Streams', () => {
       // Simulate new client connecting with LSN 2
       // (In real scenario, this might be a different server)
       const session2 = yield* sessionManager.getOrCreate('reconnect-session')
-      const client2: Subscription<string, void> = yield* createPullStream(session2.buffer, 2)
+      const client2: Subscription<TokenFrame<string>, void> = yield* createPullStream(session2.buffer, 2)
 
       const result = yield* client2.next()
-      expect(result.value).toBe('token3')
+      expect((result.value as TokenFrame<string>).token).toBe('token3')
     })
   })
 
@@ -761,7 +687,7 @@ describe('Durable Streams', () => {
 
           let result = yield* pullStream.next()
           while (!result.done) {
-            received.push(result.value)
+            received.push((result.value as TokenFrame<string>).token)
             result = yield* pullStream.next()
           }
 
@@ -800,7 +726,7 @@ describe('Durable Streams', () => {
           // Read just one token
           const pullStream = yield* usePullStream(session.buffer)
           const result = yield* pullStream.next()
-          expect(result.value).toBe('a')
+          expect((result.value as TokenFrame<string>).token).toBe('a')
 
           // Scope will be destroyed while stream is still active
         })
@@ -881,7 +807,7 @@ describe('Durable Streams', () => {
             innerScope1.run(function* () {
               const reader = yield* usePullStream(session.buffer, 0)
               const result = yield* reader.next()
-              expect(result.value).toBe('token1')
+              expect((result.value as TokenFrame<string>).token).toBe('token1')
             })
           )
           yield* call(() => destroyInner1())
@@ -895,7 +821,7 @@ describe('Durable Streams', () => {
             innerScope2.run(function* () {
               const reader = yield* usePullStream(session.buffer, 1)
               const result = yield* reader.next()
-              expect(result.value).toBe('token2')
+              expect((result.value as TokenFrame<string>).token).toBe('token2')
             })
           )
           yield* call(() => destroyInner2())
@@ -941,7 +867,7 @@ describe('Durable Streams', () => {
           const tokens: string[] = []
           let result = yield* pullStream.next()
           while (!result.done) {
-            tokens.push(result.value)
+            tokens.push((result.value as TokenFrame<string>).token)
             result = yield* pullStream.next()
           }
           events.push('tokens:consumed')
