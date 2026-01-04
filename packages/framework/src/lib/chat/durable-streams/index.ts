@@ -110,3 +110,14 @@ export {
   type DurableStreamsConfig,
   type DurableStreamsSetup,
 } from './setup'
+
+// Shared memory store (for cross-scope persistence in tests and single-server deployments)
+export {
+  createSharedStorage,
+  createSharedBufferStore,
+  createSharedRegistryStore,
+  getSharedStores,
+  type SharedStorage,
+  type SharedBufferState,
+  type SharedDurableStreamsConfig,
+} from './shared-memory-store'
