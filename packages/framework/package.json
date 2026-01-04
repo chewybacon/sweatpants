@@ -32,6 +32,20 @@
         "default": "./dist/handler.cjs"
       }
     },
+    "./handler/durable": {
+      "development": {
+        "import": "./src/handler/durable/index.ts",
+        "types": "./src/handler/durable/index.ts"
+      },
+      "import": {
+        "types": "./dist/handler/durable.d.ts",
+        "default": "./dist/handler/durable.js"
+      },
+      "require": {
+        "types": "./dist/handler/durable.d.cts",
+        "default": "./dist/handler/durable.cjs"
+      }
+    },
     "./chat": {
       "development": {
         "import": "./src/lib/chat/index.ts",
@@ -44,6 +58,20 @@
       "require": {
         "types": "./dist/chat.d.cts",
         "default": "./dist/chat.cjs"
+      }
+    },
+    "./chat/durable-streams": {
+      "development": {
+        "import": "./src/lib/chat/durable-streams/index.ts",
+        "types": "./src/lib/chat/durable-streams/index.ts"
+      },
+      "import": {
+        "types": "./dist/chat/durable-streams.d.ts",
+        "default": "./dist/chat/durable-streams.js"
+      },
+      "require": {
+        "types": "./dist/chat/durable-streams.d.cts",
+        "default": "./dist/chat/durable-streams.cjs"
       }
     },
     "./chat/isomorphic-tools": {

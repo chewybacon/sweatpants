@@ -4,7 +4,9 @@ export default defineConfig({
   entry: {
     vite: 'src/vite/index.ts',
     handler: 'src/handler/index.ts',
+    'handler/durable': 'src/handler/durable/index.ts',
     chat: 'src/lib/chat/index.ts',
+    'chat/durable-streams': 'src/lib/chat/durable-streams/index.ts',
     'chat/isomorphic-tools': 'src/lib/chat/isomorphic-tools/index.ts',
     'react/chat': 'src/react/chat/index.ts',
     'react/chat/pipeline': 'src/react/chat/pipeline/index.ts',
