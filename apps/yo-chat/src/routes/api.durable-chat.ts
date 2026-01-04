@@ -13,7 +13,11 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { createDurableChatHandler } from '@tanstack/framework/handler/durable'
-import { setupInMemoryDurableStreams } from '@tanstack/framework/chat/durable-streams'
+import {
+  createSharedStorage,
+  getSharedStores,
+  setupDurableStreams as setupDurableStreamsWithConfig,
+} from '@tanstack/framework/chat/durable-streams'
 import { resolvePersona, ollamaProvider, openaiProvider } from '@tanstack/framework/chat'
 import {
   ProviderContext,
@@ -31,16 +35,35 @@ import { toolList } from '../__generated__/tool-registry.gen'
 // Combine all tools
 const allTools = [...toolList]
 
-// Initializer hooks for durable handler
+// =============================================================================
+// SHARED STORAGE (module-level, persists across requests)
+// =============================================================================
+
+/**
+ * Shared storage for durable streams.
+ *
+ * This is created once at module load time and persists across all HTTP requests.
+ * This enables:
+ * - Session reconnection (client can disconnect and reconnect to same session)
+ * - Multi-client fan-out (multiple clients reading same session)
+ * - Proper cleanup (sessions cleaned up when all clients disconnect AND stream completes)
+ *
+ * Note: In production with multiple server instances, you'd use Redis or a database
+ * instead of this in-memory shared storage.
+ */
+const sharedStorage = createSharedStorage<string>()
+
+// Initializer hook that uses shared storage
 const setupDurableStreams = function* (): Operation<void> {
-  // Set up in-memory durable streams infrastructure
-  // In production, could use Redis or other persistent stores
-  yield* setupInMemoryDurableStreams<string>()
+  const { bufferStore, registryStore } = getSharedStores(sharedStorage)
+  yield* setupDurableStreamsWithConfig({ bufferStore, registryStore })
 }
 
 const setupProvider = function* (ctx: InitializerContext): Operation<void> {
   // Dynamic provider selection based on request
-  const providerName = ctx.body.provider || env.CHAT_PROVIDER
+  // Note: provider field is an extension not in the base ChatRequestBody type
+  const body = ctx.body as { provider?: string }
+  const providerName = body.provider || env.CHAT_PROVIDER
   const providerMap = {
     ollama: ollamaProvider,
     openai: openaiProvider,
