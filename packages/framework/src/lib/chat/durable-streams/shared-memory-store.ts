@@ -1,0 +1,290 @@
+/**
+ * Shared Memory Store Implementations
+ *
+ * Similar to in-memory-store.ts but designed to work across Effection scopes.
+ * The backing storage (Maps, EventEmitters) is passed in from outside,
+ * allowing state to persist across HTTP request scopes.
+ *
+ * Key difference from in-memory-store.ts:
+ * - Storage is externalized (passed in, not created internally)
+ * - Uses EventEmitter for cross-scope notifications instead of Effection Signal
+ * - Buffers and entries survive scope destruction
+ *
+ * Usage:
+ * ```typescript
+ * // At server startup (outside any Effection scope)
+ * const sharedStorage = createSharedStorage<string>()
+ *
+ * // In each request handler
+ * const bufferStore = createSharedBufferStore(sharedStorage)
+ * const registryStore = createSharedRegistryStore(sharedStorage)
+ * yield* setupDurableStreams({ bufferStore, registryStore })
+ * ```
+ */
+import { type Operation, call } from 'effection'
+import { EventEmitter } from 'events'
+import type {
+  TokenBuffer,
+  TokenBufferStore,
+  SessionRegistryStore,
+  SessionEntry,
+  SessionStatus,
+} from './types'
+
+// =============================================================================
+// SHARED STORAGE TYPES
+// =============================================================================
+
+/**
+ * Internal state for a buffer that can be shared across scopes.
+ * This is the "dumb" data that lives outside Effection.
+ */
+export interface SharedBufferState<T> {
+  tokens: T[]
+  completed: boolean
+  error: Error | null
+  /** EventEmitter for cross-scope notifications */
+  emitter: EventEmitter
+}
+
+/**
+ * Shared storage container that lives outside Effection scopes.
+ * Create once at server startup, pass to stores in each request.
+ */
+export interface SharedStorage<T> {
+  /** Buffer states keyed by buffer ID */
+  buffers: Map<string, SharedBufferState<T>>
+  /** Session entries keyed by session ID */
+  sessions: Map<string, SessionEntry<T>>
+  /** Session status keyed by session ID (mutable, updated by writer tasks) */
+  sessionStatus: Map<string, SessionStatus>
+}
+
+/**
+ * Create a shared storage container.
+ * Call this once at server startup and reuse across all requests.
+ *
+ * @example
+ * ```typescript
+ * // server.ts (at startup)
+ * const sharedStorage = createSharedStorage<string>()
+ *
+ * // In request handler
+ * app.post('/chat', async (req, res) => {
+ *   const bufferStore = createSharedBufferStore(sharedStorage)
+ *   // ...
+ * })
+ * ```
+ */
+export function createSharedStorage<T>(): SharedStorage<T> {
+  return {
+    buffers: new Map(),
+    sessions: new Map(),
+    sessionStatus: new Map(),
+  }
+}
+
+// =============================================================================
+// SHARED TOKEN BUFFER
+// =============================================================================
+
+/**
+ * Creates a TokenBuffer backed by shared state.
+ *
+ * Uses EventEmitter for change notifications, which works across
+ * Effection scopes (unlike Effection Signal which is scope-bound).
+ */
+function createSharedBuffer<T>(
+  id: string,
+  state: SharedBufferState<T>
+): TokenBuffer<T> {
+  const buffer: TokenBuffer<T> = {
+    id,
+
+    *append(newTokens: T[]): Operation<number> {
+      if (state.completed || state.error) {
+        throw new Error('Buffer is closed')
+      }
+      state.tokens.push(...newTokens)
+      state.emitter.emit('change')
+      return state.tokens.length
+    },
+
+    *complete(): Operation<void> {
+      state.completed = true
+      state.emitter.emit('change')
+    },
+
+    *fail(err: Error): Operation<void> {
+      state.error = err
+      state.emitter.emit('change')
+    },
+
+    *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
+      return {
+        tokens: state.tokens.slice(afterLSN),
+        lsn: state.tokens.length,
+      }
+    },
+
+    *isComplete(): Operation<boolean> {
+      return state.completed
+    },
+
+    *getError(): Operation<Error | null> {
+      return state.error
+    },
+
+    *waitForChange(afterLSN: number): Operation<void> {
+      // If there's already new data or stream is done, return immediately
+      if (state.tokens.length > afterLSN || state.completed || state.error) {
+        return
+      }
+
+      // Wait for next change event using a Promise (works across scopes)
+      yield* waitForEvent(state.emitter, 'change')
+    },
+  }
+
+  return buffer
+}
+
+/**
+ * Wait for an event on an EventEmitter, yielding to Effection.
+ * This bridges EventEmitter (cross-scope) with Effection Operations.
+ */
+function* waitForEvent(emitter: EventEmitter, event: string): Operation<void> {
+  // Use call() to bridge the Promise-based EventEmitter to Effection
+  yield* call(() => new Promise<void>((resolve) => {
+    emitter.once(event, resolve)
+  }))
+}
+
+// =============================================================================
+// SHARED TOKEN BUFFER STORE
+// =============================================================================
+
+/**
+ * Creates a TokenBufferStore backed by shared storage.
+ *
+ * Multiple instances can be created from the same SharedStorage,
+ * and they will all see the same buffers.
+ */
+export function createSharedBufferStore<T>(
+  storage: SharedStorage<T>
+): TokenBufferStore<T> {
+  return {
+    *create(id: string): Operation<TokenBuffer<T>> {
+      if (storage.buffers.has(id)) {
+        throw new Error(`Buffer ${id} already exists`)
+      }
+
+      // Create the shared state
+      const state: SharedBufferState<T> = {
+        tokens: [],
+        completed: false,
+        error: null,
+        emitter: new EventEmitter(),
+      }
+      storage.buffers.set(id, state)
+
+      // Return a buffer wrapper around the state
+      return createSharedBuffer(id, state)
+    },
+
+    *get(id: string): Operation<TokenBuffer<T> | null> {
+      const state = storage.buffers.get(id)
+      if (!state) {
+        return null
+      }
+      // Return a buffer wrapper around the existing state
+      return createSharedBuffer(id, state)
+    },
+
+    *delete(id: string): Operation<void> {
+      const state = storage.buffers.get(id)
+      if (state) {
+        // Clean up the emitter
+        state.emitter.removeAllListeners()
+        storage.buffers.delete(id)
+      }
+    },
+  }
+}
+
+// =============================================================================
+// SHARED SESSION REGISTRY STORE
+// =============================================================================
+
+/**
+ * Creates a SessionRegistryStore backed by shared storage.
+ *
+ * Multiple instances can be created from the same SharedStorage,
+ * and they will all see the same session entries.
+ */
+export function createSharedRegistryStore<T>(
+  storage: SharedStorage<T>
+): SessionRegistryStore<T> {
+  return {
+    *get(sessionId: string): Operation<SessionEntry<T> | null> {
+      return storage.sessions.get(sessionId) ?? null
+    },
+
+    *set(sessionId: string, entry: SessionEntry<T>): Operation<void> {
+      storage.sessions.set(sessionId, entry)
+    },
+
+    *delete(sessionId: string): Operation<void> {
+      storage.sessions.delete(sessionId)
+      storage.sessionStatus.delete(sessionId)
+    },
+
+    *updateRefCount(sessionId: string, delta: number): Operation<number> {
+      const entry = storage.sessions.get(sessionId)
+      if (!entry) {
+        throw new Error(`Session ${sessionId} not found`)
+      }
+      entry.refCount += delta
+      return entry.refCount
+    },
+  }
+}
+
+// =============================================================================
+// CONVENIENCE: SETUP HELPER
+// =============================================================================
+
+/**
+ * Configuration for shared durable streams.
+ */
+export interface SharedDurableStreamsConfig<T> {
+  storage: SharedStorage<T>
+}
+
+/**
+ * Get or create stores from shared storage.
+ * Use this in your handler's initializer hooks.
+ *
+ * @example
+ * ```typescript
+ * const sharedStorage = createSharedStorage<string>()
+ *
+ * createDurableChatHandler({
+ *   initializerHooks: [
+ *     function* () {
+ *       const { bufferStore, registryStore } = getSharedStores(sharedStorage)
+ *       yield* setupDurableStreams({ bufferStore, registryStore })
+ *     }
+ *   ]
+ * })
+ * ```
+ */
+export function getSharedStores<T>(storage: SharedStorage<T>): {
+  bufferStore: TokenBufferStore<T>
+  registryStore: SessionRegistryStore<T>
+} {
+  return {
+    bufferStore: createSharedBufferStore(storage),
+    registryStore: createSharedRegistryStore(storage),
+  }
+}
