@@ -30,6 +30,20 @@ import type {
   SessionEntry,
   SessionStatus,
 } from './types'
+import type { Logger } from '../../logger'
+
+// Use a simple console-based logger at module level
+// (pino with transport can hang in certain environments like Vite SSR)
+const log: Logger = {
+  debug: (obj: object | string, msg?: string) => {
+    if (process.env['DEBUG_DURABLE']) {
+      console.log('[shared-store:debug]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined)
+    }
+  },
+  info: (obj: object | string, msg?: string) => console.log('[shared-store:info]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+  warn: (obj: object | string, msg?: string) => console.warn('[shared-store:warn]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+  error: (obj: object | string, msg?: string) => console.error('[shared-store:error]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+}
 
 // =============================================================================
 // SHARED STORAGE TYPES
@@ -107,15 +121,21 @@ function createSharedBuffer<T>(
       }
       state.tokens.push(...newTokens)
       state.emitter.emit('change')
+      // Only log every 50 tokens to reduce noise
+      if (state.tokens.length % 50 === 0) {
+        log.debug({ bufferId: id, tokenCount: state.tokens.length }, 'buffer append progress')
+      }
       return state.tokens.length
     },
 
     *complete(): Operation<void> {
+      log.debug({ bufferId: id, totalTokens: state.tokens.length }, 'buffer complete')
       state.completed = true
       state.emitter.emit('change')
     },
 
     *fail(err: Error): Operation<void> {
+      log.error({ bufferId: id, error: err.message }, 'buffer failed')
       state.error = err
       state.emitter.emit('change')
     },
@@ -138,11 +158,14 @@ function createSharedBuffer<T>(
     *waitForChange(afterLSN: number): Operation<void> {
       // If there's already new data or stream is done, return immediately
       if (state.tokens.length > afterLSN || state.completed || state.error) {
+        log.debug({ bufferId: id, afterLSN, currentLength: state.tokens.length, completed: state.completed }, 'waitForChange: immediate return')
         return
       }
 
       // Wait for next change event using a Promise (works across scopes)
+      log.debug({ bufferId: id, afterLSN }, 'waitForChange: waiting for event')
       yield* waitForEvent(state.emitter, 'change')
+      log.debug({ bufferId: id, afterLSN, newLength: state.tokens.length }, 'waitForChange: event received')
     },
   }
 
@@ -175,6 +198,7 @@ export function createSharedBufferStore<T>(
 ): TokenBufferStore<T> {
   return {
     *create(id: string): Operation<TokenBuffer<T>> {
+      log.debug({ bufferId: id }, 'bufferStore.create')
       if (storage.buffers.has(id)) {
         throw new Error(`Buffer ${id} already exists`)
       }
@@ -187,6 +211,7 @@ export function createSharedBufferStore<T>(
         emitter: new EventEmitter(),
       }
       storage.buffers.set(id, state)
+      log.debug({ bufferId: id }, 'buffer created in shared storage')
 
       // Return a buffer wrapper around the state
       return createSharedBuffer(id, state)
@@ -195,13 +220,16 @@ export function createSharedBufferStore<T>(
     *get(id: string): Operation<TokenBuffer<T> | null> {
       const state = storage.buffers.get(id)
       if (!state) {
+        log.debug({ bufferId: id }, 'bufferStore.get: not found')
         return null
       }
+      log.debug({ bufferId: id }, 'bufferStore.get: found')
       // Return a buffer wrapper around the existing state
       return createSharedBuffer(id, state)
     },
 
     *delete(id: string): Operation<void> {
+      log.debug({ bufferId: id }, 'bufferStore.delete')
       const state = storage.buffers.get(id)
       if (state) {
         // Clean up the emitter

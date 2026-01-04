@@ -8,6 +8,7 @@
 import { resource } from 'effection'
 import type { Operation, Stream, Subscription } from 'effection'
 import type { TokenBuffer, TokenFrame } from './types'
+import { useLogger } from '../../logger'
 
 /**
  * Creates a pull-based stream from a TokenBuffer.
@@ -43,7 +44,9 @@ export function createPullStream<T>(
   startLSN = 0
 ): Stream<TokenFrame<T>, void> {
   return resource(function* (provide) {
+    const log = yield* useLogger('durable-streams:pull')
     let cursor = startLSN
+    log.debug({ bufferId: buffer.id, startLSN }, 'pull stream created')
 
     yield* provide({
       *next(): Operation<IteratorResult<TokenFrame<T>, void>> {
@@ -54,6 +57,7 @@ export function createPullStream<T>(
             // Return token with LSN, advance cursor
             const lsn = cursor + 1
             cursor = lsn
+            log.debug({ bufferId: buffer.id, lsn }, 'pull stream read token')
             return { done: false, value: { token: tokens[0]!, lsn } }
           }
 
@@ -62,15 +66,19 @@ export function createPullStream<T>(
           const error = yield* buffer.getError()
 
           if (error) {
+            log.debug({ bufferId: buffer.id, error: error.message }, 'pull stream error')
             throw error
           }
 
           if (complete) {
+            log.debug({ bufferId: buffer.id, cursor }, 'pull stream complete')
             return { done: true, value: undefined }
           }
 
           // Wait for more data
+          log.debug({ bufferId: buffer.id, cursor }, 'pull stream waiting for change')
           yield* buffer.waitForChange(cursor)
+          log.debug({ bufferId: buffer.id, cursor }, 'pull stream change signaled')
         }
       },
     })
@@ -101,11 +109,22 @@ export function* writeFromStreamToBuffer<T>(
   source: Stream<T, void>,
   buffer: TokenBuffer<T>
 ): Operation<void> {
+  const log = yield* useLogger('durable-streams:writer')
+  log.debug({ bufferId: buffer.id }, 'writeFromStreamToBuffer started')
+  
   const subscription: Subscription<T, void> = yield* source
+  log.debug({ bufferId: buffer.id }, 'source subscription acquired')
+  
+  let tokenCount = 0
   let result = yield* subscription.next()
   while (!result.done) {
     yield* buffer.append([result.value])
+    tokenCount++
+    if (tokenCount % 50 === 0) {
+      log.debug({ bufferId: buffer.id, tokenCount }, 'writeFromStreamToBuffer progress')
+    }
     result = yield* subscription.next()
   }
   yield* buffer.complete()
+  log.debug({ bufferId: buffer.id, totalTokens: tokenCount }, 'writeFromStreamToBuffer complete')
 }

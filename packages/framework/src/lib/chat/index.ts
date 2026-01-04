@@ -12,3 +12,15 @@ export * from './providers/contexts'
 
 export * from './personas'
 
+// Logger
+export {
+  type Logger,
+  type LoggerFactory,
+  useLogger,
+  setupLogger,
+  createPinoLoggerFactory,
+  createNoopLogger,
+  LoggerFactoryContext,
+  type PinoLoggerOptions,
+} from '../logger'
+
