@@ -38,6 +38,17 @@
  */
 
 export { createChatHandler } from './create-handler'
+export {
+  createStreamingHandler,
+  useHandlerContext,
+  HandlerContext,
+} from './streaming'
+export type {
+  HandlerContext as HandlerContextType,
+  StreamingHandlerOptions,
+  SetupResult,
+  SetupFn,
+} from './streaming'
 export type {
   ChatHandlerConfig,
   ChatRequestBody,
