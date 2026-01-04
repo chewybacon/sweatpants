@@ -44,25 +44,19 @@ export function createPullStream<T>(
   startLSN = 0
 ): Stream<TokenFrame<T>, void> {
   return resource(function* (provide) {
-    console.log('[pull-stream] resource started, getting logger')
     const log = yield* useLogger('durable-streams:pull')
     let cursor = startLSN
-    console.log('[pull-stream] initialized, cursor:', cursor)
     log.debug({ bufferId: buffer.id, startLSN }, 'pull stream created')
 
     yield* provide({
       *next(): Operation<IteratorResult<TokenFrame<T>, void>> {
-        console.log('[pull-stream] next() called, cursor:', cursor)
         while (true) {
-          console.log('[pull-stream] reading buffer at cursor:', cursor)
           const { tokens } = yield* buffer.read(cursor)
-          console.log('[pull-stream] read result: tokens.length =', tokens.length)
 
           if (tokens.length > 0) {
             // Return token with LSN, advance cursor
             const lsn = cursor + 1
             cursor = lsn
-            console.log('[pull-stream] returning token at lsn:', lsn)
             log.debug({ bufferId: buffer.id, lsn }, 'pull stream read token')
             return { done: false, value: { token: tokens[0]!, lsn } }
           }
@@ -70,7 +64,6 @@ export function createPullStream<T>(
           // Check if stream is done
           const complete = yield* buffer.isComplete()
           const error = yield* buffer.getError()
-          console.log('[pull-stream] complete:', complete, 'error:', !!error)
 
           if (error) {
             log.debug({ bufferId: buffer.id, error: error.message }, 'pull stream error')
@@ -78,16 +71,13 @@ export function createPullStream<T>(
           }
 
           if (complete) {
-            console.log('[pull-stream] returning done')
             log.debug({ bufferId: buffer.id, cursor }, 'pull stream complete')
             return { done: true, value: undefined }
           }
 
           // Wait for more data
-          console.log('[pull-stream] waiting for change at cursor:', cursor)
           log.debug({ bufferId: buffer.id, cursor }, 'pull stream waiting for change')
           yield* buffer.waitForChange(cursor)
-          console.log('[pull-stream] change signaled')
           log.debug({ bufferId: buffer.id, cursor }, 'pull stream change signaled')
         }
       },
@@ -119,29 +109,22 @@ export function* writeFromStreamToBuffer<T>(
   source: Stream<T, void>,
   buffer: TokenBuffer<T>
 ): Operation<void> {
-  console.log('[writeFromStreamToBuffer] starting')
   const log = yield* useLogger('durable-streams:writer')
   log.debug({ bufferId: buffer.id }, 'writeFromStreamToBuffer started')
   
-  console.log('[writeFromStreamToBuffer] acquiring source subscription')
   const subscription: Subscription<T, void> = yield* source
-  console.log('[writeFromStreamToBuffer] source subscription acquired')
   log.debug({ bufferId: buffer.id }, 'source subscription acquired')
   
   let tokenCount = 0
-  console.log('[writeFromStreamToBuffer] calling first subscription.next()')
   let result = yield* subscription.next()
-  console.log('[writeFromStreamToBuffer] first result done:', result.done)
   while (!result.done) {
     yield* buffer.append([result.value])
     tokenCount++
-    if (tokenCount === 1 || tokenCount % 50 === 0) {
-      console.log('[writeFromStreamToBuffer] appended token', tokenCount)
+    if (tokenCount % 50 === 0) {
       log.debug({ bufferId: buffer.id, tokenCount }, 'writeFromStreamToBuffer progress')
     }
     result = yield* subscription.next()
   }
   yield* buffer.complete()
-  console.log('[writeFromStreamToBuffer] complete, total tokens:', tokenCount)
   log.debug({ bufferId: buffer.id, totalTokens: tokenCount }, 'writeFromStreamToBuffer complete')
 }
