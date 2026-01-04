@@ -21,7 +21,7 @@
  * yield* setupDurableStreams({ bufferStore, registryStore })
  * ```
  */
-import { type Operation, call } from 'effection'
+import { type Operation, sleep } from 'effection'
 import { EventEmitter } from 'events'
 import type {
   TokenBuffer,
@@ -162,26 +162,23 @@ function createSharedBuffer<T>(
         return
       }
 
-      // Wait for next change event using a Promise (works across scopes)
-      log.debug({ bufferId: id, afterLSN }, 'waitForChange: waiting for event')
-      yield* waitForEvent(state.emitter, 'change')
-      log.debug({ bufferId: id, afterLSN, newLength: state.tokens.length }, 'waitForChange: event received')
+      // Poll-based waiting with yield to allow other tasks to run
+      // Note: EventEmitter-based waiting doesn't work in Vite dev mode
+      // due to how the async context interacts with Effection's call()
+      log.debug({ bufferId: id, afterLSN }, 'waitForChange: polling for change')
+      while (state.tokens.length <= afterLSN && !state.completed && !state.error) {
+        yield* sleep(1) // Yield to allow writer task to run
+      }
+      log.debug({ bufferId: id, afterLSN, newLength: state.tokens.length }, 'waitForChange: change detected')
     },
   }
 
   return buffer
 }
 
-/**
- * Wait for an event on an EventEmitter, yielding to Effection.
- * This bridges EventEmitter (cross-scope) with Effection Operations.
- */
-function* waitForEvent(emitter: EventEmitter, event: string): Operation<void> {
-  // Use call() to bridge the Promise-based EventEmitter to Effection
-  yield* call(() => new Promise<void>((resolve) => {
-    emitter.once(event, resolve)
-  }))
-}
+// Note: We previously used EventEmitter-based waiting here, but it doesn't work
+// in Vite dev mode due to how the async context interacts with Effection's call().
+// We now use polling with sleep() which properly yields to the Effection scheduler.
 
 // =============================================================================
 // SHARED TOKEN BUFFER STORE

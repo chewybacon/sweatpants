@@ -168,24 +168,32 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             log.debug({ sessionId, isReconnect, startLSN, messageCount: body.messages.length }, 'request received')
 
             // Get dependencies from contexts
+            console.log('[durable-handler] getting provider context')
             const provider = yield* ProviderContext.get()
+            console.log('[durable-handler] provider context result:', !!provider)
             if (!provider) {
               throw new Error('Provider not configured. Ensure a provider initializer hook sets ProviderContext.')
             }
             log.debug('provider configured')
 
+            console.log('[durable-handler] getting tools context')
             const tools = yield* ToolRegistryContext.get()
+            console.log('[durable-handler] tools context result:', !!tools)
             if (!tools) {
               throw new Error('Tool registry not configured. Ensure a tool registry initializer hook sets ToolRegistryContext.')
             }
             log.debug({ toolCount: tools.length }, 'tools configured')
 
+            console.log('[durable-handler] getting persona/iterations context')
             const resolvePersona = yield* PersonaResolverContext.get()
             const maxIterations = (yield* MaxIterationsContext.get()) ?? maxToolIterations
+            console.log('[durable-handler] contexts acquired')
 
             // Get session registry from durable streams context
+            console.log('[durable-handler] getting session registry')
             log.debug('getting session registry')
             const registry: SessionRegistry<string> = yield* useSessionRegistry<string>()
+            console.log('[durable-handler] session registry acquired')
             log.debug('session registry acquired')
 
             // Create tool registry
@@ -322,6 +330,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               }
             } else {
               // NEW SESSION PATH: Create engine, stream to buffer, then to response
+              console.log('[durable-handler] NEW SESSION PATH: creating chat engine')
               log.debug({ sessionId }, 'new session path: creating chat engine')
 
               // Create the chat engine
@@ -338,28 +347,35 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 ...(body.model !== undefined && { model: body.model }),
                 sessionInfo,
               })
+              console.log('[durable-handler] chat engine created')
               log.debug({ sessionId }, 'new session path: chat engine created')
 
               // Wrap engine to serialize events
               const serializedStream = createSerializedEventStream(engine)
+              console.log('[durable-handler] serialized stream created')
               log.debug({ sessionId }, 'new session path: serialized stream created')
 
               // Acquire session with the engine as source
               // This spawns a writer task that pulls from engine and writes to buffer
+              console.log('[durable-handler] acquiring session with source')
               log.debug({ sessionId }, 'new session path: acquiring session with source')
               const session = yield* registry.acquire(sessionId, {
                 source: serializedStream,
               })
+              console.log('[durable-handler] session acquired')
               log.debug({ sessionId }, 'new session path: session acquired')
 
               try {
                 // Stream from buffer to response
+                console.log('[durable-handler] creating pull stream')
                 log.debug({ sessionId }, 'new session path: creating pull stream')
                 const pullStream = yield* createPullStream(session.buffer, 0)
+                console.log('[durable-handler] pull stream created, calling first next()')
                 log.debug({ sessionId }, 'new session path: pull stream created, starting read loop')
 
                 let eventCount = 0
                 let result = yield* pullStream.next()
+                console.log('[durable-handler] first pullStream.next() returned, done:', result.done)
                 log.debug({ sessionId }, 'new session path: first pullStream.next() returned')
                 while (!result.done) {
                   const frame = result.value as TokenFrame<string>

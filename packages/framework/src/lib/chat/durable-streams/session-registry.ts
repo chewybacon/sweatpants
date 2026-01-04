@@ -110,21 +110,33 @@ export function* createSessionRegistry<T>(
       // Spawn writer task - runs in THIS scope (registry's scope)
       // This is key: the writer outlives individual request scopes
       const source = options.source
+      console.log('[registry] spawning writer task for session:', sessionId)
       log.debug({ sessionId }, 'spawning writer task')
       yield* spawn(function* () {
+        console.log('[registry:writer] writer task STARTED for session:', sessionId)
         const writerLog = yield* useLogger('durable-streams:writer')
         writerLog.debug({ sessionId }, 'writer task started')
         try {
+          console.log('[registry:writer] calling writeFromStreamToBuffer')
           yield* writeFromStreamToBuffer(source, buffer)
           state.status = 'complete'
+          console.log('[registry:writer] writer task COMPLETED')
           writerLog.debug({ sessionId }, 'writer task completed')
         } catch (err) {
           state.status = 'error'
+          console.log('[registry:writer] writer task FAILED:', (err as Error).message)
           writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
           yield* buffer.fail(err as Error)
         }
       })
+      console.log('[registry] spawn() returned, writer task spawned')
       log.debug({ sessionId }, 'writer task spawned')
+      
+      // Force yield to let the spawned writer task start
+      // This is needed because Vite's ReadableStream.start() doesn't give
+      // cooperative scheduling a chance otherwise
+      yield* sleep(0)
+      console.log('[registry] yielded after spawn')
 
       // Store session entry with initial refCount of 1
       const entry: SessionEntry<T> = {
