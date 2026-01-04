@@ -18,7 +18,7 @@ import {
   useSessionRegistry,
   createPullStream,
 } from '../../lib/chat/durable-streams'
-import type { SessionRegistry } from '../../lib/chat/durable-streams'
+import type { SessionRegistry, SessionHandle, TokenBuffer } from '../../lib/chat/durable-streams'
 import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts'
 import { bindModel, stringParam, intParam, createBindingSource } from '../model-binder'
 import { createChatEngine } from './chat-engine'
@@ -112,7 +112,7 @@ function createSerializedEventStream(
  * If an error occurs during streaming, emits an error event and completes.
  */
 function createDurableEventStream(
-  buffer: import('../../lib/chat/durable-streams').TokenBuffer<string>,
+  buffer: TokenBuffer<string>,
   startLSN: number
 ): Stream<string, void> {
   return resource(function* (provide) {
@@ -324,7 +324,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         }
       }
 
-      let session: import('../../lib/chat/durable-streams').SessionHandle<string>
+      let session: SessionHandle<string>
 
       if (isReconnect) {
         // RECONNECT PATH: Acquire existing session, stream from buffer at offset
