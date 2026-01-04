@@ -44,7 +44,7 @@ export {
   HandlerContext,
 } from './streaming'
 export type {
-  HandlerContext as HandlerContextType,
+  HandlerContext as HandlerContextValue,
   StreamingHandlerOptions,
   SetupResult,
   SetupFn,
