@@ -18,7 +18,12 @@ import {
   getSharedStores,
   setupDurableStreams as setupDurableStreamsWithConfig,
 } from '@tanstack/framework/chat/durable-streams'
-import { resolvePersona, ollamaProvider, openaiProvider } from '@tanstack/framework/chat'
+import {
+  resolvePersona,
+  ollamaProvider,
+  openaiProvider,
+  setupLogger,
+} from '@tanstack/framework/chat'
 import {
   ProviderContext,
   ToolRegistryContext,
@@ -92,6 +97,7 @@ const setupMaxIterations = function* (_ctx: InitializerContext): Operation<void>
 // Create the durable handler with hook-based configuration
 const durableChatHandler = createDurableChatHandler({
   initializerHooks: [
+    setupLogger,  // Must be first to enable logging in other hooks
     setupDurableStreams,
     setupProvider,
     setupTools,
