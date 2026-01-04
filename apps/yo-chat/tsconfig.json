@@ -7,7 +7,9 @@
       "@/*": ["./src/*"],
       "@tanstack/framework/vite": ["../../packages/framework/src/vite/index.ts"],
       "@tanstack/framework/handler": ["../../packages/framework/src/handler/index.ts"],
+      "@tanstack/framework/handler/durable": ["../../packages/framework/src/handler/durable/index.ts"],
       "@tanstack/framework/chat": ["../../packages/framework/src/lib/chat/index.ts"],
+      "@tanstack/framework/chat/durable-streams": ["../../packages/framework/src/lib/chat/durable-streams/index.ts"],
       "@tanstack/framework/chat/isomorphic-tools": [
         "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
       ],
