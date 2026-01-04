@@ -124,6 +124,8 @@ export function* createSessionRegistry<T>(
           yield* buffer.fail(err as Error)
         }
       })
+      // Yield to allow spawned task to start
+      yield* sleep(0)
       log.debug({ sessionId }, 'writer task spawned')
 
       // Store session entry with initial refCount of 1

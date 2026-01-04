@@ -46,6 +46,8 @@ export interface StreamingHandlerOptions {
   defaultStatus?: number
   /** Serialize value to string (default: identity for strings, JSON.stringify for objects) */
   serialize?: (value: string) => string
+  /** Custom error handler - return a Response or undefined to use default behavior */
+  onSetupError?: (error: Error, ctx: HandlerContext) => Response | undefined
 }
 
 /**
@@ -129,6 +131,7 @@ export function createStreamingHandler(
     defaultHeaders = { 'Content-Type': 'application/x-ndjson' },
     defaultStatus = 200,
     serialize = (v: string) => v + '\n',
+    onSetupError,
   } = options
 
   return async function handler(request: Request): Promise<Response> {
@@ -163,9 +166,18 @@ export function createStreamingHandler(
       // Setup failed - destroy scope and return error response
       await destroy()
       
-      const errorMessage = error instanceof Error ? error.message : 'Setup failed'
-      const errorBody = JSON.stringify({ error: errorMessage })
+      const err = error instanceof Error ? error : new Error('Setup failed')
       
+      // Allow custom error handling
+      if (onSetupError) {
+        const customResponse = onSetupError(err, ctx)
+        if (customResponse) {
+          return customResponse
+        }
+      }
+      
+      // Default error response
+      const errorBody = JSON.stringify({ error: err.message })
       return new Response(errorBody, {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
