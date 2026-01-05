@@ -39,11 +39,12 @@ describe('LLM Integration', () => {
     // Check if we should use an existing server
     if (process.env['E2E_BACKEND_URL']) {
       useExistingServer(process.env['E2E_BACKEND_URL'])
-      apiUrl = `${process.env['E2E_BACKEND_URL']}/api/chat`
+      apiUrl = `${process.env['E2E_BACKEND_URL']}${e2eConfig.chatEndpoint}`
     } else {
       const serverUrl = await startTestServer()
-      apiUrl = `${serverUrl}/api/chat`
+      apiUrl = `${serverUrl}${e2eConfig.chatEndpoint}`
     }
+    console.log(`[e2e] Using chat endpoint: ${apiUrl}`)
   }, e2eConfig.serverStartTimeout)
 
   // Stop server after all tests

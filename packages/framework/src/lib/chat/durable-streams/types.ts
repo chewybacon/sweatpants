@@ -12,7 +12,7 @@
  * - Adapter pattern for storage backends
  * - Pull-based streaming with backpressure
  */
-import type { Operation, Stream, Scope } from 'effection'
+import type { Operation, Stream } from 'effection'
 
 // =============================================================================
 // SESSION STATUS
@@ -111,7 +111,6 @@ export interface SessionStore<T> {
 export interface CreateSessionOptions<T> {
   source?: Stream<T, void> // LLM token stream (required for new sessions)
   timeoutMs?: number // Watchdog timeout
-  writerScope?: Scope // Scope for the writer task (if not provided, uses current scope)
 }
 
 /**

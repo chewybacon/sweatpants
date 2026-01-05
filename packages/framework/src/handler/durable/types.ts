@@ -212,6 +212,7 @@ export interface ChatRequestBody {
   isomorphicTools?: ToolSchema[]
   isomorphicClientOutputs?: IsomorphicClientOutput[]
   model?: string
+  provider?: 'ollama' | 'openai'
 }
 
 /**

@@ -12,7 +12,7 @@
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
-import { resource, call, createScope, type Operation, type Stream } from 'effection'
+import { resource, call, type Operation, type Stream } from 'effection'
 import { z } from 'zod'
 import {
   useSessionRegistry,
@@ -325,7 +325,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       let session: SessionHandle<string>
-      let destroyWriterScope: (() => Promise<void>) | undefined
 
       if (isReconnect) {
         // RECONNECT PATH: Acquire existing session, stream from buffer at offset
@@ -356,16 +355,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const serializedStream = createSerializedEventStream(engine)
         log.debug({ sessionId }, 'new session path: serialized stream created')
 
-        // Create a dedicated scope for the writer task
-        // This allows the writer to run independently and start immediately
-        const [writerScope, destroyWriter] = createScope()
-        destroyWriterScope = destroyWriter
-
-        // Acquire session with the engine as source and dedicated writer scope
+        // Acquire session with the engine as source
+        // The registry manages the writer task lifecycle internally via useBackgroundTask
         log.debug({ sessionId }, 'new session path: acquiring session with source')
         session = yield* registry.acquire(sessionId, {
           source: serializedStream,
-          writerScope,
         })
         log.debug({ sessionId }, 'new session path: session acquired')
       }
@@ -382,10 +376,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         cleanup: function* () {
           log.debug({ sessionId }, 'releasing session')
           yield* registry.release(sessionId)
-          // Destroy the writer scope if we created one
-          if (destroyWriterScope) {
-            yield* call(() => destroyWriterScope())
-          }
         },
       }
     },

@@ -117,6 +117,7 @@ export function* writeFromStreamToBuffer<T>(
   
   let tokenCount = 0
   let result = yield* subscription.next()
+  log.debug({ bufferId: buffer.id, done: result.done }, 'first result read')
   while (!result.done) {
     yield* buffer.append([result.value])
     tokenCount++
@@ -124,6 +125,7 @@ export function* writeFromStreamToBuffer<T>(
       log.debug({ bufferId: buffer.id, tokenCount }, 'writeFromStreamToBuffer progress')
     }
     result = yield* subscription.next()
+    log.debug({ bufferId: buffer.id, done: result.done, tokenCount }, 'next result read')
   }
   yield* buffer.complete()
   log.debug({ bufferId: buffer.id, totalTokens: tokenCount }, 'writeFromStreamToBuffer complete')

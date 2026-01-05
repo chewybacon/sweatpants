@@ -8,10 +8,9 @@
  * Key behaviors:
  * - acquire() creates or returns existing session, increments refCount
  * - release() decrements refCount, triggers cleanup when refCount=0 AND complete
- * - LLM writer tasks run in the registry's scope, surviving client disconnects
+ * - LLM writer tasks run in background via useBackgroundTask, surviving client disconnects
  * - Reconnection works by acquiring the same sessionId while LLM is still streaming
  */
-import { spawn, sleep } from 'effection'
 import type { Operation } from 'effection'
 import type {
   TokenBufferStore,
@@ -23,7 +22,8 @@ import type {
   CreateSessionOptions,
 } from './types'
 import { writeFromStreamToBuffer } from './pull-stream'
-import { useLogger } from '../../logger'
+import { useLogger, LoggerFactoryContext } from '../../logger'
+import { useBackgroundTask, fireAndForget, type BackgroundTaskHandle } from '../../effection'
 
 /**
  * Internal mutable state for tracking session status.
@@ -34,11 +34,19 @@ interface MutableSessionState {
 }
 
 /**
+ * Task keys for internal task tracking.
+ * Background tasks are stored in a separate map (not in SessionEntry)
+ * because SessionEntry must remain serializable for pluggable stores.
+ */
+const TASK_KEYS = {
+  WRITER: 'writer',
+} as const
+
+/**
  * Creates a SessionRegistry for managing session lifecycles.
  *
- * The registry must be created as an Operation so that spawned writer tasks
- * run in the registry's scope (typically the server scope), not individual
- * request scopes.
+ * The registry manages writer tasks internally using useBackgroundTask,
+ * allowing them to run independently without blocking request completion.
  *
  * @param bufferStore - Store for creating and managing TokenBuffers
  * @param registryStore - Store for tracking session entries and refCounts
@@ -65,6 +73,21 @@ export function* createSessionRegistry<T>(
   
   // Track mutable state for each session (status updates from writer tasks)
   const sessionStates = new Map<string, MutableSessionState>()
+  
+  // Internal task tracking - NOT in SessionEntry to keep it serializable
+  // Map<sessionId, Map<taskKey, BackgroundTaskHandle>>
+  const sessionTasks = new Map<string, Map<string, BackgroundTaskHandle<void>>>()
+
+  /**
+   * Internal cleanup helper - removes session from all stores and maps.
+   */
+  function* cleanup(sessionId: string): Operation<void> {
+    log.debug({ sessionId }, 'cleaning up session')
+    yield* registryStore.delete(sessionId)
+    yield* bufferStore.delete(sessionId)
+    sessionStates.delete(sessionId)
+    sessionTasks.delete(sessionId)
+  }
 
   const registry: SessionRegistry<T> = {
     *acquire(
@@ -107,38 +130,42 @@ export function* createSessionRegistry<T>(
         },
       }
 
-      // Start writer task in the provided scope (or spawn in current scope)
-      // If writerScope is provided, use scope.run() which starts immediately
-      // If not provided, use yield* spawn() which requires sleep(0) to start
+      // Get logger factory for context handoff to background task
+      const loggerFactory = yield* LoggerFactoryContext.get()
       const source = options.source
-      const writerScope = options.writerScope
       
-      log.debug({ sessionId, hasWriterScope: !!writerScope }, 'starting writer task')
+      log.debug({ sessionId }, 'starting writer task via useBackgroundTask')
       
-      const writerOperation = function* () {
-        const writerLog = yield* useLogger('durable-streams:writer')
-        writerLog.debug({ sessionId }, 'writer task started')
-        try {
-          yield* writeFromStreamToBuffer(source, buffer)
-          state.status = 'complete'
-          writerLog.debug({ sessionId }, 'writer task completed')
-        } catch (err) {
-          state.status = 'error'
-          writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
-          yield* buffer.fail(err as Error)
+      // Start writer as background task - runs independently, doesn't block parent scope
+      const writerTask = yield* useBackgroundTask(
+        function* () {
+          const writerLog = yield* useLogger('durable-streams:writer')
+          writerLog.debug({ sessionId }, 'writer task started')
+          try {
+            yield* writeFromStreamToBuffer(source, buffer)
+            state.status = 'complete'
+            writerLog.debug({ sessionId }, 'writer task completed')
+          } catch (err) {
+            state.status = 'error'
+            writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
+            yield* buffer.fail(err as Error)
+          }
+        },
+        {
+          name: `writer:${sessionId}`,
+          // Pass logger factory context so useLogger works in background task
+          contexts: loggerFactory
+            ? [{ context: LoggerFactoryContext, value: loggerFactory }]
+            : [],
         }
-      }
+      )
       
-      if (writerScope) {
-        // Use scope.run() - starts immediately, runs independently
-        writerScope.run(writerOperation)
-        log.debug({ sessionId }, 'writer task started in provided scope')
-      } else {
-        // Fallback: spawn in current scope (requires sleep(0) to start)
-        yield* spawn(writerOperation)
-        yield* sleep(0)
-        log.debug({ sessionId }, 'writer task spawned in current scope')
-      }
+      // Store task handle in internal map (not in SessionEntry - keep it serializable)
+      const tasks = new Map<string, BackgroundTaskHandle<void>>()
+      tasks.set(TASK_KEYS.WRITER, writerTask)
+      sessionTasks.set(sessionId, tasks)
+      
+      log.debug({ sessionId }, 'writer task started')
 
       // Store session entry with initial refCount of 1
       const entry: SessionEntry<T> = {
@@ -165,34 +192,37 @@ export function* createSessionRegistry<T>(
       log.debug({ sessionId, newRefCount }, 'refCount decremented')
 
       if (newRefCount === 0) {
-        const currentStatus = yield* entry.handle.status()
-        log.debug({ sessionId, status: currentStatus }, 'refCount is 0, checking status')
-
-        if (currentStatus === 'complete' || currentStatus === 'error') {
-          // Session is done and no clients - cleanup immediately
-          log.debug({ sessionId }, 'cleaning up session immediately')
-          yield* registryStore.delete(sessionId)
-          yield* bufferStore.delete(sessionId)
-          sessionStates.delete(sessionId)
+        // Get writer task handle from internal map
+        const tasks = sessionTasks.get(sessionId)
+        const writerTask = tasks?.get(TASK_KEYS.WRITER)
+        
+        if (writerTask?.isDone()) {
+          // Writer is done and no clients - cleanup immediately
+          log.debug({ sessionId, writerStatus: writerTask.status() }, 'writer done, cleaning up immediately')
+          yield* cleanup(sessionId)
         } else {
-          // Still streaming - spawn cleanup waiter
+          // Writer still running - fire and forget cleanup waiter
           // This handles the case where client disconnects but LLM is still writing
-          log.debug({ sessionId }, 'spawning cleanup waiter')
-          yield* spawn(function* () {
-            // Poll for completion
-            while (true) {
-              const s = yield* entry.handle.status()
-              if (s === 'complete' || s === 'error') break
-              yield* sleep(10)
+          log.debug({ sessionId }, 'writer still running, spawning cleanup waiter')
+          
+          // Capture references for closure
+          const capturedRegistryStore = registryStore
+          const capturedCleanup = cleanup
+          const capturedLog = log
+          
+          yield* fireAndForget(function* () {
+            // Wait for writer to complete
+            if (writerTask) {
+              yield* writerTask.waitForDone()
             }
-
+            
             // Re-check refCount (client might have reconnected)
-            const currentEntry = yield* registryStore.get(sessionId)
+            const currentEntry = yield* capturedRegistryStore.get(sessionId)
             if (currentEntry && currentEntry.refCount === 0) {
-              log.debug({ sessionId }, 'cleanup waiter: cleaning up session')
-              yield* registryStore.delete(sessionId)
-              yield* bufferStore.delete(sessionId)
-              sessionStates.delete(sessionId)
+              capturedLog.debug({ sessionId }, 'cleanup waiter: cleaning up session')
+              yield* capturedCleanup(sessionId)
+            } else {
+              capturedLog.debug({ sessionId, refCount: currentEntry?.refCount }, 'cleanup waiter: client reconnected, skipping cleanup')
             }
           })
         }
