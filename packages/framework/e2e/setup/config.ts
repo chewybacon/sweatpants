@@ -31,6 +31,9 @@ export interface E2EConfig {
   
   /** Use deterministic prompts that guide LLM behavior */
   useDeterministicPrompts: boolean
+  
+  /** Chat API endpoint path (e.g., '/api/chat' or '/api/chat-durable') */
+  chatEndpoint: string
 }
 
 /**
@@ -46,6 +49,8 @@ export const e2eConfig: E2EConfig = {
   defaultModel: process.env['E2E_MODEL'] ?? 'llama3.1:latest',
   provider: (process.env['E2E_PROVIDER'] as 'ollama' | 'openai') ?? 'ollama',
   useDeterministicPrompts: process.env['E2E_DETERMINISTIC'] !== 'false',
+  // Use durable endpoint if E2E_USE_DURABLE=true, otherwise default /api/chat
+  chatEndpoint: process.env['E2E_USE_DURABLE'] === 'true' ? '/api/chat-durable' : '/api/chat',
 }
 
 /**

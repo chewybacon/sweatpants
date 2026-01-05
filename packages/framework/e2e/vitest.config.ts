@@ -18,7 +18,8 @@ export default defineConfig({
   },
 
   test: {
-    // E2E tests are in the tests/ directory
+    // E2E tests are in the tests/ directory (relative to this config file)
+    root: __dirname,
     include: ['tests/**/*.test.{ts,tsx}'],
 
     // Use jsdom for React testing with Interactors
@@ -42,7 +43,7 @@ export default defineConfig({
     },
 
     // Setup file for global configuration
-    setupFiles: ['./setup/global-setup.ts'],
+    setupFiles: [path.resolve(__dirname, 'setup/global-setup.ts')],
 
     // Exclude from main test runs (run separately via pnpm test:e2e)
     // This config is used when running vitest from the e2e directory
