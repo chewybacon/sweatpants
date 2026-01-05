@@ -372,8 +372,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     // The subscription we provide to consumers
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
-        // Check abort signal
-        if (signal.aborted) {
+        // Check abort signal - only set error if not already in done/error state
+        if (signal.aborted && state.phase !== 'done' && state.phase !== 'error') {
           state.phase = 'error'
           state.error = new Error('Aborted')
         }
