@@ -85,10 +85,13 @@ export interface IsomorphicTool {
 
 /**
  * Streaming event from chat provider.
+ * 
+ * Note: Uses 'content' field to match lib/chat/types.ts ChatEvent.
+ * Both types should stay in sync.
  */
 export type ChatProviderEvent =
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; text: string }
+  | { type: 'text'; content: string }
+  | { type: 'thinking'; content: string }
   | {
       type: 'tool_calls'
       toolCalls: Array<{
@@ -195,8 +198,8 @@ export type StreamEvent =
       }
       persona: string | null
     }
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; text: string }
+  | { type: 'text'; content: string }
+  | { type: 'thinking'; content: string }
   | {
       type: 'tool_calls'
       calls: Array<{

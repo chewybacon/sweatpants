@@ -605,8 +605,11 @@ export function createChatHandler(config: ChatHandlerConfig) {
               const result = yield* consumeStream<ChatProviderEvent, ChatProviderResult>(
                 providerResource,
                 function* (event: ChatProviderEvent) {
-                  if (event.type === 'text' || event.type === 'thinking') {
-                    emit(event)
+                  if (event.type === 'text') {
+                    emit({ type: 'text', content: event.content })
+                  }
+                  if (event.type === 'thinking') {
+                    emit({ type: 'thinking', content: event.content })
                   }
                   if (event.type === 'tool_calls') {
                     emit({
