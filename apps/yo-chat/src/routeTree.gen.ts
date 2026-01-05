@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiTestEffectionStreamRouteImport } from './routes/api.test-effection-stream'
 import { Route as ApiHelloStreamRouteImport } from './routes/api.hello-stream'
 import { Route as ApiDurableChatRouteImport } from './routes/api.durable-chat'
 import { Route as ApiChatDurableRouteImport } from './routes/api.chat-durable'
@@ -21,6 +22,11 @@ import { Route as DemoChatIndexRouteImport } from './routes/demo/chat/index'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTestEffectionStreamRoute = ApiTestEffectionStreamRouteImport.update({
+  id: '/api/test-effection-stream',
+  path: '/api/test-effection-stream',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiHelloStreamRoute = ApiHelloStreamRouteImport.update({
@@ -65,6 +71,7 @@ export interface FileRoutesByFullPath {
   '/api/chat-durable': typeof ApiChatDurableRoute
   '/api/durable-chat': typeof ApiDurableChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
+  '/api/test-effection-stream': typeof ApiTestEffectionStreamRoute
   '/demo/chat': typeof DemoChatIndexRoute
   '/demo/math': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
@@ -75,6 +82,7 @@ export interface FileRoutesByTo {
   '/api/chat-durable': typeof ApiChatDurableRoute
   '/api/durable-chat': typeof ApiDurableChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
+  '/api/test-effection-stream': typeof ApiTestEffectionStreamRoute
   '/demo/chat': typeof DemoChatIndexRoute
   '/demo/math': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
@@ -86,6 +94,7 @@ export interface FileRoutesById {
   '/api/chat-durable': typeof ApiChatDurableRoute
   '/api/durable-chat': typeof ApiDurableChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
+  '/api/test-effection-stream': typeof ApiTestEffectionStreamRoute
   '/demo/chat/': typeof DemoChatIndexRoute
   '/demo/math/': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe/': typeof DemoTicTacToeIndexRoute
@@ -98,6 +107,7 @@ export interface FileRouteTypes {
     | '/api/chat-durable'
     | '/api/durable-chat'
     | '/api/hello-stream'
+    | '/api/test-effection-stream'
     | '/demo/chat'
     | '/demo/math'
     | '/demo/tic-tac-toe'
@@ -108,6 +118,7 @@ export interface FileRouteTypes {
     | '/api/chat-durable'
     | '/api/durable-chat'
     | '/api/hello-stream'
+    | '/api/test-effection-stream'
     | '/demo/chat'
     | '/demo/math'
     | '/demo/tic-tac-toe'
@@ -118,6 +129,7 @@ export interface FileRouteTypes {
     | '/api/chat-durable'
     | '/api/durable-chat'
     | '/api/hello-stream'
+    | '/api/test-effection-stream'
     | '/demo/chat/'
     | '/demo/math/'
     | '/demo/tic-tac-toe/'
@@ -129,6 +141,7 @@ export interface RootRouteChildren {
   ApiChatDurableRoute: typeof ApiChatDurableRoute
   ApiDurableChatRoute: typeof ApiDurableChatRoute
   ApiHelloStreamRoute: typeof ApiHelloStreamRoute
+  ApiTestEffectionStreamRoute: typeof ApiTestEffectionStreamRoute
   DemoChatIndexRoute: typeof DemoChatIndexRoute
   DemoMathIndexRoute: typeof DemoMathIndexRoute
   DemoTicTacToeIndexRoute: typeof DemoTicTacToeIndexRoute
@@ -141,6 +154,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/test-effection-stream': {
+      id: '/api/test-effection-stream'
+      path: '/api/test-effection-stream'
+      fullPath: '/api/test-effection-stream'
+      preLoaderRoute: typeof ApiTestEffectionStreamRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/hello-stream': {
@@ -201,6 +221,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiChatDurableRoute: ApiChatDurableRoute,
   ApiDurableChatRoute: ApiDurableChatRoute,
   ApiHelloStreamRoute: ApiHelloStreamRoute,
+  ApiTestEffectionStreamRoute: ApiTestEffectionStreamRoute,
   DemoChatIndexRoute: DemoChatIndexRoute,
   DemoMathIndexRoute: DemoMathIndexRoute,
   DemoTicTacToeIndexRoute: DemoTicTacToeIndexRoute,
