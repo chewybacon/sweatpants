@@ -339,10 +339,10 @@ export async function consumeDurableResponse(response: Response): Promise<Durabl
         sessionInfo = e as SessionInfoEvent
         break
       case 'text':
-        text += e.text
+        text += e.content
         break
       case 'thinking':
-        thinking += e.text
+        thinking += e.content
         break
       case 'tool_calls':
         toolCalls = e.calls

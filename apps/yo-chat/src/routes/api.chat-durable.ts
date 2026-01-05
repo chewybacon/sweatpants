@@ -26,15 +26,12 @@ const allTools = [
 
 // Initializer hook to setup durable streams infrastructure
 const setupDurableStreamsHook = function*(_ctx: InitializerContext): Operation<void> {
-  console.log('[durable-hook] Setting up in-memory durable streams...')
   // Setup in-memory durable streams (creates registry + stores + sets contexts)
   yield* setupInMemoryDurableStreams<string>()
-  console.log('[durable-hook] Durable streams setup complete')
 }
 
 // Initializer hooks
 const setupProvider = function*(ctx: InitializerContext): Operation<void> {
-  console.log('[durable-hook] Setting up provider...')
   // Dynamic provider selection based on request
   const providerName = ctx.body.provider || env.CHAT_PROVIDER
   const providerMap = {
@@ -48,7 +45,6 @@ const setupProvider = function*(ctx: InitializerContext): Operation<void> {
   }
 
   yield* ProviderContext.set(selectedProvider)
-  console.log('[durable-hook] Provider set:', providerName)
 }
 
 const setupTools = function*(_ctx: InitializerContext): Operation<void> {

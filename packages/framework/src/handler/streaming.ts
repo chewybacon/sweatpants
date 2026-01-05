@@ -54,12 +54,12 @@ export interface StreamingHandlerOptions {
  * Result from setup Operation.
  * Can be just a subscription, or include additional cleanup logic.
  */
-export type SetupResult = 
+export type SetupResult =
   | Subscription<string, void>
   | {
-      subscription: Subscription<string, void>
-      cleanup?: () => Operation<void>
-    }
+    subscription: Subscription<string, void>
+    cleanup?: () => Operation<void>
+  }
 
 /**
  * Setup function signature - receives nothing, gets context via yield* HandlerContext.expect()
@@ -72,7 +72,7 @@ export type SetupFn = () => Operation<SetupResult>
 
 /**
  * Get the current handler context from within a setup Operation.
- * 
+ *
  * @example
  * ```typescript
  * const handler = createStreamingHandler(function* () {
@@ -110,15 +110,15 @@ export function* useHandlerContext(): Operation<HandlerContext> {
  * const handler = createStreamingHandler(function* () {
  *   const ctx = yield* useHandlerContext()
  *   const body = yield* call(() => ctx.request.json())
- *   
+ *
  *   // Set response headers
  *   ctx.headers.set('X-Session-Id', crypto.randomUUID())
- *   
+ *
  *   // Setup and return subscription
  *   const buffer = yield* acquireBuffer()
  *   return yield* createPullStream(buffer, 0)
  * })
- * 
+ *
  * // Use as fetch handler
  * app.post('/api/chat', handler)
  * ```
@@ -150,7 +150,7 @@ export function createStreamingHandler(
 
     try {
       // Run setup in scope with context
-      const result = await scope.run(function* () {
+      const result = await scope.run(function*() {
         yield* HandlerContext.set(ctx)
         return yield* setup()
       })
@@ -165,9 +165,9 @@ export function createStreamingHandler(
     } catch (error) {
       // Setup failed - destroy scope and return error response
       await destroy()
-      
+
       const err = error instanceof Error ? error : new Error('Setup failed')
-      
+
       // Allow custom error handling
       if (onSetupError) {
         const customResponse = onSetupError(err, ctx)
@@ -175,7 +175,7 @@ export function createStreamingHandler(
           return customResponse
         }
       }
-      
+
       // Default error response
       const errorBody = JSON.stringify({ error: err.message })
       return new Response(errorBody, {
@@ -188,17 +188,12 @@ export function createStreamingHandler(
     const stream = new ReadableStream<Uint8Array>({
       async pull(controller) {
         try {
-          const result = await scope.run(function* () {
+          const result = await scope.run(function*() {
             return yield* subscription.next()
           })
 
           if (result.done) {
             controller.close()
-            // Run cleanup if provided
-            if (cleanup) {
-              await scope.run(cleanup)
-            }
-            await destroy()
           } else {
             controller.enqueue(encoder.encode(serialize(result.value)))
           }
@@ -206,6 +201,11 @@ export function createStreamingHandler(
           // Scope may have been destroyed (e.g., cancel was called)
           // or an error occurred during streaming
           controller.error(error)
+        } finally {
+          // Run cleanup if provided
+          if (cleanup) {
+            await scope.run(cleanup)
+          }
           await destroy()
         }
       },

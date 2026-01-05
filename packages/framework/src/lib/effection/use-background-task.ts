@@ -119,7 +119,7 @@ export interface BackgroundTaskHandle<T = void> {
  * A context value to be passed to the background task.
  */
 export interface ContextEntry<T = unknown> {
-  context: { set: (value: T) => Operation<void>; get: () => Operation<T | undefined> }
+  context: { set: (value: T) => Operation<T>; get: () => Operation<T | undefined> }
   value: T
 }
 

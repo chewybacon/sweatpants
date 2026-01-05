@@ -111,7 +111,10 @@ export function* streamChatOnce(
   }
 
   // Create Effection stream for NDJSON parsing
-  const eventStream = parseNDJSON<StreamEvent>(response.body, { signal })
+  // When durable mode is enabled, the server returns { lsn, event } wrapper format
+  // We parse as unknown and manually extract the inner event
+  const isDurable = options.durable === true
+  const eventStream = parseNDJSON<unknown>(response.body, { signal })
 
   // Accumulate assistant text
   let assistantText = ''
@@ -127,7 +130,12 @@ export function* streamChatOnce(
 
   // Consume the stream using Effection's each() pattern
   // Important: must call yield* each.next() at end of each iteration
-  for (const event of yield* each(eventStream)) {
+  for (const rawEvent of yield* each(eventStream)) {
+    // Unwrap durable format if needed: { lsn: number, event: StreamEvent } -> StreamEvent
+    const event = (isDurable
+      ? (rawEvent as { lsn: number; event: StreamEvent }).event
+      : rawEvent) as StreamEvent
+    
     switch (event.type) {
       case 'session_info':
         yield* patches.send({

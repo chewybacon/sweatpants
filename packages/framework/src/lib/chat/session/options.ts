@@ -67,6 +67,17 @@ export interface SessionOptions {
   baseUrl?: string
 
   /**
+   * Whether to use durable streaming format.
+   * 
+   * When true, expects the server to return NDJSON with `{ lsn, event }` wrapper
+   * format (as produced by `createDurableChatHandler`). The client will unwrap
+   * each line to extract the inner event.
+   * 
+   * @default false
+   */
+  durable?: boolean
+
+  /**
    * Tools to enable for this session.
    *
    * Import tools directly and pass them here:

@@ -18,6 +18,8 @@
 import { resource, type Operation, type Subscription } from 'effection'
 import type { ChatEvent, ChatResult } from '../../lib/chat/types'
 import type { IsomorphicToolSchema } from '../../lib/chat/isomorphic-tools'
+import { HandoffReadyError } from '../../lib/chat/isomorphic-tools/types'
+import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types'
 import type { StreamEvent, ChatMessage } from '../types'
 import type {
   ChatEngineParams,
@@ -29,6 +31,45 @@ import type {
   ToolExecutionResult,
   IsomorphicClientOutput,
 } from './types'
+
+// =============================================================================
+// CONTEXT HELPERS (adapted from create-handler.ts)
+// =============================================================================
+
+/**
+ * Create a Phase 1 context for server-authority tools.
+ * 
+ * When the tool calls ctx.handoff(), we throw HandoffReadyError
+ * to capture the handoff data and return it as a handoff result.
+ */
+function createPhase1Context(baseContext: ServerToolContext): ServerAuthorityContext {
+  return {
+    ...baseContext,
+    *handoff(config) {
+      const handoffData = yield* config.before()
+      throw new HandoffReadyError(handoffData)
+    },
+  }
+}
+
+/**
+ * Create a Phase 2 context for server-authority tools.
+ * 
+ * After client execution, we resume the server's handoff with
+ * the cached handoff data and client output.
+ */
+function createPhase2Context(
+  baseContext: ServerToolContext,
+  cachedHandoff: unknown,
+  clientOutput: unknown
+): ServerAuthorityContext {
+  return {
+    ...baseContext,
+    *handoff(config) {
+      return yield* config.after(cachedHandoff as never, clientOutput as never)
+    },
+  }
+}
 
 // =============================================================================
 // INTERNAL STATE TYPES
@@ -64,13 +105,16 @@ function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
 
 /**
  * Convert a ChatEvent from the provider to a StreamEvent.
+ * 
+ * Note: We use 'content' field (not 'text') to match the client's StreamEvent type
+ * defined in lib/chat/session/streaming.ts
  */
 function providerEventToStreamEvent(event: ChatEvent): StreamEvent | null {
   switch (event.type) {
     case 'text':
-      return { type: 'text', text: event.content }
+      return { type: 'text', content: event.content }
     case 'thinking':
-      return { type: 'thinking', text: event.content }
+      return { type: 'thinking', content: event.content }
     case 'tool_calls':
       return {
         type: 'tool_calls',
@@ -190,9 +234,14 @@ function* executeToolCall(
       }
     }
 
-    const serverOutput = yield* tool.server(validatedParams, { callId: toolCall.id, signal })
+    // Create the proper Phase 1 context with handoff() method
+    const baseContext: ServerToolContext = { callId: toolCall.id, signal }
+    const phase1Context = createPhase1Context(baseContext)
 
-    // Check if tool has client component (handoff)
+    const serverOutput = yield* tool.server(validatedParams, phase1Context)
+
+    // If we get here without HandoffReadyError, tool completed without handoff
+    // Check if tool has client component (legacy handoff pattern)
     if (tool.client) {
       return {
         ok: true,
@@ -220,6 +269,27 @@ function* executeToolCall(
       serverOutput,
     }
   } catch (error) {
+    // Handle handoff request from ctx.handoff()
+    if (error instanceof HandoffReadyError) {
+      const validatedParams = validateToolParams(tool, toolCall.function.arguments)
+      return {
+        ok: true,
+        kind: 'handoff',
+        callId: toolCall.id,
+        toolName,
+        handoff: {
+          type: 'isomorphic_handoff',
+          callId: toolCall.id,
+          toolName,
+          params: validatedParams,
+          serverOutput: error.handoffData,
+          authority: tool.authority ?? 'server',
+          usesHandoff: true,
+        },
+        serverOutput: error.handoffData,
+      }
+    }
+
     return {
       ok: false,
       error: {
@@ -268,8 +338,36 @@ function* processClientOutput(
 
   // Phase 2: Execute server's after() with client output
   try {
-    // For now, just use client output as the result
-    // TODO: Implement full phase 2 with handoff config
+    // If tool has a server function, run it with Phase 2 context
+    // This re-enters the tool's server function with handoff() configured
+    // to call config.after() instead of config.before()
+    if (tool.server && output.usesHandoff) {
+      const baseContext: ServerToolContext = { callId: output.callId, signal: _signal }
+      const phase2Context = createPhase2Context(
+        baseContext,
+        output.cachedHandoff,
+        output.clientOutput
+      )
+      
+      // Re-run the server function - it will call ctx.handoff() which now
+      // returns the result of config.after(cachedHandoff, clientOutput)
+      const validatedParams = validateToolParams(tool, output.params)
+      const serverResult = yield* tool.server(validatedParams, phase2Context)
+      
+      const content =
+        typeof serverResult === 'string'
+          ? serverResult
+          : JSON.stringify(serverResult)
+
+      return {
+        type: 'tool_result',
+        id: output.callId,
+        name: output.toolName,
+        content,
+      }
+    }
+
+    // Fallback: just use client output as the result
     const content =
       typeof output.clientOutput === 'string'
         ? output.clientOutput
