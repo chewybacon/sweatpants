@@ -107,11 +107,15 @@ export function* createSessionRegistry<T>(
         },
       }
 
-      // Spawn writer task - runs in THIS scope (registry's scope)
-      // This is key: the writer outlives individual request scopes
+      // Start writer task in the provided scope (or spawn in current scope)
+      // If writerScope is provided, use scope.run() which starts immediately
+      // If not provided, use yield* spawn() which requires sleep(0) to start
       const source = options.source
-      log.debug({ sessionId }, 'spawning writer task')
-      yield* spawn(function* () {
+      const writerScope = options.writerScope
+      
+      log.debug({ sessionId, hasWriterScope: !!writerScope }, 'starting writer task')
+      
+      const writerOperation = function* () {
         const writerLog = yield* useLogger('durable-streams:writer')
         writerLog.debug({ sessionId }, 'writer task started')
         try {
@@ -123,10 +127,18 @@ export function* createSessionRegistry<T>(
           writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
           yield* buffer.fail(err as Error)
         }
-      })
-      // Yield to allow spawned task to start
-      yield* sleep(0)
-      log.debug({ sessionId }, 'writer task spawned')
+      }
+      
+      if (writerScope) {
+        // Use scope.run() - starts immediately, runs independently
+        writerScope.run(writerOperation)
+        log.debug({ sessionId }, 'writer task started in provided scope')
+      } else {
+        // Fallback: spawn in current scope (requires sleep(0) to start)
+        yield* spawn(writerOperation)
+        yield* sleep(0)
+        log.debug({ sessionId }, 'writer task spawned in current scope')
+      }
 
       // Store session entry with initial refCount of 1
       const entry: SessionEntry<T> = {

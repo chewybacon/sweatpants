@@ -34,16 +34,26 @@ import type { Logger } from '../../logger'
 
 // Use a simple console-based logger at module level
 // (pino with transport can hang in certain environments like Vite SSR)
-const log: Logger = {
-  debug: (obj: object | string, msg?: string) => {
-    if (process.env['DEBUG_DURABLE']) {
-      console.log('[shared-store:debug]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined)
-    }
-  },
-  info: (obj: object | string, msg?: string) => console.log('[shared-store:info]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
-  warn: (obj: object | string, msg?: string) => console.warn('[shared-store:warn]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
-  error: (obj: object | string, msg?: string) => console.error('[shared-store:error]', typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+function createSimpleLogger(prefix: string): Logger {
+  return {
+    trace: (obj: object | string, msg?: string) => {
+      if (process.env['DEBUG_DURABLE']) {
+        console.log(`[${prefix}:trace]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined)
+      }
+    },
+    debug: (obj: object | string, msg?: string) => {
+      if (process.env['DEBUG_DURABLE']) {
+        console.log(`[${prefix}:debug]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined)
+      }
+    },
+    info: (obj: object | string, msg?: string) => console.log(`[${prefix}:info]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+    warn: (obj: object | string, msg?: string) => console.warn(`[${prefix}:warn]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+    error: (obj: object | string, msg?: string) => console.error(`[${prefix}:error]`, typeof obj === 'string' ? obj : msg, typeof obj === 'object' ? obj : undefined),
+    child: (bindings: Record<string, unknown>) => createSimpleLogger(`${prefix}:${Object.values(bindings).join(':')}`),
+  }
 }
+
+const log: Logger = createSimpleLogger('shared-store')
 
 // =============================================================================
 // SHARED STORAGE TYPES
