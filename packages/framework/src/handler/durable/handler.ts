@@ -335,6 +335,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // NEW SESSION PATH: Create engine, stream to buffer, then to response
         log.debug({ sessionId }, 'new session path: creating chat engine')
 
+        // Create our own AbortController for the chat engine.
+        // NOTE: We cannot use request.signal directly because some frameworks
+        // (e.g., TanStack Start with h3) abort the signal after reading the body,
+        // before the handler has returned a response. This causes the engine to
+        // see an aborted signal and fail immediately.
+        const engineAbortController = new AbortController()
+
         // Create the chat engine
         const engine = createChatEngine({
           messages: body.messages,
@@ -345,7 +352,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           isomorphicClientOutputs: body.isomorphicClientOutputs ?? [],
           provider,
           maxIterations,
-          signal: request.signal,
+          signal: engineAbortController.signal,
           ...(body.model !== undefined && { model: body.model }),
           sessionInfo,
         })
