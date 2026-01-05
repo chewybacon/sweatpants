@@ -31,15 +31,16 @@ export function createPinoLoggerFactory(options: PinoLoggerOptions = {}): Logger
     pretty = process.env['NODE_ENV'] !== 'production',
   } = options
 
-  const transport = pretty
-    ? { target: 'pino-pretty', options: { colorize: true } }
-    : undefined
-
-  const rootLogger = pino({
-    name: ROOT_NAME,
-    level,
-    transport,
-  })
+  const rootLogger = pretty
+    ? pino({
+        name: ROOT_NAME,
+        level,
+        transport: { target: 'pino-pretty', options: { colorize: true } },
+      })
+    : pino({
+        name: ROOT_NAME,
+        level,
+      })
 
   return (name: string): Logger => {
     return rootLogger.child({ module: name }) as Logger
