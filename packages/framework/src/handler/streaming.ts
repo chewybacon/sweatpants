@@ -147,6 +147,25 @@ export function createStreamingHandler(
 
     let subscription: Subscription<string, void>
     let cleanup: (() => Operation<void>) | undefined
+    let cleanedUp = false
+    let scopeDestroyed = false
+
+    // Helper to run cleanup exactly once
+    const runCleanup = async () => {
+      if (cleanedUp) return
+      cleanedUp = true
+      if (cleanup && !scopeDestroyed) {
+        try {
+          await scope.run(cleanup)
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      if (!scopeDestroyed) {
+        scopeDestroyed = true
+        await destroy()
+      }
+    }
 
     try {
       // Run setup in scope with context
@@ -187,6 +206,12 @@ export function createStreamingHandler(
     // Create pull-based stream
     const stream = new ReadableStream<Uint8Array>({
       async pull(controller) {
+        // If scope was already destroyed (e.g., by cancel), just close
+        if (scopeDestroyed) {
+          controller.close()
+          return
+        }
+
         try {
           const result = await scope.run(function*() {
             return yield* subscription.next()
@@ -194,32 +219,27 @@ export function createStreamingHandler(
 
           if (result.done) {
             controller.close()
+            // Stream completed normally - run cleanup
+            await runCleanup()
           } else {
             controller.enqueue(encoder.encode(serialize(result.value)))
           }
         } catch (error) {
           // Scope may have been destroyed (e.g., cancel was called)
           // or an error occurred during streaming
-          controller.error(error)
-        } finally {
-          // Run cleanup if provided
-          if (cleanup) {
-            await scope.run(cleanup)
+          if (!scopeDestroyed) {
+            controller.error(error)
+          } else {
+            controller.close()
           }
-          await destroy()
+          // Error during streaming - run cleanup
+          await runCleanup()
         }
       },
 
       async cancel() {
-        // Client disconnected - cleanup
-        if (cleanup) {
-          try {
-            await scope.run(cleanup)
-          } catch {
-            // Ignore cleanup errors on cancel
-          }
-        }
-        await destroy()
+        // Client disconnected - run cleanup
+        await runCleanup()
       },
     })
 

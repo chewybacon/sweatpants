@@ -23,7 +23,7 @@ import type {
 } from './types'
 import { writeFromStreamToBuffer } from './pull-stream'
 import { useLogger, LoggerFactoryContext } from '../../logger'
-import { useBackgroundTask, fireAndForget, type BackgroundTaskHandle } from '../../effection'
+import { useBackgroundTask, type BackgroundTaskHandle } from '../../effection'
 
 /**
  * Internal mutable state for tracking session status.
@@ -202,7 +202,7 @@ export function* createSessionRegistry<T>(
           log.debug({ sessionId, writerStatus: writerTask.status() }, 'writer done, cleaning up immediately')
           yield* cleanup(sessionId)
         } else {
-          // Writer still running - fire and forget cleanup waiter
+          // Writer still running - spawn cleanup waiter as background task
           // This handles the case where client disconnects but LLM is still writing
           log.debug({ sessionId }, 'writer still running, spawning cleanup waiter')
           
@@ -211,7 +211,8 @@ export function* createSessionRegistry<T>(
           const capturedCleanup = cleanup
           const capturedLog = log
           
-          yield* fireAndForget(function* () {
+          // Use useBackgroundTask instead of fireAndForget to ensure the scope stays alive
+          yield* useBackgroundTask(function* () {
             // Wait for writer to complete
             if (writerTask) {
               yield* writerTask.waitForDone()
@@ -225,7 +226,7 @@ export function* createSessionRegistry<T>(
             } else {
               capturedLog.debug({ sessionId, refCount: currentEntry?.refCount }, 'cleanup waiter: client reconnected, skipping cleanup')
             }
-          })
+          }, { name: `cleanup-waiter:${sessionId}` })
         }
       }
     },
