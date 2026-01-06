@@ -88,6 +88,20 @@
         "default": "./dist/chat/isomorphic-tools.cjs"
       }
     },
+    "./chat/mcp-tools": {
+      "development": {
+        "import": "./src/lib/chat/mcp-tools/index.ts",
+        "types": "./src/lib/chat/mcp-tools/index.ts"
+      },
+      "import": {
+        "types": "./dist/chat/mcp-tools.d.ts",
+        "default": "./dist/chat/mcp-tools.js"
+      },
+      "require": {
+        "types": "./dist/chat/mcp-tools.d.cts",
+        "default": "./dist/chat/mcp-tools.cjs"
+      }
+    },
     "./react/chat": {
       "development": {
         "import": "./src/react/chat/index.ts",

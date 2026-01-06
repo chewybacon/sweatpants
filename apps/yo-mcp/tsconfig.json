@@ -1,0 +1,15 @@
+{
+  "extends": "@tanstack/ts-config/tsconfig.app.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@tanstack/framework/chat/mcp-tools": [
+        "../../packages/framework/src/lib/chat/mcp-tools/index.ts"
+      ],
+      "@tanstack/framework/chat/isomorphic-tools": [
+        "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*"]
+}

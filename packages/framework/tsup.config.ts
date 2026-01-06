@@ -8,6 +8,7 @@ export default defineConfig({
     chat: 'src/lib/chat/index.ts',
     'chat/durable-streams': 'src/lib/chat/durable-streams/index.ts',
     'chat/isomorphic-tools': 'src/lib/chat/isomorphic-tools/index.ts',
+    'chat/mcp-tools': 'src/lib/chat/mcp-tools/index.ts',
     'react/chat': 'src/react/chat/index.ts',
     'react/chat/pipeline': 'src/react/chat/pipeline/index.ts',
   },
