@@ -216,21 +216,21 @@ function processContent(
     // Text content
     return appendTextContent(frame, content)
   } else {
-    // Code content
-    let currentFrame = updateActiveBlock(frame, (block) => appendToBlock(block, content))
-
-    // If flushing, check if this looks like a fence close
+    // Code content - but first check if this is a fence close (on flush)
+    // We need to check BEFORE appending to avoid including the fence in raw content
     if (isFlush) {
       const trimmed = content.trim()
       if (matchFenceEnd(trimmed, state.delimiter)) {
+        // This is a fence close - don't append it, just close the fence
         state.inFence = false
         state.delimiter = ''
         state.language = ''
-        currentFrame = updateActiveBlock(currentFrame, completeBlock)
+        return updateActiveBlock(frame, completeBlock)
       }
     }
-
-    return currentFrame
+    
+    // Not a fence close - append the content
+    return updateActiveBlock(frame, (block) => appendToBlock(block, content))
   }
 }
 
