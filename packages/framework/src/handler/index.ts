@@ -3,11 +3,11 @@
  *
  * A portable fetch handler for AI chat that can be plugged into any framework.
  * 
- * The default `createChatHandler` is now the **durable chat handler** which provides:
+ * `createChatHandler` provides durable streaming with:
  * - Session reconnection from last LSN
  * - Multi-client fan-out
  * - Full session replay
- * - Durable streaming with NDJSON + LSN format
+ * - NDJSON streaming with `{ lsn, event }` format
  *
  * @example TanStack Start
  * ```ts
@@ -39,11 +39,8 @@
  * @packageDocumentation
  */
 
-// Re-export the durable handler as the main createChatHandler
+// Export the durable handler as createChatHandler
 export { createDurableChatHandler, createChatHandler } from './durable'
-
-// Legacy handler - deprecated, will be removed in future version
-export { createChatHandler as createLegacyChatHandler } from './create-handler'
 
 export {
   createStreamingHandler,

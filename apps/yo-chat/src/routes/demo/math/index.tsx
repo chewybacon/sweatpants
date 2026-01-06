@@ -267,8 +267,6 @@ function MathAssistantDemo() {
     reset,
     error,
   } = useChat({
-    // Enable durable format (unwraps { lsn, event } wrapper from server)
-    durable: true,
     // Use math pipeline: markdown + KaTeX
     pipeline: 'math',
     // Enable the calculator tool
