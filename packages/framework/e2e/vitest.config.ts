@@ -52,7 +52,7 @@ export default defineConfig({
   resolve: {
     alias: {
       // Resolve framework imports to source
-      '@tanstack/framework': path.resolve(__dirname, '../src'),
+      '@sweatpants/framework': path.resolve(__dirname, '../src'),
     },
   },
 })

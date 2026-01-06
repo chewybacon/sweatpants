@@ -1,5 +1,5 @@
 {
-  "name": "@tanstack/framework",
+  "name": "@sweatpants/framework",
   "version": "0.1.0",
   "description": "Framework utilities for TanStack-based AI apps - tool discovery, codegen, and more",
   "type": "module",

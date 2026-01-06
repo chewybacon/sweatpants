@@ -11,12 +11,12 @@
  */
 import type { Operation } from 'effection'
 import { call } from 'effection'
-import type { Frame, Processor } from '@tanstack/framework/react/chat/pipeline'
+import type { Frame, Processor } from '@sweatpants/framework/react/chat/pipeline'
 import {
   updateBlockById,
   setBlockRendered,
   addTrace,
-} from '@tanstack/framework/react/chat/pipeline'
+} from '@sweatpants/framework/react/chat/pipeline'
 import { codeToANSI } from '@shikijs/cli'
 import type { BundledLanguage, BundledTheme } from 'shiki'
 import chalk from 'chalk'

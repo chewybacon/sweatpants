@@ -15,7 +15,7 @@
  * ## Pipeline API
  *
  * ```tsx
- * import { useChat } from '@tanstack/framework/react/chat'
+ * import { useChat } from '@sweatpants/framework/react/chat'
  *
  * function ChatUI() {
  *   // Use a preset for common setups
@@ -24,7 +24,7 @@
  *   })
  *
  *   // Or specify processors explicitly
- *   // import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
+ *   // import { markdown, shiki } from '@sweatpants/framework/react/chat/pipeline'
  *   // const { messages, send } = useChat({
  *   //   pipeline: { processors: [markdown, shiki] }
  *   // })
@@ -126,7 +126,7 @@ export interface UseChatOptions extends Omit<UseChatSessionOptions, 'transforms'
    * useChat({ pipeline: 'full' })
    *
    * // Or with specific processors (dependencies auto-resolved)
-   * import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
+   * import { markdown, shiki } from '@sweatpants/framework/react/chat/pipeline'
    * useChat({
    *   pipeline: { processors: [markdown, shiki] }
    * })

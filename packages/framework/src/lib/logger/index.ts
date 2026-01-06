@@ -9,7 +9,7 @@
  * @example
  * ```typescript
  * // Setup in initializer hook
- * import { setupLogger } from '@tanstack/framework/chat'
+ * import { setupLogger } from '@sweatpants/framework/chat'
  *
  * createDurableChatHandler({
  *   initializerHooks: [setupLogger, ...],

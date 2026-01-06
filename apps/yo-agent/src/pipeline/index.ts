@@ -22,8 +22,8 @@
  * const finalFrame = yield* pipeline.flush()
  * ```
  */
-import { createPipeline } from '@tanstack/framework/react/chat/pipeline'
-import type { PipelineConfig, Pipeline } from '@tanstack/framework/react/chat/pipeline'
+import { createPipeline } from '@sweatpants/framework/react/chat/pipeline'
+import type { PipelineConfig, Pipeline } from '@sweatpants/framework/react/chat/pipeline'
 
 // Processors
 import { terminalMarkdown } from './processors/terminal-markdown.ts'
@@ -74,10 +74,10 @@ export type {
   Block,
   Processor,
   Pipeline,
-} from '@tanstack/framework/react/chat/pipeline'
+} from '@sweatpants/framework/react/chat/pipeline'
 
 export {
   emptyFrame,
   renderFrameToRendered,
   renderFrameToRaw,
-} from '@tanstack/framework/react/chat/pipeline'
+} from '@sweatpants/framework/react/chat/pipeline'

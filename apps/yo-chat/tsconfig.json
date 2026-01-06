@@ -5,18 +5,18 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@tanstack/framework/vite": ["../../packages/framework/src/vite/index.ts"],
-      "@tanstack/framework/handler": ["../../packages/framework/src/handler/index.ts"],
-      "@tanstack/framework/handler/durable": ["../../packages/framework/src/handler/durable/index.ts"],
-      "@tanstack/framework/chat": ["../../packages/framework/src/lib/chat/index.ts"],
-      "@tanstack/framework/chat/durable-streams": ["../../packages/framework/src/lib/chat/durable-streams/index.ts"],
-      "@tanstack/framework/chat/isomorphic-tools": [
+      "@sweatpants/framework/vite": ["../../packages/framework/src/vite/index.ts"],
+      "@sweatpants/framework/handler": ["../../packages/framework/src/handler/index.ts"],
+      "@sweatpants/framework/handler/durable": ["../../packages/framework/src/handler/durable/index.ts"],
+      "@sweatpants/framework/chat": ["../../packages/framework/src/lib/chat/index.ts"],
+      "@sweatpants/framework/chat/durable-streams": ["../../packages/framework/src/lib/chat/durable-streams/index.ts"],
+      "@sweatpants/framework/chat/isomorphic-tools": [
         "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
       ],
-      "@tanstack/framework/react/chat": [
+      "@sweatpants/framework/react/chat": [
         "../../packages/framework/src/react/chat/index.ts"
       ],
-      "@tanstack/framework/react/chat/pipeline": [
+      "@sweatpants/framework/react/chat/pipeline": [
         "../../packages/framework/src/react/chat/pipeline/index.ts"
       ]
     }

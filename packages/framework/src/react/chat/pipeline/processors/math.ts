@@ -320,7 +320,7 @@ function* renderMathInHtml(
  *
  * @example
  * ```typescript
- * import { math } from '@tanstack/framework/react/chat/pipeline'
+ * import { math } from '@sweatpants/framework/react/chat/pipeline'
  *
  * useChat({
  *   pipeline: { processors: [markdown, math] }

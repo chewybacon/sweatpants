@@ -9,8 +9,8 @@
  * - tttMove: Model makes a move, waits for user response
  * - tttWinner: Announce the winner (fire-and-forget)
  */
-import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
-import type { RenderableProps } from '@tanstack/framework/chat/isomorphic-tools'
+import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
 import { z } from 'zod'
 import { useEffect } from 'react'
 

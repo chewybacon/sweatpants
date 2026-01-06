@@ -5,7 +5,7 @@
  * The server draws random cards, and the user picks one.
  */
 import { z } from 'zod'
-import { createMCPTool } from '@tanstack/framework/chat/mcp-tools'
+import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
 
 const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'] as const
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const

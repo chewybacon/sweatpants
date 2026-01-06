@@ -1,12 +1,12 @@
 /**
- * @tanstack/framework/react/chat
+ * @sweatpants/framework/react/chat
  *
  * Streaming chat rendering with progressive enhancement.
  *
  * ## Recommended API (Pipeline-based)
  *
  * ```typescript
- * import { useChat } from '@tanstack/framework/react/chat'
+ * import { useChat } from '@sweatpants/framework/react/chat'
  *
  * function Chat() {
  *   // Use a preset for common setups
@@ -28,7 +28,7 @@
  * ## Custom Processors
  *
  * ```typescript
- * import { markdown, shiki } from '@tanstack/framework/react/chat/pipeline'
+ * import { markdown, shiki } from '@sweatpants/framework/react/chat/pipeline'
  *
  * useChat({
  *   pipeline: { processors: [markdown, shiki] }

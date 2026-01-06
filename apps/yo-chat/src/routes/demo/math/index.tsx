@@ -11,7 +11,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type MessagePart, type TextPart, type ReasoningPart, type ToolCallPart } from '@tanstack/framework/react/chat'
+import { useChat, type ChatMessage, type MessagePart, type TextPart, type ReasoningPart, type ToolCallPart } from '@sweatpants/framework/react/chat'
 import { tools } from '@/__generated__/tool-registry.gen'
 import 'katex/dist/katex.min.css'
 

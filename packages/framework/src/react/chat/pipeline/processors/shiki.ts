@@ -140,7 +140,7 @@ function wrapCodeBlock(html: string, language: string, isQuick: boolean): string
  *
  * @example
  * ```typescript
- * import { shiki } from '@tanstack/framework/react/chat/processors'
+ * import { shiki } from '@sweatpants/framework/react/chat/processors'
  *
  * useChat({
  *   processors: [shiki]  // markdown will be auto-added as dependency

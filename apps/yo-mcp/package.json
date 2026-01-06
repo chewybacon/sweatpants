@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
-    "@tanstack/framework": "workspace:*",
+    "@sweatpants/framework": "workspace:*",
     "effection": "catalog:",
     "zod": "catalog:"
   },

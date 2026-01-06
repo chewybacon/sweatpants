@@ -367,7 +367,7 @@ describe('discoverToolsInContent', () => {
   describe('.tsx file support', () => {
     it('discovers .tsx files with named exports', () => {
       const content = `
-        import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
+        import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
 
         export const askQuestion = createIsomorphicTool('ask_question')
           .description('Ask a question to the user')

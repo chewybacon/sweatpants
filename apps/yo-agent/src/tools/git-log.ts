@@ -3,7 +3,7 @@
  *
  * Shows commit history. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
+import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
 import { z } from 'zod'
 import { call } from 'effection'
 import { exec } from 'node:child_process'

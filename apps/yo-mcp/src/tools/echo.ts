@@ -5,7 +5,7 @@
  * Demonstrates the simplest possible MCP tool.
  */
 import { z } from 'zod'
-import { createMCPTool } from '@tanstack/framework/chat/mcp-tools'
+import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
 
 export const echoTool = createMCPTool('echo')
   .description('Echo back the input message')

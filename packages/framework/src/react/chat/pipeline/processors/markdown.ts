@@ -54,7 +54,7 @@ const wrapCodeBlock = (code: string, language: string): string => {
  *
  * @example
  * ```typescript
- * import { markdown } from '@tanstack/framework/react/chat/processors'
+ * import { markdown } from '@sweatpants/framework/react/chat/processors'
  *
  * useChat({
  *   processors: [markdown]

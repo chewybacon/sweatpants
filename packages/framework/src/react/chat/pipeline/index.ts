@@ -26,7 +26,7 @@
  * ## Example
  *
  * ```typescript
- * import { markdown, shiki, mermaid } from '@tanstack/framework/react/chat/pipeline'
+ * import { markdown, shiki, mermaid } from '@sweatpants/framework/react/chat/pipeline'
  *
  * // Simple - just list processors, dependencies auto-resolved
  * useChat({
