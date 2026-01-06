@@ -635,11 +635,3 @@ export function* runChatSession(
     yield* each.next()
   }
 }
-
-/**
- * Create the channels/signals needed for a chat session.
- * Returns a resource that sets up the session runtime.
- */
-export function createChatSessionChannels() {
-  return createChannel<ChatPatch, void>()
-}

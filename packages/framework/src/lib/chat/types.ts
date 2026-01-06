@@ -77,7 +77,7 @@ export type {
   AssistantMessagePatch,
   StreamingStartPatch,
   StreamingTextPatch,
-  StreamingThinkingPatch,
+  StreamingReasoningPatch,
   StreamingEndPatch,
   ToolCallStartPatch,
   ToolCallResultPatch,

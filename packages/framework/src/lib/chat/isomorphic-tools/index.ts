@@ -84,14 +84,11 @@ export {
 // --- Registry ---
 export {
   createIsomorphicToolRegistry,
-  mergeWithServerTools,
-  filterIsomorphicRegistry,
 } from './registry'
 
 // --- Executor ---
 export {
   executeServerPart,
-  executeServerValidation,
   executeServerPhase2,
   executeClientPart,
   executeIsomorphicToolsClient,
@@ -100,9 +97,6 @@ export {
   type ReactHandlerExecutionOptions,
 } from './executor'
 
-// --- Built-in Isomorphic Tools ---
-export { calculatorIsomorphicTool, searchIsomorphicTool, getWeatherIsomorphicTool } from './builtins'
-
 // --- Demo Tools ---
 export { cardGameIsomorphicTools } from './card-game'
 
@@ -110,16 +104,12 @@ export { cardGameIsomorphicTools } from './card-game'
 export type {
   // Core definitions
   IsomorphicToolDef,
-  ServerAuthorityToolDef,
-  ClientAuthorityToolDef,
   AnyIsomorphicTool,
 
   // Authority
   AuthorityMode,
-  IsomorphicApprovalConfig,
 
   // Context
-  HandoffConfig,
   ServerToolContext,
   ServerAuthorityContext,
 
@@ -135,24 +125,16 @@ export type {
   // Registry
   IsomorphicToolRegistry,
   IsomorphicToolSchema,
-  ServerOnlyToolDef,
 
   // Events
-  IsomorphicClientCompleteEvent,
+  IsomorphicHandoffEvent,
 
   // Results
   IsomorphicToolResult,
 
   // State
   IsomorphicToolState,
-  PendingIsomorphicTool,
-
-  // Helper types
-  IsomorphicToolParams,
-  IsomorphicToolServerOutput,
-  IsomorphicToolClientOutput,
 } from './types'
-
 
 // --- Errors ---
 export { HandoffReadyError } from './types'
@@ -162,7 +144,6 @@ export {
   createWaitForContext,
   createUIRequestChannel,
   createUIHandlers,
-  createUIResponseSignal,
   type UIRequest,
   type PendingUIRequest,
   type WaitForContext,
@@ -171,19 +152,6 @@ export {
   type UIHandlerBuilder,
   type UIResponseValue,
 } from './ui-requests'
-
-// --- Step Context (ctx.render pattern - legacy) ---
-export {
-  createReactStepContext,
-  createExecutionTrail,
-  type Step,
-  type PendingStep,
-  type ExecutionTrail,
-  type BaseStepContext,
-  type ReactStepContext,
-  type ClientStepContext,
-  type CreateStepContextOptions,
-} from './step-context'
 
 // --- Emission Runtime (ctx.render pattern - new) ---
 export {

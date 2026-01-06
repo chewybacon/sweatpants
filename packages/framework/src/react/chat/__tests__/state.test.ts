@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { initialChatState, chatReducer } from '../state'
+import { initialChatState, chatReducer } from '../../../lib/chat/state'
 import type { ChatState, ChatPatch } from '../types'
 
 describe('chatReducer (pure logic)', () => {

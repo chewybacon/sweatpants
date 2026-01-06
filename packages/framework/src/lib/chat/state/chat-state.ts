@@ -23,7 +23,7 @@ import type { Message } from '../types'
 import type { Capabilities } from '../core-types'
 import type { PendingHandoffState } from '../patches/handoff'
 import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission'
-import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
+import type { MessagePart } from '../types/chat-message'
 import type { ContentPartType } from '../patches/base'
 
 // Re-export emission types for convenience
@@ -149,62 +149,7 @@ export const initialChatState: ChatState = {
 }
 
 // =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-/**
- * Get the currently active content part (text or reasoning).
- */
-export function getActiveContentPart(state: ChatState): TextPart | ReasoningPart | null {
-  if (!state.streaming.activePartId) return null
-
-  const part = state.streaming.parts.find(p => p.id === state.streaming.activePartId)
-  if (!part) return null
-
-  if (part.type === 'text' || part.type === 'reasoning') {
-    return part
-  }
-
-  return null
-}
-
-/**
- * Get all tool call parts from the streaming state.
- */
-export function getStreamingToolCalls(state: ChatState): ToolCallPart[] {
-  return state.streaming.parts.filter(
-    (p): p is ToolCallPart => p.type === 'tool-call'
-  )
-}
-
-/**
- * Find a streaming part by ID.
- */
-export function findStreamingPart(state: ChatState, partId: string): MessagePart | undefined {
-  return state.streaming.parts.find(p => p.id === partId)
-}
-
-/**
- * Update a streaming part by ID.
- */
-export function updateStreamingPart(
-  state: ChatState,
-  partId: string,
-  updater: (part: MessagePart) => MessagePart
-): ChatState {
-  return {
-    ...state,
-    streaming: {
-      ...state.streaming,
-      parts: state.streaming.parts.map(p =>
-        p.id === partId ? updater(p) : p
-      ),
-    },
-  }
-}
-
-// =============================================================================
-// LEGACY TYPE ALIASES (for migration)
+// LEGACY TYPE ALIASES (for migration - used by dynobase demos)
 // =============================================================================
 
 /**

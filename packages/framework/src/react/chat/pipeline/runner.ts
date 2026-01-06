@@ -436,7 +436,7 @@ export function createPipelineTransform(config: PipelineConfig) {
         yield* handleContentPatch(patch.content, 'text')
         // Pass through original patch
         yield* output.send(patch)
-      } else if (patch.type === 'streaming_reasoning' || patch.type === 'streaming_thinking') {
+      } else if (patch.type === 'streaming_reasoning') {
         // Handle reasoning content
         yield* handleContentPatch(patch.content, 'reasoning')
         // Pass through original patch

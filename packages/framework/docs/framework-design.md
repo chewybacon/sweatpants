@@ -59,11 +59,11 @@ All user-defined execution code follows this pattern:
 *myOperation(params) {
   // Can yield* to other operations (composability)
   const result = yield* someAsyncWork(params)
-  
+
   // Can use Effection primitives
   yield* sleep(100)
   const signal = yield* useAbortSignal()
-  
+
   // Framework handles cancelation, cleanup, errors
   return result
 }
@@ -241,7 +241,7 @@ export const pickCard = createIsomorphicTool('pick_card')
       const cards = drawUniqueCards(params.count)
       return { cards, prompt: `Pick one of these ${cards.length} cards:` }
     },
-    
+
     // Client phase: User picks via rendered component
     *client(handoff, ctx) {
       return yield* ctx.render(CardPicker, {
@@ -249,7 +249,7 @@ export const pickCard = createIsomorphicTool('pick_card')
         prompt: handoff.prompt,
       })
     },
-    
+
     // Phase 2: Server returns result to LLM
     *after(handoff, client) {
       return `The user selected the ${client.picked.rank} of ${client.picked.suit}.`
@@ -308,10 +308,10 @@ import { defineProvider } from '@tanstack/framework/providers'
 
 export default defineProvider({
   name: 'anthropic',
-  
+
   // When to use this provider
   match: (config) => config.provider === 'anthropic',
-  
+
   // Provider capabilities
   capabilities: {
     thinking: true,
@@ -319,14 +319,14 @@ export default defineProvider({
     vision: true,
     streaming: true,
   },
-  
+
   // Required config (validated at startup)
   configSchema: z.object({
     apiKey: z.string(),
     model: z.string().default('claude-3-5-sonnet-20241022'),
     baseUrl: z.string().optional(),
   }),
-  
+
   // The streaming implementation
   *stream(messages, options) {
     // Return Stream<ChatEvent, ChatResult>
@@ -443,13 +443,13 @@ import type { Processor } from '../types'
 export const markdown: Processor = {
   name: 'markdown',
   description: 'Convert markdown to HTML',
-  
+
   // No dependencies - runs first
   dependencies: [],
-  
+
   // Check if ready
   isReady: () => true,
-  
+
   // Process frames
   *process(frame) {
     return updateFrame(frame, (block) => {
@@ -547,37 +547,37 @@ import { definePersona } from '@tanstack/framework/personas'
 export default definePersona({
   name: 'code-reviewer',
   description: 'Reviews code for quality, security, and best practices',
-  
+
   // Dynamic system prompt
   systemPrompt: ({ config }) => `
     You are a code reviewer. Focus on:
     ${config.focusAreas.map(a => `- ${a}`).join('\n')}
-    
+
     Severity threshold: ${config.severityThreshold}
   `,
-  
+
   // Required tools (must exist in tool registry)
   requiredTools: ['read_file', 'search_code', 'run_linter'],
-  
+
   // Optional tools user can enable
   optionalTools: ['write_file', 'create_pr_comment'],
-  
+
   // Configurable options
   configSchema: z.object({
     focusAreas: z.array(z.enum(['security', 'performance', 'style', 'bugs'])),
     severityThreshold: z.enum(['info', 'warning', 'error']).default('warning'),
   }),
-  
+
   // Effort levels (model selection)
   effortLevels: {
     low: { models: ['gpt-4o-mini', 'claude-3-haiku'] },
     medium: { models: ['gpt-4o', 'claude-3-5-sonnet'] },
     high: { models: ['o1', 'claude-3-opus'] },
   },
-  
+
   // Rendering pipeline for this persona
   pipeline: 'code-review',
-  
+
   // Provider requirements
   requires: {
     thinking: false,
@@ -612,13 +612,13 @@ export function sweatpantsFramework(options?: FrameworkOptions): Plugin[] {
   return [
     // Discovery: scan for tools, personas, providers, rendering
     discoveryPlugin(options),
-    
+
     // Code splitting: extract server code from isomorphic tools
     serverExtractionPlugin(options),
-    
+
     // Codegen: generate registries
     registryGeneratorPlugin(options),
-    
+
     // Post-build: final transformations (like start-env)
     postBuildPlugin(options),
   ]
@@ -635,24 +635,24 @@ src/
     guess-card/
       index.ts
       component.tsx
-  
+
   providers/
     ollama.ts
     openai.ts
     anthropic.ts
-  
+
   personas/
     general.ts
     code-reviewer.ts
     math-assistant.ts
-  
+
   rendering/
     processors/
       custom.ts
     pipelines/
       default.ts
       code-review.ts
-  
+
   agents/
     code-fixer.ts  // Not yet implemented
 
@@ -705,14 +705,14 @@ The framework exports:
 
 ```ts
 // Isomorphic tools
-import { 
+import {
   createIsomorphicTool,
   RenderableProps,
 } from '@tanstack/framework/chat/isomorphic-tools'
 
 // Pipeline processors
-import { 
-  markdown, shiki, mermaid, math 
+import {
+  markdown, shiki, mermaid, math
 } from '@tanstack/framework/react/chat/pipeline'
 
 // React hooks
@@ -758,7 +758,7 @@ Raw Tokens → Parser (auto structure) → Frame₀ → [Processors in DAG order
 - **Progressive enhancement** built into render passes (quick → full)
 - **Clean separation**: Parser handles structure, processors handle enhancement
 
-### Key Differences
+### Key Difference
 
 | Aspect | Old | New |
 |--------|-----|-----|

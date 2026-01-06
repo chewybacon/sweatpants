@@ -206,10 +206,6 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     case 'streaming_reasoning':
       return handleContentStreaming(state, patch.content, 'reasoning')
 
-    // Legacy: treat streaming_thinking as streaming_reasoning
-    case 'streaming_thinking':
-      return handleContentStreaming(state, patch.content, 'reasoning')
-
     case 'streaming_text':
       return handleContentStreaming(state, patch.content, 'text')
 

@@ -116,12 +116,5 @@ export {
 // --- Types ---
 export * from './types'
 
-// --- Session & Streaming ---
-export * from './session'
-export * from './streamChatOnce'
-// Note: transforms.ts contains channel transform infrastructure (not deprecated)
-export * from './transforms'
-export * from './contexts'
-
 // --- Additional Hooks ---
 export * from './usePersonas'

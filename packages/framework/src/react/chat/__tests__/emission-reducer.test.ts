@@ -7,7 +7,7 @@
  * through the patch/reducer pattern.
  */
 import { describe, it, expect } from 'vitest'
-import { chatReducer, initialChatState } from '../state'
+import { chatReducer, initialChatState } from '../../../lib/chat/state'
 import type { ChatState } from '../types'
 import type {
   ToolEmissionStartPatch,

@@ -16,7 +16,6 @@ export type {
   StreamingStartPatch,
   StreamingTextPatch,
   StreamingReasoningPatch,
-  StreamingThinkingPatch,  // deprecated
   StreamingEndPatch,
   PartFramePatch,
   PartEndPatch,
@@ -122,7 +121,6 @@ export function isCorePatch(patch: ChatPatch): patch is CorePatch {
     'streaming_start',
     'streaming_text',
     'streaming_reasoning',
-    'streaming_thinking',  // deprecated
     'streaming_end',
     'part_frame',
     'part_end',
