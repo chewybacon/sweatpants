@@ -147,7 +147,9 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
 
         for (const line of lines) {
           try {
-            const event = JSON.parse(line)
+            // Server sends durable format: { lsn: number, event: StreamEvent }
+            const parsed = JSON.parse(line)
+            const event = parsed.event ?? parsed // Handle both wrapped and unwrapped formats
 
             switch (event.type) {
               case 'text':

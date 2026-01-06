@@ -19,6 +19,7 @@
 import { createChatHandler } from '@tanstack/framework/handler'
 import type { InitializerContext, IsomorphicTool } from '@tanstack/framework/handler'
 import { ollamaProvider, openaiProvider, ProviderContext, ToolRegistryContext, MaxIterationsContext } from '@tanstack/framework/chat'
+import { setupInMemoryDurableStreams } from '@tanstack/framework/chat/durable-streams'
 import type { Operation } from 'effection'
 
 // Re-export for convenience
@@ -47,6 +48,10 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   const { provider: providerName, tools, maxIterations = 10 } = config
 
   // Create initializer hooks (same pattern as yo-chat)
+  const setupDurableStreams = function* (_ctx: InitializerContext): Operation<void> {
+    yield* setupInMemoryDurableStreams<string>()
+  }
+
   const setupProvider = function* (_ctx: InitializerContext): Operation<void> {
     const providerMap = {
       ollama: ollamaProvider,
@@ -71,7 +76,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
 
   // Create the handler
   const handler = createChatHandler({
-    initializerHooks: [setupProvider, setupTools, setupMaxIterations],
+    initializerHooks: [setupDurableStreams, setupProvider, setupTools, setupMaxIterations],
     maxToolIterations: maxIterations,
   })
 

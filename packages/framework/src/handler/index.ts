@@ -53,28 +53,30 @@ export type {
   SetupResult,
   SetupFn,
 } from './streaming'
+
+// Export types from durable handler (the only handler now)
 export type {
-  ChatHandlerConfig,
+  DurableChatHandlerConfig as ChatHandlerConfig,
   ChatRequestBody,
   InitializerContext,
-  ChatProvider,
-  ChatMessage,
-  ChatProviderEvent,
-  ChatProviderResult,
+  InitializerHook,
+  DurableStreamEvent,
+  DurableStreamParams,
   IsomorphicTool,
   ToolSchema,
+} from './durable'
+
+// Export common types from base types file
+export type {
+  ChatProvider,
+  ChatProviderEvent,
+  ChatProviderResult,
+  ChatMessage,
   StreamEvent,
   ServerToolContext,
   ServerAuthorityContext,
   ResolvedPersona,
   PersonaResolver,
 } from './types'
-
-// Re-export durable-specific types
-export type {
-  DurableChatHandlerConfig,
-  DurableStreamEvent,
-  DurableStreamParams,
-} from './durable'
 
 
