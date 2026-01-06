@@ -12,6 +12,9 @@
 // Main handler factory
 export { createDurableChatHandler } from './handler'
 
+// Alias for consolidation - createChatHandler is the durable handler
+export { createDurableChatHandler as createChatHandler } from './handler'
+
 // Chat engine
 export { createChatEngine } from './chat-engine'
 

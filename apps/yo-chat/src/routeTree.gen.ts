@@ -11,13 +11,10 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHelloStreamRouteImport } from './routes/api.hello-stream'
-import { Route as ApiDurableChatRouteImport } from './routes/api.durable-chat'
-import { Route as ApiChatDurableRouteImport } from './routes/api.chat-durable'
 import { Route as ApiChatRouteImport } from './routes/api.chat'
 import { Route as DemoTicTacToeIndexRouteImport } from './routes/demo/tic-tac-toe/index'
 import { Route as DemoMathIndexRouteImport } from './routes/demo/math/index'
 import { Route as DemoChatIndexRouteImport } from './routes/demo/chat/index'
-import { Route as DemoChatDurableIndexRouteImport } from './routes/demo/chat-durable/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -27,16 +24,6 @@ const IndexRoute = IndexRouteImport.update({
 const ApiHelloStreamRoute = ApiHelloStreamRouteImport.update({
   id: '/api/hello-stream',
   path: '/api/hello-stream',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiDurableChatRoute = ApiDurableChatRouteImport.update({
-  id: '/api/durable-chat',
-  path: '/api/durable-chat',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiChatDurableRoute = ApiChatDurableRouteImport.update({
-  id: '/api/chat-durable',
-  path: '/api/chat-durable',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiChatRoute = ApiChatRouteImport.update({
@@ -59,19 +46,11 @@ const DemoChatIndexRoute = DemoChatIndexRouteImport.update({
   path: '/demo/chat/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoChatDurableIndexRoute = DemoChatDurableIndexRouteImport.update({
-  id: '/demo/chat-durable/',
-  path: '/demo/chat-durable/',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
-  '/api/chat-durable': typeof ApiChatDurableRoute
-  '/api/durable-chat': typeof ApiDurableChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
-  '/demo/chat-durable': typeof DemoChatDurableIndexRoute
   '/demo/chat': typeof DemoChatIndexRoute
   '/demo/math': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
@@ -79,10 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
-  '/api/chat-durable': typeof ApiChatDurableRoute
-  '/api/durable-chat': typeof ApiDurableChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
-  '/demo/chat-durable': typeof DemoChatDurableIndexRoute
   '/demo/chat': typeof DemoChatIndexRoute
   '/demo/math': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
@@ -91,10 +67,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
-  '/api/chat-durable': typeof ApiChatDurableRoute
-  '/api/durable-chat': typeof ApiDurableChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
-  '/demo/chat-durable/': typeof DemoChatDurableIndexRoute
   '/demo/chat/': typeof DemoChatIndexRoute
   '/demo/math/': typeof DemoMathIndexRoute
   '/demo/tic-tac-toe/': typeof DemoTicTacToeIndexRoute
@@ -104,10 +77,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/api/chat'
-    | '/api/chat-durable'
-    | '/api/durable-chat'
     | '/api/hello-stream'
-    | '/demo/chat-durable'
     | '/demo/chat'
     | '/demo/math'
     | '/demo/tic-tac-toe'
@@ -115,10 +85,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/api/chat'
-    | '/api/chat-durable'
-    | '/api/durable-chat'
     | '/api/hello-stream'
-    | '/demo/chat-durable'
     | '/demo/chat'
     | '/demo/math'
     | '/demo/tic-tac-toe'
@@ -126,10 +93,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/api/chat'
-    | '/api/chat-durable'
-    | '/api/durable-chat'
     | '/api/hello-stream'
-    | '/demo/chat-durable/'
     | '/demo/chat/'
     | '/demo/math/'
     | '/demo/tic-tac-toe/'
@@ -138,10 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
-  ApiChatDurableRoute: typeof ApiChatDurableRoute
-  ApiDurableChatRoute: typeof ApiDurableChatRoute
   ApiHelloStreamRoute: typeof ApiHelloStreamRoute
-  DemoChatDurableIndexRoute: typeof DemoChatDurableIndexRoute
   DemoChatIndexRoute: typeof DemoChatIndexRoute
   DemoMathIndexRoute: typeof DemoMathIndexRoute
   DemoTicTacToeIndexRoute: typeof DemoTicTacToeIndexRoute
@@ -161,20 +122,6 @@ declare module '@tanstack/react-router' {
       path: '/api/hello-stream'
       fullPath: '/api/hello-stream'
       preLoaderRoute: typeof ApiHelloStreamRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/durable-chat': {
-      id: '/api/durable-chat'
-      path: '/api/durable-chat'
-      fullPath: '/api/durable-chat'
-      preLoaderRoute: typeof ApiDurableChatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/chat-durable': {
-      id: '/api/chat-durable'
-      path: '/api/chat-durable'
-      fullPath: '/api/chat-durable'
-      preLoaderRoute: typeof ApiChatDurableRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/chat': {
@@ -205,23 +152,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoChatIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/chat-durable/': {
-      id: '/demo/chat-durable/'
-      path: '/demo/chat-durable'
-      fullPath: '/demo/chat-durable'
-      preLoaderRoute: typeof DemoChatDurableIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
-  ApiChatDurableRoute: ApiChatDurableRoute,
-  ApiDurableChatRoute: ApiDurableChatRoute,
   ApiHelloStreamRoute: ApiHelloStreamRoute,
-  DemoChatDurableIndexRoute: DemoChatDurableIndexRoute,
   DemoChatIndexRoute: DemoChatIndexRoute,
   DemoMathIndexRoute: DemoMathIndexRoute,
   DemoTicTacToeIndexRoute: DemoTicTacToeIndexRoute,

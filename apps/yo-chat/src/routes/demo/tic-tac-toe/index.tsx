@@ -228,6 +228,8 @@ function TicTacToeDemo() {
     error,
     session,
   } = useChat({
+    // Enable durable format (unwraps { lsn, event } wrapper from server)
+    durable: true,
     pipeline: 'markdown',
     tools: [tools.startTttGame, tools.tttMove, tools.tttWinner],
     systemPrompt: `You are playing tic-tac-toe against the user. You are X, the user is O.
