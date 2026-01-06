@@ -69,8 +69,6 @@ export type {
 // Export common types from base types file
 export type {
   ChatProvider,
-  ChatProviderEvent,
-  ChatProviderResult,
   ChatMessage,
   StreamEvent,
   ServerToolContext,

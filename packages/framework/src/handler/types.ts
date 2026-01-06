@@ -30,6 +30,9 @@ export type {
   ServerAuthorityContext,
 } from '../lib/chat/isomorphic-tools/types'
 
+// Provider types - re-export from canonical location
+export type { ChatProvider } from '../lib/chat/providers/types'
+
 // =============================================================================
 // HANDLER-SPECIFIC TYPES
 // =============================================================================
@@ -77,73 +80,6 @@ export interface IsomorphicTool {
   server?: (params: any, ctx: any, clientOutput?: any) => Operation<any>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client?: (input: any, ctx: any, params: any) => Operation<any>
-}
-
-// =============================================================================
-// PROVIDER TYPES
-// =============================================================================
-
-/**
- * Streaming event from chat provider.
- * 
- * Note: Uses 'content' field to match lib/chat/types.ts ChatEvent.
- * Both types should stay in sync.
- */
-export type ChatProviderEvent =
-  | { type: 'text'; content: string }
-  | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_calls'
-      toolCalls: Array<{
-        id: string
-        type: 'function'
-        function: {
-          name: string
-          arguments: Record<string, unknown>
-        }
-      }>
-    }
-
-/**
- * Final result from chat provider stream.
- */
-export interface ChatProviderResult {
-  text: string
-  toolCalls?: Array<{
-    id: string
-    type: 'function'
-    function: {
-      name: string
-      arguments: Record<string, unknown>
-    }
-  }>
-  usage?: {
-    prompt_tokens?: number
-    completion_tokens?: number
-    total_tokens?: number
-  }
-}
-
-/**
- * Tool schema for LLM.
- */
-export interface ToolSchema {
-  name: string
-  description: string
-  parameters: Record<string, unknown>
-  isIsomorphic?: boolean
-  authority?: 'server' | 'client'
-}
-
-/**
- * Chat provider interface.
- */
-export interface ChatProvider {
-  name?: string
-  stream(
-    messages: import('../lib/chat/types').Message[],
-    options?: unknown
-  ): unknown
 }
 
 // =============================================================================
@@ -261,55 +197,3 @@ export type StreamEvent =
       message: string
       recoverable: boolean
     }
-
-// =============================================================================
-// HANDLER CONFIG
-// =============================================================================
-
-/**
- * Context passed to initializer hooks.
- */
-export interface InitializerContext {
-  request: Request
-  body: ChatRequestBody
-}
-
-/**
- * Configuration for createChatHandler.
- */
-export interface ChatHandlerConfig {
-  /**
-   * Array of initializer hooks that set up DI contexts.
-   */
-  initializerHooks: Array<(ctx: InitializerContext) => Operation<void>>
-
-  /**
-   * Maximum number of tool execution iterations.
-   * @default 10
-   */
-  maxToolIterations?: number
-}
-
-/**
- * Request body for the chat endpoint.
- */
-export interface ChatRequestBody {
-  messages: ChatMessage[]
-  enabledTools?: string[] | boolean
-  isomorphicTools?: ToolSchema[]
-  isomorphicClientOutputs?: Array<{
-    callId: string
-    toolName: string
-    params: unknown
-    clientOutput: unknown
-    cachedHandoff?: unknown
-    usesHandoff?: boolean
-  }>
-  systemPrompt?: string
-  persona?: string
-  personaConfig?: Record<string, unknown>
-  enableOptionalTools?: string[]
-  effort?: 'auto' | 'low' | 'medium' | 'high'
-  provider?: 'ollama' | 'openai'
-  model?: string
-}
