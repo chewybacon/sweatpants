@@ -132,7 +132,7 @@ export function* streamChatOnce(
   for (const rawEvent of yield* each(eventStream)) {
     // Unwrap durable format: { lsn: number, event: StreamEvent } -> StreamEvent
     const event = (rawEvent as { lsn: number; event: StreamEvent }).event
-    
+
     switch (event.type) {
       case 'session_info':
         yield* patches.send({
@@ -228,7 +228,7 @@ export function* streamChatOnce(
 
     yield* each.next()
   }
-  
+
   // After stream ends, check if we have isomorphic handoffs
   if (isomorphicHandoffs.length > 0) {
     // Return isomorphic handoff result - session will execute client parts

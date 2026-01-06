@@ -62,7 +62,7 @@
  * 3. Continues until the LLM is done
  */
 import type { Operation, Task, Channel, Signal, Stream } from 'effection'
-import { spawn, each, createChannel, createSignal, resource, useScope } from 'effection'
+import { spawn, each, createChannel, createSignal, resource, useScope, call } from 'effection'
 import { streamChatOnce, toApiMessages } from './stream-chat'
 import { useTransformPipeline } from './transforms'
 import { chatReducer, initialChatState } from '../state/reducer'
@@ -70,7 +70,7 @@ import type { ChatState } from '../state/chat-state'
 import { StreamerContext, ToolRegistryContext, BaseUrlContext } from './contexts'
 import type { ChatPatch } from '../patches'
 import type { Message } from '../types'
-import type { ChatCommand, SessionOptions, Streamer } from './options'
+import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options'
 import type { StreamResult, ApiMessage } from './streaming'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime'
 import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools'
@@ -257,14 +257,44 @@ export function* runChatSession(
         currentRequestTask = yield* spawn(function* () {
           // Track whether we've already sent streaming_end to avoid duplicates
           let streamingEndSent = false
-          
+
           try {
-             // Create transform pipeline (handles empty transforms with passthrough)
-             // The resource pattern ensures transforms are subscribed before we start writing
-             const streamPatches = yield* useTransformPipeline(
-               patches,
-               options.transforms ?? []
-             )
+            let streamingEndForwarded = false
+            let streamingEndForwardedResolve: (() => void) | null = null
+
+            function waitForStreamingEndForwarded(): Promise<void> {
+              if (streamingEndForwarded) {
+                return Promise.resolve()
+              }
+              return new Promise<void>((resolve) => {
+                streamingEndForwardedResolve = resolve
+              })
+            }
+
+            // Final transform to acknowledge that streaming_end made it through the
+            // entire transform chain and was forwarded to the reducer.
+            const streamingEndAcknowledger: PatchTransform = function* (input, output) {
+              for (const patch of yield* each(input)) {
+                yield* output.send(patch)
+
+                if (patch.type === 'streaming_end' && !streamingEndForwarded) {
+                  streamingEndForwarded = true
+                  streamingEndForwardedResolve?.()
+                  streamingEndForwardedResolve = null
+                }
+
+                yield* each.next()
+              }
+            }
+
+            const transforms = options.transforms ?? []
+
+            // Create transform pipeline (handles empty transforms with passthrough).
+            // The resource pattern ensures transforms are subscribed before we start writing.
+            const streamPatches = yield* useTransformPipeline(patches, [
+              ...transforms,
+              streamingEndAcknowledger,
+            ])
 
             // Get isomorphic tools registry from context (set from options.tools above)
             const isomorphicToolsRegistry = yield* ToolRegistryContext.get()
@@ -551,12 +581,16 @@ export function* runChatSession(
               message: assistantMessage,
             })
 
-            // Now send streaming_end THROUGH the transform to trigger final settle
-            // This ensures all pending content is flushed and parts get their final frames
+            // Send streaming_end THROUGH the transform to trigger final settle.
+            // We must wait until the transform chain has finished processing it
+            // (including async processors like Shiki) before returning, otherwise the
+            // transform resource will be torn down mid-flush and streaming_end might
+            // never reach the reducer.
             yield* streamPatches.send({ type: 'streaming_end' })
             streamingEndSent = true
-            
-            // Close the input channel (transform will finish processing)
+            yield* call(waitForStreamingEndForwarded)
+
+            // Now we can safely close the input channel.
             yield* streamPatches.close()
 
             return result

@@ -352,7 +352,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       // Add the message to history. Don't finalize parts here - that happens in streaming_end
       // which comes AFTER part_end has attached the final frames.
       const messageId = patch.message.id ?? `msg-${Date.now()}`
-      
+
       // Ensure the message has an ID
       const messageWithId = patch.message.id 
         ? patch.message 
@@ -369,12 +369,11 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     case 'streaming_end': {
       // Streaming complete - save the finalized parts (with frames) and reset streaming state
       // At this point, part_end has already been processed so parts have their final frames.
-      
+
       // Find the last assistant message to get its ID
       const lastMessage = findLastMessageByRole(state.messages, 'assistant')
       const messageId = lastMessage?.id
-      
-      
+
       // Save finalized parts if we have a message ID and parts
       const newFinalizedParts = messageId && state.streaming.parts.length > 0
         ? {
@@ -382,7 +381,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             [messageId]: [...state.streaming.parts],
           }
         : state.finalizedParts
-      
+
       return {
         ...state,
         isStreaming: false,
