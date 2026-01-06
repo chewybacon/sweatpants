@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createScope } from 'effection'
 import { z } from 'zod'
-import { createChatHandler, type InitializerContext } from '../create-handler'
+import { createChatHandler, type InitializerContext } from '../index'
 import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts'
 import { type ChatProvider, type IsomorphicTool, type PersonaResolver } from '../types'
 
@@ -299,7 +299,11 @@ describe('Chat Handler DI Context Injection', () => {
 
       const response = await handler(request)
       const responseText = await response.text()
-      const events = responseText.trim().split('\n').map(line => JSON.parse(line))
+      // Durable handler wraps events in { lsn, event } format
+      const events = responseText.trim().split('\n').map(line => {
+        const parsed = JSON.parse(line)
+        return parsed.event ?? parsed // Handle both wrapped and unwrapped formats
+      })
 
       // Should have an error event with helpful message
       const errorEvent = events.find((e: any) => e.type === 'error')

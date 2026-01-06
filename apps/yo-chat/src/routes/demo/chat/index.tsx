@@ -144,8 +144,6 @@ function PipelineChatDemo() {
     reset,
     error,
   } = useChat({
-    // Use durable format (unwraps { lsn, event } wrapper from server)
-    durable: true,
     // Use the new Frame-based pipeline system
     // 'full' = markdown + shiki + mermaid
     pipeline: 'full',
