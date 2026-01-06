@@ -1,9 +1,28 @@
+/**
+ * Example Builtin Tools
+ * 
+ * These are example isomorphic tools demonstrating the builder pattern.
+ * They are NOT included in the framework bundle - copy and adapt for your use case.
+ * 
+ * @example
+ * ```ts
+ * import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
+ * import { z } from 'zod'
+ * 
+ * // Then define your tools similar to these examples
+ * ```
+ */
 import { sleep } from 'effection'
 import { z } from 'zod'
 
-import { createIsomorphicTool } from './builder'
+import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
 
-export const calculatorIsomorphicTool = createIsomorphicTool('calculator')
+/**
+ * Calculator tool - performs basic arithmetic calculations.
+ * 
+ * This is a server-only tool (headless context, server authority).
+ */
+export const calculatorTool = createIsomorphicTool('calculator')
   .description('Perform basic arithmetic calculations')
   .parameters(
     z.object({
@@ -14,6 +33,7 @@ export const calculatorIsomorphicTool = createIsomorphicTool('calculator')
   .authority('server')
   .server(function* ({ expression }: { expression: string }) {
     try {
+      // Only allow safe characters
       if (!/^[\d\s+\-*/().]+$/.test(expression)) {
         throw new Error('Invalid expression')
       }
@@ -27,7 +47,12 @@ export const calculatorIsomorphicTool = createIsomorphicTool('calculator')
   })
   .build()
 
-export const searchIsomorphicTool = createIsomorphicTool('search')
+/**
+ * Search tool - simulates a search API.
+ * 
+ * This is a server-only tool that simulates async work.
+ */
+export const searchTool = createIsomorphicTool('search')
   .description('Search for information on a topic')
   .parameters(
     z.object({
@@ -37,6 +62,7 @@ export const searchIsomorphicTool = createIsomorphicTool('search')
   .context('headless')
   .authority('server')
   .server(function* ({ query }: { query: string }) {
+    // Simulate API latency
     yield* sleep(300)
     return {
       query,
@@ -54,7 +80,12 @@ export const searchIsomorphicTool = createIsomorphicTool('search')
   })
   .build()
 
-export const getWeatherIsomorphicTool = createIsomorphicTool('get_weather')
+/**
+ * Weather tool - simulates a weather API.
+ * 
+ * This is a server-only tool with optional parameters.
+ */
+export const getWeatherTool = createIsomorphicTool('get_weather')
   .description('Get the current weather for a location')
   .parameters(
     z.object({
@@ -68,10 +99,14 @@ export const getWeatherIsomorphicTool = createIsomorphicTool('get_weather')
   .context('headless')
   .authority('server')
   .server(function* ({ location, unit }: { location: string; unit?: 'celsius' | 'fahrenheit' | undefined }) {
+    // Simulate API latency
     yield* sleep(500)
+    
+    // Generate random weather data
     const temp = Math.floor(Math.random() * 30) + 10
     const conditions = ['sunny', 'cloudy', 'rainy', 'windy']
     const condition = conditions[Math.floor(Math.random() * conditions.length)]
+    
     return {
       location,
       temperature: temp,

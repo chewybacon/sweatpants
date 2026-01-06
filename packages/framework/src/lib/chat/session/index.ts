@@ -9,7 +9,6 @@
 export {
   createChatSession,
   runChatSession,
-  createChatSessionChannels,
 } from './create-session'
 
 export type {

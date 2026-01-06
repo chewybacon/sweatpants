@@ -63,7 +63,6 @@ export type {
   StreamingStartPatch,
   StreamingTextPatch,
   StreamingReasoningPatch,
-  StreamingThinkingPatch,
   StreamingEndPatch,
   PartFramePatch,
   PartEndPatch,

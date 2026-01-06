@@ -149,7 +149,7 @@ export function* streamChatOnce(
 
       case 'thinking':
         yield* patches.send({
-          type: 'streaming_thinking',
+          type: 'streaming_reasoning',
           content: event.content,
         })
         break

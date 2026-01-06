@@ -88,14 +88,6 @@ export interface StreamingReasoningPatch {
 }
 
 /**
- * @deprecated Use StreamingReasoningPatch instead.
- */
-export interface StreamingThinkingPatch {
-  type: 'streaming_thinking'
-  content: string
-}
-
-/**
  * Streaming end patch - sent when streaming completes.
  */
 export interface StreamingEndPatch {
@@ -200,7 +192,6 @@ export type CorePatch =
   | StreamingStartPatch
   | StreamingTextPatch
   | StreamingReasoningPatch
-  | StreamingThinkingPatch  // deprecated, kept for backwards compat
   | StreamingEndPatch
   | PartFramePatch
   | PartEndPatch

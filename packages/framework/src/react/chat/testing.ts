@@ -178,7 +178,7 @@ export function createTestStreamer(): TestStreamer {
 
         case 'thinking':
           yield* patches.send({
-            type: 'streaming_thinking',
+            type: 'streaming_reasoning',
             content: event.content,
           })
           break
@@ -285,7 +285,7 @@ export function createImmediateStreamer(
           yield* patches.send({ type: 'streaming_text', content: event.content })
           break
         case 'thinking':
-          yield* patches.send({ type: 'streaming_thinking', content: event.content })
+          yield* patches.send({ type: 'streaming_reasoning', content: event.content })
           break
         case 'complete':
           // Ignore, we use finalText parameter
