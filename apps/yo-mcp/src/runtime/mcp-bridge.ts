@@ -15,7 +15,7 @@ import type {
   SampleConfig,
   LogLevel,
   FinalizedMCPTool,
-} from '@tanstack/framework/chat/mcp-tools'
+} from '@sweatpants/framework/chat/mcp-tools'
 
 // =============================================================================
 // TYPES

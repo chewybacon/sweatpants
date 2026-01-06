@@ -1,5 +1,5 @@
 /**
- * @tanstack/framework Vite Plugin
+ * @sweatpants/framework Vite Plugin
  *
  * Provides file-based discovery and registry generation for:
  * - Tools (isomorphic tools)
@@ -41,7 +41,7 @@ export interface FrameworkOptions {
  * @example
  * ```ts
  * // vite.config.ts
- * import { frameworkPlugin } from '@tanstack/framework/vite'
+ * import { frameworkPlugin } from '@sweatpants/framework/vite'
  *
  * export default defineConfig({
  *   plugins: [

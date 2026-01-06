@@ -4,7 +4,7 @@
  * A simple server-only tool that evaluates mathematical expressions.
  * Demonstrates the basic tool pattern with file-based discovery.
  */
-import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
+import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
 import { z } from 'zod'
 
 export const calculator = createIsomorphicTool('calculator')

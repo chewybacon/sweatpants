@@ -1,4 +1,4 @@
-import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
+import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
 import { z } from 'zod'
 
 export const askQuestion = createIsomorphicTool('ask_question')

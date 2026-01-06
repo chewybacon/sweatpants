@@ -8,7 +8,7 @@
  */
 import React from 'react'
 import { Box, Text } from 'ink'
-import type { Frame, Block } from '@tanstack/framework/react/chat/pipeline'
+import type { Frame, Block } from '@sweatpants/framework/react/chat/pipeline'
 
 // =============================================================================
 // Block Renderer

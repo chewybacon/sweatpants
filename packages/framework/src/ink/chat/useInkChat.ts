@@ -12,7 +12,7 @@
  * ## Usage
  *
  * ```tsx
- * import { useInkChat } from '@tanstack/framework/ink/chat'
+ * import { useInkChat } from '@sweatpants/framework/ink/chat'
  * import { terminalMarkdown, terminalCode } from './pipeline'
  *
  * function ChatUI() {
@@ -187,7 +187,7 @@ export interface UseInkChatReturn {
  *
  * @example
  * ```tsx
- * import { useInkChat } from '@tanstack/framework/ink/chat'
+ * import { useInkChat } from '@sweatpants/framework/ink/chat'
  * import { Box, Text } from 'ink'
  *
  * function App() {

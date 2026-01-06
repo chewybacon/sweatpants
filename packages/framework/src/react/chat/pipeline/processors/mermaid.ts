@@ -115,7 +115,7 @@ function wrapCodeBlock(html: string, isQuick: boolean): string {
  *
  * @example
  * ```typescript
- * import { mermaid } from '@tanstack/framework/react/chat/processors'
+ * import { mermaid } from '@sweatpants/framework/react/chat/processors'
  *
  * useChat({
  *   processors: [mermaid]  // markdown will be auto-added as dependency

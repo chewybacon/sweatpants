@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 
 // We'll test the handler directly without spinning up a server
-import { createStreamingHandler, useHandlerContext } from '@tanstack/framework/handler'
+import { createStreamingHandler, useHandlerContext } from '@sweatpants/framework/handler'
 import { resource, sleep, call } from 'effection'
 import type { Operation, Stream } from 'effection'
 

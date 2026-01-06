@@ -16,10 +16,10 @@
  * The handler returns a streaming Response, which we pass back to the hook.
  */
 
-import { createChatHandler } from '@tanstack/framework/handler'
-import type { InitializerContext, IsomorphicTool } from '@tanstack/framework/handler'
-import { ollamaProvider, openaiProvider, ProviderContext, ToolRegistryContext, MaxIterationsContext } from '@tanstack/framework/chat'
-import { setupInMemoryDurableStreams } from '@tanstack/framework/chat/durable-streams'
+import { createChatHandler } from '@sweatpants/framework/handler'
+import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/handler'
+import { ollamaProvider, openaiProvider, ProviderContext, ToolRegistryContext, MaxIterationsContext } from '@sweatpants/framework/chat'
+import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 import type { Operation } from 'effection'
 
 // Re-export for convenience

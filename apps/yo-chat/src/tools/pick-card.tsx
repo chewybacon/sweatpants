@@ -4,8 +4,8 @@
  * A demonstration of the ctx.render() pattern for interactive tools.
  * Server draws cards, client lets user pick one via rendered UI.
  */
-import { createIsomorphicTool } from '@tanstack/framework/chat/isomorphic-tools'
-import type { RenderableProps } from '@tanstack/framework/chat/isomorphic-tools'
+import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
 import { z } from 'zod'
 
 // =============================================================================

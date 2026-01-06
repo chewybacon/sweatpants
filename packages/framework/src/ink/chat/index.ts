@@ -9,7 +9,7 @@
  * ## Usage
  *
  * ```tsx
- * import { InkChatProvider, useInkChat } from '@tanstack/framework/ink/chat'
+ * import { InkChatProvider, useInkChat } from '@sweatpants/framework/ink/chat'
  * import { Box, Text } from 'ink'
  *
  * function App() {

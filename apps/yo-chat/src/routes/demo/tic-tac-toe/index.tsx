@@ -8,8 +8,8 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@tanstack/framework/react/chat'
-import type { Frame } from '@tanstack/framework/react/chat/pipeline'
+import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import type { Frame } from '@sweatpants/framework/react/chat/pipeline'
 import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/demo/tic-tac-toe/')({

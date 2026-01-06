@@ -4,7 +4,7 @@
  * A tool that demonstrates a simple confirmation flow with elicitation.
  */
 import { z } from 'zod'
-import { createMCPTool } from '@tanstack/framework/chat/mcp-tools'
+import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
 
 export const confirmTool = createMCPTool('confirm')
   .description('Ask the user to confirm an action')

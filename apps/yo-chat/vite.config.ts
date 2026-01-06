@@ -5,14 +5,14 @@ import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
 import { runtimeBasePlugin } from '@tanstack/start-env/vite'
-import { frameworkPlugin } from '@tanstack/framework/vite'
+import { frameworkPlugin } from '@sweatpants/framework/vite'
 import { imagetools } from "vite-imagetools";
 import path from 'path'
 
 const isProd = process.env['NODE_ENV'] === 'production'
 
 // Workspace packages that should hot-reload in dev
-const workspacePackages = ['@tanstack/framework']
+const workspacePackages = ['@sweatpants/framework']
 
 // Resolve paths relative to this config file
 const packagesDir = path.resolve(__dirname, '../../packages')
@@ -24,14 +24,14 @@ const config = defineConfig({
     alias: [
       // Framework package - point to source files in dev
       // IMPORTANT: More specific paths must come BEFORE less specific ones
-      { find: '@tanstack/framework/react/chat/pipeline', replacement: path.join(packagesDir, 'framework/src/react/chat/pipeline/index.ts') },
-      { find: '@tanstack/framework/react/chat', replacement: path.join(packagesDir, 'framework/src/react/chat/index.ts') },
-      { find: '@tanstack/framework/chat/isomorphic-tools', replacement: path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts') },
-      { find: '@tanstack/framework/chat/durable-streams', replacement: path.join(packagesDir, 'framework/src/lib/chat/durable-streams/index.ts') },
-      { find: '@tanstack/framework/chat', replacement: path.join(packagesDir, 'framework/src/lib/chat/index.ts') },
-      { find: '@tanstack/framework/handler/durable', replacement: path.join(packagesDir, 'framework/src/handler/durable/index.ts') },
-      { find: '@tanstack/framework/handler', replacement: path.join(packagesDir, 'framework/src/handler/index.ts') },
-      { find: '@tanstack/framework/vite', replacement: path.join(packagesDir, 'framework/src/vite/index.ts') },
+      { find: '@sweatpants/framework/react/chat/pipeline', replacement: path.join(packagesDir, 'framework/src/react/chat/pipeline/index.ts') },
+      { find: '@sweatpants/framework/react/chat', replacement: path.join(packagesDir, 'framework/src/react/chat/index.ts') },
+      { find: '@sweatpants/framework/chat/isomorphic-tools', replacement: path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts') },
+      { find: '@sweatpants/framework/chat/durable-streams', replacement: path.join(packagesDir, 'framework/src/lib/chat/durable-streams/index.ts') },
+      { find: '@sweatpants/framework/chat', replacement: path.join(packagesDir, 'framework/src/lib/chat/index.ts') },
+      { find: '@sweatpants/framework/handler/durable', replacement: path.join(packagesDir, 'framework/src/handler/durable/index.ts') },
+      { find: '@sweatpants/framework/handler', replacement: path.join(packagesDir, 'framework/src/handler/index.ts') },
+      { find: '@sweatpants/framework/vite', replacement: path.join(packagesDir, 'framework/src/vite/index.ts') },
     ],
   },
 

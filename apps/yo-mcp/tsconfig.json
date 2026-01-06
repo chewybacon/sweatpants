@@ -3,10 +3,10 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@tanstack/framework/chat/mcp-tools": [
+      "@sweatpants/framework/chat/mcp-tools": [
         "../../packages/framework/src/lib/chat/mcp-tools/index.ts"
       ],
-      "@tanstack/framework/chat/isomorphic-tools": [
+      "@sweatpants/framework/chat/isomorphic-tools": [
         "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
       ]
     }

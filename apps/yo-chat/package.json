@@ -23,7 +23,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@t3-oss/env-core": "catalog:",
     "@tailwindcss/vite": "catalog:",
-    "@tanstack/framework": "workspace:*",
+    "@sweatpants/framework": "workspace:*",
     "@tanstack/react-devtools": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-router-devtools": "catalog:",

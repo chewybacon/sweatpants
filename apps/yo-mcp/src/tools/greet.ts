@@ -4,7 +4,7 @@
  * A tool that demonstrates using sampling to generate a personalized greeting.
  */
 import { z } from 'zod'
-import { createMCPTool } from '@tanstack/framework/chat/mcp-tools'
+import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
 
 export const greetTool = createMCPTool('greet')
   .description('Generate a personalized greeting using AI')
