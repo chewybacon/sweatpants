@@ -39,6 +39,75 @@ import type {
 } from './types'
 
 // =============================================================================
+// ELICITATION SURFACE (finite, typed keys)
+// =============================================================================
+
+/**
+ * A map of elicitation keys to their Zod schemas.
+ *
+ * Used with `.elicits({...})` to declare a finite elicitation surface.
+ *
+ * @example
+ * ```typescript
+ * const tool = createBranchTool('book_flight')
+ *   .elicits({
+ *     pickFlight: z.object({ flightId: z.string() }),
+ *     confirm: z.object({ ok: z.boolean() }),
+ *   })
+ * ```
+ */
+export type ElicitsMap = Record<string, z.ZodType>
+
+/**
+ * Structured elicitation ID for correlation and logging.
+ * Simple key in API, structured id under the hood.
+ */
+export interface ElicitId {
+  toolName: string
+  key: string
+  callId: string
+  seq: number
+}
+
+/**
+ * Request object passed to elicitation handlers.
+ */
+export interface ElicitRequest<
+  TKey extends string = string,
+  TSchema extends z.ZodType = z.ZodType,
+> {
+  /** Structured id for correlation/logging */
+  id: ElicitId
+
+  /** The elicitation key (matches `.elicits()` declaration) */
+  key: TKey
+
+  /** Tool name */
+  toolName: string
+
+  /** Tool call id */
+  callId: string
+
+  /** Sequence number for this elicitation within the call */
+  seq: number
+
+  /** Message to display to the user */
+  message: string
+
+  /** Schema in both forms */
+  schema: {
+    zod: TSchema
+    json: Record<string, unknown>
+  }
+
+  /** Original tool params (for context) */
+  params?: unknown
+
+  /** Handoff data from before() phase (for richer UI) */
+  handoff?: unknown
+}
+
+// =============================================================================
 // MESSAGE TYPES
 // =============================================================================
 
@@ -395,6 +464,105 @@ export interface BranchContext {
 }
 
 // =============================================================================
+// KEYED ELICITATION CONTEXT (for bridgeable tools)
+// =============================================================================
+
+/**
+ * Branch context with typed, keyed elicitation.
+ *
+ * Used when a tool declares `.elicits({...})` to enable exhaustive
+ * UI bridging with type safety.
+ *
+ * @template TElicits - Map of elicitation keys to their Zod schemas
+ *
+ * @example
+ * ```typescript
+ * // Tool declares elicitation surface
+ * const tool = createBranchTool('book_flight')
+ *   .elicits({
+ *     pickFlight: z.object({ flightId: z.string() }),
+ *     confirm: z.object({ ok: z.boolean() }),
+ *   })
+ *   .handoff({
+ *     *client(handoff, ctx) {
+ *       // ctx.elicit is keyed and type-safe
+ *       const picked = yield* ctx.elicit('pickFlight', { message: 'Pick a flight' })
+ *       const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
+ *       return { picked, ok }
+ *     }
+ *   })
+ * ```
+ */
+export interface BranchContextWithElicits<TElicits extends ElicitsMap> {
+  // ---------------------------------------------------------------------------
+  // Parent context (read-only) - same as BranchContext
+  // ---------------------------------------------------------------------------
+
+  readonly parentMessages: readonly Message[]
+  readonly parentSystemPrompt: string | undefined
+
+  // ---------------------------------------------------------------------------
+  // Current branch state - same as BranchContext
+  // ---------------------------------------------------------------------------
+
+  readonly messages: readonly Message[]
+  readonly depth: number
+
+  // ---------------------------------------------------------------------------
+  // LLM backchannel - same as BranchContext
+  // ---------------------------------------------------------------------------
+
+  sample(config: BranchSampleConfig): Operation<SampleResult>
+
+  // ---------------------------------------------------------------------------
+  // User backchannel - KEYED elicitation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Request structured input from the user using a declared elicitation key.
+   *
+   * The key must exist in the tool's `.elicits({...})` declaration.
+   * The schema is derived from the key, enabling type-safe UI bridging.
+   *
+   * @param key - Elicitation key declared in `.elicits()`
+   * @param options - Options including message
+   * @returns The user's response (accept/decline/cancel)
+   *
+   * @example
+   * ```typescript
+   * const result = yield* ctx.elicit('confirm', { message: 'Proceed?' })
+   * if (result.action === 'accept') {
+   *   console.log('User confirmed:', result.content.ok)
+   * }
+   * ```
+   */
+  elicit<K extends keyof TElicits & string>(
+    key: K,
+    options: { message: string }
+  ): Operation<ElicitResult<z.infer<TElicits[K]>>>
+
+  // ---------------------------------------------------------------------------
+  // Sub-branches - inherit keyed elicitation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Spawn a sub-branch for structured concurrency.
+   * Sub-branches inherit the keyed elicitation context.
+   */
+  branch<T>(
+    fn: (ctx: BranchContextWithElicits<TElicits>) => Operation<T>,
+    options?: BranchOptions
+  ): Operation<T>
+
+  // ---------------------------------------------------------------------------
+  // Logging - same as BranchContext
+  // ---------------------------------------------------------------------------
+
+  log(level: LogLevel, message: string): Operation<void>
+  notify(message: string, progress?: number): Operation<void>
+}
+
+// =============================================================================
 // BRANCH HANDOFF CONFIGURATION
 // =============================================================================
 
@@ -445,6 +613,40 @@ export interface BranchHandoffConfig<TParams, THandoff, TClient, TResult> {
    *
    * Returns the final result that goes to the LLM.
    */
+  after: (
+    handoff: THandoff,
+    client: TClient,
+    ctx: BranchServerContext,
+    params: TParams
+  ) => Operation<TResult>
+}
+
+/**
+ * Configuration for a tool with branch-based handoff and keyed elicitation.
+ *
+ * Same as BranchHandoffConfig but the client phase receives
+ * BranchContextWithElicits for type-safe, keyed elicitation.
+ *
+ * @template TParams - Tool parameters from LLM
+ * @template THandoff - Data from before() to client() and after()
+ * @template TClient - Data from client() to after()
+ * @template TResult - Final result returned to LLM
+ * @template TElicits - Map of elicitation keys to their Zod schemas
+ */
+export interface BranchHandoffConfigWithElicits<
+  TParams,
+  THandoff,
+  TClient,
+  TResult,
+  TElicits extends ElicitsMap,
+> {
+  before: (params: TParams, ctx: BranchServerContext) => Operation<THandoff>
+
+  client: (
+    handoff: THandoff,
+    ctx: BranchContextWithElicits<TElicits>
+  ) => Operation<TClient>
+
   after: (
     handoff: THandoff,
     client: TClient,

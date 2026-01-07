@@ -1,0 +1,755 @@
+/**
+ * Bridge Runtime for In-App MCP Tool Execution
+ *
+ * Enables running MCP tools inside the framework (not via external MCP server).
+ * When a tool calls `ctx.elicit(key, {message})`, the runtime:
+ * 1. Emits an ElicitRequest to the output channel
+ * 2. Suspends waiting for a response via Signal
+ * 3. Validates the response with Zod and resumes the generator
+ *
+ * This enables UI-driven elicitation where the client renders a component
+ * and sends back the user's response.
+ *
+ * @packageDocumentation
+ */
+import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, sleep } from 'effection'
+import type { z } from 'zod'
+import type {
+  BranchContextWithElicits,
+  BranchHandoffConfigWithElicits,
+  BranchLimits,
+  BranchOptions,
+  BranchSampleConfig,
+  BranchServerContext,
+  ElicitId,
+  ElicitRequest,
+  ElicitsMap,
+  Message,
+  SampleResult,
+} from './branch-types'
+import {
+  BranchDepthError,
+  BranchTokenError,
+} from './branch-types'
+import type { ElicitResult, LogLevel } from './types'
+import type { FinalizedBranchToolWithElicits } from './branch-builder'
+
+// =============================================================================
+// BRIDGE HOST INTERFACE
+// =============================================================================
+
+/**
+ * Elicitation response from the client.
+ */
+export interface ElicitResponse<T = unknown> {
+  /** Matches the request id */
+  id: ElicitId
+
+  /** The user's response */
+  result: ElicitResult<T>
+}
+
+/**
+ * Events emitted by the bridge runtime.
+ */
+export type BridgeEvent =
+  | { type: 'elicit'; request: ElicitRequest; responseSignal: Signal<ElicitResponse, void> }
+  | { type: 'log'; level: LogLevel; message: string }
+  | { type: 'notify'; message: string; progress?: number }
+  | { type: 'sample'; messages: Message[]; options?: { systemPrompt?: string; maxTokens?: number } }
+
+/**
+ * Sampling provider for the bridge runtime.
+ *
+ * Implements the LLM sampling backchannel. This is server-side,
+ * so it uses the framework's configured provider.
+ */
+export interface BridgeSamplingProvider {
+  sample(
+    messages: Message[],
+    options?: { systemPrompt?: string; maxTokens?: number }
+  ): Operation<SampleResult>
+}
+
+/**
+ * Bridge host configuration.
+ */
+export interface BridgeHostConfig<
+  TName extends string = string,
+  TParams = unknown,
+  THandoff = unknown,
+  TClient = unknown,
+  TResult = unknown,
+  TElicits extends ElicitsMap = ElicitsMap,
+> {
+  /** Tool being executed */
+  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+
+  /** Tool parameters */
+  params: TParams
+
+  /** Sampling provider for ctx.sample() */
+  samplingProvider: BridgeSamplingProvider
+
+  /** Abort signal for cancellation */
+  signal?: AbortSignal
+
+  /** Tool call ID (generated if not provided) */
+  callId?: string
+
+  /** Override limits from tool definition */
+  limits?: BranchLimits
+
+  /** Initial messages (parent context) */
+  parentMessages?: Message[]
+
+  /** Initial system prompt */
+  systemPrompt?: string
+}
+
+/**
+ * Bridge host handle returned from createBridgeHost().
+ *
+ * The host runs the tool and manages the elicitation channel.
+ */
+export interface BridgeHost<TResult> {
+  /**
+   * Channel for receiving events (elicit requests, logs, etc.)
+   * Client code should subscribe to this and handle events.
+   */
+  events: Channel<BridgeEvent, void>
+
+  /**
+   * Run the tool to completion.
+   * Returns when the tool finishes (either successfully or with error).
+   */
+  run(): Operation<TResult>
+}
+
+// =============================================================================
+// TOKEN TRACKING
+// =============================================================================
+
+interface TokenTracker {
+  used: number
+  budget?: number
+  parent?: TokenTracker
+}
+
+function estimateTokensFromText(text: string): number {
+  return Math.ceil(text.length / 4)
+}
+
+function estimateTokensFromConversation(options: {
+  systemPrompt?: string
+  messages: Message[]
+  completion: string
+}): number {
+  const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0
+  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content), 0)
+  const completion = estimateTokensFromText(options.completion)
+  return system + convo + completion
+}
+
+function addTokens(tracker: TokenTracker, tokens: number): void {
+  for (let current: TokenTracker | undefined = tracker; current; current = current.parent) {
+    current.used += tokens
+    if (current.budget !== undefined && current.used > current.budget) {
+      throw new BranchTokenError(current.used, current.budget)
+    }
+  }
+}
+
+// =============================================================================
+// BRANCH STATE
+// =============================================================================
+
+interface BranchState<TElicits extends ElicitsMap> {
+  messages: Message[]
+  systemPrompt?: string
+  parentMessages: readonly Message[]
+  parentSystemPrompt?: string
+  depth: number
+  limits: BranchLimits
+  tokenTracker: TokenTracker
+
+  // Bridge-specific state
+  toolName: string
+  callId: string
+  elicitSeq: number
+  elicits: TElicits
+  eventChannel: Channel<BridgeEvent, void>
+  samplingProvider: BridgeSamplingProvider
+}
+
+// =============================================================================
+// ERROR TYPES
+// =============================================================================
+
+/**
+ * Error thrown when elicit() is called inside a sub-branch.
+ * Elicitation is only allowed at depth 0 (root branch).
+ */
+export class BranchElicitNotAllowedError extends Error {
+  constructor(public readonly depth: number) {
+    super(`elicit() is not allowed inside sub-branches (depth=${depth}). Elicitation must happen at the root branch.`)
+    this.name = 'BranchElicitNotAllowedError'
+  }
+}
+
+// =============================================================================
+// HELPER: CONVERT ZOD TO JSON SCHEMA (INLINE)
+// =============================================================================
+
+/**
+ * Simple Zod to JSON Schema conversion for MCP elicitation.
+ * Only supports flat objects with primitive types (MCP elicitation constraint).
+ */
+function zodToJsonSchema(_schema: z.ZodType): Record<string, unknown> {
+  // For now, just return a placeholder since MCP elicitation uses zod directly
+  // The client-side can use the zod schema for validation
+  // If we need real JSON schema, we can add zod-to-json-schema as a dependency
+  return {
+    type: 'object',
+    description: 'Schema for elicitation (use zod for validation)',
+  }
+}
+
+// =============================================================================
+// CONTEXT IMPLEMENTATION
+// =============================================================================
+
+function createBridgeContext<TElicits extends ElicitsMap>(
+  state: BranchState<TElicits>
+): BranchContextWithElicits<TElicits> {
+  return {
+    // Read-only parent context
+    get parentMessages() {
+      return state.parentMessages
+    },
+    get parentSystemPrompt() {
+      return state.parentSystemPrompt
+    },
+
+    // Current branch state
+    get messages() {
+      return state.messages as readonly Message[]
+    },
+    get depth() {
+      return state.depth
+    },
+
+    // LLM backchannel
+    sample(config: BranchSampleConfig): Operation<SampleResult> {
+      return {
+        *[Symbol.iterator]() {
+          let messages: Message[]
+
+          if ('prompt' in config && config.prompt) {
+            const userMessage: Message = { role: 'user', content: config.prompt }
+            messages = [...state.messages, userMessage]
+          } else if ('messages' in config && config.messages) {
+            messages = config.messages
+          } else {
+            throw new Error('sample() requires either prompt or messages')
+          }
+
+          const sampleOptions: { systemPrompt?: string; maxTokens?: number } = {}
+          const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt
+          if (effectiveSystemPrompt !== undefined) {
+            sampleOptions.systemPrompt = effectiveSystemPrompt
+          }
+          if (config.maxTokens !== undefined) {
+            sampleOptions.maxTokens = config.maxTokens
+          }
+
+          // Emit sample event for observability (only if options exist)
+          const event: BridgeEvent = {
+            type: 'sample',
+            messages,
+          }
+          if (Object.keys(sampleOptions).length > 0) {
+            (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
+          }
+          yield* state.eventChannel.send(event)
+
+          // Call the sampling provider
+          const result = yield* state.samplingProvider.sample(messages, sampleOptions)
+
+          // If using auto-tracked mode, update branch messages
+          if ('prompt' in config && config.prompt) {
+            state.messages.push(
+              { role: 'user', content: config.prompt },
+              { role: 'assistant', content: result.text }
+            )
+          }
+
+          // Track token usage
+          const estimatedTokens = estimateTokensFromConversation({
+            ...(sampleOptions.systemPrompt !== undefined
+              ? { systemPrompt: sampleOptions.systemPrompt }
+              : {}),
+            messages,
+            completion: result.text,
+          })
+          addTokens(state.tokenTracker, estimatedTokens)
+
+          return result
+        },
+      }
+    },
+
+    // User backchannel - KEYED elicitation
+    elicit<K extends keyof TElicits & string>(
+      key: K,
+      options: { message: string }
+    ): Operation<ElicitResult<z.infer<TElicits[K]>>> {
+      return {
+        *[Symbol.iterator]() {
+          // Phase 5: Disallow elicit in sub-branches
+          if (state.depth > 0) {
+            throw new BranchElicitNotAllowedError(state.depth)
+          }
+
+          // Get the schema for this key
+          const schema = state.elicits[key]
+          if (!schema) {
+            throw new Error(`Unknown elicitation key "${key}" for tool "${state.toolName}"`)
+          }
+
+          // Increment sequence for this call
+          const seq = state.elicitSeq++
+
+          // Build the structured ID
+          const id: ElicitId = {
+            toolName: state.toolName,
+            key,
+            callId: state.callId,
+            seq,
+          }
+
+          // Build the request
+          const request: ElicitRequest<K, TElicits[K]> = {
+            id,
+            key,
+            toolName: state.toolName,
+            callId: state.callId,
+            seq,
+            message: options.message,
+            schema: {
+              zod: schema,
+              json: zodToJsonSchema(schema),
+            },
+          }
+
+          // Create a signal for the response
+          const responseSignal = createSignal<ElicitResponse, void>()
+
+          // Emit the elicit event with the signal
+          yield* state.eventChannel.send({ type: 'elicit', request, responseSignal })
+
+          // Wait for response via signal
+          const subscription = yield* responseSignal
+          const next = yield* subscription.next()
+          if (next.done) {
+            throw new Error(`Elicit signal closed without response for key "${key}"`)
+          }
+          const response = next.value
+
+          // Validate the response matches our request
+          if (
+            response.id.toolName !== id.toolName ||
+            response.id.key !== id.key ||
+            response.id.callId !== id.callId ||
+            response.id.seq !== id.seq
+          ) {
+            throw new Error(
+              `Elicit response mismatch: expected ${JSON.stringify(id)}, got ${JSON.stringify(response.id)}`
+            )
+          }
+
+          // If accepted, validate content with Zod
+          if (response.result.action === 'accept') {
+            const parseResult = schema.safeParse(response.result.content)
+            if (!parseResult.success) {
+              throw new Error(
+                `Elicit response validation failed for key "${key}": ${parseResult.error.message}`
+              )
+            }
+            return { action: 'accept', content: parseResult.data } as ElicitResult<z.infer<TElicits[K]>>
+          }
+
+          return response.result as ElicitResult<z.infer<TElicits[K]>>
+        },
+      }
+    },
+
+    // Sub-branches - inherit keyed elicitation
+    branch<T>(
+      fn: (ctx: BranchContextWithElicits<TElicits>) => Operation<T>,
+      options: BranchOptions = {}
+    ): Operation<T> {
+      return {
+        *[Symbol.iterator]() {
+          const newDepth = state.depth + 1
+          const maxDepth = options.maxDepth ?? state.limits.maxDepth
+
+          if (maxDepth !== undefined && newDepth > maxDepth) {
+            throw new BranchDepthError(newDepth, maxDepth)
+          }
+
+          const inheritMessages = options.inheritMessages ?? true
+          const inheritSystemPrompt = options.inheritSystemPrompt ?? true
+
+          let newMessages: Message[] = []
+          if (inheritMessages) {
+            newMessages = [...state.messages]
+          }
+          if (options.messages) {
+            newMessages = [...newMessages, ...options.messages]
+          }
+
+          const newLimits: BranchLimits = {}
+          if (options.maxDepth !== undefined) {
+            newLimits.maxDepth = options.maxDepth
+          } else if (state.limits.maxDepth !== undefined) {
+            newLimits.maxDepth = state.limits.maxDepth
+          }
+          if (options.maxTokens !== undefined) {
+            newLimits.maxTokens = options.maxTokens
+          } else if (state.limits.maxTokens !== undefined) {
+            newLimits.maxTokens = state.limits.maxTokens
+          }
+          if (options.timeout !== undefined) {
+            newLimits.timeout = options.timeout
+          } else if (state.limits.timeout !== undefined) {
+            newLimits.timeout = state.limits.timeout
+          }
+
+          const subTokenTracker: TokenTracker = {
+            used: 0,
+            parent: state.tokenTracker,
+          }
+          if (newLimits.maxTokens !== undefined) {
+            subTokenTracker.budget = newLimits.maxTokens
+          }
+
+          const newState: BranchState<TElicits> = {
+            messages: newMessages,
+            parentMessages: state.messages as readonly Message[],
+            depth: newDepth,
+            limits: newLimits,
+            tokenTracker: subTokenTracker,
+            // Bridge state is shared (same tool call)
+            toolName: state.toolName,
+            callId: state.callId,
+            elicitSeq: state.elicitSeq, // Note: sub-branches share seq with parent
+            elicits: state.elicits,
+            eventChannel: state.eventChannel,
+            samplingProvider: state.samplingProvider,
+          }
+
+          const newSystemPrompt = options.systemPrompt ?? (inheritSystemPrompt ? state.systemPrompt : undefined)
+          if (newSystemPrompt !== undefined) {
+            newState.systemPrompt = newSystemPrompt
+          }
+          if (state.systemPrompt !== undefined) {
+            newState.parentSystemPrompt = state.systemPrompt
+          }
+
+          const subContext = createBridgeContext(newState)
+          const result = yield* fn(subContext)
+
+          // Update parent's elicitSeq from sub-branch (in case sub-branch advanced it)
+          // Note: This is a no-op since elicit throws in sub-branches, but defensive
+          state.elicitSeq = newState.elicitSeq
+
+          return result
+        },
+      }
+    },
+
+    // Logging
+    log(level: LogLevel, message: string): Operation<void> {
+      return state.eventChannel.send({ type: 'log', level, message })
+    },
+
+    notify(message: string, progress?: number): Operation<void> {
+      // Only include progress if defined
+      const event: BridgeEvent = { type: 'notify', message }
+      if (progress !== undefined) {
+        (event as Extract<BridgeEvent, { type: 'notify' }>).progress = progress
+      }
+      return state.eventChannel.send(event)
+    },
+  }
+}
+
+// =============================================================================
+// BRIDGE HOST IMPLEMENTATION
+// =============================================================================
+
+/**
+ * Create a bridge host for running an MCP tool in-app.
+ *
+ * The host manages the tool's execution and provides channels for
+ * elicitation and events.
+ *
+ * @example
+ * ```typescript
+ * const host = createBridgeHost({
+ *   tool: bookFlightTool,
+ *   params: { destination: 'NYC' },
+ *   samplingProvider: myProvider,
+ * })
+ *
+ * // Subscribe to events in parallel
+ * yield* spawn(function* () {
+ *   for (const event of yield* each(host.events)) {
+ *     if (event.type === 'elicit') {
+ *       // Render UI for elicitation
+ *       const userResponse = yield* showUI(event.request)
+ *       // Send response via the signal included in the event
+ *       event.responseSignal.send({ id: event.request.id, result: userResponse })
+ *     }
+ *     yield* each.next()
+ *   }
+ * })
+ *
+ * // Run the tool
+ * const result = yield* host.run()
+ * ```
+ */
+export function createBridgeHost<
+  TName extends string,
+  TParams,
+  THandoff,
+  TClient,
+  TResult,
+  TElicits extends ElicitsMap,
+>(
+  config: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits>
+): BridgeHost<TResult> {
+  const eventChannel = createChannel<BridgeEvent, void>()
+
+  const callId = config.callId ?? `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
+
+  return {
+    events: eventChannel,
+
+    run(): Operation<TResult> {
+      return {
+        *[Symbol.iterator]() {
+          const { tool, params, samplingProvider, limits: overrideLimits, parentMessages, systemPrompt } = config
+          const signal = config.signal ?? new AbortController().signal
+
+          // Validate params
+          const parseResult = tool.parameters.safeParse(params)
+          if (!parseResult.success) {
+            throw new Error(`Invalid params for tool "${tool.name}": ${parseResult.error.message}`)
+          }
+          const validatedParams = parseResult.data as TParams
+
+          // Merge limits
+          const limits: BranchLimits = {
+            ...tool.limits,
+            ...overrideLimits,
+          }
+
+          // Create server context
+          const serverCtx: BranchServerContext = {
+            callId,
+            signal,
+          }
+
+          const rootTokenTracker: TokenTracker = { used: 0 }
+          if (limits.maxTokens !== undefined) {
+            rootTokenTracker.budget = limits.maxTokens
+          }
+
+          // Create initial branch state
+          const initialState: BranchState<TElicits> = {
+            messages: [],
+            parentMessages: parentMessages ?? [],
+            depth: 0,
+            limits,
+            tokenTracker: rootTokenTracker,
+            // Bridge state
+            toolName: tool.name,
+            callId,
+            elicitSeq: 0,
+            elicits: tool.elicits,
+            eventChannel,
+            samplingProvider,
+          }
+
+          if (systemPrompt !== undefined) {
+            initialState.systemPrompt = systemPrompt
+            initialState.parentSystemPrompt = systemPrompt
+          }
+
+          let result: TResult
+
+          if (tool.handoffConfig) {
+            const handoffConfig = tool.handoffConfig as BranchHandoffConfigWithElicits<
+              TParams,
+              THandoff,
+              TClient,
+              TResult,
+              TElicits
+            >
+
+            // Phase 1: before()
+            const handoff = yield* handoffConfig.before(validatedParams, serverCtx)
+
+            // Create context for client phase
+            const branchCtx = createBridgeContext(initialState)
+
+            // Client phase
+            const clientResult = yield* handoffConfig.client(handoff, branchCtx)
+
+            // Phase 2: after()
+            result = yield* handoffConfig.after(handoff, clientResult, serverCtx, validatedParams)
+          } else if (tool.execute) {
+            const branchCtx = createBridgeContext(initialState)
+            result = yield* tool.execute(validatedParams, branchCtx)
+          } else {
+            throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
+          }
+
+          // Close channel when done
+          yield* eventChannel.close()
+
+          return result
+        },
+      }
+    },
+  }
+}
+
+// =============================================================================
+// CONVENIENCE: RUN WITH AUTO-HANDLER
+// =============================================================================
+
+/**
+ * Handler map for elicitation requests.
+ * Each key maps to a generator that handles that elicitation.
+ */
+export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
+  [K in keyof TElicits]: (
+    request: ElicitRequest<K & string, TElicits[K]>
+  ) => Operation<ElicitResult<z.infer<TElicits[K]>>>
+}
+
+/**
+ * Run a bridgeable tool with handlers for elicitation.
+ *
+ * This is a convenience wrapper that wires up the event loop.
+ * For more control, use createBridgeHost() directly.
+ *
+ * @example
+ * ```typescript
+ * const result = yield* runBridgeTool({
+ *   tool: bookFlightTool,
+ *   params: { destination: 'NYC' },
+ *   samplingProvider: myProvider,
+ *   handlers: {
+ *     pickFlight: function* (req) {
+ *       // Show UI, get user response
+ *       return { action: 'accept', content: { flightId: 'FL123' } }
+ *     },
+ *     confirm: function* (req) {
+ *       return { action: 'accept', content: { ok: true } }
+ *     },
+ *   },
+ * })
+ * ```
+ */
+export function runBridgeTool<
+  TName extends string,
+  TParams,
+  THandoff,
+  TClient,
+  TResult,
+  TElicits extends ElicitsMap,
+>(config: {
+  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  params: TParams
+  samplingProvider: BridgeSamplingProvider
+  handlers: BridgeElicitHandlers<TElicits>
+  signal?: AbortSignal
+  callId?: string
+  limits?: BranchLimits
+  parentMessages?: Message[]
+  systemPrompt?: string
+  onLog?: (level: LogLevel, message: string) => void
+  onNotify?: (message: string, progress?: number) => void
+  onSample?: (messages: Message[], options?: { systemPrompt?: string; maxTokens?: number }) => void
+}): Operation<TResult> {
+  return {
+    *[Symbol.iterator]() {
+      const hostConfig: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits> = {
+        tool: config.tool,
+        params: config.params,
+        samplingProvider: config.samplingProvider,
+      }
+
+      // Only add optional properties if defined
+      if (config.signal !== undefined) {
+        hostConfig.signal = config.signal
+      }
+      if (config.callId !== undefined) {
+        hostConfig.callId = config.callId
+      }
+      if (config.limits !== undefined) {
+        hostConfig.limits = config.limits
+      }
+      if (config.parentMessages !== undefined) {
+        hostConfig.parentMessages = config.parentMessages
+      }
+      if (config.systemPrompt !== undefined) {
+        hostConfig.systemPrompt = config.systemPrompt
+      }
+
+      const host = createBridgeHost(hostConfig)
+
+      // Spawn event handler
+      yield* spawn(function* () {
+        for (const event of yield* each(host.events)) {
+          switch (event.type) {
+            case 'elicit': {
+              const handler = config.handlers[event.request.key as keyof TElicits]
+              if (!handler) {
+                throw new Error(`No handler for elicitation key "${event.request.key}"`)
+              }
+              const result = yield* handler(event.request as ElicitRequest<string, TElicits[keyof TElicits]>)
+              event.responseSignal.send({ id: event.request.id, result })
+              break
+            }
+            case 'log':
+              config.onLog?.(event.level, event.message)
+              break
+            case 'notify':
+              config.onNotify?.(event.message, event.progress)
+              break
+            case 'sample':
+              config.onSample?.(event.messages, event.options)
+              break
+          }
+          yield* each.next()
+        }
+      })
+
+      // Let event handler start subscribing
+      yield* sleep(0)
+
+      // Run the tool
+      const result = yield* host.run()
+
+      // Give event handler time to process any remaining events
+      yield* sleep(0)
+
+      return result
+    },
+  }
+}
