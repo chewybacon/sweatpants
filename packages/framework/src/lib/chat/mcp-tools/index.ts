@@ -431,3 +431,75 @@ export type {
   PendingRequest,
   ParsedJsonRpcMessage,
 } from './protocol'
+
+// =============================================================================
+// MCP HTTP HANDLER (Streamable HTTP transport)
+// =============================================================================
+
+export {
+  // Main factory
+  createMcpHandler,
+  
+  // Session manager
+  createSessionManager,
+  McpSessionManager,
+  McpSessionManagerContext,
+  
+  // Request parsing
+  parseHeaders,
+  validatePostHeaders,
+  validateGetHeaders,
+  parseRequest,
+  classifyRequest,
+  parseAndClassify,
+  
+  // POST handling
+  handleToolsCall,
+  handleElicitResponse,
+  handleSampleResponse,
+  handlePost,
+  
+  // SSE streaming
+  createSseEventStream,
+  createSseStreamSetup,
+  handleGet,
+  
+  // Error handling
+  McpHandlerError,
+  MCP_HANDLER_ERRORS,
+} from './handler'
+
+export type {
+  // Config
+  McpHandlerConfig,
+  McpHandlerOptions,
+  McpHttpHandler,
+  
+  // Request types
+  McpHttpMethod,
+  McpRequestHeaders,
+  McpParsedRequest,
+  McpRequestType,
+  McpClassifiedRequest,
+  McpToolsCallRequest,
+  McpElicitResponse,
+  McpSampleResponse,
+  McpSseStreamRequest,
+  McpTerminateRequest,
+  
+  // Response types
+  McpPostResult,
+  
+  // Session state
+  McpSessionState,
+  PendingElicitation,
+  PendingSample,
+  McpSessionManagerOptions,
+  
+  // Handler options
+  PostHandlerOptions,
+  SseStreamOptions,
+  
+  // Error types
+  McpHandlerErrorCode,
+} from './handler'
