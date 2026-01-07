@@ -10,9 +10,16 @@
  * This enables UI-driven elicitation where the client renders a component
  * and sends back the user's response.
  *
+ * ## Buffered Channel Pattern
+ *
+ * The bridge uses a buffered channel for events. This means:
+ * - Events are queued until a subscriber is ready
+ * - No messages are dropped, even if subscriber connects late
+ * - No sleep(0) hacks needed
+ *
  * @packageDocumentation
  */
-import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, sleep } from 'effection'
+import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, call } from 'effection'
 import type { z } from 'zod'
 import type {
   McpToolContextWithElicits,
@@ -47,6 +54,128 @@ const BranchDepthError = McpToolDepthError
 const BranchTokenError = McpToolTokenError
 type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
   FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+
+// =============================================================================
+// BUFFERED CHANNEL (Queue-based, never drops messages)
+// =============================================================================
+
+/**
+ * Create a sync-safe buffered channel that won't drop messages.
+ *
+ * Unlike useBufferedChannel (which is a resource), this returns a Channel
+ * that can be created synchronously. Messages are queued until a subscriber
+ * starts iterating, then forwarded in order.
+ *
+ * This is used by createBridgeHost where we need to create the channel
+ * synchronously but don't want to drop messages.
+ */
+function createBufferedChannel<T>(): Channel<T, void> {
+  // Queue for buffering messages until subscriber is ready
+  const queue: T[] = []
+  let closed = false
+  let hasSubscriber = false
+
+  // Callbacks for async coordination
+  let subscriberResolve: (() => void) | null = null
+  let itemResolve: (() => void) | null = null
+  let closeResolve: (() => void) | null = null
+
+  // The underlying channel for actual pub/sub (created lazily)
+  let channel: Channel<T, void> | null = null
+  let forwarderStarted = false
+
+  return {
+    *send(message: T) {
+      if (closed) return
+      queue.push(message)
+      if (itemResolve) {
+        itemResolve()
+        itemResolve = null
+      }
+    },
+
+    *close() {
+      closed = true
+      if (itemResolve) {
+        itemResolve()
+        itemResolve = null
+      }
+
+      // If queue is empty and no subscriber, just return
+      if (queue.length === 0 && !hasSubscriber) {
+        return
+      }
+
+      // If there are queued messages but no subscriber yet,
+      // wait for subscriber to start processing
+      if (!hasSubscriber && queue.length > 0) {
+        yield* call(
+          () =>
+            new Promise<void>(resolve => {
+              subscriberResolve = resolve
+            })
+        )
+      }
+
+      // Wait for forwarder to finish delivering all messages
+      yield* call(
+        () =>
+          new Promise<void>(resolve => {
+            if (queue.length === 0 && forwarderStarted) {
+              resolve()
+            } else {
+              closeResolve = resolve
+            }
+          })
+      )
+
+      if (channel) {
+        yield* channel.close()
+      }
+    },
+
+    [Symbol.iterator]: function* () {
+      hasSubscriber = true
+      if (subscriberResolve) {
+        subscriberResolve()
+        subscriberResolve = null
+      }
+
+      // Create the underlying channel now
+      channel = createChannel<T, void>()
+
+      // Spawn forwarder that reads from queue and forwards to channel
+      yield* spawn(function* () {
+        forwarderStarted = true
+
+        while (true) {
+          // Process all queued items
+          while (queue.length > 0) {
+            const item = queue.shift()!
+            yield* channel!.send(item)
+          }
+
+          // If closed and queue empty, close channel and exit
+          if (closed && queue.length === 0) {
+            if (closeResolve) closeResolve()
+            break
+          }
+
+          // Wait for more items or close
+          yield* call(function waitForItem(): Promise<void> {
+            if (queue.length > 0 || closed) return Promise.resolve()
+            return new Promise(resolve => {
+              itemResolve = resolve
+            })
+          })
+        }
+      })
+
+      // Return the channel's subscription
+      return yield* channel
+    },
+  }
+}
 
 // =============================================================================
 // BRIDGE HOST INTERFACE
@@ -544,7 +673,9 @@ export function createBridgeHost<
 >(
   config: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits>
 ): BridgeHost<TResult> {
-  const eventChannel = createChannel<BridgeEvent, void>()
+  // Use a buffered channel to avoid subscribe-before-send race condition.
+  // Messages are queued until a subscriber starts iterating.
+  const eventChannel = createBufferedChannel<BridgeEvent>()
 
   const callId = config.callId ?? `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
@@ -702,6 +833,8 @@ export function runBridgeTool<
 }): Operation<TResult> {
   return {
     *[Symbol.iterator]() {
+      // createBridgeHost now uses a buffered channel internally,
+      // so no sleep(0) hacks are needed. Events are queued until subscriber is ready.
       const hostConfig: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits> = {
         tool: config.tool,
         params: config.params,
@@ -754,14 +887,8 @@ export function runBridgeTool<
         }
       })
 
-      // Let event handler start subscribing
-      yield* sleep(0)
-
-      // Run the tool
+      // No sleep(0) needed! The buffered channel queues events until subscriber iterates.
       const result = yield* host.run()
-
-      // Give event handler time to process any remaining events
-      yield* sleep(0)
 
       return result
     },
