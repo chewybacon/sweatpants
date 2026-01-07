@@ -3,10 +3,14 @@
  *
  * Generator-based primitives for authoring MCP (Model Context Protocol) tools.
  *
- * @example Simple tool
+ * ## Two Builders
+ *
+ * - `createMCPTool`: Original builder with MCPClientContext (simpler)
+ * - `createBranchTool`: Branch-based builder with sub-branching support
+ *
+ * @example Simple tool (original)
  * ```typescript
  * import { createMCPTool } from '@grove/framework/mcp-tools'
- * import { z } from 'zod'
  *
  * const calculator = createMCPTool('calculate')
  *   .description('Perform a calculation')
@@ -16,33 +20,33 @@
  *   })
  * ```
  *
- * @example Multi-turn tool with handoff
+ * @example Branch-based tool with sub-branches
  * ```typescript
- * const bookFlight = createMCPTool('book_flight')
- *   .description('Book a flight with user confirmation')
- *   .parameters(z.object({ destination: z.string() }))
- *   .requires({ elicitation: true })
- *   .handoff({
- *     *before(params) {
- *       return { flights: searchFlights(params.destination) }
- *     },
- *     *client(handoff, ctx) {
- *       const result = yield* ctx.elicit({
- *         message: 'Pick a flight:',
- *         schema: z.object({ flightId: z.string() })
- *       })
- *       return result.action === 'accept' ? result.content : null
- *     },
- *     *after(handoff, client) {
- *       return client ? `Booked ${client.flightId}` : 'Cancelled'
- *     },
+ * import { createBranchTool } from '@grove/framework/mcp-tools'
+ *
+ * const analyze = createBranchTool('analyze')
+ *   .description('Analyze with sub-branches')
+ *   .parameters(z.object({ input: z.string() }))
+ *   .execute(function*(params, ctx) {
+ *     // Auto-tracked conversation
+ *     const first = yield* ctx.sample({ prompt: 'First step...' })
+ *
+ *     // Sub-branch for isolated task
+ *     const detail = yield* ctx.branch(function* (subCtx) {
+ *       return yield* subCtx.sample({ prompt: 'Detail...' })
+ *     }, { inheritMessages: false })
+ *
+ *     return { first: first.text, detail: detail.text }
  *   })
  * ```
  *
  * @packageDocumentation
  */
 
-// Builder
+// =============================================================================
+// ORIGINAL MCP BUILDER (simpler, no sub-branching)
+// =============================================================================
+
 export { createMCPTool } from './builder'
 export type {
   MCPToolBuilderBase,
@@ -56,7 +60,7 @@ export type {
   InferMCPClient,
 } from './builder'
 
-// Types
+// Original types
 export type {
   MCPClientContext,
   MCPServerContext,
@@ -74,7 +78,7 @@ export type {
   InferMCPToolClient,
 } from './types'
 
-// Errors
+// Errors (shared)
 export {
   MCPCapabilityError,
   ElicitationDeclinedError,
@@ -83,7 +87,7 @@ export {
   MCPDisconnectError,
 } from './types'
 
-// Mock runtime (for testing)
+// Original mock runtime
 export {
   createMockMCPClient,
   runMCPTool,
@@ -94,3 +98,60 @@ export type {
   MockMCPClientConfig,
   RunMCPToolOptions,
 } from './mock-runtime'
+
+// =============================================================================
+// BRANCH-BASED BUILDER (sub-branching, context tracking)
+// =============================================================================
+
+export { createBranchTool } from './branch-builder'
+export type {
+  BranchToolBuilderBase,
+  BranchToolBuilderWithDescription,
+  BranchToolBuilderWithParams,
+  FinalizedBranchTool,
+  BranchToolTypes,
+  InferBranchResult,
+  InferBranchParams,
+  InferBranchHandoff,
+  InferBranchClient,
+  AnyBranchTool,
+} from './branch-builder'
+
+// Branch types
+export type {
+  BranchContext,
+  BranchHandoffConfig,
+  BranchServerContext,
+  BranchOptions,
+  BranchLimits,
+  BranchSampleConfig,
+  SampleConfigPrompt,
+  SampleConfigMessages,
+  SampleResult,
+  Message,
+  MessageRole,
+} from './branch-types'
+
+// Branch errors
+export {
+  BranchDepthError,
+  BranchTokenError,
+  BranchTimeoutError,
+} from './branch-types'
+
+// Branch runtime
+export { runBranchTool } from './branch-runtime'
+export type {
+  BranchMCPClient,
+  RunBranchToolOptions,
+} from './branch-runtime'
+
+// Branch mock runtime
+export {
+  createMockBranchClient,
+  runBranchToolMock,
+} from './branch-mock'
+export type {
+  MockBranchClient,
+  MockBranchClientConfig,
+} from './branch-mock'

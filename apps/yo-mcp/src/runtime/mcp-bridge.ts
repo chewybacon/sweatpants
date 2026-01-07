@@ -15,6 +15,12 @@ import type {
   SampleConfig,
   LogLevel,
   FinalizedMCPTool,
+  // Branch types
+  FinalizedBranchTool,
+  BranchMCPClient,
+  Message,
+  SampleResult,
+  BranchServerContext,
 } from '@sweatpants/framework/chat/mcp-tools'
 
 // =============================================================================
@@ -272,12 +278,32 @@ async function executeGenerator<T>(
 // =============================================================================
 
 /**
+ * Options for creating an MCP server with tools.
+ */
+export interface CreateMCPServerOptions extends MCPBridgeOptions {
+  /** Original MCP tools (using MCPClientContext) */
+  tools?: FinalizedMCPTool<string, any, any, any, any>[]
+  /** Branch-based tools (using BranchContext) */
+  branchTools?: FinalizedBranchTool<string, any, any, any, any>[]
+}
+
+/**
  * Create an MCP server with registered tools.
  */
 export function createMCPServerWithTools(
   options: MCPBridgeOptions,
   tools: FinalizedMCPTool<string, any, any, any, any>[]
 ): McpServer {
+  return createMCPServer({
+    ...options,
+    tools,
+  })
+}
+
+/**
+ * Create an MCP server with both original and branch-based tools.
+ */
+export function createMCPServer(options: CreateMCPServerOptions): McpServer {
   const mcpServer = new McpServer(
     {
       name: options.name,
@@ -291,9 +317,14 @@ export function createMCPServerWithTools(
     }
   )
 
-  // Register each tool
-  for (const tool of tools) {
+  // Register original tools
+  for (const tool of options.tools ?? []) {
     registerToolWithMCP(mcpServer, tool)
+  }
+
+  // Register branch-based tools
+  for (const tool of options.branchTools ?? []) {
+    registerBranchToolWithMCP(mcpServer, tool)
   }
 
   return mcpServer
@@ -386,4 +417,350 @@ function registerToolWithMCP(
       }
     }
   )
+}
+
+// =============================================================================
+// BRANCH TOOL SUPPORT
+// =============================================================================
+
+/**
+ * Create a BranchMCPClient that uses the real MCP server.
+ */
+function createBranchMCPClient(server: Server): BranchMCPClient {
+  return {
+    capabilities: {
+      elicitation: true,
+      sampling: true,
+    },
+
+    sample(
+      messages: Message[],
+      options?: { systemPrompt?: string; maxTokens?: number }
+    ): { [Symbol.iterator](): Generator<any, SampleResult> } {
+      return {
+        *[Symbol.iterator](): Generator<any, SampleResult> {
+          const result: any = yield {
+            type: 'sample',
+            params: {
+              messages: messages.map((m) => ({
+                role: m.role as 'user' | 'assistant',
+                content: { type: 'text' as const, text: m.content },
+              })),
+              systemPrompt: options?.systemPrompt,
+              maxTokens: options?.maxTokens ?? 1000,
+            },
+          }
+
+          // Extract text from result
+          const text = result?.content?.text ?? result?.content ?? ''
+
+          return {
+            text,
+            model: result?.model,
+            stopReason: result?.stopReason,
+          }
+        },
+      }
+    },
+
+    elicit<T>(config: ElicitConfig<T>): { [Symbol.iterator](): Generator<any, ElicitResult<T>> } {
+      return {
+        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
+          const jsonSchema = zodToJsonSchema(config.schema)
+
+          const result: any = yield {
+            type: 'elicit',
+            params: {
+              message: config.message,
+              requestedSchema: jsonSchema,
+            },
+          }
+
+          if (result.action === 'accept') {
+            return {
+              action: 'accept',
+              content: result.content as T,
+            }
+          } else if (result.action === 'decline') {
+            return { action: 'decline' }
+          } else {
+            return { action: 'cancel' }
+          }
+        },
+      }
+    },
+
+    log(level: LogLevel, message: string): { [Symbol.iterator](): Generator<any, void> } {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          yield {
+            type: 'log',
+            params: { level, message },
+          }
+        },
+      }
+    },
+
+    notify(message: string, progress?: number): { [Symbol.iterator](): Generator<any, void> } {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          yield {
+            type: 'notify',
+            params: { message, progress },
+          }
+        },
+      }
+    },
+  }
+}
+
+/**
+ * Register a branch-based tool with the MCP server.
+ */
+function registerBranchToolWithMCP(
+  mcpServer: McpServer,
+  tool: FinalizedBranchTool<string, any, any, any, any>
+): void {
+  console.error(`[registerBranchToolWithMCP] Registering tool: ${tool.name}`)
+  
+  // Get the shape from the Zod schema for MCP's input
+  const zodSchema = tool.parameters
+  let inputSchema: any = undefined
+
+  if (zodSchema instanceof z.ZodObject) {
+    const shape = (zodSchema as any).shape || (zodSchema as any)._def?.shape?.()
+    if (shape) {
+      inputSchema = shape
+    }
+  }
+
+  console.error(`[registerBranchToolWithMCP] Input schema keys:`, inputSchema ? Object.keys(inputSchema) : 'undefined')
+
+  try {
+    mcpServer.registerTool(
+      tool.name,
+      {
+        description: tool.description,
+        inputSchema,
+      },
+      async (args: any) => {
+      const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const signal = new AbortController().signal
+
+      const serverCtx: BranchServerContext = { callId, signal }
+
+      try {
+        let result: any
+
+        if (tool.handoffConfig) {
+          // Execute handoff pattern with branch context
+          const { before, client: clientFn, after } = tool.handoffConfig
+
+          // Phase 1: before()
+          const beforeGen = before(args, serverCtx)
+          const handoff = await executeGenerator(
+            beforeGen[Symbol.iterator](),
+            mcpServer.server
+          )
+
+          // Client phase with branch context
+          // We need to create a BranchContext here
+          const branchClientCtx = createBranchContextForMCP(mcpServer.server)
+          const clientGen = clientFn(handoff, branchClientCtx)
+          const clientResult = await executeGenerator(
+            clientGen[Symbol.iterator](),
+            mcpServer.server
+          )
+
+          // Phase 2: after()
+          const afterGen = after(handoff, clientResult, serverCtx, args)
+          result = await executeGenerator(
+            afterGen[Symbol.iterator](),
+            mcpServer.server
+          )
+        } else if (tool.execute) {
+          // Simple execute with branch context
+          const branchClientCtx = createBranchContextForMCP(mcpServer.server)
+          const execGen = tool.execute(args, branchClientCtx)
+          result = await executeGenerator(
+            execGen[Symbol.iterator](),
+            mcpServer.server
+          )
+        } else {
+          throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
+        }
+
+        // Return result as tool content
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: typeof result === 'string' ? result : JSON.stringify(result, null, 2),
+            },
+          ],
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          content: [{ type: 'text' as const, text: `Error: ${message}` }],
+          isError: true,
+        }
+      }
+    }
+    )
+    console.error(`[registerBranchToolWithMCP] Successfully registered: ${tool.name}`)
+  } catch (err) {
+    console.error(`[registerBranchToolWithMCP] FAILED to register ${tool.name}:`, err)
+  }
+}
+
+/**
+ * Create a BranchContext for use with the MCP server.
+ * This is a simplified version that yields protocol actions.
+ */
+function createBranchContextForMCP(server: Server): any {
+  // Internal state for tracking messages
+  const messages: Message[] = []
+
+  const ctx = {
+    // Read-only parent context (empty for top-level)
+    parentMessages: [] as readonly Message[],
+    parentSystemPrompt: undefined as string | undefined,
+
+    // Current branch state
+    get messages() {
+      return messages as readonly Message[]
+    },
+    depth: 0,
+
+    // Sample with both modes
+    sample(config: any): { [Symbol.iterator](): Generator<any, SampleResult> } {
+      return {
+        *[Symbol.iterator](): Generator<any, SampleResult> {
+          let messagesToSend: Message[]
+
+          if ('prompt' in config && config.prompt) {
+            // Auto-tracked mode
+            const userMessage: Message = { role: 'user', content: config.prompt }
+            messagesToSend = [...messages, userMessage]
+          } else if ('messages' in config && config.messages) {
+            // Explicit mode
+            messagesToSend = config.messages
+          } else {
+            throw new Error('sample() requires either prompt or messages')
+          }
+
+          const result: any = yield {
+            type: 'sample',
+            params: {
+              messages: messagesToSend.map((m) => ({
+                role: m.role as 'user' | 'assistant',
+                content: { type: 'text' as const, text: m.content },
+              })),
+              systemPrompt: config.systemPrompt,
+              maxTokens: config.maxTokens ?? 1000,
+            },
+          }
+
+          const text = result?.content?.text ?? result?.content ?? ''
+
+          // If auto-tracked mode, update messages
+          if ('prompt' in config && config.prompt) {
+            messages.push(
+              { role: 'user', content: config.prompt },
+              { role: 'assistant', content: text }
+            )
+          }
+
+          return {
+            text,
+            model: result?.model,
+            stopReason: result?.stopReason,
+          }
+        },
+      }
+    },
+
+    elicit<T>(config: ElicitConfig<T>): { [Symbol.iterator](): Generator<any, ElicitResult<T>> } {
+      return {
+        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
+          const jsonSchema = zodToJsonSchema(config.schema)
+
+          const result: any = yield {
+            type: 'elicit',
+            params: {
+              message: config.message,
+              requestedSchema: jsonSchema,
+            },
+          }
+
+          if (result.action === 'accept') {
+            return { action: 'accept', content: result.content as T }
+          } else if (result.action === 'decline') {
+            return { action: 'decline' }
+          } else {
+            return { action: 'cancel' }
+          }
+        },
+      }
+    },
+
+    branch<T>(
+      fn: (ctx: any) => { [Symbol.iterator](): Iterator<any, T> },
+      options: any = {}
+    ): { [Symbol.iterator](): Generator<any, T> } {
+      return {
+        *[Symbol.iterator](): Generator<any, T> {
+          // Create sub-context
+          const inheritMessages = options.inheritMessages ?? true
+          const subMessages: Message[] = inheritMessages ? [...messages] : []
+          if (options.messages) {
+            subMessages.push(...options.messages)
+          }
+
+          // Create sub-context with updated state
+          const subCtx = createBranchContextForMCP(server)
+          ;(subCtx as any).parentMessages = [...messages]
+          ;(subCtx as any).parentSystemPrompt = options.systemPrompt
+          ;(subCtx as any).depth = ctx.depth + 1
+
+          // Copy inherited messages to sub-context
+          for (const msg of subMessages) {
+            ;(subCtx as any).messages.push(msg)
+          }
+
+          // Execute sub-branch
+          const subGen = fn(subCtx)
+          const subIterator = subGen[Symbol.iterator]()
+
+          // Drive the sub-generator, passing through yields
+          let subResult = subIterator.next()
+          while (!subResult.done) {
+            const response = yield subResult.value
+            subResult = subIterator.next(response)
+          }
+
+          return subResult.value
+        },
+      }
+    },
+
+    log(level: LogLevel, message: string): { [Symbol.iterator](): Generator<any, void> } {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          yield { type: 'log', params: { level, message } }
+        },
+      }
+    },
+
+    notify(message: string, progress?: number): { [Symbol.iterator](): Generator<any, void> } {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          yield { type: 'notify', params: { message, progress } }
+        },
+      }
+    },
+  }
+
+  return ctx
 }

@@ -12,7 +12,8 @@
     "build": "tsup",
     "check": "tsc --noEmit",
     "start": "node dist/cli.js",
-    "inspect": "npx @modelcontextprotocol/inspector tsx src/cli.ts"
+    "inspect": "npx @modelcontextprotocol/inspector tsx src/cli.ts",
+    "inspect:built": "npx @modelcontextprotocol/inspector node dist/cli.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
