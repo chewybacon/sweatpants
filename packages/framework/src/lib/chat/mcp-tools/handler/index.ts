@@ -43,6 +43,10 @@ export type {
   McpSampleResponse,
   McpSseStreamRequest,
   McpTerminateRequest,
+  McpInitializeRequest,
+  McpToolsListRequest,
+  McpPingRequest,
+  McpNotification,
   // Response types
   McpPostResult,
   // Session state

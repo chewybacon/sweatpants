@@ -128,3 +128,56 @@ export {
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
 } from './setup'
+
+// =============================================================================
+// WORKER-BASED SESSIONS
+// =============================================================================
+
+export type {
+  // Transport types
+  SessionWorkerTransport,
+  SessionWorkerTransportFactory,
+  HostTransport,
+  WorkerTransport,
+  Unsubscribe,
+  
+  // Message types
+  HostToWorkerMessage,
+  WorkerToHostMessage,
+  StartMessage,
+  SampleRequestMessage,
+  SampleResponseMessage,
+  ElicitRequestMessage,
+  ElicitResponseMessage,
+  ProgressMessage,
+  LogMessage,
+  ResultMessage,
+  ErrorMessage,
+  CancelledMessage,
+  CancelMessage,
+  ReadyMessage,
+  
+  // Tool registry for workers
+  WorkerToolRegistry,
+  WorkerTool,
+  WorkerToolContext,
+} from './worker-types'
+
+export {
+  // Transport implementations
+  createWorkerThreadTransportFactory,
+  createWorkerSideTransport,
+  createInProcessTransportPair,
+} from './worker-thread-transport'
+
+export {
+  // Worker runner (runs inside worker)
+  runWorker,
+  createWorkerToolRegistry,
+} from './worker-runner'
+
+export {
+  // Worker tool session adapter
+  createWorkerToolSession,
+  type WorkerToolSessionOptions,
+} from './worker-tool-session'
