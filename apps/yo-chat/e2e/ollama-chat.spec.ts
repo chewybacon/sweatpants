@@ -17,6 +17,15 @@ test.setTimeout(180000)
 
 test.describe('Ollama chat integration', () => {
   test.beforeEach(async ({ page }) => {
+    // Capture console logs
+    page.on('console', (msg) => {
+      const text = msg.text()
+      if (text.includes('[stream-chat]') || text.includes('[create-session]') || 
+          text.includes('[pipeline-runner]') || text.includes('[reducer]')) {
+        console.log('BROWSER:', text)
+      }
+    })
+    
     await page.goto('/demo/chat/')
     await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
