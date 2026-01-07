@@ -155,11 +155,3 @@ Briefly analyze these cards (2-3 sentences). What patterns or interesting cards 
 		},
 	})
 
-
-function* main() {
-	const result = yield* pickCardBranchTool.execute(
-		{ count: 3 },
-		function*(ctx) {
-
-		})
-}

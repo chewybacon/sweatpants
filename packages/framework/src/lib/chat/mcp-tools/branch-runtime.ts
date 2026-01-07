@@ -21,6 +21,7 @@ import type {
 } from './branch-types'
 import {
   BranchDepthError,
+  BranchTokenError,
 } from './branch-types'
 import type {
   ElicitConfig,
@@ -82,6 +83,43 @@ export interface BranchMCPClient {
 // =============================================================================
 
 /**
+ * Token tracking for best-effort budgeting.
+ *
+ * This is intentionally approximate: we estimate tokens from string length.
+ * If/when MCP sampling returns precise usage, we can swap this out.
+ */
+interface TokenTracker {
+  used: number
+  budget?: number
+  parent?: TokenTracker
+}
+
+function estimateTokensFromText(text: string): number {
+  // Rule of thumb: ~4 chars per token.
+  return Math.ceil(text.length / 4)
+}
+
+function estimateTokensFromConversation(options: {
+  systemPrompt?: string
+  messages: Message[]
+  completion: string
+}): number {
+  const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0
+  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content), 0)
+  const completion = estimateTokensFromText(options.completion)
+  return system + convo + completion
+}
+
+function addTokens(tracker: TokenTracker, tokens: number): void {
+  for (let current: TokenTracker | undefined = tracker; current; current = current.parent) {
+    current.used += tokens
+    if (current.budget !== undefined && current.used > current.budget) {
+      throw new BranchTokenError(current.used, current.budget)
+    }
+  }
+}
+
+/**
  * Internal state for a branch.
  */
 interface BranchState {
@@ -103,8 +141,8 @@ interface BranchState {
   /** Limits for this branch */
   limits: BranchLimits
 
-  /** Tokens used so far */
-  tokensUsed: number
+  /** Token tracker for budgets (shared with parents) */
+  tokenTracker: TokenTracker
 }
 
 // =============================================================================
@@ -173,8 +211,15 @@ function createBranchContext(
             )
           }
 
-          // Track token usage (estimate - real implementation would get from response)
-          // state.tokensUsed += result.usage?.totalTokens ?? 0
+          // Track token usage (best-effort estimate).
+          const estimatedTokens = estimateTokensFromConversation({
+            ...(sampleOptions.systemPrompt !== undefined
+              ? { systemPrompt: sampleOptions.systemPrompt }
+              : {}),
+            messages,
+            completion: result.text,
+          })
+          addTokens(state.tokenTracker, estimatedTokens)
 
           return result
         },
@@ -231,12 +276,20 @@ function createBranchContext(
             newLimits.timeout = state.limits.timeout
           }
 
+          const subTokenTracker: TokenTracker = {
+            used: 0,
+            parent: state.tokenTracker,
+          }
+          if (newLimits.maxTokens !== undefined) {
+            subTokenTracker.budget = newLimits.maxTokens
+          }
+
           const newState: BranchState = {
             messages: newMessages,
             parentMessages: state.messages as readonly Message[],
             depth: newDepth,
             limits: newLimits,
-            tokensUsed: 0,
+            tokenTracker: subTokenTracker,
           }
 
           // Set optional properties only if defined
@@ -336,13 +389,18 @@ export function runBranchTool<
       // Create server context
       const serverCtx: BranchServerContext = { callId, signal }
 
+      const rootTokenTracker: TokenTracker = { used: 0 }
+      if (limits.maxTokens !== undefined) {
+        rootTokenTracker.budget = limits.maxTokens
+      }
+
       // Create initial branch state
       const initialState: BranchState = {
         messages: [],
         parentMessages: options.parentMessages ?? [],
         depth: 0,
         limits,
-        tokensUsed: 0,
+        tokenTracker: rootTokenTracker,
       }
 
       // Set optional properties only if defined
