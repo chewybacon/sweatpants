@@ -33,7 +33,8 @@
  * @packageDocumentation
  */
 import { createScope, type Operation, type Subscription } from 'effection'
-import type { McpHandlerConfig, McpHttpHandler, McpClassifiedRequest, McpSessionState } from './types'
+import { z } from 'zod'
+import type { McpHandlerConfig, McpHttpHandler, McpClassifiedRequest, McpSessionState, McpInitializeRequest, McpToolsListRequest } from './types'
 import { McpHandlerError } from './types'
 import { parseAndClassify } from './request-parser'
 import { createSessionManager, type McpSessionManager } from './session-manager'
@@ -98,6 +99,75 @@ function createErrorResponse(
       ...headers,
     },
   })
+}
+
+// =============================================================================
+// INITIALIZE AND TOOLS/LIST RESPONSES
+// =============================================================================
+
+/**
+ * Create an initialize response with server capabilities.
+ */
+function createInitializeResponse(
+  request: McpInitializeRequest,
+  _options: McpHandlerOptions
+): Record<string, unknown> {
+  return {
+    jsonrpc: '2.0',
+    id: request.requestId,
+    result: {
+      protocolVersion: '2024-11-05',
+      capabilities: {
+        tools: {
+          listChanged: false,
+        },
+        // We support elicitation and sampling
+        elicitation: {},
+        sampling: {},
+      },
+      serverInfo: {
+        name: 'mcp-durable-runtime',
+        version: '1.0.0',
+      },
+    },
+  }
+}
+
+/**
+ * Create a tools/list response.
+ */
+function createToolsListResponse(
+  request: McpToolsListRequest,
+  tools: Map<string, unknown>
+): Record<string, unknown> {
+  const toolList = Array.from(tools.entries()).map(([name, tool]) => {
+    // Extract tool metadata - tools have name, description, and parameters (Zod schema)
+    const t = tool as { description?: string; parameters?: z.ZodType }
+    
+    // Convert Zod schema to JSON Schema
+    let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
+    if (t.parameters) {
+      try {
+        inputSchema = z.toJSONSchema(t.parameters) as Record<string, unknown>
+      } catch {
+        // Fallback if conversion fails
+      }
+    }
+    
+    return {
+      name,
+      description: t.description ?? '',
+      inputSchema,
+    }
+  })
+
+  return {
+    jsonrpc: '2.0',
+    id: request.requestId,
+    result: {
+      tools: toolList,
+    },
+  }
 }
 
 // =============================================================================
@@ -166,6 +236,51 @@ export function createMcpHandler(options: McpHandlerOptions): {
 
       // Handle based on request type
       switch (classified.type) {
+        case 'initialize': {
+          // Generate a session ID for this connection
+          const initSessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+          
+          // Respond with server capabilities and session ID
+          const response = createInitializeResponse(classified, options)
+          await destroy()
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: { 
+              'Content-Type': 'application/json',
+              'Mcp-Session-Id': initSessionId,
+            },
+          })
+        }
+
+        case 'tools_list': {
+          // Respond with list of available tools
+          const response = createToolsListResponse(classified, tools)
+          await destroy()
+          return new Response(JSON.stringify(response), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        case 'ping': {
+          // Respond to ping
+          await destroy()
+          return new Response(JSON.stringify({
+            jsonrpc: '2.0',
+            id: classified.requestId,
+            result: {},
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+
+        case 'notification': {
+          // Notifications don't expect a response - just acknowledge
+          await destroy()
+          return new Response(null, { status: 202 })
+        }
+
         case 'tools_call':
         case 'elicit_response':
         case 'sample_response': {
@@ -208,15 +323,27 @@ export function createMcpHandler(options: McpHandlerOptions): {
           // GET request for SSE
           const { sessionId, afterLSN } = classified
 
-          const state = await scope.run(function* () {
-            const s = yield* manager.acquireSession(sessionId)
-            if (afterLSN !== undefined) {
-              s.lastLSN = afterLSN
-            }
-            return s
-          })
+          // If no session ID or empty, return an idle SSE stream
+          // This is used for general server notifications (not tool-specific)
+          if (!sessionId) {
+            return createIdleSseResponse(destroy, mergedSseOptions)
+          }
 
-          return createSseResponse(scope, destroy, state, manager, mergedSseOptions)
+          // Try to acquire the session
+          try {
+            const state = await scope.run(function* () {
+              const s = yield* manager.acquireSession(sessionId)
+              if (afterLSN !== undefined) {
+                s.lastLSN = afterLSN
+              }
+              return s
+            })
+
+            return createSseResponse(scope, destroy, state, manager, mergedSseOptions)
+          } catch {
+            // Session not found - return idle stream instead of error
+            return createIdleSseResponse(destroy, mergedSseOptions)
+          }
         }
 
         case 'terminate': {
@@ -263,6 +390,61 @@ export function createMcpHandler(options: McpHandlerOptions): {
   }
 
   return { handler, manager }
+}
+
+// =============================================================================
+// IDLE SSE RESPONSE (for connections without active sessions)
+// =============================================================================
+
+/**
+ * Create an idle SSE stream for general server notifications.
+ * 
+ * This is returned when a client connects without a valid session ID.
+ * It sends a keepalive comment every 30 seconds to keep the connection alive.
+ */
+function createIdleSseResponse(
+  destroy: () => Promise<void>,
+  options: SseStreamOptions
+): Response {
+  const { retryMs = 1000 } = options
+
+  const headers = new Headers(createSseHeaders())
+  const encoder = new TextEncoder()
+
+  let intervalId: ReturnType<typeof setInterval> | null = null
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      // Send initial retry directive
+      controller.enqueue(encoder.encode(`retry: ${retryMs}\n\n`))
+      
+      // Send keepalive comments every 30 seconds
+      intervalId = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(`: keepalive\n\n`))
+        } catch {
+          // Stream might be closed
+          if (intervalId) {
+            clearInterval(intervalId)
+            intervalId = null
+          }
+        }
+      }, 30000)
+    },
+
+    cancel() {
+      if (intervalId) {
+        clearInterval(intervalId)
+        intervalId = null
+      }
+      destroy().catch(() => {})
+    },
+  })
+
+  return new Response(stream, {
+    status: 200,
+    headers,
+  })
 }
 
 // =============================================================================

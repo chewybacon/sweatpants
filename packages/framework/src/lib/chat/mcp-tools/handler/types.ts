@@ -176,6 +176,42 @@ export interface McpTerminateRequest {
 }
 
 /**
+ * An initialize request.
+ */
+export interface McpInitializeRequest {
+  type: 'initialize'
+  requestId: JsonRpcId
+  protocolVersion: string
+  capabilities: Record<string, unknown>
+  clientInfo: { name: string; version: string }
+}
+
+/**
+ * A tools/list request.
+ */
+export interface McpToolsListRequest {
+  type: 'tools_list'
+  requestId: JsonRpcId
+}
+
+/**
+ * A ping request.
+ */
+export interface McpPingRequest {
+  type: 'ping'
+  requestId: JsonRpcId
+}
+
+/**
+ * A notification (no response expected).
+ */
+export interface McpNotification {
+  type: 'notification'
+  method: string
+  params?: unknown
+}
+
+/**
  * Union of all classified requests.
  */
 export type McpClassifiedRequest =
@@ -184,6 +220,10 @@ export type McpClassifiedRequest =
   | McpSampleResponse
   | McpSseStreamRequest
   | McpTerminateRequest
+  | McpInitializeRequest
+  | McpToolsListRequest
+  | McpPingRequest
+  | McpNotification
 
 // =============================================================================
 // RESPONSE TYPES

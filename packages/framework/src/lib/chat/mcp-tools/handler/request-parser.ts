@@ -32,6 +32,10 @@ import type {
   McpSampleResponse,
   McpSseStreamRequest,
   McpTerminateRequest,
+  McpInitializeRequest,
+  McpToolsListRequest,
+  McpPingRequest,
+  McpNotification,
 } from './types'
 import { McpHandlerError, MCP_HANDLER_ERRORS } from './types'
 import { parseEventId } from '../protocol/sse-formatter'
@@ -157,6 +161,19 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
 }
 
 /**
+ * Check if a value is a valid JSON-RPC notification (request without id).
+ */
+function isJsonRpcNotification(value: unknown): value is { jsonrpc: '2.0'; method: string; params?: unknown } {
+  if (typeof value !== 'object' || value === null) return false
+  const obj = value as Record<string, unknown>
+  return (
+    obj['jsonrpc'] === '2.0' &&
+    obj['id'] === undefined &&
+    typeof obj['method'] === 'string'
+  )
+}
+
+/**
  * Check if a value is a valid JSON-RPC response.
  */
 function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
@@ -179,10 +196,50 @@ function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
 function classifyPostBody(
   body: unknown,
   sessionId: string | undefined
-): McpToolsCallRequest | McpElicitResponse | McpSampleResponse {
-  // Check for JSON-RPC request (tools/call)
+): McpToolsCallRequest | McpElicitResponse | McpSampleResponse | McpInitializeRequest | McpToolsListRequest | McpPingRequest | McpNotification {
+  // Check for JSON-RPC notification (no id - fire and forget)
+  if (isJsonRpcNotification(body)) {
+    const notif = body as { method: string; params?: unknown }
+    return {
+      type: 'notification',
+      method: notif.method,
+      params: notif.params,
+    }
+  }
+
+  // Check for JSON-RPC request (tools/call, initialize, tools/list)
   if (isJsonRpcRequest(body)) {
     const req = body as JsonRpcRequest
+
+    if (req.method === 'ping') {
+      return {
+        type: 'ping',
+        requestId: req.id,
+      }
+    }
+
+    if (req.method === 'initialize') {
+      const params = req.params as {
+        protocolVersion?: string
+        capabilities?: Record<string, unknown>
+        clientInfo?: { name: string; version: string }
+      } | undefined
+
+      return {
+        type: 'initialize',
+        requestId: req.id,
+        protocolVersion: params?.protocolVersion ?? '2024-11-05',
+        capabilities: params?.capabilities ?? {},
+        clientInfo: params?.clientInfo ?? { name: 'unknown', version: '0.0.0' },
+      }
+    }
+
+    if (req.method === 'tools/list') {
+      return {
+        type: 'tools_list',
+        requestId: req.id,
+      }
+    }
 
     if (req.method === 'tools/call') {
       const params = req.params as McpToolCallParams | undefined
@@ -313,13 +370,14 @@ function isSamplingResult(result: unknown): result is McpCreateMessageResult {
  * Classify a GET request for SSE streaming.
  */
 function classifyGetRequest(headers: McpRequestHeaders): McpSseStreamRequest {
-  // Session ID is required for GET
+  // Session ID may be omitted for initial SSE connection after initialize
+  // If omitted, we'll return an idle stream that waits for tool calls
   if (!headers.sessionId) {
-    throw new McpHandlerError(
-      MCP_HANDLER_ERRORS.SESSION_REQUIRED,
-      'Mcp-Session-Id header required for SSE stream',
-      400
-    )
+    // Return a special "no session" request that will create an idle stream
+    return {
+      type: 'sse_stream',
+      sessionId: '', // Empty = idle stream
+    }
   }
 
   // Parse Last-Event-ID for resumability
