@@ -261,3 +261,62 @@ export type {
   BridgeElicitHandlers,
   ElicitResponse,
 } from './bridge-runtime'
+
+// =============================================================================
+// DURABLE TOOL SESSIONS (HTTP-friendly, survives request boundaries)
+// =============================================================================
+
+export {
+  // Session creation
+  createToolSession,
+  
+  // Registry for managing sessions
+  createToolSessionRegistry,
+  
+  // In-memory store implementation
+  createInMemoryToolSessionStore,
+  createInMemoryToolSessionStoreWithDebug,
+  
+  // Setup and contexts
+  setupToolSessions,
+  ToolSessionStoreContext,
+  ToolSessionRegistryContext,
+  ToolSessionSamplingProviderContext,
+  useToolSessionStore,
+  useToolSessionRegistry,
+  useToolSessionSamplingProvider,
+  useOptionalToolSessionStore,
+  useOptionalToolSessionRegistry,
+  useOptionalToolSessionSamplingProvider,
+} from './session'
+
+export type {
+  // Session types
+  ToolSession,
+  ToolSessionStatus,
+  ToolSessionOptions,
+  ToolSessionEntry,
+  
+  // Event types
+  ToolSessionEvent,
+  ProgressEvent,
+  LogEvent,
+  ElicitRequestEvent,
+  SampleRequestEvent,
+  ResultEvent,
+  ErrorEvent,
+  CancelledEvent,
+  
+  // Registry and store
+  ToolSessionRegistry,
+  ToolSessionStore,
+  ToolSessionSamplingProvider,
+  
+  // Type helpers
+  InferToolSessionResult,
+  AnyToolSession,
+  
+  // Options
+  ToolSessionRegistryOptions,
+  SetupToolSessionsOptions,
+} from './session'
