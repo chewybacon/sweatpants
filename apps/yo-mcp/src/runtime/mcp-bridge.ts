@@ -1,27 +1,34 @@
 /**
  * MCP Bridge Runtime
  *
- * Bridges our generator-based MCP tools to the official MCP SDK.
- * Converts yield* operations into real MCP protocol calls.
+ * Bridges generator-authored MCP tools (Effection Operations)
+ * to the official @modelcontextprotocol/sdk server.
+ *
+ * Key design choice:
+ * - Tools are authored as Effection Operations (generator functions)
+ * - We execute them using Effection's `run()`
+ * - Sampling/elicitation/logging/progress are implemented as real MCP SDK calls
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
+import { call, run } from 'effection'
+import type { Operation } from 'effection'
 import { z } from 'zod'
 import type {
+  BranchMCPClient,
+  BranchServerContext,
+  ElicitConfig,
+  ElicitResult,
+  FinalizedBranchTool,
+  FinalizedMCPTool,
+  LogLevel,
   MCPClientContext,
   MCPServerContext,
-  ElicitResult,
-  ElicitConfig,
-  SampleConfig,
-  LogLevel,
-  FinalizedMCPTool,
-  // Branch types
-  FinalizedBranchTool,
-  BranchMCPClient,
   Message,
+  SampleConfig,
   SampleResult,
-  BranchServerContext,
 } from '@sweatpants/framework/chat/mcp-tools'
+import { MCPCapabilityError, runBranchTool } from '@sweatpants/framework/chat/mcp-tools'
 
 // =============================================================================
 // TYPES
@@ -37,104 +44,13 @@ export interface MCPBridgeOptions {
 }
 
 // =============================================================================
-// CONTEXT FACTORY
+// JSON SCHEMA HELPERS (for elicitation)
 // =============================================================================
 
 /**
- * Creates an MCPClientContext that yields protocol actions.
- * The executor will intercept these and make real MCP calls.
- */
-function createMCPClientContext(): MCPClientContext {
-  return {
-    elicit<T>(config: ElicitConfig<T>): { [Symbol.iterator](): Generator<any, ElicitResult<T>> } {
-      return {
-        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
-          const jsonSchema = zodToJsonSchema(config.schema)
-
-          const result: any = yield {
-            type: 'elicit',
-            params: {
-              message: config.message,
-              requestedSchema: jsonSchema,
-            },
-          }
-
-          if (result.action === 'accept') {
-            return {
-              action: 'accept',
-              content: result.content as T,
-            }
-          } else if (result.action === 'decline') {
-            return { action: 'decline' }
-          } else {
-            return { action: 'cancel' }
-          }
-        },
-      }
-    },
-
-    sample<T = string>(config: SampleConfig<T>): { [Symbol.iterator](): Generator<any, T> } {
-      return {
-        *[Symbol.iterator](): Generator<any, T> {
-          const result: any = yield {
-            type: 'sample',
-            params: {
-              messages: [
-                {
-                  role: 'user' as const,
-                  content: { type: 'text' as const, text: config.prompt },
-                },
-              ],
-              systemPrompt: config.systemPrompt,
-              maxTokens: config.maxTokens ?? 1000,
-              modelPreferences: config.modelPreferences,
-            },
-          }
-
-          // Extract text from result
-          const text = result?.content?.text ?? result?.content ?? ''
-
-          // If schema provided, try to parse the response
-          if (config.schema) {
-            try {
-              const parsed = JSON.parse(text)
-              return config.schema.parse(parsed) as T
-            } catch {
-              return text as T
-            }
-          }
-
-          return text as T
-        },
-      }
-    },
-
-    log(level: LogLevel, message: string): { [Symbol.iterator](): Generator<any, void> } {
-      return {
-        *[Symbol.iterator](): Generator<any, void> {
-          yield {
-            type: 'log',
-            params: { level, message },
-          }
-        },
-      }
-    },
-
-    notify(message: string, progress?: number): { [Symbol.iterator](): Generator<any, void> } {
-      return {
-        *[Symbol.iterator](): Generator<any, void> {
-          yield {
-            type: 'notify',
-            params: { message, progress },
-          }
-        },
-      }
-    },
-  }
-}
-
-/**
- * Convert Zod schema to JSON Schema
+ * Convert Zod schema to JSON Schema.
+ *
+ * We keep this local to avoid coupling yo-mcp to a specific zod-json-schema package.
  */
 function zodToJsonSchema(schema: z.ZodType<any>): Record<string, unknown> {
   // Try Zod 4's toJSONSchema if available
@@ -193,93 +109,294 @@ function zodTypeToJsonSchema(schema: z.ZodType<any>): Record<string, unknown> {
 }
 
 // =============================================================================
-// GENERATOR EXECUTOR
+// MCP CLIENT ADAPTERS (Effection operations calling MCP SDK)
 // =============================================================================
 
-/**
- * Execute a generator-based tool, handling yield* operations as MCP calls.
- */
-async function executeGenerator<T>(
-  iterator: Iterator<any, T>,
+function createSDKMCPClientContext(options: {
   server: Server
-): Promise<T> {
-  let result = iterator.next()
+  callId: string
+  signal: AbortSignal
+}): MCPClientContext {
+  const { server, callId, signal } = options
 
-  while (!result.done) {
-    const yieldedValue = result.value
+  return {
+    elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>> {
+      return {
+        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
+          const jsonSchema = zodToJsonSchema(config.schema)
 
-    // Handle yield of protocol action
-    if (yieldedValue && typeof yieldedValue === 'object' && 'type' in yieldedValue) {
-      switch (yieldedValue.type) {
-        case 'elicit': {
-          try {
-            console.error('[elicit] Requesting elicitation:', JSON.stringify(yieldedValue.params, null, 2))
-            const elicitResult = await server.elicitInput({
-              message: yieldedValue.params.message,
-              requestedSchema: yieldedValue.params.requestedSchema,
-            })
-            console.error('[elicit] Got result:', JSON.stringify(elicitResult, null, 2))
-            result = iterator.next(elicitResult)
-          } catch (error) {
-            console.error('[elicit] Elicitation error:', error)
-            result = iterator.next({ action: 'cancel' })
+          const result = yield* call(() =>
+            server.elicitInput(
+              {
+                message: config.message,
+                requestedSchema: jsonSchema as any,
+              },
+              { signal }
+            )
+          )
+
+          if (result.action === 'accept') {
+            return { action: 'accept', content: result.content as T }
           }
-          break
-        }
-
-        case 'sample': {
-          try {
-            const sampleResult = await server.createMessage(yieldedValue.params)
-            result = iterator.next(sampleResult)
-          } catch (error) {
-            console.error('Sampling error:', error)
-            result = iterator.next({ content: { text: '' } })
+          if (result.action === 'decline') {
+            return { action: 'decline' }
           }
-          break
-        }
-
-        case 'log': {
-          try {
-            await server.sendLoggingMessage({
-              level: yieldedValue.params.level,
-              data: yieldedValue.params.message,
-            })
-          } catch {
-            // Ignore logging errors
-          }
-          result = iterator.next()
-          break
-        }
-
-        case 'notify': {
-          console.error(`[progress${yieldedValue.params.progress !== undefined ? `: ${yieldedValue.params.progress}` : ''}] ${yieldedValue.params.message}`)
-          result = iterator.next()
-          break
-        }
-
-        default:
-          result = iterator.next()
+          return { action: 'cancel' }
+        },
       }
-    } else if (yieldedValue && typeof yieldedValue === 'object' && Symbol.iterator in yieldedValue) {
-      // Nested generator - execute it recursively
-      const nestedResult = await executeGenerator(yieldedValue[Symbol.iterator](), server)
-      result = iterator.next(nestedResult)
-    } else {
-      // Unknown yield, pass through
-      result = iterator.next(yieldedValue)
-    }
+    },
+
+    sample<T = string>(config: SampleConfig<T>): Operation<T> {
+      return {
+        *[Symbol.iterator](): Generator<any, T> {
+          const result: any = yield* call(() =>
+            server.createMessage(
+              {
+                messages: [
+                  {
+                    role: 'user' as const,
+                    content: { type: 'text' as const, text: config.prompt },
+                  },
+                ],
+                ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
+                maxTokens: config.maxTokens ?? 1000,
+                ...(config.modelPreferences !== undefined
+                  ? { modelPreferences: config.modelPreferences }
+                  : {}),
+              },
+              { signal }
+            )
+          )
+
+          const text: string = result?.content?.text ?? result?.content ?? ''
+
+          if (config.schema) {
+            try {
+              const parsed = JSON.parse(text)
+              return config.schema.parse(parsed) as T
+            } catch {
+              return text as T
+            }
+          }
+
+          return text as T
+        },
+      }
+    },
+
+    log(level: LogLevel, message: string): Operation<void> {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          try {
+            yield* call(() =>
+              server.sendLoggingMessage({
+                level,
+                data: message,
+              })
+            )
+          } catch {
+            // ignore
+          }
+        },
+      }
+    },
+
+    notify(message: string, progress?: number): Operation<void> {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          // Prefer the MCP-native progress notification, but we don't have the
+          // request's progress token in this high-level handler.
+          //
+          // Using callId as a stable token is "best effort"; clients that didn't
+          // request progress updates may ignore it.
+          if (progress !== undefined) {
+            try {
+              yield* call(() =>
+                server.notification({
+                  method: 'notifications/progress',
+                  params: {
+                    progressToken: callId,
+                    progress,
+                    total: 1,
+                    message,
+                  },
+                })
+              )
+              return
+            } catch {
+              // Fall back to logging
+            }
+          }
+
+          try {
+            yield* call(() =>
+              server.sendLoggingMessage({
+                level: 'info',
+                data: message,
+              })
+            )
+          } catch {
+            // ignore
+          }
+        },
+      }
+    },
+  }
+}
+
+function createSDKBranchMCPClient(options: {
+  server: Server
+  callId: string
+  signal: AbortSignal
+}): BranchMCPClient {
+  const { server, callId, signal } = options
+
+  const clientCapabilities = server.getClientCapabilities()
+
+  return {
+    capabilities: {
+      elicitation: Boolean(clientCapabilities?.elicitation),
+      sampling: Boolean(clientCapabilities?.sampling),
+    },
+
+    sample(
+      messages: Message[],
+      requestOptions?: {
+        systemPrompt?: string
+        maxTokens?: number
+      }
+    ): Operation<SampleResult> {
+      return {
+        *[Symbol.iterator](): Generator<any, SampleResult> {
+          if (!clientCapabilities?.sampling) {
+            throw new MCPCapabilityError('sampling', 'Client does not support sampling')
+          }
+
+          const result: any = yield* call(() =>
+            server.createMessage(
+              {
+                messages: messages
+                  // Keep the wire format MCP-native: system prompt stays out-of-band.
+                  .filter((m) => m.role !== 'system')
+                  .map((m) => ({
+                    role: m.role as 'user' | 'assistant',
+                    content: { type: 'text' as const, text: m.content },
+                  })),
+                ...(requestOptions?.systemPrompt !== undefined
+                  ? { systemPrompt: requestOptions.systemPrompt }
+                  : {}),
+                maxTokens: requestOptions?.maxTokens ?? 1000,
+              },
+              { signal }
+            )
+          )
+
+          const text: string = result?.content?.text ?? result?.content ?? ''
+
+          return {
+            text,
+            model: result?.model,
+            stopReason: result?.stopReason,
+          }
+        },
+      }
+    },
+
+    elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>> {
+      return {
+        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
+          if (!clientCapabilities?.elicitation) {
+            throw new MCPCapabilityError('elicitation', 'Client does not support elicitation')
+          }
+
+          const jsonSchema = zodToJsonSchema(config.schema)
+          const result = yield* call(() =>
+            server.elicitInput(
+              {
+                message: config.message,
+                requestedSchema: jsonSchema as any,
+              },
+              { signal }
+            )
+          )
+
+          if (result.action === 'accept') {
+            return { action: 'accept', content: result.content as T }
+          }
+          if (result.action === 'decline') {
+            return { action: 'decline' }
+          }
+          return { action: 'cancel' }
+        },
+      }
+    },
+
+    log(level: LogLevel, message: string): Operation<void> {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          try {
+            yield* call(() => server.sendLoggingMessage({ level, data: message }))
+          } catch {
+            // ignore
+          }
+        },
+      }
+    },
+
+    notify(message: string, progress?: number): Operation<void> {
+      return {
+        *[Symbol.iterator](): Generator<any, void> {
+          if (progress !== undefined) {
+            try {
+              yield* call(() =>
+                server.notification({
+                  method: 'notifications/progress',
+                  params: {
+                    progressToken: callId,
+                    progress,
+                    total: 1,
+                    message,
+                  },
+                })
+              )
+              return
+            } catch {
+              // ignore and fall back to logging
+            }
+          }
+
+          try {
+            yield* call(() => server.sendLoggingMessage({ level: 'info', data: message }))
+          } catch {
+            // ignore
+          }
+        },
+      }
+    },
+  }
+}
+
+function assertToolRequirements(
+  server: Server,
+  requires: { elicitation?: boolean; sampling?: boolean } | undefined
+): void {
+  if (!requires) return
+
+  const caps = server.getClientCapabilities()
+
+  if (requires.sampling && !caps?.sampling) {
+    throw new MCPCapabilityError('sampling', 'Client does not support sampling')
   }
 
-  return result.value
+  if (requires.elicitation && !caps?.elicitation) {
+    throw new MCPCapabilityError('elicitation', 'Client does not support elicitation')
+  }
 }
 
 // =============================================================================
 // MCP SERVER FACTORY
 // =============================================================================
 
-/**
- * Options for creating an MCP server with tools.
- */
 export interface CreateMCPServerOptions extends MCPBridgeOptions {
   /** Original MCP tools (using MCPClientContext) */
   tools?: FinalizedMCPTool<string, any, any, any, any>[]
@@ -287,9 +404,6 @@ export interface CreateMCPServerOptions extends MCPBridgeOptions {
   branchTools?: FinalizedBranchTool<string, any, any, any, any>[]
 }
 
-/**
- * Create an MCP server with registered tools.
- */
 export function createMCPServerWithTools(
   options: MCPBridgeOptions,
   tools: FinalizedMCPTool<string, any, any, any, any>[]
@@ -300,9 +414,6 @@ export function createMCPServerWithTools(
   })
 }
 
-/**
- * Create an MCP server with both original and branch-based tools.
- */
 export function createMCPServer(options: CreateMCPServerOptions): McpServer {
   const mcpServer = new McpServer(
     {
@@ -317,12 +428,10 @@ export function createMCPServer(options: CreateMCPServerOptions): McpServer {
     }
   )
 
-  // Register original tools
   for (const tool of options.tools ?? []) {
     registerToolWithMCP(mcpServer, tool)
   }
 
-  // Register branch-based tools
   for (const tool of options.branchTools ?? []) {
     registerBranchToolWithMCP(mcpServer, tool)
   }
@@ -330,14 +439,14 @@ export function createMCPServer(options: CreateMCPServerOptions): McpServer {
   return mcpServer
 }
 
-/**
- * Register a single tool with the MCP server.
- */
+// =============================================================================
+// ORIGINAL TOOL SUPPORT (MCPClientContext)
+// =============================================================================
+
 function registerToolWithMCP(
   mcpServer: McpServer,
   tool: FinalizedMCPTool<string, any, any, any, any>
 ): void {
-  // Get the shape from the Zod schema for MCP's input
   const zodSchema = tool.parameters
   let inputSchema: any = undefined
 
@@ -356,50 +465,34 @@ function registerToolWithMCP(
     },
     async (args: any) => {
       const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const signal = new AbortController().signal
+      const abortController = new AbortController()
+      const signal = abortController.signal
 
       const serverCtx: MCPServerContext = { callId, signal }
-      const clientCtx = createMCPClientContext()
+      const clientCtx = createSDKMCPClientContext({
+        server: mcpServer.server,
+        callId,
+        signal,
+      })
 
       try {
-        let result: any
+        const result = await run(function* () {
+          assertToolRequirements(mcpServer.server, tool.requires)
 
-        if (tool.handoffConfig) {
-          // Execute handoff pattern
-          const { before, client: clientFn, after } = tool.handoffConfig
+          if (tool.handoffConfig) {
+            const { before, client: clientFn, after } = tool.handoffConfig
+            const handoff = yield* before(args, serverCtx)
+            const clientResult = yield* clientFn(handoff, clientCtx)
+            return yield* after(handoff, clientResult, serverCtx, args)
+          }
 
-          // Phase 1: before()
-          const beforeGen = before(args, serverCtx)
-          const handoff = await executeGenerator(
-            beforeGen[Symbol.iterator](),
-            mcpServer.server
-          )
+          if (tool.execute) {
+            return yield* tool.execute(args, clientCtx)
+          }
 
-          // Client phase
-          const clientGen = clientFn(handoff, clientCtx)
-          const clientResult = await executeGenerator(
-            clientGen[Symbol.iterator](),
-            mcpServer.server
-          )
+          throw new Error(`Tool \"${tool.name}\" has no execute or handoff config`)
+        })
 
-          // Phase 2: after()
-          const afterGen = after(handoff, clientResult, serverCtx, args)
-          result = await executeGenerator(
-            afterGen[Symbol.iterator](),
-            mcpServer.server
-          )
-        } else if (tool.execute) {
-          // Simple execute
-          const execGen = tool.execute(args, clientCtx)
-          result = await executeGenerator(
-            execGen[Symbol.iterator](),
-            mcpServer.server
-          )
-        } else {
-          throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
-        }
-
-        // Return result as tool content
         return {
           content: [
             {
@@ -420,110 +513,13 @@ function registerToolWithMCP(
 }
 
 // =============================================================================
-// BRANCH TOOL SUPPORT
+// BRANCH TOOL SUPPORT (BranchContext + runBranchTool)
 // =============================================================================
 
-/**
- * Create a BranchMCPClient that uses the real MCP server.
- */
-function createBranchMCPClient(server: Server): BranchMCPClient {
-  return {
-    capabilities: {
-      elicitation: true,
-      sampling: true,
-    },
-
-    sample(
-      messages: Message[],
-      options?: { systemPrompt?: string; maxTokens?: number }
-    ): { [Symbol.iterator](): Generator<any, SampleResult> } {
-      return {
-        *[Symbol.iterator](): Generator<any, SampleResult> {
-          const result: any = yield {
-            type: 'sample',
-            params: {
-              messages: messages.map((m) => ({
-                role: m.role as 'user' | 'assistant',
-                content: { type: 'text' as const, text: m.content },
-              })),
-              systemPrompt: options?.systemPrompt,
-              maxTokens: options?.maxTokens ?? 1000,
-            },
-          }
-
-          // Extract text from result
-          const text = result?.content?.text ?? result?.content ?? ''
-
-          return {
-            text,
-            model: result?.model,
-            stopReason: result?.stopReason,
-          }
-        },
-      }
-    },
-
-    elicit<T>(config: ElicitConfig<T>): { [Symbol.iterator](): Generator<any, ElicitResult<T>> } {
-      return {
-        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
-          const jsonSchema = zodToJsonSchema(config.schema)
-
-          const result: any = yield {
-            type: 'elicit',
-            params: {
-              message: config.message,
-              requestedSchema: jsonSchema,
-            },
-          }
-
-          if (result.action === 'accept') {
-            return {
-              action: 'accept',
-              content: result.content as T,
-            }
-          } else if (result.action === 'decline') {
-            return { action: 'decline' }
-          } else {
-            return { action: 'cancel' }
-          }
-        },
-      }
-    },
-
-    log(level: LogLevel, message: string): { [Symbol.iterator](): Generator<any, void> } {
-      return {
-        *[Symbol.iterator](): Generator<any, void> {
-          yield {
-            type: 'log',
-            params: { level, message },
-          }
-        },
-      }
-    },
-
-    notify(message: string, progress?: number): { [Symbol.iterator](): Generator<any, void> } {
-      return {
-        *[Symbol.iterator](): Generator<any, void> {
-          yield {
-            type: 'notify',
-            params: { message, progress },
-          }
-        },
-      }
-    },
-  }
-}
-
-/**
- * Register a branch-based tool with the MCP server.
- */
 function registerBranchToolWithMCP(
   mcpServer: McpServer,
   tool: FinalizedBranchTool<string, any, any, any, any>
 ): void {
-  console.error(`[registerBranchToolWithMCP] Registering tool: ${tool.name}`)
-  
-  // Get the shape from the Zod schema for MCP's input
   const zodSchema = tool.parameters
   let inputSchema: any = undefined
 
@@ -534,63 +530,41 @@ function registerBranchToolWithMCP(
     }
   }
 
-  console.error(`[registerBranchToolWithMCP] Input schema keys:`, inputSchema ? Object.keys(inputSchema) : 'undefined')
-
-  try {
-    mcpServer.registerTool(
-      tool.name,
-      {
-        description: tool.description,
-        inputSchema,
-      },
-      async (args: any) => {
+  mcpServer.registerTool(
+    tool.name,
+    {
+      description: tool.description,
+      inputSchema,
+    },
+    async (args: any) => {
       const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const signal = new AbortController().signal
+      const abortController = new AbortController()
+      const signal = abortController.signal
 
       const serverCtx: BranchServerContext = { callId, signal }
 
+      const branchClient = createSDKBranchMCPClient({
+        server: mcpServer.server,
+        callId,
+        signal,
+      })
+
       try {
-        let result: any
+        const result = await run(function* () {
+          assertToolRequirements(mcpServer.server, tool.requires)
 
-        if (tool.handoffConfig) {
-          // Execute handoff pattern with branch context
-          const { before, client: clientFn, after } = tool.handoffConfig
+          // NOTE: Timeouts are intentionally not enforced yet.
+          // This is the seam where we'd introduce tool-level timeouts.
 
-          // Phase 1: before()
-          const beforeGen = before(args, serverCtx)
-          const handoff = await executeGenerator(
-            beforeGen[Symbol.iterator](),
-            mcpServer.server
-          )
+          return yield* runBranchTool(tool as any, args, branchClient, {
+            callId,
+            signal,
+          })
+        })
 
-          // Client phase with branch context
-          // We need to create a BranchContext here
-          const branchClientCtx = createBranchContextForMCP(mcpServer.server)
-          const clientGen = clientFn(handoff, branchClientCtx)
-          const clientResult = await executeGenerator(
-            clientGen[Symbol.iterator](),
-            mcpServer.server
-          )
+        // Ensure serverCtx is used (future timeouts/cancellation hooks live here)
+        void serverCtx
 
-          // Phase 2: after()
-          const afterGen = after(handoff, clientResult, serverCtx, args)
-          result = await executeGenerator(
-            afterGen[Symbol.iterator](),
-            mcpServer.server
-          )
-        } else if (tool.execute) {
-          // Simple execute with branch context
-          const branchClientCtx = createBranchContextForMCP(mcpServer.server)
-          const execGen = tool.execute(args, branchClientCtx)
-          result = await executeGenerator(
-            execGen[Symbol.iterator](),
-            mcpServer.server
-          )
-        } else {
-          throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
-        }
-
-        // Return result as tool content
         return {
           content: [
             {
@@ -607,160 +581,5 @@ function registerBranchToolWithMCP(
         }
       }
     }
-    )
-    console.error(`[registerBranchToolWithMCP] Successfully registered: ${tool.name}`)
-  } catch (err) {
-    console.error(`[registerBranchToolWithMCP] FAILED to register ${tool.name}:`, err)
-  }
-}
-
-/**
- * Create a BranchContext for use with the MCP server.
- * This is a simplified version that yields protocol actions.
- */
-function createBranchContextForMCP(server: Server): any {
-  // Internal state for tracking messages
-  const messages: Message[] = []
-
-  const ctx = {
-    // Read-only parent context (empty for top-level)
-    parentMessages: [] as readonly Message[],
-    parentSystemPrompt: undefined as string | undefined,
-
-    // Current branch state
-    get messages() {
-      return messages as readonly Message[]
-    },
-    depth: 0,
-
-    // Sample with both modes
-    sample(config: any): { [Symbol.iterator](): Generator<any, SampleResult> } {
-      return {
-        *[Symbol.iterator](): Generator<any, SampleResult> {
-          let messagesToSend: Message[]
-
-          if ('prompt' in config && config.prompt) {
-            // Auto-tracked mode
-            const userMessage: Message = { role: 'user', content: config.prompt }
-            messagesToSend = [...messages, userMessage]
-          } else if ('messages' in config && config.messages) {
-            // Explicit mode
-            messagesToSend = config.messages
-          } else {
-            throw new Error('sample() requires either prompt or messages')
-          }
-
-          const result: any = yield {
-            type: 'sample',
-            params: {
-              messages: messagesToSend.map((m) => ({
-                role: m.role as 'user' | 'assistant',
-                content: { type: 'text' as const, text: m.content },
-              })),
-              systemPrompt: config.systemPrompt,
-              maxTokens: config.maxTokens ?? 1000,
-            },
-          }
-
-          const text = result?.content?.text ?? result?.content ?? ''
-
-          // If auto-tracked mode, update messages
-          if ('prompt' in config && config.prompt) {
-            messages.push(
-              { role: 'user', content: config.prompt },
-              { role: 'assistant', content: text }
-            )
-          }
-
-          return {
-            text,
-            model: result?.model,
-            stopReason: result?.stopReason,
-          }
-        },
-      }
-    },
-
-    elicit<T>(config: ElicitConfig<T>): { [Symbol.iterator](): Generator<any, ElicitResult<T>> } {
-      return {
-        *[Symbol.iterator](): Generator<any, ElicitResult<T>> {
-          const jsonSchema = zodToJsonSchema(config.schema)
-
-          const result: any = yield {
-            type: 'elicit',
-            params: {
-              message: config.message,
-              requestedSchema: jsonSchema,
-            },
-          }
-
-          if (result.action === 'accept') {
-            return { action: 'accept', content: result.content as T }
-          } else if (result.action === 'decline') {
-            return { action: 'decline' }
-          } else {
-            return { action: 'cancel' }
-          }
-        },
-      }
-    },
-
-    branch<T>(
-      fn: (ctx: any) => { [Symbol.iterator](): Iterator<any, T> },
-      options: any = {}
-    ): { [Symbol.iterator](): Generator<any, T> } {
-      return {
-        *[Symbol.iterator](): Generator<any, T> {
-          // Create sub-context
-          const inheritMessages = options.inheritMessages ?? true
-          const subMessages: Message[] = inheritMessages ? [...messages] : []
-          if (options.messages) {
-            subMessages.push(...options.messages)
-          }
-
-          // Create sub-context with updated state
-          const subCtx = createBranchContextForMCP(server)
-          ;(subCtx as any).parentMessages = [...messages]
-          ;(subCtx as any).parentSystemPrompt = options.systemPrompt
-          ;(subCtx as any).depth = ctx.depth + 1
-
-          // Copy inherited messages to sub-context
-          for (const msg of subMessages) {
-            ;(subCtx as any).messages.push(msg)
-          }
-
-          // Execute sub-branch
-          const subGen = fn(subCtx)
-          const subIterator = subGen[Symbol.iterator]()
-
-          // Drive the sub-generator, passing through yields
-          let subResult = subIterator.next()
-          while (!subResult.done) {
-            const response = yield subResult.value
-            subResult = subIterator.next(response)
-          }
-
-          return subResult.value
-        },
-      }
-    },
-
-    log(level: LogLevel, message: string): { [Symbol.iterator](): Generator<any, void> } {
-      return {
-        *[Symbol.iterator](): Generator<any, void> {
-          yield { type: 'log', params: { level, message } }
-        },
-      }
-    },
-
-    notify(message: string, progress?: number): { [Symbol.iterator](): Generator<any, void> } {
-      return {
-        *[Symbol.iterator](): Generator<any, void> {
-          yield { type: 'notify', params: { message, progress } }
-        },
-      }
-    },
-  }
-
-  return ctx
+  )
 }
