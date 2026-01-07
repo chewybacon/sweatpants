@@ -1,11 +1,20 @@
 /**
- * Branch-Based Tool Execution Types
+ * MCP Tool Types
  *
- * Extends the MCP tool system with branch-based execution model.
- * Branches are server-driven generators that can:
- * - Call back to client for LLM (sample) or user input (elicit)
- * - Spawn sub-branches for structured concurrency
- * - Manage conversation context across the branch tree
+ * Unified type definitions for MCP (Model Context Protocol) tools.
+ * Provides a generator-based execution model with:
+ * - LLM backchannel (sampling)
+ * - User backchannel (elicitation)
+ * - Sub-branching for structured concurrency
+ *
+ * ## MCP Primitives Mapping
+ *
+ * | MCP Method            | Our Primitive       | Description                    |
+ * |-----------------------|---------------------|--------------------------------|
+ * | elicitation/create    | ctx.elicit()        | Request structured user input  |
+ * | sampling/createMessage| ctx.sample()        | Request LLM completion         |
+ * | notifications/message | ctx.log()           | Send log message               |
+ * | notifications/progress| ctx.notify()        | Send progress update           |
  *
  * ## Mental Model
  *
@@ -31,15 +40,47 @@
  */
 import type { Operation } from 'effection'
 import type { z } from 'zod'
-import type {
-  ElicitConfig,
-  ElicitResult,
-  LogLevel,
-  ModelPreferences,
-} from './types'
 
 // =============================================================================
-// ELICITATION SURFACE (finite, typed keys)
+// ELICITATION TYPES (shared)
+// =============================================================================
+
+/**
+ * Result of an elicitation request.
+ *
+ * MCP elicitation has three response actions:
+ * - `accept`: User submitted data (content contains the data)
+ * - `decline`: User explicitly declined (clicked "No", "Reject", etc.)
+ * - `cancel`: User dismissed without choosing (closed dialog, pressed Escape)
+ */
+export type ElicitResult<T> =
+  | { action: 'accept'; content: T }
+  | { action: 'decline' }
+  | { action: 'cancel' }
+
+/**
+ * Configuration for an elicitation request (simple form).
+ */
+export interface ElicitConfig<T> {
+  /** Message to display to the user */
+  message: string
+
+  /**
+   * Zod schema for the expected response.
+   *
+   * Note: MCP elicitation only supports flat objects with primitive properties:
+   * - string (with optional format: email, uri, date, date-time)
+   * - number / integer (with optional min/max)
+   * - boolean
+   * - enum (string enums only)
+   *
+   * Nested objects and arrays are NOT supported.
+   */
+  schema: z.ZodType<T>
+}
+
+// =============================================================================
+// ELICITATION SURFACE (finite, typed keys for bridgeable tools)
 // =============================================================================
 
 /**
@@ -49,7 +90,7 @@ import type {
  *
  * @example
  * ```typescript
- * const tool = createBranchTool('book_flight')
+ * const tool = createMcpTool('book_flight')
  *   .elicits({
  *     pickFlight: z.object({ flightId: z.string() }),
  *     confirm: z.object({ ok: z.boolean() }),
@@ -125,8 +166,39 @@ export interface Message {
 }
 
 // =============================================================================
-// SAMPLE CONFIGURATION
+// SAMPLING TYPES
 // =============================================================================
+
+/**
+ * Model preferences for sampling requests.
+ *
+ * Used to guide the MCP client's model selection without requiring
+ * the server to know about specific models.
+ */
+export interface ModelPreferences {
+  /**
+   * Model name hints (evaluated in order of preference).
+   * These are substrings that can match model names flexibly.
+   *
+   * @example
+   * ```typescript
+   * hints: [
+   *   { name: 'claude-3-sonnet' },  // Prefer Sonnet-class
+   *   { name: 'claude' },           // Fall back to any Claude
+   * ]
+   * ```
+   */
+  hints?: Array<{ name: string }>
+
+  /** How important is minimizing cost? (0-1, higher = prefer cheaper) */
+  costPriority?: number
+
+  /** How important is low latency? (0-1, higher = prefer faster) */
+  speedPriority?: number
+
+  /** How important are advanced capabilities? (0-1, higher = prefer smarter) */
+  intelligencePriority?: number
+}
 
 /**
  * Base sample configuration (shared fields).
@@ -172,7 +244,7 @@ export interface SampleConfigMessages extends SampleConfigBase {
  * - `prompt`: Simple prompt string, auto-tracked in branch context
  * - `messages`: Explicit messages array, full control
  */
-export type BranchSampleConfig = SampleConfigPrompt | SampleConfigMessages
+export type McpToolSampleConfig = SampleConfigPrompt | SampleConfigMessages
 
 /**
  * Result of a sampling request.
@@ -189,13 +261,22 @@ export interface SampleResult {
 }
 
 // =============================================================================
+// LOGGING TYPES
+// =============================================================================
+
+/**
+ * Log levels for MCP logging.
+ */
+export type LogLevel = 'debug' | 'info' | 'warning' | 'error'
+
+// =============================================================================
 // BRANCH OPTIONS
 // =============================================================================
 
 /**
  * Options for creating a sub-branch.
  */
-export interface BranchOptions {
+export interface McpToolBranchOptions {
   // ---------------------------------------------------------------------------
   // Context inheritance
   // ---------------------------------------------------------------------------
@@ -243,22 +324,12 @@ export interface BranchOptions {
    * Timeout in milliseconds for this branch.
    */
   timeout?: number
-
-  // ---------------------------------------------------------------------------
-  // Tool binding (future)
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Tools available to this branch for composition.
-   * (Future: enables ctx.callTool() in sub-branches)
-   */
-  // tools?: Tool[]
 }
 
 /**
  * Limits configuration for tool execution.
  */
-export interface BranchLimits {
+export interface McpToolLimits {
   /** Maximum branch depth */
   maxDepth?: number
 
@@ -270,11 +341,11 @@ export interface BranchLimits {
 }
 
 // =============================================================================
-// BRANCH CONTEXT
+// MCP TOOL CONTEXT
 // =============================================================================
 
 /**
- * Context available in branch execution.
+ * Context available in MCP tool execution.
  *
  * Provides primitives for:
  * - Reading parent context
@@ -285,7 +356,7 @@ export interface BranchLimits {
  *
  * @example
  * ```typescript
- * *client(handoff, ctx: BranchContext) {
+ * *client(handoff, ctx: McpToolContext) {
  *   // Auto-tracked conversation
  *   const analysis = yield* ctx.sample({ prompt: 'Analyze...' })
  *
@@ -304,7 +375,7 @@ export interface BranchLimits {
  * }
  * ```
  */
-export interface BranchContext {
+export interface McpToolContext {
   // ---------------------------------------------------------------------------
   // Parent context (read-only)
   // ---------------------------------------------------------------------------
@@ -369,7 +440,7 @@ export interface BranchContext {
    * })
    * ```
    */
-  sample(config: BranchSampleConfig): Operation<SampleResult>
+  sample(config: McpToolSampleConfig): Operation<SampleResult>
 
   // ---------------------------------------------------------------------------
   // User backchannel
@@ -440,8 +511,8 @@ export interface BranchContext {
    * ```
    */
   branch<T>(
-    fn: (ctx: BranchContext) => Operation<T>,
-    options?: BranchOptions
+    fn: (ctx: McpToolContext) => Operation<T>,
+    options?: McpToolBranchOptions
   ): Operation<T>
 
   // ---------------------------------------------------------------------------
@@ -468,7 +539,7 @@ export interface BranchContext {
 // =============================================================================
 
 /**
- * Branch context with typed, keyed elicitation.
+ * MCP tool context with typed, keyed elicitation.
  *
  * Used when a tool declares `.elicits({...})` to enable exhaustive
  * UI bridging with type safety.
@@ -478,7 +549,7 @@ export interface BranchContext {
  * @example
  * ```typescript
  * // Tool declares elicitation surface
- * const tool = createBranchTool('book_flight')
+ * const tool = createMcpTool('book_flight')
  *   .elicits({
  *     pickFlight: z.object({ flightId: z.string() }),
  *     confirm: z.object({ ok: z.boolean() }),
@@ -493,26 +564,26 @@ export interface BranchContext {
  *   })
  * ```
  */
-export interface BranchContextWithElicits<TElicits extends ElicitsMap> {
+export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   // ---------------------------------------------------------------------------
-  // Parent context (read-only) - same as BranchContext
+  // Parent context (read-only) - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   readonly parentMessages: readonly Message[]
   readonly parentSystemPrompt: string | undefined
 
   // ---------------------------------------------------------------------------
-  // Current branch state - same as BranchContext
+  // Current branch state - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   readonly messages: readonly Message[]
   readonly depth: number
 
   // ---------------------------------------------------------------------------
-  // LLM backchannel - same as BranchContext
+  // LLM backchannel - same as McpToolContext
   // ---------------------------------------------------------------------------
 
-  sample(config: BranchSampleConfig): Operation<SampleResult>
+  sample(config: McpToolSampleConfig): Operation<SampleResult>
 
   // ---------------------------------------------------------------------------
   // User backchannel - KEYED elicitation
@@ -550,12 +621,12 @@ export interface BranchContextWithElicits<TElicits extends ElicitsMap> {
    * Sub-branches inherit the keyed elicitation context.
    */
   branch<T>(
-    fn: (ctx: BranchContextWithElicits<TElicits>) => Operation<T>,
-    options?: BranchOptions
+    fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
+    options?: McpToolBranchOptions
   ): Operation<T>
 
   // ---------------------------------------------------------------------------
-  // Logging - same as BranchContext
+  // Logging - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   log(level: LogLevel, message: string): Operation<void>
@@ -563,11 +634,26 @@ export interface BranchContextWithElicits<TElicits extends ElicitsMap> {
 }
 
 // =============================================================================
-// BRANCH HANDOFF CONFIGURATION
+// SERVER CONTEXT
 // =============================================================================
 
 /**
- * Configuration for a tool with branch-based handoff pattern.
+ * Server context for before() and after() phases.
+ */
+export interface McpToolServerContext {
+  /** Unique identifier for this tool call */
+  callId: string
+
+  /** Abort signal for cancellation */
+  signal: AbortSignal
+}
+
+// =============================================================================
+// HANDOFF CONFIGURATION
+// =============================================================================
+
+/**
+ * Configuration for a tool with handoff pattern.
  *
  * Type flow:
  * ```
@@ -585,7 +671,7 @@ export interface BranchContextWithElicits<TElicits extends ElicitsMap> {
  * @template TClient - Data from client() to after()
  * @template TResult - Final result returned to LLM
  */
-export interface BranchHandoffConfig<TParams, THandoff, TClient, TResult> {
+export interface McpToolHandoffConfig<TParams, THandoff, TClient, TResult> {
   /**
    * Phase 1: Server-side setup (runs ONCE).
    *
@@ -594,7 +680,7 @@ export interface BranchHandoffConfig<TParams, THandoff, TClient, TResult> {
    * 1. Passed to client() as handoff data
    * 2. Cached and passed to after() (NOT re-computed)
    */
-  before: (params: TParams, ctx: BranchServerContext) => Operation<THandoff>
+  before: (params: TParams, ctx: McpToolServerContext) => Operation<THandoff>
 
   /**
    * Client phase: Branch-based multi-turn interaction.
@@ -602,7 +688,7 @@ export interface BranchHandoffConfig<TParams, THandoff, TClient, TResult> {
    * This is where you use ctx.sample(), ctx.elicit(), and ctx.branch()
    * for complex multi-turn conversations with the LLM and user.
    */
-  client: (handoff: THandoff, ctx: BranchContext) => Operation<TClient>
+  client: (handoff: THandoff, ctx: McpToolContext) => Operation<TClient>
 
   /**
    * Phase 2: Server-side finalization (runs ONCE after client).
@@ -616,16 +702,16 @@ export interface BranchHandoffConfig<TParams, THandoff, TClient, TResult> {
   after: (
     handoff: THandoff,
     client: TClient,
-    ctx: BranchServerContext,
+    ctx: McpToolServerContext,
     params: TParams
   ) => Operation<TResult>
 }
 
 /**
- * Configuration for a tool with branch-based handoff and keyed elicitation.
+ * Configuration for a tool with handoff and keyed elicitation.
  *
- * Same as BranchHandoffConfig but the client phase receives
- * BranchContextWithElicits for type-safe, keyed elicitation.
+ * Same as McpToolHandoffConfig but the client phase receives
+ * McpToolContextWithElicits for type-safe, keyed elicitation.
  *
  * @template TParams - Tool parameters from LLM
  * @template THandoff - Data from before() to client() and after()
@@ -633,37 +719,26 @@ export interface BranchHandoffConfig<TParams, THandoff, TClient, TResult> {
  * @template TResult - Final result returned to LLM
  * @template TElicits - Map of elicitation keys to their Zod schemas
  */
-export interface BranchHandoffConfigWithElicits<
+export interface McpToolHandoffConfigWithElicits<
   TParams,
   THandoff,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
 > {
-  before: (params: TParams, ctx: BranchServerContext) => Operation<THandoff>
+  before: (params: TParams, ctx: McpToolServerContext) => Operation<THandoff>
 
   client: (
     handoff: THandoff,
-    ctx: BranchContextWithElicits<TElicits>
+    ctx: McpToolContextWithElicits<TElicits>
   ) => Operation<TClient>
 
   after: (
     handoff: THandoff,
     client: TClient,
-    ctx: BranchServerContext,
+    ctx: McpToolServerContext,
     params: TParams
   ) => Operation<TResult>
-}
-
-/**
- * Server context for before() and after() phases.
- */
-export interface BranchServerContext {
-  /** Unique identifier for this tool call */
-  callId: string
-
-  /** Abort signal for cancellation */
-  signal: AbortSignal
 }
 
 // =============================================================================
@@ -671,37 +746,80 @@ export interface BranchServerContext {
 // =============================================================================
 
 /**
+ * Error thrown when MCP client doesn't support a required capability.
+ */
+export class McpCapabilityError extends Error {
+  constructor(
+    public readonly capability: 'elicitation' | 'sampling',
+    message: string
+  ) {
+    super(message)
+    this.name = 'McpCapabilityError'
+  }
+}
+
+/**
+ * Error thrown when user declines an elicitation.
+ */
+export class ElicitationDeclinedError extends Error {
+  constructor(message = 'User declined the elicitation request') {
+    super(message)
+    this.name = 'ElicitationDeclinedError'
+  }
+}
+
+/**
+ * Error thrown when user cancels an elicitation.
+ */
+export class ElicitationCancelledError extends Error {
+  constructor(message = 'User cancelled the elicitation request') {
+    super(message)
+    this.name = 'ElicitationCancelledError'
+  }
+}
+
+/**
  * Error thrown when branch depth limit is exceeded.
  */
-export class BranchDepthError extends Error {
+export class McpToolDepthError extends Error {
   constructor(
     public readonly depth: number,
     public readonly maxDepth: number
   ) {
     super(`Branch depth ${depth} exceeds maximum ${maxDepth}`)
-    this.name = 'BranchDepthError'
+    this.name = 'McpToolDepthError'
   }
 }
 
 /**
  * Error thrown when branch token budget is exceeded.
  */
-export class BranchTokenError extends Error {
+export class McpToolTokenError extends Error {
   constructor(
     public readonly used: number,
     public readonly budget: number
   ) {
     super(`Branch used ${used} tokens, exceeding budget of ${budget}`)
-    this.name = 'BranchTokenError'
+    this.name = 'McpToolTokenError'
   }
 }
 
 /**
  * Error thrown when branch times out.
  */
-export class BranchTimeoutError extends Error {
+export class McpToolTimeoutError extends Error {
   constructor(public readonly timeoutMs: number) {
     super(`Branch timed out after ${timeoutMs}ms`)
-    this.name = 'BranchTimeoutError'
+    this.name = 'McpToolTimeoutError'
+  }
+}
+
+/**
+ * Error thrown on MCP disconnect.
+ */
+export class McpDisconnectError extends Error {
+  constructor(message = 'MCP client disconnected') {
+    super(message)
+    this.name = 'McpDisconnectError'
   }
 }

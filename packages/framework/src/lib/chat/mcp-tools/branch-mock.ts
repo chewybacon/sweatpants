@@ -15,14 +15,17 @@ import { runBranchTool } from './branch-runtime'
 import type {
   Message,
   SampleResult,
-} from './branch-types'
-import type {
   ElicitConfig,
   ElicitResult,
   LogLevel,
-} from './types'
-import { MCPCapabilityError } from './types'
-import type { FinalizedBranchTool } from './branch-builder'
+} from './mcp-tool-types'
+import { McpCapabilityError } from './mcp-tool-types'
+import type { FinalizedMcpTool } from './mcp-tool-builder'
+
+// Legacy type aliases for backward compatibility
+const MCPCapabilityError = McpCapabilityError
+type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResult> = 
+  FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
 
 // =============================================================================
 // MOCK CLIENT CONFIGURATION

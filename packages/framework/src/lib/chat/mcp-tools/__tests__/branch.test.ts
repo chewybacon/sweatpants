@@ -4,10 +4,13 @@
 import { describe, it, expect } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
-import { createBranchTool } from '../branch-builder'
-import { createMockBranchClient, runBranchToolMock } from '../branch-mock'
-import { runBranchTool } from '../branch-runtime'
-import { BranchDepthError } from '../branch-types'
+import {
+  createBranchTool,
+  createMockBranchClient,
+  runBranchToolMock,
+  runBranchTool,
+  BranchDepthError,
+} from '../index'
 
 describe('createBranchTool', () => {
   it('creates a tool with basic properties', () => {

@@ -10,7 +10,7 @@
  * @example Derive a plugin from a bridgeable tool
  * ```typescript
  * // Define the MCP tool with elicitation surface
- * const bookFlight = createBranchTool('book_flight')
+ * const bookFlight = createMcpTool('book_flight')
  *   .description('Book a flight')
  *   .parameters(z.object({ destination: z.string() }))
  *   .elicits({
@@ -60,9 +60,13 @@ import type { z } from 'zod'
 import type {
   ElicitRequest,
   ElicitsMap,
-} from './branch-types'
-import type { ElicitResult } from './types'
-import type { FinalizedBranchToolWithElicits } from './branch-builder'
+  ElicitResult,
+} from './mcp-tool-types'
+import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
+
+// Legacy type alias for backward compatibility
+type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
+  FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 
 // =============================================================================
 // CLIENT CONTEXT (what onElicit handlers receive)

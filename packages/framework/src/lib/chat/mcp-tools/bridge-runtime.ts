@@ -15,24 +15,38 @@
 import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, sleep } from 'effection'
 import type { z } from 'zod'
 import type {
-  BranchContextWithElicits,
-  BranchHandoffConfigWithElicits,
-  BranchLimits,
-  BranchOptions,
-  BranchSampleConfig,
-  BranchServerContext,
+  McpToolContextWithElicits,
+  McpToolHandoffConfigWithElicits,
+  McpToolLimits,
+  McpToolBranchOptions,
+  McpToolSampleConfig,
+  McpToolServerContext,
   ElicitId,
   ElicitRequest,
   ElicitsMap,
   Message,
   SampleResult,
-} from './branch-types'
+  ElicitResult,
+  LogLevel,
+} from './mcp-tool-types'
 import {
-  BranchDepthError,
-  BranchTokenError,
-} from './branch-types'
-import type { ElicitResult, LogLevel } from './types'
-import type { FinalizedBranchToolWithElicits } from './branch-builder'
+  McpToolDepthError,
+  McpToolTokenError,
+} from './mcp-tool-types'
+import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
+
+// Legacy type aliases for backward compatibility
+type BranchContextWithElicits<T extends ElicitsMap> = McpToolContextWithElicits<T>
+type BranchHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
+  McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
+type BranchLimits = McpToolLimits
+type BranchOptions = McpToolBranchOptions
+type BranchSampleConfig = McpToolSampleConfig
+type BranchServerContext = McpToolServerContext
+const BranchDepthError = McpToolDepthError
+const BranchTokenError = McpToolTokenError
+type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
+  FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 
 // =============================================================================
 // BRIDGE HOST INTERFACE
