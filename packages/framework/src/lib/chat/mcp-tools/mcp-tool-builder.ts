@@ -1,13 +1,17 @@
 /**
- * Branch-Based MCP Tool Builder
+ * MCP Tool Builder
  *
- * Type-safe builder for creating MCP tools with branch-based execution.
+ * Type-safe builder for creating MCP tools with:
+ * - Sub-branching for structured concurrency
+ * - LLM backchannel (sampling)
+ * - User backchannel (elicitation)
+ * - Optional keyed elicitation for UI bridging
  *
  * ## Usage
  *
  * @example Simple tool (no handoff)
  * ```typescript
- * const calculator = createBranchTool('calculate')
+ * const calculator = createMcpTool('calculate')
  *   .description('Perform a calculation')
  *   .parameters(z.object({ expression: z.string() }))
  *   .execute(function*(params, ctx) {
@@ -18,7 +22,7 @@
  *
  * @example Tool with handoff (multi-turn, sub-branches)
  * ```typescript
- * const bookFlight = createBranchTool('book_flight')
+ * const bookFlight = createMcpTool('book_flight')
  *   .description('Book a flight with analysis and confirmation')
  *   .parameters(z.object({ destination: z.string() }))
  *   .requires({ elicitation: true, sampling: true })
@@ -62,13 +66,13 @@
 import type { Operation } from 'effection'
 import type { z } from 'zod'
 import type {
-  BranchContext,
-  BranchContextWithElicits,
-  BranchHandoffConfig,
-  BranchHandoffConfigWithElicits,
-  BranchLimits,
+  McpToolContext,
+  McpToolContextWithElicits,
+  McpToolHandoffConfig,
+  McpToolHandoffConfigWithElicits,
+  McpToolLimits,
   ElicitsMap,
-} from './branch-types'
+} from './mcp-tool-types'
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -77,7 +81,7 @@ import type {
 /**
  * Phantom type carrier for builder state.
  */
-export interface BranchToolTypes<
+export interface McpToolTypes<
   in out TParams,
   in out THandoff,
   in out TClient,
@@ -96,33 +100,33 @@ export interface BranchToolTypes<
 /**
  * Base builder - has name, needs everything else.
  */
-export interface BranchToolBuilderBase<TName extends string> {
-  _types: BranchToolTypes<undefined, undefined, undefined, undefined>
+export interface McpToolBuilderBase<TName extends string> {
+  _types: McpToolTypes<undefined, undefined, undefined, undefined>
   _name: TName
 
   /** Set the description shown to the LLM */
-  description(desc: string): BranchToolBuilderWithDescription<TName>
+  description(desc: string): McpToolBuilderWithDescription<TName>
 }
 
 /**
  * Has name + description, needs parameters.
  */
-export interface BranchToolBuilderWithDescription<TName extends string> {
-  _types: BranchToolTypes<undefined, undefined, undefined, undefined>
+export interface McpToolBuilderWithDescription<TName extends string> {
+  _types: McpToolTypes<undefined, undefined, undefined, undefined>
   _name: TName
   _description: string
 
   /** Set the Zod schema for tool parameters */
   parameters<TSchema extends z.ZodType>(
     schema: TSchema
-  ): BranchToolBuilderWithParams<TName, z.infer<TSchema>>
+  ): McpToolBuilderWithParams<TName, z.infer<TSchema>>
 }
 
 /**
  * Has name + description + params, can set requires/limits or define execution.
  */
-export interface BranchToolBuilderWithParams<TName extends string, TParams> {
-  _types: BranchToolTypes<TParams, undefined, undefined, undefined>
+export interface McpToolBuilderWithParams<TName extends string, TParams> {
+  _types: McpToolTypes<TParams, undefined, undefined, undefined>
   _name: TName
   _description: string
   _parameters: z.ZodType<TParams>
@@ -137,7 +141,7 @@ export interface BranchToolBuilderWithParams<TName extends string, TParams> {
    * Set default limits for branch execution.
    * Can be overridden at runtime or per-branch.
    */
-  limits(limits: BranchLimits): this
+  limits(limits: McpToolLimits): this
 
   /**
    * Declare a finite elicitation surface for type-safe UI bridging.
@@ -149,7 +153,7 @@ export interface BranchToolBuilderWithParams<TName extends string, TParams> {
    *
    * @example
    * ```typescript
-   * const tool = createBranchTool('book_flight')
+   * const tool = createMcpTool('book_flight')
    *   .description('Book a flight')
    *   .parameters(z.object({ destination: z.string() }))
    *   .elicits({
@@ -167,33 +171,33 @@ export interface BranchToolBuilderWithParams<TName extends string, TParams> {
    */
   elicits<TElicits extends ElicitsMap>(
     schemas: TElicits
-  ): BranchToolBuilderWithElicits<TName, TParams, TElicits>
+  ): McpToolBuilderWithElicits<TName, TParams, TElicits>
 
   /**
    * Define a simple execute function (no handoff).
    * For tools that don't need the before/client/after pattern.
    */
   execute<TResult>(
-    fn: (params: TParams, ctx: BranchContext) => Operation<TResult>
-  ): FinalizedBranchTool<TName, TParams, undefined, undefined, TResult>
+    fn: (params: TParams, ctx: McpToolContext) => Operation<TResult>
+  ): FinalizedMcpTool<TName, TParams, undefined, undefined, TResult>
 
   /**
    * Define handoff pattern for multi-turn interaction.
    */
   handoff<THandoff, TClient, TResult>(
-    config: BranchHandoffConfig<TParams, THandoff, TClient, TResult>
-  ): FinalizedBranchTool<TName, TParams, THandoff, TClient, TResult>
+    config: McpToolHandoffConfig<TParams, THandoff, TClient, TResult>
+  ): FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
 }
 
 /**
  * Has name + description + params + elicits, can set requires/limits or define execution.
  */
-export interface BranchToolBuilderWithElicits<
+export interface McpToolBuilderWithElicits<
   TName extends string,
   TParams,
   TElicits extends ElicitsMap,
 > {
-  _types: BranchToolTypes<TParams, undefined, undefined, undefined>
+  _types: McpToolTypes<TParams, undefined, undefined, undefined>
   _name: TName
   _description: string
   _parameters: z.ZodType<TParams>
@@ -207,21 +211,21 @@ export interface BranchToolBuilderWithElicits<
   /**
    * Set default limits for branch execution.
    */
-  limits(limits: BranchLimits): this
+  limits(limits: McpToolLimits): this
 
   /**
    * Define a simple execute function with keyed elicitation.
    */
   execute<TResult>(
-    fn: (params: TParams, ctx: BranchContextWithElicits<TElicits>) => Operation<TResult>
-  ): FinalizedBranchToolWithElicits<TName, TParams, undefined, undefined, TResult, TElicits>
+    fn: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>
+  ): FinalizedMcpToolWithElicits<TName, TParams, undefined, undefined, TResult, TElicits>
 
   /**
    * Define handoff pattern with keyed elicitation.
    */
   handoff<THandoff, TClient, TResult>(
-    config: BranchHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
-  ): FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+    config: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
+  ): FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 }
 
 // =============================================================================
@@ -229,9 +233,9 @@ export interface BranchToolBuilderWithElicits<
 // =============================================================================
 
 /**
- * A fully configured branch-based MCP tool.
+ * A fully configured MCP tool.
  */
-export interface FinalizedBranchTool<
+export interface FinalizedMcpTool<
   TName extends string,
   TParams,
   THandoff,
@@ -239,7 +243,7 @@ export interface FinalizedBranchTool<
   TResult,
 > {
   /** Phantom type carrier */
-  _types: BranchToolTypes<TParams, THandoff, TClient, TResult>
+  _types: McpToolTypes<TParams, THandoff, TClient, TResult>
 
   /** Tool name (used by LLM) */
   name: TName
@@ -254,22 +258,22 @@ export interface FinalizedBranchTool<
   requires?: { elicitation?: boolean; sampling?: boolean }
 
   /** Default limits for branch execution */
-  limits?: BranchLimits
+  limits?: McpToolLimits
 
   /** Handoff config (if using handoff pattern) */
-  handoffConfig?: BranchHandoffConfig<TParams, THandoff, TClient, TResult>
+  handoffConfig?: McpToolHandoffConfig<TParams, THandoff, TClient, TResult>
 
   /** Execute function (if not using handoff) */
-  execute?: (params: TParams, ctx: BranchContext) => Operation<TResult>
+  execute?: (params: TParams, ctx: McpToolContext) => Operation<TResult>
 }
 
 /**
- * A fully configured branch-based MCP tool with keyed elicitation.
+ * A fully configured MCP tool with keyed elicitation.
  *
  * This tool is "bridgeable" - it can be derived into a plugin with
  * exhaustive, type-safe UI handlers for each elicitation key.
  */
-export interface FinalizedBranchToolWithElicits<
+export interface FinalizedMcpToolWithElicits<
   TName extends string,
   TParams,
   THandoff,
@@ -278,7 +282,7 @@ export interface FinalizedBranchToolWithElicits<
   TElicits extends ElicitsMap,
 > {
   /** Phantom type carrier */
-  _types: BranchToolTypes<TParams, THandoff, TClient, TResult>
+  _types: McpToolTypes<TParams, THandoff, TClient, TResult>
 
   /** Tool name (used by LLM) */
   name: TName
@@ -296,13 +300,13 @@ export interface FinalizedBranchToolWithElicits<
   requires?: { elicitation?: boolean; sampling?: boolean }
 
   /** Default limits for branch execution */
-  limits?: BranchLimits
+  limits?: McpToolLimits
 
   /** Handoff config with keyed elicitation */
-  handoffConfig?: BranchHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
+  handoffConfig?: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
 
   /** Execute function with keyed elicitation */
-  execute?: (params: TParams, ctx: BranchContextWithElicits<TElicits>) => Operation<TResult>
+  execute?: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>
 }
 
 // =============================================================================
@@ -312,45 +316,45 @@ export interface FinalizedBranchToolWithElicits<
 /**
  * Extract the result type from a finalized tool.
  */
-export type InferBranchResult<T> = T extends FinalizedBranchTool<any, any, any, any, infer R>
+export type InferMcpToolResult<T> = T extends FinalizedMcpTool<any, any, any, any, infer R>
   ? R
   : never
 
 /**
  * Extract the params type from a finalized tool.
  */
-export type InferBranchParams<T> = T extends FinalizedBranchTool<any, infer P, any, any, any>
+export type InferMcpToolParams<T> = T extends FinalizedMcpTool<any, infer P, any, any, any>
   ? P
   : never
 
 /**
  * Extract the handoff type from a finalized tool.
  */
-export type InferBranchHandoff<T> = T extends FinalizedBranchTool<any, any, infer H, any, any>
+export type InferMcpToolHandoff<T> = T extends FinalizedMcpTool<any, any, infer H, any, any>
   ? H
   : never
 
 /**
  * Extract the client output type from a finalized tool.
  */
-export type InferBranchClient<T> = T extends FinalizedBranchTool<any, any, any, infer C, any>
+export type InferMcpToolClient<T> = T extends FinalizedMcpTool<any, any, any, infer C, any>
   ? C
   : never
 
 /**
- * Any branch tool (for arrays/registries).
+ * Any MCP tool (for arrays/registries).
  */
-export type AnyBranchTool = FinalizedBranchTool<string, any, any, any, any>
+export type AnyMcpTool = FinalizedMcpTool<string, any, any, any, any>
 
 /**
- * Any bridgeable branch tool (has `.elicits()`).
+ * Any bridgeable MCP tool (has `.elicits()`).
  */
-export type AnyBridgeableBranchTool = FinalizedBranchToolWithElicits<string, any, any, any, any, ElicitsMap>
+export type AnyBridgeableMcpTool = FinalizedMcpToolWithElicits<string, any, any, any, any, ElicitsMap>
 
 /**
  * Extract the elicits map from a bridgeable tool.
  */
-export type InferBranchElicits<T> = T extends FinalizedBranchToolWithElicits<any, any, any, any, any, infer E>
+export type InferMcpToolElicits<T> = T extends FinalizedMcpToolWithElicits<any, any, any, any, any, infer E>
   ? E
   : never
 
@@ -364,9 +368,9 @@ interface BuilderState {
   parameters?: z.ZodType
   elicits?: ElicitsMap
   requires?: { elicitation?: boolean; sampling?: boolean }
-  limits?: BranchLimits
-  handoffConfig?: BranchHandoffConfig<any, any, any, any>
-  executeFn?: (params: any, ctx: BranchContext) => Operation<any>
+  limits?: McpToolLimits
+  handoffConfig?: McpToolHandoffConfig<any, any, any, any>
+  executeFn?: (params: any, ctx: McpToolContext) => Operation<any>
 }
 
 function createBuilder(state: BuilderState): any {
@@ -396,7 +400,7 @@ function createBuilder(state: BuilderState): any {
       return createBuilder({ ...state, requires: caps })
     },
 
-    limits(limits: BranchLimits) {
+    limits(limits: McpToolLimits) {
       return createBuilder({ ...state, limits })
     },
 
@@ -408,7 +412,7 @@ function createBuilder(state: BuilderState): any {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`)
       }
 
-      // If elicits is defined, return FinalizedBranchToolWithElicits
+      // If elicits is defined, return FinalizedMcpToolWithElicits
       if (state.elicits) {
         return {
           _types: undefined as any,
@@ -419,7 +423,7 @@ function createBuilder(state: BuilderState): any {
           requires: state.requires,
           limits: state.limits,
           execute: fn,
-        } as FinalizedBranchToolWithElicits<any, any, undefined, undefined, any, any>
+        } as FinalizedMcpToolWithElicits<any, any, undefined, undefined, any, any>
       }
 
       return {
@@ -430,10 +434,10 @@ function createBuilder(state: BuilderState): any {
         requires: state.requires,
         limits: state.limits,
         execute: fn,
-      } as FinalizedBranchTool<any, any, undefined, undefined, any>
+      } as FinalizedMcpTool<any, any, undefined, undefined, any>
     },
 
-    handoff(config: BranchHandoffConfig<any, any, any, any>) {
+    handoff(config: McpToolHandoffConfig<any, any, any, any>) {
       if (!state.description) {
         throw new Error(`Tool "${state.name}": .description() must be called before .handoff()`)
       }
@@ -441,7 +445,7 @@ function createBuilder(state: BuilderState): any {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`)
       }
 
-      // If elicits is defined, return FinalizedBranchToolWithElicits
+      // If elicits is defined, return FinalizedMcpToolWithElicits
       if (state.elicits) {
         return {
           _types: undefined as any,
@@ -452,7 +456,7 @@ function createBuilder(state: BuilderState): any {
           requires: state.requires,
           limits: state.limits,
           handoffConfig: config,
-        } as FinalizedBranchToolWithElicits<any, any, any, any, any, any>
+        } as FinalizedMcpToolWithElicits<any, any, any, any, any, any>
       }
 
       return {
@@ -463,7 +467,7 @@ function createBuilder(state: BuilderState): any {
         requires: state.requires,
         limits: state.limits,
         handoffConfig: config,
-      } as FinalizedBranchTool<any, any, any, any, any>
+      } as FinalizedMcpTool<any, any, any, any, any>
     },
   }
 
@@ -471,14 +475,14 @@ function createBuilder(state: BuilderState): any {
 }
 
 /**
- * Create a type-safe branch-based MCP tool using the builder pattern.
+ * Create a type-safe MCP tool using the builder pattern.
  *
  * @param name - Unique tool name (used by LLM to invoke)
  * @returns Builder for configuring the tool
  *
  * @example
  * ```typescript
- * const myTool = createBranchTool('my_tool')
+ * const myTool = createMcpTool('my_tool')
  *   .description('Does something with branches')
  *   .parameters(z.object({ input: z.string() }))
  *   .execute(function*(params, ctx) {
@@ -494,8 +498,8 @@ function createBuilder(state: BuilderState): any {
  *   })
  * ```
  */
-export function createBranchTool<TName extends string>(
+export function createMcpTool<TName extends string>(
   name: TName
-): BranchToolBuilderBase<TName> {
-  return createBuilder({ name }) as BranchToolBuilderBase<TName>
+): McpToolBuilderBase<TName> {
+  return createBuilder({ name }) as McpToolBuilderBase<TName>
 }

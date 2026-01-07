@@ -6,14 +6,13 @@
 import { describe, it, expect } from 'vitest'
 import { run, spawn, each, sleep } from 'effection'
 import { z } from 'zod'
-import { createBranchTool } from '../branch-builder'
 import {
+  createBranchTool,
   createBridgeHost,
   runBridgeTool,
   BranchElicitNotAllowedError,
-} from '../bridge-runtime'
-import type { BridgeSamplingProvider, BridgeEvent, ElicitResponse } from '../bridge-runtime'
-import type { SampleResult } from '../branch-types'
+} from '../index'
+import type { BridgeSamplingProvider, BridgeEvent, ElicitResponse, SampleResult } from '../index'
 
 // Mock sampling provider
 function createMockSamplingProvider(responses: string[] = []): BridgeSamplingProvider & { calls: Array<{ messages: unknown[]; options?: unknown }> } {

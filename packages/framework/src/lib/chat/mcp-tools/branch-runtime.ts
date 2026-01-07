@@ -11,24 +11,33 @@
  */
 import type { Operation } from 'effection'
 import type {
-  BranchContext,
-  BranchOptions,
-  BranchSampleConfig,
-  BranchServerContext,
-  BranchLimits,
+  McpToolContext,
+  McpToolBranchOptions,
+  McpToolSampleConfig,
+  McpToolServerContext,
+  McpToolLimits,
   Message,
   SampleResult,
-} from './branch-types'
-import {
-  BranchDepthError,
-  BranchTokenError,
-} from './branch-types'
-import type {
   ElicitConfig,
   ElicitResult,
   LogLevel,
-} from './types'
-import type { FinalizedBranchTool } from './branch-builder'
+} from './mcp-tool-types'
+import {
+  McpToolDepthError,
+  McpToolTokenError,
+} from './mcp-tool-types'
+import type { FinalizedMcpTool } from './mcp-tool-builder'
+
+// Legacy type aliases for backward compatibility
+type BranchContext = McpToolContext
+type BranchOptions = McpToolBranchOptions
+type BranchSampleConfig = McpToolSampleConfig
+type BranchServerContext = McpToolServerContext
+type BranchLimits = McpToolLimits
+const BranchDepthError = McpToolDepthError
+const BranchTokenError = McpToolTokenError
+type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResult> = 
+  FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
 
 // =============================================================================
 // MCP CLIENT INTERFACE

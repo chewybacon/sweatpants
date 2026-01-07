@@ -3,28 +3,20 @@
  *
  * Generator-based primitives for authoring MCP (Model Context Protocol) tools.
  *
- * ## Two Builders
+ * ## Primary API (NEW - use these)
  *
- * - `createMCPTool`: Original builder with MCPClientContext (simpler)
- * - `createBranchTool`: Branch-based builder with sub-branching support
+ * - `createMcpTool`: Unified builder with branching, sampling, and elicitation
  *
- * @example Simple tool (original)
+ * ## Legacy API (DEPRECATED - will be removed)
+ *
+ * - `createMCPTool`: Original builder with MCPClientContext (simpler, no branching)
+ * - `createBranchTool`: Old name for createMcpTool
+ *
+ * @example Using the primary API
  * ```typescript
- * import { createMCPTool } from '@grove/framework/mcp-tools'
+ * import { createMcpTool } from '@grove/framework/mcp-tools'
  *
- * const calculator = createMCPTool('calculate')
- *   .description('Perform a calculation')
- *   .parameters(z.object({ expression: z.string() }))
- *   .execute(function*(params) {
- *     return { result: evaluate(params.expression) }
- *   })
- * ```
- *
- * @example Branch-based tool with sub-branches
- * ```typescript
- * import { createBranchTool } from '@grove/framework/mcp-tools'
- *
- * const analyze = createBranchTool('analyze')
+ * const analyze = createMcpTool('analyze')
  *   .description('Analyze with sub-branches')
  *   .parameters(z.object({ input: z.string() }))
  *   .execute(function*(params, ctx) {
@@ -44,7 +36,119 @@
  */
 
 // =============================================================================
-// ORIGINAL MCP BUILDER (simpler, no sub-branching)
+// PRIMARY API (NEW UNIFIED TYPES AND BUILDER)
+// =============================================================================
+
+export { createMcpTool } from './mcp-tool-builder'
+export type {
+  // Builder interfaces
+  McpToolBuilderBase,
+  McpToolBuilderWithDescription,
+  McpToolBuilderWithParams,
+  McpToolBuilderWithElicits,
+  FinalizedMcpTool,
+  FinalizedMcpToolWithElicits,
+  McpToolTypes,
+  // Type inference helpers
+  InferMcpToolResult,
+  InferMcpToolParams,
+  InferMcpToolHandoff,
+  InferMcpToolClient,
+  InferMcpToolElicits,
+  // Union types
+  AnyMcpTool,
+  AnyBridgeableMcpTool,
+} from './mcp-tool-builder'
+
+// Types from unified types file
+export type {
+  // Context types
+  McpToolContext,
+  McpToolContextWithElicits,
+  McpToolServerContext,
+  // Handoff configuration
+  McpToolHandoffConfig,
+  McpToolHandoffConfigWithElicits,
+  // Branch options and limits
+  McpToolBranchOptions,
+  McpToolLimits,
+  // Sample types
+  McpToolSampleConfig,
+  SampleConfigPrompt,
+  SampleConfigMessages,
+  SampleResult,
+  // Message types
+  Message,
+  MessageRole,
+  // Elicitation types
+  ElicitResult,
+  ElicitConfig,
+  ElicitsMap,
+  ElicitId,
+  ElicitRequest,
+  // Logging
+  LogLevel,
+  ModelPreferences,
+} from './mcp-tool-types'
+
+// Errors from unified types file
+export {
+  McpCapabilityError,
+  ElicitationDeclinedError,
+  ElicitationCancelledError,
+  McpToolDepthError,
+  McpToolTokenError,
+  McpToolTimeoutError,
+  McpDisconnectError,
+} from './mcp-tool-types'
+
+// =============================================================================
+// LEGACY ALIASES (for backward compatibility during migration)
+// Branch* -> McpTool* mapping
+// =============================================================================
+
+// Re-export createMcpTool as createBranchTool for backward compatibility
+export { createMcpTool as createBranchTool } from './mcp-tool-builder'
+
+// Re-export builder types with legacy names
+export type {
+  McpToolBuilderBase as BranchToolBuilderBase,
+  McpToolBuilderWithDescription as BranchToolBuilderWithDescription,
+  McpToolBuilderWithParams as BranchToolBuilderWithParams,
+  McpToolBuilderWithElicits as BranchToolBuilderWithElicits,
+  FinalizedMcpTool as FinalizedBranchTool,
+  FinalizedMcpToolWithElicits as FinalizedBranchToolWithElicits,
+  McpToolTypes as BranchToolTypes,
+  InferMcpToolResult as InferBranchResult,
+  InferMcpToolParams as InferBranchParams,
+  InferMcpToolHandoff as InferBranchHandoff,
+  InferMcpToolClient as InferBranchClient,
+  InferMcpToolElicits as InferBranchElicits,
+  AnyMcpTool as AnyBranchTool,
+  AnyBridgeableMcpTool as AnyBridgeableBranchTool,
+} from './mcp-tool-builder'
+
+// Re-export context/config types with legacy names
+export type {
+  McpToolContext as BranchContext,
+  McpToolContextWithElicits as BranchContextWithElicits,
+  McpToolServerContext as BranchServerContext,
+  McpToolHandoffConfig as BranchHandoffConfig,
+  McpToolHandoffConfigWithElicits as BranchHandoffConfigWithElicits,
+  McpToolBranchOptions as BranchOptions,
+  McpToolLimits as BranchLimits,
+  McpToolSampleConfig as BranchSampleConfig,
+} from './mcp-tool-types'
+
+// Re-export errors with legacy names
+export {
+  McpToolDepthError as BranchDepthError,
+  McpToolTokenError as BranchTokenError,
+  McpToolTimeoutError as BranchTimeoutError,
+} from './mcp-tool-types'
+
+// =============================================================================
+// ORIGINAL MCP BUILDER (simpler, no sub-branching) - DEPRECATED
 // =============================================================================
 
 export { createMCPTool } from './builder'
@@ -67,22 +171,24 @@ export type {
   MCPHandoffConfig,
   MCPToolDef,
   AnyMCPTool,
-  ElicitResult,
-  ElicitConfig,
+  // Note: ElicitResult and ElicitConfig are already exported from mcp-tool-types
+  // These are aliases for backward compat
+  // ElicitResult,
+  // ElicitConfig,
   SampleConfig,
-  ModelPreferences,
-  LogLevel,
+  // ModelPreferences already exported above
+  // LogLevel already exported above
   InferMCPToolParams,
   InferMCPToolResult,
   InferMCPToolHandoff,
   InferMCPToolClient,
 } from './types'
 
-// Errors (shared)
+// Legacy errors (shared) - keep for compatibility
 export {
   MCPCapabilityError,
-  ElicitationDeclinedError,
-  ElicitationCancelledError,
+  // ElicitationDeclinedError already exported above
+  // ElicitationCancelledError already exported above
   MCPTimeoutError,
   MCPDisconnectError,
 } from './types'
@@ -100,55 +206,9 @@ export type {
 } from './mock-runtime'
 
 // =============================================================================
-// BRANCH-BASED BUILDER (sub-branching, context tracking)
+// BRANCH RUNTIME (uses new types internally)
 // =============================================================================
 
-export { createBranchTool } from './branch-builder'
-export type {
-  BranchToolBuilderBase,
-  BranchToolBuilderWithDescription,
-  BranchToolBuilderWithParams,
-  BranchToolBuilderWithElicits,
-  FinalizedBranchTool,
-  FinalizedBranchToolWithElicits,
-  BranchToolTypes,
-  InferBranchResult,
-  InferBranchParams,
-  InferBranchHandoff,
-  InferBranchClient,
-  InferBranchElicits,
-  AnyBranchTool,
-  AnyBridgeableBranchTool,
-} from './branch-builder'
-
-// Branch types
-export type {
-  BranchContext,
-  BranchContextWithElicits,
-  BranchHandoffConfig,
-  BranchHandoffConfigWithElicits,
-  BranchServerContext,
-  BranchOptions,
-  BranchLimits,
-  BranchSampleConfig,
-  SampleConfigPrompt,
-  SampleConfigMessages,
-  SampleResult,
-  Message,
-  MessageRole,
-  ElicitsMap,
-  ElicitId,
-  ElicitRequest,
-} from './branch-types'
-
-// Branch errors
-export {
-  BranchDepthError,
-  BranchTokenError,
-  BranchTimeoutError,
-} from './branch-types'
-
-// Branch runtime
 export { runBranchTool } from './branch-runtime'
 export type {
   BranchMCPClient,
