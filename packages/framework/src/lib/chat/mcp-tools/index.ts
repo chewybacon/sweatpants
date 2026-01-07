@@ -320,3 +320,114 @@ export type {
   ToolSessionRegistryOptions,
   SetupToolSessionsOptions,
 } from './session'
+
+// =============================================================================
+// MCP PROTOCOL (JSON-RPC encoding/decoding, SSE formatting)
+// =============================================================================
+
+export {
+  // Encoder
+  encodeSessionEvent,
+  createEncoderContext,
+  encodeProgressNotification,
+  encodeLogNotification,
+  encodeElicitationRequest,
+  encodeSamplingRequest,
+  encodeToolCallResult,
+  encodeToolCallError,
+  encodeToolCallCancelled,
+
+  // Decoder
+  decodeElicitationResponse,
+  decodeSamplingResponse,
+  decodeToolCallRequest,
+  decodeResponse,
+  createDecoderContext,
+  parseJsonRpcMessage,
+  validateToolCallRequest,
+  validateElicitationResponse,
+  validateSamplingResponse,
+
+  // SSE
+  formatSseEvent,
+  formatMessageAsSse,
+  parseSseEvent,
+  parseSseChunk,
+  generateEventId,
+  parseEventId,
+  createPrimeEvent,
+  createCloseEvent,
+  createSseHeaders,
+  createSseWriter,
+
+  // Type guards
+  isJsonRpcError,
+  isJsonRpcSuccess,
+  isTextContent,
+  isToolUseContent,
+  isToolResultContent,
+
+  // Error codes
+  JSON_RPC_ERROR_CODES,
+  MCP_ERROR_CODES,
+} from './protocol'
+
+export type {
+  // JSON-RPC types
+  JsonRpcId,
+  JsonRpcMessage,
+  JsonRpcRequest,
+  JsonRpcNotification,
+  JsonRpcSuccessResponse,
+  JsonRpcError,
+  JsonRpcErrorResponse,
+  JsonRpcResponse,
+
+  // MCP content types
+  McpTextContent,
+  McpImageContent,
+  McpAudioContent,
+  McpResourceContent,
+  McpToolUseContent,
+  McpToolResultContent,
+  McpContentBlock,
+
+  // MCP message types
+  McpRole,
+  McpMessage,
+
+  // Sampling types
+  McpModelPreferences,
+  McpToolChoice,
+  McpToolDefinition,
+  McpStopReason,
+  McpCreateMessageParams,
+  McpCreateMessageResult,
+
+  // Elicitation types
+  McpElicitationMode,
+  McpElicitationAction,
+  McpElicitationParams,
+  McpElicitationResult,
+
+  // Notification types
+  McpProgressParams,
+  McpLogLevel,
+  McpMessageParams,
+
+  // Tool types
+  McpToolCallParams,
+  McpToolCallResult,
+
+  // SSE types
+  SseEvent,
+  SseWriter,
+
+  // Encoder/decoder types
+  EncoderContext,
+  EncodedMessage,
+  DecodedMessage,
+  DecoderContext,
+  PendingRequest,
+  ParsedJsonRpcMessage,
+} from './protocol'
