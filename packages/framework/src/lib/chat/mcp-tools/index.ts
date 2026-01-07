@@ -108,19 +108,25 @@ export type {
   BranchToolBuilderBase,
   BranchToolBuilderWithDescription,
   BranchToolBuilderWithParams,
+  BranchToolBuilderWithElicits,
   FinalizedBranchTool,
+  FinalizedBranchToolWithElicits,
   BranchToolTypes,
   InferBranchResult,
   InferBranchParams,
   InferBranchHandoff,
   InferBranchClient,
+  InferBranchElicits,
   AnyBranchTool,
+  AnyBridgeableBranchTool,
 } from './branch-builder'
 
 // Branch types
 export type {
   BranchContext,
+  BranchContextWithElicits,
   BranchHandoffConfig,
+  BranchHandoffConfigWithElicits,
   BranchServerContext,
   BranchOptions,
   BranchLimits,
@@ -130,6 +136,9 @@ export type {
   SampleResult,
   Message,
   MessageRole,
+  ElicitsMap,
+  ElicitId,
+  ElicitRequest,
 } from './branch-types'
 
 // Branch errors
@@ -155,3 +164,40 @@ export type {
   MockBranchClient,
   MockBranchClientConfig,
 } from './branch-mock'
+
+// =============================================================================
+// PLUGIN SYSTEM (bridgeable tools -> framework-native plugins)
+// =============================================================================
+
+export { makePlugin } from './plugin'
+export type {
+  McpPlugin,
+  PluginBuilder,
+  PluginBuilderWithHandlers,
+  PluginServerRegistration,
+  PluginClientRegistration,
+  PluginClientContext,
+  ElicitHandler,
+  ElicitHandlers,
+  InferPluginElicits,
+  InferPluginTool,
+  AnyMcpPlugin,
+} from './plugin'
+
+// =============================================================================
+// BRIDGE RUNTIME (in-app tool execution with UI elicitation)
+// =============================================================================
+
+export {
+  createBridgeHost,
+  runBridgeTool,
+  BranchElicitNotAllowedError,
+} from './bridge-runtime'
+export type {
+  BridgeHost,
+  BridgeHostConfig,
+  BridgeEvent,
+  BridgeSamplingProvider,
+  BridgeElicitHandlers,
+  ElicitResponse,
+} from './bridge-runtime'

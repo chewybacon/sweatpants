@@ -63,8 +63,11 @@ import type { Operation } from 'effection'
 import type { z } from 'zod'
 import type {
   BranchContext,
+  BranchContextWithElicits,
   BranchHandoffConfig,
+  BranchHandoffConfigWithElicits,
   BranchLimits,
+  ElicitsMap,
 } from './branch-types'
 
 // =============================================================================
@@ -137,6 +140,36 @@ export interface BranchToolBuilderWithParams<TName extends string, TParams> {
   limits(limits: BranchLimits): this
 
   /**
+   * Declare a finite elicitation surface for type-safe UI bridging.
+   *
+   * When you call `.elicits({...})`, the tool becomes "bridgeable":
+   * - `ctx.elicit` becomes keyed: `ctx.elicit('pickFlight', { message: '...' })`
+   * - The derived plugin must implement handlers for every key (exhaustive)
+   * - Type safety is guaranteed across server/client boundary
+   *
+   * @example
+   * ```typescript
+   * const tool = createBranchTool('book_flight')
+   *   .description('Book a flight')
+   *   .parameters(z.object({ destination: z.string() }))
+   *   .elicits({
+   *     pickFlight: z.object({ flightId: z.string() }),
+   *     confirm: z.object({ ok: z.boolean() }),
+   *   })
+   *   .handoff({
+   *     *client(handoff, ctx) {
+   *       const picked = yield* ctx.elicit('pickFlight', { message: 'Pick' })
+   *       const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
+   *       return { picked, ok }
+   *     }
+   *   })
+   * ```
+   */
+  elicits<TElicits extends ElicitsMap>(
+    schemas: TElicits
+  ): BranchToolBuilderWithElicits<TName, TParams, TElicits>
+
+  /**
    * Define a simple execute function (no handoff).
    * For tools that don't need the before/client/after pattern.
    */
@@ -150,6 +183,45 @@ export interface BranchToolBuilderWithParams<TName extends string, TParams> {
   handoff<THandoff, TClient, TResult>(
     config: BranchHandoffConfig<TParams, THandoff, TClient, TResult>
   ): FinalizedBranchTool<TName, TParams, THandoff, TClient, TResult>
+}
+
+/**
+ * Has name + description + params + elicits, can set requires/limits or define execution.
+ */
+export interface BranchToolBuilderWithElicits<
+  TName extends string,
+  TParams,
+  TElicits extends ElicitsMap,
+> {
+  _types: BranchToolTypes<TParams, undefined, undefined, undefined>
+  _name: TName
+  _description: string
+  _parameters: z.ZodType<TParams>
+  _elicits: TElicits
+
+  /**
+   * Declare required MCP client capabilities.
+   */
+  requires(caps: { elicitation?: boolean; sampling?: boolean }): this
+
+  /**
+   * Set default limits for branch execution.
+   */
+  limits(limits: BranchLimits): this
+
+  /**
+   * Define a simple execute function with keyed elicitation.
+   */
+  execute<TResult>(
+    fn: (params: TParams, ctx: BranchContextWithElicits<TElicits>) => Operation<TResult>
+  ): FinalizedBranchToolWithElicits<TName, TParams, undefined, undefined, TResult, TElicits>
+
+  /**
+   * Define handoff pattern with keyed elicitation.
+   */
+  handoff<THandoff, TClient, TResult>(
+    config: BranchHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
+  ): FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 }
 
 // =============================================================================
@@ -191,6 +263,48 @@ export interface FinalizedBranchTool<
   execute?: (params: TParams, ctx: BranchContext) => Operation<TResult>
 }
 
+/**
+ * A fully configured branch-based MCP tool with keyed elicitation.
+ *
+ * This tool is "bridgeable" - it can be derived into a plugin with
+ * exhaustive, type-safe UI handlers for each elicitation key.
+ */
+export interface FinalizedBranchToolWithElicits<
+  TName extends string,
+  TParams,
+  THandoff,
+  TClient,
+  TResult,
+  TElicits extends ElicitsMap,
+> {
+  /** Phantom type carrier */
+  _types: BranchToolTypes<TParams, THandoff, TClient, TResult>
+
+  /** Tool name (used by LLM) */
+  name: TName
+
+  /** Description (shown to LLM) */
+  description: string
+
+  /** Zod parameter schema */
+  parameters: z.ZodType<TParams>
+
+  /** Elicitation schemas map (finite surface for UI bridging) */
+  elicits: TElicits
+
+  /** Required MCP capabilities */
+  requires?: { elicitation?: boolean; sampling?: boolean }
+
+  /** Default limits for branch execution */
+  limits?: BranchLimits
+
+  /** Handoff config with keyed elicitation */
+  handoffConfig?: BranchHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
+
+  /** Execute function with keyed elicitation */
+  execute?: (params: TParams, ctx: BranchContextWithElicits<TElicits>) => Operation<TResult>
+}
+
 // =============================================================================
 // TYPE HELPERS
 // =============================================================================
@@ -228,6 +342,18 @@ export type InferBranchClient<T> = T extends FinalizedBranchTool<any, any, any, 
  */
 export type AnyBranchTool = FinalizedBranchTool<string, any, any, any, any>
 
+/**
+ * Any bridgeable branch tool (has `.elicits()`).
+ */
+export type AnyBridgeableBranchTool = FinalizedBranchToolWithElicits<string, any, any, any, any, ElicitsMap>
+
+/**
+ * Extract the elicits map from a bridgeable tool.
+ */
+export type InferBranchElicits<T> = T extends FinalizedBranchToolWithElicits<any, any, any, any, any, infer E>
+  ? E
+  : never
+
 // =============================================================================
 // BUILDER IMPLEMENTATION
 // =============================================================================
@@ -236,6 +362,7 @@ interface BuilderState {
   name: string
   description?: string
   parameters?: z.ZodType
+  elicits?: ElicitsMap
   requires?: { elicitation?: boolean; sampling?: boolean }
   limits?: BranchLimits
   handoffConfig?: BranchHandoffConfig<any, any, any, any>
@@ -248,6 +375,7 @@ function createBuilder(state: BuilderState): any {
     _name: state.name,
     _description: state.description,
     _parameters: state.parameters,
+    _elicits: state.elicits,
 
     description(desc: string) {
       return createBuilder({ ...state, description: desc })
@@ -255,6 +383,13 @@ function createBuilder(state: BuilderState): any {
 
     parameters(schema: z.ZodType) {
       return createBuilder({ ...state, parameters: schema })
+    },
+
+    elicits(schemas: ElicitsMap) {
+      if (!state.parameters) {
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .elicits()`)
+      }
+      return createBuilder({ ...state, elicits: schemas })
     },
 
     requires(caps: { elicitation?: boolean; sampling?: boolean }) {
@@ -265,12 +400,26 @@ function createBuilder(state: BuilderState): any {
       return createBuilder({ ...state, limits })
     },
 
-    execute(fn: (params: any, ctx: BranchContext) => Operation<any>) {
+    execute(fn: (params: any, ctx: any) => Operation<any>) {
       if (!state.description) {
         throw new Error(`Tool "${state.name}": .description() must be called before .execute()`)
       }
       if (!state.parameters) {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`)
+      }
+
+      // If elicits is defined, return FinalizedBranchToolWithElicits
+      if (state.elicits) {
+        return {
+          _types: undefined as any,
+          name: state.name,
+          description: state.description,
+          parameters: state.parameters,
+          elicits: state.elicits,
+          requires: state.requires,
+          limits: state.limits,
+          execute: fn,
+        } as FinalizedBranchToolWithElicits<any, any, undefined, undefined, any, any>
       }
 
       return {
@@ -290,6 +439,20 @@ function createBuilder(state: BuilderState): any {
       }
       if (!state.parameters) {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`)
+      }
+
+      // If elicits is defined, return FinalizedBranchToolWithElicits
+      if (state.elicits) {
+        return {
+          _types: undefined as any,
+          name: state.name,
+          description: state.description,
+          parameters: state.parameters,
+          elicits: state.elicits,
+          requires: state.requires,
+          limits: state.limits,
+          handoffConfig: config,
+        } as FinalizedBranchToolWithElicits<any, any, any, any, any, any>
       }
 
       return {
