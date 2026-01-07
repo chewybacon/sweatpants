@@ -12,11 +12,9 @@
     "build": "tsup",
     "check": "tsc --noEmit",
     "start": "node dist/cli.js",
-    "inspect": "npx @modelcontextprotocol/inspector tsx src/cli.ts",
-    "inspect:built": "npx @modelcontextprotocol/inspector node dist/cli.js"
+    "inspect": "tsx src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.0",
     "@sweatpants/framework": "workspace:*",
     "effection": "catalog:",
     "zod": "catalog:"

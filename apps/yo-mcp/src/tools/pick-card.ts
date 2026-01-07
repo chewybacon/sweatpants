@@ -5,7 +5,7 @@
  * The server draws random cards, and the user picks one.
  */
 import { z } from 'zod'
-import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
 
 const SUITS = ['hearts', 'diamonds', 'clubs', 'spades'] as const
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'] as const
@@ -41,14 +41,21 @@ function formatCard(card: Card): string {
   return `${card.rank} of ${suitEmoji[card.suit]}`
 }
 
-export const pickCardTool = createMCPTool('pick_card')
+// Define the elicitation schema
+const pickCardSchema = z.object({
+  cardNumber: z.number().min(1).describe('Card number (1-based)'),
+})
+
+export const pickCardTool = createMcpTool('pick_card')
   .description('Draw random cards and let the user pick one')
   .parameters(
     z.object({
       count: z.number().min(2).max(10).default(5).describe('Number of cards to draw'),
     })
   )
-  .requires({ elicitation: true })
+  .elicits({
+    pickCard: pickCardSchema,
+  })
   .handoff({
     *before(params) {
       // Draw random cards (non-idempotent - runs once)
@@ -72,15 +79,8 @@ export const pickCardTool = createMCPTool('pick_card')
         .join('\n')
 
       // Ask user to pick
-      const result = yield* ctx.elicit({
+      const result = yield* ctx.elicit('pickCard', {
         message: `I've drawn ${handoff.cards.length} cards. Pick one!\n\n${cardOptions}`,
-        schema: z.object({
-          cardNumber: z
-            .number()
-            .min(1)
-            .max(handoff.cards.length)
-            .describe('Card number (1-based)'),
-        }),
       })
 
       if (result.action !== 'accept') {

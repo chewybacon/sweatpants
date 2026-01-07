@@ -4,9 +4,9 @@
  * A tool that demonstrates using sampling to generate a personalized greeting.
  */
 import { z } from 'zod'
-import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
 
-export const greetTool = createMCPTool('greet')
+export const greetTool = createMcpTool('greet')
   .description('Generate a personalized greeting using AI')
   .parameters(
     z.object({
@@ -17,7 +17,7 @@ export const greetTool = createMCPTool('greet')
         .describe('Style of greeting'),
     })
   )
-  .requires({ sampling: true })
+  .elicits({}) // No elicitation needed
   .execute(function* (params, ctx) {
     yield* ctx.notify('Generating greeting...')
 
@@ -31,6 +31,6 @@ export const greetTool = createMCPTool('greet')
     return {
       name: params.name,
       style: params.style,
-      greeting,
+      greeting: greeting.text,
     }
   })
