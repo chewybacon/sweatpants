@@ -193,13 +193,20 @@ export interface ElicitResponse<T = unknown> {
 }
 
 /**
+ * Sample response from external handler.
+ */
+export interface SampleResponse {
+  result: SampleResult
+}
+
+/**
  * Events emitted by the bridge runtime.
  */
 export type BridgeEvent =
   | { type: 'elicit'; request: ElicitRequest; responseSignal: Signal<ElicitResponse, void> }
   | { type: 'log'; level: LogLevel; message: string }
   | { type: 'notify'; message: string; progress?: number }
-  | { type: 'sample'; messages: Message[]; options?: { systemPrompt?: string; maxTokens?: number } }
+  | { type: 'sample'; messages: Message[]; options?: { systemPrompt?: string; maxTokens?: number }; responseSignal: Signal<SampleResponse, void> }
 
 /**
  * Sampling provider for the bridge runtime.
@@ -216,6 +223,11 @@ export interface BridgeSamplingProvider {
 
 /**
  * Bridge host configuration.
+ * 
+ * Note: samplingProvider is no longer part of this config.
+ * Sampling is now handled via the responseSignal pattern - the event handler
+ * (tool-session or runBridgeTool) is responsible for calling the sampling
+ * provider and sending the response via the signal.
  */
 export interface BridgeHostConfig<
   TName extends string = string,
@@ -230,9 +242,6 @@ export interface BridgeHostConfig<
 
   /** Tool parameters */
   params: TParams
-
-  /** Sampling provider for ctx.sample() */
-  samplingProvider: BridgeSamplingProvider
 
   /** Abort signal for cancellation */
   signal?: AbortSignal
@@ -322,7 +331,9 @@ interface BranchState<TElicits extends ElicitsMap> {
   elicitSeq: number
   elicits: TElicits
   eventChannel: Channel<BridgeEvent, void>
-  samplingProvider: BridgeSamplingProvider
+  // Note: samplingProvider removed - sampling now uses responseSignal pattern
+  // The event handler (tool-session or runBridgeTool) is responsible for
+  // calling the sampling provider and sending the response via the signal
 }
 
 // =============================================================================
@@ -406,18 +417,30 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             sampleOptions.maxTokens = config.maxTokens
           }
 
-          // Emit sample event for observability (only if options exist)
+          // Create a signal for the response
+          const responseSignal = createSignal<SampleResponse, void>()
+
+          // Emit sample event with response signal
           const event: BridgeEvent = {
             type: 'sample',
             messages,
+            responseSignal,
           }
           if (Object.keys(sampleOptions).length > 0) {
             (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
           }
           yield* state.eventChannel.send(event)
 
-          // Call the sampling provider
-          const result = yield* state.samplingProvider.sample(messages, sampleOptions)
+          // Wait for response via signal
+          // The listener (tool-session) will either:
+          // 1. Call samplingProvider directly and send response, OR
+          // 2. Forward to external MCP client and send response when received
+          const subscription = yield* responseSignal
+          const next = yield* subscription.next()
+          if (next.done) {
+            throw new Error('Sample signal closed without response')
+          }
+          const result = next.value.result
 
           // If using auto-tracked mode, update branch messages
           if ('prompt' in config && config.prompt) {
@@ -589,7 +612,6 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             elicitSeq: state.elicitSeq, // Note: sub-branches share seq with parent
             elicits: state.elicits,
             eventChannel: state.eventChannel,
-            samplingProvider: state.samplingProvider,
           }
 
           const newSystemPrompt = options.systemPrompt ?? (inheritSystemPrompt ? state.systemPrompt : undefined)
@@ -685,7 +707,7 @@ export function createBridgeHost<
     run(): Operation<TResult> {
       return {
         *[Symbol.iterator]() {
-          const { tool, params, samplingProvider, limits: overrideLimits, parentMessages, systemPrompt } = config
+          const { tool, params, limits: overrideLimits, parentMessages, systemPrompt } = config
           const signal = config.signal ?? new AbortController().signal
 
           // Validate params
@@ -725,7 +747,6 @@ export function createBridgeHost<
             elicitSeq: 0,
             elicits: tool.elicits,
             eventChannel,
-            samplingProvider,
           }
 
           if (systemPrompt !== undefined) {
@@ -838,7 +859,6 @@ export function runBridgeTool<
       const hostConfig: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits> = {
         tool: config.tool,
         params: config.params,
-        samplingProvider: config.samplingProvider,
       }
 
       // Only add optional properties if defined
@@ -879,9 +899,14 @@ export function runBridgeTool<
             case 'notify':
               config.onNotify?.(event.message, event.progress)
               break
-            case 'sample':
+            case 'sample': {
+              // Call the observability callback
               config.onSample?.(event.messages, event.options)
+              // Call the sampling provider and send response back to bridge
+              const sampleResult = yield* config.samplingProvider.sample(event.messages, event.options)
+              event.responseSignal.send({ result: sampleResult })
               break
+            }
           }
           yield* each.next()
         }

@@ -88,42 +88,53 @@ export function createSseEventStream(
 
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
-        const result = yield* eventSubscription.next()
+        // Simple event loop - no more complex wake-up logic needed!
+        // The Promise-based pattern in tool-session handles cross-scope
+        // communication automatically.
+        while (true) {
+          // Wait for next event
+          const result = yield* eventSubscription.next()
 
-        if (result.done) {
-          return { done: true, value: undefined }
-        }
-
-        const event = result.value
-        currentLSN = event.lsn
-        manager.updateLastLSN(sessionId, currentLSN)
-
-        // Encode event to MCP message
-        const encoded = encodeSessionEvent(event, ctx)
-
-        // Track pending requests for correlation
-        if (encoded.type === 'request') {
-          if (encoded.elicitId) {
-            const elicitEvent = event as { key?: string }
-            manager.registerPendingElicit(
-              sessionId,
-              encoded.elicitId,
-              (encoded.message as { id: JsonRpcId }).id,
-              elicitEvent.key ?? 'unknown'
-            )
+          if (result.done) {
+            return { done: true, value: undefined }
           }
-          if (encoded.sampleId) {
-            manager.registerPendingSample(
-              sessionId,
-              encoded.sampleId,
-              (encoded.message as { id: JsonRpcId }).id
-            )
-          }
-        }
 
-        // Format as SSE
-        const sseString = formatMessageAsSse(encoded.message, sessionId, currentLSN)
-        return { done: false, value: sseString }
+          const event = result.value
+          currentLSN = event.lsn
+          manager.updateLastLSN(sessionId, currentLSN)
+
+          // Skip internal events that shouldn't be sent to client
+          if (event.type === 'sample_response_queued') {
+            continue
+          }
+
+          // Encode event to MCP message
+          const encoded = encodeSessionEvent(event, ctx)
+
+          // Track pending requests for correlation
+          if (encoded.type === 'request') {
+            if (encoded.elicitId) {
+              const elicitEvent = event as { key?: string }
+              manager.registerPendingElicit(
+                sessionId,
+                encoded.elicitId,
+                (encoded.message as { id: JsonRpcId }).id,
+                elicitEvent.key ?? 'unknown'
+              )
+            }
+            if (encoded.sampleId) {
+              manager.registerPendingSample(
+                sessionId,
+                encoded.sampleId,
+                (encoded.message as { id: JsonRpcId }).id
+              )
+            }
+          }
+
+          // Format as SSE
+          const sseString = formatMessageAsSse(encoded.message, sessionId, currentLSN)
+          return { done: false, value: sseString }
+        }
       },
     })
   })

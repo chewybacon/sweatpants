@@ -5,18 +5,24 @@
  * Keeps the Effection generator alive and manages event buffering
  * for SSE resumability.
  *
+ * IMPORTANT: This implementation uses native Promises (not Effection signals)
+ * for cross-scope communication. When `respondToSample` or `respondToElicit`
+ * is called from an HTTP handler scope, it resolves a Promise that the tool
+ * execution is waiting on via `call()`. This pattern works across Effection
+ * scopes because Promise resolution is handled by the JS event loop, not
+ * Effection's scheduler.
+ *
  * @packageDocumentation
  */
 import {
   type Operation,
   type Stream,
-  type Signal,
   type Subscription,
-  createSignal,
   createChannel,
   spawn,
   resource,
   each,
+  call,
 } from 'effection'
 import type {
   ToolSession,
@@ -45,20 +51,30 @@ import { createBridgeHost } from '../bridge-runtime'
 // =============================================================================
 
 /**
+ * Pending sample request - uses Promise for cross-scope resolution.
+ */
+interface PendingSample {
+  id: string
+  resolve: (result: SampleResult) => void
+}
+
+/**
+ * Pending elicit request - uses Promise for cross-scope resolution.
+ */
+interface PendingElicit {
+  id: string
+  resolve: (result: ElicitResult<unknown>) => void
+}
+
+/**
  * Internal state for the session.
  */
 interface SessionState<TResult> {
   status: ToolSessionStatus
   lsn: number
   eventBuffer: ToolSessionEvent<TResult>[]
-  pendingElicit: {
-    id: string
-    signal: Signal<ElicitResult<unknown>, void>
-  } | null
-  pendingSample: {
-    id: string
-    signal: Signal<SampleResult, void>
-  } | null
+  pendingElicit: PendingElicit | null
+  pendingSample: PendingSample | null
   result: TResult | null
   error: Error | null
   cancelled: boolean
@@ -77,7 +93,7 @@ interface SessionState<TResult> {
  *
  * @param tool - The tool to execute
  * @param params - Tool parameters
- * @param samplingProvider - Provider for LLM sampling
+ * @param _samplingProvider - Not used (kept for API compatibility)
  * @param options - Session options
  */
 export function createToolSession<
@@ -90,7 +106,7 @@ export function createToolSession<
 >(
   tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>,
   params: TParams,
-  samplingProvider: ToolSessionSamplingProvider,
+  _samplingProvider: ToolSessionSamplingProvider, // Not used - sampling via responseSignal
   options: ToolSessionOptions = {}
 ): Operation<ToolSession<TResult>> {
   return resource<ToolSession<TResult>>(function* (provide) {
@@ -129,12 +145,10 @@ export function createToolSession<
       yield* eventChannel.send(fullEvent)
     }
 
-    // Create the bridge host config - spread optional properties conditionally
-    // to satisfy exactOptionalPropertyTypes
+    // Create the bridge host config
     const hostConfig = {
       tool,
       params,
-      samplingProvider,
       callId: sessionId,
       ...(options.signal !== undefined && { signal: options.signal }),
       ...(options.parentMessages !== undefined && { parentMessages: options.parentMessages }),
@@ -143,60 +157,71 @@ export function createToolSession<
 
     const host = createBridgeHost(hostConfig)
 
-    // Spawn the tool execution
-    yield* spawn(function* () {
-      try {
-        state.status = 'running'
+    // Track whether tool execution has started
+    let toolExecutionStarted = false
 
-        // Process events from the bridge
-        yield* spawn(function* () {
-          for (const event of yield* each(host.events)) {
-            switch (event.type) {
-              case 'elicit': {
-                // Create a signal for the response
-                const responseSignal = createSignal<ElicitResult<unknown>, void>()
-                const elicitId = `${sessionId}:elicit:${state.lsn}`
+    /**
+     * Start tool execution. This should be called from within the SSE
+     * stream's scope.run() so that Promise resolutions (from respondToSample)
+     * are processed by the same Effection scheduler.
+     */
+    function* startToolExecution(): Operation<void> {
+      if (toolExecutionStarted) return
+      toolExecutionStarted = true
+      
+      yield* spawn(function* () {
+        try {
+          state.status = 'running'
 
-                state.status = 'awaiting_elicit'
-                state.pendingElicit = { id: elicitId, signal: responseSignal }
+          // Process events from the bridge
+          yield* spawn(function* () {
+            for (const event of yield* each(host.events)) {
+              switch (event.type) {
+                case 'elicit': {
+                  const elicitId = `${sessionId}:elicit:${state.lsn}`
 
-                // Emit the elicit request event
-                yield* emitEvent({
-                  type: 'elicit_request',
-                  elicitId,
-                  key: event.request.key,
-                  message: event.request.message,
-                  schema: event.request.schema.json,
-                } as Omit<ElicitRequestEvent, 'lsn' | 'timestamp'>)
+                  // Create a Promise for the response
+                  let resolveElicit: (result: ElicitResult<unknown>) => void
+                  const elicitPromise = new Promise<ElicitResult<unknown>>((resolve) => {
+                    resolveElicit = resolve
+                  })
 
-                // Wait for response via the signal
-                const subscription = yield* responseSignal
-                const result = yield* subscription.next()
+                  state.status = 'awaiting_elicit'
+                  state.pendingElicit = { id: elicitId, resolve: resolveElicit! }
 
-                // Handle the case where subscription completes without value
-                if (result.done) {
-                  throw new Error('Elicitation response signal closed without value')
+                  // Emit the elicit request event
+                  yield* emitEvent({
+                    type: 'elicit_request',
+                    elicitId,
+                    key: event.request.key,
+                    message: event.request.message,
+                    schema: event.request.schema.json,
+                  } as Omit<ElicitRequestEvent, 'lsn' | 'timestamp'>)
+
+                  // Wait for response via Promise
+                  const response = yield* call(() => elicitPromise)
+
+                  state.pendingElicit = null
+                  state.status = 'running'
+
+                  // Forward response to the bridge
+                  event.responseSignal.send({ id: event.request.id, result: response })
+                  break
                 }
 
-                const response = result.value
-
-                state.pendingElicit = null
-                state.status = 'running'
-
-                // Forward response to the bridge
-                event.responseSignal.send({ id: event.request.id, result: response })
-                break
-              }
-
               case 'sample': {
-                // Create a signal for the response
-                const responseSignal = createSignal<SampleResult, void>()
                 const sampleId = `${sessionId}:sample:${state.lsn}`
 
-                state.status = 'awaiting_sample'
-                state.pendingSample = { id: sampleId, signal: responseSignal }
+                // Create a Promise for the response
+                let resolveSample: (result: SampleResult) => void
+                const samplePromise = new Promise<SampleResult>((resolve) => {
+                  resolveSample = resolve
+                })
 
-                // Emit the sample request event
+                state.status = 'awaiting_sample'
+                state.pendingSample = { id: sampleId, resolve: resolveSample! }
+
+                // Emit the sample request event to SSE stream
                 yield* emitEvent({
                   type: 'sample_request',
                   sampleId,
@@ -205,72 +230,62 @@ export function createToolSession<
                   maxTokens: event.options?.maxTokens,
                 } as Omit<SampleRequestEvent, 'lsn' | 'timestamp'>)
 
-                // Wait for response via the signal
-                const subscription = yield* responseSignal
-                const result = yield* subscription.next()
-
-                // Handle the case where subscription completes without value
-                if (result.done) {
-                  throw new Error('Sample response signal closed without value')
-                }
-
-                // Note: response is available as result.value if needed
-                // For now, the bridge runtime handles sampling internally
+                // Wait for response via Promise
+                const response = yield* call(() => samplePromise)
 
                 state.pendingSample = null
                 state.status = 'running'
 
-                // The bridge runtime calls samplingProvider internally,
-                // but we're intercepting here for external SSE clients.
-                // For now, we'll let the bridge handle sampling directly.
-                // This event is for observability only.
+                // Forward response to the bridge's signal
+                event.responseSignal.send({ result: response })
                 break
               }
 
-              case 'log':
-                yield* emitEvent({
-                  type: 'log',
-                  level: event.level,
-                  message: event.message,
-                } as Omit<LogEvent, 'lsn' | 'timestamp'>)
-                break
+                case 'log':
+                  yield* emitEvent({
+                    type: 'log',
+                    level: event.level,
+                    message: event.message,
+                  } as Omit<LogEvent, 'lsn' | 'timestamp'>)
+                  break
 
-              case 'notify':
-                yield* emitEvent({
-                  type: 'progress',
-                  message: event.message,
-                  progress: event.progress,
-                } as Omit<ProgressEvent, 'lsn' | 'timestamp'>)
-                break
+                case 'notify':
+                  yield* emitEvent({
+                    type: 'progress',
+                    message: event.message,
+                    progress: event.progress,
+                  } as Omit<ProgressEvent, 'lsn' | 'timestamp'>)
+                  break
+              }
+              yield* each.next()
             }
-            yield* each.next()
-          }
-        })
+          })
 
-        // Run the tool
-        const result = yield* host.run()
+          // Run the tool
+          const result = yield* host.run()
 
-        state.status = 'completed'
-        state.result = result
+          state.status = 'completed'
+          state.result = result
 
-        yield* emitEvent({
-          type: 'result',
-          result,
-        } as Omit<ResultEvent<TResult>, 'lsn' | 'timestamp'>)
-      } catch (error) {
-        state.status = 'failed'
-        state.error = error as Error
+          yield* emitEvent({
+            type: 'result',
+            result,
+          } as Omit<ResultEvent<TResult>, 'lsn' | 'timestamp'>)
+        } catch (error) {
+          state.status = 'failed'
+          state.error = error as Error
 
-        yield* emitEvent({
-          type: 'error',
-          name: (error as Error).name,
-          message: (error as Error).message,
-          stack: (error as Error).stack,
-        } as Omit<ErrorEvent, 'lsn' | 'timestamp'>)
-      } finally {
-        yield* eventChannel.close()
-      }
-    })
+          yield* emitEvent({
+            type: 'error',
+            name: (error as Error).name,
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+          } as Omit<ErrorEvent, 'lsn' | 'timestamp'>)
+        } finally {
+          yield* eventChannel.close()
+        }
+      })
+    }
 
     // Create the session interface
     const session: ToolSession<TResult> = {
@@ -282,25 +297,27 @@ export function createToolSession<
       },
 
       events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
-        // Create a subscription that first replays buffered events,
-        // then subscribes to new events from the channel
         return resource<Subscription<ToolSessionEvent<TResult>, void>>(function* (provide) {
           const startLSN = afterLSN ?? 0
 
-          // Replay buffer of events that came before subscriber connected
+          // Start tool execution when events are first subscribed to.
+          // This ensures the tool runs in the same Effection scope as the
+          // event consumer, allowing Promise resolutions to be processed.
+          yield* startToolExecution()
+
+          // Replay buffer
           const bufferedEvents = state.eventBuffer.filter(e => e.lsn > startLSN)
           let bufferedIndex = 0
 
-          // Subscribe to the live channel
+          // Subscribe to live channel
           const liveSubscription = yield* eventChannel
 
           yield* provide({
             *next(): Operation<IteratorResult<ToolSessionEvent<TResult>, void>> {
-              // First, drain buffered events
+              // First drain buffered events
               if (bufferedIndex < bufferedEvents.length) {
                 const event = bufferedEvents[bufferedIndex]
                 bufferedIndex++
-                // Type assertion safe: we already checked bounds
                 return { done: false, value: event as ToolSessionEvent<TResult> }
               }
 
@@ -312,32 +329,52 @@ export function createToolSession<
       },
 
       *respondToElicit(elicitId: string, response: ElicitResult<unknown>): Operation<void> {
-        if (!state.pendingElicit) {
-          throw new Error(`No pending elicitation`)
+        const pending = state.pendingElicit
+        if (!pending) {
+          return
         }
-        if (state.pendingElicit.id !== elicitId) {
+        if (pending.id !== elicitId) {
           throw new Error(
-            `Elicitation ID mismatch: expected ${state.pendingElicit.id}, got ${elicitId}`
+            `Elicitation ID mismatch: expected ${pending.id}, got ${elicitId}`
           )
         }
-        state.pendingElicit.signal.send(response)
+
+        // Resolve the Promise using setImmediate to ensure it happens
+        // outside the current Effection tick.
+        setImmediate(() => {
+          pending.resolve(response)
+        })
+        // Note: state is cleared by the event handler after the promise resolves
       },
 
       *respondToSample(sampleId: string, response: SampleResult): Operation<void> {
-        if (!state.pendingSample) {
-          throw new Error(`No pending sample request`)
+        const pending = state.pendingSample
+        if (!pending) {
+          return
         }
-        if (state.pendingSample.id !== sampleId) {
+        if (pending.id !== sampleId) {
           throw new Error(
-            `Sample ID mismatch: expected ${state.pendingSample.id}, got ${sampleId}`
+            `Sample ID mismatch: expected ${pending.id}, got ${sampleId}`
           )
         }
-        state.pendingSample.signal.send(response)
+
+        // Resolve the Promise using setImmediate to ensure it happens
+        // outside the current Effection tick. This allows the Promise
+        // resolution to be picked up by the event loop and processed
+        // by any waiting tasks.
+        setImmediate(() => {
+          pending.resolve(response)
+        })
+        // Note: state is cleared by the event handler after the promise resolves
+      },
+
+      *emitWakeUp(): Operation<void> {
+        // No longer needed - Promise resolution handles wake-up automatically
       },
 
       *cancel(reason?: string): Operation<void> {
         if (state.status === 'completed' || state.status === 'failed' || state.status === 'cancelled') {
-          return // Already done
+          return
         }
 
         state.status = 'cancelled'

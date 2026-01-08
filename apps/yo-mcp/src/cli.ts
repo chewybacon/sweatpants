@@ -46,10 +46,12 @@ function createMockSamplingProvider(): ToolSessionSamplingProvider {
 }
 
 async function main() {
-  console.log(`Starting ${SERVER_NAME} v${SERVER_VERSION}...`)
-  console.log(`Registered ${allTools.length} tools:`)
+  // Use stderr for informational messages since MCP STDIO transport
+  // expects only JSON-RPC messages on stdout
+  console.error(`Starting ${SERVER_NAME} v${SERVER_VERSION}...`)
+  console.error(`Registered ${allTools.length} tools:`)
   for (const tool of allTools) {
-    console.log(`  - ${tool.name}: ${tool.description}`)
+    console.error(`  - ${tool.name}: ${tool.description}`)
   }
 
   // Create the HTTP handler
@@ -79,15 +81,15 @@ async function main() {
   // Start HTTP server (Node.js)
   const server = await startNodeServer(handler, PORT)
 
-  console.log(`\nHTTP server running on http://localhost:${PORT}`)
-  console.log(`\nTest with:`)
-  console.log(`  curl -X POST http://localhost:${PORT}/mcp \\`)
-  console.log(`    -H "Content-Type: application/json" \\`)
-  console.log(`    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hello"}}}'`)
+  console.error(`\nHTTP server running on http://localhost:${PORT}`)
+  console.error(`\nTest with:`)
+  console.error(`  curl -X POST http://localhost:${PORT}/mcp \\`)
+  console.error(`    -H "Content-Type: application/json" \\`)
+  console.error(`    -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"echo","arguments":{"message":"hello"}}}'`)
 
   // Handle shutdown
   process.on('SIGINT', async () => {
-    console.log('\nShutting down...')
+    console.error('\nShutting down...')
     await cleanup()
     if ('close' in server) {
       (server as { close: () => void }).close()
@@ -106,6 +108,19 @@ async function startNodeServer(
   const { createServer } = await import('node:http')
 
   const server = createServer(async (req, res) => {
+    // Add CORS headers for all responses
+    res.setHeader('Access-Control-Allow-Origin', '*')
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Mcp-Session-Id, Last-Event-ID, Accept')
+    res.setHeader('Access-Control-Expose-Headers', 'Mcp-Session-Id')
+
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+      res.statusCode = 204
+      res.end()
+      return
+    }
+
     try {
       // Convert Node request to Fetch Request
       const url = new URL(req.url || '/', `http://localhost:${port}`)

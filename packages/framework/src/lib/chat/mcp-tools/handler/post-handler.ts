@@ -18,8 +18,6 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
-import { call } from 'effection'
-import type { Stream, Subscription } from 'effection'
 import type {
   McpToolsCallRequest,
   McpElicitResponse,
@@ -27,8 +25,6 @@ import type {
   McpPostResult,
 } from './types'
 import type { McpSessionManager } from './session-manager'
-import { encodeToolCallResult, encodeToolCallError } from '../protocol/message-encoder'
-import type { JsonRpcResponse, McpToolCallResult } from '../protocol/types'
 
 // =============================================================================
 // POST HANDLER OPTIONS
@@ -53,63 +49,24 @@ export interface PostHandlerOptions {
 /**
  * Handle a tools/call request.
  *
- * This creates a new session and either:
- * 1. Waits for immediate completion and returns JSON
- * 2. Returns SSE stream for long-running tools
+ * Creates a new session and returns SSE stream type.
+ * Tool execution is deferred until the SSE stream starts,
+ * ensuring everything runs in the same Effection scope.
+ * 
+ * NOTE: We don't try to detect immediate completion here because
+ * subscribing to events would start tool execution in this scope,
+ * which would then be orphaned when this scope.run() returns.
  */
 export function* handleToolsCall(
   request: McpToolsCallRequest,
   manager: McpSessionManager,
-  options: PostHandlerOptions = {}
+  _options: PostHandlerOptions = {}
 ): Operation<McpPostResult> {
-  const { immediateTimeout = 5000 } = options
-
-  // Create new session
+  // Create new session (tool execution is deferred)
   const state = yield* manager.createSession(request)
-  const { session, sessionId, toolCallRequestId } = state
+  const { session, sessionId } = state
 
-  // Try to get immediate result
-  // We'll wait for either completion or first backchannel request
-  const result = yield* raceFirstEvent(session.events(), immediateTimeout)
-
-  if (result.type === 'timeout') {
-    // Tool is taking too long, upgrade to SSE
-    return {
-      type: 'sse',
-      sessionId,
-      session,
-    }
-  }
-
-  const event = result.event
-
-  // Check if we can return immediate JSON response
-  if (event.type === 'result') {
-    // Tool completed immediately
-    const response = encodeToolCallResult(event, toolCallRequestId) as JsonRpcResponse<McpToolCallResult>
-
-    return {
-      type: 'json',
-      status: 200,
-      body: response,
-      headers: { 'Mcp-Session-Id': sessionId },
-    }
-  }
-
-  if (event.type === 'error') {
-    // Tool failed immediately
-    const response = encodeToolCallError(event, toolCallRequestId)
-
-    return {
-      type: 'json',
-      status: 200, // JSON-RPC errors are 200 with error in body
-      body: response,
-      headers: { 'Mcp-Session-Id': sessionId },
-    }
-  }
-
-  // First event is a backchannel request (elicit or sample) or notification
-  // Upgrade to SSE for long-running interaction
+  // Always upgrade to SSE - tool execution will start when SSE stream begins
   return {
     type: 'sse',
     sessionId,
@@ -161,67 +118,6 @@ export function* handleSampleResponse(
     body: { jsonrpc: '2.0', id: response.requestId, result: {} },
     headers: { 'Mcp-Session-Id': response.sessionId },
   }
-}
-
-// =============================================================================
-// HELPER: RACE FIRST EVENT
-// =============================================================================
-
-type RaceResult<T> =
-  | { type: 'event'; event: T }
-  | { type: 'timeout' }
-
-/**
- * Race to get the first event from a stream, with timeout.
- */
-function* raceFirstEvent<T>(
-  stream: Stream<T, void>,
-  timeoutMs: number
-): Operation<RaceResult<T>> {
-  // Create a subscription to the stream
-  const subscription: Subscription<T, void> = yield* stream
-
-  // Create a timeout promise
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-  const timeoutPromise = new Promise<'timeout'>((resolve) => {
-    timeoutId = setTimeout(() => resolve('timeout'), timeoutMs)
-  })
-
-  // Race between first event and timeout
-  try {
-    const result = yield* call(async () => {
-      // Wrap subscription.next() in a promise
-      // This is a bit awkward but necessary to race with timeout
-      const eventPromise = (async () => {
-        // We need to run the generator synchronously, but we're in async context
-        // Actually, we can't easily do this from within call()
-        // Let's use a different approach
-        return 'need_subscription' as const
-      })()
-
-      return Promise.race([eventPromise, timeoutPromise])
-    })
-
-    if (result === 'timeout') {
-      return { type: 'timeout' }
-    }
-  } finally {
-    if (timeoutId) {
-      clearTimeout(timeoutId)
-    }
-  }
-
-  // If we get here, we need to properly get the first event
-  // Let's just get it directly
-  const iterResult = yield* subscription.next()
-
-  if (iterResult.done) {
-    // Stream ended without emitting anything - treat as immediate completion
-    // This shouldn't normally happen
-    return { type: 'timeout' }
-  }
-
-  return { type: 'event', event: iterResult.value }
 }
 
 // =============================================================================

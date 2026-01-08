@@ -321,37 +321,32 @@ export class McpSessionManager {
     if (typeof content === 'string') {
       textContent = content
     } else if (Array.isArray(content)) {
-      // Array of content blocks
       textContent = content
-        .filter((block): block is { type: 'text'; text: string } => 
+        .filter((block): block is { type: 'text'; text: string } =>
           typeof block === 'object' && block !== null && block.type === 'text'
         )
         .map(block => block.text)
         .join('')
     } else if (typeof content === 'object' && content !== null) {
-      // Single content block
       const block = content as { type?: string; text?: string }
-      textContent = block.type === 'text' && typeof block.text === 'string' 
-        ? block.text 
+      textContent = block.type === 'text' && typeof block.text === 'string'
+        ? block.text
         : JSON.stringify(content)
     } else {
       textContent = String(content)
     }
 
-    // Build sample result
     const sampleResult: SampleResult = {
       text: textContent,
       model,
-    }
-    if (stopReason !== undefined) {
-      sampleResult.stopReason = stopReason
+      ...(stopReason !== undefined ? { stopReason } : {}),
     }
 
-    // Send response to tool session
-    yield* state.session.respondToSample(pending.sampleId, sampleResult)
-
-    // Clear pending
+    // Clear pending tracking first
     this.clearPendingSample(sessionId, requestId)
+
+    // Respond directly - the Promise-based pattern works across scopes
+    yield* state.session.respondToSample(pending.sampleId, sampleResult)
   }
 
   // ===========================================================================

@@ -150,6 +150,15 @@ export interface CancelledEvent extends ToolSessionEventBase {
 }
 
 /**
+ * Internal event to wake up the SSE stream when a sample response is queued.
+ */
+export interface SampleResponseQueuedEvent {
+  type: 'sample_response_queued'
+  lsn: number
+  timestamp: number
+}
+
+/**
  * All possible session events.
  */
 export type ToolSessionEvent<TResult = unknown> =
@@ -157,6 +166,7 @@ export type ToolSessionEvent<TResult = unknown> =
   | LogEvent
   | ElicitRequestEvent
   | SampleRequestEvent
+  | SampleResponseQueuedEvent
   | ResultEvent<TResult>
   | ErrorEvent
   | CancelledEvent
@@ -208,6 +218,12 @@ export interface ToolSession<TResult = unknown> {
    * @param response - The LLM's response
    */
   respondToSample(sampleId: string, response: SampleResult): Operation<void>
+
+  /**
+   * Emit an internal event to wake up the SSE stream.
+   * Used when a sample response is queued from a different HTTP request scope.
+   */
+  emitWakeUp(): Operation<void>
 
   /**
    * Cancel the session.

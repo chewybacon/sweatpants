@@ -32,7 +32,7 @@
  *
  * @packageDocumentation
  */
-import { createScope, type Operation, type Subscription } from 'effection'
+import { createScope, type Operation } from 'effection'
 import { z } from 'zod'
 import type { McpHandlerConfig, McpHttpHandler, McpClassifiedRequest, McpSessionState, McpInitializeRequest, McpToolsListRequest } from './types'
 import { McpHandlerError } from './types'
@@ -453,6 +453,11 @@ function createIdleSseResponse(
 
 /**
  * Create an SSE Response from a session state.
+ * 
+ * Uses a queue-based pattern to bridge between Effection's cooperative
+ * scheduling and the ReadableStream's pull-based model. A persistent
+ * Effection task reads events and pushes them to a queue, while pull()
+ * reads from the queue via Promises.
  */
 function createSseResponse(
   scope: { run: <T>(op: () => Operation<T>) => Promise<T> },
@@ -471,67 +476,127 @@ function createSseResponse(
   // Encoder for stream
   const encoder = new TextEncoder()
 
-  // Track cleanup state
-  let subscription: Subscription<string, void> | null = null
+  // Queue for bridging Effection -> ReadableStream
+  // Events are pushed by the Effection task, consumed by pull()
+  const eventQueue: Array<IteratorResult<string, void>> = []
+  let queueResolver: (() => void) | null = null
+  let streamDone = false
   let scopeDestroyed = false
+
+  // Helper to wait for queue to have items
+  function waitForQueueItem(): Promise<void> {
+    if (eventQueue.length > 0 || streamDone) {
+      return Promise.resolve()
+    }
+    return new Promise<void>(resolve => {
+      queueResolver = resolve
+    })
+  }
+
+  // Helper to push to queue and wake up waiter
+  function pushToQueue(item: IteratorResult<string, void>): void {
+    eventQueue.push(item)
+    if (queueResolver) {
+      queueResolver()
+      queueResolver = null
+    }
+  }
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        // Get subscription
-        subscription = await scope.run(function* () {
-          return yield* createSseEventStream(state, manager, options)
-        })
-
-        // Send prime event
+        // Send prime event immediately
         const primeEvent = createPrimeEvent(sessionId, retryMs)
         controller.enqueue(encoder.encode(primeEvent))
+
+        // Start a persistent Effection task that reads from subscription
+        // and pushes to the queue. This scope.run() stays active until
+        // the stream completes, which keeps the Effection scheduler running
+        // and allows spawned tasks (like tool execution) to process events.
+        // Start a persistent Effection task that reads from subscription
+        // and pushes to the queue. This scope.run() stays active until
+        // the stream completes, which keeps the Effection scheduler running
+        // and allows spawned tasks (like tool execution) to process events.
+        scope.run(function* () {
+          try {
+            const subscription = yield* createSseEventStream(state, manager, options)
+            
+            while (!scopeDestroyed) {
+              const result = yield* subscription.next()
+              pushToQueue(result)
+              
+              if (result.done) {
+                break
+              }
+            }
+          } catch (error) {
+            // Push error as a special marker
+            pushToQueue({ done: true, value: undefined })
+            throw error
+          } finally {
+            streamDone = true
+            // Wake up any waiting pull()
+            if (queueResolver) {
+              queueResolver()
+              queueResolver = null
+            }
+          }
+        }).catch(() => {
+          // Errors will surface via queue, no need to log here
+          streamDone = true
+          if (queueResolver) {
+            queueResolver()
+            queueResolver = null
+          }
+        })
       } catch (error) {
         controller.error(error)
       }
     },
 
     async pull(controller) {
-      if (scopeDestroyed || !subscription) {
+      if (scopeDestroyed) {
         controller.close()
         return
       }
 
-      try {
-        const result = await scope.run(function* () {
-          return yield* subscription!.next()
-        })
+      // Wait for an item in the queue
+      await waitForQueueItem()
 
-        if (result.done) {
-          controller.close()
-          if (!scopeDestroyed) {
-            scopeDestroyed = true
+      // Get item from queue
+      const result = eventQueue.shift()
+      
+      if (!result || result.done) {
+        controller.close()
+        if (!scopeDestroyed) {
+          scopeDestroyed = true
+          try {
             await scope.run(function* () {
               yield* manager.releaseSession(sessionId)
             })
-            await destroy()
+          } catch {
+            // Ignore release errors
           }
-        } else {
-          controller.enqueue(encoder.encode(result.value))
-        }
-      } catch (error) {
-        if (!scopeDestroyed) {
-          controller.error(error)
-          scopeDestroyed = true
           try {
             await destroy()
           } catch {
-            // Ignore cleanup errors
+            // Ignore destroy errors
           }
-        } else {
-          controller.close()
         }
+      } else {
+        controller.enqueue(encoder.encode(result.value))
       }
     },
 
     async cancel() {
       if (!scopeDestroyed) {
         scopeDestroyed = true
+        streamDone = true
+        // Wake up any blocked queue wait
+        if (queueResolver) {
+          queueResolver()
+          queueResolver = null
+        }
         try {
           await scope.run(function* () {
             yield* manager.releaseSession(sessionId)

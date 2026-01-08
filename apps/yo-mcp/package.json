@@ -12,7 +12,10 @@
     "build": "tsup",
     "check": "tsc --noEmit",
     "start": "node dist/cli.js",
-    "inspect": "tsx src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp"
+    "inspect": "tsx src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:headed": "playwright test --headed"
   },
   "dependencies": {
     "@sweatpants/framework": "workspace:*",
@@ -20,6 +23,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.0",
     "@tanstack/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "catalog:",

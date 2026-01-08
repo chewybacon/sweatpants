@@ -239,6 +239,12 @@ export function createWorkerToolSession(
 
         status = 'cancelled'
       },
+
+      *emitWakeUp(): Operation<void> {
+        // Worker sessions don't need wake-up events - they use message passing
+        // between the host and worker thread, which has its own scheduling.
+        // This is a no-op for worker sessions.
+      },
     }
 
     try {
