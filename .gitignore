@@ -6,3 +6,5 @@ packages/ts-config/dist
 apps/hydra/dist
 apps/yo-agent/dist
 apps/yo-mcp/dist
+apps/yo-mcp/playwright-report
+apps/yo-mcp/test-results

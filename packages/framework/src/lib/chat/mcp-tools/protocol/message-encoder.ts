@@ -316,6 +316,18 @@ export function encodeSessionEvent<TResult = unknown>(
         type: 'response',
         message: encodeToolCallCancelled(event, ctx.toolCallRequestId),
       }
+
+    case 'sample_response_queued':
+      // Internal event - should not be encoded for clients.
+      // Return a notification with no content (will be filtered out).
+      return {
+        type: 'notification',
+        message: {
+          jsonrpc: '2.0' as const,
+          method: 'internal/sample_response_queued',
+          params: {},
+        },
+      }
   }
 }
 
