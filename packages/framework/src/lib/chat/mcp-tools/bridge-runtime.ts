@@ -20,7 +20,7 @@
  * @packageDocumentation
  */
 import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, call } from 'effection'
-import type { z } from 'zod'
+import { z } from 'zod'
 import type {
   McpToolContextWithElicits,
   McpToolHandoffConfigWithElicits,
@@ -356,17 +356,11 @@ export class BranchElicitNotAllowedError extends Error {
 // =============================================================================
 
 /**
- * Simple Zod to JSON Schema conversion for MCP elicitation.
- * Only supports flat objects with primitive types (MCP elicitation constraint).
+ * Convert Zod schema to JSON Schema for MCP elicitation.
+ * Uses Zod's built-in toJSONSchema() method.
  */
-function zodToJsonSchema(_schema: z.ZodType): Record<string, unknown> {
-  // For now, just return a placeholder since MCP elicitation uses zod directly
-  // The client-side can use the zod schema for validation
-  // If we need real JSON schema, we can add zod-to-json-schema as a dependency
-  return {
-    type: 'object',
-    description: 'Schema for elicitation (use zod for validation)',
-  }
+function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  return z.toJSONSchema(schema) as Record<string, unknown>
 }
 
 // =============================================================================

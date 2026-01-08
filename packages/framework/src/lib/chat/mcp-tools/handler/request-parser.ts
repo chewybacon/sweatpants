@@ -40,6 +40,7 @@ import type {
 import { McpHandlerError, MCP_HANDLER_ERRORS } from './types'
 import { parseEventId } from '../protocol/sse-formatter'
 import type {
+  JsonRpcId,
   JsonRpcRequest,
   JsonRpcResponse,
   McpToolCallParams,
@@ -283,13 +284,30 @@ function classifyPostBody(
       )
     }
 
-    // Check for error response
+    // Check for error response - convert to elicit cancel/decline
+    // MCP clients may send error responses when user rejects elicitation/sampling
+    // Error code -1 = USER_REJECTED per MCP spec
     if ('error' in resp) {
-      throw new McpHandlerError(
-        MCP_HANDLER_ERRORS.INVALID_REQUEST,
-        'Error responses not supported',
-        400
-      )
+      const errorResp = resp as { id: JsonRpcId | null; error: { code: number; message: string } }
+      
+      // Error responses may have null id - we can't correlate them without an id
+      if (errorResp.id === null) {
+        throw new McpHandlerError(
+          MCP_HANDLER_ERRORS.INVALID_REQUEST,
+          'Error response with null id cannot be correlated',
+          400
+        )
+      }
+      
+      // Treat as elicitation decline/cancel
+      // The request ID tells us which elicitation/sampling this responds to
+      return {
+        type: 'elicit_response',
+        requestId: errorResp.id,
+        elicitId: String(errorResp.id),
+        action: errorResp.error.code === -1 ? 'decline' : 'cancel',
+        sessionId,
+      }
     }
 
     const result = (resp as { result: unknown }).result

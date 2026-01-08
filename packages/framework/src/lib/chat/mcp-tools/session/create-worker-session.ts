@@ -17,6 +17,7 @@
  */
 
 import { type Operation, resource, call } from 'effection'
+import { z } from 'zod'
 import type {
   ToolSession,
   ToolSessionOptions,
@@ -107,38 +108,11 @@ function adaptToolForWorker<
 }
 
 /**
- * Convert a Zod schema to JSON Schema (simplified version).
- * In production, use a proper zod-to-json-schema library.
+ * Convert Zod schema to JSON Schema for MCP elicitation.
+ * Uses Zod's built-in toJSONSchema() method.
  */
-function zodToJsonSchema(schema: unknown): Record<string, unknown> {
-  // This is a simplified conversion - in production use zod-to-json-schema
-  const s = schema as { _def?: { typeName?: string; shape?: () => Record<string, unknown> } }
-  
-  if (s._def?.typeName === 'ZodObject') {
-    const shape = s._def.shape?.() ?? {}
-    const properties: Record<string, unknown> = {}
-    
-    for (const [key, value] of Object.entries(shape)) {
-      properties[key] = zodToJsonSchema(value)
-    }
-    
-    return { type: 'object', properties }
-  }
-  
-  if (s._def?.typeName === 'ZodString') {
-    return { type: 'string' }
-  }
-  
-  if (s._def?.typeName === 'ZodNumber') {
-    return { type: 'number' }
-  }
-  
-  if (s._def?.typeName === 'ZodBoolean') {
-    return { type: 'boolean' }
-  }
-  
-  // Fallback
-  return { type: 'object' }
+function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  return z.toJSONSchema(schema) as Record<string, unknown>
 }
 
 // =============================================================================
