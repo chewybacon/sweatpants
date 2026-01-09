@@ -40,6 +40,10 @@
  */
 import type { Operation } from 'effection'
 import type { z } from 'zod'
+import type {
+  ElicitDefinition,
+  ElicitsMap as BaseElicitsMap,
+} from '@tanstack/elicit-context'
 
 // =============================================================================
 // ELICITATION TYPES (shared)
@@ -84,20 +88,37 @@ export interface ElicitConfig<T> {
 // =============================================================================
 
 /**
- * A map of elicitation keys to their Zod schemas.
+ * Re-export ElicitDefinition from elicit-context package.
+ */
+export type { ElicitDefinition }
+
+/**
+ * A map of elicitation keys to their definitions (response + optional context schemas).
  *
  * Used with `.elicits({...})` to declare a finite elicitation surface.
  *
- * @example
+ * @example With context
  * ```typescript
  * const tool = createMcpTool('book_flight')
  *   .elicits({
- *     pickFlight: z.object({ flightId: z.string() }),
- *     confirm: z.object({ ok: z.boolean() }),
+ *     pickFlight: {
+ *       response: z.object({ flightId: z.string() }),
+ *       context: z.object({ flights: z.array(FlightSchema) }),
+ *     },
+ *   })
+ * ```
+ * 
+ * @example Without context
+ * ```typescript
+ * const tool = createMcpTool('confirm')
+ *   .elicits({
+ *     confirm: {
+ *       response: z.object({ ok: z.boolean() }),
+ *     },
  *   })
  * ```
  */
-export type ElicitsMap = Record<string, z.ZodType>
+export type ElicitsMap = BaseElicitsMap
 
 /**
  * Structured elicitation ID for correlation and logging.
