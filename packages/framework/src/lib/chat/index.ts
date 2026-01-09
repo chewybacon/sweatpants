@@ -12,6 +12,28 @@ export * from './providers/contexts'
 
 export * from './personas'
 
+// Model context utilities (browser-safe subset of mcp-tools)
+export { stripMessageContext, getElicitContext } from './mcp-tools/model-context'
+
+// Plugin builder (browser-safe)
+export { makePlugin } from './mcp-tools/plugin'
+export type {
+  McpPlugin,
+  PluginBuilder,
+  PluginBuilderWithHandlers,
+  PluginServerRegistration,
+  PluginClientRegistration,
+  PluginClientContext,
+  ElicitHandler,
+  ElicitHandlers,
+  InferPluginElicits,
+  InferPluginTool,
+  AnyMcpPlugin,
+  RenderableProps,
+  UserProps,
+  ExtractResponse,
+} from './mcp-tools/plugin'
+
 // Logger
 export {
   type Logger,

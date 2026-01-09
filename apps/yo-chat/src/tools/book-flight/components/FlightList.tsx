@@ -4,7 +4,9 @@
  * Displays a list of available flights for the user to select.
  * Used by the book_flight tool's pickFlight elicitation.
  */
+import { useMemo } from 'react'
 import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
+import { stripMessageContext } from '@sweatpants/framework/chat'
 import type { Flight } from '../tool'
 
 // =============================================================================
@@ -102,6 +104,9 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
 // =============================================================================
 
 export function FlightList({ flights, message, onRespond, disabled, response }: FlightListProps) {
+  // Strip any x-model-context boundary from the message
+  const cleanMessage = useMemo(() => stripMessageContext(message), [message])
+
   // If already responded, show the selection
   if (disabled && response) {
     const selectedFlight = flights.find(f => f.id === response.flightId)
@@ -109,7 +114,7 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
       <div className="my-3 p-4 bg-muted rounded-lg">
         <div className="flex items-center gap-2 mb-3">
           <AirplaneIcon className="w-5 h-5 text-primary" />
-          <p className="text-sm font-medium">{message}</p>
+          <p className="text-sm font-medium">{cleanMessage}</p>
         </div>
         <div className="space-y-2">
           {flights.map((flight) => (
@@ -150,7 +155,7 @@ export function FlightList({ flights, message, onRespond, disabled, response }: 
     <div className="my-3 p-4 bg-muted rounded-lg">
       <div className="flex items-center gap-2 mb-4">
         <AirplaneIcon className="w-5 h-5 text-primary" />
-        <p className="text-sm font-medium">{message}</p>
+        <p className="text-sm font-medium">{cleanMessage}</p>
       </div>
       <div className="space-y-3">
         {flights.map((flight) => (

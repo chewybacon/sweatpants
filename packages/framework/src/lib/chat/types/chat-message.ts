@@ -83,6 +83,37 @@ export interface ChatEmission<TComponent = unknown> {
   onRespond?: (value: unknown) => void
 }
 
+/**
+ * A plugin elicitation - an interactive UI request from an MCP plugin tool via ctx.elicit().
+ *
+ * When an MCP plugin tool calls `yield* ctx.elicit('key', context)`, it creates an
+ * elicitation that the UI should render inline. The user interacts with it, and
+ * the tool resumes with the response.
+ *
+ * Unlike emissions which have a direct component reference, elicitations use a
+ * key-based lookup pattern (toolName + key → Component).
+ */
+export interface PluginElicit {
+  /** Unique elicitation ID */
+  id: string
+  /** Elicitation key (e.g., 'pickFlight', 'pickSeat') - used for component lookup */
+  key: string
+  /** Human-readable message/prompt for the elicitation */
+  message: string
+  /** Context data passed to the component (extracted from x-model-context) */
+  context?: unknown
+  /** Current status */
+  status: 'pending' | 'responded'
+  /** Response value once user completes interaction */
+  response?: unknown
+  /** Session ID for the plugin tool execution */
+  sessionId: string
+  /** Tool call ID this elicitation belongs to */
+  callId: string
+  /** Tool name for component lookup */
+  toolName: string
+}
+
 // =============================================================================
 // MESSAGE PART TYPES
 // =============================================================================
@@ -130,7 +161,8 @@ export interface ReasoningPart extends BaseMessagePart {
  * A tool call part.
  *
  * Represents a tool invocation by the model. Tool emissions (interactive
- * components from ctx.render()) are nested within this part.
+ * components from ctx.render()) and plugin elicitations (from ctx.elicit())
+ * are nested within this part.
  *
  * @typeParam TComponent - The UI framework's component type
  */
@@ -150,6 +182,8 @@ export interface ToolCallPart<TComponent = unknown> extends BaseMessagePart {
   error?: string
   /** Interactive emissions from this tool (e.g., ctx.render() components) */
   emissions: ChatEmission<TComponent>[]
+  /** Plugin elicitations from this tool (MCP plugin tools via ctx.elicit()) */
+  pluginElicits: PluginElicit[]
 }
 
 /**
@@ -313,6 +347,7 @@ export function createToolCallPart<TComponent = unknown>(
     arguments: args,
     state: 'pending',
     emissions: [],
+    pluginElicits: [],
   }
 }
 

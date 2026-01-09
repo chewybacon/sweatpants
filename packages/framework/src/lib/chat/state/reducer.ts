@@ -65,6 +65,7 @@ function createToolCallPart(callId: string, name: string, args: string): ToolCal
     arguments: args,
     state: 'pending',
     emissions: [],
+    pluginElicits: [],
   }
 }
 
@@ -684,17 +685,45 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
 
     case 'plugin_elicit': {
       const tracking = state.pluginElicitations[patch.callId]
+      const toolName = tracking?.toolName ?? ''
 
       const newElicit = {
         ...patch.elicit,
         callId: patch.callId,
-        toolName: tracking?.toolName ?? '',
+        toolName,
       }
+
+      // Build the plugin elicit for the tool-call part
+      const pluginElicitForPart = {
+        id: patch.elicit.elicitId,
+        key: patch.elicit.key,
+        message: patch.elicit.message,
+        context: patch.elicit.context,
+        status: patch.elicit.status as 'pending' | 'responded',
+        sessionId: patch.elicit.sessionId,
+        callId: patch.callId,
+        toolName,
+      }
+
+      // Update the tool-call part's pluginElicits if it exists
+      const updatedParts = state.streaming.parts.map((part) => {
+        if (part.type === 'tool-call' && part.callId === patch.callId) {
+          return {
+            ...part,
+            pluginElicits: [...(part.pluginElicits ?? []), pluginElicitForPart],
+          }
+        }
+        return part
+      })
 
       if (!tracking) {
         // Auto-create tracking if not started explicitly
         return {
           ...state,
+          streaming: {
+            ...state.streaming,
+            parts: updatedParts,
+          },
           pluginElicitations: {
             ...state.pluginElicitations,
             [patch.callId]: {
@@ -710,6 +739,10 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
 
       return {
         ...state,
+        streaming: {
+          ...state.streaming,
+          parts: updatedParts,
+        },
         pluginElicitations: {
           ...state.pluginElicitations,
           [patch.callId]: {
@@ -724,8 +757,27 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       const tracking = state.pluginElicitations[patch.callId]
       if (!tracking) return state
 
+      // Update the tool-call part's pluginElicits status
+      const updatedParts = state.streaming.parts.map((part) => {
+        if (part.type === 'tool-call' && part.callId === patch.callId) {
+          return {
+            ...part,
+            pluginElicits: (part.pluginElicits ?? []).map((e) =>
+              e.id === patch.elicitId
+                ? { ...e, status: 'responded' as const, response: patch.response }
+                : e
+            ),
+          }
+        }
+        return part
+      })
+
       return {
         ...state,
+        streaming: {
+          ...state.streaming,
+          parts: updatedParts,
+        },
         pluginElicitations: {
           ...state.pluginElicitations,
           [patch.callId]: {

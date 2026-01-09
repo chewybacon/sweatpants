@@ -18,7 +18,7 @@
  * ```
  */
 
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState } from './chat-state'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitTrackingState } from './chat-state'
 import type {
   ChatMessage,
   MessagePart,
@@ -26,6 +26,7 @@ import type {
   ToolCallPart,
   ChatEmission,
   StreamingMessage,
+  PluginElicit,
 } from '../types/chat-message'
 
 // =============================================================================
@@ -95,11 +96,35 @@ function buildEmissionsForToolCall<TComponent>(
 }
 
 /**
- * Enrich a tool call part with emissions from the toolEmissions state.
+ * Build plugin elicits for a tool call part from the pluginElicitations state.
+ */
+function buildPluginElicitsForToolCall(
+  callId: string,
+  pluginElicitations: Record<string, PluginElicitTrackingState>
+): PluginElicit[] {
+  const tracking = pluginElicitations[callId]
+  if (!tracking?.elicitations) return []
+
+  return tracking.elicitations.map((e) => ({
+    id: e.elicitId,
+    key: e.key,
+    message: e.message,
+    context: e.context,
+    status: e.status as 'pending' | 'responded',
+    response: e.response,
+    sessionId: e.sessionId,
+    callId: e.callId,
+    toolName: e.toolName,
+  }))
+}
+
+/**
+ * Enrich a tool call part with emissions and plugin elicits from state.
  */
 function enrichToolCallPart<TComponent>(
   part: ToolCallPart<TComponent>,
   toolEmissions: Record<string, ToolEmissionTrackingState>,
+  pluginElicitations: Record<string, PluginElicitTrackingState>,
   extractComponent: ComponentExtractor<TComponent>
 ): ToolCallPart<TComponent> {
   const emissions = buildEmissionsForToolCall(
@@ -107,28 +132,39 @@ function enrichToolCallPart<TComponent>(
     toolEmissions,
     extractComponent
   )
+  const pluginElicits = buildPluginElicitsForToolCall(
+    part.callId,
+    pluginElicitations
+  )
 
-  if (emissions.length === 0 && part.emissions.length === 0) {
+  const hasNewEmissions = emissions.length > 0
+  const hasNewPluginElicits = pluginElicits.length > 0
+  const hasExistingEmissions = part.emissions.length > 0
+  const hasExistingPluginElicits = (part.pluginElicits ?? []).length > 0
+
+  if (!hasNewEmissions && !hasNewPluginElicits && !hasExistingEmissions && !hasExistingPluginElicits) {
     return part
   }
 
   return {
     ...part,
-    emissions: emissions.length > 0 ? emissions : part.emissions,
+    emissions: hasNewEmissions ? emissions : part.emissions,
+    pluginElicits: hasNewPluginElicits ? pluginElicits : (part.pluginElicits ?? []),
   }
 }
 
 /**
- * Enrich all parts with emissions.
+ * Enrich all parts with emissions and plugin elicits.
  */
 function enrichParts<TComponent>(
   parts: MessagePart<TComponent>[],
   toolEmissions: Record<string, ToolEmissionTrackingState>,
+  pluginElicitations: Record<string, PluginElicitTrackingState>,
   extractComponent: ComponentExtractor<TComponent>
 ): MessagePart<TComponent>[] {
   return parts.map((part) => {
     if (part.type === 'tool-call') {
-      return enrichToolCallPart(part, toolEmissions, extractComponent)
+      return enrichToolCallPart(part, toolEmissions, pluginElicitations, extractComponent)
     }
     return part
   })
@@ -169,6 +205,7 @@ export function deriveCompletedMessages<TComponent>(
         const enrichedParts = enrichParts(
           storedParts as MessagePart<TComponent>[],
           state.toolEmissions,
+          state.pluginElicitations,
           extractComponent
         )
         
@@ -209,6 +246,7 @@ export function deriveCompletedMessages<TComponent>(
             arguments: tc.function.arguments,
             state: toolResultMsg ? (hasError ? 'error' : 'complete') : 'running',
             emissions: [],
+            pluginElicits: [],
           }
 
           if (toolResultMsg && !hasError && toolResultMsg.content) {
@@ -218,10 +256,11 @@ export function deriveCompletedMessages<TComponent>(
             toolPart.error = toolResultMsg.content
           }
 
-          // Enrich with emissions
+          // Enrich with emissions and plugin elicits
           const enrichedPart = enrichToolCallPart(
             toolPart,
             state.toolEmissions,
+            state.pluginElicitations,
             extractComponent
           )
           parts.push(enrichedPart)
@@ -253,10 +292,11 @@ export function deriveStreamingMessage<TComponent>(
 ): StreamingMessage<TComponent> | null {
   if (!state.isStreaming) return null
 
-  // Enrich parts with emissions
+  // Enrich parts with emissions and plugin elicits
   const parts = enrichParts(
     state.streaming.parts as MessagePart<TComponent>[],
     state.toolEmissions,
+    state.pluginElicitations,
     extractComponent
   )
 
