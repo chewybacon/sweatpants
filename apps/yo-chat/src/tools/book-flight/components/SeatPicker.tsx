@@ -4,8 +4,9 @@
  * Displays an airplane-style seat map for the user to select their seat.
  * Used by the book_flight tool's pickSeat elicitation.
  */
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
+import { stripMessageContext } from '@sweatpants/framework/chat'
 import type { SeatMap } from '../tool'
 
 // =============================================================================
@@ -73,6 +74,9 @@ function AirplaneNoseIcon({ className }: { className?: string }) {
 export function SeatPicker({ seatMap, message, flightInfo, onRespond, disabled, response }: SeatPickerProps) {
   const [selectedSeat, setSelectedSeat] = useState<{ row: number; seat: string } | null>(null)
 
+  // Strip any x-model-context boundary from the message
+  const cleanMessage = useMemo(() => stripMessageContext(message), [message])
+
   const handleSeatClick = (row: number, seat: string) => {
     if (disabled) return
     setSelectedSeat({ row, seat })
@@ -100,7 +104,7 @@ export function SeatPicker({ seatMap, message, flightInfo, onRespond, disabled, 
     return (
       <div className="my-3 p-4 bg-muted rounded-lg">
         <div className="mb-3">
-          <p className="text-sm font-medium">{message}</p>
+          <p className="text-sm font-medium">{cleanMessage}</p>
           {flightInfo && (
             <p className="text-xs text-muted-foreground">
               {flightInfo.airline} {flightInfo.flightNumber}
@@ -156,7 +160,7 @@ export function SeatPicker({ seatMap, message, flightInfo, onRespond, disabled, 
   return (
     <div className="my-3 p-4 bg-muted rounded-lg">
       <div className="mb-3">
-        <p className="text-sm font-medium">{message}</p>
+        <p className="text-sm font-medium">{cleanMessage}</p>
         {flightInfo && (
           <p className="text-xs text-muted-foreground">
             {flightInfo.airline} {flightInfo.flightNumber}

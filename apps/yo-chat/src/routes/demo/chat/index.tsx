@@ -79,10 +79,20 @@ function PluginElicitationBlock({
 }
 
 /**
- * Renders a tool call part with its inline emissions.
+ * Renders a tool call part with its inline emissions and plugin elicitations.
  * Tool calls are now first-class parts in the message structure.
  */
-function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
+function ToolCallBlock({
+  toolCall,
+  onRespondToPluginElicit,
+}: {
+  toolCall: ChatToolCall
+  onRespondToPluginElicit?: (elicit: { sessionId: string; callId: string; elicitId: string }, result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }) => void
+}) {
+  const hasEmissions = toolCall.emissions.length > 0
+  const hasPluginElicits = (toolCall.pluginElicits ?? []).length > 0
+  const hasInteractions = hasEmissions || hasPluginElicits
+
   return (
     <div className="my-2">
       {/* Render emissions inline */}
@@ -101,8 +111,37 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
         )
       })}
 
-      {/* Show tool state if no emissions or tool is running */}
-      {toolCall.emissions.length === 0 && (toolCall.state === 'running' || toolCall.state === 'pending') && (
+      {/* Render plugin elicits inline */}
+      {(toolCall.pluginElicits ?? []).map((elicit) => {
+        const Component = getPluginElicitComponent(toolCall.name, elicit.key)
+        if (!Component) {
+          return (
+            <div key={elicit.id} className="my-2 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-amber-400">
+              <p className="text-sm">Unknown elicitation: {toolCall.name}.{elicit.key}</p>
+              <p className="text-xs mt-1">{elicit.message}</p>
+            </div>
+          )
+        }
+
+        const context = (elicit.context as Record<string, unknown>) ?? {}
+
+        return (
+          <Component
+            key={elicit.id}
+            {...context}
+            message={elicit.message}
+            onRespond={(value: unknown) => onRespondToPluginElicit?.(
+              { sessionId: elicit.sessionId, callId: elicit.callId, elicitId: elicit.id },
+              { action: 'accept', content: value }
+            )}
+            disabled={elicit.status !== 'pending'}
+            response={elicit.response}
+          />
+        )
+      })}
+
+      {/* Show tool state if no interactions or tool is running */}
+      {!hasInteractions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
         </div>
@@ -122,7 +161,13 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
  * Renders a single message with its parts.
  * Parts are rendered in order in the timeline.
  */
-function Message({ message }: { message: ChatMessage }) {
+function Message({
+  message,
+  onRespondToPluginElicit,
+}: {
+  message: ChatMessage
+  onRespondToPluginElicit?: (elicit: { sessionId: string; callId: string; elicitId: string }, result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }) => void
+}) {
   const isUser = message.role === 'user'
 
   return (
@@ -156,31 +201,37 @@ function Message({ message }: { message: ChatMessage }) {
                   <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
                     Thinking...
                   </summary>
-                  <div 
+                  <div
                     className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic"
                     dangerouslySetInnerHTML={{ __html: part.rendered }}
                   />
                 </details>
               )
             }
-            
+
             if (part.type === 'tool-call') {
-              return <ToolCallBlock key={part.id} toolCall={part} />
+              return (
+                <ToolCallBlock
+                  key={part.id}
+                  toolCall={part}
+                  {...(onRespondToPluginElicit && { onRespondToPluginElicit })}
+                />
+              )
             }
-            
+
             if (part.type === 'text') {
               return (
-                <div 
+                <div
                   key={part.id}
                   className="prose prose-invert prose-sm max-w-none leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: part.rendered }}
                 />
               )
             }
-            
+
             return null
           })}
-          
+
           {/* Cursor for streaming messages */}
           {message.isStreaming && (
             <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
@@ -290,36 +341,14 @@ function PipelineChatDemo() {
             </div>
           )}
 
-          {/* Messages with inline tool calls */}
+          {/* Messages with inline tool calls and plugin elicitations */}
           {messages.map((msg) => (
-            <Message key={msg.id} message={msg} />
+            <Message
+              key={msg.id}
+              message={msg}
+              {...(respondToPluginElicit && { onRespondToPluginElicit: respondToPluginElicit })}
+            />
           ))}
-
-          {/* Plugin Elicitations - MCP plugin tools that need user input */}
-          {pluginElicitations.length > 0 && (
-            <div className="mb-8">
-              {pluginElicitations.map((tracking) => (
-                <div key={tracking.callId} className="mb-4">
-                  {tracking.elicitations.map((elicit) => (
-                    <PluginElicitationBlock
-                      key={elicit.elicitId}
-                      elicit={elicit}
-                      onRespond={(result) => {
-                        respondToPluginElicit(
-                          {
-                            sessionId: elicit.sessionId,
-                            callId: elicit.callId,
-                            elicitId: elicit.elicitId,
-                          },
-                          result
-                        )
-                      }}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          )}
 
           {/* Show streaming info (debug) */}
           {streamingMessage && streamingMessage.parts.length > 0 && (
