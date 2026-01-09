@@ -111,6 +111,14 @@ export type {
   ToolEmissionResponsePatch,
   ToolEmissionCompletePatch,
   EmissionPatch,
+  // Plugin elicitation patches (MCP plugin tools)
+  PluginElicitState,
+  PluginElicitTrackingState,
+  PluginElicitStartPatch,
+  PluginElicitPatch,
+  PluginElicitResponsePatch,
+  PluginElicitCompletePatch,
+  PluginElicitPatchUnion,
   // Union
   ChatPatch,
 } from '../../../lib/chat/patches'
@@ -123,6 +131,7 @@ export {
   isHandoffPatch,
   isExecutionTrailPatch,
   isEmissionPatch,
+  isPluginElicitPatch,
 } from '../../../lib/chat/patches'
 
 // State types

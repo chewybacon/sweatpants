@@ -6,17 +6,77 @@
  * - Progressive enhancement (quick → full)
  * - No content duplication bugs
  * - Tool emissions with ctx.render() pattern - now inline in messages!
+ * - MCP Plugin tools with server-side execution and client-side elicitation
  *
  * Uses the high-level useChat hook with pipeline configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall, type PluginElicitState } from '@sweatpants/framework/react/chat'
 import { tools } from '@/__generated__/tool-registry.gen'
+import { FlightList } from '@/tools/book-flight/components/FlightList'
+import { SeatPicker } from '@/tools/book-flight/components/SeatPicker'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: PipelineChatDemo,
 })
+
+// =============================================================================
+// PLUGIN ELICITATION COMPONENTS
+// =============================================================================
+
+/**
+ * Registry of plugin elicitation components.
+ * Maps toolName -> elicitKey -> Component
+ */
+const pluginElicitComponents: Record<string, Record<string, React.ComponentType<any>>> = {
+  book_flight: {
+    pickFlight: FlightList,
+    pickSeat: SeatPicker,
+  },
+}
+
+/**
+ * Get the component for a plugin elicitation.
+ */
+function getPluginElicitComponent(toolName: string, elicitKey: string): React.ComponentType<any> | null {
+  return pluginElicitComponents[toolName]?.[elicitKey] ?? null
+}
+
+/**
+ * Renders a pending plugin elicitation.
+ */
+function PluginElicitationBlock({
+  elicit,
+  onRespond,
+}: {
+  elicit: PluginElicitState
+  onRespond: (result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }) => void
+}) {
+  const Component = getPluginElicitComponent(elicit.toolName, elicit.key)
+  
+  if (!Component) {
+    return (
+      <div className="my-2 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-amber-400">
+        <p className="text-sm">Unknown elicitation: {elicit.toolName}.{elicit.key}</p>
+        <p className="text-xs mt-1">{elicit.message}</p>
+      </div>
+    )
+  }
+
+  // Extract context data (e.g., flights, seatMap)
+  const context = elicit.context as Record<string, unknown> ?? {}
+  
+  return (
+    <Component
+      {...context}
+      message={elicit.message}
+      onRespond={(value: unknown) => onRespond({ action: 'accept', content: value })}
+      disabled={elicit.status !== 'pending'}
+      response={elicit.response}
+    />
+  )
+}
 
 /**
  * Renders a tool call part with its inline emissions.
@@ -143,14 +203,19 @@ function PipelineChatDemo() {
     abort,
     reset,
     error,
+    session, // Access plugin elicitations through session
   } = useChat({
     // Use the new Frame-based pipeline system
     // 'full' = markdown + shiki + mermaid
     pipeline: 'full',
     // Explicitly pass the tools you want to enable
     // Only these tools will be available to the LLM
+    // Note: book_flight is registered server-side as an MCP plugin tool
     tools: [tools.pickCard, tools.calculator],
   })
+
+  // Access plugin elicitations from the underlying session
+  const { pluginElicitations, respondToPluginElicit } = session
 
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -215,6 +280,12 @@ function PipelineChatDemo() {
                 >
                   "React hooks"
                 </button>
+                <button
+                  onClick={() => setInput('Book a flight from NYC to Los Angeles')}
+                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
+                >
+                  "Book flight"
+                </button>
               </div>
             </div>
           )}
@@ -223,6 +294,32 @@ function PipelineChatDemo() {
           {messages.map((msg) => (
             <Message key={msg.id} message={msg} />
           ))}
+
+          {/* Plugin Elicitations - MCP plugin tools that need user input */}
+          {pluginElicitations.length > 0 && (
+            <div className="mb-8">
+              {pluginElicitations.map((tracking) => (
+                <div key={tracking.callId} className="mb-4">
+                  {tracking.elicitations.map((elicit) => (
+                    <PluginElicitationBlock
+                      key={elicit.elicitId}
+                      elicit={elicit}
+                      onRespond={(result) => {
+                        respondToPluginElicit(
+                          {
+                            sessionId: elicit.sessionId,
+                            callId: elicit.callId,
+                            elicitId: elicit.elicitId,
+                          },
+                          result
+                        )
+                      }}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Show streaming info (debug) */}
           {streamingMessage && streamingMessage.parts.length > 0 && (

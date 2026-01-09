@@ -19,9 +19,10 @@ import {
   createPullStream,
 } from '../../lib/chat/durable-streams'
 import type { SessionRegistry, SessionHandle, TokenBuffer } from '../../lib/chat/durable-streams'
-import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts'
+import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext, PluginRegistryContext, McpToolRegistryContext, PluginSessionRegistryContext, PluginSessionManagerContext } from '../../lib/chat/providers/contexts'
 import { bindModel, stringParam, intParam, createBindingSource } from '../model-binder'
 import { createChatEngine } from './chat-engine'
+import { createPluginSessionManager } from './plugin-session-manager'
 import { useLogger } from '../../lib/logger'
 import { createStreamingHandler, useHandlerContext } from '../streaming'
 import type {
@@ -80,6 +81,34 @@ function toToolSchema(tool: IsomorphicTool): ToolSchema {
     parameters: z.toJSONSchema(tool.parameters) as Record<string, unknown>,
     isIsomorphic: true,
     authority: tool.authority ?? 'server',
+  }
+}
+
+/**
+ * Check if an object is an MCP tool (has name, description, parameters).
+ */
+function isMcpToolLike(tool: unknown): tool is { name: string; description: string; parameters: z.ZodType<unknown> } {
+  return (
+    typeof tool === 'object' &&
+    tool !== null &&
+    'name' in tool &&
+    'description' in tool &&
+    'parameters' in tool &&
+    typeof (tool as { name: unknown }).name === 'string' &&
+    typeof (tool as { description: unknown }).description === 'string'
+  )
+}
+
+/**
+ * Convert an MCP tool to its schema representation.
+ */
+function mcpToolToSchema(tool: { name: string; description: string; parameters: z.ZodType<unknown> }): ToolSchema {
+  return {
+    name: tool.name,
+    description: tool.description,
+    parameters: z.toJSONSchema(tool.parameters) as Record<string, unknown>,
+    isIsomorphic: false,
+    authority: 'server',
   }
 }
 
@@ -216,6 +245,40 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const resolvePersona = yield* PersonaResolverContext.get()
       const maxIterations = (yield* MaxIterationsContext.get()) ?? maxToolIterations
 
+      // Get optional plugin contexts for MCP plugin tools
+      const pluginRegistry = yield* PluginRegistryContext.get()
+      const mcpToolRegistry = yield* McpToolRegistryContext.get()
+      if (pluginRegistry) {
+        log.debug('plugin registry configured')
+      }
+      if (mcpToolRegistry) {
+        log.debug('mcp tool registry configured')
+      }
+
+      // Get or create plugin session manager if we have plugin support
+      // The manager must be created at server startup for multi-step elicitation to work
+      let pluginSessionManager = undefined
+      if (pluginRegistry && mcpToolRegistry) {
+        // Try to get shared manager from context first (preferred)
+        const sharedManager = yield* PluginSessionManagerContext.get()
+        
+        if (sharedManager) {
+          pluginSessionManager = sharedManager
+          log.debug('using shared plugin session manager from context')
+        } else {
+          // Fallback: try to create from shared registry (legacy path)
+          const sharedRegistry = yield* PluginSessionRegistryContext.get()
+          
+          if (sharedRegistry) {
+            pluginSessionManager = yield* createPluginSessionManager({ registry: sharedRegistry })
+            log.warn('PluginSessionManagerContext not set - creating per-request manager (multi-step elicitation may not work)')
+          } else {
+            log.error('Neither PluginSessionManagerContext nor PluginSessionRegistryContext set!')
+            log.error('Multi-step elicitation will not work.')
+          }
+        }
+      }
+
       // Get session registry from durable streams context
       log.debug('getting session registry')
       const registry: SessionRegistry<string> = yield* useSessionRegistry<string>()
@@ -314,10 +377,21 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       const clientSchemas = body.isomorphicTools ?? []
 
+      // Build MCP plugin tool schemas
+      const mcpToolSchemas: ToolSchema[] = []
+      if (mcpToolRegistry) {
+        for (const toolName of mcpToolRegistry.names()) {
+          const tool = mcpToolRegistry.get(toolName)
+          if (tool && isMcpToolLike(tool)) {
+            mcpToolSchemas.push(mcpToolToSchema(tool))
+          }
+        }
+      }
+
       // Dedupe schemas
       const seenNames = new Set<string>()
       const toolSchemas: ToolSchema[] = []
-      for (const schema of [...serverEnabledSchemas, ...clientSchemas]) {
+      for (const schema of [...serverEnabledSchemas, ...clientSchemas, ...mcpToolSchemas]) {
         if (!seenNames.has(schema.name)) {
           seenNames.add(schema.name)
           toolSchemas.push(schema)
@@ -325,6 +399,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       let session: SessionHandle<string>
+
+      // Debug: log which path we're taking and if we have plugin responses
+      log.debug({ 
+        sessionId, 
+        isReconnect, 
+        hasPluginResponses: !!body.pluginElicitResponses,
+        pluginResponseCount: body.pluginElicitResponses?.length ?? 0,
+      }, 'determining path')
 
       if (isReconnect) {
         // RECONNECT PATH: Acquire existing session, stream from buffer at offset
@@ -343,10 +425,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const engineAbortController = new AbortController()
 
         // Create the chat engine
+        // toolSchemas includes server tools, client isomorphic tools, AND MCP plugin tools
         const engine = createChatEngine({
           messages: body.messages,
           ...(systemPrompt !== undefined && { systemPrompt }),
-          toolSchemas: serverEnabledSchemas,
+          toolSchemas,
           toolRegistry,
           clientIsomorphicTools: clientSchemas,
           isomorphicClientOutputs: body.isomorphicClientOutputs ?? [],
@@ -355,6 +438,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           signal: engineAbortController.signal,
           ...(body.model !== undefined && { model: body.model }),
           sessionInfo,
+          // Plugin support for MCP tools
+          ...(pluginRegistry && { pluginRegistry }),
+          ...(mcpToolRegistry && { mcpToolRegistry }),
+          ...(pluginSessionManager && { pluginSessionManager }),
+          // Pass plugin elicit responses if provided
+          ...(body.pluginElicitResponses && { pluginElicitResponses: body.pluginElicitResponses }),
+          ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
         })
         log.debug({ sessionId }, 'new session path: chat engine created')
 

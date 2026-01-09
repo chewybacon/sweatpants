@@ -162,3 +162,34 @@ export type ChatCommand =
       partialHtml?: string
     }
   | { type: 'reset' }
+  | {
+      /**
+       * Continue the conversation without adding a user message.
+       * Used for resuming after plugin elicitation responses.
+       */
+      type: 'continue'
+    }
+  | {
+      /**
+       * Respond to a pending plugin elicitation.
+       * The response is stored and sent with the next message.
+       */
+      type: 'plugin_elicit_response'
+      /** Session ID (same as callId from the original tool call) */
+      sessionId: string
+      /** Original tool call ID for conversation correlation */
+      callId: string
+      /** Specific elicit request ID */
+      elicitId: string
+      /** The user's response */
+      result: {
+        action: 'accept' | 'decline' | 'cancel'
+        content?: unknown
+      }
+      /**
+       * If true, automatically send a continuation request after storing the response.
+       * This allows multi-step elicitation flows to progress without user intervention.
+       * @default true
+       */
+      autoContinue?: boolean
+    }

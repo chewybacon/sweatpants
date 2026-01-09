@@ -112,6 +112,12 @@ export interface ElicitId {
 
 /**
  * Request object passed to elicitation handlers.
+ *
+ * Context data (e.g., flights, seatMap) is transported via the `x-model-context`
+ * extension in the schema and as a boundary-encoded section in the message.
+ * Use `getElicitContext(req)` to extract it.
+ *
+ * @see getElicitContext from './model-context'
  */
 export interface ElicitRequest<
   TKey extends string = string,
@@ -132,10 +138,20 @@ export interface ElicitRequest<
   /** Sequence number for this elicitation within the call */
   seq: number
 
-  /** Message to display to the user */
+  /**
+   * Message to display to the user.
+   *
+   * May contain a boundary-encoded context section at the end.
+   * Use `getElicitContext(req)` to extract context and get clean message.
+   */
   message: string
 
-  /** Schema in both forms */
+  /**
+   * Schema in both forms.
+   *
+   * The `json` schema may contain `x-model-context` extension with context data.
+   * Use `getElicitContext(req)` to extract it.
+   */
   schema: {
     zod: TSchema
     json: Record<string, unknown>
@@ -596,20 +612,25 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
    * The schema is derived from the key, enabling type-safe UI bridging.
    *
    * @param key - Elicitation key declared in `.elicits()`
-   * @param options - Options including message
+   * @param options - Options including message and optional custom data for the UI
    * @returns The user's response (accept/decline/cancel)
    *
    * @example
    * ```typescript
+   * // Simple elicitation
    * const result = yield* ctx.elicit('confirm', { message: 'Proceed?' })
-   * if (result.action === 'accept') {
-   *   console.log('User confirmed:', result.content.ok)
-   * }
+   *
+   * // With custom data for the UI
+   * const flights = searchFlights(from, to)
+   * const result = yield* ctx.elicit('pickFlight', {
+   *   message: 'Select your flight',
+   *   flights,  // Custom data passed to the plugin handler
+   * })
    * ```
    */
   elicit<K extends keyof TElicits & string>(
     key: K,
-    options: { message: string }
+    options: { message: string } & Record<string, unknown>
   ): Operation<ElicitResult<z.infer<TElicits[K]>>>
 
   // ---------------------------------------------------------------------------

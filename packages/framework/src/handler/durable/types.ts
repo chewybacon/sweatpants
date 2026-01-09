@@ -7,10 +7,13 @@
  * - Durable stream events (with LSN)
  * - Handler configuration
  */
-import type { Operation, Stream } from 'effection'
+import type { Operation, Stream, Channel } from 'effection'
 import type { ZodType } from 'zod'
 import type { ChatProvider } from '../../lib/chat/providers/types'
 import type { StreamEvent, ChatMessage } from '../types'
+import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry'
+import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions'
+import type { PluginSessionManager } from './plugin-session-manager'
 
 // =============================================================================
 // ENGINE STATE PHASES
@@ -21,12 +24,15 @@ import type { StreamEvent, ChatMessage } from '../types'
  */
 export type EnginePhase =
   | 'init'
+  | 'process_plugin_abort'      // Handle explicit abort requests
+  | 'process_plugin_responses'  // Resume suspended plugin sessions
   | 'process_client_outputs'
   | 'start_iteration'
   | 'streaming_provider'
   | 'provider_complete'
   | 'executing_tools'
   | 'tools_complete'
+  | 'plugin_awaiting_elicit'    // Plugin tool waiting for elicitation
   | 'complete'
   | 'error'
   | 'handoff_pending'
@@ -81,6 +87,29 @@ export interface ToolRegistry {
 }
 
 /**
+ * MCP tool registry interface.
+ * Used for looking up MCP tool definitions (with .elicits) for plugin execution.
+ */
+export interface McpToolRegistry {
+  get(name: string): unknown | undefined
+  has(name: string): boolean
+  names(): string[]
+}
+
+/**
+ * Plugin elicitation request event data.
+ */
+export interface PluginElicitRequestData {
+  sessionId: string
+  callId: string
+  toolName: string
+  elicitId: string
+  key: string
+  message: string
+  schema: Record<string, unknown>
+}
+
+/**
  * Result of tool execution.
  */
 export type ToolExecutionResult =
@@ -98,6 +127,14 @@ export type ToolExecutionResult =
       toolName: string
       handoff: StreamEvent & { type: 'isomorphic_handoff' }
       serverOutput?: unknown
+    }
+  | {
+      ok: true
+      kind: 'plugin_awaiting'
+      callId: string
+      toolName: string
+      sessionId: string
+      elicitRequest: PluginElicitRequestData
     }
   | {
       ok: false
@@ -164,6 +201,47 @@ export interface ChatEngineParams {
 
   /** Session info to emit at start */
   sessionInfo?: StreamEvent & { type: 'session_info' }
+
+  /**
+   * Plugin registry for MCP plugin tools.
+   * When a tool call matches a registered plugin, the chat engine will:
+   * 1. Run the tool via BridgeHost
+   * 2. Handle elicit events by dispatching to plugin handlers
+   * 3. Handle sample events using the chat provider
+   */
+  pluginRegistry?: PluginRegistry
+
+  /**
+   * Emission channel for plugin elicitation UI.
+   * When a plugin handler calls ctx.render(), the emission is sent through this channel.
+   * The React layer subscribes to this channel to render components.
+   */
+  pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>
+
+  /**
+   * MCP tool registry for looking up MCP tool definitions.
+   * When a tool call matches a registered plugin, we need the tool definition
+   * to create a BridgeHost for execution.
+   */
+  mcpToolRegistry?: McpToolRegistry
+
+  /**
+   * Plugin session manager for creating/resuming plugin tool sessions.
+   * Sessions persist across HTTP request boundaries, allowing tools to
+   * suspend for elicitation and resume when the user responds.
+   */
+  pluginSessionManager?: PluginSessionManager
+
+  /**
+   * Responses to pending plugin elicitation requests.
+   * When resuming a session, these are processed first.
+   */
+  pluginElicitResponses?: PluginElicitResponse[]
+
+  /**
+   * Request to abort a specific plugin session.
+   */
+  pluginAbort?: PluginAbortRequest
 }
 
 // =============================================================================
@@ -199,6 +277,38 @@ export interface InitializerContext {
 export type InitializerHook = (ctx: InitializerContext) => Operation<void>
 
 /**
+ * Response to a plugin elicitation request.
+ * Sent by the client when user completes an elicitation UI.
+ */
+export interface PluginElicitResponse {
+  /** Session ID (same as callId from the original tool call) */
+  sessionId: string
+
+  /** Original tool call ID for conversation correlation */
+  callId: string
+
+  /** Specific elicit request ID */
+  elicitId: string
+
+  /** The user's response */
+  result: {
+    action: 'accept' | 'decline' | 'cancel'
+    content?: unknown
+  }
+}
+
+/**
+ * Request to abort a plugin session.
+ */
+export interface PluginAbortRequest {
+  /** Session ID to abort */
+  sessionId: string
+
+  /** Optional abort reason */
+  reason?: string
+}
+
+/**
  * Request body for chat requests.
  */
 export interface ChatRequestBody {
@@ -213,6 +323,19 @@ export interface ChatRequestBody {
   isomorphicClientOutputs?: IsomorphicClientOutput[]
   model?: string
   provider?: 'ollama' | 'openai'
+
+  /**
+   * Responses to pending plugin elicitation requests.
+   * When a plugin tool emits plugin_elicit_request, the client renders UI,
+   * collects the user's response, and sends it back here.
+   */
+  pluginElicitResponses?: PluginElicitResponse[]
+
+  /**
+   * Request to abort a specific plugin session.
+   * Used when the user cancels an in-progress plugin tool.
+   */
+  pluginAbort?: PluginAbortRequest
 }
 
 /**

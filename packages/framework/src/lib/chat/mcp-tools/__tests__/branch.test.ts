@@ -17,6 +17,7 @@ describe('createBranchTool', () => {
     const tool = createBranchTool('test_tool')
       .description('A test tool')
       .parameters(z.object({ input: z.string() }))
+      .elicits({})
       .execute(function* (params) {
         return `Got: ${params.input}`
       })
@@ -30,6 +31,7 @@ describe('createBranchTool', () => {
     const tool = createBranchTool('handoff_tool')
       .description('A handoff tool')
       .parameters(z.object({ input: z.string() }))
+      .elicits({})
       .handoff({
         *before(params) {
           return { prepared: params.input.toUpperCase() }
@@ -52,6 +54,7 @@ describe('createBranchTool', () => {
       .description('A limited tool')
       .parameters(z.object({}))
       .limits({ maxDepth: 3, maxTokens: 1000, timeout: 5000 })
+      .elicits({})
       .execute(function* () {
         return 'done'
       })
@@ -65,6 +68,7 @@ describe('runBranchTool - simple execute', () => {
     const tool = createBranchTool('simple')
       .description('Simple tool')
       .parameters(z.object({ value: z.number() }))
+      .elicits({})
       .execute(function* (params) {
         return params.value * 2
       })
@@ -81,6 +85,7 @@ describe('runBranchTool - simple execute', () => {
     const tool = createBranchTool('sampler')
       .description('Sampling tool')
       .parameters(z.object({ prompt: z.string() }))
+      .elicits({})
       .execute(function* (params, ctx) {
         const result = yield* ctx.sample({ prompt: params.prompt })
         return result.text
@@ -108,6 +113,7 @@ describe('runBranchTool - simple execute', () => {
     const tool = createBranchTool('multi_turn')
       .description('Multi-turn tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         yield* ctx.sample({ prompt: 'First' })
         yield* ctx.sample({ prompt: 'Second' })
@@ -138,6 +144,7 @@ describe('runBranchTool - simple execute', () => {
     const tool = createBranchTool('explicit')
       .description('Explicit messages tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         const result = yield* ctx.sample({
           messages: [
@@ -174,6 +181,7 @@ describe('runBranchTool - elicitation', () => {
     const tool = createBranchTool('elicit')
       .description('Elicit tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         const result = yield* ctx.elicit({
           message: 'Pick one',
@@ -198,6 +206,7 @@ describe('runBranchTool - elicitation', () => {
     const tool = createBranchTool('elicit_decline')
       .description('Elicit tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         const result = yield* ctx.elicit({
           message: 'Pick one',
@@ -224,6 +233,7 @@ describe('runBranchTool - sub-branches', () => {
     const tool = createBranchTool('branching')
       .description('Branching tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         const main = yield* ctx.sample({ prompt: 'Main task' })
 
@@ -253,6 +263,7 @@ describe('runBranchTool - sub-branches', () => {
     const tool = createBranchTool('inherit')
       .description('Inheriting tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         yield* ctx.sample({ prompt: 'Parent message' })
 
@@ -281,6 +292,7 @@ describe('runBranchTool - sub-branches', () => {
     const tool = createBranchTool('fresh')
       .description('Fresh branch tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         yield* ctx.sample({ prompt: 'Parent' })
 
@@ -316,6 +328,7 @@ describe('runBranchTool - sub-branches', () => {
     const tool = createBranchTool('depth')
       .description('Depth tracking tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         const depths: number[] = [ctx.depth]
 
@@ -343,6 +356,7 @@ describe('runBranchTool - sub-branches', () => {
       .description('Depth limited tool')
       .parameters(z.object({}))
       .limits({ maxDepth: 1 })
+      .elicits({})
       .execute(function* (params, ctx) {
         yield* ctx.branch(function* (sub1) {
           // This should throw - depth 2 exceeds limit of 1
@@ -366,6 +380,7 @@ describe('runBranchTool - sub-branches', () => {
       .description('Override limits tool')
       .parameters(z.object({}))
       .limits({ maxDepth: 1 })
+      .elicits({})
       .execute(function* (params, ctx) {
         const result = yield* ctx.branch(
           function* (sub1) {
@@ -395,6 +410,7 @@ describe('runBranchTool - handoff pattern', () => {
     const tool = createBranchTool('handoff')
       .description('Handoff tool')
       .parameters(z.object({ input: z.string() }))
+      .elicits({})
       .handoff({
         *before(params) {
           phases.push('before')
@@ -431,6 +447,7 @@ describe('runBranchTool - handoff pattern', () => {
     const tool = createBranchTool('context')
       .description('Context tool')
       .parameters(z.object({}))
+      .elicits({})
       .handoff({
         *before(params, ctx) {
           beforeCallId = ctx.callId
@@ -459,6 +476,7 @@ describe('runBranchTool - logging', () => {
     const tool = createBranchTool('logger')
       .description('Logging tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         yield* ctx.log('info', 'Starting')
         yield* ctx.log('debug', 'Processing')
@@ -482,6 +500,7 @@ describe('runBranchTool - logging', () => {
     const tool = createBranchTool('notifier')
       .description('Notification tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         yield* ctx.notify('Starting...')
         yield* ctx.notify('Halfway there', 0.5)
@@ -507,6 +526,7 @@ describe('runBranchTool - validation', () => {
     const tool = createBranchTool('validated')
       .description('Validated tool')
       .parameters(z.object({ count: z.number().min(1).max(10) }))
+      .elicits({})
       .execute(function* (params) {
         return params.count
       })
@@ -536,6 +556,7 @@ describe('dynamic sample responses', () => {
     const tool = createBranchTool('dynamic')
       .description('Dynamic response tool')
       .parameters(z.object({}))
+      .elicits({})
       .execute(function* (params, ctx) {
         const result = yield* ctx.sample({ prompt: 'Count messages' })
         return result.text

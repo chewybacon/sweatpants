@@ -21,6 +21,7 @@
  */
 import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, call } from 'effection'
 import { z } from 'zod'
+import { encodeElicitContext } from './model-context'
 import type {
   McpToolContextWithElicits,
   McpToolHandoffConfigWithElicits,
@@ -462,7 +463,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     // User backchannel - KEYED elicitation
     elicit<K extends keyof TElicits & string>(
       key: K,
-      options: { message: string }
+      options: { message: string } & Record<string, unknown>
     ): Operation<ElicitResult<z.infer<TElicits[K]>>> {
       return {
         *[Symbol.iterator]() {
@@ -488,6 +489,17 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             seq,
           }
 
+          // Extract custom data (everything except 'message')
+          const { message, ...contextData } = options
+          const hasContext = Object.keys(contextData).length > 0
+
+          // Encode context into schema and message using x-model-context transport
+          const baseSchema = zodToJsonSchema(schema)
+          const encodeOptions = hasContext
+            ? { message, schema: baseSchema, context: contextData }
+            : { message, schema: baseSchema }
+          const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(encodeOptions)
+
           // Build the request
           const request: ElicitRequest<K, TElicits[K]> = {
             id,
@@ -495,10 +507,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             toolName: state.toolName,
             callId: state.callId,
             seq,
-            message: options.message,
+            message: encodedMessage,
             schema: {
               zod: schema,
-              json: zodToJsonSchema(schema),
+              json: encodedSchema,
             },
           }
 

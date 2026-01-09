@@ -197,3 +197,28 @@ export type StreamEvent =
       message: string
       recoverable: boolean
     }
+  // Plugin tool events
+  | {
+      type: 'plugin_elicit_request'
+      sessionId: string
+      callId: string
+      toolName: string
+      elicitId: string
+      key: string
+      message: string
+      schema: Record<string, unknown>
+    }
+  | {
+      type: 'plugin_session_error'
+      sessionId: string
+      callId: string
+      error: 'SESSION_NOT_FOUND' | 'SESSION_ABORTED' | 'INTERNAL_ERROR'
+      message: string
+    }
+  | {
+      type: 'plugin_session_status'
+      sessionId: string
+      callId: string
+      toolName: string
+      status: 'running' | 'awaiting_elicit' | 'completed' | 'failed' | 'aborted'
+    }

@@ -255,6 +255,22 @@ export interface ToolSessionOptions {
 
   /** Abort signal for external cancellation */
   signal?: AbortSignal
+
+  /**
+   * Start tool execution immediately when the session is created.
+   * 
+   * When true, tool execution begins in the scope where the session is created
+   * (typically the registry's long-lived scope), not when events() is first
+   * subscribed. This is required for multi-step elicitation across HTTP
+   * request boundaries.
+   * 
+   * When false (default), execution is deferred until events() is subscribed,
+   * which is appropriate for SSE streaming where the subscriber's scope
+   * stays alive for the duration of the stream.
+   * 
+   * @default false
+   */
+  startImmediately?: boolean
 }
 
 // =============================================================================

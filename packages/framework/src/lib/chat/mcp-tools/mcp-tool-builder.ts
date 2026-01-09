@@ -123,7 +123,10 @@ export interface McpToolBuilderWithDescription<TName extends string> {
 }
 
 /**
- * Has name + description + params, can set requires/limits or define execution.
+ * Has name + description + params. Must call `.elicits()` next.
+ * 
+ * All MCP tools must declare their elicitation surface, even if empty.
+ * This ensures type-safe `ctx.elicit()` calls and enables plugin detection.
  */
 export interface McpToolBuilderWithParams<TName extends string, TParams> {
   _types: McpToolTypes<TParams, undefined, undefined, undefined>
@@ -144,7 +147,10 @@ export interface McpToolBuilderWithParams<TName extends string, TParams> {
   limits(limits: McpToolLimits): this
 
   /**
-   * Declare a finite elicitation surface for type-safe UI bridging.
+   * Declare the elicitation surface for type-safe UI bridging.
+   * 
+   * **This is required** - all MCP tools must call `.elicits()`.
+   * For tools that don't need elicitation, pass an empty object: `.elicits({})`.
    *
    * When you call `.elicits({...})`, the tool becomes "bridgeable":
    * - `ctx.elicit` becomes keyed: `ctx.elicit('pickFlight', { message: '...' })`
@@ -153,6 +159,7 @@ export interface McpToolBuilderWithParams<TName extends string, TParams> {
    *
    * @example
    * ```typescript
+   * // Tool with elicitation
    * const tool = createMcpTool('book_flight')
    *   .description('Book a flight')
    *   .parameters(z.object({ destination: z.string() }))
@@ -160,33 +167,25 @@ export interface McpToolBuilderWithParams<TName extends string, TParams> {
    *     pickFlight: z.object({ flightId: z.string() }),
    *     confirm: z.object({ ok: z.boolean() }),
    *   })
-   *   .handoff({
-   *     *client(handoff, ctx) {
-   *       const picked = yield* ctx.elicit('pickFlight', { message: 'Pick' })
-   *       const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
-   *       return { picked, ok }
-   *     }
+   *   .execute(function* (params, ctx) {
+   *     const picked = yield* ctx.elicit('pickFlight', { message: 'Pick' })
+   *     // ...
+   *   })
+   * 
+   * // Tool without elicitation (still must call .elicits())
+   * const calculator = createMcpTool('calculate')
+   *   .description('Do math')
+   *   .parameters(z.object({ expr: z.string() }))
+   *   .elicits({})  // Empty - no elicitation needed
+   *   .execute(function* (params, ctx) {
+   *     const result = yield* ctx.sample({ prompt: params.expr })
+   *     return result.text
    *   })
    * ```
    */
   elicits<TElicits extends ElicitsMap>(
     schemas: TElicits
   ): McpToolBuilderWithElicits<TName, TParams, TElicits>
-
-  /**
-   * Define a simple execute function (no handoff).
-   * For tools that don't need the before/client/after pattern.
-   */
-  execute<TResult>(
-    fn: (params: TParams, ctx: McpToolContext) => Operation<TResult>
-  ): FinalizedMcpTool<TName, TParams, undefined, undefined, TResult>
-
-  /**
-   * Define handoff pattern for multi-turn interaction.
-   */
-  handoff<THandoff, TClient, TResult>(
-    config: McpToolHandoffConfig<TParams, THandoff, TClient, TResult>
-  ): FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
 }
 
 /**
@@ -411,19 +410,8 @@ function createBuilder(state: BuilderState): any {
       if (!state.parameters) {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`)
       }
-
-      // If elicits is defined, return FinalizedMcpToolWithElicits
-      if (state.elicits) {
-        return {
-          _types: undefined as any,
-          name: state.name,
-          description: state.description,
-          parameters: state.parameters,
-          elicits: state.elicits,
-          requires: state.requires,
-          limits: state.limits,
-          execute: fn,
-        } as FinalizedMcpToolWithElicits<any, any, undefined, undefined, any, any>
+      if (!state.elicits) {
+        throw new Error(`Tool "${state.name}": .elicits() must be called before .execute(). Use .elicits({}) if no elicitation is needed.`)
       }
 
       return {
@@ -431,10 +419,11 @@ function createBuilder(state: BuilderState): any {
         name: state.name,
         description: state.description,
         parameters: state.parameters,
+        elicits: state.elicits,
         requires: state.requires,
         limits: state.limits,
         execute: fn,
-      } as FinalizedMcpTool<any, any, undefined, undefined, any>
+      } as FinalizedMcpToolWithElicits<any, any, undefined, undefined, any, any>
     },
 
     handoff(config: McpToolHandoffConfig<any, any, any, any>) {
@@ -444,19 +433,8 @@ function createBuilder(state: BuilderState): any {
       if (!state.parameters) {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`)
       }
-
-      // If elicits is defined, return FinalizedMcpToolWithElicits
-      if (state.elicits) {
-        return {
-          _types: undefined as any,
-          name: state.name,
-          description: state.description,
-          parameters: state.parameters,
-          elicits: state.elicits,
-          requires: state.requires,
-          limits: state.limits,
-          handoffConfig: config,
-        } as FinalizedMcpToolWithElicits<any, any, any, any, any, any>
+      if (!state.elicits) {
+        throw new Error(`Tool "${state.name}": .elicits() must be called before .handoff(). Use .elicits({}) if no elicitation is needed.`)
       }
 
       return {
@@ -464,10 +442,11 @@ function createBuilder(state: BuilderState): any {
         name: state.name,
         description: state.description,
         parameters: state.parameters,
+        elicits: state.elicits,
         requires: state.requires,
         limits: state.limits,
         handoffConfig: config,
-      } as FinalizedMcpTool<any, any, any, any, any>
+      } as FinalizedMcpToolWithElicits<any, any, any, any, any, any>
     },
   }
 

@@ -31,11 +31,14 @@
  * export const bookFlightPlugin = makePlugin(bookFlight)
  *   .onElicit({
  *     pickFlight: function* (req, ctx) {
- *       const flightId = yield* ctx.step(FlightPicker, req.handoff)
+ *       const { flightId } = yield* ctx.render(FlightPicker, {
+ *         flights: req.flights,
+ *         message: req.message,
+ *       })
  *       return { action: 'accept', content: { flightId } }
  *     },
  *     confirm: function* (req, ctx) {
- *       const ok = yield* ctx.step(Confirm, { message: req.message })
+ *       const { ok } = yield* ctx.render(Confirm, { message: req.message })
  *       return { action: ok ? 'accept' : 'decline', content: { ok } }
  *     },
  *   })
@@ -56,6 +59,7 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
+import type { ComponentType } from 'react'
 import type { z } from 'zod'
 import type {
   ElicitRequest,
@@ -63,6 +67,9 @@ import type {
   ElicitResult,
 } from './mcp-tool-types'
 import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
+
+// Re-export renderable types for plugin authors
+export type { RenderableProps, UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context'
 
 // Legacy type alias for backward compatibility
 type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
@@ -72,42 +79,53 @@ type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TCl
 // CLIENT CONTEXT (what onElicit handlers receive)
 // =============================================================================
 
+import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context'
+
 /**
  * Context available to onElicit handlers.
  *
- * This is the isomorphic client context - handlers can use
- * step(), waitFor(), or any other client-side primitives.
- *
- * The exact shape depends on your framework setup, but typically includes:
- * - step(Component, props) for React component rendering
- * - waitFor(type, payload) for type-based UI handlers
- * - reportProgress(message) for progress updates
+ * This context provides:
+ * - `render(Component, props)` for React component rendering (matching BrowserRenderContext)
+ * - `elicitRequest` with the current elicitation request data
+ * - `reportProgress(message)` for progress updates
  */
-export interface PluginClientContext {
+export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.ZodType>> {
   /** Tool call ID */
   callId: string
 
   /** Abort signal for cancellation */
   signal: AbortSignal
 
-  /**
-   * Render a React component and wait for response.
-   * @param Component - React component to render
-   * @param props - Props for the component (without RenderableProps)
-   * @returns The value passed to onRespond()
-   */
-  step?<TProps, TResponse>(
-    Component: React.ComponentType<TProps>,
-    props: Omit<TProps, 'onRespond' | 'disabled' | 'response'>
-  ): Operation<TResponse>
+  /** The current elicitation request */
+  elicitRequest: TElicitRequest
 
   /**
-   * Suspend and wait for UI input via type-based handler.
-   * @param type - Handler type (routes to registered UI handler)
-   * @param payload - Data for the handler
-   * @returns Response from the handler
+   * Render a React component and wait for user response.
+   *
+   * The component will be rendered in the chat timeline. When the user
+   * interacts (e.g., clicks a button), the component calls `onRespond(value)`
+   * and this operation resumes with that value.
+   *
+   * For "fire-and-forget" components (e.g., loading indicators), the component
+   * should call `onRespond()` immediately in useEffect.
+   *
+   * @param Component - React component to render
+   * @param props - Props for the component (without RenderableProps)
+   * @returns Response from the component
+   *
+   * @example
+   * ```typescript
+   * // Wait for user to pick an option
+   * const { flightId } = yield* ctx.render(FlightPicker, {
+   *   flights: req.flights,
+   *   message: req.message,
+   * })
+   * ```
    */
-  waitFor?<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse>
+  render<TProps, TResponse = ExtractResponse<TProps>>(
+    Component: ComponentType<TProps>,
+    props: UserProps<TProps>
+  ): Operation<TResponse>
 
   /**
    * Report progress to the UI.
@@ -125,11 +143,12 @@ export interface PluginClientContext {
  * The handler is a generator that receives the elicitation request
  * and client context, and returns an ElicitResult.
  *
+ * @template TKey - The elicitation key name
  * @template TSchema - Zod schema for this elicitation key
  */
-export type ElicitHandler<TSchema extends z.ZodType> = (
-  req: ElicitRequest<string, TSchema>,
-  ctx: PluginClientContext
+export type ElicitHandler<TKey extends string, TSchema extends z.ZodType> = (
+  req: ElicitRequest<TKey, TSchema>,
+  ctx: PluginClientContext<ElicitRequest<TKey, TSchema>>
 ) => Operation<ElicitResult<z.infer<TSchema>>>
 
 /**
@@ -141,7 +160,7 @@ export type ElicitHandler<TSchema extends z.ZodType> = (
  * @template TElicits - The tool's elicitation map
  */
 export type ElicitHandlers<TElicits extends ElicitsMap> = {
-  [K in keyof TElicits]: ElicitHandler<TElicits[K]>
+  [K in keyof TElicits & string]: ElicitHandler<K, TElicits[K]>
 }
 
 // =============================================================================
@@ -232,11 +251,14 @@ export interface PluginBuilder<
    * ```typescript
    * .onElicit({
    *   pickFlight: function* (req, ctx) {
-   *     const flightId = yield* ctx.step(FlightPicker, req.handoff)
+   *     const { flightId } = yield* ctx.render(FlightPicker, {
+   *       flights: req.flights,
+   *       message: req.message,
+   *     })
    *     return { action: 'accept', content: { flightId } }
    *   },
    *   confirm: function* (req, ctx) {
-   *     const ok = yield* ctx.step(Confirm, { message: req.message })
+   *     const { ok } = yield* ctx.render(Confirm, { message: req.message })
    *     return { action: ok ? 'accept' : 'decline', content: { ok } }
    *   },
    * })

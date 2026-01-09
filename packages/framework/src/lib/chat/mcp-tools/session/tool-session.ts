@@ -2,27 +2,28 @@
  * In-Memory Tool Session Implementation
  *
  * Wraps the bridge-runtime to provide a durable session interface.
- * Keeps the Effection generator alive and manages event buffering
- * for SSE resumability.
+ * The session survives across HTTP request boundaries, enabling multi-step
+ * elicitation flows.
  *
- * IMPORTANT: This implementation uses native Promises (not Effection signals)
- * for cross-scope communication. When `respondToSample` or `respondToElicit`
- * is called from an HTTP handler scope, it resolves a Promise that the tool
- * execution is waiting on via `call()`. This pattern works across Effection
- * scopes because Promise resolution is handled by the JS event loop, not
- * Effection's scheduler.
+ * Architecture:
+ * - Session is created and tool execution starts immediately (spawned)
+ * - `nextEvent()` blocks until the next event is available
+ * - Events: elicit_request, sample_request, result, error, cancelled
+ * - For elicits: consumer returns to client, client responds, new request calls `respondToElicit()` then `nextEvent()`
+ * - For samples: consumer handles inline (calls LLM), then calls `respondToSample()` and `nextEvent()` again
  *
  * @packageDocumentation
  */
 import {
   type Operation,
+  type Signal,
   type Stream,
   type Subscription,
-  createChannel,
   spawn,
   resource,
   each,
-  call,
+  createQueue,
+  sleep,
 } from 'effection'
 import type {
   ToolSession,
@@ -44,26 +45,28 @@ import type {
   ElicitsMap,
 } from '../mcp-tool-types'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
-import { createBridgeHost } from '../bridge-runtime'
+import { createBridgeHost, type ElicitResponse, type SampleResponse } from '../bridge-runtime'
+import type { ElicitId } from '../mcp-tool-types'
 
 // =============================================================================
 // INTERNAL TYPES
 // =============================================================================
 
 /**
- * Pending sample request - uses Promise for cross-scope resolution.
- */
-interface PendingSample {
-  id: string
-  resolve: (result: SampleResult) => void
-}
-
-/**
- * Pending elicit request - uses Promise for cross-scope resolution.
+ * Pending elicit - stores the signal for responding.
  */
 interface PendingElicit {
   id: string
-  resolve: (result: ElicitResult<unknown>) => void
+  elicitRequestId: ElicitId
+  signal: Signal<ElicitResponse, void>
+}
+
+/**
+ * Pending sample - stores the signal for responding.
+ */
+interface PendingSample {
+  id: string
+  signal: Signal<SampleResponse, void>
 }
 
 /**
@@ -72,13 +75,11 @@ interface PendingElicit {
 interface SessionState<TResult> {
   status: ToolSessionStatus
   lsn: number
-  eventBuffer: ToolSessionEvent<TResult>[]
   pendingElicit: PendingElicit | null
   pendingSample: PendingSample | null
   result: TResult | null
   error: Error | null
-  cancelled: boolean
-  cancelReason: string | undefined
+  toolCompleted: boolean
 }
 
 // =============================================================================
@@ -88,8 +89,11 @@ interface SessionState<TResult> {
 /**
  * Create an in-memory tool session.
  *
- * This is a resource that keeps the tool's generator alive and manages
- * event buffering for SSE resumability.
+ * This is a resource that:
+ * 1. Spawns the tool execution immediately
+ * 2. Events are pushed to a queue as they happen
+ * 3. `events()` returns a Stream that pulls from the queue
+ * 4. For samples/elicits, the consumer responds and continues iterating
  *
  * @param tool - The tool to execute
  * @param params - Tool parameters
@@ -106,7 +110,7 @@ export function createToolSession<
 >(
   tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>,
   params: TParams,
-  _samplingProvider: ToolSessionSamplingProvider, // Not used - sampling via responseSignal
+  _samplingProvider: ToolSessionSamplingProvider,
   options: ToolSessionOptions = {}
 ): Operation<ToolSession<TResult>> {
   return resource<ToolSession<TResult>>(function* (provide) {
@@ -116,36 +120,18 @@ export function createToolSession<
     const state: SessionState<TResult> = {
       status: 'initializing',
       lsn: 0,
-      eventBuffer: [],
       pendingElicit: null,
       pendingSample: null,
       result: null,
       error: null,
-      cancelled: false,
-      cancelReason: undefined,
+      toolCompleted: false,
     }
 
-    // Channel for event subscribers
-    const eventChannel = createChannel<ToolSessionEvent<TResult>, void>()
+    // Queue for events - producer (tool execution) pushes, consumer pulls
+    // createQueue returns a synchronous queue with add/close/next methods
+    const eventQueue = createQueue<ToolSessionEvent<TResult>, void>()
 
-    // Helper to emit an event
-    function* emitEvent(
-      event: Omit<ToolSessionEvent<TResult>, 'lsn' | 'timestamp'>
-    ): Operation<void> {
-      const fullEvent = {
-        ...event,
-        lsn: ++state.lsn,
-        timestamp: Date.now(),
-      } as ToolSessionEvent<TResult>
-
-      // Buffer for resumability
-      state.eventBuffer.push(fullEvent)
-
-      // Send to subscribers
-      yield* eventChannel.send(fullEvent)
-    }
-
-    // Create the bridge host config
+    // Create the bridge host
     const hostConfig = {
       tool,
       params,
@@ -154,138 +140,111 @@ export function createToolSession<
       ...(options.parentMessages !== undefined && { parentMessages: options.parentMessages }),
       ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
     }
-
     const host = createBridgeHost(hostConfig)
 
-    // Track whether tool execution has started
-    let toolExecutionStarted = false
-
-    /**
-     * Start tool execution. This should be called from within the SSE
-     * stream's scope.run() so that Promise resolutions (from respondToSample)
-     * are processed by the same Effection scheduler.
-     */
-    function* startToolExecution(): Operation<void> {
-      if (toolExecutionStarted) return
-      toolExecutionStarted = true
-      
-      yield* spawn(function* () {
-        try {
-          state.status = 'running'
-
-          // Process events from the bridge
-          yield* spawn(function* () {
-            for (const event of yield* each(host.events)) {
-              switch (event.type) {
-                case 'elicit': {
-                  const elicitId = `${sessionId}:elicit:${state.lsn}`
-
-                  // Create a Promise for the response
-                  let resolveElicit: (result: ElicitResult<unknown>) => void
-                  const elicitPromise = new Promise<ElicitResult<unknown>>((resolve) => {
-                    resolveElicit = resolve
-                  })
-
-                  state.status = 'awaiting_elicit'
-                  state.pendingElicit = { id: elicitId, resolve: resolveElicit! }
-
-                  // Emit the elicit request event
-                  yield* emitEvent({
-                    type: 'elicit_request',
-                    elicitId,
-                    key: event.request.key,
-                    message: event.request.message,
-                    schema: event.request.schema.json,
-                  } as Omit<ElicitRequestEvent, 'lsn' | 'timestamp'>)
-
-                  // Wait for response via Promise
-                  const response = yield* call(() => elicitPromise)
-
-                  state.pendingElicit = null
-                  state.status = 'running'
-
-                  // Forward response to the bridge
-                  event.responseSignal.send({ id: event.request.id, result: response })
-                  break
-                }
-
-              case 'sample': {
-                const sampleId = `${sessionId}:sample:${state.lsn}`
-
-                // Create a Promise for the response
-                let resolveSample: (result: SampleResult) => void
-                const samplePromise = new Promise<SampleResult>((resolve) => {
-                  resolveSample = resolve
-                })
-
-                state.status = 'awaiting_sample'
-                state.pendingSample = { id: sampleId, resolve: resolveSample! }
-
-                // Emit the sample request event to SSE stream
-                yield* emitEvent({
-                  type: 'sample_request',
-                  sampleId,
-                  messages: event.messages,
-                  systemPrompt: event.options?.systemPrompt,
-                  maxTokens: event.options?.maxTokens,
-                } as Omit<SampleRequestEvent, 'lsn' | 'timestamp'>)
-
-                // Wait for response via Promise
-                const response = yield* call(() => samplePromise)
-
-                state.pendingSample = null
-                state.status = 'running'
-
-                // Forward response to the bridge's signal
-                event.responseSignal.send({ result: response })
-                break
-              }
-
-                case 'log':
-                  yield* emitEvent({
-                    type: 'log',
-                    level: event.level,
-                    message: event.message,
-                  } as Omit<LogEvent, 'lsn' | 'timestamp'>)
-                  break
-
-                case 'notify':
-                  yield* emitEvent({
-                    type: 'progress',
-                    message: event.message,
-                    progress: event.progress,
-                  } as Omit<ProgressEvent, 'lsn' | 'timestamp'>)
-                  break
-              }
-              yield* each.next()
-            }
-          })
-
-          // Run the tool
-          const result = yield* host.run()
-
-          state.status = 'completed'
-          state.result = result
-
-          yield* emitEvent({
-            type: 'result',
-            result,
-          } as Omit<ResultEvent<TResult>, 'lsn' | 'timestamp'>)
-        } catch (error) {
-          state.status = 'failed'
-          state.error = error as Error
-
-          yield* emitEvent({
-            type: 'error',
-            name: (error as Error).name,
-            message: (error as Error).message,
-            stack: (error as Error).stack,
-          } as Omit<ErrorEvent, 'lsn' | 'timestamp'>)
-        } finally {
-          yield* eventChannel.close()
-        }
-      })
+    // Helper to create a full event with LSN and timestamp
+    function createEvent(event: Omit<ToolSessionEvent<TResult>, 'lsn' | 'timestamp'>): ToolSessionEvent<TResult> {
+      return {
+        ...event,
+        lsn: ++state.lsn,
+        timestamp: Date.now(),
+      } as ToolSessionEvent<TResult>
     }
+
+    // Start tool execution immediately - this runs in the session's scope
+    state.status = 'running'
+
+    // Spawn event processor - converts bridge events to session events
+    yield* spawn(function* () {
+      for (const event of yield* each(host.events)) {
+        switch (event.type) {
+          case 'elicit': {
+            const elicitId = `${sessionId}:elicit:${state.lsn}`
+            state.status = 'awaiting_elicit'
+            state.pendingElicit = {
+              id: elicitId,
+              elicitRequestId: event.request.id,
+              signal: event.responseSignal,
+            }
+
+            eventQueue.add(createEvent({
+              type: 'elicit_request',
+              elicitId,
+              key: event.request.key,
+              message: event.request.message,
+              schema: event.request.schema.json,
+            } as Omit<ElicitRequestEvent, 'lsn' | 'timestamp'>))
+            break
+          }
+
+          case 'sample': {
+            const sampleId = `${sessionId}:sample:${state.lsn}`
+            state.status = 'awaiting_sample'
+            state.pendingSample = { id: sampleId, signal: event.responseSignal }
+
+            eventQueue.add(createEvent({
+              type: 'sample_request',
+              sampleId,
+              messages: event.messages,
+              systemPrompt: event.options?.systemPrompt,
+              maxTokens: event.options?.maxTokens,
+            } as Omit<SampleRequestEvent, 'lsn' | 'timestamp'>))
+            break
+          }
+
+          case 'log':
+            eventQueue.add(createEvent({
+              type: 'log',
+              level: event.level,
+              message: event.message,
+            } as Omit<LogEvent, 'lsn' | 'timestamp'>))
+            break
+
+          case 'notify':
+            eventQueue.add(createEvent({
+              type: 'progress',
+              message: event.message,
+              progress: event.progress,
+            } as Omit<ProgressEvent, 'lsn' | 'timestamp'>))
+            break
+        }
+        yield* each.next()
+      }
+    })
+
+    // Spawn tool runner
+    yield* spawn(function* () {
+      try {
+        const result = yield* host.run()
+        state.status = 'completed'
+        state.result = result
+        state.toolCompleted = true
+
+        eventQueue.add(createEvent({
+          type: 'result',
+          result,
+        } as Omit<ResultEvent<TResult>, 'lsn' | 'timestamp'>))
+        
+        // Close the queue when tool completes
+        eventQueue.close()
+      } catch (error) {
+        state.status = 'failed'
+        state.error = error as Error
+        state.toolCompleted = true
+
+        eventQueue.add(createEvent({
+          type: 'error',
+          name: (error as Error).name,
+          message: (error as Error).message,
+          stack: (error as Error).stack,
+        } as Omit<ErrorEvent, 'lsn' | 'timestamp'>))
+        
+        eventQueue.close()
+      }
+    })
+
+    // Give spawned tasks a chance to start and produce initial events
+    yield* sleep(0)
 
     // Create the session interface
     const session: ToolSession<TResult> = {
@@ -296,33 +255,14 @@ export function createToolSession<
         return state.status
       },
 
-      events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
+      // events() returns a Stream that pulls from the queue
+      // Each call to next() blocks until an event is available
+      events(_afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
         return resource<Subscription<ToolSessionEvent<TResult>, void>>(function* (provide) {
-          const startLSN = afterLSN ?? 0
-
-          // Start tool execution when events are first subscribed to.
-          // This ensures the tool runs in the same Effection scope as the
-          // event consumer, allowing Promise resolutions to be processed.
-          yield* startToolExecution()
-
-          // Replay buffer
-          const bufferedEvents = state.eventBuffer.filter(e => e.lsn > startLSN)
-          let bufferedIndex = 0
-
-          // Subscribe to live channel
-          const liveSubscription = yield* eventChannel
-
           yield* provide({
             *next(): Operation<IteratorResult<ToolSessionEvent<TResult>, void>> {
-              // First drain buffered events
-              if (bufferedIndex < bufferedEvents.length) {
-                const event = bufferedEvents[bufferedIndex]
-                bufferedIndex++
-                return { done: false, value: event as ToolSessionEvent<TResult> }
-              }
-
-              // Then forward from live subscription
-              return yield* liveSubscription.next()
+              // Pull next event from queue - this blocks until available
+              return yield* eventQueue.next()
             },
           })
         })
@@ -334,17 +274,18 @@ export function createToolSession<
           return
         }
         if (pending.id !== elicitId) {
-          throw new Error(
-            `Elicitation ID mismatch: expected ${pending.id}, got ${elicitId}`
-          )
+          throw new Error(`Elicitation ID mismatch: expected ${pending.id}, got ${elicitId}`)
         }
 
-        // Resolve the Promise using setImmediate to ensure it happens
-        // outside the current Effection tick.
-        setImmediate(() => {
-          pending.resolve(response)
-        })
-        // Note: state is cleared by the event handler after the promise resolves
+        // Send response via the bridge's signal - this unblocks the tool execution
+        state.pendingElicit = null
+        state.status = 'running'
+        pending.signal.send({ id: pending.elicitRequestId, result: response })
+        // Yield multiple times to let the tool execution process the response
+        // This is a workaround for cross-scope signal delivery
+        yield* sleep(0)
+        yield* sleep(0)
+        yield* sleep(0)
       },
 
       *respondToSample(sampleId: string, response: SampleResult): Operation<void> {
@@ -353,23 +294,19 @@ export function createToolSession<
           return
         }
         if (pending.id !== sampleId) {
-          throw new Error(
-            `Sample ID mismatch: expected ${pending.id}, got ${sampleId}`
-          )
+          throw new Error(`Sample ID mismatch: expected ${pending.id}, got ${sampleId}`)
         }
 
-        // Resolve the Promise using setImmediate to ensure it happens
-        // outside the current Effection tick. This allows the Promise
-        // resolution to be picked up by the event loop and processed
-        // by any waiting tasks.
-        setImmediate(() => {
-          pending.resolve(response)
-        })
-        // Note: state is cleared by the event handler after the promise resolves
+        // Send response via the bridge's signal
+        state.pendingSample = null
+        state.status = 'running'
+        pending.signal.send({ result: response })
+        // Yield to let the tool execution process the response and add next event
+        yield* sleep(0)
       },
 
       *emitWakeUp(): Operation<void> {
-        // No longer needed - Promise resolution handles wake-up automatically
+        // No longer needed
       },
 
       *cancel(reason?: string): Operation<void> {
@@ -378,15 +315,14 @@ export function createToolSession<
         }
 
         state.status = 'cancelled'
-        state.cancelled = true
-        state.cancelReason = reason
+        state.toolCompleted = true
 
-        yield* emitEvent({
+        eventQueue.add(createEvent({
           type: 'cancelled',
           reason,
-        } as Omit<CancelledEvent, 'lsn' | 'timestamp'>)
-
-        yield* eventChannel.close()
+        } as Omit<CancelledEvent, 'lsn' | 'timestamp'>))
+        
+        eventQueue.close()
       },
     }
 
