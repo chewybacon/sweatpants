@@ -46,7 +46,7 @@
  *
  * @packageDocumentation
  */
-import { type Operation, type Channel, type Subscription, resource, spawn, sleep } from 'effection'
+import { type Operation, type Channel, type Subscription, resource } from 'effection'
 import type { ChatProvider } from '../../lib/chat/providers/types'
 import type {
   ToolSession,
@@ -263,13 +263,16 @@ export function createPluginSessionManager(
     /**
      * Create a PluginSession wrapper around a ToolSession.
      * Handles server-side sampling and provides a simplified event interface.
+     * 
+     * @param onTerminal - Callback invoked when a terminal event is emitted (result/error/cancelled)
      */
     function createPluginSessionWrapper(
       toolSession: ToolSession,
       callId: string,
       provider: ChatProvider,
       _createdAt: number,
-      initialLastLSN: number = 0
+      initialLastLSN: number = 0,
+      onTerminal?: () => void
     ): PluginSession {
       // Event subscription state - initialized lazily
       let eventSubscription: Subscription<ToolSessionEvent, void> | null = null
@@ -368,12 +371,16 @@ export function createPluginSessionManager(
               }
 
               case 'result':
+                // Notify manager of terminal event for cleanup
+                if (onTerminal) onTerminal()
                 return {
                   type: 'result',
                   result: (event as any).result,
                 }
 
               case 'error':
+                // Notify manager of terminal event for cleanup
+                if (onTerminal) onTerminal()
                 return {
                   type: 'error',
                   name: (event as any).name,
@@ -381,6 +388,8 @@ export function createPluginSessionManager(
                 }
 
               case 'cancelled':
+                // Notify manager of terminal event for cleanup
+                if (onTerminal) onTerminal()
                 return {
                   type: 'cancelled',
                   reason: (event as any).reason,
@@ -426,13 +435,21 @@ export function createPluginSessionManager(
         }
         const toolSession = yield* registry.create(tool, params, sessionOptions)
 
-        // Create wrapper
+        // Create wrapper with cleanup callback
         const createdAt = Date.now()
         const pluginSession = createPluginSessionWrapper(
           toolSession,
           callId,
           provider,
-          createdAt
+          createdAt,
+          0, // initialLastLSN
+          () => {
+            // Cleanup callback - called when terminal event is emitted
+            // Remove from tracking map immediately
+            pluginSessions.delete(callId)
+            // Note: We don't release from registry here because that's an Operation
+            // The registry will clean up eventually based on its own lifecycle
+          }
         )
 
         // Track it
@@ -449,29 +466,6 @@ export function createPluginSessionManager(
           toolSession,
           provider,
           info,
-        })
-
-        // Spawn status updater
-        yield* spawn(function* () {
-          while (true) {
-            const status = yield* pluginSession.status()
-            const entry = pluginSessions.get(callId)
-            if (entry) {
-              entry.info.status = status
-            }
-            if (
-              status === 'completed' ||
-              status === 'failed' ||
-              status === 'cancelled' ||
-              status === 'aborted'
-            ) {
-              break
-            }
-            // TODO: Replace polling with event-based status updates.
-            // This is a code smell - we should subscribe to session events
-            // or use a signal/channel pattern instead of polling.
-            yield* sleep(100)
-          }
         })
 
         return pluginSession
@@ -495,13 +489,18 @@ export function createPluginSessionManager(
           return null
         }
 
-        // Recover the session by creating a new wrapper
+        // Recover the session by creating a new wrapper with cleanup callback
         const createdAt = Date.now()
         const pluginSession = createPluginSessionWrapper(
           toolSession,
           sessionId, // callId is the same as sessionId
           provider,
-          createdAt
+          createdAt,
+          0, // initialLastLSN
+          () => {
+            // Cleanup callback - called when terminal event is emitted
+            pluginSessions.delete(sessionId)
+          }
         )
 
         // Track it
@@ -509,7 +508,7 @@ export function createPluginSessionManager(
           id: sessionId,
           toolName: toolSession.toolName,
           callId: sessionId,
-          status: 'running', // Will be updated by status poll
+          status: 'running',
           createdAt,
         }
 
@@ -518,26 +517,6 @@ export function createPluginSessionManager(
           toolSession,
           provider,
           info,
-        })
-
-        // Spawn status updater for recovered session
-        yield* spawn(function* () {
-          while (true) {
-            const status = yield* pluginSession.status()
-            const entry = pluginSessions.get(sessionId)
-            if (entry) {
-              entry.info.status = status
-            }
-            if (
-              status === 'completed' ||
-              status === 'failed' ||
-              status === 'cancelled' ||
-              status === 'aborted'
-            ) {
-              break
-            }
-            yield* sleep(100)
-          }
         })
 
         return pluginSession

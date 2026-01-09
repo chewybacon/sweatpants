@@ -11,6 +11,7 @@
  */
 import { describe, it, expect, beforeEach } from './vitest-effection'
 import { z } from 'zod'
+import { sleep } from 'effection'
 import { createMcpTool } from '../../../lib/chat/mcp-tools/mcp-tool-builder'
 import { createInMemoryToolSessionStore } from '../../../lib/chat/mcp-tools/session/in-memory-store'
 import { createToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/session-registry'
@@ -515,5 +516,199 @@ describe('Immediate Completion Tools', () => {
     if (event?.type === 'result') {
       expect(event.result).toEqual({ processed: 'HELLO' })
     }
+  })
+})
+
+describe('Status Tracking and Cleanup', () => {
+  let registry: ToolSessionRegistry
+  let sessionManager: PluginSessionManager
+  let provider: ChatProvider
+
+  beforeEach(function* () {
+    const store = createInMemoryToolSessionStore()
+    registry = yield* createToolSessionRegistry(store, {
+      samplingProvider: createMockSamplingProvider(),
+    })
+    sessionManager = yield* createPluginSessionManager({
+      registry,
+    })
+    provider = createMockChatProvider()
+  })
+
+  it('should return correct status in listActive() during elicitation', function* () {
+    const session = yield* sessionManager.create({
+      tool: asPluginTool(simpleElicitTool),
+      params: { prompt: 'test' },
+      callId: 'call_status',
+      provider,
+    })
+
+    // Get elicit request to move to awaiting state
+    const event = yield* session.nextEvent()
+    expect(event?.type).toBe('elicit_request')
+
+    // Check status via listActive
+    const activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(1)
+    expect(activeSessions[0]?.status).toBe('awaiting_elicit')
+  })
+
+  it('should show completed status in listActive() before consuming terminal event', function* () {
+    const session = yield* sessionManager.create({
+      tool: asPluginTool(immediateCompleteTool),
+      params: { input: 'test' },
+      callId: 'call_complete_status',
+      provider,
+    })
+
+    // Check status via listActive BEFORE consuming the event
+    // The tool has completed but the terminal event hasn't been consumed yet
+    const activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(1)
+    expect(activeSessions[0]?.status).toBe('completed')
+
+    // Consume result event - this triggers cleanup
+    const event = yield* session.nextEvent()
+    expect(event?.type).toBe('result')
+
+    // After consuming terminal event, session is cleaned up
+    const afterCleanup = yield* sessionManager.listActive()
+    expect(afterCleanup.length).toBe(0)
+  })
+
+  it('should remove session from listActive() after completion', function* () {
+    const session = yield* sessionManager.create({
+      tool: asPluginTool(immediateCompleteTool),
+      params: { input: 'test' },
+      callId: 'call_cleanup',
+      provider,
+    })
+
+    // Verify session is active
+    let activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(1)
+
+    // Consume result event
+    const event = yield* session.nextEvent()
+    expect(event?.type).toBe('result')
+
+    // Wait a bit for cleanup to happen
+    yield* sleep(150)
+
+    // Session should be cleaned up
+    activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(0)
+  })
+
+  it('should clean up session after elicitation completes', function* () {
+    const session = yield* sessionManager.create({
+      tool: asPluginTool(simpleElicitTool),
+      params: { prompt: 'test' },
+      callId: 'call_elicit_cleanup',
+      provider,
+    })
+
+    // Get elicit request
+    const elicitEvent = yield* session.nextEvent()
+    expect(elicitEvent?.type).toBe('elicit_request')
+
+    // Verify session is active
+    let activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(1)
+
+    // Respond to elicit
+    if (elicitEvent?.type === 'elicit_request') {
+      yield* session.respondToElicit(elicitEvent.elicitId, {
+        action: 'accept',
+        content: { value: 'test response' },
+      })
+    }
+
+    // Get result
+    const resultEvent = yield* session.nextEvent()
+    expect(resultEvent?.type).toBe('result')
+
+    // Wait for cleanup
+    yield* sleep(150)
+
+    // Session should be cleaned up
+    activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(0)
+  })
+
+  it('should handle multiple sessions with independent cleanup', function* () {
+    // Create first session (completes immediately)
+    const session1 = yield* sessionManager.create({
+      tool: asPluginTool(immediateCompleteTool),
+      params: { input: 'test1' },
+      callId: 'call_multi_1',
+      provider,
+    })
+
+    // Create second session (needs elicitation)
+    const session2 = yield* sessionManager.create({
+      tool: asPluginTool(simpleElicitTool),
+      params: { prompt: 'test2' },
+      callId: 'call_multi_2',
+      provider,
+    })
+
+    // Both should be active
+    let activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(2)
+
+    // Complete first session
+    const event1 = yield* session1.nextEvent()
+    expect(event1?.type).toBe('result')
+
+    // Wait for first session cleanup
+    yield* sleep(150)
+
+    // Only second session should remain
+    activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(1)
+    expect(activeSessions[0]?.id).toBe('call_multi_2')
+    expect(activeSessions[0]?.status).toBe('awaiting_elicit')
+
+    // Complete second session
+    const event2 = yield* session2.nextEvent()
+    if (event2?.type === 'elicit_request') {
+      yield* session2.respondToElicit(event2.elicitId, {
+        action: 'accept',
+        content: { value: 'response' },
+      })
+    }
+    const result2 = yield* session2.nextEvent()
+    expect(result2?.type).toBe('result')
+
+    // Wait for second session cleanup
+    yield* sleep(150)
+
+    // All cleaned up
+    activeSessions = yield* sessionManager.listActive()
+    expect(activeSessions.length).toBe(0)
+  })
+
+  it('should be able to recover completed session via get() from registry', function* () {
+    const session = yield* sessionManager.create({
+      tool: asPluginTool(immediateCompleteTool),
+      params: { input: 'test' },
+      callId: 'call_get_cleanup',
+      provider,
+    })
+
+    // Consume result - this triggers cleanup from pluginSessions map
+    const event = yield* session.nextEvent()
+    expect(event?.type).toBe('result')
+
+    // Session is removed from pluginSessions map, but still exists in registry
+    // get() can recover it (for reconnection scenarios or inspection)
+    const retrieved = yield* sessionManager.get('call_get_cleanup', provider)
+    expect(retrieved).not.toBeNull()
+    expect(retrieved?.id).toBe('call_get_cleanup')
+    
+    // Should show completed status
+    const status = yield* retrieved!.status()
+    expect(status).toBe('completed')
   })
 })
