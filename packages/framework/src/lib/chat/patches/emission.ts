@@ -98,6 +98,8 @@ export interface ToolEmissionStartPatch {
 export interface ToolEmissionPatch {
   type: 'tool_emission'
   callId: string
+  /** Tool name (optional, for auto-creating tracking if start patch is delayed) */
+  toolName?: string
   emission: Omit<ToolEmissionState, 'callId' | 'toolName'>
   /** Respond callback for pending emissions */
   respond?: (response: unknown) => void

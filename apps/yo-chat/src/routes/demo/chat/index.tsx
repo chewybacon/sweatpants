@@ -6,96 +6,31 @@
  * - Progressive enhancement (quick → full)
  * - No content duplication bugs
  * - Tool emissions with ctx.render() pattern - now inline in messages!
- * - MCP Plugin tools with server-side execution and client-side elicitation
+ * - MCP Plugin tools with unified emission-based elicitation
  *
  * Uses the high-level useChat hook with pipeline configuration.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall, type PluginElicitState } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
 import { tools } from '@/__generated__/tool-registry.gen'
-import { FlightList } from '@/tools/book-flight/components/FlightList'
-import { SeatPicker } from '@/tools/book-flight/components/SeatPicker'
+import { bookFlightPlugin } from '@/tools/book-flight/plugin'
 
 export const Route = createFileRoute('/demo/chat/')({
   component: PipelineChatDemo,
 })
 
-// =============================================================================
-// PLUGIN ELICITATION COMPONENTS
-// =============================================================================
-
 /**
- * Registry of plugin elicitation components.
- * Maps toolName -> elicitKey -> Component
- */
-const pluginElicitComponents: Record<string, Record<string, React.ComponentType<any>>> = {
-  book_flight: {
-    pickFlight: FlightList,
-    pickSeat: SeatPicker,
-  },
-}
-
-/**
- * Get the component for a plugin elicitation.
- */
-function getPluginElicitComponent(toolName: string, elicitKey: string): React.ComponentType<any> | null {
-  return pluginElicitComponents[toolName]?.[elicitKey] ?? null
-}
-
-/**
- * Renders a pending plugin elicitation.
- */
-function PluginElicitationBlock({
-  elicit,
-  onRespond,
-}: {
-  elicit: PluginElicitState
-  onRespond: (result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }) => void
-}) {
-  const Component = getPluginElicitComponent(elicit.toolName, elicit.key)
-  
-  if (!Component) {
-    return (
-      <div className="my-2 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-amber-400">
-        <p className="text-sm">Unknown elicitation: {elicit.toolName}.{elicit.key}</p>
-        <p className="text-xs mt-1">{elicit.message}</p>
-      </div>
-    )
-  }
-
-  // Extract context data (e.g., flights, seatMap)
-  const context = elicit.context as Record<string, unknown> ?? {}
-  
-  return (
-    <Component
-      {...context}
-      message={elicit.message}
-      onRespond={(value: unknown) => onRespond({ action: 'accept', content: value })}
-      disabled={elicit.status !== 'pending'}
-      response={elicit.response}
-    />
-  )
-}
-
-/**
- * Renders a tool call part with its inline emissions and plugin elicitations.
+ * Renders a tool call part with its inline emissions.
  * Tool calls are now first-class parts in the message structure.
+ * Plugin elicitations are handled automatically via the unified emission system.
  */
-function ToolCallBlock({
-  toolCall,
-  onRespondToPluginElicit,
-}: {
-  toolCall: ChatToolCall
-  onRespondToPluginElicit?: (elicit: { sessionId: string; callId: string; elicitId: string }, result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }) => void
-}) {
+function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   const hasEmissions = toolCall.emissions.length > 0
-  const hasPluginElicits = (toolCall.pluginElicits ?? []).length > 0
-  const hasInteractions = hasEmissions || hasPluginElicits
 
   return (
     <div className="my-2">
-      {/* Render emissions inline */}
+      {/* Render emissions inline - includes both isomorphic tool and plugin handler emissions */}
       {toolCall.emissions.map((emission) => {
         const Component = emission.component
         if (!Component) return null
@@ -111,37 +46,8 @@ function ToolCallBlock({
         )
       })}
 
-      {/* Render plugin elicits inline */}
-      {(toolCall.pluginElicits ?? []).map((elicit) => {
-        const Component = getPluginElicitComponent(toolCall.name, elicit.key)
-        if (!Component) {
-          return (
-            <div key={elicit.id} className="my-2 p-3 bg-amber-900/20 border border-amber-700/50 rounded-lg text-amber-400">
-              <p className="text-sm">Unknown elicitation: {toolCall.name}.{elicit.key}</p>
-              <p className="text-xs mt-1">{elicit.message}</p>
-            </div>
-          )
-        }
-
-        const context = (elicit.context as Record<string, unknown>) ?? {}
-
-        return (
-          <Component
-            key={elicit.id}
-            {...context}
-            message={elicit.message}
-            onRespond={(value: unknown) => onRespondToPluginElicit?.(
-              { sessionId: elicit.sessionId, callId: elicit.callId, elicitId: elicit.id },
-              { action: 'accept', content: value }
-            )}
-            disabled={elicit.status !== 'pending'}
-            response={elicit.response}
-          />
-        )
-      })}
-
-      {/* Show tool state if no interactions or tool is running */}
-      {!hasInteractions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
+      {/* Show tool state if no emissions or tool is running */}
+      {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
         </div>
@@ -161,13 +67,7 @@ function ToolCallBlock({
  * Renders a single message with its parts.
  * Parts are rendered in order in the timeline.
  */
-function Message({
-  message,
-  onRespondToPluginElicit,
-}: {
-  message: ChatMessage
-  onRespondToPluginElicit?: (elicit: { sessionId: string; callId: string; elicitId: string }, result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }) => void
-}) {
+function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
 
   return (
@@ -210,13 +110,7 @@ function Message({
             }
 
             if (part.type === 'tool-call') {
-              return (
-                <ToolCallBlock
-                  key={part.id}
-                  toolCall={part}
-                  {...(onRespondToPluginElicit && { onRespondToPluginElicit })}
-                />
-              )
+              return <ToolCallBlock key={part.id} toolCall={part} />
             }
 
             if (part.type === 'text') {
@@ -245,6 +139,7 @@ function Message({
 function PipelineChatDemo() {
   // High-level useChat hook with pipeline-based configuration
   // Tool emissions are now inline in messages.toolCalls[].emissions!
+  // Plugin handlers are auto-executed and their emissions appear in the same place.
   const {
     messages,
     streamingMessage,
@@ -254,19 +149,17 @@ function PipelineChatDemo() {
     abort,
     reset,
     error,
-    session, // Access plugin elicitations through session
   } = useChat({
     // Use the new Frame-based pipeline system
     // 'full' = markdown + shiki + mermaid
     pipeline: 'full',
     // Explicitly pass the tools you want to enable
     // Only these tools will be available to the LLM
-    // Note: book_flight is registered server-side as an MCP plugin tool
     tools: [tools.pickCard, tools.calculator],
+    // Register MCP plugin handlers - their ctx.render() emissions
+    // are automatically routed through the unified emission system
+    plugins: [bookFlightPlugin.client],
   })
-
-  // Access plugin elicitations from the underlying session
-  const { pluginElicitations, respondToPluginElicit } = session
 
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -341,13 +234,9 @@ function PipelineChatDemo() {
             </div>
           )}
 
-          {/* Messages with inline tool calls and plugin elicitations */}
+          {/* Messages with inline tool calls - plugin emissions render automatically */}
           {messages.map((msg) => (
-            <Message
-              key={msg.id}
-              message={msg}
-              {...(respondToPluginElicit && { onRespondToPluginElicit: respondToPluginElicit })}
-            />
+            <Message key={msg.id} message={msg} />
           ))}
 
           {/* Show streaming info (debug) */}

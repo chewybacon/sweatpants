@@ -2,9 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { Readable } from 'node:stream'
 import { type ReactNode } from 'react'
+import { z } from 'zod'
 
 import { ChatProvider } from '../ChatProvider'
 import { useChatSession } from '../useChatSession'
+import type { PluginClientRegistrationInput } from '../../../lib/chat/mcp-tools/plugin'
 
 function ndjsonResponse(events: unknown[]): Response {
   const lines = events.map((event, i) => JSON.stringify({ lsn: i + 1, event }) + '\n')
@@ -20,6 +22,43 @@ function ndjsonResponse(events: unknown[]): Response {
   })
 }
 
+// Simple test component that renders and waits for response
+function TestFlightPicker(props: { flights: unknown[]; message: string; onRespond: (value: unknown) => void }) {
+  return null // In tests we call onRespond directly
+}
+
+function TestSeatPicker(props: { seatMap: unknown; message: string; onRespond: (value: unknown) => void }) {
+  return null
+}
+
+// Create a mock plugin for testing
+function createMockBookFlightPlugin(): PluginClientRegistrationInput {
+  return {
+    toolName: 'book_flight',
+    handlers: {
+      pickFlight: function* (_req, ctx) {
+        // Render a component and wait for user response
+        const result = yield* ctx.render(TestFlightPicker, {
+          flights: [],
+          message: 'Pick a flight',
+        })
+        return { action: 'accept', content: result }
+      },
+      pickSeat: function* (_req, ctx) {
+        const result = yield* ctx.render(TestSeatPicker, {
+          seatMap: {},
+          message: 'Pick a seat',
+        })
+        return { action: 'accept', content: result }
+      },
+    },
+    schemas: {
+      pickFlight: z.object({ flightId: z.string() }),
+      pickSeat: z.object({ row: z.number(), seat: z.string() }),
+    },
+  }
+}
+
 describe('useChatSession (black-box)', () => {
   let originalFetch: typeof globalThis.fetch
 
@@ -31,7 +70,7 @@ describe('useChatSession (black-box)', () => {
     globalThis.fetch = originalFetch
   })
 
-  it('chains request 1 then request 2 with plugin elicit result', async () => {
+  it('chains request 1 then request 2 with plugin elicit result (unified pattern)', async () => {
     const fetchBodies: unknown[] = []
 
     const response1 = ndjsonResponse([
@@ -40,6 +79,12 @@ describe('useChatSession (black-box)', () => {
         capabilities: { thinking: false, streaming: true, tools: ['book_flight'] },
         persona: null,
       },
+      // Tool call must come first to create the tool-call part in streaming state
+      {
+        type: 'tool_calls',
+        calls: [{ id: 'call-1', name: 'book_flight', arguments: { from: 'NYC', to: 'LAX' } }],
+      },
+      // Then the plugin elicit request arrives (tool is running and needs user input)
       {
         type: 'plugin_elicit_request',
         sessionId: 'sess-1',
@@ -73,7 +118,6 @@ describe('useChatSession (black-box)', () => {
     const responses = [response1, response2]
 
     globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-      // Capture posted JSON body for black-box verification
       if (init?.body) {
         try {
           fetchBodies.push(JSON.parse(String(init.body)))
@@ -89,46 +133,58 @@ describe('useChatSession (black-box)', () => {
       return next
     }
 
+    const mockPlugin = createMockBookFlightPlugin()
+
     const wrapper = ({ children }: { children: ReactNode }) => (
       <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
     )
 
-    const { result, unmount } = renderHook(() => useChatSession({ transforms: [] }), { wrapper })
+    const { result, unmount } = renderHook(
+      () => useChatSession({ transforms: [], plugins: [mockPlugin] }),
+      { wrapper }
+    )
 
-    // Request 1
+    // Request 1: Send message
     act(() => {
       result.current.send('Book a flight')
     })
 
+    // Wait for toolEmissions to appear (from plugin handler's ctx.render())
     await waitFor(() => {
-      expect(result.current.pluginElicitations.length).toBeGreaterThan(0)
-      expect(result.current.pluginElicitations[0]!.elicitations[0]!.key).toBe('pickFlight')
-    })
+      expect(result.current.toolEmissions.length).toBeGreaterThan(0)
+    }, { timeout: 5000 })
 
-    const firstTracking = result.current.pluginElicitations[0]!
-    const firstElicit = firstTracking.elicitations.find((e) => e.key === 'pickFlight')
-    expect(firstElicit).toBeTruthy()
+    // Find the pending emission
+    const tracking = result.current.toolEmissions[0]!
+    expect(tracking.callId).toBe('call-1')
 
-    // Respond: this should enqueue pluginElicitResponses and auto-continue (request 2)
+    const pendingEmission = tracking.emissions.find(e => e.status === 'pending')
+    expect(pendingEmission).toBeTruthy()
+
+    // Respond to the emission (simulating user picking a flight)
     act(() => {
-      result.current.respondToPluginElicit(
-        { sessionId: firstElicit!.sessionId, callId: firstElicit!.callId, elicitId: firstElicit!.elicitId },
-        { action: 'accept', content: { flightId: 'FL001' } }
+      result.current.respondToEmission(
+        tracking.callId,
+        pendingEmission!.id,
+        { flightId: 'FL001' }
       )
     })
 
-    // Wait for request 2 to update state
+    // Wait for request 2 - the pickSeat elicitation
     await waitFor(() => {
-      const tracking = result.current.pluginElicitations.find((t) => t.callId === 'call-1')
-      const seat = tracking?.elicitations.find((e) => e.key === 'pickSeat')
-      expect(seat).toBeTruthy()
+      // Should have a new emission for pickSeat
+      const currentTracking = result.current.toolEmissions.find(t => t.callId === 'call-1')
+      const seatEmission = currentTracking?.emissions.find(
+        e => e.status === 'pending' && e.id !== pendingEmission!.id
+      )
+      expect(seatEmission).toBeTruthy()
     })
 
     // Black-box assertion: request 2 body included the elicit response
     expect(fetchBodies.length).toBeGreaterThanOrEqual(2)
-    const secondBody = fetchBodies[1] as any
+    const secondBody = fetchBodies[1] as Record<string, unknown>
     expect(secondBody.pluginElicitResponses).toBeTruthy()
-    expect(secondBody.pluginElicitResponses[0]).toMatchObject({
+    expect((secondBody.pluginElicitResponses as unknown[])[0]).toMatchObject({
       sessionId: 'sess-1',
       callId: 'call-1',
       elicitId: 'elicit-1',
