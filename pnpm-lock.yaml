@@ -683,8 +683,26 @@ importers:
         specifier: ^1.40.0
         version: 1.57.0
 
+  packages/elicit-context:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.27
+      tsup:
+        specifier: ^8.0.0
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: ^5.3.0
+        version: 5.9.3
+      zod:
+        specifier: ^3.22.4
+        version: 3.25.76
+
   packages/framework:
     dependencies:
+      '@tanstack/elicit-context':
+        specifier: workspace:*
+        version: file:packages/elicit-context(zod@4.1.13)
       fast-glob:
         specifier: ^3.3.2
         version: 3.3.3
@@ -2824,6 +2842,11 @@ packages:
     peerDependencies:
       vite: '>=6.0.0 || >=7.0.0'
 
+  '@tanstack/elicit-context@file:packages/elicit-context':
+    resolution: {directory: packages/elicit-context, type: directory}
+    peerDependencies:
+      zod: ^3.0.0
+
   '@tanstack/history@1.140.0':
     resolution: {integrity: sha512-u+/dChlWlT3kYa/RmFP+E7xY5EnzvKEKcvKk+XrgWMpBWExQIh3RQX/eUqhqwCXJPNc4jfm1Coj8umnm/hDgyA==}
     engines: {node: '>=12'}
@@ -3190,6 +3213,9 @@ packages:
 
   '@types/ms@2.1.0':
     resolution: {integrity: sha512-GsCCIZDE/p3i96vtEqx+7dBUGXrc7zeSK3wwPHIaRThS+9OhWIXRqzs4d6k1SVU8g91DrNRWxWUGhp5KXQb2VA==}
+
+  '@types/node@20.19.27':
+    resolution: {integrity: sha512-N2clP5pJhB2YnZJ3PIHFk5RkygRX5WO/5f0WC08tp0wd+sv0rsJk3MqWn3CbNmT2J505a5336jaQj4ph1AdMug==}
 
   '@types/node@22.19.2':
     resolution: {integrity: sha512-LPM2G3Syo1GLzXLGJAKdqoU35XvrWzGJ21/7sgZTUpbkBaOasTj8tjwn6w+hCkqaa1TfJ/w67rJSwYItlJ2mYw==}
@@ -9322,6 +9348,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@tanstack/elicit-context@file:packages/elicit-context(zod@4.1.13)':
+    dependencies:
+      zod: 4.1.13
+
   '@tanstack/history@1.140.0': {}
 
   '@tanstack/query-core@5.90.12': {}
@@ -9832,6 +9862,10 @@ snapshots:
       '@types/node': 22.19.2
 
   '@types/ms@2.1.0': {}
+
+  '@types/node@20.19.27':
+    dependencies:
+      undici-types: 6.21.0
 
   '@types/node@22.19.2':
     dependencies:

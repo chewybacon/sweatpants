@@ -15,7 +15,7 @@
 
 // Tool definition
 export { bookFlightTool } from './tool'
-export type { BookFlightParams, BookFlightResult, Flight, SeatMap } from './tool'
+export type { BookFlightResult, Flight, SeatMap } from './tool'
 
 // Plugin with elicit handlers
 export { bookFlightPlugin } from './plugin'

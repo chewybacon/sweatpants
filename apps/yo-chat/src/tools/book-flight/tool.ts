@@ -218,12 +218,6 @@ export const bookFlightTool = createMcpTool('book_flight')
     }
   })
 
-// =============================================================================
-// TYPE EXPORTS
-// =============================================================================
-
-export type BookFlightParams = z.infer<typeof bookFlightTool.parameters>
-
 // Result type - union of success and failure cases
 export type BookFlightResult =
   | {
