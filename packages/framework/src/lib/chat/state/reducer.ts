@@ -14,7 +14,7 @@
  *
  * When content type switches, the current part is finalized and a new one starts.
  */
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, StreamingPartsState } from './chat-state'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState, StreamingPartsState } from './chat-state'
 import { initialChatState } from './chat-state'
 import type { ChatPatch, ContentPartType } from '../patches'
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
@@ -22,7 +22,7 @@ import { generatePartId, getRenderedFromFrame } from '../types/chat-message'
 import type { Message } from '../types'
 
 // Re-export types for convenience
-export type { ChatState, ToolEmissionState, ToolEmissionTrackingState }
+export type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState }
 export { initialChatState }
 
 // =============================================================================
@@ -659,6 +659,93 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       return {
         ...state,
         toolEmissions: remainingEmissions,
+      }
+    }
+
+    // =========================================================================
+    // PLUGIN ELICITATION PATCHES
+    // =========================================================================
+
+    case 'plugin_elicit_start': {
+      return {
+        ...state,
+        pluginElicitations: {
+          ...state.pluginElicitations,
+          [patch.callId]: {
+            callId: patch.callId,
+            toolName: patch.toolName,
+            elicitations: [],
+            status: 'awaiting_elicit',
+            startedAt: Date.now(),
+          },
+        },
+      }
+    }
+
+    case 'plugin_elicit': {
+      const tracking = state.pluginElicitations[patch.callId]
+
+      const newElicit = {
+        ...patch.elicit,
+        callId: patch.callId,
+        toolName: tracking?.toolName ?? '',
+      }
+
+      if (!tracking) {
+        // Auto-create tracking if not started explicitly
+        return {
+          ...state,
+          pluginElicitations: {
+            ...state.pluginElicitations,
+            [patch.callId]: {
+              callId: patch.callId,
+              toolName: '',
+              elicitations: [newElicit],
+              status: 'awaiting_elicit',
+              startedAt: Date.now(),
+            },
+          },
+        }
+      }
+
+      return {
+        ...state,
+        pluginElicitations: {
+          ...state.pluginElicitations,
+          [patch.callId]: {
+            ...tracking,
+            elicitations: [...tracking.elicitations, newElicit],
+          },
+        },
+      }
+    }
+
+    case 'plugin_elicit_response': {
+      const tracking = state.pluginElicitations[patch.callId]
+      if (!tracking) return state
+
+      return {
+        ...state,
+        pluginElicitations: {
+          ...state.pluginElicitations,
+          [patch.callId]: {
+            ...tracking,
+            elicitations: tracking.elicitations.map((e) =>
+              e.elicitId === patch.elicitId
+                ? { ...e, status: 'responded' as const, response: patch.response }
+                : e
+            ),
+          },
+        },
+      }
+    }
+
+    case 'plugin_elicit_complete': {
+      const { [patch.callId]: _completed, ...remainingElicitations } = state.pluginElicitations
+
+      return {
+        ...state,
+        pluginElicitations: remainingElicitations,
       }
     }
 

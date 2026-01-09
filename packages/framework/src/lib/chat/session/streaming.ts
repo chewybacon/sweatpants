@@ -54,7 +54,7 @@ export interface ConversationState {
 /**
  * Result of a streaming chat request.
  */
-export type StreamResult = StreamCompleteResult | StreamIsomorphicHandoffResult
+export type StreamResult = StreamCompleteResult | StreamIsomorphicHandoffResult | StreamPluginElicitResult
 
 /**
  * Normal completion - assistant finished responding.
@@ -79,6 +79,16 @@ export interface StreamIsomorphicHandoffResult {
   handoffs: IsomorphicHandoffEvent[]
   /** Conversation state for re-initiation */
   conversationState: ConversationState
+}
+
+/**
+ * Server has a plugin tool awaiting elicitation from the client.
+ * The stream is paused, waiting for client to send `pluginElicitResponses`.
+ */
+export interface StreamPluginElicitResult {
+  type: 'plugin_elicit'
+  /** Pending elicitation requests from plugin tools */
+  pendingElicitations: PluginElicitRequestStreamEvent[]
 }
 
 // =============================================================================
@@ -113,6 +123,49 @@ export interface IsomorphicHandoffStreamEvent {
 }
 
 /**
+ * Event emitted when a plugin tool needs elicitation from the client.
+ */
+export interface PluginElicitRequestStreamEvent {
+  type: 'plugin_elicit_request'
+  /** Session ID for the plugin session */
+  sessionId: string
+  /** Tool call ID from the LLM */
+  callId: string
+  /** Name of the plugin tool */
+  toolName: string
+  /** Unique ID for this elicitation request */
+  elicitId: string
+  /** Elicitation key (e.g., 'pickFlight', 'pickSeat') */
+  key: string
+  /** Human-readable message for the user */
+  message: string
+  /** JSON schema for the expected response, may contain x-model-context */
+  schema: Record<string, unknown>
+}
+
+/**
+ * Event emitted when a plugin session status changes.
+ */
+export interface PluginSessionStatusStreamEvent {
+  type: 'plugin_session_status'
+  sessionId: string
+  callId: string
+  toolName: string
+  status: 'running' | 'awaiting_elicit' | 'completed' | 'failed' | 'aborted'
+}
+
+/**
+ * Event emitted when a plugin session has an error.
+ */
+export interface PluginSessionErrorStreamEvent {
+  type: 'plugin_session_error'
+  sessionId: string
+  callId: string
+  error: 'SESSION_NOT_FOUND' | 'SESSION_ABORTED' | 'INTERNAL_ERROR'
+  message: string
+}
+
+/**
  * All stream event types.
  */
 export type StreamEvent =
@@ -133,3 +186,6 @@ export type StreamEvent =
   | { type: 'error'; message: string; recoverable: boolean }
   | IsomorphicHandoffStreamEvent
   | ConversationStateStreamEvent
+  | PluginElicitRequestStreamEvent
+  | PluginSessionStatusStreamEvent
+  | PluginSessionErrorStreamEvent

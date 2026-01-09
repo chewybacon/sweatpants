@@ -22,6 +22,7 @@ import { initialChatState } from '../../lib/chat/state'
 import type { TextPart, ReasoningPart } from '../../lib/chat/types/chat-message'
 import { createPipelineTransform, markdown } from './pipeline'
 import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState, SessionOptions } from './types'
+import type { PluginElicitTrackingState } from '../../lib/chat/state/chat-state'
 import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
 import { useChatConfig } from './ChatProvider'
 
@@ -158,6 +159,49 @@ export interface UseChatSessionReturn {
    * @param response - The response value (type depends on component)
    */
   respondToEmission: (callId: string, emissionId: string, response: unknown) => void
+
+  // --- Plugin Elicitation API (MCP Plugin Tools) ---
+
+  /**
+   * Plugin elicitations awaiting user response.
+   *
+   * When a plugin tool calls ctx.elicit() on the server, the request arrives here.
+   * Render UI based on the elicit key and context, then call respondToPluginElicit.
+   *
+   * @example
+   * ```tsx
+   * {Object.values(pluginElicitations).map(tracking => (
+   *   tracking.elicitations.filter(e => e.status === 'pending').map(elicit => {
+   *     // Look up the component based on toolName and key
+   *     const Component = getPluginComponent(elicit.toolName, elicit.key)
+   *     return (
+   *       <Component
+   *         key={elicit.elicitId}
+   *         context={elicit.context}
+   *         message={elicit.message}
+   *         onRespond={(value) => respondToPluginElicit(elicit, { action: 'accept', content: value })}
+   *         onCancel={() => respondToPluginElicit(elicit, { action: 'cancel' })}
+   *       />
+   *     )
+   *   })
+   * ))}
+   * ```
+   */
+  pluginElicitations: PluginElicitTrackingState[]
+
+  /**
+   * Respond to a pending plugin elicitation.
+   *
+   * Call this when the user completes interaction with a plugin elicitation UI.
+   * The response is sent to the server in the next request.
+   *
+   * @param elicit - The elicitation state (from pluginElicitations)
+   * @param result - The user's response (accept/decline/cancel with optional content)
+   */
+  respondToPluginElicit: (
+    elicit: { sessionId: string; callId: string; elicitId: string },
+    result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }
+  ) => void
 }
 
 /**
@@ -316,6 +360,27 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     }
   }, [])
 
+  // Get plugin elicitations from state (MCP plugin tools)
+  const pluginElicitations: PluginElicitTrackingState[] = Object.values(state.pluginElicitations)
+
+  // Respond to a pending plugin elicitation
+  // This dispatches a command to the session which stores the response
+  // and sends it with the next message.
+  const respondToPluginElicit = useCallback((
+    elicit: { sessionId: string; callId: string; elicitId: string },
+    result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }
+  ) => {
+    // Dispatch a plugin_elicit_response command to the session
+    // The session stores it and includes it in the next request
+    dispatchRef.current?.({ 
+      type: 'plugin_elicit_response',
+      sessionId: elicit.sessionId,
+      callId: elicit.callId,
+      elicitId: elicit.elicitId,
+      result,
+    })
+  }, [])
+
   return { 
     state, 
     send, 
@@ -329,5 +394,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     respondToHandoff,
     toolEmissions,
     respondToEmission,
+    pluginElicitations,
+    respondToPluginElicit,
   }
 }

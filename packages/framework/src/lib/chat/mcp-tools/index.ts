@@ -242,7 +242,31 @@ export type {
   InferPluginElicits,
   InferPluginTool,
   AnyMcpPlugin,
+  // Re-export renderable types for plugin authors
+  RenderableProps,
+  UserProps,
+  ExtractResponse,
 } from './plugin'
+
+// Plugin execution
+export {
+  createPluginClientContext,
+  executePluginElicitHandler,
+  executePluginElicitHandlerFromRequest,
+} from './plugin-executor'
+export type {
+  CreatePluginClientContextOptions,
+  PluginContextForKey,
+} from './plugin-executor'
+
+// Plugin registry
+export {
+  createPluginRegistry,
+  createPluginRegistryFrom,
+} from './plugin-registry'
+export type {
+  PluginRegistry,
+} from './plugin-registry'
 
 // =============================================================================
 // BRIDGE RUNTIME (in-app tool execution with UI elicitation)
@@ -431,6 +455,32 @@ export type {
   PendingRequest,
   ParsedJsonRpcMessage,
 } from './protocol'
+
+// =============================================================================
+// MODEL CONTEXT TRANSPORT (x-model-context for elicitation context data)
+// =============================================================================
+
+export {
+  // Encoding/decoding
+  encodeElicitContext,
+  extractModelContext,
+  parseMessageContext,
+  stripMessageContext,
+  
+  // Helper for plugin authors
+  getElicitContext,
+  
+  // Constants
+  MODEL_CONTEXT_SCHEMA_KEY,
+  MODEL_CONTEXT_BOUNDARY,
+  MODEL_CONTEXT_MIME_TYPE,
+} from './model-context'
+
+export type {
+  EncodeElicitContextOptions,
+  EncodedElicitContext,
+  ExtractedModelContext,
+} from './model-context'
 
 // =============================================================================
 // MCP HTTP HANDLER (Streamable HTTP transport)

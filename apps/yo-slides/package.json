@@ -1,0 +1,20 @@
+{
+  "name": "yo-slides",
+  "private": true,
+  "scripts": {
+    "dev": "slidev --open",
+    "dev:mcp-native": "slidev principal-engineers/mcp-native/slides.md --open",
+    "build:mcp-native": "slidev build principal-engineers/mcp-native/slides.md --out dist/mcp-native",
+    "export:mcp-native": "slidev export principal-engineers/mcp-native/slides.md --output mcp-native.pdf",
+    "dev:effection": "slidev effection-team/structured-concurrency/slides.md --open",
+    "build:effection": "slidev build effection-team/structured-concurrency/slides.md --out dist/effection",
+    "export:effection": "slidev export effection-team/structured-concurrency/slides.md --output effection.pdf"
+  },
+  "dependencies": {
+    "@slidev/cli": "^51.4.3",
+    "@slidev/theme-default": "latest"
+  },
+  "devDependencies": {
+    "playwright-chromium": "^1.40.0"
+  }
+}

@@ -8,12 +8,13 @@
  * - create() creates a new session and starts tool execution
  * - acquire() returns existing session, increments refCount
  * - release() decrements refCount, triggers cleanup when refCount=0 AND complete
- * - Tool execution runs in background via spawn, surviving client disconnects
+ * - Tool execution runs in background via useBackgroundTask, surviving request teardown
  * - Reconnection works by acquiring the same sessionId while tool is still running
  *
  * @packageDocumentation
  */
-import { type Operation, spawn, resource, sleep } from 'effection'
+import { type Operation, spawn, resource, sleep, createChannel, suspend } from 'effection'
+import { useBackgroundTask } from '../../../effection'
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -53,27 +54,14 @@ export interface ToolSessionRegistryOptions {
  * The registry manages tool execution and provides reference counting
  * for automatic cleanup when sessions are no longer needed.
  *
+ * IMPORTANT: Session creation uses useBackgroundTask() to ensure the tool session
+ * lives in an independent scope. This allows sessions to survive across HTTP
+ * request boundaries even when the chat-engine scope for a single request exits
+ * immediately after emitting an elicitation event.
+ *
  * @param store - Store for tracking session entries
  * @param options - Registry configuration options
  * @returns ToolSessionRegistry resource
- *
- * @example
- * ```typescript
- * // At server startup
- * const store = yield* createInMemoryToolSessionStore()
- * const registry = yield* createToolSessionRegistry(store, {
- *   samplingProvider: { sample: ... }
- * })
- *
- * // In request handler - create a new session
- * const session = yield* registry.create(tool, params)
- *
- * // Or acquire existing session for reconnection
- * const session = yield* registry.acquire(sessionId)
- *
- * // Always release when done
- * yield* registry.release(sessionId)
- * ```
  */
 export function createToolSessionRegistry(
   store: ToolSessionStore,
@@ -83,8 +71,6 @@ export function createToolSessionRegistry(
     const { samplingProvider, defaultTimeout } = options
 
     // Track active session resources
-    // (The actual ToolSession is an Effection resource, so we need to keep
-    // track of them separately from the store entries)
     const activeSessions = new Map<string, ToolSession>()
 
     /**
@@ -101,20 +87,49 @@ export function createToolSessionRegistry(
         params: TParams,
         sessionOptions?: ToolSessionOptions
       ): Operation<ToolSession<TResult>> {
-        // Merge options with defaults - spread conditionally for exactOptionalPropertyTypes
         const mergedOptions: ToolSessionOptions = {
           ...sessionOptions,
           ...(defaultTimeout !== undefined && { timeout: defaultTimeout }),
         }
 
-        // Create the session resource
-        // The session is a resource that keeps the tool's generator alive
-        const session = yield* createToolSession(
-          tool,
-          params,
-          samplingProvider,
-          mergedOptions
-        )
+        // Use a channel to receive the session from the spawned task
+        const sessionChannel = createChannel<ToolSession<TResult>, void>()
+
+        // CRITICAL: Run tool sessions in an independent background scope.
+        //
+        // The durable chat handler can end the current request scope immediately
+        // after emitting a plugin elicitation event. If the tool session lived in
+        // that request scope, it would be cancelled and could not be resumed on
+        // the next HTTP request.
+        yield* useBackgroundTask(function* () {
+          const session = yield* createToolSession(
+            tool,
+            params,
+            samplingProvider,
+            mergedOptions
+          )
+
+          // Send session back to caller
+          yield* sessionChannel.send(session)
+
+          // Keep this task alive until the session completes
+          // This ensures the session's spawned tasks continue running
+          while (true) {
+            const status = yield* session.status()
+            if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+              break
+            }
+            yield* sleep(100)
+          }
+        }, { name: `tool-session:${mergedOptions.sessionId ?? tool.name}` })
+
+        // Receive the session from the spawned task
+        const sub = yield* sessionChannel
+        const result = yield* sub.next()
+        if (result.done) {
+          throw new Error('Session channel closed unexpectedly')
+        }
+        const session = result.value
 
         // Store in active sessions map
         activeSessions.set(session.id, session as ToolSession)
@@ -128,10 +143,8 @@ export function createToolSessionRegistry(
         }
         yield* store.set(session.id, entry as ToolSessionEntry)
 
-        // Spawn a task to monitor session status and update the store
+        // Spawn status monitor
         yield* spawn(function* () {
-          // Poll status until session completes
-          // In a more sophisticated implementation, we could use events
           let currentStatus: ToolSessionStatus = yield* session.status()
 
           while (
@@ -140,10 +153,7 @@ export function createToolSessionRegistry(
             currentStatus !== 'cancelled'
           ) {
             yield* store.updateStatus(session.id, currentStatus)
-
-            // Simple polling - in production might use events
             yield* sleep(100)
-
             currentStatus = yield* session.status()
           }
 
@@ -209,9 +219,7 @@ export function createToolSessionRegistry(
             yield* cleanup(sessionId)
           } else {
             // Session still running - spawn cleanup waiter
-            // This handles the case where client disconnects but tool is still executing
             yield* spawn(function* () {
-              // Poll until session completes
               let currentStatus = yield* session.status()
 
               while (
@@ -235,5 +243,8 @@ export function createToolSessionRegistry(
     }
 
     yield* provide(registry)
+    
+    // Keep the registry alive - it should only be torn down when the parent scope ends
+    yield* suspend()
   })
 }

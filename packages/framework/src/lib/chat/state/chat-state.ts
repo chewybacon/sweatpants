@@ -23,11 +23,13 @@ import type { Message } from '../types'
 import type { Capabilities } from '../core-types'
 import type { PendingHandoffState } from '../patches/handoff'
 import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission'
+import type { PluginElicitState, PluginElicitTrackingState } from '../patches/plugin'
 import type { MessagePart } from '../types/chat-message'
 import type { ContentPartType } from '../patches/base'
 
 // Re-export emission types for convenience
 export type { ToolEmissionState, ToolEmissionTrackingState }
+export type { PluginElicitState, PluginElicitTrackingState }
 
 // =============================================================================
 // STREAMING PARTS STATE
@@ -126,6 +128,19 @@ export interface ChatState {
    * When a tool completes, emissions collapse into a trace in the tool message.
    */
   toolEmissions: Record<string, ToolEmissionTrackingState>
+
+  /**
+   * Plugin elicitation state for MCP plugin tools.
+   * Keyed by tool call ID.
+   *
+   * Plugin tools run on the server but need client-side UI for elicitation.
+   * The elicitation flow is:
+   * 1. Server emits plugin_elicit_request
+   * 2. Client receives and stores in pluginElicitations
+   * 3. Client renders UI based on elicit key and context
+   * 4. User responds, client sends pluginElicitResponses in next request
+   */
+  pluginElicitations: Record<string, PluginElicitTrackingState>
 }
 
 /**
@@ -146,6 +161,7 @@ export const initialChatState: ChatState = {
   pendingClientTools: {},
   pendingHandoffs: {},
   toolEmissions: {},
+  pluginElicitations: {},
 }
 
 // =============================================================================

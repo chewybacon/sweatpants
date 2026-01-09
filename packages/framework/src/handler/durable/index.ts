@@ -18,6 +18,18 @@ export { createDurableChatHandler as createChatHandler } from './handler'
 // Chat engine
 export { createChatEngine } from './chat-engine'
 
+// Plugin session manager
+export { createPluginSessionManager } from './plugin-session-manager'
+export type {
+  PluginSessionManager,
+  PluginSession,
+  PluginSessionStatus,
+  PluginSessionEvent,
+  PluginSessionInfo,
+  PluginSessionManagerOptions,
+  CreatePluginSessionConfig,
+} from './plugin-session-manager'
+
 // Types
 export type {
   // Engine types
@@ -31,6 +43,7 @@ export type {
   ToolRegistry,
   IsomorphicTool,
   ToolExecutionResult,
+  PluginElicitRequestData,
 
   // Client output types
   IsomorphicClientOutput,
@@ -41,7 +54,14 @@ export type {
   InitializerHook,
   ChatRequestBody,
 
+  // Plugin types
+  PluginElicitResponse,
+  PluginAbortRequest,
+
   // Protocol types
   DurableStreamEvent,
   DurableStreamParams,
+
+  // MCP tool registry
+  McpToolRegistry,
 } from './types'

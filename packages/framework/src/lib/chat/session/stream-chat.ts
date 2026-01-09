@@ -23,8 +23,26 @@ import type {
   ApiMessage,
   StreamResult,
   IsomorphicHandoffStreamEvent,
+  PluginElicitRequestStreamEvent,
 } from './streaming'
 import type { IsomorphicToolSchema } from '../isomorphic-tools'
+
+/**
+ * Plugin elicit response from the client.
+ */
+export interface PluginElicitResponseData {
+  /** Session ID (same as callId from the original tool call) */
+  sessionId: string
+  /** Original tool call ID for conversation correlation */
+  callId: string
+  /** Specific elicit request ID */
+  elicitId: string
+  /** The user's response */
+  result: {
+    action: 'accept' | 'decline' | 'cancel'
+    content?: unknown
+  }
+}
 
 /**
  * Options for streamChatOnce, extending SessionOptions with isomorphic tool schemas.
@@ -48,6 +66,12 @@ export interface StreamChatOptions extends SessionOptions {
     cachedHandoff?: unknown
     usesHandoff?: boolean
   }>
+
+  /**
+   * Responses to pending plugin elicitation requests.
+   * Sent when resuming a conversation with plugin tool elicitations.
+   */
+  pluginElicitResponses?: PluginElicitResponseData[]
 }
 
 /**
@@ -89,6 +113,8 @@ export function* streamChatOnce(
         isomorphicTools: options.isomorphicToolSchemas,
         // Include client outputs from isomorphic tools that need server validation
         isomorphicClientOutputs: options.isomorphicClientOutputs,
+        // Include plugin elicit responses for resuming plugin sessions
+        pluginElicitResponses: options.pluginElicitResponses,
       }),
       signal,
     })
@@ -120,6 +146,10 @@ export function* streamChatOnce(
   
   // Collect isomorphic handoff events (multiple can arrive before stream ends)
   const isomorphicHandoffs: IsomorphicHandoffStreamEvent[] = []
+  // Collect plugin elicit requests (for plugin tool elicitation)
+  const pluginElicitRequests: PluginElicitRequestStreamEvent[] = []
+  // Track which tool calls have started emission tracking (to emit tool_emission_start once)
+  const emissionStartedForCall = new Set<string>()
   // Collect conversation state (sent when isomorphic tools are involved)
   let conversationState: any | null = null
   // Track tool results from phase 2 processing (for history sync)
@@ -224,12 +254,63 @@ export function* streamChatOnce(
           throw new Error(event.message)
         }
         break
+
+      case 'plugin_elicit_request':
+        // Collect plugin elicit requests - we'll return them all at the end
+        pluginElicitRequests.push(event)
+        
+        // Emit plugin_elicit_start if we haven't for this call yet
+        if (!emissionStartedForCall.has(event.callId)) {
+          emissionStartedForCall.add(event.callId)
+          yield* patches.send({
+            type: 'plugin_elicit_start',
+            callId: event.callId,
+            toolName: event.toolName,
+          })
+        }
+        
+        // Emit the elicitation as a plugin_elicit patch
+        // The x-model-context in the schema contains the context data (e.g., flights array)
+        yield* patches.send({
+          type: 'plugin_elicit',
+          callId: event.callId,
+          elicit: {
+            elicitId: event.elicitId,
+            sessionId: event.sessionId,
+            key: event.key,
+            message: event.message,
+            schema: event.schema,
+            // Extract x-model-context from schema if present
+            context: (event.schema as { 'x-model-context'?: unknown })['x-model-context'],
+            status: 'pending',
+            timestamp: Date.now(),
+          },
+        })
+        break
+
+      case 'plugin_session_status':
+        // Status updates - could be used for UI feedback
+        // For now, just log in development
+        break
+
+      case 'plugin_session_error':
+        yield* patches.send({ type: 'error', message: event.message })
+        break
     }
 
     yield* each.next()
   }
 
-  // After stream ends, check if we have isomorphic handoffs
+  // After stream ends, check if we have plugin elicit requests
+  // These take priority as they need immediate user interaction
+  if (pluginElicitRequests.length > 0) {
+    return {
+      type: 'plugin_elicit',
+      pendingElicitations: pluginElicitRequests,
+    }
+  }
+
+  // Check if we have isomorphic handoffs
   if (isomorphicHandoffs.length > 0) {
     // Return isomorphic handoff result - session will execute client parts
     const state = conversationState ?? {

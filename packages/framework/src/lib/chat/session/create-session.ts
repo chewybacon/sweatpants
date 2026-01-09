@@ -63,7 +63,7 @@
  */
 import type { Operation, Task, Channel, Signal, Stream } from 'effection'
 import { spawn, each, createChannel, createSignal, resource, useScope, call } from 'effection'
-import { streamChatOnce, toApiMessages } from './stream-chat'
+import { streamChatOnce, toApiMessages, type PluginElicitResponseData } from './stream-chat'
 import { useTransformPipeline } from './transforms'
 import { chatReducer, initialChatState } from '../state/reducer'
 import type { ChatState } from '../state/chat-state'
@@ -216,6 +216,9 @@ export function* runChatSession(
   
   // Track disabled tools (from denial with 'disable' behavior)
   const disabledToolNames = new Set<string>()
+  
+  // Track pending plugin elicit responses (sent with next message)
+  const pendingPluginElicitResponses: PluginElicitResponseData[] = []
 
   // Create approval signal if not provided (for client tools)
   const approvalSignal = options.approvalSignal ?? createSignal<ApprovalSignalValue, void>()
@@ -329,8 +332,17 @@ export function* runChatSession(
               usesHandoff?: boolean
             }> = []
             
+            // Capture pending plugin elicit responses for this request
+            let pluginElicitResponsesToSend: PluginElicitResponseData[] = []
+            
             // eslint-disable-next-line no-constant-condition
             while (true) {
+              // Move pending responses to this request (only on first iteration or if new ones arrived)
+              if (pendingPluginElicitResponses.length > 0) {
+                pluginElicitResponsesToSend = [...pendingPluginElicitResponses]
+                pendingPluginElicitResponses.length = 0
+              }
+              
               result = yield* streamer(
                 currentMessages,
                 streamPatches,
@@ -338,17 +350,29 @@ export function* runChatSession(
                   ...options,
                   isomorphicToolSchemas,
                   isomorphicClientOutputs: isomorphicClientOutputs.length > 0 ? isomorphicClientOutputs : undefined,
+                  pluginElicitResponses: pluginElicitResponsesToSend.length > 0 ? pluginElicitResponsesToSend : undefined,
                 } as any // Type cast needed for extended options
               )
               
-              // Clear client outputs after sending (they've been processed)
+              // Clear client outputs and plugin responses after sending (they've been processed)
               isomorphicClientOutputs = []
+              pluginElicitResponsesToSend = []
               
               // If complete, we're done
               if (result.type === 'complete') {
                 break
               }
               
+              // Plugin elicitation - break the loop, UI will handle via state
+              if (result.type === 'plugin_elicit') {
+                // Patches have already been emitted by stream-chat.
+                // React state now has the pending elicitations in pluginElicitations.
+                // The UI will render based on this state and collect user responses.
+                // When user sends next message, we'll include pluginElicitResponses.
+                // For now, break the loop - the request is "complete" from session perspective.
+                break
+              }
+
               // Isomorphic handoff - execute client parts
               if (result.type === 'isomorphic_handoff' && isomorphicToolsRegistry) {
                 // Build handoff data for each isomorphic tool
@@ -661,7 +685,181 @@ export function* runChatSession(
         // Clear history and disabled tools
         history.length = 0
         disabledToolNames.clear()
+        pendingPluginElicitResponses.length = 0
         yield* patches.send({ type: 'reset' })
+        break
+      }
+
+      case 'continue': {
+        // Continue the conversation without adding a user message
+        // This is used to resume after plugin elicitation responses
+        
+        // Cancel any in-flight request
+        if (currentRequestTask) {
+          yield* currentRequestTask.halt()
+          currentRequestTask = null
+        }
+        
+        // Start streaming without adding a user message
+        yield* patches.send({ type: 'streaming_start' })
+        
+        // Spawn the continuation request
+        currentRequestTask = yield* spawn(function* () {
+          let streamingEndSent = false
+          
+          try {
+            let streamingEndForwarded = false
+            let streamingEndForwardedResolve: (() => void) | null = null
+            
+            function waitForStreamingEndForwarded(): Promise<void> {
+              if (streamingEndForwarded) return Promise.resolve()
+              return new Promise<void>((resolve) => {
+                streamingEndForwardedResolve = resolve
+              })
+            }
+            
+            const streamingEndAcknowledger: PatchTransform = function* (input, output) {
+              for (const patch of yield* each(input)) {
+                yield* output.send(patch)
+                if (patch.type === 'streaming_end' && !streamingEndForwarded) {
+                  streamingEndForwarded = true
+                  streamingEndForwardedResolve?.()
+                  streamingEndForwardedResolve = null
+                }
+                yield* each.next()
+              }
+            }
+            
+            const transforms = options.transforms ?? []
+            const streamPatches = yield* useTransformPipeline(patches, [
+              ...transforms,
+              streamingEndAcknowledger,
+            ])
+            
+            const isomorphicToolsRegistry = yield* ToolRegistryContext.get()
+            const isomorphicToolSchemas = isomorphicToolsRegistry
+              ? isomorphicToolsRegistry.toToolSchemas().filter(
+                  (schema: { name: string }) => !disabledToolNames.has(schema.name)
+                )
+              : undefined
+            
+            const contextStreamer = yield* StreamerContext.get()
+            const streamer = contextStreamer ?? options.streamer ?? defaultStreamer
+            
+            // Convert history to API messages
+            let currentMessages: ApiMessage[] = toApiMessages(history)
+            
+            // Capture plugin elicit responses for this continuation
+            let pluginElicitResponsesToSend: PluginElicitResponseData[] = []
+            
+            // Run the continuation loop - may loop if plugin tools need multiple elicitations
+            let result: StreamResult
+            
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              // Move pending responses to this request (only on first iteration or if new ones arrived)
+              if (pendingPluginElicitResponses.length > 0) {
+                pluginElicitResponsesToSend = [...pendingPluginElicitResponses]
+                pendingPluginElicitResponses.length = 0
+              }
+              
+              result = yield* streamer(
+                currentMessages,
+                streamPatches,
+                {
+                  ...options,
+                  isomorphicToolSchemas,
+                  pluginElicitResponses: pluginElicitResponsesToSend.length > 0 ? pluginElicitResponsesToSend : undefined,
+                } as any
+              )
+              
+              // Clear plugin responses after sending (they've been processed)
+              pluginElicitResponsesToSend = []
+              
+              // If complete, we're done
+              if (result.type === 'complete') {
+                break
+              }
+              
+              // Plugin elicitation - break the loop, UI will handle via state
+              if (result.type === 'plugin_elicit') {
+                // Patches have already been emitted by stream-chat.
+                // React state now has the pending elicitations in pluginElicitations.
+                // The UI will render based on this state and collect user responses.
+                // When user responds, another 'continue' command will be dispatched.
+                break
+              }
+              
+              // Unknown result type - shouldn't happen
+              break
+            }
+            
+            // Handle final result
+            if (result.type === 'complete') {
+              const completeResult = result as { type: 'complete'; text: string }
+              
+              // Only add assistant message if there's content
+              if (completeResult.text) {
+                const assistantMessage: Message = {
+                  id: crypto.randomUUID(),
+                  role: 'assistant',
+                  content: completeResult.text,
+                }
+                history.push(assistantMessage)
+                
+                yield* patches.send({
+                  type: 'assistant_message',
+                  message: assistantMessage,
+                })
+              }
+            }
+            // plugin_elicit result: patches already emitted, session waits for user response
+            
+            yield* streamPatches.send({ type: 'streaming_end' })
+            streamingEndSent = true
+            yield* call(waitForStreamingEndForwarded)
+            yield* streamPatches.close()
+            
+            return result
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown error'
+            yield* patches.send({ type: 'error', message })
+            yield* patches.send({ type: 'streaming_end' })
+            streamingEndSent = true
+            throw error
+          } finally {
+            if (!streamingEndSent) {
+              yield* patches.send({ type: 'streaming_end' })
+            }
+            currentRequestTask = null
+          }
+        })
+        break
+      }
+
+      case 'plugin_elicit_response': {
+        // Store the response to be sent with the next message (or continuation)
+        pendingPluginElicitResponses.push({
+          sessionId: cmd.sessionId,
+          callId: cmd.callId,
+          elicitId: cmd.elicitId,
+          result: cmd.result,
+        })
+        
+        // Emit a patch to update the local state
+        yield* patches.send({
+          type: 'plugin_elicit_response',
+          callId: cmd.callId,
+          elicitId: cmd.elicitId,
+          response: cmd.result,
+        })
+        
+        // Auto-continue: trigger a continuation request to resume the tool
+        // This enables seamless multi-step elicitation flows
+        const shouldAutoContinue = cmd.autoContinue !== false // default true
+        if (shouldAutoContinue) {
+          commands.send({ type: 'continue' })
+        }
         break
       }
     }
