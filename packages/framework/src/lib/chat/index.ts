@@ -15,6 +15,9 @@ export * from './personas'
 // Model context utilities (browser-safe subset of mcp-tools)
 export { stripMessageContext, getElicitContext } from './mcp-tools/model-context'
 
+// MCP tool builder (browser-safe - only types, no Node.js deps)
+export { createMcpTool } from './mcp-tools/mcp-tool-builder'
+
 // Plugin builder (browser-safe)
 export { makePlugin } from './mcp-tools/plugin'
 export type {
@@ -23,6 +26,7 @@ export type {
   PluginBuilderWithHandlers,
   PluginServerRegistration,
   PluginClientRegistration,
+  PluginClientRegistrationInput,
   PluginClientContext,
   ElicitHandler,
   ElicitHandlers,

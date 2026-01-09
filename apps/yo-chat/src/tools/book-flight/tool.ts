@@ -8,7 +8,7 @@
  * - LLM sampling for travel tips
  */
 import { z } from 'zod'
-import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createMcpTool } from '@sweatpants/framework/chat'
 import { sleep } from 'effection'
 
 // =============================================================================

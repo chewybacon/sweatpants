@@ -22,8 +22,7 @@
  * ```
  */
 
-import type { ElicitsMap } from './mcp-tool-types'
-import type { PluginClientRegistration } from './plugin'
+import type { PluginClientRegistrationInput } from './plugin'
 
 // =============================================================================
 // PLUGIN REGISTRY INTERFACE
@@ -39,7 +38,7 @@ export interface PluginRegistry {
    * @param plugin - The plugin client registration to register
    * @throws If a plugin with the same tool name is already registered
    */
-  register(plugin: PluginClientRegistration<ElicitsMap>): void
+  register(plugin: PluginClientRegistrationInput): void
 
   /**
    * Get a plugin by tool name.
@@ -47,7 +46,7 @@ export interface PluginRegistry {
    * @param toolName - The tool name to look up
    * @returns The plugin registration, or undefined if not found
    */
-  get(toolName: string): PluginClientRegistration<ElicitsMap> | undefined
+  get(toolName: string): PluginClientRegistrationInput | undefined
 
   /**
    * Check if a plugin is registered for a tool name.
@@ -80,10 +79,10 @@ export interface PluginRegistry {
  * @returns A new PluginRegistry instance
  */
 export function createPluginRegistry(): PluginRegistry {
-  const plugins = new Map<string, PluginClientRegistration<ElicitsMap>>()
+  const plugins = new Map<string, PluginClientRegistrationInput>()
 
   return {
-    register(plugin: PluginClientRegistration<ElicitsMap>): void {
+    register(plugin: PluginClientRegistrationInput): void {
       if (plugins.has(plugin.toolName)) {
         throw new Error(
           `Plugin for tool "${plugin.toolName}" is already registered. ` +
@@ -93,7 +92,7 @@ export function createPluginRegistry(): PluginRegistry {
       plugins.set(plugin.toolName, plugin)
     },
 
-    get(toolName: string): PluginClientRegistration<ElicitsMap> | undefined {
+    get(toolName: string): PluginClientRegistrationInput | undefined {
       return plugins.get(toolName)
     },
 
@@ -131,7 +130,7 @@ export function createPluginRegistry(): PluginRegistry {
  * ```
  */
 export function createPluginRegistryFrom(
-  plugins: PluginClientRegistration<ElicitsMap>[]
+  plugins: PluginClientRegistrationInput[]
 ): PluginRegistry {
   const registry = createPluginRegistry()
   for (const plugin of plugins) {

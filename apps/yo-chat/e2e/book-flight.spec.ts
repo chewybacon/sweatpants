@@ -21,8 +21,8 @@ import { test, expect } from '@playwright/test'
  * Run with: pnpm test:e2e --grep "book_flight"
  */
 
-// Increase timeout for LLM responses and multi-step tool flow
-test.setTimeout(300000)
+// Reasonable timeout for LLM responses - fail fast if things are broken
+test.setTimeout(120000) // 2 minutes per test max
 
 // =============================================================================
 // SETUP
@@ -58,7 +58,7 @@ test.describe('book_flight Plugin Tool', () => {
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait for streaming to start
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 30000 })
 
     // Check for actual error messages (not just 'error' as substring in words like 'cancelled')
     const errorLocator = page.locator('text=/^Error:|tool execution failed|is not iterable|undefined is not/')
@@ -73,7 +73,7 @@ test.describe('book_flight Plugin Tool', () => {
     const flightList = page.locator('text=/\\$\\d+/').first() // Price like $299
     
     try {
-      await expect(flightList).toBeVisible({ timeout: 120000 })
+      await expect(flightList).toBeVisible({ timeout: 45000 })
       console.log('FlightList component appeared!')
 
       // Verify we have multiple flight options
@@ -84,7 +84,7 @@ test.describe('book_flight Plugin Tool', () => {
 
     } catch (e) {
       // FlightList didn't appear - check what happened
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
 
       const pageContent = await page.content()
       // Check for actual error indicators (not 'cancelled' which contains 'error' as substring)
@@ -110,7 +110,7 @@ test.describe('book_flight Plugin Tool', () => {
     const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
 
     try {
-      await expect(flightCard).toBeVisible({ timeout: 120000 })
+      await expect(flightCard).toBeVisible({ timeout: 45000 })
 
       // Get the flight details before clicking
       const flightText = await flightCard.textContent()
@@ -130,7 +130,7 @@ test.describe('book_flight Plugin Tool', () => {
       console.log('Flight selection successful!')
 
     } catch (e) {
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
       const responseText = await page.locator('.prose').last().textContent()
       console.log('Flight selection flow incomplete. Response:', responseText?.slice(0, 500))
       test.skip(true, 'Could not complete flight selection flow')
@@ -148,10 +148,10 @@ test.describe('book_flight Plugin Tool', () => {
     const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
 
     try {
-      await expect(flightCard).toBeVisible({ timeout: 120000 })
+      await expect(flightCard).toBeVisible({ timeout: 45000 })
       console.log('FlightList appeared!')
     } catch {
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
       test.skip(true, 'LLM did not trigger FlightList')
       return
     }
@@ -167,7 +167,7 @@ test.describe('book_flight Plugin Tool', () => {
     const seatButton = page.locator('button').filter({ hasText: /^[A-F]$/ }).first()
 
     try {
-      await expect(seatButton).toBeVisible({ timeout: 60000 })
+      await expect(seatButton).toBeVisible({ timeout: 30000 })
       console.log('SeatPicker appeared!')
     } catch {
       // Check if there's an error or the flow didn't continue
@@ -205,7 +205,7 @@ test.describe('book_flight Plugin Tool', () => {
     let confirmed = false
     for (const indicator of confirmationIndicators) {
       try {
-        await expect(indicator).toBeVisible({ timeout: 60000 })
+        await expect(indicator).toBeVisible({ timeout: 30000 })
         console.log('Booking confirmed!')
         confirmed = true
         break
@@ -240,7 +240,7 @@ test.describe('book_flight Plugin Tool', () => {
     const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
 
     try {
-      await expect(flightCard).toBeVisible({ timeout: 120000 })
+      await expect(flightCard).toBeVisible({ timeout: 45000 })
 
       // Check for SVG airplane icons
       const airplaneIcon = page.locator('svg').first()
@@ -262,7 +262,7 @@ test.describe('book_flight Plugin Tool', () => {
     const priceElement = page.locator('text=/\\$\\d+/').first()
 
     try {
-      await expect(priceElement).toBeVisible({ timeout: 120000 })
+      await expect(priceElement).toBeVisible({ timeout: 45000 })
 
       // Verify flight card structure
       // Should have departure/arrival times, duration, price
@@ -293,12 +293,12 @@ test.describe('book_flight Plugin Tool', () => {
     const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
 
     try {
-      await expect(flightCard).toBeVisible({ timeout: 120000 })
+      await expect(flightCard).toBeVisible({ timeout: 45000 })
       await flightCard.click()
 
       // Wait for SeatPicker
       const seatGrid = page.locator('button').filter({ hasText: /^[A-F]$/ })
-      await expect(seatGrid.first()).toBeVisible({ timeout: 60000 })
+      await expect(seatGrid.first()).toBeVisible({ timeout: 30000 })
 
       // Count seats - should have multiple
       const seatCount = await seatGrid.count()
@@ -331,7 +331,7 @@ test.describe('book_flight Plugin Tool', () => {
     const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
 
     try {
-      await expect(flightCard).toBeVisible({ timeout: 120000 })
+      await expect(flightCard).toBeVisible({ timeout: 45000 })
       await flightCard.click()
 
       // Select seat if it appears
@@ -344,7 +344,7 @@ test.describe('book_flight Plugin Tool', () => {
       }
 
       // Wait for any response to complete
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
 
       // === Now test multi-turn ===
       console.log('Testing multi-turn after booking...')
@@ -355,7 +355,7 @@ test.describe('book_flight Plugin Tool', () => {
 
       // Wait for response
       await expect(page.getByText('streaming...')).toBeVisible({ timeout: 30000 })
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
 
       // Should have more than 2 messages now (original + booking responses + follow-up)
       const messageCount = page.locator('text=/\\d+ messages/')

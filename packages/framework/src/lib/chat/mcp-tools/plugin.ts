@@ -402,3 +402,20 @@ export type InferPluginTool<T> = T extends McpPlugin<
  * Any plugin (for arrays/registries).
  */
 export type AnyMcpPlugin = McpPlugin<string, any, any, any, any, ElicitsMap>
+
+/**
+ * Structural type for accepting plugin client registrations in arrays.
+ *
+ * This type uses structural compatibility rather than generic constraints,
+ * allowing heterogeneous plugins with different elicit maps to be collected.
+ * Each `PluginClientRegistration<TElicits>` satisfies this interface.
+ *
+ * The handlers signature uses `never` for parameters (bivariant function compatibility)
+ * and `unknown` for return, allowing any specific handler to be assigned.
+ */
+export interface PluginClientRegistrationInput {
+  toolName: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handlers: Record<string, (req: any, ctx: any) => Operation<ElicitResult<unknown>>>
+  schemas: ElicitsMap
+}
