@@ -4,7 +4,7 @@
     // Prefer source jumps for framework during local dev
     "paths": {
       "@sweatpants/framework": ["packages/framework/src"],
-      "@tanstack/framework/*": ["packages/framework/src/*"],
+      "@sweatpants/framework/*": ["packages/framework/src/*"]
     }
   }
 }
