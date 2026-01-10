@@ -82,8 +82,14 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           .description('Book a flight (test tool)')
           .parameters(z.object({ from: z.string(), destination: z.string() }))
           .elicits({
-            pickFlight: z.object({ flightId: z.string() }),
-            pickSeat: z.object({ row: z.number(), seat: z.string() }),
+            pickFlight: {
+              response: z.object({ flightId: z.string() }),
+              context: z.object({ flights: z.array(z.object({ id: z.string(), price: z.number() })) }),
+            },
+            pickSeat: {
+              response: z.object({ row: z.number(), seat: z.string() }),
+              context: z.object({ seatMap: z.object({ rows: z.number(), seatsPerRow: z.array(z.string()), taken: z.array(z.string()) }) }),
+            },
           })
           .execute(function* (_params, ctx) {
             const flight = yield* ctx.elicit('pickFlight', {
@@ -308,8 +314,14 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           .description('Book a flight (test tool)')
           .parameters(z.object({ from: z.string(), destination: z.string() }))
           .elicits({
-            pickFlight: z.object({ flightId: z.string() }),
-            pickSeat: z.object({ row: z.number(), seat: z.string() }),
+            pickFlight: {
+              response: z.object({ flightId: z.string() }),
+              context: z.object({ flights: z.array(z.object({ id: z.string(), price: z.number() })) }),
+            },
+            pickSeat: {
+              response: z.object({ row: z.number(), seat: z.string() }),
+              context: z.object({ seatMap: z.object({ rows: z.number(), seatsPerRow: z.array(z.string()), taken: z.array(z.string()) }) }),
+            },
           })
           .execute(function* (_params, ctx) {
             const flight = yield* ctx.elicit('pickFlight', {

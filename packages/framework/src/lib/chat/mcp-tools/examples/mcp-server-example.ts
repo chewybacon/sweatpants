@@ -57,10 +57,12 @@ export const confirmTool = createMcpTool('confirm_action')
     dangerous: z.boolean().default(false).describe('Whether this is a dangerous action'),
   }))
   .elicits({
-    confirmation: z.object({
-      confirmed: z.boolean().describe('Whether to proceed'),
-      notes: z.string().optional().describe('Optional notes'),
-    }),
+    confirmation: {
+      response: z.object({
+        confirmed: z.boolean().describe('Whether to proceed'),
+        notes: z.string().optional().describe('Optional notes'),
+      }),
+    },
   })
   .execute(function* (params, ctx) {
     yield* ctx.log('info', `Requesting confirmation for: ${params.action}`)
@@ -140,13 +142,17 @@ export const interactiveTool = createMcpTool('interactive_task')
     topic: z.string().describe('Topic to explore'),
   }))
   .elicits({
-    userInput: z.object({
-      question: z.string().describe('Your question about the topic'),
-    }),
-    feedback: z.object({
-      helpful: z.boolean().describe('Was this helpful?'),
-      followUp: z.string().optional().describe('Any follow-up question?'),
-    }),
+    userInput: {
+      response: z.object({
+        question: z.string().describe('Your question about the topic'),
+      }),
+    },
+    feedback: {
+      response: z.object({
+        helpful: z.boolean().describe('Was this helpful?'),
+        followUp: z.string().optional().describe('Any follow-up question?'),
+      }),
+    },
   })
   .execute(function* (params, ctx) {
     yield* ctx.notify('Initializing interactive session...', 0.1)

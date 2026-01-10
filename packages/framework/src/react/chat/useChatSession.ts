@@ -50,7 +50,8 @@ function localEmissionReducer(
           callId: action.callId,
           toolName: action.toolName,
           emissions: [],
-          status: 'active',
+          status: 'running',
+          startedAt: Date.now(),
         },
       }
     }
@@ -65,13 +66,22 @@ function localEmissionReducer(
           callId: action.callId,
           toolName: action.toolName ?? 'unknown',
           emissions: [],
-          status: 'active' as const,
+          status: 'running' as const,
+          startedAt: Date.now(),
         }
       }
 
       const newEmission: ToolEmissionState = {
-        ...action.emission,
-        respond: action.respond,
+        callId: action.callId,
+        toolName: tracking.toolName,
+        id: action.emission.id,
+        type: action.emission.type,
+        payload: action.emission.payload,
+        status: action.emission.status,
+        timestamp: action.emission.timestamp,
+        ...(action.emission.response !== undefined && { response: action.emission.response }),
+        ...(action.emission.error !== undefined && { error: action.emission.error }),
+        ...(action.respond !== undefined && { respond: action.respond }),
       }
 
       return {
@@ -90,11 +100,12 @@ function localEmissionReducer(
         ...state,
         [action.callId]: {
           ...tracking,
-          emissions: tracking.emissions.map(e =>
-            e.id === action.emissionId
-              ? { ...e, status: 'responded' as const, response: action.response }
-              : e
-          ),
+          emissions: tracking.emissions.map(e => {
+            if (e.id !== action.emissionId) return e
+            // Create new emission without respond callback
+            const { respond: _, ...rest } = e
+            return { ...rest, status: 'complete' as const, response: action.response }
+          }),
         },
       }
     }
@@ -107,6 +118,7 @@ function localEmissionReducer(
         [action.callId]: {
           ...tracking,
           status: 'complete',
+          completedAt: Date.now(),
         },
       }
     }

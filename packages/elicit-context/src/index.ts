@@ -1,5 +1,5 @@
 /**
- * @tanstack/elicit-context
+ * @sweatpants/elicit-context
  * 
  * x-elicit-context specification and utilities for MCP elicitation.
  * 
@@ -19,4 +19,8 @@ export type {
   JsonSchema,
   EncodedElicitContext,
   DecodedElicitContext,
+  ExtractElicitResponse,
+  ExtractElicitContext,
+  ExtractElicitResponseSchema,
+  ExtractElicitContextSchema,
 } from './types'

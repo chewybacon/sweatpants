@@ -13,6 +13,7 @@
  * 5. When handler completes, sends `plugin_elicit_response` automatically
  */
 import { useEffect, useRef } from 'react'
+import type { ComponentType } from 'react'
 import { run, createSignal } from 'effection'
 import type { Task, Operation } from 'effection'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry'
@@ -164,7 +165,7 @@ function* executePluginHandler(
   // Create a custom render function that dispatches directly to React
   function* renderEmission<TResponse>(
     componentKey: string,
-    Component: unknown,
+    Component: ComponentType<any>,
     props: Record<string, unknown>
   ): Operation<TResponse> {
     emissionCounter++
@@ -174,7 +175,7 @@ function* executePluginHandler(
     const responseSignal = createSignal<TResponse, void>()
 
     // Create respond callback that resumes the generator
-    const respond = (value: TResponse) => {
+    const respond = (value: TResponse): void => {
       responseSignal.send(value)
     }
 
@@ -195,7 +196,7 @@ function* executePluginHandler(
         timestamp: Date.now(),
         status: 'pending',
       },
-      respond,
+      respond: respond as (response: unknown) => void,
     })
 
     // Wait for the response

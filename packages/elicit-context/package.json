@@ -1,5 +1,5 @@
 {
-  "name": "@tanstack/elicit-context",
+  "name": "@sweatpants/elicit-context",
   "version": "0.1.0",
   "description": "x-elicit-context specification and utilities for MCP elicitation",
   "type": "module",
@@ -36,6 +36,6 @@
     "context",
     "model-context-protocol"
   ],
-  "author": "TanStack",
+  "author": "Sweatpants",
   "license": "MIT"
 }

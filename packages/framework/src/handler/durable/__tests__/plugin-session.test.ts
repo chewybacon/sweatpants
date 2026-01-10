@@ -34,7 +34,9 @@ const simpleElicitTool = createMcpTool('simple_elicit')
   .description('A tool that asks for user input')
   .parameters(z.object({ prompt: z.string() }))
   .elicits({
-    getUserInput: z.object({ value: z.string() }),
+    getUserInput: {
+      response: z.object({ value: z.string() }),
+    },
   })
   .execute(function* (params, ctx) {
     const result = yield* ctx.elicit('getUserInput', {
@@ -331,8 +333,12 @@ describe('Multi-Step Elicitation', () => {
     .description('A tool that requires multiple elicitations')
     .parameters(z.object({ destination: z.string() }))
     .elicits({
-      pickFlight: z.object({ flightId: z.string() }),
-      pickSeat: z.object({ seatId: z.string() }),
+      pickFlight: {
+        response: z.object({ flightId: z.string() }),
+      },
+      pickSeat: {
+        response: z.object({ seatId: z.string() }),
+      },
     })
     .execute(function* (params, ctx) {
       // First elicitation: pick a flight

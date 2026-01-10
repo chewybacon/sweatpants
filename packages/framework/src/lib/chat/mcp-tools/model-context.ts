@@ -4,7 +4,7 @@
  * Handles encoding and decoding of context data for MCP elicitation requests.
  * Context data is transported in two locations for maximum compatibility:
  *
- * 1. **Schema extension**: `x-model-context` field (primary, clean JSON)
+ * 1. **Schema extension**: `x-elicit-context` field (primary, clean JSON)
  * 2. **Message boundary**: MIME-style encoded section (fallback)
  *
  * This enables:
@@ -22,14 +22,16 @@
 /**
  * Schema extension key for context data.
  * Uses `x-` prefix following vendor extension conventions (OpenAPI, etc.).
+ * Must match the key used by @sweatpants/elicit-context encoder.
  */
-export const MODEL_CONTEXT_SCHEMA_KEY = 'x-model-context'
+export const MODEL_CONTEXT_SCHEMA_KEY = 'x-elicit-context'
 
 /**
  * Message boundary marker for context data.
- * Format: `--x-model-context: <mime-type>`
+ * Format: `--x-elicit-context: <mime-type>`
+ * Must match the boundary used by @sweatpants/elicit-context encoder.
  */
-export const MODEL_CONTEXT_BOUNDARY = '--x-model-context:'
+export const MODEL_CONTEXT_BOUNDARY = '\n--x-elicit-context:'
 
 /**
  * Default MIME type for context data.
@@ -190,16 +192,26 @@ export function parseMessageContext(
 
   // Split message at boundary
   const cleanMessage = message.substring(0, boundaryIndex).trimEnd()
-  const contextPart = message.substring(boundaryIndex)
+  
+  // contextPart starts with the boundary marker (which includes leading \n)
+  // Skip the leading newline to get the boundary line starting with '--'
+  const contextPart = message.substring(boundaryIndex + 1) // skip leading \n
 
   // Parse the boundary line to get MIME type
+  // Format: "--x-elicit-context: application/json\n{json}"
   const firstNewline = contextPart.indexOf('\n')
   if (firstNewline === -1) {
     return null
   }
 
   const boundaryLine = contextPart.substring(0, firstNewline)
-  const mimeType = boundaryLine.substring(MODEL_CONTEXT_BOUNDARY.length).trim()
+  // Boundary line is "--x-elicit-context: application/json"
+  // We need to extract just the MIME type after the colon
+  const colonIndex = boundaryLine.indexOf(':')
+  if (colonIndex === -1) {
+    return null
+  }
+  const mimeType = boundaryLine.substring(colonIndex + 1).trim()
 
   // Get the context data (everything after the boundary line)
   const contextData = contextPart.substring(firstNewline + 1).trim()

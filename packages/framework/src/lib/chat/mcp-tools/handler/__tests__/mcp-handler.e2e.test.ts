@@ -219,7 +219,9 @@ const elicitTool = createMcpTool('elicit_tool')
   .description('A tool that requests user input')
   .parameters(z.object({ question: z.string() }))
   .elicits({
-    answer: z.object({ response: z.string() }),
+    answer: {
+      response: z.object({ response: z.string() }),
+    },
   })
   .execute(function* (params, ctx) {
     const result = yield* ctx.elicit('answer', {
@@ -227,7 +229,7 @@ const elicitTool = createMcpTool('elicit_tool')
     })
 
     if (result.action === 'accept') {
-      return { answered: true, response: result.content.response }
+      return { answered: true, response: (result.content as { response: string }).response }
     }
 
     return { answered: false, action: result.action }
@@ -262,21 +264,37 @@ describe('MCP HTTP Handler E2E', () => {
   })
 
   describe('Simple tool execution', () => {
-    it('should execute a simple tool and return JSON result', async () => {
+    it('should execute a simple tool and return SSE stream with result', async () => {
+      // Per design: tools/call always upgrades to SSE due to Effection scope lifecycle
       const request = createToolsCallRequest('simple_tool', { input: 'hello' })
       const response = await handler(request)
 
       expect(response.status).toBe(200)
-      expect(response.headers.get('Content-Type')).toContain('application/json')
+      expect(response.headers.get('Content-Type')).toContain('text/event-stream')
+      expect(response.headers.get('Mcp-Session-Id')).toBeDefined()
 
-      const body = await response.json()
-      expect(body.jsonrpc).toBe('2.0')
-      expect(body.id).toBe(1)
-      expect(body.result).toBeDefined()
-      expect(body.result.content).toBeDefined()
+      // Read events from SSE stream
+      const events = await _readSseEvents(response)
+      expect(events.length).toBeGreaterThan(0)
+
+      // Find the result event
+      const resultEvent = events.find((e) => {
+        try {
+          const parsed = JSON.parse(e.data)
+          return parsed.result?.content !== undefined
+        } catch {
+          return false
+        }
+      })
+
+      expect(resultEvent).toBeDefined()
+      const result = JSON.parse(resultEvent!.data)
+      expect(result.jsonrpc).toBe('2.0')
+      expect(result.id).toBe(1)
+      expect(result.result.content).toBeDefined()
 
       // The result should contain the tool output
-      const textContent = body.result.content.find((c: { type: string }) => c.type === 'text')
+      const textContent = result.result.content.find((c: { type: string }) => c.type === 'text')
       expect(textContent).toBeDefined()
       expect(textContent.text).toContain('Echo: hello')
     })
@@ -304,14 +322,17 @@ describe('MCP HTTP Handler E2E', () => {
       expect(response.status).toBe(405)
     })
 
-    it('should reject GET without session ID', async () => {
+    it('should return idle SSE stream for GET without session ID', async () => {
+      // Per design: GET without session ID returns an idle SSE stream
+      // for general server notifications (not tool-specific)
       const request = new Request('http://localhost/mcp', {
         method: 'GET',
         headers: { Accept: 'text/event-stream' },
       })
 
       const response = await handler(request)
-      expect(response.status).toBe(400)
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toContain('text/event-stream')
     })
 
     it('should reject GET without Accept: text/event-stream', async () => {

@@ -306,14 +306,21 @@ describe('request-parser', () => {
         }
       })
 
-      it('rejects GET without session ID', () => {
+      it('returns idle stream for GET without session ID', () => {
+        // Per design: GET without session ID returns an idle SSE stream
+        // for general server notifications (not tool-specific)
         const parsed: McpParsedRequest = {
           method: 'GET',
           headers: { accept: 'text/event-stream' },
           originalRequest: new Request('http://localhost/mcp'),
         }
 
-        expect(() => classifyRequest(parsed)).toThrow(McpHandlerError)
+        const result = classifyRequest(parsed)
+
+        expect(result.type).toBe('sse_stream')
+        if (result.type === 'sse_stream') {
+          expect(result.sessionId).toBe('') // Empty = idle stream
+        }
       })
     })
 

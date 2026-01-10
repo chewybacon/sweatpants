@@ -3,7 +3,9 @@
  *
  * Core types for the elicit-context specification.
  */
-import type { z } from 'zod'
+
+// Note: We avoid importing Zod types directly to maintain compatibility
+// across Zod v3 and v4. Schema types are captured via generics.
 
 /**
  * Definition of an elicit request/response pair with optional context.
@@ -11,13 +13,22 @@ import type { z } from 'zod'
  * Used in tool definitions to declare:
  * - What the user must respond with (response schema)
  * - What context data is sent to the plugin for rendering (context schema)
+ * 
+ * The schema types are generic to avoid Zod version coupling.
+ * Use `z.infer` on the response/context schemas to get the TypeScript types.
+ * 
+ * @template TResponseSchema - The Zod schema type for response
+ * @template TContextSchema - The Zod schema type for context (optional)
  */
-export interface ElicitDefinition<TResponse = unknown, TContext = unknown> {
-  /** Schema for the user's response (what they return) */
-  response: z.ZodType<TResponse>
+export interface ElicitDefinition<
+  TResponseSchema = unknown,
+  TContextSchema = unknown
+> {
+  /** Schema for the user's response (what they return) - any Zod schema */
+  response: TResponseSchema
   
   /** Schema for context data sent to the plugin (what the tool provides for rendering) */
-  context?: z.ZodType<TContext>
+  context?: TContextSchema
 }
 
 /**
@@ -85,3 +96,47 @@ export interface DecodedElicitContext<TContext = Record<string, unknown>> {
   /** Extracted context data */
   context: TContext
 }
+
+// =============================================================================
+// TYPE HELPERS
+// =============================================================================
+
+/**
+ * Helper type to extract the output type from any Zod-like schema.
+ * Works with both Zod v3 and v4 by using structural typing.
+ * 
+ * Zod schemas have an `_output` property that holds the output type.
+ */
+type InferZodOutput<T> = T extends { _output: infer O } ? O : unknown
+
+/**
+ * Extract the response type from an ElicitDefinition.
+ * Works by inferring the Zod output type from the response schema.
+ */
+export type ExtractElicitResponse<T> = T extends ElicitDefinition<infer TSchema, any>
+  ? InferZodOutput<TSchema>
+  : never
+
+/**
+ * Extract the context type from an ElicitDefinition.
+ * Returns Record<string, never> if no context defined.
+ */
+export type ExtractElicitContext<T> = T extends ElicitDefinition<any, infer TSchema>
+  ? TSchema extends undefined
+    ? Record<string, never>
+    : InferZodOutput<TSchema>
+  : Record<string, never>
+
+/**
+ * Extract the response schema from an ElicitDefinition.
+ */
+export type ExtractElicitResponseSchema<T> = T extends ElicitDefinition<infer TSchema, any>
+  ? TSchema
+  : never
+
+/**
+ * Extract the context schema from an ElicitDefinition (if present).
+ */
+export type ExtractElicitContextSchema<T> = T extends ElicitDefinition<any, infer TSchema>
+  ? TSchema
+  : undefined

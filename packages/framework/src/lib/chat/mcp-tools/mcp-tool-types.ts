@@ -43,7 +43,11 @@ import type { z } from 'zod'
 import type {
   ElicitDefinition,
   ElicitsMap as BaseElicitsMap,
-} from '@tanstack/elicit-context'
+  ExtractElicitResponse,
+  ExtractElicitContext,
+  ExtractElicitResponseSchema,
+  ExtractElicitContextSchema,
+} from '@sweatpants/elicit-context'
 
 // =============================================================================
 // ELICITATION TYPES (shared)
@@ -119,6 +123,14 @@ export type { ElicitDefinition }
  * ```
  */
 export type ElicitsMap = BaseElicitsMap
+
+// Re-export type helpers from elicit-context package
+export type {
+  ExtractElicitResponse,
+  ExtractElicitContext,
+  ExtractElicitResponseSchema,
+  ExtractElicitContextSchema,
+}
 
 /**
  * Structured elicitation ID for correlation and logging.
@@ -632,27 +644,30 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
    * The key must exist in the tool's `.elicits({...})` declaration.
    * The schema is derived from the key, enabling type-safe UI bridging.
    *
+   * Context data is typed from the elicit definition and spread directly in options.
+   *
    * @param key - Elicitation key declared in `.elicits()`
-   * @param options - Options including message and optional custom data for the UI
+   * @param options - Options including message and typed context data
    * @returns The user's response (accept/decline/cancel)
    *
    * @example
    * ```typescript
-   * // Simple elicitation
+   * // Simple elicitation (no context)
    * const result = yield* ctx.elicit('confirm', { message: 'Proceed?' })
    *
-   * // With custom data for the UI
+   * // With typed context data for the UI
    * const flights = searchFlights(from, to)
    * const result = yield* ctx.elicit('pickFlight', {
    *   message: 'Select your flight',
-   *   flights,  // Custom data passed to the plugin handler
+   *   flights,  // Typed from context schema
+   *   currency: 'USD',
    * })
    * ```
    */
   elicit<K extends keyof TElicits & string>(
     key: K,
-    options: { message: string } & Record<string, unknown>
-  ): Operation<ElicitResult<z.infer<TElicits[K]>>>
+    options: { message: string } & ExtractElicitContext<TElicits[K]>
+  ): Operation<ElicitResult<ExtractElicitResponse<TElicits[K]>>>
 
   // ---------------------------------------------------------------------------
   // Sub-branches - inherit keyed elicitation
