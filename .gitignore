@@ -1,11 +1,22 @@
-node_modules
-tmp
-packages/framework/dist
-packages/start-env/dist
-packages/ts-config/dist
-apps/hydra/dist
-apps/yo-agent/dist
-apps/yo-mcp/dist
-apps/yo-mcp/playwright-report
-apps/yo-mcp/test-results
-packages/cli/dist
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Test artifacts
+playwright-report/
+test-results/
+coverage/
+
+# Logs
+*.log
+
+# Caches
+.turbo/
+.cache/
+tmp/
+
+# External dependencies (pulled via pnpm scripts)
+apps/yo-agent/packages/gemini-cli/
