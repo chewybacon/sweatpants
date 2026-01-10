@@ -67,9 +67,6 @@ catalogs:
     '@vitejs/plugin-react':
       specifier: ^5.0.4
       version: 5.1.2
-    acorn:
-      specifier: ^8.14.0
-      version: 8.15.0
     compression:
       specifier: ^1.8.1
       version: 1.8.1
@@ -85,9 +82,6 @@ catalogs:
     lucide-react:
       specifier: 0.544.0
       version: 0.544.0
-    magic-string:
-      specifier: ^0.30.17
-      version: 0.30.21
     morgan:
       specifier: ^1.10.1
       version: 1.10.1
@@ -154,187 +148,6 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
-
-  apps/dynobase:
-    dependencies:
-      '@effectionx/context-api':
-        specifier: 'catalog:'
-        version: 0.2.1
-      '@radix-ui/react-avatar':
-        specifier: ^1.1.11
-        version: 1.1.11(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@radix-ui/react-collapsible':
-        specifier: ^1.1.12
-        version: 1.1.12(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@radix-ui/react-scroll-area':
-        specifier: ^1.2.10
-        version: 1.2.10(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@radix-ui/react-slot':
-        specifier: ^1.2.4
-        version: 1.2.4(@types/react@19.2.7)(react@19.2.1)
-      '@sweatpants/framework':
-        specifier: workspace:*
-        version: file:packages/framework(@effectionx/context-api@0.2.1)(@effectionx/raf@0.1.1)(effection@4.0.0)(katex@0.16.27)(marked@17.0.1)(mermaid@11.12.2)(react@19.2.1)(shiki@3.20.0)(tailwind-merge@3.4.0)(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))(zod@4.1.13)
-      '@t3-oss/env-core':
-        specifier: 'catalog:'
-        version: 0.13.8(typescript@5.9.3)(zod@4.1.13)
-      '@tailwindcss/vite':
-        specifier: 'catalog:'
-        version: 4.1.17(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      '@tanstack/react-devtools':
-        specifier: 'catalog:'
-        version: 0.7.11(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(csstype@3.2.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)(solid-js@1.9.10)
-      '@tanstack/react-router':
-        specifier: 'catalog:'
-        version: 1.140.0(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@tanstack/react-router-devtools':
-        specifier: 'catalog:'
-        version: 1.140.0(@tanstack/react-router@1.140.0(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(@tanstack/router-core@1.140.0)(csstype@3.2.3)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)(solid-js@1.9.10)
-      '@tanstack/react-router-ssr-query':
-        specifier: 'catalog:'
-        version: 1.140.0(@tanstack/query-core@5.90.12)(@tanstack/react-query@5.90.12(react@19.2.1))(@tanstack/react-router@1.140.0(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(@tanstack/router-core@1.140.0)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@tanstack/react-start':
-        specifier: 'catalog:'
-        version: 1.140.0(crossws@0.4.1(srvx@0.9.7))(react-dom@19.2.1(react@19.2.1))(react@19.2.1)(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      '@tanstack/router-plugin':
-        specifier: 'catalog:'
-        version: 1.140.0(@tanstack/react-router@1.140.0(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      '@tanstack/start-env':
-        specifier: workspace:*
-        version: link:../../packages/start-env
-      '@types/katex':
-        specifier: ^0.16.7
-        version: 0.16.7
-      class-variance-authority:
-        specifier: ^0.7.1
-        version: 0.7.1
-      clsx:
-        specifier: ^2.1.1
-        version: 2.1.1
-      compression:
-        specifier: 'catalog:'
-        version: 1.8.1
-      effection:
-        specifier: 'catalog:'
-        version: 4.0.0
-      express:
-        specifier: 'catalog:'
-        version: 5.2.1
-      katex:
-        specifier: ^0.16.27
-        version: 0.16.27
-      lucide-react:
-        specifier: 'catalog:'
-        version: 0.544.0(react@19.2.1)
-      marked:
-        specifier: ^17.0.1
-        version: 17.0.1
-      mermaid:
-        specifier: ^11.12.2
-        version: 11.12.2
-      morgan:
-        specifier: 'catalog:'
-        version: 1.10.1
-      nitro:
-        specifier: latest
-        version: 3.0.1-alpha.1(chokidar@4.0.3)(ioredis@5.8.2)(lru-cache@11.2.4)(rollup@4.53.3)(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      react:
-        specifier: 'catalog:'
-        version: 19.2.1
-      react-dom:
-        specifier: 'catalog:'
-        version: 19.2.1(react@19.2.1)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@19.2.7)(react@19.2.1)
-      remark-gfm:
-        specifier: ^4.0.1
-        version: 4.0.1
-      shiki:
-        specifier: ^3.20.0
-        version: 3.20.0
-      srvx:
-        specifier: 'catalog:'
-        version: 0.9.7
-      tailwind-merge:
-        specifier: ^3.4.0
-        version: 3.4.0
-      tailwindcss:
-        specifier: 'catalog:'
-        version: 4.1.17
-      vite-tsconfig-paths:
-        specifier: 'catalog:'
-        version: 5.1.4(typescript@5.9.3)(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
-    devDependencies:
-      '@tailwindcss/typography':
-        specifier: 0.5.0-alpha.3
-        version: 0.5.0-alpha.3(tailwindcss@4.1.17)
-      '@tanstack/devtools-vite':
-        specifier: 'catalog:'
-        version: 0.3.12(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      '@tanstack/ts-config':
-        specifier: workspace:*
-        version: link:../../packages/ts-config
-      '@testing-library/dom':
-        specifier: 'catalog:'
-        version: 10.4.1
-      '@testing-library/react':
-        specifier: 'catalog:'
-        version: 16.3.0(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.7))(@types/react@19.2.7)(react-dom@19.2.1(react@19.2.1))(react@19.2.1)
-      '@types/compression':
-        specifier: 'catalog:'
-        version: 1.8.1
-      '@types/express':
-        specifier: 'catalog:'
-        version: 5.0.6
-      '@types/marked':
-        specifier: ^6.0.0
-        version: 6.0.0
-      '@types/morgan':
-        specifier: 'catalog:'
-        version: 1.9.10
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.2
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.7
-      '@types/react-dom':
-        specifier: 'catalog:'
-        version: 19.2.3(@types/react@19.2.7)
-      '@vitejs/plugin-react':
-        specifier: 'catalog:'
-        version: 5.1.2(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      esbuild:
-        specifier: ^0.24.0
-        version: 0.24.2
-      jsdom:
-        specifier: 'catalog:'
-        version: 27.3.0(postcss@8.5.6)
-      tsx:
-        specifier: 'catalog:'
-        version: 4.21.0
-      tw-animate-css:
-        specifier: ^1.4.0
-        version: 1.4.0
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vite:
-        specifier: 'catalog:'
-        version: 7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
-      vite-imagetools:
-        specifier: ^9.0.2
-        version: 9.0.2(rollup@4.53.3)
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.2)(jiti@2.6.1)(jsdom@27.3.0(postcss@8.5.6))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
-      web-vitals:
-        specifier: 'catalog:'
-        version: 5.1.0
 
   apps/hydra:
     dependencies:
@@ -496,9 +309,6 @@ importers:
       '@tanstack/router-plugin':
         specifier: 'catalog:'
         version: 1.140.0(@tanstack/react-router@1.140.0(react-dom@19.2.1(react@19.2.1))(react@19.2.1))(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))
-      '@tanstack/start-env':
-        specifier: workspace:*
-        version: link:../../packages/start-env
       '@types/katex':
         specifier: ^0.16.7
         version: 0.16.7
@@ -804,40 +614,6 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
-
-  packages/start-env:
-    dependencies:
-      acorn:
-        specifier: 'catalog:'
-        version: 8.15.0
-      magic-string:
-        specifier: 'catalog:'
-        version: 0.30.21
-    devDependencies:
-      '@tanstack/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.2
-      '@types/react':
-        specifier: 'catalog:'
-        version: 19.2.7
-      react:
-        specifier: 'catalog:'
-        version: 19.2.1
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vite:
-        specifier: 'catalog:'
-        version: 7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.2)(jiti@2.6.1)(jsdom@27.3.0(postcss@8.5.6))(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/ts-config:
     devDependencies:
