@@ -1,0 +1,44 @@
+{
+  "name": "@sweatpants/cli",
+  "version": "0.1.0",
+  "description": "CLI for generating TypeScript types from MCP servers with x-sweatpants extensions",
+  "type": "module",
+  "bin": {
+    "sweatpants": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "types": "./dist/cli.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js",
+      "default": "./dist/cli.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "citty": "^0.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0"
+  },
+  "keywords": [
+    "mcp",
+    "cli",
+    "typescript",
+    "codegen",
+    "sweatpants"
+  ],
+  "author": "Sweatpants",
+  "license": "MIT"
+}
