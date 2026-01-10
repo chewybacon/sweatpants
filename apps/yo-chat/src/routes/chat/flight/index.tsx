@@ -135,6 +135,8 @@ function FlightChatDemo() {
     tools: [],
     // Only bookFlight plugin - focused demo
     plugins: [bookFlightPlugin.client],
+    // Tell server to only enable bookFlight plugin
+    enabledPlugins: ['book_flight'],
   })
 
   const [input, setInput] = useState('')

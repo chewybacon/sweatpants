@@ -319,6 +319,13 @@ export interface ChatRequestBody {
   enableOptionalTools?: string[]
   effort?: string
   enabledTools?: boolean | string[]
+  /**
+   * Plugin tools to enable for this request.
+   * Must explicitly specify which plugins to enable - no plugins are enabled by default.
+   * - undefined or []: No plugin tools enabled
+   * - string[]: Enable only the specified plugin tools by name
+   */
+  enabledPlugins?: string[]
   isomorphicTools?: ToolSchema[]
   isomorphicClientOutputs?: IsomorphicClientOutput[]
   model?: string

@@ -83,6 +83,22 @@ export interface SessionOptions {
   tools?: unknown[] // Will be typed as AnyIsomorphicTool[] in the hooks
 
   /**
+   * Plugin tools to enable for this session.
+   * Must explicitly specify which plugins to enable - no plugins are enabled by default.
+   *
+   * ```typescript
+   * useChat({
+   *   plugins: [bookFlightPlugin.client],
+   *   enabledPlugins: ['book_flight'],  // Tell server which plugins to enable
+   * })
+   * ```
+   *
+   * - undefined or []: No plugin tools enabled on server
+   * - string[]: Enable only the specified plugins by name
+   */
+  enabledPlugins?: string[]
+
+  /**
    * @deprecated Use `tools` instead.
    * Tools to enable (manual mode).
    * Can be an array of tool names or `true` to enable all.

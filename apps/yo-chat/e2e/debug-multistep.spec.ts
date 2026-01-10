@@ -74,12 +74,13 @@ test('debug multi-step elicitation', async ({ page }) => {
     }
   })
 
-  await page.goto('/chat/flight/')
+  await page.goto('/chat/flight/', { waitUntil: 'networkidle' })
   await expect(page.getByRole('heading', { name: 'Flight Booking' })).toBeVisible()
   await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
 
   const input = page.getByPlaceholder('Type a message...')
-  await input.fill('Book a flight from NYC to LA using the book_flight tool')
+  await input.click() // Ensure hydration
+  await input.pressSequentially('Book a flight from NYC to LA using the book_flight tool', { delay: 5 })
   await page.getByRole('button', { name: 'Send' }).click()
 
   // Wait for FlightList - increased timeout for slow LLMs

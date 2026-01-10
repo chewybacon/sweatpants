@@ -378,9 +378,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const clientSchemas = body.isomorphicTools ?? []
 
       // Build MCP plugin tool schemas
+      // Filter based on enabledPlugins:
+      // - undefined or []: no plugin tools (explicit opt-in required)
+      // - string[]: only include specified tools by name
       const mcpToolSchemas: ToolSchema[] = []
       if (mcpToolRegistry) {
-        for (const toolName of mcpToolRegistry.names()) {
+        const enabledPlugins = body.enabledPlugins ?? []
+        for (const toolName of enabledPlugins) {
           const tool = mcpToolRegistry.get(toolName)
           if (tool && isMcpToolLike(tool)) {
             mcpToolSchemas.push(mcpToolToSchema(tool))

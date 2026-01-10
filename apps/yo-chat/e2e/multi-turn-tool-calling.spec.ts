@@ -14,15 +14,17 @@ import { test, expect } from '@playwright/test'
 
 test.describe('multi-turn tool calling', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     // Wait for pipeline to be ready
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 15000 })
+    // Click input to ensure React is hydrated
+    await page.getByPlaceholder('Type a message...').click()
   })
 
   test('should call pick_card tool and show card picker', async ({ page }) => {
     // Type and send message to draw cards
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('draw 3 cards')
+    await input.pressSequentially('draw 3 cards', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait for card picker to appear (cards are rendered as buttons)
@@ -34,7 +36,7 @@ test.describe('multi-turn tool calling', () => {
   test('should complete tool flow when card is picked', async ({ page }) => {
     // Send message to draw cards
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('draw 3 cards')
+    await input.pressSequentially('draw 3 cards', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait for card picker
@@ -52,7 +54,7 @@ test.describe('multi-turn tool calling', () => {
   test('should call tool again on second request', async ({ page }) => {
     // First turn: draw cards
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('draw 3 cards')
+    await input.pressSequentially('draw 3 cards', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait for card picker and pick a card
@@ -70,7 +72,7 @@ test.describe('multi-turn tool calling', () => {
     await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 15000 })
 
     // Second turn: ask for more cards
-    await input.fill('draw 2 more cards')
+    await input.pressSequentially('draw 2 more cards', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait for NEW card picker to appear (second set of cards)
@@ -104,7 +106,7 @@ test.describe('multi-turn tool calling', () => {
 
     // First turn: draw cards
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('draw 3 cards please')
+    await input.pressSequentially('draw 3 cards please', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait for card picker
@@ -124,7 +126,7 @@ test.describe('multi-turn tool calling', () => {
     await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 15000 })
 
     // Second turn
-    await input.fill('draw 2 more cards')
+    await input.pressSequentially('draw 2 more cards', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Wait a moment for request to be sent

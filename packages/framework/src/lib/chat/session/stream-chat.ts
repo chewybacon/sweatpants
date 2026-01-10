@@ -104,6 +104,7 @@ export function* streamChatOnce(
       body: JSON.stringify({
         messages,
         enabledTools: options.enabledTools,
+        enabledPlugins: options.enabledPlugins,
         systemPrompt: options.systemPrompt,
         persona: options.persona,
         personaConfig: options.personaConfig,
@@ -304,9 +305,23 @@ export function* streamChatOnce(
   // After stream ends, check if we have plugin elicit requests
   // These take priority as they need immediate user interaction
   if (pluginElicitRequests.length > 0) {
+    // Build conversation state - CRITICAL: must include the assistant message with tool_calls
+    // so the next request can resume the tool call properly
+    const state = conversationState ?? {
+      messages: [],
+      assistantContent: assistantText,
+      toolCalls: toolCalls.map(tc => ({
+        id: tc.id,
+        name: tc.name,
+        arguments: tc.arguments as Record<string, unknown>,
+      })),
+      serverToolResults: [],
+    }
+    
     return {
       type: 'plugin_elicit',
       pendingElicitations: pluginElicitRequests,
+      conversationState: state,
     }
   }
 
