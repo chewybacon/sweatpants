@@ -17,9 +17,11 @@ test.setTimeout(180000)
 
 test.describe('Markdown rendering persistence', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/basic/')
+    await page.goto('/chat/basic/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    // Click input to ensure React is hydrated
+    await page.getByPlaceholder('Type a message...').click()
   })
 
   /**
@@ -41,7 +43,7 @@ test.describe('Markdown rendering persistence', () => {
    */
   async function sendMessageAndWait(page: import('@playwright/test').Page, message: string) {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill(message)
+    await input.pressSequentially(message, { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for streaming to start
@@ -226,7 +228,7 @@ test.describe('Markdown rendering persistence', () => {
     
     // === MESSAGE 1: Quantum Computing ===
     console.log('--- Sending message 1: quantum computing ---')
-    await input.fill('Tell me about quantum computing')
+    await input.pressSequentially('Tell me about quantum computing', { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for streaming to start and complete
@@ -245,7 +247,7 @@ test.describe('Markdown rendering persistence', () => {
     
     // === MESSAGE 2: Planets Table ===
     console.log('--- Sending message 2: planets table ---')
-    await input.fill('Write out the planets in a markdown table')
+    await input.pressSequentially('Write out the planets in a markdown table', { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible({ timeout: 30000 })
@@ -270,7 +272,7 @@ test.describe('Markdown rendering persistence', () => {
     
     // === MESSAGE 3: Mermaid Diagram ===
     console.log('--- Sending message 3: mermaid diagram ---')
-    await input.fill('Show me rock paper scissors in a mermaid diagram')
+    await input.pressSequentially('Show me rock paper scissors in a mermaid diagram', { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible({ timeout: 30000 })

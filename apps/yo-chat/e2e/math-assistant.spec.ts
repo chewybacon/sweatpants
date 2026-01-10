@@ -17,12 +17,12 @@ test.setTimeout(180000)
 
 test.describe('Math Assistant', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/math/')
+    await page.goto('/chat/math/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 15000 })
     
-    // Wait for React hydration to complete
-    await page.waitForTimeout(500)
+    // Click input to ensure React hydration is complete
+    await page.getByPlaceholder('Type a math problem...').click()
   })
 
   /**
@@ -39,9 +39,9 @@ test.describe('Math Assistant', () => {
   async function sendMessageAndWait(page: import('@playwright/test').Page, message: string) {
     const input = page.getByPlaceholder('Type a math problem...')
     
-    // Focus and fill the input
+    // Focus and type the input using pressSequentially for reliable React state updates
     await input.click()
-    await input.fill(message)
+    await input.pressSequentially(message, { delay: 5 })
     
     // Verify input has value
     await expect(input).toHaveValue(message, { timeout: 2000 })
@@ -305,7 +305,7 @@ test.describe('Math Assistant', () => {
 
   test('shows streaming indicator while processing', async ({ page }) => {
     const input = page.getByPlaceholder('Type a math problem...')
-    await input.fill('What is the meaning of life in mathematical terms?')
+    await input.pressSequentially('What is the meaning of life in mathematical terms?', { delay: 5 })
     
     // Wait for button to be enabled (React state update)
     const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
@@ -327,7 +327,7 @@ test.describe('Math Assistant', () => {
 
   test('can abort streaming response', async ({ page }) => {
     const input = page.getByPlaceholder('Type a math problem...')
-    await input.fill('Explain all the prime numbers up to 1000')
+    await input.pressSequentially('Explain all the prime numbers up to 1000', { delay: 5 })
     
     // Wait for button to be enabled (React state update)
     const solveButton = page.getByRole('button', { name: 'Solve', exact: true })

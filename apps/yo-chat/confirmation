@@ -1,0 +1,114 @@
+
+Running 3 tests using 3 workers
+
+[1A[2K[1/3] [chromium] › e2e/book-flight-full.spec.ts:15:1 › book_flight full flow: flight → seat → confirmation
+[1A[2K[2/3] [chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test
+[1A[2K[3/3] [chromium] › e2e/book-flight.spec.ts:140:3 › book_flight Plugin Tool › full booking flow: flight selection -> seat selection -> confirmation
+[1A[2K[chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test
+--- Sending message 1: quantum computing ---
+
+[1A[2K[chromium] › e2e/book-flight.spec.ts:140:3 › book_flight Plugin Tool › full booking flow: flight selection -> seat selection -> confirmation
+Step 1: Waiting for FlightList...
+
+[1A[2K[chromium] › e2e/book-flight-full.spec.ts:15:1 › book_flight full flow: flight → seat → confirmation
+Step 1: Waiting for FlightList...
+
+[1A[2K[chromium] › e2e/book-flight.spec.ts:140:3 › book_flight Plugin Tool › full booking flow: flight selection -> seat selection -> confirmation
+FlightList appeared!
+
+[1A[2KStep 2: Selecting a flight...
+
+[1A[2KStep 3: Waiting for SeatPicker...
+
+[1A[2KSeatPicker appeared!
+
+[1A[2KStep 4: Selecting a seat...
+
+[1A[2KStep 4b: Confirming seat selection...
+
+[1A[2KSeat confirmed!
+
+[1A[2KStep 5: Waiting for confirmation...
+
+[1A[2K[chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test
+Message 1: rendered markdown verified
+
+[1A[2K--- Sending message 2: planets table ---
+
+[1A[2K[chromium] › e2e/book-flight-full.spec.ts:15:1 › book_flight full flow: flight → seat → confirmation
+← plugin_elicit_request key=pickFlight
+
+[1A[2K✓ FlightList appeared
+
+[1A[2KStep 2: Selecting flight...
+
+[1A[2K→ pluginElicitResponses: [{"sessionId":"call_h4i0188c","callId":"call_h4i0188c","elicitId":"call_h4i0188c:elicit:2","result":{"action":"accept","content":{"flightId":"FL001"}}}]
+
+[1A[2KStep 3: Waiting for SeatPicker...
+
+[1A[2K← plugin_elicit_request key=pickSeat
+
+[1A[2K✓ SeatPicker appeared
+
+[1A[2KStep 4: Selecting seat...
+
+[1A[2KStep 4b: Confirming seat...
+
+[1A[2K→ pluginElicitResponses: [{"sessionId":"call_h4i0188c","callId":"call_h4i0188c","elicitId":"call_h4i0188c:elicit:4","result":{"action":"accept","content":{"row":1,"seat":"C"}}}]
+
+[1A[2KStep 5: Waiting for confirmation...
+
+[1A[2K[chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test
+Message 1 after message 2: still rendered
+
+[1A[2KMessage 2: rendered markdown verified
+
+[1A[2K--- Sending message 3: mermaid diagram ---
+
+[1A[2K[chromium] › e2e/book-flight.spec.ts:140:3 › book_flight Plugin Tool › full booking flow: flight selection -> seat selection -> confirmation
+Booking confirmed!
+
+[1A[2K[chromium] › e2e/book-flight-full.spec.ts:15:1 › book_flight full flow: flight → seat → confirmation
+Ticket number not directly visible, checking for confirmation...
+
+[1A[2K  1) [chromium] › e2e/book-flight-full.spec.ts:15:1 › book_flight full flow: flight → seat → confirmation 
+
+    Error: expect.not.toBeVisible: Target page, context or browser has been closed
+
+      103 |
+      104 |     // Wait for streaming to complete
+    > 105 |     await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+          |                                                      ^
+      106 |
+      107 |     // Check for confirmation indicators in the response
+      108 |     const pageText = await page.locator('body').textContent()
+        at /Users/rrauh/lecode/glg/code/srv/repos/tanstack/sweatpants/apps/yo-chat/e2e/book-flight-full.spec.ts:105:54
+
+
+[1A[2K[chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test
+Message 1 after message 3: still rendered
+
+[1A[2KMessage 2 after message 3: still rendered
+
+[1A[2KMessage 3: rendered markdown verified
+
+[1A[2K  2) [chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test 
+
+    Error: locator.count: Target page, context or browser has been closed
+
+      303 |     await expect(msg3.locator('svg').first()).toBeVisible({ timeout: 10000 }).catch(() => {})
+      304 |     
+    > 305 |     const hasMermaidSvg = await msg3.locator('svg').count() > 0
+          |                                                     ^
+      306 |     console.log(`Message 3 has mermaid SVG: ${hasMermaidSvg}`)
+      307 |     
+      308 |     // This should pass once the bug is fixed
+        at /Users/rrauh/lecode/glg/code/srv/repos/tanstack/sweatpants/apps/yo-chat/e2e/markdown-persistence.spec.ts:305:53
+
+
+[1A[2K  2 failed
+    [chromium] › e2e/book-flight-full.spec.ts:15:1 › book_flight full flow: flight → seat → confirmation 
+    [chromium] › e2e/markdown-persistence.spec.ts:217:3 › Markdown rendering persistence › Full three-message flow in single test 
+  1 passed (1.7m)
+
+[36m  Serving HTML report at http://localhost:9323. Press Ctrl+C to quit.[39m

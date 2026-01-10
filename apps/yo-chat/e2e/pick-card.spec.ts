@@ -31,33 +31,41 @@ test.describe('chat page basics', () => {
     const sendButton = page.getByRole('button', { name: 'Send' })
     await expect(sendButton).toBeDisabled()
 
-    // Type text
+    // Type text using pressSequentially to trigger React onChange properly
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Hello')
+    await input.click()
+    await input.pressSequentially('Hello', { delay: 50 })
 
-    // Button should now be enabled
-    await expect(sendButton).toBeEnabled()
+    // Button should now be enabled (wait for React state update)
+    await expect(sendButton).toBeEnabled({ timeout: 5000 })
 
     // Clear text
-    await input.fill('')
+    await input.clear()
 
     // Button should be disabled again
     await expect(sendButton).toBeDisabled()
   })
 
   test('quick action buttons populate input', async ({ page }) => {
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
 
-    // Click a quick action button
-    await page.getByRole('button', { name: '"Pick a card"' }).click()
-
-    // Input should be populated
+    // Wait for React hydration by verifying input is interactive
     const input = page.getByPlaceholder('Type a message...')
-    await expect(input).toHaveValue('Pick a card for me')
+    await input.click()
+    
+    // Click a quick action button with retry logic
+    const quickActionBtn = page.getByRole('button', { name: '"Pick a card"' })
+    await expect(quickActionBtn).toBeVisible()
+    
+    // Retry clicking until it works (handles hydration timing)
+    await expect(async () => {
+      await quickActionBtn.click()
+      await expect(input).toHaveValue('Pick a card for me', { timeout: 1000 })
+    }).toPass({ timeout: 10000 })
 
     // Send button should be enabled
-    await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 5000 })
   })
 })
 

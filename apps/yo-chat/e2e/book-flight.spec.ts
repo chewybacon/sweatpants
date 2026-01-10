@@ -30,9 +30,11 @@ test.setTimeout(120000) // 2 minutes per test max
 
 test.describe('book_flight Plugin Tool', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/flight/')
+    await page.goto('/chat/flight/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Flight Booking' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    // Click input to ensure React is hydrated
+    await page.getByPlaceholder('Type a message...').click()
   })
 
   // =============================================================================
@@ -40,17 +42,17 @@ test.describe('book_flight Plugin Tool', () => {
   // =============================================================================
 
   test('input allows typing flight booking request', async ({ page }) => {
-    // Type a flight booking request
+    // Type a flight booking request using pressSequentially for React compatibility
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Book a flight from NYC to Los Angeles')
+    await input.pressSequentially('Book a flight from NYC to Los Angeles', { delay: 10 })
 
     // Send button should be enabled
-    await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 5000 })
   })
 
   test('LLM calls book_flight tool and FlightList appears', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Use the book_flight tool to book a flight from New York to Los Angeles')
+    await input.pressSequentially('Use the book_flight tool to book a flight from New York to Los Angeles', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -99,7 +101,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('user can select a flight from FlightList', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('I want to book a flight from NYC to LA using the book_flight tool')
+    await input.pressSequentially('I want to book a flight from NYC to LA using the book_flight tool', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -136,7 +138,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('full booking flow: flight selection -> seat selection -> confirmation', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Book a flight from New York to Los Angeles using book_flight')
+    await input.pressSequentially('Book a flight from New York to Los Angeles using book_flight', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -240,7 +242,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('FlightList shows airplane icons', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Use book_flight to find flights from Boston to Miami')
+    await input.pressSequentially('Use book_flight to find flights from Boston to Miami', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -262,7 +264,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('FlightList shows flight details (airline, times, duration, price)', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Book a flight from Chicago to Seattle with book_flight')
+    await input.pressSequentially('Book a flight from Chicago to Seattle with book_flight', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -293,7 +295,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('SeatPicker shows airplane-shaped grid with available/taken seats', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('I need to book a flight NYC to LA, use book_flight tool')
+    await input.pressSequentially('I need to book a flight NYC to LA, use book_flight tool', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -332,7 +334,7 @@ test.describe('book_flight Plugin Tool', () => {
   test('handles multi-turn conversation after booking', async ({ page }) => {
     // First, complete a booking (abbreviated flow for speed)
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Quick: book flight NYC to LA with book_flight')
+    await input.pressSequentially('Quick: book flight NYC to LA with book_flight', { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
 
     // Try to complete the booking flow
@@ -358,7 +360,7 @@ test.describe('book_flight Plugin Tool', () => {
       console.log('Testing multi-turn after booking...')
 
       // Clear input and ask a follow-up question
-      await input.fill('What was my flight number?')
+      await input.pressSequentially('What was my flight number?', { delay: 5 })
       await page.getByRole('button', { name: 'Send' }).click()
 
       // Wait for response

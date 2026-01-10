@@ -89,6 +89,8 @@ export interface StreamPluginElicitResult {
   type: 'plugin_elicit'
   /** Pending elicitation requests from plugin tools */
   pendingElicitations: PluginElicitRequestStreamEvent[]
+  /** Conversation state for re-initiation (includes assistant message with tool_calls) */
+  conversationState: ConversationState
 }
 
 // =============================================================================

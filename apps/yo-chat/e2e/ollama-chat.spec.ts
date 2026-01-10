@@ -26,15 +26,17 @@ test.describe('Ollama chat integration', () => {
       }
     })
     
-    await page.goto('/chat/basic/')
+    await page.goto('/chat/basic/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    // Click input to ensure React is hydrated
+    await page.getByPlaceholder('Type a message...').click()
   })
 
   test('can send a simple message and receive a response', async ({ page }) => {
     // Type a simple message
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Say exactly: Hello World')
+    await input.pressSequentially('Say exactly: Hello World', { delay: 10 })
     
     // Send the message
     await page.getByRole('button', { name: 'Send' }).click()
@@ -55,7 +57,7 @@ test.describe('Ollama chat integration', () => {
   test('can abort a streaming response', async ({ page }) => {
     // Type a message that will generate a long response
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Count from 1 to 1000 slowly, one number per line')
+    await input.pressSequentially('Count from 1 to 1000 slowly, one number per line', { delay: 5 })
     
     // Send the message
     await page.getByRole('button', { name: 'Send' }).click()
@@ -79,7 +81,7 @@ test.describe('Ollama chat integration', () => {
   test('renders markdown in responses', async ({ page }) => {
     // Ask for a code example
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Write this exact Python code in a code block: print("hello")')
+    await input.pressSequentially('Write this exact Python code in a code block: print("hello")', { delay: 5 })
     
     // Send the message
     await page.getByRole('button', { name: 'Send' }).click()
@@ -99,7 +101,7 @@ test.describe('Ollama chat integration', () => {
     // completed, causing the content to revert to raw markdown.
     
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Write a Python hello world in a code block')
+    await input.pressSequentially('Write a Python hello world in a code block', { delay: 5 })
     
     // Send and wait for streaming to start
     await page.getByRole('button', { name: 'Send' }).click()
@@ -144,7 +146,7 @@ test.describe('Ollama chat integration', () => {
     const input = page.getByPlaceholder('Type a message...')
     
     // First message: ask for a code block
-    await input.fill('Write a Python hello world in a code block')
+    await input.pressSequentially('Write a Python hello world in a code block', { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for first response to complete
@@ -160,7 +162,7 @@ test.describe('Ollama chat integration', () => {
     // Don't clear - keep accumulating
     
     // Second message: ask for something with markdown
-    await input.fill('List the planets in a markdown bullet list')
+    await input.pressSequentially('List the planets in a markdown bullet list', { delay: 5 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for second response to complete
@@ -192,7 +194,7 @@ test.describe('Ollama chat integration', () => {
   test('can reset the conversation', async ({ page }) => {
     // Send a message
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Say hi')
+    await input.pressSequentially('Say hi', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for response
@@ -214,13 +216,14 @@ test.describe('Ollama tool calling', () => {
   // These tests verify the full flow when tools are working.
   
   test('LLM can call the calculator tool', async ({ page }) => {
-    await page.goto('/chat/math/')
+    await page.goto('/chat/math/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
     // Ask a math question that should trigger the calculator tool
     const input = page.getByPlaceholder('Type a math problem...')
-    await input.fill('Use the calculator tool to compute 42 * 17. What is the result?')
+    await input.click() // Ensure hydration
+    await input.pressSequentially('Use the calculator tool to compute 42 * 17. What is the result?', { delay: 5 })
     
     // Send the message
     await page.getByRole('button', { name: 'Solve', exact: true }).click()
@@ -239,13 +242,14 @@ test.describe('Ollama tool calling', () => {
   })
 
   test('LLM can call the pick_card tool and user can interact', async ({ page }) => {
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
     // Ask to pick a card - this should trigger the pick_card isomorphic tool
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Use the pick_card tool with count=3 to let me pick a card')
+    await input.click() // Ensure hydration
+    await input.pressSequentially('Use the pick_card tool with count=3 to let me pick a card', { delay: 5 })
     
     // Send the message
     await page.getByRole('button', { name: 'Send' }).click()
@@ -283,7 +287,7 @@ test.describe('Ollama tool calling', () => {
   })
 
   test('pick_card tool: LLM response reflects the card user picked', async ({ page }) => {
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
@@ -303,7 +307,8 @@ test.describe('Ollama tool calling', () => {
      */
     
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Use pick_card with count=3. After I pick, tell me which card I chose.')
+    await input.click() // Ensure hydration
+    await input.pressSequentially('Use pick_card with count=3. After I pick, tell me which card I chose.', { delay: 5 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     
@@ -366,7 +371,7 @@ test.describe('Ollama tool calling', () => {
   })
 
   test('pick_card tool: CardPicker appears inline in chat timeline', async ({ page }) => {
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
@@ -385,7 +390,8 @@ test.describe('Ollama tool calling', () => {
      */
     
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Use pick_card with count=3')
+    await input.click() // Ensure hydration
+    await input.pressSequentially('Use pick_card with count=3', { delay: 10 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     

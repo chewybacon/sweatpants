@@ -23,14 +23,16 @@ test.setTimeout(180000)
 
 test.describe('Durable Chat - Feature Parity', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/basic/')
+    await page.goto('/chat/basic/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    // Click input to ensure React is hydrated
+    await page.getByPlaceholder('Type a message...').click()
   })
 
   test('can send a simple message and receive a response', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Say exactly: Hello World')
+    await input.pressSequentially('Say exactly: Hello World', { delay: 10 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     
@@ -62,18 +64,20 @@ test.describe('Durable Chat - Feature Parity', () => {
 
   test('can abort a streaming response', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Count from 1 to 1000 slowly, one number per line')
+    // Use a longer prompt that takes more time to stream
+    await input.pressSequentially('Write a very long essay about the history of computing, covering at least 20 major milestones', { delay: 5 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for streaming to start
     await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
     
-    // Wait for some content to stream
-    await page.waitForTimeout(3000)
+    // Wait for Stop button to appear (it replaces Send during streaming)
+    const stopButton = page.getByRole('button', { name: 'Stop' })
+    await expect(stopButton).toBeVisible({ timeout: 5000 })
     
     // Abort the response
-    await page.getByRole('button', { name: 'Stop' }).click()
+    await stopButton.click()
     
     // Streaming should stop
     await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 10000 })
@@ -89,7 +93,7 @@ test.describe('Durable Chat - Feature Parity', () => {
   test('renders markdown in responses', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
     // Use a simple prompt that doesn't trigger the duplicate response bug
-    await input.fill('Say "hello **bold** world"')
+    await input.pressSequentially('Say "hello **bold** world"', { delay: 10 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     
@@ -126,7 +130,7 @@ test.describe('Durable Chat - Feature Parity', () => {
   test('rendered markdown persists after streaming completes', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
     // Use a simple prompt that includes markdown but avoids the duplicate response bug
-    await input.fill('Say "testing *italics* and **bold**"')
+    await input.pressSequentially('Say "testing *italics* and **bold**"', { delay: 10 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
@@ -161,7 +165,7 @@ test.describe('Durable Chat - Feature Parity', () => {
     // This test specifically catches the text vs content field mismatch bug
     // where thinking content was coming through as "undefined" repeatedly
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('What is 2+2? Think step by step.')
+    await input.pressSequentially('What is 2+2? Think step by step.', { delay: 10 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     
@@ -191,7 +195,7 @@ test.describe('Durable Chat - Feature Parity', () => {
 
   test('can reset the conversation', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Say hi')
+    await input.pressSequentially('Say hi', { delay: 10 })
     await page.getByRole('button', { name: 'Send' }).click()
     
     // Wait for response
@@ -211,18 +215,20 @@ test.describe('Durable Chat - Feature Parity', () => {
 test.describe('Durable Chat - Tool Calling', () => {
   test('LLM can call the calculator tool', async ({ page }) => {
     // Use math route for calculator tool
-    await page.goto('/chat/math/')
+    await page.goto('/chat/math/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
     const input = page.getByPlaceholder('Type a math problem...')
-    await input.fill('Use the calculator tool to compute 42 * 17. What is the result?')
+    await input.click() // Ensure hydration
+    await input.pressSequentially('Use the calculator tool to compute 42 * 17. What is the result?', { delay: 5 })
     
     await page.getByRole('button', { name: 'Solve', exact: true }).click()
     
-    // Wait for response to complete
-    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 60000 })
-    await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 120000 })
+    // Wait for response to start and complete
+    // Use exact match for streaming indicator (lowercase 'thinking...')
+    await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('thinking...', { exact: true })).not.toBeVisible({ timeout: 120000 })
     
     // Check the response contains either the answer or mentions calculator
     const responseText = await page.locator('.prose').last().textContent()
@@ -232,12 +238,13 @@ test.describe('Durable Chat - Tool Calling', () => {
 
   test('LLM can call the pick_card tool and user can interact', async ({ page }) => {
     // Use cards route for pickCard tool
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
     const input = page.getByPlaceholder('Type a message...')
-    await input.fill('Use the pick_card tool with count=3 to let me pick a card')
+    await input.click() // Ensure hydration
+    await input.pressSequentially('Use the pick_card tool with count=3 to let me pick a card', { delay: 5 })
     
     await page.getByRole('button', { name: 'Send' }).click()
     
@@ -428,7 +435,7 @@ test.describe('Durable Chat - Reconnection', () => {
     
     // Get LSN from middle of stream
     const midIndex = Math.floor(lines1.length / 2)
-    const midEvent = JSON.parse(lines1[midIndex])
+    const midEvent = JSON.parse(lines1[midIndex]!)
     const resumeLsn = midEvent.lsn
     
     console.log(`First request: ${lines1.length} events, resuming from LSN ${resumeLsn}`)
@@ -436,7 +443,7 @@ test.describe('Durable Chat - Reconnection', () => {
     // Second request - reconnect from middle
     const response2 = await request.post('/api/chat', {
       headers: {
-        'X-Session-Id': sessionId,
+        'X-Session-Id': sessionId!,
         'X-Last-LSN': String(resumeLsn),
       },
       data: {
@@ -450,7 +457,7 @@ test.describe('Durable Chat - Reconnection', () => {
     
     // Should get events starting from resumeLsn + 1
     if (lines2.length > 0) {
-      const firstReconnectEvent = JSON.parse(lines2[0])
+      const firstReconnectEvent = JSON.parse(lines2[0]!)
       expect(firstReconnectEvent.lsn).toBeGreaterThan(resumeLsn)
     }
     

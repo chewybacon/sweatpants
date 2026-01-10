@@ -133,7 +133,6 @@ function CardsChatDemo() {
     pipeline: 'markdown',
     // Only pickCard tool - focused demo
     tools: [tools.pickCard],
-    plugins: [],
   })
 
   const [input, setInput] = useState('')
