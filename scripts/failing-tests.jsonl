@@ -1,0 +1,10 @@
+{"file":"apps/yo-chat/e2e/markdown-persistence.spec.ts","grep":"Message 3: mermaid diagram - all three messages have rendered markdown","category":"mermaid","notes":"LLM not outputting valid mermaid code blocks"}
+{"file":"apps/yo-chat/e2e/markdown-persistence.spec.ts","grep":"Full three-message flow in single test","category":"mermaid","notes":"LLM not outputting valid mermaid code blocks"}
+{"file":"apps/yo-chat/e2e/math-assistant.spec.ts","grep":"calculator tool produces math in response","category":"timeout","notes":"LLM streaming >120s"}
+{"file":"apps/yo-chat/e2e/math-assistant.spec.ts","grep":"renders tool-call parts with expandable UI","category":"timing","notes":"Tool call UI not showing Result section"}
+{"file":"apps/yo-chat/e2e/math-assistant.spec.ts","grep":"math rendering persists across multiple messages","category":"timeout","notes":"LLM streaming >120s"}
+{"file":"apps/yo-chat/e2e/math-assistant.spec.ts","grep":"tool calls and text parts render together correctly","category":"flaky","notes":"Passed last run - flaky due to LLM speed"}
+{"file":"apps/yo-chat/e2e/multi-turn-tool-calling.spec.ts","grep":"should call tool again on second request","category":"parallel","notes":"Passes solo, fails with 4 workers - LLM contention"}
+{"file":"apps/yo-chat/e2e/multi-turn-tool-calling.spec.ts","grep":"history should include tool_calls after first turn","category":"parallel","notes":"Passes solo, fails with 4 workers - LLM contention"}
+{"file":"apps/yo-chat/e2e/ollama-chat.spec.ts","grep":"rendered markdown persists after streaming completes","category":"selector","notes":"LLM not outputting code blocks reliably"}
+{"file":"apps/yo-chat/e2e/ollama-chat.spec.ts","grep":"pick_card tool: CardPicker appears inline in chat timeline","category":"timing","notes":"CardPicker or userMessage boundingBox issue"}
