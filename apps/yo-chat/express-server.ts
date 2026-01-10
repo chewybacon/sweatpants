@@ -1,7 +1,6 @@
 import compression from "compression"
 import express, { type Request, type Response, type NextFunction } from 'express'
 import { Readable } from 'node:stream'
-import { runWithRequestEnv } from '@tanstack/start-env/server'
 import morgan from "morgan"
 import path from 'node:path'
 
@@ -133,41 +132,36 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     const publicEnv = getPublicEnv()
     publicEnv['VITE_BASE_URL'] = basePath
 
-    await runWithRequestEnv(
-      { basePath, publicEnvOverride: publicEnv },
-      async () => {
-        const webReq = new Request(url, init as RequestInit)
-        const webRes = await handler.fetch(webReq, {
-          context: {
-            runtimeBase: basePath,
-            publicEnv,
-          },
-        })
-
-        const contentType = webRes.headers.get('content-type') || ''
-
-        if (contentType.includes('text/html')) {
-          const html = await webRes.text()
-          const injected = injectBootstrap(html, publicEnv, basePath)
-
-          res.status(webRes.status)
-          webRes.headers.forEach((value: string, name: string) => res.setHeader(name, value))
-          res.send(injected)
-          return
-        }
-
-        // Non-HTML responses (e.g. server functions): stream body
-        res.status(webRes.status)
-        webRes.headers.forEach((value: string, name: string) => res.setHeader(name, value))
-
-        if (webRes.body) {
-          const nodeStream = Readable.fromWeb(webRes.body as any)
-          nodeStream.pipe(res)
-        } else {
-          res.end()
-        }
+    const webReq = new Request(url, init as RequestInit)
+    const webRes = await handler.fetch(webReq, {
+      context: {
+        runtimeBase: basePath,
+        publicEnv,
       },
-    )
+    })
+
+    const contentType = webRes.headers.get('content-type') || ''
+
+    if (contentType.includes('text/html')) {
+      const html = await webRes.text()
+      const injected = injectBootstrap(html, publicEnv, basePath)
+
+      res.status(webRes.status)
+      webRes.headers.forEach((value: string, name: string) => res.setHeader(name, value))
+      res.send(injected)
+      return
+    }
+
+    // Non-HTML responses (e.g. server functions): stream body
+    res.status(webRes.status)
+    webRes.headers.forEach((value: string, name: string) => res.setHeader(name, value))
+
+    if (webRes.body) {
+      const nodeStream = Readable.fromWeb(webRes.body as any)
+      nodeStream.pipe(res)
+    } else {
+      res.end()
+    }
   } catch (error) {
     next(error)
   }

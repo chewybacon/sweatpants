@@ -165,7 +165,7 @@ export const initialChatState: ChatState = {
 }
 
 // =============================================================================
-// LEGACY TYPE ALIASES (for migration - used by dynobase demos)
+// LEGACY TYPE ALIASES (for migration)
 // =============================================================================
 
 /**
