@@ -30,7 +30,6 @@
     "@tanstack/react-router-ssr-query": "catalog:",
     "@tanstack/react-start": "catalog:",
     "@tanstack/router-plugin": "catalog:",
-    "@tanstack/start-env": "workspace:*",
     "@types/katex": "^0.16.7",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

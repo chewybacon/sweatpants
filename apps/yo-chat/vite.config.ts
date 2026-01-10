@@ -4,7 +4,6 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
-import { runtimeBasePlugin } from '@tanstack/start-env/vite'
 import { frameworkPlugin } from '@sweatpants/framework/vite'
 import { imagetools } from "vite-imagetools";
 import path from 'path'
@@ -18,8 +17,6 @@ const workspacePackages = ['@sweatpants/framework']
 const packagesDir = path.resolve(__dirname, '../../packages')
 
 const config = defineConfig({
-  base: isProd ? '/__BASE__/' : '/',
-
   resolve: isProd ? {} : {
     alias: [
       // Framework package - point to source files in dev
@@ -61,11 +58,6 @@ const config = defineConfig({
         outFile: 'src/__generated__/tool-registry.gen.ts',
         pattern: '**/*.{ts,tsx}',
       },
-    }),
-    // Post-build: transform __BASE__ placeholders to runtime variable lookups
-    runtimeBasePlugin({
-      transform: 'string',
-      logLevel: 'normal',
     }),
   ],
 
