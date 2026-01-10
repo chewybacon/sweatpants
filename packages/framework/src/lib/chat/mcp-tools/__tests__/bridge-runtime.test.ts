@@ -44,13 +44,10 @@ describe('Bridge Runtime', () => {
           return { result: `Processed: ${params.input}` }
         })
 
-      const samplingProvider = createMockSamplingProvider()
-
       const result = await run(function* () {
         const host = createBridgeHost({
           tool,
           params: { input: 'test' },
-          samplingProvider,
         })
 
         return yield* host.run()
@@ -64,7 +61,7 @@ describe('Bridge Runtime', () => {
         .description('Tool with elicitation')
         .parameters(z.object({}))
         .elicits({
-          confirm: z.object({ ok: z.boolean() }),
+          confirm: { response: z.object({ ok: z.boolean() }) },
         })
         .execute(function* (_params, ctx) {
           const result = yield* ctx.elicit('confirm', { message: 'Are you sure?' })
@@ -74,14 +71,12 @@ describe('Bridge Runtime', () => {
           return { confirmed: false }
         })
 
-      const samplingProvider = createMockSamplingProvider()
       const events: BridgeEvent[] = []
 
       const result = await run(function* () {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
         })
 
         // Spawn event handler FIRST
@@ -113,7 +108,8 @@ describe('Bridge Runtime', () => {
       expect(elicitEvent!.type).toBe('elicit')
       if (elicitEvent && elicitEvent.type === 'elicit') {
         expect(elicitEvent.request.key).toBe('confirm')
-        expect(elicitEvent.request.message).toBe('Are you sure?')
+        // Message includes x-elicit-context boundary encoding for context transport
+        expect(elicitEvent.request.message).toContain('Are you sure?')
       }
     })
 
@@ -122,7 +118,7 @@ describe('Bridge Runtime', () => {
         .description('Tool with declined elicitation')
         .parameters(z.object({}))
         .elicits({
-          confirm: z.object({ ok: z.boolean() }),
+          confirm: { response: z.object({ ok: z.boolean() }) },
         })
         .execute(function* (_params, ctx) {
           const result = yield* ctx.elicit('confirm', { message: 'Proceed?' })
@@ -135,13 +131,10 @@ describe('Bridge Runtime', () => {
           }
         })
 
-      const samplingProvider = createMockSamplingProvider()
-
       const result = await run(function* () {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
         })
 
         yield* spawn(function* () {
@@ -168,8 +161,8 @@ describe('Bridge Runtime', () => {
         .description('Tool with multiple elicitations')
         .parameters(z.object({}))
         .elicits({
-          first: z.object({ a: z.string() }),
-          second: z.object({ b: z.number() }),
+          first: { response: z.object({ a: z.string() }) },
+          second: { response: z.object({ b: z.number() }) },
         })
         .execute(function* (_params, ctx) {
           const first = yield* ctx.elicit('first', { message: 'First?' })
@@ -181,14 +174,12 @@ describe('Bridge Runtime', () => {
           return { a: first.content.a, b: second.content.b }
         })
 
-      const samplingProvider = createMockSamplingProvider()
       const elicitKeys: string[] = []
 
       const result = await run(function* () {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
         })
 
         yield* spawn(function* () {
@@ -224,7 +215,7 @@ describe('Bridge Runtime', () => {
         .description('Tool that validates responses')
         .parameters(z.object({}))
         .elicits({
-          pick: z.object({ value: z.number().min(0).max(100) }),
+          pick: { response: z.object({ value: z.number().min(0).max(100) }) },
         })
         .execute(function* (_params, ctx) {
           const result = yield* ctx.elicit('pick', { message: 'Pick a number' })
@@ -232,15 +223,12 @@ describe('Bridge Runtime', () => {
           return { picked: result.content.value }
         })
 
-      const samplingProvider = createMockSamplingProvider()
-
       // Test with invalid value (string instead of number)
       await expect(
         run(function* () {
           const host = createBridgeHost({
             tool,
             params: {},
-            samplingProvider,
           })
 
           yield* spawn(function* () {
@@ -273,14 +261,12 @@ describe('Bridge Runtime', () => {
           return { done: true }
         })
 
-      const samplingProvider = createMockSamplingProvider()
       const events: BridgeEvent[] = []
 
       await run(function* () {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
         })
 
         yield* spawn(function* () {
@@ -335,12 +321,16 @@ describe('Bridge Runtime', () => {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
         })
 
         yield* spawn(function* () {
           for (const event of yield* each(host.events)) {
             events.push(event)
+            // Handle sample events by calling the provider
+            if (event.type === 'sample') {
+              const sampleResult = yield* samplingProvider.sample(event.messages, event.options)
+              event.responseSignal.send({ result: sampleResult })
+            }
             yield* each.next()
           }
         })
@@ -364,7 +354,7 @@ describe('Bridge Runtime', () => {
         .description('Tool with handlers')
         .parameters(z.object({ input: z.string() }))
         .elicits({
-          confirm: z.object({ ok: z.boolean() }),
+          confirm: { response: z.object({ ok: z.boolean() }) },
         })
         .execute(function* (params, ctx) {
           const result = yield* ctx.elicit('confirm', { message: `Confirm ${params.input}?` })
@@ -383,7 +373,8 @@ describe('Bridge Runtime', () => {
           samplingProvider,
           handlers: {
             confirm: function* (req) {
-              expect(req.message).toBe('Confirm test?')
+              // Message includes x-elicit-context boundary encoding for context transport
+              expect(req.message).toContain('Confirm test?')
               return { action: 'accept', content: { ok: true } }
             },
           },
@@ -436,7 +427,7 @@ describe('Bridge Runtime', () => {
         .description('Tool that tries to elicit in branch')
         .parameters(z.object({}))
         .elicits({
-          confirm: z.object({ ok: z.boolean() }),
+          confirm: { response: z.object({ ok: z.boolean() }) },
         })
         .execute(function* (_params, ctx) {
           // Try to elicit inside a sub-branch - should throw
@@ -447,14 +438,11 @@ describe('Bridge Runtime', () => {
           return { result }
         })
 
-      const samplingProvider = createMockSamplingProvider()
-
       await expect(
         run(function* () {
           const host = createBridgeHost({
             tool,
             params: {},
-            samplingProvider,
           })
 
           // Spawn handler (won't be called since we expect an error)
@@ -481,7 +469,7 @@ describe('Bridge Runtime', () => {
         .description('Tool that elicits at root')
         .parameters(z.object({}))
         .elicits({
-          confirm: z.object({ ok: z.boolean() }),
+          confirm: { response: z.object({ ok: z.boolean() }) },
         })
         .execute(function* (_params, ctx) {
           // Elicit at root - should work
@@ -489,13 +477,10 @@ describe('Bridge Runtime', () => {
           return { action: result.action }
         })
 
-      const samplingProvider = createMockSamplingProvider()
-
       const result = await run(function* () {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
         })
 
         yield* spawn(function* () {
@@ -526,7 +511,7 @@ describe('Bridge Runtime', () => {
         .description('Tool with handoff')
         .parameters(z.object({ count: z.number() }))
         .elicits({
-          adjust: z.object({ delta: z.number() }),
+          adjust: { response: z.object({ delta: z.number() }) },
         })
         .handoff({
           *before(params, _ctx) {
@@ -553,13 +538,10 @@ describe('Bridge Runtime', () => {
           },
         })
 
-      const samplingProvider = createMockSamplingProvider()
-
       const result = await run(function* () {
         const host = createBridgeHost({
           tool,
           params: { count: 5 },
-          samplingProvider,
         })
 
         yield* spawn(function* () {
@@ -593,8 +575,8 @@ describe('Bridge Runtime', () => {
         .description('Tool with sequential elicits')
         .parameters(z.object({}))
         .elicits({
-          a: z.object({ val: z.string() }),
-          b: z.object({ val: z.string() }),
+          a: { response: z.object({ val: z.string() }) },
+          b: { response: z.object({ val: z.string() }) },
         })
         .execute(function* (_params, ctx) {
           const first = yield* ctx.elicit('a', { message: 'First' })
@@ -607,14 +589,12 @@ describe('Bridge Runtime', () => {
           }
         })
 
-      const samplingProvider = createMockSamplingProvider()
       const seqNumbers: number[] = []
 
       await run(function* () {
         const host = createBridgeHost({
           tool,
           params: {},
-          samplingProvider,
           callId: 'test-call-123',
         })
 

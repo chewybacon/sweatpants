@@ -65,7 +65,9 @@ import type {
   ElicitRequest,
   ElicitsMap,
   ElicitResult,
+  ExtractElicitResponse,
 } from './mcp-tool-types'
+import type { ElicitDefinition } from '@sweatpants/elicit-context'
 import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
 
 // Re-export renderable types for plugin authors
@@ -144,12 +146,14 @@ export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.Zo
  * and client context, and returns an ElicitResult.
  *
  * @template TKey - The elicitation key name
- * @template TSchema - Zod schema for this elicitation key
+ * @template TDef - ElicitDefinition for this elicitation key
  */
-export type ElicitHandler<TKey extends string, TSchema extends z.ZodType> = (
-  req: ElicitRequest<TKey, TSchema>,
-  ctx: PluginClientContext<ElicitRequest<TKey, TSchema>>
-) => Operation<ElicitResult<z.infer<TSchema>>>
+export type ElicitHandler<TKey extends string, TDef extends ElicitDefinition> = (
+  // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
+  // The actual response type is correctly inferred from the definition
+  req: ElicitRequest<TKey, any>,
+  ctx: PluginClientContext<ElicitRequest<TKey, any>>
+) => Operation<ElicitResult<ExtractElicitResponse<TDef>>>
 
 /**
  * Map of elicitation handlers for all keys in a tool.

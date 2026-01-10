@@ -700,7 +700,7 @@ importers:
 
   packages/framework:
     dependencies:
-      '@tanstack/elicit-context':
+      '@sweatpants/elicit-context':
         specifier: workspace:*
         version: file:packages/elicit-context(zod@4.1.13)
       fast-glob:
@@ -2664,6 +2664,11 @@ packages:
   '@speed-highlight/core@1.2.12':
     resolution: {integrity: sha512-uilwrK0Ygyri5dToHYdZSjcvpS2ZwX0w5aSt3GCEN9hrjxWCoeV4Z2DTXuxjwbntaLQIEEAlCeNQss5SoHvAEA==}
 
+  '@sweatpants/elicit-context@file:packages/elicit-context':
+    resolution: {directory: packages/elicit-context, type: directory}
+    peerDependencies:
+      zod: ^3.0.0
+
   '@sweatpants/framework@file:packages/framework':
     resolution: {directory: packages/framework, type: directory}
     peerDependencies:
@@ -2841,11 +2846,6 @@ packages:
     engines: {node: '>=12'}
     peerDependencies:
       vite: '>=6.0.0 || >=7.0.0'
-
-  '@tanstack/elicit-context@file:packages/elicit-context':
-    resolution: {directory: packages/elicit-context, type: directory}
-    peerDependencies:
-      zod: ^3.0.0
 
   '@tanstack/history@1.140.0':
     resolution: {integrity: sha512-u+/dChlWlT3kYa/RmFP+E7xY5EnzvKEKcvKk+XrgWMpBWExQIh3RQX/eUqhqwCXJPNc4jfm1Coj8umnm/hDgyA==}
@@ -9152,10 +9152,15 @@ snapshots:
 
   '@speed-highlight/core@1.2.12': {}
 
+  '@sweatpants/elicit-context@file:packages/elicit-context(zod@4.1.13)':
+    dependencies:
+      zod: 4.1.13
+
   '@sweatpants/framework@file:packages/framework(@effectionx/context-api@0.2.1)(@effectionx/raf@0.1.1)(effection@4.0.0)(katex@0.16.27)(marked@17.0.1)(mermaid@11.12.2)(react@19.2.1)(shiki@3.20.0)(tailwind-merge@3.4.0)(vite@7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2))(zod@4.1.13)':
     dependencies:
       '@effectionx/context-api': 0.2.1
       '@effectionx/raf': 0.1.1
+      '@sweatpants/elicit-context': file:packages/elicit-context(zod@4.1.13)
       effection: 4.0.0
       fast-glob: 3.3.3
       katex: 0.16.27
@@ -9174,6 +9179,7 @@ snapshots:
     dependencies:
       '@effectionx/context-api': 0.2.1
       '@effectionx/raf': 0.1.1
+      '@sweatpants/elicit-context': file:packages/elicit-context(zod@4.1.13)
       effection: 4.0.0
       fast-glob: 3.3.3
       katex: 0.16.27
@@ -9347,10 +9353,6 @@ snapshots:
       vite: 7.2.7(@types/node@22.19.2)(jiti@2.6.1)(lightningcss@1.30.2)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
     transitivePeerDependencies:
       - supports-color
-
-  '@tanstack/elicit-context@file:packages/elicit-context(zod@4.1.13)':
-    dependencies:
-      zod: 4.1.13
 
   '@tanstack/history@1.140.0': {}
 

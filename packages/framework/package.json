@@ -189,7 +189,7 @@
     }
   },
   "dependencies": {
-    "@tanstack/elicit-context": "workspace:*",
+    "@sweatpants/elicit-context": "workspace:*",
     "fast-glob": "^3.3.2",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0"

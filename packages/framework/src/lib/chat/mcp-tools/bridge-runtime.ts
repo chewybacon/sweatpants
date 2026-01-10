@@ -21,7 +21,7 @@
  */
 import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, call } from 'effection'
 import { z } from 'zod'
-import { encodeElicitContext } from './model-context'
+import { encodeElicitContext } from '@sweatpants/elicit-context'
 import type {
   McpToolContextWithElicits,
   McpToolHandoffConfigWithElicits,
@@ -463,8 +463,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     // User backchannel - KEYED elicitation
     elicit<K extends keyof TElicits & string>(
       key: K,
-      options: { message: string } & Record<string, unknown>
-    ): Operation<ElicitResult<z.infer<TElicits[K]>>> {
+      options: any // Will be properly typed by McpToolContextWithElicits interface
+    ): Operation<any> {
       return {
         *[Symbol.iterator]() {
           // Phase 5: Disallow elicit in sub-branches
@@ -472,11 +472,14 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             throw new BranchElicitNotAllowedError(state.depth)
           }
 
-          // Get the schema for this key
-          const schema = state.elicits[key]
-          if (!schema) {
+          // Get the elicit definition for this key
+          const definition = state.elicits[key]
+          if (!definition) {
             throw new Error(`Unknown elicitation key "${key}" for tool "${state.toolName}"`)
           }
+
+          // Extract response schema from definition
+          const responseSchema = definition.response
 
           // Increment sequence for this call
           const seq = state.elicitSeq++
@@ -489,19 +492,19 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             seq,
           }
 
-          // Extract custom data (everything except 'message')
+          // Extract message and context data
           const { message, ...contextData } = options
-          const hasContext = Object.keys(contextData).length > 0
 
-          // Encode context into schema and message using x-model-context transport
-          const baseSchema = zodToJsonSchema(schema)
-          const encodeOptions = hasContext
-            ? { message, schema: baseSchema, context: contextData }
-            : { message, schema: baseSchema }
-          const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(encodeOptions)
+          // Encode context into schema and message using x-elicit-context transport
+          const baseSchema = zodToJsonSchema(responseSchema as any)
+          const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(
+            message,
+            contextData,
+            baseSchema
+          )
 
           // Build the request
-          const request: ElicitRequest<K, TElicits[K]> = {
+          const request: ElicitRequest<K, any> = {
             id,
             key,
             toolName: state.toolName,
@@ -509,7 +512,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             seq,
             message: encodedMessage,
             schema: {
-              zod: schema,
+              zod: responseSchema,
               json: encodedSchema,
             },
           }
@@ -540,18 +543,18 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             )
           }
 
-          // If accepted, validate content with Zod
+          // If accepted, validate content with Zod (use response schema)
           if (response.result.action === 'accept') {
-            const parseResult = schema.safeParse(response.result.content)
+            const parseResult = responseSchema.safeParse(response.result.content)
             if (!parseResult.success) {
               throw new Error(
                 `Elicit response validation failed for key "${key}": ${parseResult.error.message}`
               )
             }
-            return { action: 'accept', content: parseResult.data } as ElicitResult<z.infer<TElicits[K]>>
+            return { action: 'accept', content: parseResult.data }
           }
 
-          return response.result as ElicitResult<z.infer<TElicits[K]>>
+          return response.result
         },
       }
     },
@@ -809,8 +812,8 @@ export function createBridgeHost<
  */
 export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
   [K in keyof TElicits]: (
-    request: ElicitRequest<K & string, TElicits[K]>
-  ) => Operation<ElicitResult<z.infer<TElicits[K]>>>
+    request: ElicitRequest<K & string, any>
+  ) => Operation<ElicitResult<any>>
 }
 
 /**
@@ -895,7 +898,7 @@ export function runBridgeTool<
               if (!handler) {
                 throw new Error(`No handler for elicitation key "${event.request.key}"`)
               }
-              const result = yield* handler(event.request as ElicitRequest<string, TElicits[keyof TElicits]>)
+              const result = yield* handler(event.request as any)
               event.responseSignal.send({ id: event.request.id, result })
               break
             }

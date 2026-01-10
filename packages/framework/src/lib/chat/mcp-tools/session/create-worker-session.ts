@@ -76,12 +76,15 @@ function adaptToolForWorker<
           key: K,
           options: { message: string }
         ) {
-          // Get schema from tool's elicits definition
-          // ElicitsMap is Record<string, z.ZodType> - elicits ARE the Zod schemas directly
-          const zodSchema = tool.elicits[key]
-          if (!zodSchema) {
+          // Get ElicitDefinition from tool's elicits definition
+          // ElicitsMap is Record<string, ElicitDefinition> - extract the response schema
+          const definition = tool.elicits[key]
+          if (!definition) {
             throw new Error(`Unknown elicit key: ${String(key)}`)
           }
+
+          // Extract response schema from definition
+          const zodSchema = definition.response
 
           // Convert Zod schema to JSON schema (simplified)
           const jsonSchema = zodToJsonSchema(zodSchema)
@@ -110,8 +113,10 @@ function adaptToolForWorker<
 /**
  * Convert Zod schema to JSON Schema for MCP elicitation.
  * Uses Zod's built-in toJSONSchema() method.
+ * 
+ * Note: Uses `any` for schema type to handle Zod v3/v4 compatibility.
  */
-function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
+function zodToJsonSchema(schema: any): Record<string, unknown> {
   return z.toJSONSchema(schema) as Record<string, unknown>
 }
 

@@ -86,6 +86,26 @@ function generateTicketNumber(): string {
 }
 
 // =============================================================================
+// SCHEMAS
+// =============================================================================
+
+const FlightSchema = z.object({
+  id: z.string(),
+  airline: z.string(),
+  flightNumber: z.string(),
+  departure: z.string(),
+  arrival: z.string(),
+  duration: z.string(),
+  price: z.number(),
+})
+
+const SeatMapSchema = z.object({
+  rows: z.number(),
+  seatsPerRow: z.array(z.string()),
+  taken: z.array(z.string()),
+})
+
+// =============================================================================
 // TOOL DEFINITION
 // =============================================================================
 
@@ -98,13 +118,27 @@ export const bookFlightTool = createMcpTool('book_flight')
     })
   )
   .elicits({
-    pickFlight: z.object({
-      flightId: z.string().describe('Selected flight ID'),
-    }),
-    pickSeat: z.object({
-      row: z.number().describe('Selected row number'),
-      seat: z.string().describe('Selected seat letter (A-F)'),
-    }),
+    pickFlight: {
+      response: z.object({
+        flightId: z.string().describe('Selected flight ID'),
+      }),
+      context: z.object({
+        flights: z.array(FlightSchema),
+      }),
+    },
+    pickSeat: {
+      response: z.object({
+        row: z.number().describe('Selected row number'),
+        seat: z.string().describe('Selected seat letter (A-F)'),
+      }),
+      context: z.object({
+        seatMap: SeatMapSchema,
+        flightInfo: z.object({
+          airline: z.string(),
+          flightNumber: z.string(),
+        }).optional(),
+      }),
+    },
   })
   .execute(function*(params, ctx) {
     // 1. Search for flights
