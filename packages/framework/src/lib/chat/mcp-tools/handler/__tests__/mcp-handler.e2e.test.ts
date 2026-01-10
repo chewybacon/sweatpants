@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { createMcpTool } from '../../mcp-tool-builder'
 import { createInMemoryToolSessionStore } from '../../session/in-memory-store'
 import { createToolSessionRegistry } from '../../session/session-registry'
-import { createMcpHandler } from '../mcp-handler'
+import { createMcpHandler, generateMcpManifest } from '../mcp-handler'
 import type { ToolSessionSamplingProvider, SampleResult } from '../../session/types'
 import type { FinalizedMcpToolWithElicits } from '../../mcp-tool-builder'
 import type { ElicitsMap } from '../../mcp-tool-types'
@@ -457,5 +457,311 @@ describe('MCP HTTP Handler - Session Headers', () => {
     const sessionId = response.headers.get('Mcp-Session-Id')
     expect(sessionId).toBeDefined()
     expect(sessionId).toMatch(/^session_/)
+  })
+})
+
+// =============================================================================
+// TOOLS/LIST WITH x-sweatpants EXTENSION TESTS
+// =============================================================================
+
+/**
+ * Create a tools/list JSON-RPC request.
+ */
+function createToolsListRequest(): Request {
+  const body = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list',
+    params: {},
+  }
+
+  return new Request('http://localhost/mcp', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+}
+
+describe('MCP HTTP Handler - tools/list with x-sweatpants extension', () => {
+  it('should include _meta.x-sweatpants.elicits for tools with elicit definitions', async () => {
+    const samplingProvider = createMockSamplingProvider()
+
+    const { handler } = await run(function* () {
+      const store = createInMemoryToolSessionStore()
+      const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+
+      // Create a tool with elicits
+      const toolWithElicits = createMcpTool('tool_with_elicits')
+        .description('A tool with elicitation')
+        .parameters(z.object({ query: z.string() }))
+        .elicits({
+          confirmChoice: {
+            response: z.object({ choice: z.string() }),
+            context: z.object({ options: z.array(z.string()) }),
+          },
+        })
+        .execute(function* (_params, ctx) {
+          const result = yield* ctx.elicit('confirmChoice', {
+            message: 'Choose one',
+            options: ['a', 'b', 'c'],
+          })
+          return { selected: result.action === 'accept' }
+        })
+
+      const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+      tools.set('tool_with_elicits', toolWithElicits as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>)
+
+      return createMcpHandler({ registry, tools })
+    })
+
+    const request = createToolsListRequest()
+    const response = await handler(request)
+
+    expect(response.status).toBe(200)
+
+    const body = await response.json() as { result: { tools: Array<{ name: string; _meta?: { 'x-sweatpants'?: { elicits?: Record<string, unknown> } } }> } }
+    expect(body.result.tools).toHaveLength(1)
+
+    const tool = body.result.tools[0]!
+    expect(tool.name).toBe('tool_with_elicits')
+    expect(tool._meta).toBeDefined()
+    expect(tool._meta?.['x-sweatpants']).toBeDefined()
+    expect(tool._meta?.['x-sweatpants']?.elicits).toBeDefined()
+    expect(tool._meta?.['x-sweatpants']?.elicits?.['confirmChoice']).toBeDefined()
+
+    // Verify the response schema is included
+    const elicit = tool._meta?.['x-sweatpants']?.elicits?.['confirmChoice'] as { response?: Record<string, unknown>; context?: Record<string, unknown> } | undefined
+    expect(elicit?.response).toBeDefined()
+    expect(elicit?.response?.['type']).toBe('object')
+
+    // Verify the context schema is included
+    expect(elicit?.context).toBeDefined()
+    expect(elicit?.context?.['type']).toBe('object')
+  })
+
+  it('should include _meta.x-sweatpants.requires for tools with capability requirements', async () => {
+    const samplingProvider = createMockSamplingProvider()
+
+    const { handler } = await run(function* () {
+      const store = createInMemoryToolSessionStore()
+      const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+
+      // Create a tool with requires
+      const toolWithRequires = createMcpTool('tool_with_requires')
+        .description('A tool that requires elicitation')
+        .parameters(z.object({}))
+        .requires({ elicitation: true })
+        .elicits({
+          confirm: {
+            response: z.object({ ok: z.boolean() }),
+          },
+        })
+        .execute(function* (_params, ctx) {
+          const result = yield* ctx.elicit('confirm', { message: 'Confirm?' })
+          return { confirmed: result.action === 'accept' }
+        })
+
+      const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+      tools.set('tool_with_requires', toolWithRequires as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>)
+
+      return createMcpHandler({ registry, tools })
+    })
+
+    const request = createToolsListRequest()
+    const response = await handler(request)
+
+    expect(response.status).toBe(200)
+
+    const body = await response.json() as { result: { tools: Array<{ name: string; _meta?: { 'x-sweatpants'?: { requires?: { elicitation?: boolean } } } }> } }
+    const tool = body.result.tools[0]!
+
+    expect(tool._meta?.['x-sweatpants']?.requires).toBeDefined()
+    expect(tool._meta?.['x-sweatpants']?.requires?.elicitation).toBe(true)
+  })
+
+  it('should NOT include _meta for tools without elicits or requires', async () => {
+    const samplingProvider = createMockSamplingProvider()
+
+    const { handler } = await run(function* () {
+      const store = createInMemoryToolSessionStore()
+      const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+
+      // Create a simple tool without elicits
+      const simpleTool = createMcpTool('no_elicits_tool')
+        .description('A simple tool')
+        .parameters(z.object({ name: z.string() }))
+        .elicits({})
+        .execute(function* (params) {
+          return { greeting: `Hello, ${params.name}!` }
+        })
+
+      const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+      tools.set('no_elicits_tool', simpleTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>)
+
+      return createMcpHandler({ registry, tools })
+    })
+
+    const request = createToolsListRequest()
+    const response = await handler(request)
+
+    expect(response.status).toBe(200)
+
+    const body = await response.json() as { result: { tools: Array<{ name: string; _meta?: unknown }> } }
+    const tool = body.result.tools[0]!
+
+    // No _meta should be present for tools without elicits or requires
+    expect(tool._meta).toBeUndefined()
+  })
+
+  it('should serialize multiple elicit keys correctly', async () => {
+    const samplingProvider = createMockSamplingProvider()
+
+    const { handler } = await run(function* () {
+      const store = createInMemoryToolSessionStore()
+      const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+
+      // Create a tool with multiple elicit keys
+      const multiElicitTool = createMcpTool('multi_elicit_tool')
+        .description('A tool with multiple elicitation points')
+        .parameters(z.object({}))
+        .elicits({
+          selectFlight: {
+            response: z.object({ flightId: z.string() }),
+            context: z.object({ flights: z.array(z.object({ id: z.string(), price: z.number() })) }),
+          },
+          selectSeat: {
+            response: z.object({ seatNumber: z.string() }),
+            context: z.object({ availableSeats: z.array(z.string()) }),
+          },
+          confirmBooking: {
+            response: z.object({ confirmed: z.boolean() }),
+          },
+        })
+        .execute(function* (_params, ctx) {
+          yield* ctx.elicit('selectFlight', { message: 'Pick flight', flights: [] })
+          yield* ctx.elicit('selectSeat', { message: 'Pick seat', availableSeats: [] })
+          yield* ctx.elicit('confirmBooking', { message: 'Confirm?' })
+          return { booked: true }
+        })
+
+      const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+      tools.set('multi_elicit_tool', multiElicitTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>)
+
+      return createMcpHandler({ registry, tools })
+    })
+
+    const request = createToolsListRequest()
+    const response = await handler(request)
+
+    expect(response.status).toBe(200)
+
+    const body = await response.json() as { result: { tools: Array<{ name: string; _meta?: { 'x-sweatpants'?: { elicits?: Record<string, unknown> } } }> } }
+    const tool = body.result.tools[0]!
+
+    const elicits = tool._meta?.['x-sweatpants']?.elicits
+    expect(elicits).toBeDefined()
+    expect(Object.keys(elicits!)).toEqual(['selectFlight', 'selectSeat', 'confirmBooking'])
+
+    // selectFlight has both response and context
+    const selectFlight = elicits?.['selectFlight'] as { response?: unknown; context?: unknown } | undefined
+    expect(selectFlight?.response).toBeDefined()
+    expect(selectFlight?.context).toBeDefined()
+
+    // confirmBooking has only response (no context)
+    const confirmBooking = elicits?.['confirmBooking'] as { response?: unknown; context?: unknown } | undefined
+    expect(confirmBooking?.response).toBeDefined()
+    expect(confirmBooking?.context).toBeUndefined()
+  })
+})
+
+// =============================================================================
+// generateMcpManifest TESTS
+// =============================================================================
+
+describe('generateMcpManifest', () => {
+  it('should generate a valid manifest with server info', () => {
+    const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+    
+    const manifest = generateMcpManifest(tools, {
+      name: 'Test Server',
+      version: '2.0.0',
+      description: 'A test server',
+      endpoint: '/api/mcp',
+    })
+
+    expect(manifest.version).toBe('1.0')
+    expect(manifest.server.name).toBe('Test Server')
+    expect(manifest.server.version).toBe('2.0.0')
+    expect(manifest.server.description).toBe('A test server')
+    expect(manifest.mcp.endpoint).toBe('/api/mcp')
+    expect(manifest.mcp.protocolVersion).toBe('2024-11-05')
+    expect(manifest.tools).toEqual([])
+  })
+
+  it('should use defaults when options not provided', () => {
+    const tools = new Map()
+    const manifest = generateMcpManifest(tools)
+
+    expect(manifest.server.name).toBe('mcp-server')
+    expect(manifest.server.version).toBe('1.0.0')
+    expect(manifest.server.description).toBeUndefined()
+    expect(manifest.mcp.endpoint).toBe('/mcp')
+  })
+
+  it('should include tools with x-sweatpants extension', () => {
+    const toolWithElicits = createMcpTool('test_tool')
+      .description('A test tool')
+      .parameters(z.object({ name: z.string() }))
+      .elicits({
+        confirm: {
+          response: z.object({ ok: z.boolean() }),
+          context: z.object({ message: z.string() }),
+        },
+      })
+      .execute(function* (_params, ctx) {
+        yield* ctx.elicit('confirm', { message: 'Confirm?' })
+        return { done: true }
+      })
+
+    const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+    tools.set('test_tool', toolWithElicits as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>)
+
+    const manifest = generateMcpManifest(tools, { name: 'Test' })
+
+    expect(manifest.tools).toHaveLength(1)
+    expect(manifest.tools[0]!.name).toBe('test_tool')
+    expect(manifest.tools[0]!.description).toBe('A test tool')
+    expect(manifest.tools[0]!.inputSchema).toBeDefined()
+    expect(manifest.tools[0]!._meta?.['x-sweatpants']?.elicits?.['confirm']).toBeDefined()
+    
+    const elicit = manifest.tools[0]!._meta?.['x-sweatpants']?.elicits?.['confirm']
+    expect(elicit?.response).toBeDefined()
+    expect(elicit?.context).toBeDefined()
+  })
+
+  it('should include requires in manifest', () => {
+    const toolWithRequires = createMcpTool('requiring_tool')
+      .description('Requires elicitation')
+      .parameters(z.object({}))
+      .requires({ elicitation: true, sampling: true })
+      .elicits({
+        ask: { response: z.object({ answer: z.string() }) },
+      })
+      .execute(function* (_params, ctx) {
+        yield* ctx.elicit('ask', { message: 'Question?' })
+        return {}
+      })
+
+    const tools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+    tools.set('requiring_tool', toolWithRequires as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>)
+
+    const manifest = generateMcpManifest(tools)
+
+    const requires = manifest.tools[0]!._meta?.['x-sweatpants']?.requires
+    expect(requires).toBeDefined()
+    expect(requires?.elicitation).toBe(true)
+    expect(requires?.sampling).toBe(true)
   })
 })

@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "server": {
+    "name": "Travel Agent",
+    "version": "1.0.0",
+    "description": "Book flights and hotels"
+  },
+  "mcp": {
+    "endpoint": "/mcp",
+    "protocolVersion": "2024-11-05"
+  },
+  "tools": [
+    {
+      "name": "book_flight",
+      "description": "Book a flight between two cities",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": { "type": "string", "description": "Departure city" },
+          "destination": { "type": "string", "description": "Arrival city" },
+          "date": { "type": "string", "description": "Travel date" }
+        },
+        "required": ["from", "destination"]
+      },
+      "_meta": {
+        "x-sweatpants": {
+          "elicits": {
+            "pickFlight": {
+              "response": {
+                "type": "object",
+                "properties": {
+                  "flightId": { "type": "string" }
+                },
+                "required": ["flightId"]
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "flights": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "string" },
+                        "airline": { "type": "string" },
+                        "price": { "type": "number" },
+                        "departureTime": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "pickSeat": {
+              "response": {
+                "type": "object",
+                "properties": {
+                  "seatNumber": { "type": "string" }
+                },
+                "required": ["seatNumber"]
+              },
+              "context": {
+                "type": "object",
+                "properties": {
+                  "availableSeats": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "seatMap": {
+                    "type": "object",
+                    "properties": {
+                      "rows": { "type": "number" },
+                      "seatsPerRow": { "type": "number" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "requires": {
+            "elicitation": true
+          }
+        }
+      }
+    },
+    {
+      "name": "get_weather",
+      "description": "Get weather for a city",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "city": { "type": "string" }
+        },
+        "required": ["city"]
+      }
+    }
+  ]
+}

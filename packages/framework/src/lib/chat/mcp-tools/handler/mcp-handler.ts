@@ -134,15 +134,64 @@ function createInitializeResponse(
 }
 
 /**
+ * Serialize an ElicitsMap to JSON Schema format for the _meta extension.
+ * 
+ * Converts Zod schemas in the elicits map to JSON Schema format:
+ * { [key]: { response: JsonSchema, context?: JsonSchema } }
+ */
+function serializeElicitsMap(
+  elicits: Record<string, { response?: z.ZodType; context?: z.ZodType }> | undefined
+): Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }> | undefined {
+  if (!elicits || Object.keys(elicits).length === 0) {
+    return undefined
+  }
+
+  const result: Record<string, { response: Record<string, unknown>; context?: Record<string, unknown> }> = {}
+
+  for (const [key, def] of Object.entries(elicits)) {
+    if (!def.response) continue
+
+    try {
+      const responseSchema = z.toJSONSchema(def.response) as Record<string, unknown>
+      const entry: { response: Record<string, unknown>; context?: Record<string, unknown> } = {
+        response: responseSchema,
+      }
+
+      if (def.context) {
+        try {
+          entry.context = z.toJSONSchema(def.context) as Record<string, unknown>
+        } catch {
+          // Skip context if conversion fails
+        }
+      }
+
+      result[key] = entry
+    } catch {
+      // Skip this elicit key if response conversion fails
+    }
+  }
+
+  return Object.keys(result).length > 0 ? result : undefined
+}
+
+/**
  * Create a tools/list response.
+ * 
+ * Includes x-sweatpants extension in _meta for tools with elicits definitions,
+ * enabling clients to introspect elicitation schemas for type generation.
  */
 function createToolsListResponse(
   request: McpToolsListRequest,
   tools: Map<string, unknown>
 ): Record<string, unknown> {
   const toolList = Array.from(tools.entries()).map(([name, tool]) => {
-    // Extract tool metadata - tools have name, description, and parameters (Zod schema)
-    const t = tool as { description?: string; parameters?: z.ZodType }
+    // Extract tool metadata - tools have name, description, parameters, elicits, and requires
+    const t = tool as { 
+      description?: string
+      parameters?: z.ZodType
+      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>
+      requires?: { elicitation?: boolean; sampling?: boolean }
+    }
     
     // Convert Zod schema to JSON Schema
     let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
@@ -153,12 +202,33 @@ function createToolsListResponse(
         // Fallback if conversion fails
       }
     }
-    
-    return {
+
+    // Build the base tool definition
+    const toolDef: Record<string, unknown> = {
       name,
       description: t.description ?? '',
       inputSchema,
     }
+
+    // Add x-sweatpants extension in _meta if tool has elicits or requires
+    const elicitsSchema = serializeElicitsMap(t.elicits)
+    if (elicitsSchema || t.requires) {
+      const xSweatpants: Record<string, unknown> = {}
+      
+      if (elicitsSchema) {
+        xSweatpants['elicits'] = elicitsSchema
+      }
+      
+      if (t.requires) {
+        xSweatpants['requires'] = t.requires
+      }
+
+      toolDef['_meta'] = {
+        'x-sweatpants': xSweatpants,
+      }
+    }
+    
+    return toolDef
   })
 
   return {
@@ -617,6 +687,190 @@ function createSseResponse(
     status: 200,
     headers,
   })
+}
+
+// =============================================================================
+// MCP MANIFEST GENERATION
+// =============================================================================
+
+/**
+ * MCP Manifest format for /.well-known/mcp.json
+ * 
+ * Follows RFC 8615 well-known URIs pattern for service discovery.
+ */
+export interface McpManifest {
+  /** Schema version for the manifest */
+  version: '1.0'
+  
+  /** Server metadata */
+  server: {
+    name: string
+    version: string
+    description?: string
+  }
+  
+  /** MCP endpoint configuration */
+  mcp: {
+    /** URL path to the MCP endpoint (relative to manifest location) */
+    endpoint: string
+    /** Supported MCP protocol version */
+    protocolVersion: string
+  }
+  
+  /** Tool definitions with x-sweatpants extensions */
+  tools: Array<{
+    name: string
+    description: string
+    inputSchema: Record<string, unknown>
+    _meta?: {
+      'x-sweatpants'?: {
+        elicits?: Record<string, {
+          response: Record<string, unknown>
+          context?: Record<string, unknown>
+        }>
+        requires?: {
+          elicitation?: boolean
+          sampling?: boolean
+        }
+      }
+    }
+  }>
+}
+
+/**
+ * Options for generating an MCP manifest.
+ */
+export interface GenerateMcpManifestOptions {
+  /** Server name */
+  name?: string
+  /** Server version */
+  version?: string
+  /** Server description */
+  description?: string
+  /** MCP endpoint path (default: '/mcp') */
+  endpoint?: string
+}
+
+/**
+ * Generate an MCP manifest for /.well-known/mcp.json
+ * 
+ * This enables service discovery and introspection of MCP tools,
+ * including x-sweatpants extensions for elicit schemas.
+ * 
+ * @example
+ * ```typescript
+ * import { generateMcpManifest } from '@sweatpants/framework'
+ * 
+ * const tools = new Map([['book_flight', bookFlightTool]])
+ * 
+ * const manifest = generateMcpManifest(tools, {
+ *   name: 'Travel Agent',
+ *   version: '1.0.0',
+ *   description: 'Book flights and hotels',
+ * })
+ * 
+ * // Mount at /.well-known/mcp.json
+ * app.get('/.well-known/mcp.json', () => Response.json(manifest))
+ * ```
+ */
+export function generateMcpManifest(
+  tools: Map<string, unknown>,
+  options: GenerateMcpManifestOptions = {}
+): McpManifest {
+  const {
+    name = 'mcp-server',
+    version = '1.0.0',
+    description,
+    endpoint = '/mcp',
+  } = options
+
+  // Build tool list using the same logic as createToolsListResponse
+  const toolList = Array.from(tools.entries()).map(([toolName, tool]) => {
+    const t = tool as { 
+      description?: string
+      parameters?: z.ZodType
+      elicits?: Record<string, { response?: z.ZodType; context?: z.ZodType }>
+      requires?: { elicitation?: boolean; sampling?: boolean }
+    }
+    
+    // Convert Zod schema to JSON Schema
+    let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
+    if (t.parameters) {
+      try {
+        inputSchema = z.toJSONSchema(t.parameters) as Record<string, unknown>
+      } catch {
+        // Fallback if conversion fails
+      }
+    }
+
+    // Build the base tool definition
+    const toolDef: {
+      name: string
+      description: string
+      inputSchema: Record<string, unknown>
+      _meta?: {
+        'x-sweatpants'?: {
+          elicits?: Record<string, {
+            response: Record<string, unknown>
+            context?: Record<string, unknown>
+          }>
+          requires?: {
+            elicitation?: boolean
+            sampling?: boolean
+          }
+        }
+      }
+    } = {
+      name: toolName,
+      description: t.description ?? '',
+      inputSchema,
+    }
+
+    // Add x-sweatpants extension in _meta if tool has elicits or requires
+    const elicitsSchema = serializeElicitsMap(t.elicits)
+    if (elicitsSchema || t.requires) {
+      const xSweatpants: {
+        elicits?: Record<string, {
+          response: Record<string, unknown>
+          context?: Record<string, unknown>
+        }>
+        requires?: {
+          elicitation?: boolean
+          sampling?: boolean
+        }
+      } = {}
+      
+      if (elicitsSchema) {
+        xSweatpants.elicits = elicitsSchema
+      }
+      
+      if (t.requires) {
+        xSweatpants.requires = t.requires
+      }
+
+      toolDef._meta = {
+        'x-sweatpants': xSweatpants,
+      }
+    }
+    
+    return toolDef
+  })
+
+  const manifest: McpManifest = {
+    version: '1.0',
+    server: {
+      name,
+      version,
+      ...(description && { description }),
+    },
+    mcp: {
+      endpoint,
+      protocolVersion: '2024-11-05',
+    },
+    tools: toolList,
+  }
+
+  return manifest
 }
 
 // =============================================================================
