@@ -1,5 +1,5 @@
 /**
- * /demo/math - Math Assistant Demo
+ * /chat/math - Math Assistant Demo
  *
  * Showcases the parts-based message model with:
  * - Reasoning parts rendered through the pipeline (collapsible)
@@ -15,7 +15,7 @@ import { useChat, type ChatMessage, type MessagePart, type TextPart, type Reason
 import { tools } from '@/__generated__/tool-registry.gen'
 import 'katex/dist/katex.min.css'
 
-export const Route = createFileRoute('/demo/math/')({
+export const Route = createFileRoute('/chat/math/')({
   component: MathAssistantDemo,
 })
 

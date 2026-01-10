@@ -30,8 +30,8 @@ test.setTimeout(120000) // 2 minutes per test max
 
 test.describe('book_flight Plugin Tool', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
+    await page.goto('/chat/flight/')
+    await expect(page.getByRole('heading', { name: 'Flight Booking' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
   })
 
@@ -39,13 +39,10 @@ test.describe('book_flight Plugin Tool', () => {
   // BASIC FLOW TESTS
   // =============================================================================
 
-  test('quick action button populates flight booking input', async ({ page }) => {
-    // Click the "Book flight" quick action button
-    await page.getByRole('button', { name: '"Book flight"' }).click()
-
-    // Input should be populated
+  test('input allows typing flight booking request', async ({ page }) => {
+    // Type a flight booking request
     const input = page.getByPlaceholder('Type a message...')
-    await expect(input).toHaveValue('Book a flight from NYC to Los Angeles')
+    await input.fill('Book a flight from NYC to Los Angeles')
 
     // Send button should be enabled
     await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled()
@@ -188,6 +185,17 @@ test.describe('book_flight Plugin Tool', () => {
     // === STEP 4: Select a seat ===
     console.log('Step 4: Selecting a seat...')
     await seatButton.click()
+
+    // === STEP 4b: Click the confirm button ===
+    console.log('Step 4b: Confirming seat selection...')
+    const confirmSeatButton = page.getByRole('button', { name: /Confirm Seat/i })
+    try {
+      await expect(confirmSeatButton).toBeVisible({ timeout: 5000 })
+      await confirmSeatButton.click()
+      console.log('Seat confirmed!')
+    } catch {
+      console.log('Confirm button not found, seat may have auto-confirmed')
+    }
 
     // === STEP 5: Wait for confirmation ===
     console.log('Step 5: Waiting for confirmation...')

@@ -26,8 +26,8 @@ test.describe('Ollama chat integration', () => {
       }
     })
     
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
+    await page.goto('/chat/basic/')
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
   })
 
@@ -213,23 +213,21 @@ test.describe('Ollama tool calling', () => {
   // Note: Tool calling requires the model to support tools and correct server configuration.
   // These tests verify the full flow when tools are working.
   
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-  })
-
   test('LLM can call the calculator tool', async ({ page }) => {
+    await page.goto('/chat/math/')
+    await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    
     // Ask a math question that should trigger the calculator tool
-    const input = page.getByPlaceholder('Type a message...')
+    const input = page.getByPlaceholder('Type a math problem...')
     await input.fill('Use the calculator tool to compute 42 * 17. What is the result?')
     
     // Send the message
-    await page.getByRole('button', { name: 'Send' }).click()
+    await page.getByRole('button', { name: 'Solve', exact: true }).click()
     
     // Wait for response to complete
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 120000 })
     
     // Check if the response contains either the answer or an error message
     // The LLM may or may not successfully call the tool depending on model/config
@@ -241,6 +239,10 @@ test.describe('Ollama tool calling', () => {
   })
 
   test('LLM can call the pick_card tool and user can interact', async ({ page }) => {
+    await page.goto('/chat/cards/')
+    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    
     // Ask to pick a card - this should trigger the pick_card isomorphic tool
     const input = page.getByPlaceholder('Type a message...')
     await input.fill('Use the pick_card tool with count=3 to let me pick a card')
@@ -281,6 +283,10 @@ test.describe('Ollama tool calling', () => {
   })
 
   test('pick_card tool: LLM response reflects the card user picked', async ({ page }) => {
+    await page.goto('/chat/cards/')
+    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    
     /**
      * This test verifies the complete pick_card flow:
      * 
@@ -360,6 +366,10 @@ test.describe('Ollama tool calling', () => {
   })
 
   test('pick_card tool: CardPicker appears inline in chat timeline', async ({ page }) => {
+    await page.goto('/chat/cards/')
+    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    
     /**
      * This test verifies that the CardPicker component appears in the 
      * correct position in the chat timeline:

@@ -17,8 +17,8 @@ test.setTimeout(180000)
 
 test.describe('Markdown rendering persistence', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
+    await page.goto('/chat/basic/')
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
   })
 
@@ -201,7 +201,10 @@ test.describe('Markdown rendering persistence', () => {
     }
     
     // Third message should have a mermaid diagram rendered as SVG
+    // Mermaid rendering is async, so wait for the SVG to appear
     const thirdMessage = assistantMessages.nth(2)
+    await expect(thirdMessage.locator('svg').first()).toBeVisible({ timeout: 10000 }).catch(() => {})
+    
     const hasMermaidSvg = await thirdMessage.locator('svg').count() > 0
     const hasMermaidImg = await thirdMessage.locator('img[src*="mermaid"]').count() > 0
     
@@ -296,6 +299,9 @@ test.describe('Markdown rendering persistence', () => {
     console.log('Message 3: rendered markdown verified')
     
     // Check for mermaid SVG in message 3
+    // Mermaid rendering is async, so wait for the SVG to appear
+    await expect(msg3.locator('svg').first()).toBeVisible({ timeout: 10000 }).catch(() => {})
+    
     const hasMermaidSvg = await msg3.locator('svg').count() > 0
     console.log(`Message 3 has mermaid SVG: ${hasMermaidSvg}`)
     

@@ -14,7 +14,7 @@ import { test, expect } from '@playwright/test'
 
 test.describe('multi-turn tool calling', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/cards/')
     // Wait for pipeline to be ready
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 15000 })
   })
@@ -83,8 +83,9 @@ test.describe('multi-turn tool calling', () => {
     await expect(newCardPicker).toBeVisible({ timeout: 30000 })
     
     // Verify the second card picker has interactive buttons
+    // Wait longer since the LLM response may still be streaming
     const interactiveButtons = page.locator('button:not([disabled])').filter({ hasText: /[♠♥♦♣]/ })
-    await expect(interactiveButtons.first()).toBeVisible({ timeout: 5000 })
+    await expect(interactiveButtons.first()).toBeVisible({ timeout: 30000 })
   })
 
   test('history should include tool_calls after first turn', async ({ page }) => {

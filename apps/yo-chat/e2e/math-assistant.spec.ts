@@ -17,7 +17,7 @@ test.setTimeout(180000)
 
 test.describe('Math Assistant', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/math/')
+    await page.goto('/chat/math/')
     await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 15000 })
     
@@ -49,7 +49,7 @@ test.describe('Math Assistant', () => {
     // Wait for button to be enabled (React state update)
     // Use exact: true to avoid matching quick action buttons like "Solve 2x + 5 = 15"
     const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
-    await expect(solveButton).toBeEnabled({ timeout: 5000 })
+    await expect(solveButton).toBeEnabled({ timeout: 15000 })
     
     await solveButton.click()
     
@@ -81,7 +81,7 @@ test.describe('Math Assistant', () => {
   test('quick action buttons populate input', async ({ page }) => {
     await page.getByRole('button', { name: '"sqrt(12345) * pi"' }).click()
     const input = page.getByPlaceholder('Type a math problem...')
-    await expect(input).toHaveValue('Calculate sqrt(12345) * pi')
+    await expect(input).toHaveValue('Calculate sqrt(12345) * pi', { timeout: 5000 })
   })
 
   // ===========================================================================
@@ -306,10 +306,14 @@ test.describe('Math Assistant', () => {
   test('shows streaming indicator while processing', async ({ page }) => {
     const input = page.getByPlaceholder('Type a math problem...')
     await input.fill('What is the meaning of life in mathematical terms?')
-    await page.getByRole('button', { name: 'Solve' }).click()
+    
+    // Wait for button to be enabled (React state update)
+    const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
+    await expect(solveButton).toBeEnabled({ timeout: 15000 })
+    await solveButton.click()
     
     // Should show streaming indicator
-    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 30000 })
     
     // Stop button should be visible
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible()
@@ -318,13 +322,17 @@ test.describe('Math Assistant', () => {
     await waitForStreamingComplete(page)
     
     // Streaming indicator should be gone
-    await expect(page.getByText('thinking...')).not.toBeVisible()
+    await expect(page.getByText('thinking...', { exact: true })).not.toBeVisible()
   })
 
   test('can abort streaming response', async ({ page }) => {
     const input = page.getByPlaceholder('Type a math problem...')
     await input.fill('Explain all the prime numbers up to 1000')
-    await page.getByRole('button', { name: 'Solve' }).click()
+    
+    // Wait for button to be enabled (React state update)
+    const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
+    await expect(solveButton).toBeEnabled({ timeout: 15000 })
+    await solveButton.click()
     
     // Wait for streaming to start
     await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible({ timeout: 30000 })

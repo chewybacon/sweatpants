@@ -23,8 +23,8 @@ test.setTimeout(180000)
 
 test.describe('Durable Chat - Feature Parity', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
+    await page.goto('/chat/basic/')
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
   })
 
@@ -209,21 +209,20 @@ test.describe('Durable Chat - Feature Parity', () => {
 })
 
 test.describe('Durable Chat - Tool Calling', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-  })
-
   test('LLM can call the calculator tool', async ({ page }) => {
-    const input = page.getByPlaceholder('Type a message...')
+    // Use math route for calculator tool
+    await page.goto('/chat/math/')
+    await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    
+    const input = page.getByPlaceholder('Type a math problem...')
     await input.fill('Use the calculator tool to compute 42 * 17. What is the result?')
     
-    await page.getByRole('button', { name: 'Send' }).click()
+    await page.getByRole('button', { name: 'Solve', exact: true }).click()
     
     // Wait for response to complete
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 120000 })
     
     // Check the response contains either the answer or mentions calculator
     const responseText = await page.locator('.prose').last().textContent()
@@ -232,6 +231,11 @@ test.describe('Durable Chat - Tool Calling', () => {
   })
 
   test('LLM can call the pick_card tool and user can interact', async ({ page }) => {
+    // Use cards route for pickCard tool
+    await page.goto('/chat/cards/')
+    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    
     const input = page.getByPlaceholder('Type a message...')
     await input.fill('Use the pick_card tool with count=3 to let me pick a card')
     
@@ -332,9 +336,11 @@ test.describe('Durable Chat - Session Features', () => {
       expect(parsed.lsn).toBeGreaterThan(0)
     }
     
-    // First event should be session_info
-    const firstEvent = JSON.parse(lines[0])
-    expect(firstEvent.event.type).toBe('session_info')
+    // First non-debug event should be session_info
+    const sessionInfoEvent = lines
+      .map(line => JSON.parse(line))
+      .find((parsed: { event: { type: string } }) => parsed.event.type !== 'debug_marker')
+    expect(sessionInfoEvent?.event.type).toBe('session_info')
     
     console.log('First 3 events:', lines.slice(0, 3).join('\n'))
   })

@@ -20,7 +20,9 @@ export const confirmTool = createMcpTool('confirm')
     })
   )
   .elicits({
-    confirmation: confirmSchema,
+    confirmation: {
+      response: confirmSchema,
+    },
   })
   .execute(function* (params, ctx) {
     const prefix = params.dangerous ? 'WARNING: ' : ''

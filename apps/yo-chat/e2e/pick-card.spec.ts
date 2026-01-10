@@ -10,21 +10,21 @@ import { test, expect } from '@playwright/test'
 
 test.describe('chat page basics', () => {
   test('loads correctly', async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/cards/')
 
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
-    await expect(page.getByText('Send a message to start chatting')).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
+    await expect(page.getByText('Ask me to pick a card for you!')).toBeVisible()
   })
 
   test('shows pipeline ready indicator', async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/cards/')
 
     // Pipeline should load and show ready state
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
   })
 
   test('send button enables when text is entered', async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/cards/')
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
 
     // Initially button should be disabled (no text)
@@ -46,15 +46,15 @@ test.describe('chat page basics', () => {
   })
 
   test('quick action buttons populate input', async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/cards/')
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
 
     // Click a quick action button
-    await page.getByRole('button', { name: '"quantum computing"' }).click()
+    await page.getByRole('button', { name: '"Pick a card"' }).click()
 
     // Input should be populated
     const input = page.getByPlaceholder('Type a message...')
-    await expect(input).toHaveValue('Tell me about quantum computing')
+    await expect(input).toHaveValue('Pick a card for me')
 
     // Send button should be enabled
     await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled()
@@ -68,10 +68,10 @@ test.describe('pick-card component rendering', () => {
 
   test('pick-card tool exists in registry', async ({ page }) => {
     // This is a sanity check that the tool was discovered
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/cards/')
     
     // The fact that the page loads without errors means the tool registry
     // with pickCard was successfully imported
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
   })
 })
