@@ -54,7 +54,9 @@ export const pickCardTool = createMcpTool('pick_card')
     })
   )
   .elicits({
-    pickCard: pickCardSchema,
+    pickCard: {
+      response: pickCardSchema,
+    },
   })
   .handoff({
     *before(params) {

@@ -12,9 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHelloStreamRouteImport } from './routes/api.hello-stream'
 import { Route as ApiChatRouteImport } from './routes/api.chat'
-import { Route as DemoTicTacToeIndexRouteImport } from './routes/demo/tic-tac-toe/index'
-import { Route as DemoMathIndexRouteImport } from './routes/demo/math/index'
-import { Route as DemoChatIndexRouteImport } from './routes/demo/chat/index'
+import { Route as ChatTictactoeIndexRouteImport } from './routes/chat/tictactoe/index'
+import { Route as ChatMathIndexRouteImport } from './routes/chat/math/index'
+import { Route as ChatFlightIndexRouteImport } from './routes/chat/flight/index'
+import { Route as ChatCardsIndexRouteImport } from './routes/chat/cards/index'
+import { Route as ChatBasicIndexRouteImport } from './routes/chat/basic/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,19 +33,29 @@ const ApiChatRoute = ApiChatRouteImport.update({
   path: '/api/chat',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoTicTacToeIndexRoute = DemoTicTacToeIndexRouteImport.update({
-  id: '/demo/tic-tac-toe/',
-  path: '/demo/tic-tac-toe/',
+const ChatTictactoeIndexRoute = ChatTictactoeIndexRouteImport.update({
+  id: '/chat/tictactoe/',
+  path: '/chat/tictactoe/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoMathIndexRoute = DemoMathIndexRouteImport.update({
-  id: '/demo/math/',
-  path: '/demo/math/',
+const ChatMathIndexRoute = ChatMathIndexRouteImport.update({
+  id: '/chat/math/',
+  path: '/chat/math/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const DemoChatIndexRoute = DemoChatIndexRouteImport.update({
-  id: '/demo/chat/',
-  path: '/demo/chat/',
+const ChatFlightIndexRoute = ChatFlightIndexRouteImport.update({
+  id: '/chat/flight/',
+  path: '/chat/flight/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatCardsIndexRoute = ChatCardsIndexRouteImport.update({
+  id: '/chat/cards/',
+  path: '/chat/cards/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatBasicIndexRoute = ChatBasicIndexRouteImport.update({
+  id: '/chat/basic/',
+  path: '/chat/basic/',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -51,26 +63,32 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
-  '/demo/chat': typeof DemoChatIndexRoute
-  '/demo/math': typeof DemoMathIndexRoute
-  '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
+  '/chat/basic': typeof ChatBasicIndexRoute
+  '/chat/cards': typeof ChatCardsIndexRoute
+  '/chat/flight': typeof ChatFlightIndexRoute
+  '/chat/math': typeof ChatMathIndexRoute
+  '/chat/tictactoe': typeof ChatTictactoeIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
-  '/demo/chat': typeof DemoChatIndexRoute
-  '/demo/math': typeof DemoMathIndexRoute
-  '/demo/tic-tac-toe': typeof DemoTicTacToeIndexRoute
+  '/chat/basic': typeof ChatBasicIndexRoute
+  '/chat/cards': typeof ChatCardsIndexRoute
+  '/chat/flight': typeof ChatFlightIndexRoute
+  '/chat/math': typeof ChatMathIndexRoute
+  '/chat/tictactoe': typeof ChatTictactoeIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
-  '/demo/chat/': typeof DemoChatIndexRoute
-  '/demo/math/': typeof DemoMathIndexRoute
-  '/demo/tic-tac-toe/': typeof DemoTicTacToeIndexRoute
+  '/chat/basic/': typeof ChatBasicIndexRoute
+  '/chat/cards/': typeof ChatCardsIndexRoute
+  '/chat/flight/': typeof ChatFlightIndexRoute
+  '/chat/math/': typeof ChatMathIndexRoute
+  '/chat/tictactoe/': typeof ChatTictactoeIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -78,34 +96,42 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/hello-stream'
-    | '/demo/chat'
-    | '/demo/math'
-    | '/demo/tic-tac-toe'
+    | '/chat/basic'
+    | '/chat/cards'
+    | '/chat/flight'
+    | '/chat/math'
+    | '/chat/tictactoe'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/api/chat'
     | '/api/hello-stream'
-    | '/demo/chat'
-    | '/demo/math'
-    | '/demo/tic-tac-toe'
+    | '/chat/basic'
+    | '/chat/cards'
+    | '/chat/flight'
+    | '/chat/math'
+    | '/chat/tictactoe'
   id:
     | '__root__'
     | '/'
     | '/api/chat'
     | '/api/hello-stream'
-    | '/demo/chat/'
-    | '/demo/math/'
-    | '/demo/tic-tac-toe/'
+    | '/chat/basic/'
+    | '/chat/cards/'
+    | '/chat/flight/'
+    | '/chat/math/'
+    | '/chat/tictactoe/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiHelloStreamRoute: typeof ApiHelloStreamRoute
-  DemoChatIndexRoute: typeof DemoChatIndexRoute
-  DemoMathIndexRoute: typeof DemoMathIndexRoute
-  DemoTicTacToeIndexRoute: typeof DemoTicTacToeIndexRoute
+  ChatBasicIndexRoute: typeof ChatBasicIndexRoute
+  ChatCardsIndexRoute: typeof ChatCardsIndexRoute
+  ChatFlightIndexRoute: typeof ChatFlightIndexRoute
+  ChatMathIndexRoute: typeof ChatMathIndexRoute
+  ChatTictactoeIndexRoute: typeof ChatTictactoeIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -131,25 +157,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/tic-tac-toe/': {
-      id: '/demo/tic-tac-toe/'
-      path: '/demo/tic-tac-toe'
-      fullPath: '/demo/tic-tac-toe'
-      preLoaderRoute: typeof DemoTicTacToeIndexRouteImport
+    '/chat/tictactoe/': {
+      id: '/chat/tictactoe/'
+      path: '/chat/tictactoe'
+      fullPath: '/chat/tictactoe'
+      preLoaderRoute: typeof ChatTictactoeIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/math/': {
-      id: '/demo/math/'
-      path: '/demo/math'
-      fullPath: '/demo/math'
-      preLoaderRoute: typeof DemoMathIndexRouteImport
+    '/chat/math/': {
+      id: '/chat/math/'
+      path: '/chat/math'
+      fullPath: '/chat/math'
+      preLoaderRoute: typeof ChatMathIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/demo/chat/': {
-      id: '/demo/chat/'
-      path: '/demo/chat'
-      fullPath: '/demo/chat'
-      preLoaderRoute: typeof DemoChatIndexRouteImport
+    '/chat/flight/': {
+      id: '/chat/flight/'
+      path: '/chat/flight'
+      fullPath: '/chat/flight'
+      preLoaderRoute: typeof ChatFlightIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/cards/': {
+      id: '/chat/cards/'
+      path: '/chat/cards'
+      fullPath: '/chat/cards'
+      preLoaderRoute: typeof ChatCardsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/basic/': {
+      id: '/chat/basic/'
+      path: '/chat/basic'
+      fullPath: '/chat/basic'
+      preLoaderRoute: typeof ChatBasicIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -159,9 +199,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
   ApiHelloStreamRoute: ApiHelloStreamRoute,
-  DemoChatIndexRoute: DemoChatIndexRoute,
-  DemoMathIndexRoute: DemoMathIndexRoute,
-  DemoTicTacToeIndexRoute: DemoTicTacToeIndexRoute,
+  ChatBasicIndexRoute: ChatBasicIndexRoute,
+  ChatCardsIndexRoute: ChatCardsIndexRoute,
+  ChatFlightIndexRoute: ChatFlightIndexRoute,
+  ChatMathIndexRoute: ChatMathIndexRoute,
+  ChatTictactoeIndexRoute: ChatTictactoeIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

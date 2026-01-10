@@ -52,8 +52,8 @@ test('book_flight full flow: flight → seat → confirmation', async ({ page })
     }
   })
 
-  await page.goto('/demo/chat/')
-  await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible()
+  await page.goto('/chat/flight/')
+  await expect(page.getByRole('heading', { name: 'Flight Booking' })).toBeVisible()
   await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
 
   const input = page.getByPlaceholder('Type a message...')

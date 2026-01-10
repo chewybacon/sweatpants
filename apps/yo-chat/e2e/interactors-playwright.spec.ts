@@ -24,10 +24,10 @@ import { interactor, including } from './lib/with-playwright'
 
 test.describe('Interactor-style Playwright API', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/basic/')
     // Wait for page AND pipeline to be ready (required for React state to work)
     const I = interactor(page)
-    await I.Heading('Pipeline-Based Chat').exists({ timeout: 10000 })
+    await I.Heading('Basic Chat').exists({ timeout: 10000 })
     await I.HTML('Pipeline ready').exists({ timeout: 10000 })
   })
 
@@ -35,7 +35,7 @@ test.describe('Interactor-style Playwright API', () => {
     const I = interactor(page)
     
     // Clean, declarative syntax
-    await I.Heading('Pipeline-Based Chat').exists()
+    await I.Heading('Basic Chat').exists()
     await I.TextField('Type a message...').exists()
     await I.Button('Send').has({ disabled: true }) // No input yet
   })
@@ -54,7 +54,7 @@ test.describe('Interactor-style Playwright API', () => {
     const I = interactor(page)
     
     // Using including() for partial match
-    await I.Heading(including('Pipeline')).exists()
+    await I.Heading(including('Basic')).exists()
     // Note: + is a special regex char, so use plain string here
     await I.HTML('markdown + shiki').exists()
   })
@@ -89,8 +89,8 @@ test.describe('Interactor-style Playwright API', () => {
 // Side-by-side comparison
 test.describe('Side-by-side comparison', () => {
   test('native Playwright style', async ({ page }) => {
-    await page.goto('/demo/chat/')
-    await expect(page.getByRole('heading', { name: 'Pipeline-Based Chat' })).toBeVisible({ timeout: 10000 })
+    await page.goto('/chat/basic/')
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
     
     // Native Playwright - more verbose but explicit
@@ -105,11 +105,11 @@ test.describe('Side-by-side comparison', () => {
   })
 
   test('interactor-style API', async ({ page }) => {
-    await page.goto('/demo/chat/')
+    await page.goto('/chat/basic/')
     const I = interactor(page)
     
     // Interactor-style - cleaner, more declarative
-    await I.Heading('Pipeline-Based Chat').exists({ timeout: 10000 })
+    await I.Heading('Basic Chat').exists({ timeout: 10000 })
     await I.HTML('Pipeline ready').exists({ timeout: 10000 })
     await I.TextField('Type a message...').exists()
     await I.Button('Send').has({ disabled: true })

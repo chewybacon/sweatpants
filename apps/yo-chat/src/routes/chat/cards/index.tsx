@@ -1,36 +1,26 @@
 /**
- * /demo/chat - Pipeline-Based Chat Demo
+ * /chat/cards - Card Picker Demo
  *
- * Demonstrates the new Frame-based pipeline rendering engine:
- * - Immutable Frame snapshots for clean rendering
- * - Progressive enhancement (quick → full)
- * - No content duplication bugs
- * - Tool emissions with ctx.render() pattern - now inline in messages!
- * - MCP Plugin tools with unified emission-based elicitation
- *
- * Uses the high-level useChat hook with pipeline configuration.
+ * Demonstrates the pickCard tool for multi-turn tool calling.
+ * Uses markdown pipeline for rendering.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
 import { tools } from '@/__generated__/tool-registry.gen'
-import { bookFlightPlugin } from '@/tools/book-flight/plugin'
 
-export const Route = createFileRoute('/demo/chat/')({
-  component: PipelineChatDemo,
+export const Route = createFileRoute('/chat/cards/')({
+  component: CardsChatDemo,
 })
 
 /**
  * Renders a tool call part with its inline emissions.
- * Tool calls are now first-class parts in the message structure.
- * Plugin elicitations are handled automatically via the unified emission system.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   const hasEmissions = toolCall.emissions.length > 0
 
   return (
     <div className="my-2">
-      {/* Render emissions inline - includes both isomorphic tool and plugin handler emissions */}
       {toolCall.emissions.map((emission) => {
         const Component = emission.component
         if (!Component) return null
@@ -46,14 +36,12 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
         )
       })}
 
-      {/* Show tool state if no emissions or tool is running */}
       {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
         </div>
       )}
 
-      {/* Show error if any */}
       {toolCall.state === 'error' && toolCall.error && (
         <div className="text-xs text-red-400">
           Error: {toolCall.error}
@@ -65,7 +53,6 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
 
 /**
  * Renders a single message with its parts.
- * Parts are rendered in order in the timeline.
  */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
@@ -73,7 +60,6 @@ function Message({ message }: { message: ChatMessage }) {
   return (
     <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
       <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
-        {/* Role label */}
         <div
           className={`text-xs mb-1 font-bold tracking-wider uppercase ${
             isUser ? 'text-cyan-500' : 'text-purple-500'
@@ -85,7 +71,6 @@ function Message({ message }: { message: ChatMessage }) {
           )}
         </div>
 
-        {/* Message content container */}
         <div
           className={`p-4 rounded-lg ${
             isUser
@@ -93,7 +78,6 @@ function Message({ message }: { message: ChatMessage }) {
               : 'bg-slate-800/50 text-slate-200'
           }`}
         >
-          {/* Render parts in timeline order */}
           {message.parts.map((part) => {
             if (part.type === 'reasoning') {
               return (
@@ -126,7 +110,6 @@ function Message({ message }: { message: ChatMessage }) {
             return null
           })}
 
-          {/* Cursor for streaming messages */}
           {message.isStreaming && (
             <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
           )}
@@ -136,10 +119,7 @@ function Message({ message }: { message: ChatMessage }) {
   )
 }
 
-function PipelineChatDemo() {
-  // High-level useChat hook with pipeline-based configuration
-  // Tool emissions are now inline in messages.toolCalls[].emissions!
-  // Plugin handlers are auto-executed and their emissions appear in the same place.
+function CardsChatDemo() {
   const {
     messages,
     streamingMessage,
@@ -150,21 +130,15 @@ function PipelineChatDemo() {
     reset,
     error,
   } = useChat({
-    // Use the new Frame-based pipeline system
-    // 'full' = markdown + shiki + mermaid
-    pipeline: 'full',
-    // Explicitly pass the tools you want to enable
-    // Only these tools will be available to the LLM
-    tools: [tools.pickCard, tools.calculator],
-    // Register MCP plugin handlers - their ctx.render() emissions
-    // are automatically routed through the unified emission system
-    plugins: [bookFlightPlugin.client],
+    pipeline: 'markdown',
+    // Only pickCard tool - focused demo
+    tools: [tools.pickCard],
+    plugins: [],
   })
 
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auto-scroll to bottom - trigger on messages or streaming parts changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingMessage?.parts.length])
@@ -183,13 +157,12 @@ function PipelineChatDemo() {
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
             <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Pipeline-Based Chat
+              Card Picker
             </h1>
             <p className="text-slate-400 text-sm">
-              Using useChat with pipeline: 'full' (markdown + shiki + mermaid)
+              Multi-turn tool calling with the pickCard tool
             </p>
           </div>
-          {/* Pipeline loading indicator */}
           <div className="text-xs">
             {pipelineReady ? (
               <span className="text-emerald-500">Pipeline ready</span>
@@ -204,49 +177,34 @@ function PipelineChatDemo() {
           {messages.length === 0 && !isStreaming && (
             <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
               <div className="text-4xl opacity-20">~</div>
-              <p>Send a message to start chatting</p>
+              <p>Ask me to pick a card for you!</p>
               <div className="flex gap-2 text-xs flex-wrap justify-center">
                 <button
-                  onClick={() => setInput('Tell me about quantum computing')}
+                  onClick={() => setInput('Pick a card for me')}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
-                  "quantum computing"
+                  "Pick a card"
                 </button>
                 <button
-                  onClick={() => setInput('Write a haiku about code')}
+                  onClick={() => setInput('I want to play a card game')}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
-                  "haiku about code"
-                </button>
-                <button
-                  onClick={() => setInput('Explain how React hooks work')}
-                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
-                >
-                  "React hooks"
-                </button>
-                <button
-                  onClick={() => setInput('Book a flight from NYC to Los Angeles')}
-                  className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
-                >
-                  "Book flight"
+                  "Card game"
                 </button>
               </div>
             </div>
           )}
 
-          {/* Messages with inline tool calls - plugin emissions render automatically */}
           {messages.map((msg) => (
             <Message key={msg.id} message={msg} />
           ))}
 
-          {/* Show streaming info (debug) */}
           {streamingMessage && streamingMessage.parts.length > 0 && (
             <div className="text-xs text-slate-600 mt-2">
-              Streaming: {streamingMessage.parts.length} parts, active: {streamingMessage.activePartId ?? 'none'}
+              Streaming: {streamingMessage.parts.length} parts
             </div>
           )}
 
-          {/* Error display */}
           {error && (
             <div className="p-4 bg-red-950/30 border border-red-900/50 rounded-lg text-red-400 my-4">
               <strong>Error:</strong> {error}
@@ -302,8 +260,8 @@ function PipelineChatDemo() {
           </button>
           <div className="flex items-center gap-4">
             <span>
-              <span className="text-emerald-600">pipeline:</span>
-              {' full'}
+              <span className="text-emerald-600">tool:</span>
+              {' pickCard'}
             </span>
             <span className="text-cyan-400">
               {messages.length} messages

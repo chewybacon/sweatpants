@@ -1,5 +1,5 @@
 /**
- * /demo/tic-tac-toe - Tic-Tac-Toe Game Demo
+ * /chat/tictactoe - Tic-Tac-Toe Game Demo
  *
  * Demonstrates interactive game tools with the model as opponent:
  * - Model plays as X, user plays as O
@@ -12,7 +12,7 @@ import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framew
 import type { Frame } from '@sweatpants/framework/react/chat/pipeline'
 import { tools } from '@/__generated__/tool-registry.gen'
 
-export const Route = createFileRoute('/demo/tic-tac-toe/')({
+export const Route = createFileRoute('/chat/tictactoe/')({
   component: TicTacToeDemo,
 })
 

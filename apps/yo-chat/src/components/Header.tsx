@@ -92,7 +92,7 @@ export default function Header() {
             {groupedExpanded['chat'] && (
               <div className="ml-6 mt-1 space-y-1">
                 <Link
-                  to="/demo/chat"
+                  to="/chat/basic"
                   onClick={() => setIsOpen(false)}
                   className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
                   activeProps={{
@@ -100,10 +100,43 @@ export default function Header() {
                       'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
                   }}
                 >
-                  <span>Pipeline Chat</span>
+                  <span>Basic Chat</span>
                 </Link>
                 <Link
-                  to="/demo/tic-tac-toe"
+                  to="/chat/cards"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                  activeProps={{
+                    className:
+                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
+                  }}
+                >
+                  <span>Card Picker</span>
+                </Link>
+                <Link
+                  to="/chat/flight"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                  activeProps={{
+                    className:
+                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
+                  }}
+                >
+                  <span>Flight Booking</span>
+                </Link>
+                <Link
+                  to="/chat/math"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                  activeProps={{
+                    className:
+                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
+                  }}
+                >
+                  <span>Math Assistant</span>
+                </Link>
+                <Link
+                  to="/chat/tictactoe"
                   onClick={() => setIsOpen(false)}
                   className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
                   activeProps={{
@@ -112,17 +145,6 @@ export default function Header() {
                   }}
                 >
                   <span>Tic-Tac-Toe</span>
-                </Link>
-                <Link
-                  to="/demo/math"
-                  onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
-                  activeProps={{
-                    className:
-                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
-                  }}
-                >
-                  <span>Math</span>
                 </Link>
               </div>
             )}

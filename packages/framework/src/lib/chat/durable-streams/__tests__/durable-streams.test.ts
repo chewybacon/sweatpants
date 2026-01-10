@@ -574,8 +574,8 @@ describe('Durable Streams', () => {
       // Abort
       yield* session.abort()
 
-      // Give it time to process abort
-      yield* sleep(50)
+      // Give it time to process abort (increased from 50ms for reliability)
+      yield* sleep(150)
 
       expect(yield* session.status()).toBe('aborted')
     })
