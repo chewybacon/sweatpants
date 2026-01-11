@@ -183,8 +183,8 @@ describe('useChatSession (black-box)', () => {
     // Black-box assertion: request 2 body included the elicit response
     expect(fetchBodies.length).toBeGreaterThanOrEqual(2)
     const secondBody = fetchBodies[1] as Record<string, unknown>
-    expect(secondBody.pluginElicitResponses).toBeTruthy()
-    expect((secondBody.pluginElicitResponses as unknown[])[0]).toMatchObject({
+    expect(secondBody['pluginElicitResponses']).toBeTruthy()
+    expect((secondBody['pluginElicitResponses'] as unknown[])[0]).toMatchObject({
       sessionId: 'sess-1',
       callId: 'call-1',
       elicitId: 'elicit-1',

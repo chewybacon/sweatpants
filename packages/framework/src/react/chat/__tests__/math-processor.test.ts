@@ -34,7 +34,7 @@ describe('math processor', () => {
       const annotation = block.annotations![0]!
       expect(annotation.type).toBe('math')
       expect(annotation.subtype).toBe('inline')
-      expect(annotation.data?.latex).toBe('x^2 + y^2 = z^2')
+      expect(annotation.data?.['latex']).toBe('x^2 + y^2 = z^2')
     })
 
     it('should detect block math expressions', async () => {
@@ -64,7 +64,7 @@ That was the integral.`
 
       expect(blockAnnotation).toBeDefined()
       expect(blockAnnotation?.type).toBe('math')
-      expect(blockAnnotation?.data?.latex).toContain('\\int_0^1')
+      expect(blockAnnotation?.data?.['latex']).toContain('\\int_0^1')
     })
 
     it('should detect multiple math expressions', async () => {
@@ -79,7 +79,7 @@ That was the integral.`
       const block = frame.blocks[0]!
       expect(block.annotations).toHaveLength(3)
 
-      const latexValues = block.annotations!.map((a) => a.data?.latex)
+      const latexValues = block.annotations!.map((a) => a.data?.['latex'])
       expect(latexValues).toContain('a = 1')
       expect(latexValues).toContain('b = 2')
       expect(latexValues).toContain('a + b = 3')
@@ -103,7 +103,7 @@ That's how you solve it.`
       const blockAnnotations = allAnnotations.filter((a) => a.subtype === 'block')
 
       expect(blockAnnotations.length).toBeGreaterThanOrEqual(1)
-      expect(blockAnnotations[0]?.data?.latex).toContain('\\frac')
+      expect(blockAnnotations[0]?.data?.['latex']).toContain('\\frac')
     })
 
     it('should detect LaTeX paren notation \\(...\\) for inline math', async () => {
@@ -118,7 +118,7 @@ That's how you solve it.`
       const block = frame.blocks[0]!
       expect(block.annotations).toHaveLength(3)
 
-      const latexValues = block.annotations!.map((a) => a.data?.latex)
+      const latexValues = block.annotations!.map((a) => a.data?.['latex'])
       expect(latexValues).toContain('a = 1')
       expect(latexValues).toContain('b = 2')
       expect(latexValues).toContain('a + b = 3')
@@ -176,7 +176,7 @@ Einstein's equation above.`
       // which is technically valid (though weird) - the $ $ at the end should be skipped
       // Actually, let's just test that whitespace-only content is skipped
       const emptyAnnotations = annotations.filter(a => {
-        const latex = (a.data?.latex as string) ?? ''
+        const latex = (a.data?.['latex'] as string) ?? ''
         return !latex.trim()
       })
       expect(emptyAnnotations).toHaveLength(0)
@@ -253,7 +253,7 @@ Einstein's equation above.`
         const block = finalFrame.blocks[0]
 
         expect(block?.annotations?.length).toBeGreaterThan(0)
-        expect(block?.annotations?.[0]?.data?.latex).toBe('x = 42')
+        expect(block?.annotations?.[0]?.data?.['latex']).toBe('x = 42')
       })
     })
   })
