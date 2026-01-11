@@ -11,8 +11,8 @@ import {
   type InferMCPParams,
   type InferMCPHandoff,
   type InferMCPClient,
-} from '../builder'
-import type { ElicitResult } from '../types'
+} from '../builder.ts'
+import type { ElicitResult } from '../types.ts'
 
 describe('MCP Tool Builder Types', () => {
   describe('Simple Execute Tool', () => {

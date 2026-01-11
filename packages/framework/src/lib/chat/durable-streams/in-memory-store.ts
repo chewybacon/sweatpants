@@ -14,7 +14,7 @@ import type {
   TokenBufferStore,
   SessionRegistryStore,
   SessionEntry,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // IN-MEMORY TOKEN BUFFER

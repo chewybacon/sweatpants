@@ -33,7 +33,7 @@ import type {
   McpRole,
   McpToolDefinition,
   McpToolChoice,
-} from './types'
+} from './types.ts'
 import type {
   ToolSessionEvent,
   ProgressEvent,
@@ -43,8 +43,8 @@ import type {
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
-} from '../session/types'
-import type { LogLevel as ToolLogLevel } from '../mcp-tool-types'
+} from '../session/types.ts'
+import type { LogLevel as ToolLogLevel } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // LOG LEVEL MAPPING

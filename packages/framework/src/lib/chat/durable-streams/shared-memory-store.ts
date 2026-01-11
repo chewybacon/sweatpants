@@ -29,8 +29,8 @@ import type {
   SessionRegistryStore,
   SessionEntry,
   SessionStatus,
-} from './types'
-import type { Logger } from '../../logger'
+} from './types.ts'
+import type { Logger } from '../../logger/index.ts'
 
 // Use a simple console-based logger at module level
 // (pino with transport can hang in certain environments like Vite SSR)

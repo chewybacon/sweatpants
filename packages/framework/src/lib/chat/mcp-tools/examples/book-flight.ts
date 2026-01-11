@@ -11,7 +11,7 @@
  * generator-based MCP tool authoring pattern.
  */
 import { z } from 'zod'
-import { createMCPTool } from '../builder'
+import { createMCPTool } from '../builder.ts'
 
 // =============================================================================
 // SCHEMAS

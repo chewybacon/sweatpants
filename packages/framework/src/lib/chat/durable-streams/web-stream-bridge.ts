@@ -13,8 +13,8 @@
  * - The scope is captured from the calling context
  */
 import type { Scope, Subscription } from 'effection'
-import type { TokenBuffer, TokenFrame } from './types'
-import { createPullStream } from './pull-stream'
+import type { TokenBuffer, TokenFrame } from './types.ts'
+import { createPullStream } from './pull-stream.ts'
 
 /**
  * Creates a Web ReadableStream from a TokenBuffer.

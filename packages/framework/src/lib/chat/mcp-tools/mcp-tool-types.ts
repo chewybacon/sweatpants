@@ -150,7 +150,7 @@ export interface ElicitId {
  * extension in the schema and as a boundary-encoded section in the message.
  * Use `getElicitContext(req)` to extract it.
  *
- * @see getElicitContext from './model-context'
+ * @see getElicitContext from './model-context.ts'
  */
 export interface ElicitRequest<
   TKey extends string = string,

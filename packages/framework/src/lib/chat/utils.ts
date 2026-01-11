@@ -1,4 +1,4 @@
-import type { AnyIsomorphicTool } from './isomorphic-tools/types'
+import type { AnyIsomorphicTool } from './isomorphic-tools/types.ts'
 
 /**
  * Validate tool parameters using Zod schema.

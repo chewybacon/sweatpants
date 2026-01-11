@@ -46,29 +46,29 @@ import type {
   ServerAuthorityContext,
   IsomorphicHandoffEvent,
   HandoffConfig,
-} from './types'
-import { HandoffReadyError } from './types'
-import { validateToolParams } from '../utils'
+} from './types.ts'
+import { HandoffReadyError } from './types.ts'
+import { validateToolParams } from '../utils.ts'
 import type {
   ChatPatch,
   AuthorityMode,
-} from './runtime/types'
-import type { ApprovalSignalValue } from './runtime/tool-runtime'
-import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from './contexts'
+} from './runtime/types.ts'
+import type { ApprovalSignalValue } from './runtime/tool-runtime.ts'
+import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from './contexts.ts'
 import {
   createWaitForContext,
   type PendingUIRequest,
-} from './ui-requests'
+} from './ui-requests.ts'
 import {
   createRuntime,
   type PendingEmission,
   type RuntimeConfig,
   COMPONENT_EMISSION_TYPE,
-} from './runtime/emissions'
+} from './runtime/emissions.ts'
 import {
   createBrowserContext,
   type BrowserRenderContext,
-} from './runtime/browser-context'
+} from './runtime/browser-context.ts'
 
 // Re-export AuthorityMode for internal use
 export type { AuthorityMode }

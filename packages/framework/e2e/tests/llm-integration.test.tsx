@@ -16,16 +16,16 @@
  */
 import { render, cleanup } from '@testing-library/react'
 import { beforeAll, afterAll, beforeEach, afterEach, describe, it, expect } from 'vitest'
-import { startTestServer, stopTestServer, useExistingServer } from '../setup/test-server'
-import { e2eConfig } from '../setup/config'
+import { startTestServer, stopTestServer, useExistingServer } from '../setup/test-server.ts'
+import { e2eConfig } from '../setup/config.ts'
 
 // Interactors
-import { ChatSession, Message, setInteractorTimeout } from '../interactors'
+import { ChatSession, Message, setInteractorTimeout } from '../interactors/index.ts'
 
 // Fixtures
-import { ChatDemo } from '../fixtures/ChatDemo'
-import { prompts } from '../fixtures/prompts'
-import { expectContentToMatch, expected } from '../fixtures/expected'
+import { ChatDemo } from '../fixtures/ChatDemo.tsx'
+import { prompts } from '../fixtures/prompts.ts'
+import { expectContentToMatch, expected } from '../fixtures/expected.ts'
 
 // Configure longer timeout for interactors since we're hitting real LLM
 setInteractorTimeout(e2eConfig.llmResponseTimeout)

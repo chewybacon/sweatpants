@@ -12,7 +12,7 @@ import {
   type InferToolParams,
   type InferToolHandoff,
   type InferToolClientOutput,
-} from '../builder'
+} from '../builder.ts'
 
 describe('Isomorphic Tool Builder Types', () => {
   describe('Server Authority with Handoff', () => {

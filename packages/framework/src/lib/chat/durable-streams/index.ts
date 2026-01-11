@@ -62,23 +62,23 @@ export type {
   SessionEntry,
   SessionRegistryStore,
   SessionRegistry,
-} from './types'
+} from './types.ts'
 
 // In-memory implementations
 export {
   createInMemoryBuffer,
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
-} from './in-memory-store'
+} from './in-memory-store.ts'
 
 // Pull stream
-export { createPullStream, writeFromStreamToBuffer } from './pull-stream'
+export { createPullStream, writeFromStreamToBuffer } from './pull-stream.ts'
 
 // Session registry
-export { createSessionRegistry } from './session-registry'
+export { createSessionRegistry } from './session-registry.ts'
 
 // Web stream bridge
-export { createWebStreamFromBuffer } from './web-stream-bridge'
+export { createWebStreamFromBuffer } from './web-stream-bridge.ts'
 
 // =============================================================================
 // IoC/DI - Contexts, Accessors, and Setup Helpers
@@ -89,14 +89,14 @@ export {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,
   SessionRegistryContext,
-} from './contexts'
+} from './contexts.ts'
 
 // Typed accessor operations (recommended for most use)
 export {
   useTokenBufferStore,
   useSessionRegistryStore,
   useSessionRegistry,
-} from './use'
+} from './use.ts'
 
 // Setup helpers (recommended entry point)
 export {
@@ -104,7 +104,7 @@ export {
   setupInMemoryDurableStreams,
   type DurableStreamsConfig,
   type DurableStreamsSetup,
-} from './setup'
+} from './setup.ts'
 
 // Shared memory store (for cross-scope persistence in tests and single-server deployments)
 export {
@@ -115,4 +115,4 @@ export {
   type SharedStorage,
   type SharedBufferState,
   type SharedDurableStreamsConfig,
-} from './shared-memory-store'
+} from './shared-memory-store.ts'

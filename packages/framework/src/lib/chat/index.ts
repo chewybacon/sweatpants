@@ -1,22 +1,22 @@
 // Types
-export * from './types'
+export * from './types.ts'
 
 // Stream utilities
-export * from './ndjson'
-export * from './stream'
-export * from './sse'
+export * from './ndjson.ts'
+export * from './stream.ts'
+export * from './sse.ts'
 
 // Providers - exported from main chat.ts to avoid conflicts
-export { getChatProvider, ollamaProvider, openaiProvider } from './providers'
-export * from './providers/contexts'
+export { getChatProvider, ollamaProvider, openaiProvider } from './providers/index.ts'
+export * from './providers/contexts.ts'
 
-export * from './personas'
+export * from './personas/index.ts'
 
 // Model context utilities (browser-safe subset of mcp-tools)
-export { stripMessageContext, getElicitContext } from './mcp-tools/model-context'
+export { stripMessageContext, getElicitContext } from './mcp-tools/model-context.ts'
 
 // MCP tool builder (browser-safe - only types, no Node.js deps)
-export { createMcpTool } from './mcp-tools/mcp-tool-builder'
+export { createMcpTool } from './mcp-tools/mcp-tool-builder.ts'
 
 // Sample result types for structured output and tool calling
 export type {
@@ -29,7 +29,7 @@ export type {
 } from './mcp-tools/mcp-tool-types'
 
 // Plugin builder (browser-safe)
-export { makePlugin } from './mcp-tools/plugin'
+export { makePlugin } from './mcp-tools/plugin.ts'
 export type {
   McpPlugin,
   PluginBuilder,
@@ -46,7 +46,7 @@ export type {
   RenderableProps,
   UserProps,
   ExtractResponse,
-} from './mcp-tools/plugin'
+} from './mcp-tools/plugin.ts'
 
 // Logger
 export {
@@ -58,5 +58,5 @@ export {
   createNoopLogger,
   LoggerFactoryContext,
   type PinoLoggerOptions,
-} from '../logger'
+} from '../logger/index.ts'
 

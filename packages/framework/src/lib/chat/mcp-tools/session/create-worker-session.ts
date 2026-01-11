@@ -21,13 +21,13 @@ import { z } from 'zod'
 import type {
   ToolSession,
   ToolSessionOptions,
-} from './types'
-import type { ElicitsMap } from '../mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
-import { createInProcessTransportPair } from './worker-thread-transport'
-import { runWorker, createWorkerToolRegistry } from './worker-runner'
-import { createWorkerToolSession } from './worker-tool-session'
-import type { WorkerToolContext } from './worker-types'
+} from './types.ts'
+import type { ElicitsMap } from '../mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import { createInProcessTransportPair } from './worker-thread-transport.ts'
+import { runWorker, createWorkerToolRegistry } from './worker-runner.ts'
+import { createWorkerToolSession } from './worker-tool-session.ts'
+import type { WorkerToolContext } from './worker-types.ts'
 
 // =============================================================================
 // TOOL ADAPTER

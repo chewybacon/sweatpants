@@ -14,12 +14,12 @@
  *
  * When content type switches, the current part is finalized and a new one starts.
  */
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState, StreamingPartsState } from './chat-state'
-import { initialChatState } from './chat-state'
-import type { ChatPatch, ContentPartType } from '../patches'
-import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message'
-import { generatePartId, getRenderedFromFrame } from '../types/chat-message'
-import type { Message } from '../types'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState, StreamingPartsState } from './chat-state.ts'
+import { initialChatState } from './chat-state.ts'
+import type { ChatPatch, ContentPartType } from '../patches/index.ts'
+import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message.ts'
+import { generatePartId, getRenderedFromFrame } from '../types/chat-message.ts'
+import type { Message } from '../types.ts'
 
 // Re-export types for convenience
 export type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState }

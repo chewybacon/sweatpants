@@ -7,7 +7,7 @@
 import { describe, it, expect, expectTypeOf, vi } from 'vitest'
 import { z } from 'zod'
 import { createElement } from 'react'
-import { createIsomorphicTool } from '../builder'
+import { createIsomorphicTool } from '../builder.ts'
 import {
   createHandoffHandler,
   createHandoffRegistry,
@@ -16,8 +16,8 @@ import {
   type ExtractHandoff,
   type ExtractClientOutput,
   type ExtractParams,
-} from '../client-hooks'
-import type { IsomorphicHandoffEvent } from '../types'
+} from '../client-hooks.ts'
+import type { IsomorphicHandoffEvent } from '../types.ts'
 
 // =============================================================================
 // Test Tools

@@ -53,7 +53,7 @@ import type { z } from 'zod'
 import type {
   MCPClientContext,
   MCPHandoffConfig,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS

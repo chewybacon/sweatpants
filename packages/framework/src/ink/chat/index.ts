@@ -44,8 +44,8 @@
 // HOOKS
 // =============================================================================
 
-export { useInkChat } from './useInkChat'
-export type { UseInkChatOptions, UseInkChatReturn } from './useInkChat'
+export { useInkChat } from './useInkChat.ts'
+export type { UseInkChatOptions, UseInkChatReturn } from './useInkChat.ts'
 
 // =============================================================================
 // PROVIDERS
@@ -54,13 +54,13 @@ export type { UseInkChatOptions, UseInkChatReturn } from './useInkChat'
 export {
   InkChatProvider,
   useInkChatConfig,
-} from './InkChatProvider'
+} from './InkChatProvider.tsx'
 export type {
   InkChatConfig,
   ResolvedInkChatConfig,
   InkChatProviderProps,
   CustomFetchFn,
-} from './InkChatProvider'
+} from './InkChatProvider.tsx'
 
 // =============================================================================
 // TYPES
@@ -78,7 +78,7 @@ export type {
   PendingHandoffState,
   ToolEmissionTrackingState,
   PendingHandoff,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // RE-EXPORTS FROM CORE
@@ -91,7 +91,7 @@ export {
   emptyFrame,
   renderFrameToRendered,
   renderFrameToRaw,
-} from '../../react/chat/pipeline'
+} from '../../react/chat/pipeline/index.ts'
 
 export type {
   Pipeline,
@@ -101,4 +101,4 @@ export type {
   BlockType,
   BlockStatus,
   RenderPass,
-} from '../../react/chat/pipeline'
+} from '../../react/chat/pipeline/index.ts'

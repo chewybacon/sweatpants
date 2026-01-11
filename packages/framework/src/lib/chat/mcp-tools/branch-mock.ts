@@ -10,17 +10,17 @@ import type { Operation } from 'effection'
 import type {
   BranchMCPClient,
   RunBranchToolOptions,
-} from './branch-runtime'
-import { runBranchTool } from './branch-runtime'
+} from './branch-runtime.ts'
+import { runBranchTool } from './branch-runtime.ts'
 import type {
   Message,
   SampleResult,
   ElicitConfig,
   ElicitResult,
   LogLevel,
-} from './mcp-tool-types'
-import { McpCapabilityError } from './mcp-tool-types'
-import type { FinalizedMcpTool } from './mcp-tool-builder'
+} from './mcp-tool-types.ts'
+import { McpCapabilityError } from './mcp-tool-types.ts'
+import type { FinalizedMcpTool } from './mcp-tool-builder.ts'
 
 // Legacy type aliases for backward compatibility
 const MCPCapabilityError = McpCapabilityError

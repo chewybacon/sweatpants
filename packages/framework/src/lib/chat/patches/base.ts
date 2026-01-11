@@ -17,9 +17,9 @@
  * - tool_call_start after streaming_text → commits text, starts tool-call
  */
 
-import type { Message } from '../types'
-import type { Capabilities } from '../core-types'
-import type { Frame } from '../../../react/chat/pipeline/types'
+import type { Message } from '../types.ts'
+import type { Capabilities } from '../core-types.ts'
+import type { Frame } from '../../../react/chat/pipeline/types.ts'
 
 // =============================================================================
 // CONTENT PART TYPES
