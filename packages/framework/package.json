@@ -192,7 +192,8 @@
     "@sweatpants/elicit-context": "workspace:*",
     "fast-glob": "^3.3.2",
     "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0"
+    "pino-pretty": "^13.0.0",
+    "zod-to-json-schema": "^3.25.1"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

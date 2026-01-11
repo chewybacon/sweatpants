@@ -18,6 +18,16 @@ export { stripMessageContext, getElicitContext } from './mcp-tools/model-context
 // MCP tool builder (browser-safe - only types, no Node.js deps)
 export { createMcpTool } from './mcp-tools/mcp-tool-builder'
 
+// Sample result types for structured output and tool calling
+export type {
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolCall,
+  SamplingToolDefinition,
+  SamplingToolChoice,
+} from './mcp-tools/mcp-tool-types'
+
 // Plugin builder (browser-safe)
 export { makePlugin } from './mcp-tools/plugin'
 export type {

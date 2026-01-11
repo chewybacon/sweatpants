@@ -31,6 +31,8 @@ import type {
   McpTextContent,
   McpMessage,
   McpRole,
+  McpToolDefinition,
+  McpToolChoice,
 } from './types'
 import type {
   ToolSessionEvent,
@@ -150,6 +152,18 @@ export function encodeSamplingRequest(
       } as McpTextContent,
     }))
 
+  // Build MCP tools from our tool definitions
+  const mcpTools: McpToolDefinition[] | undefined = event.tools?.map(tool => ({
+    name: tool.name,
+    ...(tool.description !== undefined && { description: tool.description }),
+    inputSchema: tool.inputSchema as Record<string, unknown>,
+  }))
+
+  // Build MCP tool choice
+  const mcpToolChoice: McpToolChoice | undefined = event.toolChoice
+    ? { mode: event.toolChoice }
+    : undefined
+
   return {
     jsonrpc: '2.0',
     id: requestId,
@@ -158,6 +172,10 @@ export function encodeSamplingRequest(
       messages: mcpMessages,
       ...(event.systemPrompt !== undefined && { systemPrompt: event.systemPrompt }),
       maxTokens: event.maxTokens ?? 4096,
+      ...(mcpTools !== undefined && mcpTools.length > 0 && { tools: mcpTools }),
+      ...(mcpToolChoice !== undefined && { toolChoice: mcpToolChoice }),
+      // Note: schema is passed through as-is (already converted from Zod to JSON Schema)
+      ...(event.schema !== undefined && { metadata: { responseSchema: event.schema } }),
     },
   }
 }
