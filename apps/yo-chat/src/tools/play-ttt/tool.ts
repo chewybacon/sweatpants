@@ -35,10 +35,24 @@ const LastMoveSchema = z.object({
   player: z.enum(['X', 'O']),
 })
 
+/** Schema for a single move in history */
+const GameMoveSchema = z.object({
+  position: z.number().min(0).max(8),
+  player: z.enum(['X', 'O']),
+  isModel: z.boolean(),
+  boardAfter: BoardSchema,
+  moveNumber: z.number(),
+  strategy: z.enum(['offensive', 'defensive']).optional(),
+  reasoning: z.string().optional(),
+})
+
 /** Schema for L2: Move selection */
 const MoveSchema = z.object({
   cell: z.number().min(0).max(8).describe('Cell position to play (0-8)'),
 })
+
+/** Type for a single move in history */
+type GameMove = z.infer<typeof GameMoveSchema>
 
 // =============================================================================
 // TOOL DEFINITION
@@ -70,11 +84,13 @@ Board positions:
       }),
       context: z.object({
         board: BoardSchema,
+        moveHistory: z.array(GameMoveSchema).describe('History of all moves'),
         lastMove: LastMoveSchema.optional(),
         winningLine: z.array(z.number()).optional(),
         gameOver: z.boolean().optional(),
-        modelSymbol: z.enum(['X', 'O']).optional(),
-        userSymbol: z.enum(['X', 'O']).optional(),
+        resultMessage: z.string().optional(),
+        modelSymbol: z.enum(['X', 'O']),
+        userSymbol: z.enum(['X', 'O']),
       }),
     },
   })
@@ -102,6 +118,7 @@ Board positions:
       let board: Board = [...EMPTY_BOARD]
       let currentPlayer: Player = 'X' // X always goes first
       const MAX_RETRIES = 3
+      const moveHistory: GameMove[] = []
 
       yield* ctx.log('info', `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`)
 
@@ -151,14 +168,24 @@ Analyze the board and choose your strategy.`,
 
           const strategy = strategyResult as SampleResultWithToolCalls
           const chosenStrategy = strategy.toolCalls?.[0]
+          let playedCell: number
+          let strategyName: 'offensive' | 'defensive' | undefined
+          let reasoning: string | undefined
+
           if (!chosenStrategy) {
             yield* ctx.log('warning', `No strategy chosen (toolCalls: ${JSON.stringify(strategy.toolCalls)}), defaulting to first empty cell`)
-            board = applyMove(board, emptyPositions[0]!, modelSymbol)
+            playedCell = emptyPositions[0]!
+            board = applyMove(board, playedCell, modelSymbol)
           } else {
             yield* ctx.log('info', `Strategy: ${chosenStrategy.name}`)
+            strategyName = chosenStrategy.name === 'play_offensive' ? 'offensive' : 'defensive'
+            const args = chosenStrategy.arguments as { reasoning?: string; threat?: string }
+            reasoning = args.reasoning || args.threat
 
             // L2: Move selection using schema with retry loop
             let moveSuccess = false
+            playedCell = emptyPositions[0]! // Default fallback
+            
             for (let attempt = 0; attempt < MAX_RETRIES && !moveSuccess; attempt++) {
               const retryHint = attempt > 0 
                 ? `\n\nYour previous move was invalid. Choose from empty positions: ${emptyPositions.join(', ')}`
@@ -194,9 +221,10 @@ Analyze the board and choose your strategy.`,
 
               const parsed = (moveResult as SampleResultWithParsed<{ cell: number }>).parsed
               if (parsed && emptyPositions.includes(parsed.cell)) {
-                board = applyMove(board, parsed.cell, modelSymbol)
+                playedCell = parsed.cell
+                board = applyMove(board, playedCell, modelSymbol)
                 moveSuccess = true
-                yield* ctx.log('info', `Model plays cell ${parsed.cell}`)
+                yield* ctx.log('info', `Model plays cell ${playedCell}`)
               } else {
                 yield* ctx.log('warning', `Invalid move attempt ${attempt + 1}: ${JSON.stringify(parsed)}`)
               }
@@ -204,28 +232,36 @@ Analyze the board and choose your strategy.`,
 
             // Fallback if all retries failed
             if (!moveSuccess) {
-              const fallbackCell = emptyPositions[0]!
-              board = applyMove(board, fallbackCell, modelSymbol)
-              yield* ctx.log('warning', `Fallback to cell ${fallbackCell}`)
+              board = applyMove(board, playedCell, modelSymbol)
+              yield* ctx.log('warning', `Fallback to cell ${playedCell}`)
             }
           }
+
+          // Add model's move to history
+          moveHistory.push({
+            position: playedCell,
+            player: modelSymbol,
+            isModel: true,
+            boardAfter: [...board],
+            moveNumber: moveHistory.length + 1,
+            strategy: strategyName,
+            reasoning,
+          })
         } else {
           // =================================================================
           // USER'S TURN: Elicitation
           // =================================================================
-          const lastModelMove = board
-            .map((cell, i) => (cell === modelSymbol ? i : null))
-            .filter((i): i is number => i !== null)
-            .pop()
+          const lastMove = moveHistory.length > 0 
+            ? { position: moveHistory[moveHistory.length - 1]!.position, player: moveHistory[moveHistory.length - 1]!.player }
+            : undefined
 
           const result = yield* ctx.elicit('pickMove', {
             message: modelGoesFirst && board.filter(c => c !== null).length === 1
               ? `I'm ${modelSymbol}! I made the first move. Your turn as ${userSymbol}!`
               : `Your turn! You're playing as ${userSymbol}.`,
             board,
-            lastMove: lastModelMove !== undefined 
-              ? { position: lastModelMove, player: modelSymbol }
-              : undefined,
+            moveHistory,
+            lastMove,
             modelSymbol,
             userSymbol,
           })
@@ -241,21 +277,34 @@ Analyze the board and choose your strategy.`,
           const userPosition = result.content.position
           board = applyMove(board, userPosition, userSymbol)
           yield* ctx.log('info', `User plays cell ${userPosition}`)
+
+          // Add user's move to history
+          moveHistory.push({
+            position: userPosition,
+            player: userSymbol,
+            isModel: false,
+            boardAfter: [...board],
+            moveNumber: moveHistory.length + 1,
+          })
         }
 
         // Check for game end
         const { status, winningLine } = checkWinner(board)
         if (status !== 'ongoing') {
+          const resultMessage = status === 'draw'
+            ? "It's a draw! Good game!"
+            : status === 'x_wins'
+              ? modelSymbol === 'X' ? 'I win! Good game!' : 'You win! Well played!'
+              : modelSymbol === 'O' ? 'I win! Good game!' : 'You win! Well played!'
+
           // Show final board to user
           yield* ctx.elicit('pickMove', {
-            message: status === 'draw'
-              ? "It's a draw! Good game!"
-              : status === 'x_wins'
-                ? modelSymbol === 'X' ? 'I win! Good game!' : 'You win! Well played!'
-                : modelSymbol === 'O' ? 'I win! Good game!' : 'You win! Well played!',
+            message: resultMessage,
             board,
+            moveHistory,
             winningLine,
             gameOver: true,
+            resultMessage,
             modelSymbol,
             userSymbol,
           })
