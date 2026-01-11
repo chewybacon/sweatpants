@@ -77,6 +77,14 @@ export type {
   SampleConfigPrompt,
   SampleConfigMessages,
   SampleResult,
+  // Sample result types (for schema/tools)
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  // Sampling tool types
+  SamplingToolDefinition,
+  SamplingToolCall,
+  SamplingToolChoice,
   // Message types
   Message,
   MessageRole,
@@ -282,6 +290,7 @@ export type {
   BridgeHostConfig,
   BridgeEvent,
   BridgeSamplingProvider,
+  BridgeSampleOptions,
   BridgeElicitHandlers,
   ElicitResponse,
 } from './bridge-runtime'

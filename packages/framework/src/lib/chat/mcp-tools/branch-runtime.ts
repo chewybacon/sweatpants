@@ -10,6 +10,7 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 import type {
   McpToolContext,
   McpToolBranchOptions,
@@ -17,7 +18,11 @@ import type {
   McpToolServerContext,
   McpToolLimits,
   Message,
-  SampleResult,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolDefinition,
+  SamplingToolChoice,
   ElicitConfig,
   ElicitResult,
   LogLevel,
@@ -44,6 +49,17 @@ type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResu
 // =============================================================================
 
 /**
+ * Options for MCP sampling requests.
+ */
+export interface BranchSampleOptions {
+  systemPrompt?: string
+  maxTokens?: number
+  tools?: SamplingToolDefinition[]
+  toolChoice?: SamplingToolChoice
+  schema?: Record<string, unknown>
+}
+
+/**
  * Interface for the MCP client that provides sampling/elicitation.
  * This is what the runtime uses to communicate with the actual MCP client.
  */
@@ -54,11 +70,8 @@ export interface BranchMCPClient {
    */
   sample(
     messages: Message[],
-    options?: {
-      systemPrompt?: string
-      maxTokens?: number
-    }
-  ): Operation<SampleResult>
+    options?: BranchSampleOptions
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
 
   /**
    * Request user input.
@@ -183,7 +196,10 @@ function createBranchContext(
     },
 
     // LLM backchannel
-    sample(config: BranchSampleConfig): Operation<SampleResult> {
+    // TODO: Implement schema parsing at response level in Phase 4
+    // Using type assertion because the implementation handles all overload variants,
+    // but TypeScript can't verify this without conditional types at the implementation level.
+    sample: ((config: BranchSampleConfig) => {
       return {
         *[Symbol.iterator]() {
           let messages: Message[]
@@ -200,13 +216,37 @@ function createBranchContext(
           }
 
           // Build options, only including defined values
-          const sampleOptions: { systemPrompt?: string; maxTokens?: number } = {}
+          const sampleOptions: BranchSampleOptions = {}
           const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt
           if (effectiveSystemPrompt !== undefined) {
             sampleOptions.systemPrompt = effectiveSystemPrompt
           }
           if (config.maxTokens !== undefined) {
             sampleOptions.maxTokens = config.maxTokens
+          }
+          
+          // Pass through tools if provided (convert Zod to JSON Schema)
+          if ('tools' in config && config.tools) {
+            sampleOptions.tools = config.tools.map(tool => {
+              const def: SamplingToolDefinition = {
+                name: tool.name,
+                inputSchema: 'safeParse' in tool.inputSchema 
+                  ? zodToJsonSchema(tool.inputSchema as any)
+                  : tool.inputSchema,
+              }
+              if (tool.description !== undefined) {
+                def.description = tool.description
+              }
+              return def
+            })
+          }
+          if ('toolChoice' in config && config.toolChoice) {
+            sampleOptions.toolChoice = config.toolChoice
+          }
+          
+          // Convert schema from Zod to JSON Schema if provided
+          if ('schema' in config && config.schema) {
+            sampleOptions.schema = zodToJsonSchema(config.schema as any)
           }
 
           // Call the MCP client
@@ -233,7 +273,7 @@ function createBranchContext(
           return result
         },
       }
-    },
+    }) as McpToolContext['sample'],
 
     // User backchannel
     elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>> {
