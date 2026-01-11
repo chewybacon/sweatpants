@@ -2,12 +2,12 @@
  * Play TicTacToe Plugin
  *
  * Provides client-side elicitation handlers for the play_ttt tool.
- * Reuses the TicTacToeBoard component from the tictactoe plugin.
+ * Uses the GameChatView component to render the game as a chat-style conversation.
  */
 import { makePlugin, getElicitContext } from '@sweatpants/framework/chat'
 import { playTttTool } from './tool'
-import { TicTacToeBoard } from '../tictactoe/components/TicTacToeBoard'
-import type { Board, LastMove, Player } from '../tictactoe/types'
+import { GameChatView, type GameMove } from './components/GameChatView'
+import type { Board, Player } from '../tictactoe/types'
 
 // =============================================================================
 // CONTEXT TYPES
@@ -15,11 +15,13 @@ import type { Board, LastMove, Player } from '../tictactoe/types'
 
 interface PickMoveContext {
   board: Board
-  lastMove?: LastMove
+  moveHistory: GameMove[]
+  lastMove?: { position: number; player: Player }
   winningLine?: number[]
   gameOver?: boolean
-  modelSymbol?: Player
-  userSymbol?: Player
+  resultMessage?: string
+  modelSymbol: Player
+  userSymbol: Player
   [key: string]: unknown
 }
 
@@ -31,36 +33,43 @@ export const playTttPlugin = makePlugin(playTttTool)
   .onElicit({
     /**
      * Handler for pickMove elicitation.
-     * Renders the TicTacToeBoard component and returns the selected position.
+     * Renders the GameChatView component which shows move history and current board.
      */
     pickMove: function* (req, ctx) {
       // Extract context from x-model-context
       const context = getElicitContext<PickMoveContext>(req)
-      const board = context.board
-      const lastMove = context.lastMove
-      const winningLine = context.winningLine
-      const gameOver = context.gameOver
+      const {
+        board,
+        moveHistory,
+        lastMove,
+        winningLine,
+        gameOver,
+        resultMessage,
+        modelSymbol,
+        userSymbol,
+      } = context
 
-      // Build props, only including optional fields if they exist
-      const baseProps = { board }
+      // Build props for GameChatView
       const props = {
-        ...baseProps,
+        board,
+        moveHistory: moveHistory || [],
+        userSymbol,
+        modelSymbol,
         ...(lastMove !== undefined ? { lastMove } : {}),
         ...(winningLine !== undefined ? { winningLine } : {}),
         ...(gameOver !== undefined ? { gameOver } : {}),
+        ...(resultMessage !== undefined ? { resultMessage } : {}),
       }
 
-      // If game is over, render static board and auto-complete
+      // If game is over, render static view and auto-complete
       if (gameOver) {
-        // Render the board in game-over state
-        yield* ctx.render(TicTacToeBoard, { ...props, gameOver: true })
-        
+        yield* ctx.render(GameChatView, props)
         // Return a dummy response (won't be used since game is over)
         return { action: 'accept' as const, content: { position: -1 } }
       }
 
-      // Render the interactive board and wait for user selection
-      const result = yield* ctx.render(TicTacToeBoard, props)
+      // Render the interactive view and wait for user selection
+      const result = yield* ctx.render(GameChatView, props)
 
       // Return the selection as an accept response
       return { action: 'accept' as const, content: result }
