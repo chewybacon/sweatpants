@@ -20,7 +20,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc -b"
+    "check": "tsc -b"
   },
   "peerDependencies": {
     "zod": "^3.0.0"
