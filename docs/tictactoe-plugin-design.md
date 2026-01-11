@@ -7,9 +7,9 @@ This document describes two approaches to the TicTacToe tool:
 1. **`tictactoe` (multi-turn)** - Original design where LLM calls the tool multiple times
 2. **`play_ttt` (agentic)** - New design where a single tool encapsulates the entire game
 
-The `play_ttt` tool serves as the validation vehicle for the new `ctx.sample()` features:
-- `schema` for structured output
-- `tools` for LLM-driven decision trees
+The `play_ttt` tool serves as the validation vehicle for the new `ctx.sample()` features and the **guaranteed helper methods**:
+- `ctx.sampleTools()` for guaranteed tool calls with retry
+- `ctx.sampleSchema()` for guaranteed parsed schema with retry
 
 ---
 
@@ -19,9 +19,9 @@ The `play_ttt` tool serves as the validation vehicle for the new `ctx.sample()` 
 |--------|--------------------------|----------------------|
 | Tool calls | Multiple (start, move, end) | Single |
 | Game state | Passed back to LLM each turn | Managed internally |
-| Model moves | LLM parameters | `ctx.sample({ schema })` |
+| Model moves | LLM parameters | `ctx.sampleSchema()` |
 | User moves | `ctx.elicit()` | `ctx.elicit()` |
-| Strategy | Implicit in LLM reasoning | Explicit via `ctx.sample({ tools })` |
+| Strategy | Implicit in LLM reasoning | Explicit via `ctx.sampleTools()` |
 | Completion | LLM decides when to call end | Tool returns when game ends |
 
 ---
@@ -49,9 +49,11 @@ apps/yo-chat/src/tools/play-ttt/
 │  client(): Game Loop                                        │
 │    ┌─────────────────────────────────────────────────────┐  │
 │    │  If model's turn:                                   │  │
-│    │    L1: ctx.sample({ tools: [offensive, defensive]}) │  │
-│    │    L2: ctx.sample({ schema: MoveSchema })           │  │
-│    │    Apply move (with retry loop), check win          │  │
+│    │    L1: ctx.sampleTools({ tools: [...] })            │  │
+│    │         → Guaranteed toolCalls[0] exists            │  │
+│    │    L2: ctx.sampleSchema({ schema: MoveSchema })     │  │
+│    │         → Guaranteed parsed.cell exists             │  │
+│    │    Apply move, check win                            │  │
 │    ├─────────────────────────────────────────────────────┤  │
 │    │  If user's turn:                                    │  │
 │    │    ctx.elicit('pickMove', { board })                │  │
@@ -102,12 +104,13 @@ export const playTttTool = createMcpTool('play_ttt')
   })
 ```
 
-### Decision Tree (2 Levels)
+### Decision Tree (2 Levels) - Using Guaranteed Helpers
 
-**Level 1: Strategy** - validates `ctx.sample({ tools })`
+**Level 1: Strategy** - validates `ctx.sampleTools()`
 
 ```typescript
-const strategy = yield* ctx.sample({
+// sampleTools guarantees toolCalls[0] exists
+const strategy = yield* ctx.sampleTools({
   prompt: `You are playing tic-tac-toe as ${modelSymbol}.\n\nBoard:\n${formatBoard(board)}\n\nChoose your strategy.`,
   tools: [
     { 
@@ -121,63 +124,72 @@ const strategy = yield* ctx.sample({
       inputSchema: z.object({ threat: z.string() }),
     },
   ],
-  toolChoice: 'required',
+  retries: 3,  // Will retry up to 3 times if model doesn't call a tool
 })
 
+// Guaranteed to exist - no null check needed!
 const strategyCall = strategy.toolCalls[0]
 ```
 
-**Level 2: Move** - validates `ctx.sample({ schema })`
+**Level 2: Move** - validates `ctx.sampleSchema()`
 
 ```typescript
 const MoveSchema = z.object({ 
   cell: z.number().min(0).max(8).describe('The cell to place your mark (0-8)'),
 })
 
-const move = yield* ctx.sample({
+// sampleSchema guarantees parsed is non-null
+const move = yield* ctx.sampleSchema({
   messages: [
     { role: 'user', content: `Board:\n${formatBoard(board)}\nEmpty cells: ${emptyCells.join(', ')}` },
     { role: 'assistant', tool_calls: [{ id: strategyCall.id, type: 'function', function: { name: strategyCall.name, arguments: strategyCall.arguments } }] },
     { role: 'tool', tool_call_id: strategyCall.id, content: `Strategy: ${strategyCall.name}. Now pick an empty cell.` },
   ],
   schema: MoveSchema,
+  retries: 3,  // Will retry up to 3 times if parsing fails
 })
+
+// Guaranteed to exist - no null check needed!
+const cell = move.parsed.cell
 ```
 
-### Retry Loop for Invalid Moves
+### No More Manual Retry Loops!
+
+The old pattern required manual retry logic:
 
 ```typescript
+// OLD: Manual retry loop (now obsolete)
 const MAX_RETRIES = 3
 
-async function* getModelMove(board: Board, modelSymbol: 'X' | 'O', ctx: McpToolContext) {
-  const emptyCells = board.map((c, i) => c === null ? i : -1).filter(i => i >= 0)
-  
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    // L1: Strategy
-    const strategy = yield* ctx.sample({ /* ... */ })
-    
-    // L2: Move
-    const move = yield* ctx.sample({ 
-      messages: [...],
-      schema: MoveSchema,
-    })
-    
-    if (move.parseError) {
-      // Retry with corrective prompt
-      continue
-    }
-    
-    const cell = move.parsed!.cell
-    if (board[cell] !== null) {
-      // Cell occupied, retry
-      continue
-    }
-    
-    return cell
+for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+  const move = yield* ctx.sample({ schema: MoveSchema, ... })
+  if (move.parseError) {
+    continue  // Retry
   }
-  
-  // All retries failed - pick random empty cell
-  return emptyCells[Math.floor(Math.random() * emptyCells.length)]
+  const cell = move.parsed!.cell
+  if (board[cell] !== null) {
+    continue  // Cell occupied, retry
+  }
+  return cell
+}
+// Fallback...
+```
+
+The new pattern is cleaner:
+
+```typescript
+// NEW: Guaranteed result with automatic retries
+const move = yield* ctx.sampleSchema({
+  prompt: `Pick a cell. Empty cells: ${emptyCells.join(', ')}`,
+  schema: MoveSchema,
+  retries: 3,
+})
+
+// Guaranteed to be valid - just validate it's an empty cell
+const cell = move.parsed.cell
+if (!emptyCells.includes(cell)) {
+  // Fallback for hallucinated positions
+  cell = emptyCells[0]
 }
 ```
 
@@ -278,7 +290,20 @@ The existing `tictactoe` tool remains as-is. It demonstrates the multi-turn MCP 
 
 The new `play_ttt` tool demonstrates the agentic pattern where:
 - Single tool call encapsulates entire workflow
-- Tool internally uses `ctx.sample()` to query LLM for decisions
+- Tool internally uses `ctx.sampleTools()` and `ctx.sampleSchema()` for decisions
 - More suitable for complex workflows that shouldn't require LLM orchestration
 
 Both patterns are valid - choice depends on use case complexity and desired control flow.
+
+---
+
+## MCP Protocol Note
+
+The `play_ttt` tool uses **framework extensions beyond the MCP spec**:
+
+- `ctx.sampleTools()` - uses `tools` and `toolChoice` (not in MCP sampling spec)
+- `ctx.sampleSchema()` - uses `schema` for structured output (not in MCP sampling spec)
+
+These extensions are necessary for the L1/L2 decision tree pattern. The tool will work with our framework runtime but may have limited functionality with standard MCP clients.
+
+See [sampling-tools-design.md](./sampling-tools-design.md#mcp-spec-considerations) for full details on the protocol divergence.

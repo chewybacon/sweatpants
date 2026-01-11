@@ -1,10 +1,12 @@
 # Sampling Tools & Structured Output - Progress
 
-## Status: ✅ COMPLETE
+## Status: ✅ COMPLETE (with Guaranteed Helpers)
 
 ## Overview
 
 Adding `tools`, `toolChoice`, and `schema` support to `ctx.sample()` for structured output and tool calling within MCP tools.
+
+**NEW**: Added `ctx.sampleTools()` and `ctx.sampleSchema()` helper methods that provide guaranteed results with built-in retry logic, eliminating the need for manual type assertions and retry loops.
 
 See [sampling-tools-design.md](./sampling-tools-design.md) for full design.
 
@@ -46,16 +48,31 @@ See [sampling-tools-design.md](./sampling-tools-design.md) for full design.
   - [x] User cancellation handling
   - [x] 8 tests all passing
 
+### Phase 6: Guaranteed Helper Methods - COMPLETE ✨
+- [x] Add types for `sampleTools` and `sampleSchema` to `mcp-tool-types.ts`
+  - [x] `SampleToolsConfig` / `SampleToolsConfigMessages`
+  - [x] `SampleSchemaConfig<T>` / `SampleSchemaConfigMessages<T>`
+  - [x] `SampleToolsResult` (with non-empty toolCalls tuple)
+  - [x] `SampleSchemaResult<T>` (with non-null parsed)
+  - [x] `SampleValidationError` class
+- [x] Add methods to `McpToolContext` interface
+- [x] Add methods to `McpToolContextWithElicits` interface
+- [x] Implement in `branch-runtime.ts`
+- [x] Implement in `bridge-runtime.ts`
+- [x] Update `play_ttt` tool to use new helpers
+- [x] All type checks pass
+
 ---
 
-## Files Modified (Phases 1-4)
+## Files Modified (All Phases)
 
 | File | Status | Notes |
 |------|--------|-------|
 | `package.json` | Done | Added zod-to-json-schema |
-| `mcp-tool-types.ts` | Done | Types + overloads for sample() |
-| `bridge-runtime.ts` | Done | Full implementation with Zod conversion |
-| `branch-runtime.ts` | Done | Full implementation with Zod conversion |
+| `mcp-tool-types.ts` | Done | Types + overloads for sample(), sampleTools(), sampleSchema() |
+| `index.ts` (mcp-tools) | Done | Export new types and SampleValidationError |
+| `bridge-runtime.ts` | Done | Full implementation with Zod conversion + helper methods |
+| `branch-runtime.ts` | Done | Full implementation with Zod conversion + helper methods |
 | `protocol/types.ts` | Done | McpToolDefinition, McpToolChoice, McpToolUseContent |
 | `protocol/message-encoder.ts` | Done | Encode tools/toolChoice/schema |
 | `protocol/message-decoder.ts` | Done | Extract tool calls from response |
@@ -85,39 +102,121 @@ See [sampling-tools-design.md](./sampling-tools-design.md) for full design.
 6. **Runtime signatures**: Use type assertions (`as McpToolContext['sample']`) to satisfy overloaded interface
 7. **Tool calling use case**: LLM-driven flow control / decision trees, not external tool execution
 8. **Validation approach**: `play_ttt` agentic tool as integration test vehicle
+9. **Guaranteed helpers**: `sampleTools()` and `sampleSchema()` with built-in retry and guaranteed types
+10. **MCP spec divergence**: Intentionally extend beyond MCP spec for `tools`, `toolChoice`, and `schema` support
+
+---
+
+## MCP Protocol Divergence
+
+**Important**: This implementation extends beyond the official MCP specification.
+
+### What We Add (Not in MCP Spec)
+
+| Feature | Purpose | MCP Spec Status |
+|---------|---------|-----------------|
+| `tools` | Tool definitions for model to call | Not supported |
+| `toolChoice` | Control tool selection | Not supported |
+| `schema` | Structured JSON output | Not supported |
+| `stopReason: 'toolUse'` | Indicate tool call response | Not in spec |
+| `toolCalls[]` | Extracted tool invocations | Not in spec |
+| `parsed` / `parseError` | Schema validation results | Not in spec |
+
+### Why We Diverge
+
+1. **Tool calling is fundamental** - All major LLMs support it (OpenAI, Anthropic, Google)
+2. **Structured output is essential** - Parsing free-form text is fragile
+3. **Decision trees need tools** - L1/L2 pattern requires branching via tool calls
+4. **MCP spec is incomplete** - Current spec assumes simple text responses
+
+### Interoperability
+
+| Scenario | Works? | Notes |
+|----------|--------|-------|
+| Our tools ↔ Our runtime | ✅ | Full support |
+| Our tools → Standard MCP client | ⚠️ | Falls back to text (tools/schema ignored) |
+| Standard MCP tool → Our runtime | ✅ | We're a superset |
+
+See [sampling-tools-design.md](./sampling-tools-design.md#mcp-spec-considerations) for full details.
+
+---
+
+## Guaranteed Helper Methods (Phase 6)
+
+### Why Helpers?
+
+The original `ctx.sample({ tools })` and `ctx.sample({ schema })` require manual handling:
+
+```typescript
+// OLD: Unsafe - requires manual cast and null check
+const result = yield* ctx.sample({ tools, toolChoice: 'required' })
+const strategy = result as SampleResultWithToolCalls  // Unsafe cast!
+const chosenStrategy = strategy.toolCalls?.[0]       // Might be undefined
+if (!chosenStrategy) {
+  // Manual fallback logic...
+}
+```
+
+### New Pattern with Helpers
+
+```typescript
+// NEW: Safe - guaranteed types, automatic retries
+const strategy = yield* ctx.sampleTools({
+  prompt: '...',
+  tools: [...],
+  retries: 3,
+})
+const chosenStrategy = strategy.toolCalls[0]  // Guaranteed to exist!
+
+const move = yield* ctx.sampleSchema({
+  messages: [...],
+  schema: MoveSchema,
+  retries: 3,
+})
+const cell = move.parsed.cell  // Guaranteed to be non-null!
+```
+
+### Implementation Details
+
+- **Default retries**: 2 (3 total attempts)
+- **Retry hints**: Automatic hint messages added to prompt/messages on retry
+- **Error class**: `SampleValidationError` thrown when all retries exhausted
+- **Both runtimes**: Implemented in `branch-runtime.ts` and `bridge-runtime.ts`
 
 ---
 
 ## Tool Calling Pattern: Decision Trees
 
-The primary use case for `ctx.sample({ tools })` is LLM-driven decision trees:
+The primary use case for `ctx.sampleTools()` is LLM-driven decision trees:
 
 ```typescript
-// Level 1: Strategy decision (tools)
-const strategy = yield* ctx.sample({
+// Level 1: Strategy decision (guaranteed tool call)
+const strategy = yield* ctx.sampleTools({
   prompt: `Board:\n${board}\nChoose your strategy.`,
   tools: [
     { name: 'play_offensive', inputSchema: z.object({ reasoning: z.string() }) },
     { name: 'play_defensive', inputSchema: z.object({ threat: z.string() }) },
   ],
-  toolChoice: 'required',
+  retries: 3,
 })
 
-// Level 2: Move selection (schema) with tool result context
-const move = yield* ctx.sample({
+// Guaranteed to have toolCalls[0]
+const strategyCall = strategy.toolCalls[0]
+
+// Level 2: Move selection (guaranteed parsed result)
+const move = yield* ctx.sampleSchema({
   messages: [
     ...previousMessages,
     { role: 'assistant', tool_calls: [...] },
-    { role: 'tool', content: `Playing ${strategy}. Pick your cell.`, tool_call_id: ... },
+    { role: 'tool', content: `Playing ${strategyCall.name}. Pick your cell.`, tool_call_id: ... },
   ],
   schema: z.object({ cell: z.number().min(0).max(8) }),
+  retries: 3,
 })
-```
 
-This leverages:
-- Model's tool-calling training for decisions
-- Multi-turn context for coherent reasoning
-- Schema for final structured output
+// Guaranteed to have parsed.cell
+const cell = move.parsed.cell
+```
 
 ---
 
@@ -187,7 +286,7 @@ apps/yo-chat/e2e/play-ttt.spec.ts
 
 1. **Real Sampling Provider**: `api.chat.ts` now includes a real sampling provider that calls the configured LLM (Ollama/OpenAI), converts `SamplingToolDefinition[]` to `IsomorphicToolSchema[]`, and extracts `toolCalls` from `ChatResult`.
 
-2. **Safe Optional Chaining**: `strategy.toolCalls?.[0]` with graceful fallback when tools aren't returned.
+2. **Guaranteed Helpers**: `play_ttt` now uses `ctx.sampleTools()` and `ctx.sampleSchema()` instead of manual casts and retry loops.
 
 3. **Type Exports**: Added to `packages/framework/src/lib/chat/index.ts`:
    - `SampleResultBase`
@@ -196,3 +295,6 @@ apps/yo-chat/e2e/play-ttt.spec.ts
    - `SamplingToolCall`
    - `SamplingToolDefinition`
    - `SamplingToolChoice`
+   - `SampleToolsConfig`, `SampleToolsConfigMessages`, `SampleToolsResult`
+   - `SampleSchemaConfig`, `SampleSchemaConfigMessages`, `SampleSchemaResult`
+   - `SampleValidationError`
