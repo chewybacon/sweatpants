@@ -4,6 +4,8 @@
 
 This document describes the design for adding tools and structured output support to MCP sampling (`ctx.sample()`). This enables tool authors to get structured responses from LLM calls within their tools, supporting both one-shot structured output and multi-turn tool-calling patterns.
 
+Additionally, we provide **guaranteed helper methods** (`ctx.sampleTools()` and `ctx.sampleSchema()`) that handle validation and retries automatically, eliminating the need for manual type assertions and retry loops.
+
 ## Motivation
 
 Currently, `ctx.sample()` only returns unstructured text. For tools like TicTacToe that need structured moves, or agentic tools that need to call sub-tools, authors must parse text with regex or hope the model follows instructions. This is fragile.
@@ -17,6 +19,8 @@ Currently, `ctx.sample()` only returns unstructured text. For tools like TicTacT
 - Add `schema` for one-shot structured output (parsed and validated)
 - Add `tools` + `toolChoice` for multi-turn tool calling patterns
 - Type-safe end-to-end with generics
+- **NEW**: `ctx.sampleTools()` - guaranteed tool calls with retry
+- **NEW**: `ctx.sampleSchema()` - guaranteed parsed schema with retry
 
 ## Design
 
@@ -112,12 +116,82 @@ interface McpToolContext {
   // With tools - returns toolCalls
   sample(config: SampleConfigWithTools & { prompt: string }): Operation<SampleResultWithToolCalls>
   sample(config: SampleConfigWithTools & { messages: Message[] }): Operation<SampleResultWithToolCalls>
+  
+  // =========================================================================
+  // GUARANTEED HELPERS (with retry logic)
+  // =========================================================================
+  
+  // Guaranteed tool calls - throws SampleValidationError if retries exhausted
+  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>
+  
+  // Guaranteed parsed schema - throws SampleValidationError if retries exhausted
+  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>
+}
+```
+
+### Guaranteed Helper Types
+
+```typescript
+/** Config for sampleTools with prompt */
+interface SampleToolsConfig {
+  prompt: string
+  tools: SamplingToolDefinition[]
+  toolChoice?: SamplingToolChoice  // defaults to 'required'
+  retries?: number                  // defaults to 2
+  systemPrompt?: string
+  maxTokens?: number
+}
+
+/** Config for sampleTools with messages */
+interface SampleToolsConfigMessages {
+  messages: Message[]
+  tools: SamplingToolDefinition[]
+  toolChoice?: SamplingToolChoice
+  retries?: number
+  systemPrompt?: string
+  maxTokens?: number
+}
+
+/** Guaranteed result - toolCalls is non-empty tuple */
+interface SampleToolsResult extends SampleResultBase {
+  stopReason: 'toolUse'
+  toolCalls: [SamplingToolCall, ...SamplingToolCall[]]  // At least one
+}
+
+/** Config for sampleSchema with prompt */
+interface SampleSchemaConfig<T> {
+  prompt: string
+  schema: z.ZodType<T>
+  retries?: number                  // defaults to 2
+  systemPrompt?: string
+  maxTokens?: number
+}
+
+/** Config for sampleSchema with messages */
+interface SampleSchemaConfigMessages<T> {
+  messages: Message[]
+  schema: z.ZodType<T>
+  retries?: number
+  systemPrompt?: string
+  maxTokens?: number
+}
+
+/** Guaranteed result - parsed is never null */
+interface SampleSchemaResult<T> extends SampleResultBase {
+  parsed: T  // Guaranteed non-null
+}
+
+/** Error thrown when all retries exhausted */
+class SampleValidationError extends Error {
+  readonly method: 'sampleTools' | 'sampleSchema'
+  readonly attempts: number
+  readonly lastResult: SampleResultBase
 }
 ```
 
 ### Usage Examples
 
-#### Structured Output (TicTacToe)
+#### Structured Output (TicTacToe) - Basic
 
 ```typescript
 const MoveSchema = z.object({ 
@@ -141,7 +215,45 @@ const cell = response.parsed!.cell
 board[cell] = 'X'
 ```
 
-#### Tool Calling (LLM-Driven Flow Control)
+#### Structured Output with Guaranteed Result (Recommended)
+
+```typescript
+const MoveSchema = z.object({ 
+  cell: z.number().min(0).max(8),
+})
+
+// sampleSchema handles retries automatically
+// Throws SampleValidationError if all retries fail
+const response = yield* ctx.sampleSchema({
+  prompt: `Pick a cell for your move. Empty cells: ${emptyCells.join(', ')}`,
+  schema: MoveSchema,
+  retries: 3,
+})
+
+// response.parsed is guaranteed to be non-null!
+const cell = response.parsed.cell  // No null check needed
+board[cell] = 'X'
+```
+
+#### Tool Calling with Guaranteed Result (Recommended)
+
+```typescript
+// sampleTools guarantees toolCalls[0] exists
+const strategy = yield* ctx.sampleTools({
+  prompt: `Board:\n${formatBoard(board)}\nChoose your strategy.`,
+  tools: [
+    { name: 'play_offensive', inputSchema: z.object({ reasoning: z.string() }) },
+    { name: 'play_defensive', inputSchema: z.object({ threat: z.string() }) },
+  ],
+  retries: 3,
+})
+
+// Guaranteed to have at least one tool call
+const strategyCall = strategy.toolCalls[0]
+console.log(`Strategy: ${strategyCall.name}`)
+```
+
+#### Tool Calling (LLM-Driven Flow Control) - Basic
 
 The primary use case for tool calling within `ctx.sample()` is **LLM-driven decision trees**. 
 Rather than asking the LLM for a JSON enum, we leverage the model's tool-calling training to 
@@ -234,17 +346,98 @@ throw new Error('Cannot specify both schema and tools in sample config - they ar
 
 ### MCP Spec Considerations
 
-The official MCP `sampling/createMessage` spec does **not** include `tools`, `toolChoice`, or `schema`. This implementation is an extension beyond the spec.
+#### Divergence from Official MCP Protocol
 
-**Our position:**
-- Tool calling is a fundamental LLM capability
-- Sampling without structured output is severely limited
-- We'll advocate for adding this to the MCP spec
+The official MCP `sampling/createMessage` spec (as of 2025-11-25) does **not** include:
+- `tools` - tool definitions for the model to call
+- `toolChoice` - control over whether/which tools to call
+- `schema` - structured output schema for JSON responses
 
-**Compatibility:**
-- Our protocol types already define `McpToolDefinition`, `McpToolChoice`, `McpToolUseContent`
-- We use these for our implementation
-- Not interoperable with other MCP clients/servers (yet)
+This implementation is a **framework extension beyond the MCP spec**.
+
+#### What the MCP Spec Defines
+
+The official MCP sampling request includes:
+```typescript
+// From MCP spec sampling/createMessage
+interface CreateMessageRequest {
+  messages: SamplingMessage[]
+  modelPreferences?: ModelPreferences
+  systemPrompt?: string
+  includeContext?: 'none' | 'thisServer' | 'allServers'
+  maxTokens: number
+}
+```
+
+The response includes:
+```typescript
+interface CreateMessageResult {
+  role: 'user' | 'assistant'
+  content: TextContent | ImageContent
+  model: string
+  stopReason?: 'endTurn' | 'stopSequence' | 'maxTokens' | string
+}
+```
+
+Note: No `tools`, `toolCalls`, or structured `schema` support.
+
+#### Our Extensions
+
+We extend the sampling request with:
+```typescript
+// Our extensions (not in MCP spec)
+interface ExtendedSampleOptions {
+  tools?: SamplingToolDefinition[]      // Tool definitions
+  toolChoice?: 'auto' | 'required' | 'none'  // Tool selection control
+  schema?: JsonSchema                    // Structured output schema
+}
+```
+
+And the response with:
+```typescript
+// Our extensions (not in MCP spec)
+interface ExtendedSampleResult {
+  stopReason?: 'toolUse' | ...           // New stop reason for tool calls
+  toolCalls?: SamplingToolCall[]         // Extracted tool calls
+  parsed?: T                             // Parsed schema result
+  parseError?: { message, rawText }      // Schema parse errors
+}
+```
+
+#### Why We Diverge
+
+1. **Tool calling is fundamental** - Every major LLM provider (OpenAI, Anthropic, Google) supports tool calling. It's a core capability for agentic workflows.
+
+2. **Structured output is essential** - Without schema support, tools must parse free-form text with regex, which is fragile and error-prone.
+
+3. **Decision trees need tool calling** - The L1/L2 pattern (strategy → move) requires tools for branching decisions.
+
+4. **MCP spec is incomplete for agentic tools** - The current spec assumes sampling returns simple text, not structured data or tool invocations.
+
+#### Interoperability Impact
+
+| Scenario | Compatible? | Notes |
+|----------|-------------|-------|
+| Our tools ↔ Our runtime | ✅ Yes | Full feature support |
+| Our tools → Standard MCP client | ⚠️ Partial | Tools/schema ignored, falls back to text |
+| Standard MCP tool → Our runtime | ✅ Yes | We're a superset |
+| Our tools → MCP Inspector | ⚠️ Partial | Basic sampling works, tools/schema not |
+
+#### Future Direction
+
+We plan to:
+1. Advocate for adding `tools`, `toolChoice`, and `schema` to the MCP sampling spec
+2. Provide a polyfill layer for standard MCP clients
+3. Gracefully degrade when connected to non-extended clients
+
+#### Helper Methods: Framework-Only
+
+The guaranteed helper methods (`ctx.sampleTools()`, `ctx.sampleSchema()`) are purely framework conveniences built on top of the extended sampling. They:
+- Are not part of any protocol
+- Handle retry logic and validation internally
+- Throw `SampleValidationError` on exhausted retries
+
+These would work with any sampling implementation that supports our extensions.
 
 ### Implementation Layers
 
@@ -280,16 +473,16 @@ The official MCP `sampling/createMessage` spec does **not** include `tools`, `to
 
 ## Validation: `play_ttt` Agentic Tool
 
-The new `play_ttt` tool validates both `schema` and `tools` patterns:
+The new `play_ttt` tool validates both `schema` and `tools` patterns using the **guaranteed helper methods**:
 
 ### Design
 
 Single agentic tool that encapsulates an entire tic-tac-toe game:
 - Uses `before/after` handoff for random X/O assignment
-- Uses `ctx.sample({ tools })` for strategy decisions (L1)
-- Uses `ctx.sample({ schema })` for move selection (L2)
+- Uses `ctx.sampleTools()` for strategy decisions (L1) - guaranteed tool calls
+- Uses `ctx.sampleSchema()` for move selection (L2) - guaranteed parsed result
 - Uses `ctx.elicit()` for user moves
-- Includes retry loop for invalid model moves
+- No manual retry loops needed - helpers handle retries automatically
 
 ### Game Flow
 
@@ -302,9 +495,11 @@ Single agentic tool that encapsulates an entire tic-tac-toe game:
 │  client(): Game Loop                                        │
 │    ┌─────────────────────────────────────────────────────┐  │
 │    │  If model's turn:                                   │  │
-│    │    L1: ctx.sample({ tools: [offensive, defensive]}) │  │
-│    │    L2: ctx.sample({ schema: MoveSchema })           │  │
-│    │    Apply move (with retry loop), check win          │  │
+│    │    L1: ctx.sampleTools({ tools: [...] })            │  │
+│    │         → Guaranteed toolCalls[0] exists            │  │
+│    │    L2: ctx.sampleSchema({ schema: MoveSchema })     │  │
+│    │         → Guaranteed parsed.cell exists             │  │
+│    │    Apply move, check win                            │  │
 │    ├─────────────────────────────────────────────────────┤  │
 │    │  If user's turn:                                    │  │
 │    │    ctx.elicit('pickMove', { board })                │  │
