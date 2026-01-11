@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "typecheck": "tsc --noEmit",
+    "check": "tsc -b",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

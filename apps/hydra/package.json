@@ -26,7 +26,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "start": "tsx start.ts",
-    "typecheck": "tsc --noEmit"
+    "check": "tsc -b"
   },
   "keywords": [
     "effection",
