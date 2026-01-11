@@ -77,6 +77,21 @@ export type {
   SampleConfigPrompt,
   SampleConfigMessages,
   SampleResult,
+  // Sample result types (for schema/tools)
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  // Sample helper types (guaranteed results)
+  SampleToolsConfig,
+  SampleToolsConfigMessages,
+  SampleSchemaConfig,
+  SampleSchemaConfigMessages,
+  SampleToolsResult,
+  SampleSchemaResult,
+  // Sampling tool types
+  SamplingToolDefinition,
+  SamplingToolCall,
+  SamplingToolChoice,
   // Message types
   Message,
   MessageRole,
@@ -100,6 +115,7 @@ export {
   McpToolTokenError,
   McpToolTimeoutError,
   McpDisconnectError,
+  SampleValidationError,
 } from './mcp-tool-types'
 
 // =============================================================================
@@ -282,6 +298,7 @@ export type {
   BridgeHostConfig,
   BridgeEvent,
   BridgeSamplingProvider,
+  BridgeSampleOptions,
   BridgeElicitHandlers,
   ElicitResponse,
 } from './bridge-runtime'

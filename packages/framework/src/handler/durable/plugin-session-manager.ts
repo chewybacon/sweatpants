@@ -47,17 +47,20 @@
  * @packageDocumentation
  */
 import { type Operation, type Channel, type Subscription, resource } from 'effection'
-import type { ChatProvider } from '../../lib/chat/providers/types'
+import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types'
 import type {
   ToolSession,
   ToolSessionEvent,
   ToolSessionStatus,
   SampleRequestEvent,
   ToolSessionRegistry,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
 } from '../../lib/chat/mcp-tools/session/types'
 // Note: createToolSessionRegistry should be called at server startup, not here
 // import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry'
-import type { ElicitsMap, ElicitResult } from '../../lib/chat/mcp-tools/mcp-tool-types'
+import type { ElicitsMap, ElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions'
 
@@ -339,16 +342,40 @@ export function createPluginSessionManager(
                     content: msg.content,
                   }))
 
+                  // Build provider options
+                  const streamOptions: ChatStreamOptions = {}
+                  
+                  // Convert MCP sampling tools to isomorphic tool schemas
+                  if (sampleEvent.tools && sampleEvent.tools.length > 0) {
+                    streamOptions.isomorphicToolSchemas = sampleEvent.tools.map(tool => ({
+                      name: tool.name,
+                      description: tool.description ?? '',
+                      parameters: tool.inputSchema as Record<string, unknown>,
+                      isIsomorphic: true as const,
+                      authority: 'server' as const, // Sampling tools run server-side
+                    }))
+                  }
+
                   // Call the provider
-                  const stream = provider.stream(chatMessages, undefined)
+                  const stream = provider.stream(chatMessages, streamOptions)
                   const subscription = yield* stream
 
                   // Collect response
                   let fullText = ''
+                  const toolCalls: SamplingToolCall[] = []
                   let iteration = yield* subscription.next()
                   while (!iteration.done) {
                     if (iteration.value.type === 'text') {
                       fullText += iteration.value.content
+                    } else if (iteration.value.type === 'tool_calls') {
+                      // Collect tool calls from the stream
+                      for (const tc of iteration.value.toolCalls) {
+                        toolCalls.push({
+                          id: tc.id,
+                          name: tc.function.name,
+                          arguments: tc.function.arguments,
+                        })
+                      }
                     }
                     iteration = yield* subscription.next()
                   }
@@ -356,10 +383,46 @@ export function createPluginSessionManager(
                   const chatResult = iteration.value
                   const responseText = chatResult?.text ?? fullText
 
+                  // Determine response type and build result
+                  let result: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls
+
+                  if (toolCalls.length > 0) {
+                    // Tool calling response
+                    result = {
+                      text: responseText,
+                      stopReason: 'toolUse' as const,
+                      toolCalls,
+                    }
+                  } else if (sampleEvent.schema) {
+                    // Structured output - parse with schema
+                    // Note: The schema is JSON Schema, we need to validate manually
+                    // For MVP, we just return the text and let the runtime validate
+                    // In a full implementation, we'd use a JSON Schema validator
+                    try {
+                      const parsed = JSON.parse(responseText)
+                      result = {
+                        text: responseText,
+                        parsed,
+                      }
+                    } catch (parseError) {
+                      result = {
+                        text: responseText,
+                        parsed: null,
+                        parseError: {
+                          message: parseError instanceof Error ? parseError.message : 'Failed to parse JSON',
+                          rawText: responseText,
+                        },
+                      }
+                    }
+                  } else {
+                    // Plain text response
+                    result = {
+                      text: responseText,
+                    }
+                  }
+
                   // Send response back to tool session
-                  yield* toolSession.respondToSample(sampleEvent.sampleId, {
-                    text: responseText,
-                  })
+                  yield* toolSession.respondToSample(sampleEvent.sampleId, result)
                 } catch (error) {
                   // Sampling failed - send error response
                   yield* toolSession.respondToSample(sampleEvent.sampleId, {

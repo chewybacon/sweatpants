@@ -550,6 +550,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     // --- Tool Emission Patches (ctx.render() pattern) ---
 
     case 'tool_emission_start': {
+      // Preserve existing emissions when re-starting (e.g., for multi-turn elicits)
+      const existingTracking = state.toolEmissions[patch.callId]
       return {
         ...state,
         toolEmissions: {
@@ -557,9 +559,9 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           [patch.callId]: {
             callId: patch.callId,
             toolName: patch.toolName,
-            emissions: [],
+            emissions: existingTracking?.emissions ?? [],
             status: 'running',
-            startedAt: Date.now(),
+            startedAt: existingTracking?.startedAt ?? Date.now(),
           },
         },
       }
@@ -655,11 +657,20 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     }
 
     case 'tool_emission_complete': {
-      const { [patch.callId]: _completed, ...remainingEmissions } = state.toolEmissions
+      const tracking = state.toolEmissions[patch.callId]
+      if (!tracking) return state
 
+      // Mark as complete but preserve emissions for multi-turn tools
+      // Emissions are only cleaned up when the tool call itself completes
       return {
         ...state,
-        toolEmissions: remainingEmissions,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            ...tracking,
+            status: 'complete',
+          },
+        },
       }
     }
 

@@ -23,19 +23,30 @@ import type {
   McpToolCallParams,
   McpContentBlock,
 } from './types'
-import { isJsonRpcError, isJsonRpcSuccess, isTextContent } from './types'
-import type { ElicitResult, SampleResult } from '../mcp-tool-types'
+import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types'
+import type { 
+  ElicitResult, 
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolCall,
+} from '../mcp-tool-types'
 
 // =============================================================================
 // DECODED TYPES
 // =============================================================================
 
 /**
+ * Unified sample result type for decoded messages.
+ */
+export type DecodedSampleResult = SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls
+
+/**
  * Result of decoding an MCP message.
  */
 export type DecodedMessage =
   | { type: 'elicitation_response'; elicitId: string; result: ElicitResult<unknown> }
-  | { type: 'sampling_response'; sampleId: string; result: SampleResult }
+  | { type: 'sampling_response'; sampleId: string; result: DecodedSampleResult }
   | { type: 'tool_call'; name: string; args: Record<string, unknown>; requestId: string | number }
   | { type: 'error'; code: number; message: string; data?: unknown }
   | { type: 'unknown'; raw: unknown }
@@ -111,7 +122,24 @@ function extractTextFromContent(content: McpContentBlock | McpContentBlock[]): s
 }
 
 /**
+ * Extract tool calls from MCP content blocks.
+ */
+function extractToolCallsFromContent(content: McpContentBlock | McpContentBlock[]): SamplingToolCall[] {
+  const blocks = Array.isArray(content) ? content : [content]
+  const toolUseBlocks = blocks.filter(isToolUseContent)
+  return toolUseBlocks.map(block => ({
+    id: block.id,
+    name: block.name,
+    arguments: block.input,
+  }))
+}
+
+/**
  * Decode an MCP sampling response into a SampleResult.
+ * 
+ * Returns different result types based on the response:
+ * - If stopReason is 'toolUse', returns SampleResultWithToolCalls
+ * - Otherwise returns SampleResultBase (structured output parsing happens at a higher layer)
  */
 export function decodeSamplingResponse(
   response: JsonRpcResponse<McpCreateMessageResult>,
@@ -135,7 +163,24 @@ export function decodeSamplingResponse(
   // Extract text from content
   const text = extractTextFromContent(mcpResult.content)
 
-  const result: SampleResult = {
+  // Check if this is a tool use response
+  if (mcpResult.stopReason === 'toolUse') {
+    const toolCalls = extractToolCallsFromContent(mcpResult.content)
+    const result: SampleResultWithToolCalls = {
+      text,
+      model: mcpResult.model,
+      stopReason: 'toolUse',
+      toolCalls,
+    }
+    return {
+      type: 'sampling_response',
+      sampleId,
+      result,
+    }
+  }
+
+  // Return base result (structured output parsing happens at runtime layer)
+  const result: SampleResultBase = {
     text,
     model: mcpResult.model,
     ...(mcpResult.stopReason !== undefined && { stopReason: mcpResult.stopReason }),

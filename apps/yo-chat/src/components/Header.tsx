@@ -144,7 +144,18 @@ export default function Header() {
                       'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
                   }}
                 >
-                  <span>Tic-Tac-Toe</span>
+                  <span>Tic-Tac-Toe (Multi-Call)</span>
+                </Link>
+                <Link
+                  to="/chat/play-ttt"
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 p-2 pl-4 rounded-lg hover:bg-gray-800 transition-colors text-sm"
+                  activeProps={{
+                    className:
+                      'flex items-center gap-3 p-2 pl-4 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors text-sm',
+                  }}
+                >
+                  <span>Tic-Tac-Toe (Agentic)</span>
                 </Link>
               </div>
             )}
