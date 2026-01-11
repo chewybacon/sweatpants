@@ -10,6 +10,7 @@
   "types": "./dist/cli.d.ts",
   "exports": {
     ".": {
+      "development": "./src/cli.ts",
       "types": "./dist/cli.d.ts",
       "import": "./dist/cli.js",
       "default": "./dist/cli.js"
