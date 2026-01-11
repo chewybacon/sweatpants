@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHelloStreamRouteImport } from './routes/api.hello-stream'
 import { Route as ApiChatRouteImport } from './routes/api.chat'
 import { Route as ChatTictactoeIndexRouteImport } from './routes/chat/tictactoe/index'
+import { Route as ChatPlayTttIndexRouteImport } from './routes/chat/play-ttt/index'
 import { Route as ChatMathIndexRouteImport } from './routes/chat/math/index'
 import { Route as ChatFlightIndexRouteImport } from './routes/chat/flight/index'
 import { Route as ChatCardsIndexRouteImport } from './routes/chat/cards/index'
@@ -36,6 +37,11 @@ const ApiChatRoute = ApiChatRouteImport.update({
 const ChatTictactoeIndexRoute = ChatTictactoeIndexRouteImport.update({
   id: '/chat/tictactoe/',
   path: '/chat/tictactoe/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatPlayTttIndexRoute = ChatPlayTttIndexRouteImport.update({
+  id: '/chat/play-ttt/',
+  path: '/chat/play-ttt/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatMathIndexRoute = ChatMathIndexRouteImport.update({
@@ -67,6 +73,7 @@ export interface FileRoutesByFullPath {
   '/chat/cards': typeof ChatCardsIndexRoute
   '/chat/flight': typeof ChatFlightIndexRoute
   '/chat/math': typeof ChatMathIndexRoute
+  '/chat/play-ttt': typeof ChatPlayTttIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
 }
 export interface FileRoutesByTo {
@@ -77,6 +84,7 @@ export interface FileRoutesByTo {
   '/chat/cards': typeof ChatCardsIndexRoute
   '/chat/flight': typeof ChatFlightIndexRoute
   '/chat/math': typeof ChatMathIndexRoute
+  '/chat/play-ttt': typeof ChatPlayTttIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
 }
 export interface FileRoutesById {
@@ -88,6 +96,7 @@ export interface FileRoutesById {
   '/chat/cards/': typeof ChatCardsIndexRoute
   '/chat/flight/': typeof ChatFlightIndexRoute
   '/chat/math/': typeof ChatMathIndexRoute
+  '/chat/play-ttt/': typeof ChatPlayTttIndexRoute
   '/chat/tictactoe/': typeof ChatTictactoeIndexRoute
 }
 export interface FileRouteTypes {
@@ -100,6 +109,7 @@ export interface FileRouteTypes {
     | '/chat/cards'
     | '/chat/flight'
     | '/chat/math'
+    | '/chat/play-ttt'
     | '/chat/tictactoe'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -110,6 +120,7 @@ export interface FileRouteTypes {
     | '/chat/cards'
     | '/chat/flight'
     | '/chat/math'
+    | '/chat/play-ttt'
     | '/chat/tictactoe'
   id:
     | '__root__'
@@ -120,6 +131,7 @@ export interface FileRouteTypes {
     | '/chat/cards/'
     | '/chat/flight/'
     | '/chat/math/'
+    | '/chat/play-ttt/'
     | '/chat/tictactoe/'
   fileRoutesById: FileRoutesById
 }
@@ -131,6 +143,7 @@ export interface RootRouteChildren {
   ChatCardsIndexRoute: typeof ChatCardsIndexRoute
   ChatFlightIndexRoute: typeof ChatFlightIndexRoute
   ChatMathIndexRoute: typeof ChatMathIndexRoute
+  ChatPlayTttIndexRoute: typeof ChatPlayTttIndexRoute
   ChatTictactoeIndexRoute: typeof ChatTictactoeIndexRoute
 }
 
@@ -162,6 +175,13 @@ declare module '@tanstack/react-router' {
       path: '/chat/tictactoe'
       fullPath: '/chat/tictactoe'
       preLoaderRoute: typeof ChatTictactoeIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/play-ttt/': {
+      id: '/chat/play-ttt/'
+      path: '/chat/play-ttt'
+      fullPath: '/chat/play-ttt'
+      preLoaderRoute: typeof ChatPlayTttIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat/math/': {
@@ -203,6 +223,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatCardsIndexRoute: ChatCardsIndexRoute,
   ChatFlightIndexRoute: ChatFlightIndexRoute,
   ChatMathIndexRoute: ChatMathIndexRoute,
+  ChatPlayTttIndexRoute: ChatPlayTttIndexRoute,
   ChatTictactoeIndexRoute: ChatTictactoeIndexRoute,
 }
 export const routeTree = rootRouteImport

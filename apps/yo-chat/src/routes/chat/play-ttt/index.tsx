@@ -1,20 +1,20 @@
 /**
- * /chat/tictactoe - Tic-Tac-Toe Game Demo (Plugin Version)
+ * /chat/play-ttt - Agentic Tic-Tac-Toe Demo
  *
- * Demonstrates the tictactoe MCP plugin:
- * - Model plays as X, user plays as O
- * - User clicks cells to make moves
- * - Plugin handles elicitation flow
+ * Demonstrates the play_ttt agentic tool:
+ * - Single tool call plays entire game
+ * - Model uses L1/L2 sampling for decisions
+ * - Random X/O assignment
  *
- * Phase 1: No mid-game chat (user can only click cells)
+ * Shows the full power of ctx.sample() with tools and schema.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
-import { tictactoePlugin } from '@/tools/tictactoe/plugin'
+import { playTttPlugin } from '@/tools/play-ttt/plugin'
 
-export const Route = createFileRoute('/chat/tictactoe/')({
-  component: TicTacToeDemo,
+export const Route = createFileRoute('/chat/play-ttt/')({
+  component: PlayTttDemo,
 })
 
 /**
@@ -69,7 +69,7 @@ function Message({ message }: { message: ChatMessage }) {
             isUser ? 'text-purple-400' : 'text-cyan-400'
           }`}
         >
-          {isUser ? 'You (O)' : 'Model (X)'}
+          {isUser ? 'You' : 'Model'}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>
           )}
@@ -123,7 +123,7 @@ function Message({ message }: { message: ChatMessage }) {
   )
 }
 
-function TicTacToeDemo() {
+function PlayTttDemo() {
   const {
     messages,
     streamingMessage,
@@ -135,30 +135,20 @@ function TicTacToeDemo() {
     error,
   } = useChat({
     pipeline: 'markdown',
-    // No isomorphic tools - using plugin instead
     tools: [],
-    // TicTacToe plugin
-    plugins: [tictactoePlugin.client],
-    // Tell server to only enable tictactoe plugin
-    enabledPlugins: ['tictactoe'],
-    // System prompt for the game
-    systemPrompt: `You are playing tic-tac-toe against the user. You are X, the user is O.
+    plugins: [playTttPlugin.client],
+    enabledPlugins: ['play_ttt'],
+    systemPrompt: `You can play tic-tac-toe with the user using the play_ttt tool.
 
-CRITICAL: You MUST use the tictactoe tool to play. Do NOT draw ASCII boards or describe moves in text.
+When the user wants to play tic-tac-toe, call play_ttt() - it handles the entire game automatically!
 
-To play:
-1. Call tictactoe with action="start" and your opening position (0-8)
-2. After each user move, call tictactoe with action="move", the current board, and your next position
-3. When the game ends, call tictactoe with action="end", the board, and the winner
+The tool will:
+- Randomly assign X or O to each player
+- Take turns until someone wins or draws
+- Use your AI reasoning to pick strategic moves
+- Let the user click cells for their moves
 
-Board positions:
-0 | 1 | 2
----------
-3 | 4 | 5
----------
-6 | 7 | 8
-
-Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block opponent's winning moves.`,
+Just call the tool once and enjoy the game!`,
   })
 
   const [input, setInput] = useState('')
@@ -182,12 +172,12 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
         {/* Header */}
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Tic-Tac-Toe</h1>
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Agentic Tic-Tac-Toe</h1>
             <p className="text-slate-400 text-sm">
-              Play against the model. You're O, model is X. Click cells to play.
+              Single-call game using L1/L2 sampling pattern
             </p>
-            <p className="text-amber-500/70 text-xs mt-1">
-              Phase 1: Mid-game chat disabled (click cells only)
+            <p className="text-emerald-500/70 text-xs mt-1">
+              Model uses tools for strategy, schema for moves
             </p>
           </div>
           <div className="text-xs">
@@ -204,7 +194,7 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
           {messages.length === 0 && !isStreaming && (
             <div className="text-slate-600 text-center py-16">
               <div className="text-4xl mb-4">X | O</div>
-              <p className="mb-4">Challenge the model to a game!</p>
+              <p className="mb-4">Play a complete game in one tool call!</p>
               <button
                 onClick={() => send("Let's play tic-tac-toe!")}
                 className="px-4 py-2 bg-cyan-900/30 hover:bg-cyan-900/50 border border-cyan-800 rounded-lg transition-colors"
@@ -235,7 +225,7 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               isStreaming
-                ? 'Waiting for response...'
+                ? 'Game in progress...'
                 : "Type a message... (try: Let's play tic-tac-toe!)"
             }
             disabled={isStreaming}
@@ -274,7 +264,7 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
           <div className="flex items-center gap-4">
             <span>
               <span className="text-emerald-600">plugin:</span>
-              {' tictactoe'}
+              {' play_ttt (agentic)'}
             </span>
             <span className="text-cyan-400">{messages.length} messages</span>
           </div>

@@ -10,6 +10,7 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 import type {
   McpToolContext,
   McpToolBranchOptions,
@@ -17,14 +18,25 @@ import type {
   McpToolServerContext,
   McpToolLimits,
   Message,
-  SampleResult,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolDefinition,
+  SamplingToolChoice,
   ElicitConfig,
   ElicitResult,
   LogLevel,
+  SampleToolsConfig,
+  SampleToolsConfigMessages,
+  SampleSchemaConfig,
+  SampleSchemaConfigMessages,
+  SampleToolsResult,
+  SampleSchemaResult,
 } from './mcp-tool-types'
 import {
   McpToolDepthError,
   McpToolTokenError,
+  SampleValidationError,
 } from './mcp-tool-types'
 import type { FinalizedMcpTool } from './mcp-tool-builder'
 
@@ -44,6 +56,17 @@ type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResu
 // =============================================================================
 
 /**
+ * Options for MCP sampling requests.
+ */
+export interface BranchSampleOptions {
+  systemPrompt?: string
+  maxTokens?: number
+  tools?: SamplingToolDefinition[]
+  toolChoice?: SamplingToolChoice
+  schema?: Record<string, unknown>
+}
+
+/**
  * Interface for the MCP client that provides sampling/elicitation.
  * This is what the runtime uses to communicate with the actual MCP client.
  */
@@ -54,11 +77,8 @@ export interface BranchMCPClient {
    */
   sample(
     messages: Message[],
-    options?: {
-      systemPrompt?: string
-      maxTokens?: number
-    }
-  ): Operation<SampleResult>
+    options?: BranchSampleOptions
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
 
   /**
    * Request user input.
@@ -183,7 +203,10 @@ function createBranchContext(
     },
 
     // LLM backchannel
-    sample(config: BranchSampleConfig): Operation<SampleResult> {
+    // TODO: Implement schema parsing at response level in Phase 4
+    // Using type assertion because the implementation handles all overload variants,
+    // but TypeScript can't verify this without conditional types at the implementation level.
+    sample: ((config: BranchSampleConfig) => {
       return {
         *[Symbol.iterator]() {
           let messages: Message[]
@@ -200,13 +223,37 @@ function createBranchContext(
           }
 
           // Build options, only including defined values
-          const sampleOptions: { systemPrompt?: string; maxTokens?: number } = {}
+          const sampleOptions: BranchSampleOptions = {}
           const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt
           if (effectiveSystemPrompt !== undefined) {
             sampleOptions.systemPrompt = effectiveSystemPrompt
           }
           if (config.maxTokens !== undefined) {
             sampleOptions.maxTokens = config.maxTokens
+          }
+          
+          // Pass through tools if provided (convert Zod to JSON Schema)
+          if ('tools' in config && config.tools) {
+            sampleOptions.tools = config.tools.map(tool => {
+              const def: SamplingToolDefinition = {
+                name: tool.name,
+                inputSchema: 'safeParse' in tool.inputSchema 
+                  ? zodToJsonSchema(tool.inputSchema as any)
+                  : tool.inputSchema,
+              }
+              if (tool.description !== undefined) {
+                def.description = tool.description
+              }
+              return def
+            })
+          }
+          if ('toolChoice' in config && config.toolChoice) {
+            sampleOptions.toolChoice = config.toolChoice
+          }
+          
+          // Convert schema from Zod to JSON Schema if provided
+          if ('schema' in config && config.schema) {
+            sampleOptions.schema = zodToJsonSchema(config.schema as any)
           }
 
           // Call the MCP client
@@ -231,6 +278,182 @@ function createBranchContext(
           addTokens(state.tokenTracker, estimatedTokens)
 
           return result
+        },
+      }
+    }) as McpToolContext['sample'],
+
+    // Sample with guaranteed tool calls
+    sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult> {
+      const maxRetries = config.retries ?? 2
+      const toolChoice = config.toolChoice ?? 'required'
+      
+      return {
+        *[Symbol.iterator]() {
+          let lastResult: SampleResultBase | SampleResultWithToolCalls | undefined
+          
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Build the sample config
+            let sampleConfig: McpToolSampleConfig
+            
+            if ('prompt' in config) {
+              const retryHint = attempt > 0 
+                ? `\n\n[IMPORTANT: You must call one of the available tools. Your previous response did not include a tool call.]`
+                : ''
+              sampleConfig = {
+                prompt: config.prompt + retryHint,
+                tools: config.tools,
+                toolChoice,
+                ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
+                ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+              } as McpToolSampleConfig
+            } else {
+              // Messages mode - add retry hint to last message if retrying
+              let messages = config.messages
+              if (attempt > 0 && messages.length > 0) {
+                const lastMsg = messages[messages.length - 1]!
+                messages = [
+                  ...messages.slice(0, -1),
+                  { ...lastMsg, content: lastMsg.content + '\n\n[IMPORTANT: You must call one of the available tools.]' }
+                ]
+              }
+              sampleConfig = {
+                messages,
+                tools: config.tools,
+                toolChoice,
+                ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
+                ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+              } as McpToolSampleConfig
+            }
+            
+            // Call sample
+            const result = yield* client.sample(
+              'prompt' in sampleConfig 
+                ? [...state.messages, { role: 'user', content: sampleConfig.prompt }]
+                : sampleConfig.messages,
+              {
+                ...(sampleConfig.systemPrompt !== undefined ? { systemPrompt: sampleConfig.systemPrompt } : {}),
+                ...(sampleConfig.maxTokens !== undefined ? { maxTokens: sampleConfig.maxTokens } : {}),
+                tools: config.tools.map(tool => ({
+                  name: tool.name,
+                  inputSchema: 'safeParse' in tool.inputSchema 
+                    ? zodToJsonSchema(tool.inputSchema as any)
+                    : tool.inputSchema,
+                  ...(tool.description !== undefined ? { description: tool.description } : {}),
+                })),
+                toolChoice,
+              }
+            )
+            
+            lastResult = result
+            
+            // Validate: must have tool calls
+            if (result.stopReason === 'toolUse' && 'toolCalls' in result && result.toolCalls.length > 0) {
+              // Update branch messages if using prompt mode
+              if ('prompt' in config) {
+                state.messages.push(
+                  { role: 'user', content: config.prompt },
+                  { role: 'assistant', content: result.text }
+                )
+              }
+              
+              return result as SampleToolsResult
+            }
+          }
+          
+          // All retries exhausted
+          throw new SampleValidationError(
+            'sampleTools',
+            maxRetries + 1,
+            lastResult!,
+            `sampleTools failed after ${maxRetries + 1} attempts: model did not return tool calls`
+          )
+        },
+      }
+    },
+
+    // Sample with guaranteed parsed schema
+    sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
+      const maxRetries = config.retries ?? 2
+      
+      return {
+        *[Symbol.iterator]() {
+          let lastResult: SampleResultBase | SampleResultWithParsed<T> | undefined
+          let lastError: string | undefined
+          
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Build the sample config
+            let sampleConfig: McpToolSampleConfig
+            
+            if ('prompt' in config) {
+              const retryHint = attempt > 0 && lastError
+                ? `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON matching the schema.]`
+                : ''
+              sampleConfig = {
+                prompt: config.prompt + retryHint,
+                schema: config.schema,
+                ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
+                ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+              } as McpToolSampleConfig
+            } else {
+              // Messages mode - add retry hint to last message if retrying
+              let messages = config.messages
+              if (attempt > 0 && messages.length > 0 && lastError) {
+                const lastMsg = messages[messages.length - 1]!
+                messages = [
+                  ...messages.slice(0, -1),
+                  { ...lastMsg, content: lastMsg.content + `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]` }
+                ]
+              }
+              sampleConfig = {
+                messages,
+                schema: config.schema,
+                ...(config.systemPrompt !== undefined ? { systemPrompt: config.systemPrompt } : {}),
+                ...(config.maxTokens !== undefined ? { maxTokens: config.maxTokens } : {}),
+              } as McpToolSampleConfig
+            }
+            
+            // Call sample
+            const result = (yield* client.sample(
+              'prompt' in sampleConfig 
+                ? [...state.messages, { role: 'user', content: sampleConfig.prompt }]
+                : sampleConfig.messages,
+              {
+                ...(sampleConfig.systemPrompt !== undefined ? { systemPrompt: sampleConfig.systemPrompt } : {}),
+                ...(sampleConfig.maxTokens !== undefined ? { maxTokens: sampleConfig.maxTokens } : {}),
+                schema: zodToJsonSchema(config.schema as any),
+              }
+            )) as SampleResultWithParsed<T>
+            
+            lastResult = result
+            
+            // Validate: must have parsed value
+            if ('parsed' in result && result.parsed !== null) {
+              // Update branch messages if using prompt mode
+              if ('prompt' in config) {
+                state.messages.push(
+                  { role: 'user', content: config.prompt },
+                  { role: 'assistant', content: result.text }
+                )
+              }
+              
+              return { ...result, parsed: result.parsed } as SampleSchemaResult<T>
+            }
+            
+            // Capture error for retry hint
+            if ('parseError' in result && result.parseError) {
+              lastError = result.parseError.message
+            } else {
+              lastError = 'Response could not be parsed'
+            }
+          }
+          
+          // All retries exhausted
+          throw new SampleValidationError(
+            'sampleSchema',
+            maxRetries + 1,
+            lastResult!,
+            `sampleSchema failed after ${maxRetries + 1} attempts: ${lastError}`
+          )
         },
       }
     },

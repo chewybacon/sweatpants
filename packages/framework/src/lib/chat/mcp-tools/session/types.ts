@@ -28,15 +28,24 @@
 import type { Operation, Stream } from 'effection'
 import type {
   ElicitResult,
-  SampleResult,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolDefinition,
+  SamplingToolChoice,
   Message,
   LogLevel,
   ElicitsMap,
 } from '../mcp-tool-types'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
 
-// Re-export SampleResult for convenience
-export type { SampleResult } from '../mcp-tool-types'
+// Re-export result types for convenience
+export type { 
+  SampleResult,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+} from '../mcp-tool-types'
 
 // =============================================================================
 // SESSION STATUS
@@ -116,6 +125,12 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   systemPrompt?: string
   /** Maximum tokens to generate */
   maxTokens?: number
+  /** Tool definitions for tool calling */
+  tools?: SamplingToolDefinition[]
+  /** How the model should choose tools */
+  toolChoice?: SamplingToolChoice
+  /** JSON Schema for structured output (converted from Zod) */
+  schema?: Record<string, unknown>
 }
 
 /**
@@ -215,9 +230,9 @@ export interface ToolSession<TResult = unknown> {
    * Respond to a sampling request.
    *
    * @param sampleId - The ID from the SampleRequestEvent
-   * @param response - The LLM's response
+   * @param response - The LLM's response (may include parsed data or tool calls)
    */
-  respondToSample(sampleId: string, response: SampleResult): Operation<void>
+  respondToSample(sampleId: string, response: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls): Operation<void>
 
   /**
    * Emit an internal event to wake up the SSE stream.
@@ -386,11 +401,31 @@ export interface ToolSessionStore {
 export interface ToolSessionSamplingProvider {
   /**
    * Request an LLM completion.
+   * 
+   * @param messages - Messages to send to the LLM
+   * @param options - Sampling options including tools and schema
+   * @returns The LLM response, potentially with parsed data or tool calls
    */
   sample(
     messages: Message[],
-    options?: { systemPrompt?: string; maxTokens?: number }
-  ): Operation<SampleResult>
+    options?: ToolSessionSamplingOptions
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+}
+
+/**
+ * Options for sampling requests.
+ */
+export interface ToolSessionSamplingOptions {
+  /** System prompt */
+  systemPrompt?: string
+  /** Maximum tokens to generate */
+  maxTokens?: number
+  /** Tool definitions for tool calling */
+  tools?: SamplingToolDefinition[]
+  /** How the model should choose tools */
+  toolChoice?: SamplingToolChoice
+  /** JSON Schema for structured output */
+  schema?: Record<string, unknown>
 }
 
 // =============================================================================
