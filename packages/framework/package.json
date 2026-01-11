@@ -202,7 +202,7 @@
     "@effectionx/context-api": "catalog:",
     "@effectionx/raf": "catalog:",
     "@interactors/html": "^1.0.1",
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "@testing-library/react": "catalog:",
     "@types/babel__core": "^7.20.5",
     "@types/node": "catalog:",

@@ -14,7 +14,7 @@
     "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git"
   },
   "devDependencies": {
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "tsx": "catalog:",
     "typescript": "catalog:"
   },

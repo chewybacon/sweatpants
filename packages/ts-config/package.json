@@ -1,15 +1,13 @@
 {
-    "name": "@tanstack/ts-config",
-    "private": true,
-    "type": "module",
-    "version": "0.1.0",
-    "description": "Shared TypeScript configurations for TanStack monorepo",
-    "main": "./nitro.config.ts",
-    "files": [
-        "tsconfig*.json"
-    ],
-    "devDependencies": {
-        "typescript": "catalog:",
-        "nitropack": "catalog:"
-    }
+  "name": "@sweatpants/ts-config",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Shared TypeScript configurations for TanStack monorepo",
+  "files": [
+    "tsconfig*.json"
+  ],
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
 }
