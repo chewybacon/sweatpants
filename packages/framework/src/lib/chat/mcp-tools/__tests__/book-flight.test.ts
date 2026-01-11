@@ -36,7 +36,7 @@ describe('Book Flight Tool', () => {
       )
 
       expect(result.success).toBe(true)
-      if (result.success) {
+      if (result.success && result.booking) {
         expect(result.booking.flightId).toBe('FL001')
         expect(result.booking.seatPreference).toBe('window')
         expect(result.booking.confirmationNumber).toBeDefined()

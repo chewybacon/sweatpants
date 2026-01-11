@@ -105,15 +105,17 @@ describe('createChatSession streaming_end acknowledgement', () => {
       yield* call(() => withTimeout(streamingEndSeen, 5000, 'transform to receive streaming_end'))
 
       // At this point, streaming_end has NOT been forwarded to the reducer yet.
-      expect(latestState?.isStreaming).toBe(true)
+      // Note: latestState is set by the spawned coroutine above
+      expect((latestState as ChatState | null)?.isStreaming).toBe(true)
 
       // Release the transform so it can forward streaming_end.
-      releaseStreamingEnd?.()
+      // Note: releaseStreamingEnd is set by the Promise callback above
+      ;(releaseStreamingEnd as (() => void) | null)?.()
       releaseStreamingEnd = null
 
       // Now we should observe streaming_end in state.
       yield* call(() => withTimeout(sawStreamingEndPromise, 5000, 'streaming_end in state'))
-      expect(latestState?.isStreaming).toBe(false)
+      expect((latestState as ChatState | null)?.isStreaming).toBe(false)
     })
   })
 
