@@ -26,7 +26,7 @@ export type {
   SamplingToolCall,
   SamplingToolDefinition,
   SamplingToolChoice,
-} from './mcp-tools/mcp-tool-types'
+} from './mcp-tools/mcp-tool-types.ts'
 
 // Plugin builder (browser-safe)
 export { makePlugin } from './mcp-tools/plugin.ts'
