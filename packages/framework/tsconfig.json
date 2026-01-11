@@ -1,5 +1,5 @@
 {
-  "extends": "@tanstack/ts-config/tsconfig.package.json",
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
     "emitDeclarationOnly": true,
     "ignoreDeprecations": "5.0"

@@ -1,5 +1,5 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "extends": "../ts-config/tsconfig.package.json",
   "compilerOptions": {
     "composite": true,
     "emitDeclarationOnly": true,
