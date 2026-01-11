@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 8000",
-    "check": "tsc --noEmit",
+    "check": "tsc -b",
     "build": "vite build && pnpm run build:server",
     "build:server": "esbuild express-server.ts --bundle --platform=node --format=esm --outfile=dist/express-server.js --packages=external --external:./server/*",
     "preview": "vite preview",
