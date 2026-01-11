@@ -47,7 +47,7 @@
  * @packageDocumentation
  */
 import { type Operation, type Channel, type Subscription, resource } from 'effection'
-import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types'
+import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types.ts'
 import type {
   ToolSession,
   ToolSessionEvent,
@@ -57,12 +57,12 @@ import type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
-} from '../../lib/chat/mcp-tools/session/types'
+} from '../../lib/chat/mcp-tools/session/types.ts'
 // Note: createToolSessionRegistry should be called at server startup, not here
-// import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry'
-import type { ElicitsMap, ElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder'
-import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions'
+// import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry.ts'
+import type { ElicitsMap, ElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
+import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 
 // =============================================================================
 // TYPES

@@ -66,8 +66,8 @@
  */
 import type { Operation } from 'effection'
 import type { z } from 'zod'
-import type { ApprovalType, DenialBehavior } from './runtime/tool-runtime'
-import type { ContextMode, BaseToolContext } from './contexts'
+import type { ApprovalType, DenialBehavior } from './runtime/tool-runtime.ts'
+import type { ContextMode, BaseToolContext } from './contexts.ts'
 
 // --- Authority Modes ---
 
@@ -162,9 +162,9 @@ export type {
   AnyToolContext,
   ApprovalResult,
   PermissionType,
-} from './contexts'
+} from './contexts.ts'
 
-export { canRunIn, validateContextMode } from './contexts'
+export { canRunIn, validateContextMode } from './contexts.ts'
 
 // --- Server Context ---
 

@@ -26,7 +26,7 @@ export type {
   ErrorPatch,
   ResetPatch,
   CorePatch,
-} from './base'
+} from './base.ts'
 
 export type {
   // Buffer patches
@@ -35,7 +35,7 @@ export type {
   BufferRawPatch,
   BufferRenderablePatch,
   BufferPatch,
-} from './buffer'
+} from './buffer.ts'
 
 export type {
   // Client tool patches
@@ -50,7 +50,7 @@ export type {
   // Isomorphic tool patches
   IsomorphicToolStatePatch,
   IsomorphicToolPatch,
-} from './tool'
+} from './tool.ts'
 
 export type {
   // Handoff patches
@@ -65,7 +65,7 @@ export type {
   ExecutionTrailCompletePatch,
   ExecutionTrailStepResponsePatch,
   ExecutionTrailPatch,
-} from './handoff'
+} from './handoff.ts'
 
 export type {
   // Emission patches (new ctx.render() pattern)
@@ -76,7 +76,7 @@ export type {
   ToolEmissionResponsePatch,
   ToolEmissionCompletePatch,
   EmissionPatch,
-} from './emission'
+} from './emission.ts'
 
 export type {
   // Plugin elicitation patches (MCP plugin tools)
@@ -87,15 +87,15 @@ export type {
   PluginElicitResponsePatch,
   PluginElicitCompletePatch,
   PluginElicitPatchUnion,
-} from './plugin'
+} from './plugin.ts'
 
 // Import for union type construction
-import type { CorePatch } from './base'
-import type { BufferPatch } from './buffer'
-import type { ClientToolPatch, IsomorphicToolPatch } from './tool'
-import type { HandoffPatch, ExecutionTrailPatch } from './handoff'
-import type { EmissionPatch } from './emission'
-import type { PluginElicitPatchUnion } from './plugin'
+import type { CorePatch } from './base.ts'
+import type { BufferPatch } from './buffer.ts'
+import type { ClientToolPatch, IsomorphicToolPatch } from './tool.ts'
+import type { HandoffPatch, ExecutionTrailPatch } from './handoff.ts'
+import type { EmissionPatch } from './emission.ts'
+import type { PluginElicitPatchUnion } from './plugin.ts'
 
 /**
  * All chat patches - the complete union of all patch types.

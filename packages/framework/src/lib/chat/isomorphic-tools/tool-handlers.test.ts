@@ -8,15 +8,15 @@
  */
 import { describe, it, expect, expectTypeOf, vi } from 'vitest'
 import { z } from 'zod'
-import { createIsomorphicTool } from './builder'
-import type { InferToolHandoff, InferToolClientOutput, InferToolParams } from './builder'
+import { createIsomorphicTool } from './builder.ts'
+import type { InferToolHandoff, InferToolClientOutput, InferToolParams } from './builder.ts'
 import {
   handler,
   createHandlerRegistry,
   createToolHandlers,
   isHandoffFor,
   type PendingHandoff,
-} from './tool-handlers'
+} from './tool-handlers.ts'
 
 // =============================================================================
 // TEST TOOLS

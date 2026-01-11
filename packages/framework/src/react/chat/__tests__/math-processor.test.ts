@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { run } from 'effection'
-import { runPipeline, createPipeline, markdown, math, shiki } from '../pipeline'
+import { runPipeline, createPipeline, markdown, math, shiki } from '../pipeline/index.ts'
 
 describe('math processor', () => {
   describe('detection', () => {

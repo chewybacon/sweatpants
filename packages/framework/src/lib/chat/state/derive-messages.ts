@@ -18,7 +18,7 @@
  * ```
  */
 
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitTrackingState } from './chat-state'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitTrackingState } from './chat-state.ts'
 import type {
   ChatMessage,
   MessagePart,
@@ -27,7 +27,7 @@ import type {
   ChatEmission,
   StreamingMessage,
   PluginElicit,
-} from '../types/chat-message'
+} from '../types/chat-message.ts'
 
 // =============================================================================
 // COMPONENT EXTRACTOR TYPE

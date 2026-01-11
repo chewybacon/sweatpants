@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import { run, spawn, each, call } from 'effection'
-import { createChatSession } from '../create-session'
-import type { ChatState } from '../../state/chat-state'
-import type { Streamer, PatchTransform } from '../options'
-import type { ChatPatch } from '../../patches'
+import { createChatSession } from '../create-session.ts'
+import type { ChatState } from '../../state/chat-state.ts'
+import type { Streamer, PatchTransform } from '../options.ts'
+import type { ChatPatch } from '../../patches/index.ts'
 
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {

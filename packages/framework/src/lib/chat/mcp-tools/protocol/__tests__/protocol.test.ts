@@ -33,13 +33,13 @@ import {
   // Types
   isJsonRpcError,
   isJsonRpcSuccess,
-} from '../index'
+} from '../index.ts'
 import type {
   ProgressEvent,
   LogEvent,
   ElicitRequestEvent,
   ResultEvent,
-} from '../../session/types'
+} from '../../session/types.ts'
 
 describe('MCP Protocol', () => {
   describe('Message Encoder', () => {

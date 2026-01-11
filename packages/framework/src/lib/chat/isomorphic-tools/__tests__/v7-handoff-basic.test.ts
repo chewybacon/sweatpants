@@ -7,10 +7,10 @@
  * Uses the new builder API with declarative context types.
  */
 import { z } from 'zod'
-import { describe, it, expect } from './vitest-effection'
-import { createIsomorphicTool } from '../builder'
-import { executeServerPart, executeServerPhase2 } from '../executor'
-import type { AnyIsomorphicTool } from '../types'
+import { describe, it, expect } from './vitest-effection.ts'
+import { createIsomorphicTool } from '../builder.ts'
+import { executeServerPart, executeServerPhase2 } from '../executor.ts'
+import type { AnyIsomorphicTool } from '../types.ts'
 
 // =============================================================================
 // TEST FIXTURES

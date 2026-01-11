@@ -10,8 +10,8 @@
  * Inspired by TanStack Start's approach to type-safe, low-ceremony APIs.
  */
 import type { Plugin } from 'vite'
-import { toolDiscoveryPlugin } from './tool-discovery'
-import type { ToolDiscoveryOptions } from './types'
+import { toolDiscoveryPlugin } from './tool-discovery.ts'
+import type { ToolDiscoveryOptions } from './types.ts'
 
 export type { ToolDiscoveryOptions }
 export { toolDiscoveryPlugin }
@@ -22,10 +22,10 @@ export {
   generateRegistryContent,
   calculateImportPath,
   toCamelCase,
-} from './tool-discovery'
+} from './tool-discovery.ts'
 
-export { resolveToolDiscoveryOptions } from './types'
-export type { DiscoveredTool, ResolvedToolDiscoveryOptions } from './types'
+export { resolveToolDiscoveryOptions } from './types.ts'
+export type { DiscoveredTool, ResolvedToolDiscoveryOptions } from './types.ts'
 
 export interface FrameworkOptions {
   /**

@@ -8,7 +8,7 @@
  *
  * @example Basic test
  * ```typescript
- * import { createMockMCPClient, runMCPTool } from './mock-runtime'
+ * import { createMockMCPClient, runMCPTool } from './mock-runtime.ts'
  *
  * const mockClient = createMockMCPClient({
  *   elicitResponses: [
@@ -31,11 +31,11 @@ import type {
   ElicitConfig,
   SampleConfig,
   LogLevel,
-} from './types'
+} from './types.ts'
 import {
   MCPCapabilityError,
-} from './types'
-import type { FinalizedMCPTool } from './builder'
+} from './types.ts'
+import type { FinalizedMCPTool } from './builder.ts'
 
 // =============================================================================
 // MOCK CLIENT CONFIGURATION

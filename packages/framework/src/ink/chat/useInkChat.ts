@@ -34,18 +34,18 @@
  */
 import { useMemo, useEffect, useState } from 'react'
 import type { ComponentType } from 'react'
-import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from '../../react/chat/useChatSession'
-import { deriveMessages, deriveStreamingMessage } from '../../lib/chat/state/derive-messages'
-import type { PipelineConfig, Processor } from '../../react/chat/pipeline/types'
-import { createPipelineTransform } from '../../react/chat/pipeline'
-import { useInkChatConfig, type CustomFetchFn } from './InkChatProvider'
+import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from '../../react/chat/useChatSession.ts'
+import { deriveMessages, deriveStreamingMessage } from '../../lib/chat/state/derive-messages.ts'
+import type { PipelineConfig, Processor } from '../../react/chat/pipeline/types.ts'
+import { createPipelineTransform } from '../../react/chat/pipeline/index.ts'
+import { useInkChatConfig, type CustomFetchFn } from './InkChatProvider.tsx'
 import type {
   InkChatMessage,
   InkStreamingMessage,
   PendingClientToolState,
   PendingHandoff,
   ToolEmissionTrackingState,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // TYPES

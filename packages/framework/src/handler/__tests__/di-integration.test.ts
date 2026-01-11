@@ -6,9 +6,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createScope } from 'effection'
 import { z } from 'zod'
-import { createChatHandler, type InitializerContext } from '../index'
-import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts'
-import { type ChatProvider, type IsomorphicTool, type PersonaResolver } from '../types'
+import { createChatHandler, type InitializerContext } from '../index.ts'
+import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts.ts'
+import { type ChatProvider, type IsomorphicTool, type PersonaResolver } from '../types.ts'
 
 // Mock the modules
 vi.mock('../../lib/chat/personas', () => ({

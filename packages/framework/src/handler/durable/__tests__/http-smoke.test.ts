@@ -14,14 +14,14 @@ import {
   createSharedStorage,
   getSharedStores,
   type SharedStorage,
-} from '../../../lib/chat/durable-streams'
-import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts'
-import { ollamaProvider } from '../../../lib/chat/providers'
-import { createDurableChatHandler } from '../handler'
-import { createMockProvider, consumeDurableResponse } from './test-utils'
-import { createHttpTestServer, type TestServerHandle } from './http-test-server'
-import type { InitializerHook } from '../types'
+} from '../../../lib/chat/durable-streams/index.ts'
+import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup.ts'
+import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import { ollamaProvider } from '../../../lib/chat/providers/index.ts'
+import { createDurableChatHandler } from '../handler.ts'
+import { createMockProvider, consumeDurableResponse } from './test-utils.ts'
+import { createHttpTestServer, type TestServerHandle } from './http-test-server.ts'
+import type { InitializerHook } from '../types.ts'
 
 // =============================================================================
 // TEST SETUP

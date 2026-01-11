@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { run } from 'effection'
-import { runPipeline, createPipeline } from '../pipeline'
+import { runPipeline, createPipeline } from '../pipeline/index.ts'
 
 describe('full pipeline e2e', () => {
   describe('mixed content rendering', () => {

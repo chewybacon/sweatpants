@@ -4,8 +4,8 @@
  * Streaming types for chat sessions.
  */
 
-import type { Capabilities, TokenUsage, ToolCallInfo, ServerToolResult } from '../core-types'
-import type { IsomorphicHandoffEvent } from '../isomorphic-tools/types'
+import type { Capabilities, TokenUsage, ToolCallInfo, ServerToolResult } from '../core-types.ts'
+import type { IsomorphicHandoffEvent } from '../isomorphic-tools/types.ts'
 
 // =============================================================================
 // API MESSAGE

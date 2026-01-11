@@ -12,7 +12,7 @@
  * ```typescript
  * import { run, createSignal, createChannel, spawn } from 'effection'
  * import { runChatSession } from './session'
- * import { createTestStreamer } from './testing'
+ * import { createTestStreamer } from './testing.ts'
  *
  * const result = await run(function* () {
  *   const { streamer, controls } = createTestStreamer()
@@ -52,8 +52,8 @@
  */
 import type { Operation } from 'effection'
 import { createSignal, each } from 'effection'
-import type { StreamEvent, Streamer, StreamResult, ConversationState } from './types'
-import type { IsomorphicHandoffEvent } from '../../lib/chat/types'
+import type { StreamEvent, Streamer, StreamResult, ConversationState } from './types.ts'
+import type { IsomorphicHandoffEvent } from '../../lib/chat/types.ts'
 
 /**
  * Controls for a test streamer.

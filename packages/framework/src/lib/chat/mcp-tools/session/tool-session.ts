@@ -38,15 +38,15 @@ import type {
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
-} from './types'
+} from './types.ts'
 import type {
   ElicitResult,
   SampleResult,
   ElicitsMap,
-} from '../mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
-import { createBridgeHost, type ElicitResponse, type SampleResponse } from '../bridge-runtime'
-import type { ElicitId } from '../mcp-tool-types'
+} from '../mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import { createBridgeHost, type ElicitResponse, type SampleResponse } from '../bridge-runtime.ts'
+import type { ElicitId } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // INTERNAL TYPES

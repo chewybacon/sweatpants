@@ -9,11 +9,11 @@
  */
 import type { Operation, Stream, Channel } from 'effection'
 import type { ZodType } from 'zod'
-import type { ChatProvider } from '../../lib/chat/providers/types'
-import type { StreamEvent, ChatMessage } from '../types'
-import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry'
-import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions'
-import type { PluginSessionManager } from './plugin-session-manager'
+import type { ChatProvider } from '../../lib/chat/providers/types.ts'
+import type { StreamEvent, ChatMessage } from '../types.ts'
+import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
+import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
+import type { PluginSessionManager } from './plugin-session-manager.ts'
 
 // =============================================================================
 // ENGINE STATE PHASES

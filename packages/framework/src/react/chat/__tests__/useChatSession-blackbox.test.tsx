@@ -4,9 +4,9 @@ import { Readable } from 'node:stream'
 import { type ReactNode } from 'react'
 import { z } from 'zod'
 
-import { ChatProvider } from '../ChatProvider'
-import { useChatSession } from '../useChatSession'
-import type { PluginClientRegistrationInput } from '../../../lib/chat/mcp-tools/plugin'
+import { ChatProvider } from '../ChatProvider.tsx'
+import { useChatSession } from '../useChatSession.ts'
+import type { PluginClientRegistrationInput } from '../../../lib/chat/mcp-tools/plugin.ts'
 
 function ndjsonResponse(events: unknown[]): Response {
   const lines = events.map((event, i) => JSON.stringify({ lsn: i + 1, event }) + '\n')

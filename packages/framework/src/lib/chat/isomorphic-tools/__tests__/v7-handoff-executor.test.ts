@@ -10,9 +10,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { run, sleep } from 'effection'
 import { z } from 'zod'
-import { createIsomorphicTool } from '../builder'
-import { executeServerPart, executeServerPhase2 } from '../executor'
-import type { AnyIsomorphicTool } from '../types'
+import { createIsomorphicTool } from '../builder.ts'
+import { executeServerPart, executeServerPhase2 } from '../executor.ts'
+import type { AnyIsomorphicTool } from '../types.ts'
 
 // =============================================================================
 // TEST FIXTURES

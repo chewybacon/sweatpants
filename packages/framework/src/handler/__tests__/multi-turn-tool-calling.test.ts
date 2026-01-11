@@ -6,12 +6,12 @@
  * 
  * Uses vitest-effection for clean generator-based testing.
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { resource } from 'effection'
 import type { Stream } from 'effection'
 import type { Operation } from 'effection'
-import type { Message, ChatEvent, ChatResult, ToolCall } from '../../lib/chat/types'
-import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types'
+import type { Message, ChatEvent, ChatResult, ToolCall } from '../../lib/chat/types.ts'
+import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types.ts'
 
 // =============================================================================
 // MOCK PROVIDER
