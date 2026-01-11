@@ -44,8 +44,8 @@
  */
 import type { Operation } from 'effection'
 import type { ComponentType, ReactElement } from 'react'
-import type { BaseToolContext, BrowserToolContext } from './contexts'
-import type { ClientToolContext } from './runtime/tool-runtime'
+import type { BaseToolContext, BrowserToolContext } from './contexts.ts'
+import type { ClientToolContext } from './runtime/tool-runtime.ts'
 
 // =============================================================================
 // STEP TYPES

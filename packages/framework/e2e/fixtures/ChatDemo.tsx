@@ -15,7 +15,7 @@
  * - ToolCall: [data-testid="tool-call"]
  */
 import React, { useState } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall, type UseChatOptions } from '../../src/react/chat/useChat'
+import { useChat, type ChatMessage, type ChatToolCall, type UseChatOptions } from '../../src/react/chat/useChat.ts'
 
 // Props for the ChatDemo component
 export interface ChatDemoProps extends Omit<UseChatOptions, 'onError'> {

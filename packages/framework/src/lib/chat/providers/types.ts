@@ -1,9 +1,9 @@
 import type { Stream } from 'effection'
-import type { Message } from '../types'
+import type { Message } from '../types.ts'
 
 
-import type { ChatEvent, ChatResult } from '../types'
-import type { IsomorphicToolSchema } from '../isomorphic-tools'
+import type { ChatEvent, ChatResult } from '../types.ts'
+import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
 
 /**
  * Provider capabilities - what features the provider supports

@@ -1,4 +1,3 @@
-import { describe, it, expect } from 'vitest'
 import {
   call,
   createChannel,
@@ -11,35 +10,34 @@ import {
   suspend,
   type Operation,
 } from 'effection'
+import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 
-import { createDurableChatHandler } from '../handler'
-import { createPluginSessionManager, type PluginSessionManager } from '../plugin-session-manager'
-import type { InitializerHook, McpToolRegistry } from '../types'
+import { createDurableChatHandler } from '../handler.ts'
+import { createPluginSessionManager, type PluginSessionManager } from '../plugin-session-manager.ts'
+import type { InitializerHook, McpToolRegistry } from '../types.ts'
 
-import { setupInMemoryDurableStreams } from '../../../lib/chat/durable-streams'
 import {
+  McpToolRegistryContext,
+  PluginRegistryContext,
+  PluginSessionManagerContext,
   ProviderContext,
   ToolRegistryContext,
-  PluginRegistryContext,
-  McpToolRegistryContext,
-  PluginSessionManagerContext,
-} from '../../../lib/chat/providers/contexts'
+} from '../../../lib/chat/providers/contexts.ts'
 
-import type { ApiMessage } from '../../../lib/chat/session/streaming'
-import { streamChatOnce, type PluginElicitResponseData } from '../../../lib/chat/session/stream-chat'
+import { streamChatOnce, type PluginElicitResponseData } from '../../../lib/chat/session/stream-chat.ts'
+import type { ApiMessage } from '../../../lib/chat/session/streaming.ts'
+import type { ChatPatch } from '../../../lib/chat/patches/index.ts'
+import { initialChatState } from '../../../lib/chat/state/chat-state.ts'
+import { chatReducer } from '../../../lib/chat/state/reducer.ts'
+import { createMcpTool } from '../../../lib/chat/mcp-tools/index.ts'
+import { createPluginRegistryFrom } from '../../../lib/chat/mcp-tools/plugin-registry.ts'
+import { makePlugin } from '../../../lib/chat/mcp-tools/plugin.ts'
+import { createInMemoryToolSessionStore } from '../../../lib/chat/mcp-tools/session/in-memory-store.ts'
+import { createToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/session-registry.ts'
 
-import type { ChatPatch } from '../../../lib/chat/patches'
-import { chatReducer } from '../../../lib/chat/state/reducer'
-import { initialChatState } from '../../../lib/chat/state/chat-state'
-
-import { createMcpTool } from '../../../lib/chat/mcp-tools'
-import { makePlugin } from '../../../lib/chat/mcp-tools/plugin'
-import { createPluginRegistryFrom } from '../../../lib/chat/mcp-tools/plugin-registry'
-import { createInMemoryToolSessionStore } from '../../../lib/chat/mcp-tools/session/in-memory-store'
-import { createToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/session-registry'
-
-import { createMockProvider, consumeDurableResponse, createChatRequest } from './test-utils'
+import { setupInMemoryDurableStreams } from '../../../lib/chat/durable-streams/index.ts'
+import { consumeDurableResponse, createChatRequest, createMockProvider } from './test-utils.ts'
 
 function createSingleToolMcpRegistry(tool: { name: string }): McpToolRegistry {
   const map = new Map<string, unknown>([[tool.name, tool]])
@@ -209,13 +207,18 @@ describe('Plugin multi-step elicitation (black-box)', () => {
         // Mock fetch so streamChatOnce calls the handler.
         const originalFetch = globalThis.fetch
         globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          // Extract signal before creating Request to avoid AbortSignal type mismatch
+          const { signal, ...restInit } = init ?? {}
+          
           const url =
             typeof input === 'string'
               ? input
               : input instanceof URL
                 ? input.toString()
                 : input.url
-          return handler(new Request(url, init))
+          
+          // Create request without signal (handler doesn't need it for this test)
+          return handler(new Request(url, restInit))
         }
 
         try {
@@ -238,7 +241,10 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           // Request 1: expect pickFlight elicitation
           const r1 = yield* withTimeout(
             'initial request (expect pickFlight)',
-            streamChatOnce(messages, patches, { baseUrl: 'http://localhost/chat' })
+            streamChatOnce(messages, patches, { 
+              baseUrl: 'http://localhost/chat',
+              enabledPlugins: ['book_flight']
+            })
           )
           expect(r1.type).toBe('plugin_elicit')
 
@@ -266,6 +272,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             'second request (respond pickFlight, expect pickSeat)',
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
+              enabledPlugins: ['book_flight'],
               pluginElicitResponses: [pickFlightResponse],
             })
           )
@@ -291,6 +298,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             'third request (respond pickSeat, expect complete)',
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
+              enabledPlugins: ['book_flight'],
               pluginElicitResponses: [pickSeatResponse],
             })
           )
@@ -429,7 +437,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           // REQUEST 1
           const { request: request1 } = createChatRequest(
             [{ role: 'user', content: 'Book a flight' }],
-            { enabledTools: true }
+            { enabledTools: true, enabledPlugins: ['book_flight'] }
           )
 
           const response1 = yield* call(() => handler(request1))
@@ -459,6 +467,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             body: JSON.stringify({
               messages: [{ role: 'user', content: 'Book a flight' }],
               enabledTools: true,
+              enabledPlugins: ['book_flight'],
               pluginElicitResponses: [pickFlightResponse],
             }),
           })

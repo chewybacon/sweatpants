@@ -5,7 +5,7 @@
  * using Effection generators directly:
  *
  * ```typescript
- * import { describe, it, beforeEach } from './vitest-effection'
+ * import { describe, it, beforeEach } from './vitest-effection.ts'
  *
  * describe('my test', () => {
  *   beforeEach(function*() {

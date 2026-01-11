@@ -7,10 +7,10 @@
 
 import { describe, it, expect } from 'vitest'
 import { run, call, sleep } from 'effection'
-import { createInProcessTransportPair } from '../worker-thread-transport'
-import { runWorker, createWorkerToolRegistry } from '../worker-runner'
-import { createWorkerToolSession } from '../worker-tool-session'
-import type { WorkerToolContext } from '../worker-types'
+import { createInProcessTransportPair } from '../worker-thread-transport.ts'
+import { runWorker, createWorkerToolRegistry } from '../worker-runner.ts'
+import { createWorkerToolSession } from '../worker-tool-session.ts'
+import type { WorkerToolContext } from '../worker-types.ts'
 
 
 describe('WorkerToolSession', () => {

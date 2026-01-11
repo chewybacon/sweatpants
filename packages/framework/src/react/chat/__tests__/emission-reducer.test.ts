@@ -7,14 +7,14 @@
  * through the patch/reducer pattern.
  */
 import { describe, it, expect } from 'vitest'
-import { chatReducer, initialChatState } from '../../../lib/chat/state'
-import type { ChatState } from '../types'
+import { chatReducer, initialChatState } from '../../../lib/chat/state/index.ts'
+import type { ChatState } from '../types.ts'
 import type {
   ToolEmissionStartPatch,
   ToolEmissionPatch,
   ToolEmissionResponsePatch,
   ToolEmissionCompletePatch,
-} from '../../../lib/chat/patches'
+} from '../../../lib/chat/patches/index.ts'
 
 describe('Emission Reducer', () => {
   describe('tool_emission_start', () => {

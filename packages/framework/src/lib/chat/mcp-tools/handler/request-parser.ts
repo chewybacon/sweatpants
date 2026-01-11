@@ -36,9 +36,9 @@ import type {
   McpToolsListRequest,
   McpPingRequest,
   McpNotification,
-} from './types'
-import { McpHandlerError, MCP_HANDLER_ERRORS } from './types'
-import { parseEventId } from '../protocol/sse-formatter'
+} from './types.ts'
+import { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'
+import { parseEventId } from '../protocol/sse-formatter.ts'
 import type {
   JsonRpcId,
   JsonRpcRequest,
@@ -46,7 +46,7 @@ import type {
   McpToolCallParams,
   McpElicitationResult,
   McpCreateMessageResult,
-} from '../protocol/types'
+} from '../protocol/types.ts'
 
 // =============================================================================
 // HEADER PARSING

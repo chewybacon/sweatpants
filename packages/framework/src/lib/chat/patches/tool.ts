@@ -4,7 +4,7 @@
  * Tool-related patches for client tools and isomorphic tools.
  */
 
-import type { AuthorityMode, IsomorphicToolState } from '../core-types'
+import type { AuthorityMode, IsomorphicToolState } from '../core-types.ts'
 
 // =============================================================================
 // CLIENT TOOL PATCHES

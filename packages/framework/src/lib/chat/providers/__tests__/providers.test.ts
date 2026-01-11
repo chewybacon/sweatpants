@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { ollamaProvider } from '../ollama'
-import { openaiProvider, toOpenAIInput } from '../openai'
-import type { Message } from '../../types'
+import { ollamaProvider } from '../ollama.ts'
+import { openaiProvider, toOpenAIInput } from '../openai.ts'
+import type { Message } from '../../types.ts'
 
 describe('Provider Implementations', () => {
   describe('ollamaProvider', () => {

@@ -32,13 +32,13 @@ import type {
   SampleSchemaConfigMessages,
   SampleToolsResult,
   SampleSchemaResult,
-} from './mcp-tool-types'
+} from './mcp-tool-types.ts'
 import {
   McpToolDepthError,
   McpToolTokenError,
   SampleValidationError,
-} from './mcp-tool-types'
-import type { FinalizedMcpTool } from './mcp-tool-builder'
+} from './mcp-tool-types.ts'
+import type { FinalizedMcpTool } from './mcp-tool-builder.ts'
 
 // Legacy type aliases for backward compatibility
 type BranchContext = McpToolContext

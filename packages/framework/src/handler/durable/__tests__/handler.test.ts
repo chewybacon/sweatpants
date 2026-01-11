@@ -14,18 +14,18 @@
  * - Reconnection from LSN
  * - Error handling
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { call } from 'effection'
-import { setupInMemoryDurableStreams } from '../../../lib/chat/durable-streams'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts'
-import { createDurableChatHandler } from '../handler'
-import type { InitializerHook, IsomorphicTool } from '../types'
+import { setupInMemoryDurableStreams } from '../../../lib/chat/durable-streams/index.ts'
+import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import { createDurableChatHandler } from '../handler.ts'
+import type { InitializerHook, IsomorphicTool } from '../types.ts'
 import {
   createMockProvider,
   createMockTool,
   consumeDurableResponse,
   createChatRequest,
-} from './test-utils'
+} from './test-utils.ts'
 
 // =============================================================================
 // TEST HELPERS

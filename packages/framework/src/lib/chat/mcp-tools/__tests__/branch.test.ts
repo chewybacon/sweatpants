@@ -10,7 +10,7 @@ import {
   runBranchToolMock,
   runBranchTool,
   BranchDepthError,
-} from '../index'
+} from '../index.ts'
 
 describe('createBranchTool', () => {
   it('creates a tool with basic properties', () => {

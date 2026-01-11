@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { initialChatState, chatReducer } from '../../../lib/chat/state'
-import type { ChatState, ChatPatch } from '../types'
+import { initialChatState, chatReducer } from '../../../lib/chat/state/index.ts'
+import type { ChatState, ChatPatch } from '../types.ts'
 
 describe('chatReducer (pure logic)', () => {
   it('should handle streaming_start by resetting streaming parts', () => {

@@ -6,7 +6,7 @@
  *
  * Usage:
  * ```typescript
- * import { startTestServer, stopTestServer, getServerUrl } from '../setup/test-server'
+ * import { startTestServer, stopTestServer, getServerUrl } from '../setup/test-server.ts'
  *
  * beforeAll(async () => {
  *   await startTestServer()
@@ -24,7 +24,7 @@
  */
 import { spawn, type ChildProcess } from 'child_process'
 import * as path from 'path'
-import { e2eConfig } from './config'
+import { e2eConfig } from './config.ts'
 
 let serverProcess: ChildProcess | null = null
 let serverUrl: string | null = null

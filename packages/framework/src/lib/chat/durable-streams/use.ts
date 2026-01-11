@@ -15,12 +15,12 @@
  * ```
  */
 import type { Operation } from 'effection'
-import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from './types'
+import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from './types.ts'
 import {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,
   SessionRegistryContext,
-} from './contexts'
+} from './contexts.ts'
 
 // =============================================================================
 // USE TOKEN BUFFER STORE

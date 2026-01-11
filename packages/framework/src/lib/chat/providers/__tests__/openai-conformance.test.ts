@@ -6,10 +6,10 @@
  * 
  * Tests use mock SSE streams that mimic the exact format of OpenAI's Responses API.
  */
-import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection'
+import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection.ts'
 import { vi } from 'vitest'
-import { openaiProvider } from '../openai'
-import type { Message } from '../../types'
+import { openaiProvider } from '../openai.ts'
+import type { Message } from '../../types.ts'
 import type { Operation } from 'effection'
 
 // =============================================================================

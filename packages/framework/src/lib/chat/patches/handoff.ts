@@ -5,7 +5,7 @@
  * These support the ctx.render() and tool handoff patterns.
  */
 
-import type { AuthorityMode } from '../core-types'
+import type { AuthorityMode } from '../core-types.ts'
 
 // =============================================================================
 // HANDOFF PATCHES

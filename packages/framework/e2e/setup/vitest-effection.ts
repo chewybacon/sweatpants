@@ -9,7 +9,7 @@
  *
  * Usage:
  * ```typescript
- * import { describe, it, beforeAll, beforeEach, expect } from './vitest-effection'
+ * import { describe, it, beforeAll, beforeEach, expect } from './vitest-effection.ts'
  *
  * describe('my test suite', () => {
  *   let server: TestServerHandle

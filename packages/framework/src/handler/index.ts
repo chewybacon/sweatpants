@@ -40,19 +40,19 @@
  */
 
 // Export the durable handler as createChatHandler
-export { createDurableChatHandler, createChatHandler } from './durable'
+export { createDurableChatHandler, createChatHandler } from './durable/index.ts'
 
 export {
   createStreamingHandler,
   useHandlerContext,
   HandlerContext,
-} from './streaming'
+} from './streaming.ts'
 export type {
   HandlerContext as HandlerContextValue,
   StreamingHandlerOptions,
   SetupResult,
   SetupFn,
-} from './streaming'
+} from './streaming.ts'
 
 // Export types from durable handler (the only handler now)
 export type {
@@ -64,7 +64,7 @@ export type {
   DurableStreamParams,
   IsomorphicTool,
   ToolSchema,
-} from './durable'
+} from './durable/index.ts'
 
 // Export common types from base types file
 export type {
@@ -75,6 +75,6 @@ export type {
   ServerAuthorityContext,
   ResolvedPersona,
   PersonaResolver,
-} from './types'
+} from './types.ts'
 
 

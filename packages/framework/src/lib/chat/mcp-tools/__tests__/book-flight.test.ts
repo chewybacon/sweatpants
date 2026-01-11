@@ -4,9 +4,9 @@
  * Demonstrates testing a complex multi-turn MCP tool.
  */
 import { z } from 'zod'
-import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection'
-import { createMockMCPClient, runMCPTool } from '../mock-runtime'
-import { bookFlightTool } from '../examples/book-flight'
+import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection.ts'
+import { createMockMCPClient, runMCPTool } from '../mock-runtime.ts'
+import { bookFlightTool } from '../examples/book-flight.ts'
 
 describe('Book Flight Tool', () => {
   describe('happy path', () => {

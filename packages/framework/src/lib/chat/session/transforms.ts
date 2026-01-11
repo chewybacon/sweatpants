@@ -36,8 +36,8 @@
  */
 import type { Operation, Channel } from 'effection'
 import { spawn, each, createChannel, resource, suspend, call } from 'effection'
-import type { ChatPatch } from '../patches'
-import type { PatchTransform } from './options'
+import type { ChatPatch } from '../patches/index.ts'
+import type { PatchTransform } from './options.ts'
 
 /**
  * Create a buffered channel that won't drop messages sent before subscription.

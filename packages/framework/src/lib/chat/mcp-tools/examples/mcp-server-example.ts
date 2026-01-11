@@ -14,7 +14,7 @@
  * ## Usage
  *
  * ```typescript
- * import { createMcpServer } from './mcp-server-example'
+ * import { createMcpServer } from './mcp-server-example.ts'
  *
  * // Create server with your tools
  * const { handler } = await createMcpServer({
@@ -35,13 +35,13 @@
  */
 import { z } from 'zod'
 import { run } from 'effection'
-import { createMcpTool } from '../mcp-tool-builder'
-import { createMcpHandler } from '../handler/mcp-handler'
-import { createInMemoryToolSessionStore } from '../session/in-memory-store'
-import { createToolSessionRegistry } from '../session/session-registry'
-import type { ToolSessionSamplingProvider, SampleResult } from '../session/types'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
-import type { ElicitsMap } from '../mcp-tool-types'
+import { createMcpTool } from '../mcp-tool-builder.ts'
+import { createMcpHandler } from '../handler/mcp-handler.ts'
+import { createInMemoryToolSessionStore } from '../session/in-memory-store.ts'
+import { createToolSessionRegistry } from '../session/session-registry.ts'
+import type { ToolSessionSamplingProvider, SampleResult } from '../session/types.ts'
+import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import type { ElicitsMap } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // EXAMPLE TOOLS

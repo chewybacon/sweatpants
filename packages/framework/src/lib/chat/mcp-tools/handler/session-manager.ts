@@ -14,9 +14,9 @@
  * @packageDocumentation
  */
 import { createContext, type Operation } from 'effection'
-import type { ToolSessionRegistry } from '../session/types'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
-import type { ElicitsMap, ElicitResult, SampleResult } from '../mcp-tool-types'
+import type { ToolSessionRegistry } from '../session/types.ts'
+import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import type { ElicitsMap, ElicitResult, SampleResult } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,
   PendingElicitation,
@@ -24,9 +24,9 @@ import type {
   McpToolsCallRequest,
   McpElicitResponse,
   McpSampleResponse,
-} from './types'
-import { McpHandlerError, MCP_HANDLER_ERRORS } from './types'
-import type { JsonRpcId } from '../protocol/types'
+} from './types.ts'
+import { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'
+import type { JsonRpcId } from '../protocol/types.ts'
 
 // =============================================================================
 // SESSION MANAGER CONTEXT

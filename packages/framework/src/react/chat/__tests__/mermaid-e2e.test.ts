@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { run } from 'effection'
-import { runPipeline, createPipeline } from '../pipeline'
+import { runPipeline, createPipeline } from '../pipeline/index.ts'
 
 describe('mermaid end-to-end', () => {
   describe('pipeline detection', () => {
