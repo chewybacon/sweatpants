@@ -1,127 +1,28 @@
 /**
- * /chat/tictactoe - Tic-Tac-Toe Game Demo
+ * /chat/tictactoe - Tic-Tac-Toe Game Demo (Plugin Version)
  *
- * Demonstrates interactive game tools with the model as opponent:
+ * Demonstrates the tictactoe MCP plugin:
  * - Model plays as X, user plays as O
- * - User can click cells OR type messages mid-game
- * - Emissions remain in chat history as snapshots
+ * - User clicks cells to make moves
+ * - Plugin handles elicitation flow
+ *
+ * Phase 1: No mid-game chat (user can only click cells)
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
-import type { Frame } from '@sweatpants/framework/react/chat/pipeline'
-import { tools } from '@/__generated__/tool-registry.gen'
+import { tictactoePlugin } from '@/tools/tictactoe/plugin'
 
 export const Route = createFileRoute('/chat/tictactoe/')({
   component: TicTacToeDemo,
 })
 
 /**
- * Extract HTML from a Frame by joining all block rendered content.
- */
-function getFrameHtml(frame: Frame | undefined): string | null {
-  if (!frame || !frame.blocks.length) return null
-  return frame.blocks.map(b => b.rendered).join('')
-}
-
-/**
- * Debug panel showing raw message history
- */
-function DebugPanel({ state, isOpen, onToggle }: { state: any; isOpen: boolean; onToggle: () => void }) {
-  if (!isOpen) {
-    return (
-      <button
-        onClick={onToggle}
-        className="fixed bottom-4 right-4 px-3 py-2 bg-slate-800 text-slate-400 text-xs rounded-lg hover:bg-slate-700 z-50"
-      >
-        Show Debug
-      </button>
-    )
-  }
-
-  // Extract messages from state
-  const rawMessages = state.messages || []
-  
-  // Format for display - show what would be sent to OpenAI
-  const formatted = rawMessages.map((msg: any, i: number) => {
-    const base: any = {
-      index: i,
-      role: msg.role,
-    }
-    
-    // Content
-    if (msg.content) {
-      base.content = msg.content.length > 300 
-        ? msg.content.slice(0, 300) + '...' 
-        : msg.content
-    }
-    
-    // Tool calls (assistant requesting tool use)
-    if (msg.toolCalls?.length) {
-      base.toolCalls = msg.toolCalls.map((tc: any) => ({
-        id: tc.id,
-        name: tc.name,
-        arguments: typeof tc.arguments === 'string' 
-          ? tc.arguments 
-          : JSON.stringify(tc.arguments),
-      }))
-    }
-    
-    // Tool result (response from tool)
-    if (msg.role === 'tool') {
-      base.toolCallId = msg.toolCallId
-      base.result = typeof msg.content === 'string' && msg.content.length > 300
-        ? msg.content.slice(0, 300) + '...'
-        : msg.content
-    }
-    
-    return base
-  })
-
-  return (
-    <div className="fixed bottom-4 right-4 w-[600px] max-h-[70vh] bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-50 flex flex-col">
-      <div className="flex items-center justify-between p-3 border-b border-slate-700">
-        <span className="text-sm font-bold text-slate-300">
-          Debug: Raw Messages ({rawMessages.length})
-        </span>
-        <button onClick={onToggle} className="text-slate-500 hover:text-slate-300">
-          Close
-        </button>
-      </div>
-      <div className="flex-1 overflow-auto p-3">
-        <pre className="text-xs text-slate-400 whitespace-pre-wrap font-mono">
-          {JSON.stringify(formatted, null, 2)}
-        </pre>
-      </div>
-      <div className="p-2 border-t border-slate-700 flex gap-4">
-        <button
-          onClick={() => {
-            console.log('=== FULL STATE ===')
-            console.log(state)
-            console.log('=== RAW MESSAGES ===')
-            console.log(JSON.stringify(rawMessages, null, 2))
-          }}
-          className="text-xs text-cyan-500 hover:text-cyan-400"
-        >
-          Log to console
-        </button>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(JSON.stringify(rawMessages, null, 2))
-          }}
-          className="text-xs text-emerald-500 hover:text-emerald-400"
-        >
-          Copy JSON
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/**
- * Renders a tool call with its inline emissions.
+ * Renders a tool call part with its inline emissions.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
+  const hasEmissions = toolCall.emissions.length > 0
+
   return (
     <div className="my-2">
       {toolCall.emissions.map((emission) => {
@@ -139,14 +40,16 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
         )
       })}
 
-      {toolCall.emissions.length === 0 && (toolCall.state === 'running' || toolCall.state === 'pending') && (
+      {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
         </div>
       )}
 
       {toolCall.state === 'error' && toolCall.error && (
-        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
+        <div className="text-xs text-red-400">
+          Error: {toolCall.error}
+        </div>
       )}
     </div>
   )
@@ -157,11 +60,6 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
  */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
-
-  // Extract parts by type
-  const textParts = message.parts.filter(p => p.type === 'text')
-  const toolCallParts = message.parts.filter((p): p is ChatToolCall => p.type === 'tool-call')
-  const hasTextContent = textParts.some(p => (p as { content?: string }).content)
 
   return (
     <div className={`mb-6 ${isUser ? 'text-right' : ''}`}>
@@ -184,32 +82,40 @@ function Message({ message }: { message: ChatMessage }) {
               : 'bg-slate-800/50 text-slate-200'
           }`}
         >
-          {/* Tool calls with emissions */}
-          {toolCallParts.map((tc) => (
-            <ToolCallBlock key={tc.id} toolCall={tc} />
-          ))}
+          {message.parts.map((part) => {
+            if (part.type === 'reasoning') {
+              return (
+                <details key={part.id} className="mb-3 text-xs">
+                  <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
+                    Thinking...
+                  </summary>
+                  <div
+                    className="mt-2 p-2 bg-slate-900/50 rounded text-slate-400 italic"
+                    dangerouslySetInnerHTML={{ __html: part.rendered }}
+                  />
+                </details>
+              )
+            }
 
-          {/* Text content */}
-          {hasTextContent && (
-            <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
-              {textParts.map((part, i) => {
-                const html = getFrameHtml((part as { frame?: Frame }).frame)
-                const content = (part as { content?: string }).content
-                return (
-                  <div key={part.id || i}>
-                    {html ? (
-                      <div dangerouslySetInnerHTML={{ __html: html }} />
-                    ) : (
-                      content
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
+            if (part.type === 'tool-call') {
+              return <ToolCallBlock key={part.id} toolCall={part} />
+            }
 
-          {message.isStreaming && !hasTextContent && toolCallParts.length === 0 && (
-            <span className="inline-block w-2 h-4 bg-cyan-500 animate-pulse" />
+            if (part.type === 'text') {
+              return (
+                <div
+                  key={part.id}
+                  className="prose prose-invert prose-sm max-w-none leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: part.rendered }}
+                />
+              )
+            }
+
+            return null
+          })}
+
+          {message.isStreaming && (
+            <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
           )}
         </div>
       </div>
@@ -222,95 +128,75 @@ function TicTacToeDemo() {
     messages,
     streamingMessage,
     isStreaming,
+    pipelineReady,
     send,
     abort,
     reset,
     error,
-    session,
   } = useChat({
     pipeline: 'markdown',
-    tools: [tools.startTttGame, tools.tttMove, tools.tttWinner],
+    // No isomorphic tools - using plugin instead
+    tools: [],
+    // TicTacToe plugin
+    plugins: [tictactoePlugin.client],
+    // Tell server to only enable tictactoe plugin
+    enabledPlugins: ['tictactoe'],
+    // System prompt for the game
     systemPrompt: `You are playing tic-tac-toe against the user. You are X, the user is O.
 
-CRITICAL: You MUST use the provided tools to play the game. Do NOT draw ASCII boards or describe moves in text.
+CRITICAL: You MUST use the tictactoe tool to play. Do NOT draw ASCII boards or describe moves in text.
 
 To play:
-1. When the user wants to play, call start_ttt_game with your opening move position (0-8)
-2. After each user move, call ttt_move with the current board and your next move
-3. When the game ends, call ttt_winner to announce the result
-
-The tools will render an interactive board for the user. Never describe the board in text - always use the tools.
+1. Call tictactoe with action="start" and your opening position (0-8)
+2. After each user move, call tictactoe with action="move", the current board, and your next position
+3. When the game ends, call tictactoe with action="end", the board, and the winner
 
 Board positions:
 0 | 1 | 2
 ---------
-3 | 4 | 5  
+3 | 4 | 5
 ---------
 6 | 7 | 8
 
-You can chat with the user between moves, but ALL game actions must go through the tools.`,
+Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block opponent's winning moves.`,
   })
 
   const [input, setInput] = useState('')
-  const [showDebug, setShowDebug] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  // Log state changes for debugging
-  useEffect(() => {
-    console.log('[TTT] State updated:', {
-      messagesLength: session.state.messages.length,
-      isStreaming: session.state.isStreaming,
-      error: session.state.error,
-    })
-  }, [session.state])
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingMessage?.parts.length])
 
-  // Find any pending emission (for the chat input to respond to)
-  const pendingEmission = useMemo(() => {
-    for (const tracking of Object.values(session.toolEmissions)) {
-      const pending = tracking.emissions.find((e) => e.status === 'pending')
-      if (pending) {
-        return { callId: tracking.callId, emission: pending }
-      }
-    }
-    return null
-  }, [session.toolEmissions])
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim()) return
-
-    if (pendingEmission) {
-      // Complete pending tool with user's message
-      session.respondToEmission(pendingEmission.callId, pendingEmission.emission.id, {
-        type: 'message',
-        text: input.trim(),
-      })
-    } else {
-      send(input.trim())
-    }
+    if (!input.trim() || isStreaming) return
+    send(input.trim())
     setInput('')
   }
-
-  const placeholder = pendingEmission
-    ? 'Type a message or click a cell above...'
-    : isStreaming
-      ? 'Waiting for response...'
-      : "Type a message... (try: Let's play tic-tac-toe!)"
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
-        <div className="mb-8 border-b border-slate-800 pb-4">
-          <h1 className="text-3xl font-bold text-cyan-400 mb-2">Tic-Tac-Toe</h1>
-          <p className="text-slate-400 text-sm">
-            Play against the model. You're O, model is X. Click cells or type messages mid-game.
-          </p>
+        <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
+          <div>
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Tic-Tac-Toe</h1>
+            <p className="text-slate-400 text-sm">
+              Play against the model. You're O, model is X. Click cells to play.
+            </p>
+            <p className="text-amber-500/70 text-xs mt-1">
+              Phase 1: Mid-game chat disabled (click cells only)
+            </p>
+          </div>
+          <div className="text-xs">
+            {pipelineReady ? (
+              <span className="text-emerald-500">Pipeline ready</span>
+            ) : (
+              <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
+            )}
+          </div>
         </div>
 
         {/* Messages */}
@@ -347,8 +233,12 @@ You can chat with the user between moves, but ALL game actions must go through t
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={placeholder}
-            disabled={isStreaming && !pendingEmission}
+            placeholder={
+              isStreaming
+                ? 'Waiting for response...'
+                : "Type a message... (try: Let's play tic-tac-toe!)"
+            }
+            disabled={isStreaming}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
 
@@ -382,18 +272,14 @@ You can chat with the user between moves, but ALL game actions must go through t
             New Game
           </button>
           <div className="flex items-center gap-4">
-            {pendingEmission && <span className="text-amber-500">Your turn</span>}
+            <span>
+              <span className="text-emerald-600">plugin:</span>
+              {' tictactoe'}
+            </span>
             <span className="text-cyan-400">{messages.length} messages</span>
           </div>
         </div>
       </div>
-
-      {/* Debug Panel */}
-      <DebugPanel 
-        state={session.state} 
-        isOpen={showDebug} 
-        onToggle={() => setShowDebug(!showDebug)} 
-      />
     </div>
   )
 }

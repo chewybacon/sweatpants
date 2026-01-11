@@ -1028,6 +1028,25 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             const pluginAwaitingResults = results.filter((r) => r.ok && r.kind === 'plugin_awaiting')
             
             if (pluginAwaitingResults.length > 0) {
+              // CRITICAL: Add assistant message with tool_calls to conversationMessages
+              // BEFORE going to plugin_awaiting_elicit. This ensures the conversation
+              // state includes the tool call that's awaiting elicitation, so when the
+              // client syncs and sends the next request, the LLM sees the proper
+              // tool_call -> tool_result sequence. Without this, multi-turn plugin
+              // conversations (like tictactoe) fail with "No tool call found" errors.
+              state.conversationMessages.push({
+                role: 'assistant',
+                content: providerResult.text,
+                tool_calls: toolCalls.map((tc) => ({
+                  id: tc.id,
+                  type: 'function' as const,
+                  function: {
+                    name: tc.function.name,
+                    arguments: tc.function.arguments as Record<string, unknown>,
+                  },
+                })),
+              })
+              
               // Plugin tool(s) need elicitation - emit elicit events and transition
               for (const r of pluginAwaitingResults) {
                 if (r.ok && r.kind === 'plugin_awaiting') {

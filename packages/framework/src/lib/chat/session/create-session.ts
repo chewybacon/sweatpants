@@ -838,8 +838,65 @@ export function* runChatSession(
                 break
               }
               
-              // Plugin elicitation - break the loop, UI will handle via state
+              // Plugin elicitation - sync conversation state and break the loop
               if (result.type === 'plugin_elicit') {
+                // CRITICAL: Sync conversation state to history so the next request
+                // includes the assistant message with tool_calls. Without this,
+                // the next request will send tool results to OpenAI without the
+                // corresponding tool_calls, causing "No tool call found" errors.
+                
+                const conversationMessages = result.conversationState.messages
+                const originalHistoryLength = history.length
+                
+                // Add any new messages from conversationState
+                for (let i = originalHistoryLength; i < conversationMessages.length; i++) {
+                  const apiMsg = conversationMessages[i]!
+                  const msg: Message = {
+                    id: crypto.randomUUID(),
+                    role: apiMsg.role,
+                    content: apiMsg.content,
+                  }
+                  
+                  // Preserve tool_calls with proper type field
+                  if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
+                    msg.tool_calls = apiMsg.tool_calls.map(tc => ({
+                      id: tc.id,
+                      type: 'function' as const,
+                      function: 'function' in tc ? tc.function : { name: (tc as any).name, arguments: (tc as any).arguments },
+                    }))
+                  }
+                  
+                  // Preserve tool_call_id
+                  if (apiMsg.tool_call_id) {
+                    msg.tool_call_id = apiMsg.tool_call_id
+                  }
+                  
+                  history.push(msg)
+                }
+                
+                // Add the assistant message with tool_calls if not already in conversationMessages
+                const hasAssistantWithTools = conversationMessages.some(
+                  msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
+                )
+                
+                if (!hasAssistantWithTools && result.conversationState.toolCalls.length > 0) {
+                  // Build assistant message with tool_calls from conversationState.toolCalls
+                  const assistantMsg: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'assistant',
+                    content: result.conversationState.assistantContent || '',
+                    tool_calls: result.conversationState.toolCalls.map(tc => ({
+                      id: tc.id,
+                      type: 'function' as const,
+                      function: {
+                        name: tc.name,
+                        arguments: tc.arguments,
+                      },
+                    })),
+                  }
+                  history.push(assistantMsg)
+                }
+                
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pluginElicitations.
                 // The UI will render based on this state and collect user responses.
@@ -853,7 +910,46 @@ export function* runChatSession(
             
             // Handle final result
             if (result.type === 'complete') {
-              const completeResult = result as { type: 'complete'; text: string }
+              const completeResult = result as { 
+                type: 'complete'
+                text: string
+                toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
+                toolResults?: Array<{ id: string; name: string; content: string }>
+              }
+              
+              // Sync tool calls and results to history
+              // This is critical for multi-turn tool conversations where the LLM
+              // makes multiple tool calls in sequence (like in tictactoe)
+              if (completeResult.toolCalls && completeResult.toolCalls.length > 0) {
+                // Add assistant message with tool_calls
+                const assistantWithToolsMsg: Message = {
+                  id: crypto.randomUUID(),
+                  role: 'assistant',
+                  content: '', // Tool-calling messages typically have empty content
+                  tool_calls: completeResult.toolCalls.map(tc => ({
+                    id: tc.id,
+                    type: 'function' as const,
+                    function: {
+                      name: tc.name,
+                      arguments: tc.arguments as Record<string, unknown>,
+                    },
+                  })),
+                }
+                history.push(assistantWithToolsMsg)
+              }
+              
+              if (completeResult.toolResults && completeResult.toolResults.length > 0) {
+                // Add tool result messages
+                for (const tr of completeResult.toolResults) {
+                  const toolMsg: Message = {
+                    id: crypto.randomUUID(),
+                    role: 'tool',
+                    content: tr.content,
+                    tool_call_id: tr.id,
+                  }
+                  history.push(toolMsg)
+                }
+              }
               
               // Only add assistant message if there's content
               if (completeResult.text) {

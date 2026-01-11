@@ -249,6 +249,53 @@ export interface ModelPreferences {
   intelligencePriority?: number
 }
 
+// -----------------------------------------------------------------------------
+// TOOL DEFINITIONS FOR SAMPLING
+// -----------------------------------------------------------------------------
+
+/**
+ * Definition of a tool that can be called during sampling.
+ *
+ * Used with `ctx.sample({ tools: [...] })` to enable structured output
+ * or multi-turn tool calling patterns within a tool.
+ */
+export interface SamplingToolDefinition {
+  /** Tool name */
+  name: string
+
+  /** Description for the LLM */
+  description?: string
+
+  /**
+   * Input schema as Zod type or raw JSON Schema.
+   * Zod schemas will be converted to JSON Schema internally.
+   */
+  inputSchema: z.ZodType | Record<string, unknown>
+}
+
+/**
+ * A tool call returned by the model during sampling.
+ */
+export interface SamplingToolCall {
+  /** Unique ID for this tool call (for correlation with results) */
+  id: string
+
+  /** Name of the tool being called */
+  name: string
+
+  /** Arguments to the tool (parsed from model output) */
+  arguments: Record<string, unknown>
+}
+
+/**
+ * Tool choice configuration for sampling.
+ */
+export type SamplingToolChoice = 'auto' | 'required' | 'none'
+
+// -----------------------------------------------------------------------------
+// SAMPLE CONFIG BASE
+// -----------------------------------------------------------------------------
+
 /**
  * Base sample configuration (shared fields).
  */
@@ -261,18 +308,64 @@ interface SampleConfigBase {
 
   /** Model preferences for the client */
   modelPreferences?: ModelPreferences
+}
+
+// -----------------------------------------------------------------------------
+// SAMPLE CONFIG VARIANTS (mutually exclusive)
+// -----------------------------------------------------------------------------
+
+/**
+ * Plain sample config - no schema or tools.
+ */
+interface SampleConfigPlain extends SampleConfigBase {
+  schema?: never
+  tools?: never
+  toolChoice?: never
+}
+
+/**
+ * Sample config with structured output schema.
+ * The response will be parsed and validated against the schema.
+ *
+ * @template T - The type of the parsed output
+ */
+interface SampleConfigWithSchema<T = unknown> extends SampleConfigBase {
+  /**
+   * Zod schema for structured output.
+   * The model's response will be parsed and validated against this schema.
+   * Uses provider's native structured output when available.
+   */
+  schema: z.ZodType<T>
+  tools?: never
+  toolChoice?: never
+}
+
+/**
+ * Sample config with tool definitions.
+ * Enables the model to call tools, returning tool calls in the result.
+ */
+interface SampleConfigWithTools extends SampleConfigBase {
+  /** Tools available for the model to call */
+  tools: SamplingToolDefinition[]
 
   /**
-   * Optional Zod schema for structured output.
-   * If provided, the response will be parsed and validated.
+   * How the model should choose tools:
+   * - 'auto': Model decides whether to call a tool (default)
+   * - 'required': Model must call at least one tool
+   * - 'none': Tools are provided for context but model cannot call them
    */
-  schema?: z.ZodType
+  toolChoice?: SamplingToolChoice
+  schema?: never
 }
+
+// -----------------------------------------------------------------------------
+// MESSAGE MODE VARIANTS
+// -----------------------------------------------------------------------------
 
 /**
  * Sample with auto-tracked prompt (appends to branch context).
  */
-export interface SampleConfigPrompt extends SampleConfigBase {
+interface SampleConfigPromptMode {
   /** The prompt to send (auto-tracked in branch context) */
   prompt: string
   messages?: never
@@ -281,24 +374,70 @@ export interface SampleConfigPrompt extends SampleConfigBase {
 /**
  * Sample with explicit messages (full control).
  */
-export interface SampleConfigMessages extends SampleConfigBase {
+interface SampleConfigMessagesMode {
   /** Explicit messages array (not auto-tracked) */
   messages: Message[]
   prompt?: never
 }
 
-/**
- * Configuration for a sampling request.
- * Supports two modes:
- * - `prompt`: Simple prompt string, auto-tracked in branch context
- * - `messages`: Explicit messages array, full control
- */
-export type McpToolSampleConfig = SampleConfigPrompt | SampleConfigMessages
+// -----------------------------------------------------------------------------
+// COMBINED SAMPLE CONFIG TYPES
+// -----------------------------------------------------------------------------
+
+/** Plain sample with prompt */
+export type SampleConfigPlainPrompt = SampleConfigPlain & SampleConfigPromptMode
+
+/** Plain sample with messages */
+export type SampleConfigPlainMessages = SampleConfigPlain & SampleConfigMessagesMode
+
+/** Schema sample with prompt */
+export type SampleConfigSchemaPrompt<T = unknown> = SampleConfigWithSchema<T> & SampleConfigPromptMode
+
+/** Schema sample with messages */
+export type SampleConfigSchemaMessages<T = unknown> = SampleConfigWithSchema<T> & SampleConfigMessagesMode
+
+/** Tools sample with prompt */
+export type SampleConfigToolsPrompt = SampleConfigWithTools & SampleConfigPromptMode
+
+/** Tools sample with messages */
+export type SampleConfigToolsMessages = SampleConfigWithTools & SampleConfigMessagesMode
 
 /**
- * Result of a sampling request.
+ * Legacy type for backwards compatibility.
+ * @deprecated Use specific sample config types for type safety
  */
-export interface SampleResult {
+export type SampleConfigPrompt = SampleConfigPlainPrompt
+export type SampleConfigMessages = SampleConfigPlainMessages
+
+/**
+ * Configuration for a sampling request.
+ * Supports two modes for message input:
+ * - `prompt`: Simple prompt string, auto-tracked in branch context
+ * - `messages`: Explicit messages array, full control
+ *
+ * And three modes for output:
+ * - Plain: Just text
+ * - With schema: Parsed and validated structured output
+ * - With tools: Tool calls returned for execution
+ *
+ * Note: `schema` and `tools` are mutually exclusive.
+ */
+export type McpToolSampleConfig =
+  | SampleConfigPlainPrompt
+  | SampleConfigPlainMessages
+  | SampleConfigSchemaPrompt
+  | SampleConfigSchemaMessages
+  | SampleConfigToolsPrompt
+  | SampleConfigToolsMessages
+
+// -----------------------------------------------------------------------------
+// SAMPLE RESULT TYPES
+// -----------------------------------------------------------------------------
+
+/**
+ * Base result of a sampling request.
+ */
+export interface SampleResultBase {
   /** The generated text */
   text: string
 
@@ -307,6 +446,146 @@ export interface SampleResult {
 
   /** Why generation stopped */
   stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
+}
+
+/**
+ * Result when using structured output (schema).
+ *
+ * @template T - The type of the parsed output
+ */
+export interface SampleResultWithParsed<T> extends SampleResultBase {
+  /**
+   * Parsed and validated output.
+   * Null if parsing/validation failed (check parseError).
+   */
+  parsed: T | null
+
+  /**
+   * Error from parsing or validation.
+   * Present when parsed is null.
+   */
+  parseError?: {
+    /** Error message */
+    message: string
+    /** Raw text that failed to parse */
+    rawText: string
+  }
+}
+
+/**
+ * Result when using tool calling.
+ */
+export interface SampleResultWithToolCalls extends SampleResultBase {
+  /**
+   * Tool calls made by the model.
+   * Present when stopReason is 'toolUse'.
+   */
+  toolCalls: SamplingToolCall[]
+}
+
+/**
+ * Legacy type alias for backwards compatibility.
+ * @deprecated Use SampleResultBase for plain results
+ */
+export type SampleResult = SampleResultBase
+
+// =============================================================================
+// SAMPLE HELPER CONFIG TYPES
+// =============================================================================
+
+/**
+ * Base config for sample helpers with retry support.
+ */
+interface SampleHelperConfigBase extends SampleConfigBase {
+  /**
+   * Number of retry attempts if validation fails.
+   * @default 2
+   */
+  retries?: number
+}
+
+/**
+ * Config for sampleTools helper.
+ * Guarantees tool calls in the result or throws after retries.
+ */
+export interface SampleToolsConfig extends SampleHelperConfigBase {
+  /** The prompt to send */
+  prompt: string
+  /** Tools available for the model to call */
+  tools: SamplingToolDefinition[]
+  /**
+   * How the model should choose tools.
+   * @default 'required'
+   */
+  toolChoice?: SamplingToolChoice
+}
+
+/**
+ * Config for sampleTools helper with explicit messages.
+ */
+export interface SampleToolsConfigMessages extends SampleHelperConfigBase {
+  /** Explicit messages array */
+  messages: Message[]
+  /** Tools available for the model to call */
+  tools: SamplingToolDefinition[]
+  /**
+   * How the model should choose tools.
+   * @default 'required'
+   */
+  toolChoice?: SamplingToolChoice
+}
+
+/**
+ * Config for sampleSchema helper.
+ * Guarantees parsed result or throws after retries.
+ */
+export interface SampleSchemaConfig<T> extends SampleHelperConfigBase {
+  /** The prompt to send */
+  prompt: string
+  /** Zod schema for structured output */
+  schema: z.ZodType<T>
+}
+
+/**
+ * Config for sampleSchema helper with explicit messages.
+ */
+export interface SampleSchemaConfigMessages<T> extends SampleHelperConfigBase {
+  /** Explicit messages array */
+  messages: Message[]
+  /** Zod schema for structured output */
+  schema: z.ZodType<T>
+}
+
+/**
+ * Guaranteed result from sampleTools - toolCalls is always present and non-empty.
+ */
+export interface SampleToolsResult extends SampleResultBase {
+  /** Guaranteed non-empty tool calls */
+  toolCalls: [SamplingToolCall, ...SamplingToolCall[]]
+  stopReason: 'toolUse'
+}
+
+/**
+ * Guaranteed result from sampleSchema - parsed is always present and non-null.
+ */
+export interface SampleSchemaResult<T> extends SampleResultBase {
+  /** Guaranteed parsed value */
+  parsed: T
+}
+
+/**
+ * Error thrown when sample helpers exhaust retries.
+ */
+export class SampleValidationError extends Error {
+  constructor(
+    public readonly helperName: 'sampleTools' | 'sampleSchema',
+    public readonly attempts: number,
+    public readonly lastResult: SampleResultBase,
+    message: string
+  ) {
+    super(message)
+    this.name = 'SampleValidationError'
+  }
 }
 
 // =============================================================================
@@ -466,30 +745,112 @@ export interface McpToolContext {
   /**
    * Request an LLM completion from the client.
    *
-   * Two modes:
+   * Two modes for message input:
    * - `{ prompt }`: Auto-tracked in branch context
    * - `{ messages }`: Explicit control, not tracked
    *
+   * Three modes for output:
+   * - Plain: Just text (default)
+   * - With schema: Parsed and validated structured output
+   * - With tools: Tool calls returned for execution
+   *
+   * Note: `schema` and `tools` are mutually exclusive.
+   *
    * Maps to MCP: `sampling/createMessage`
    *
-   * @example Auto-tracked
+   * @example Auto-tracked (plain)
    * ```typescript
-   * // Appends to ctx.messages automatically
    * const result = yield* ctx.sample({ prompt: 'Summarize...' })
+   * console.log(result.text)
    * ```
    *
-   * @example Explicit messages
+   * @example Structured output
    * ```typescript
-   * // Full control, not tracked in ctx.messages
+   * const MoveSchema = z.object({ cell: z.number().min(0).max(8) })
    * const result = yield* ctx.sample({
-   *   messages: [
-   *     ...ctx.parentMessages,
-   *     { role: 'user', content: 'Custom...' }
-   *   ]
+   *   prompt: 'Pick a cell',
+   *   schema: MoveSchema,
    * })
+   * if (result.parsed) {
+   *   console.log('Cell:', result.parsed.cell)  // typed as number
+   * }
+   * ```
+   *
+   * @example Tool calling
+   * ```typescript
+   * const result = yield* ctx.sample({
+   *   prompt: 'Make a move',
+   *   tools: [{ name: 'make_move', inputSchema: z.object({ cell: z.number() }) }],
+   *   toolChoice: 'required',
+   * })
+   * if (result.stopReason === 'toolUse') {
+   *   const call = result.toolCalls[0]
+   *   // Execute the tool...
+   * }
    * ```
    */
-  sample(config: McpToolSampleConfig): Operation<SampleResult>
+  // Plain sample (no schema, no tools) - returns base result
+  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>
+  // Schema sample - returns result with parsed field
+  sample<T>(config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
+  // Tools sample - returns result with toolCalls field
+  sample(config: SampleConfigToolsPrompt | SampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
+  // Catch-all for the implementation
+  sample(config: McpToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+
+  /**
+   * Sample with guaranteed tool calls.
+   * 
+   * Unlike raw `sample()`, this helper:
+   * - Validates that the model returned tool calls
+   * - Retries with a hint if validation fails
+   * - Throws `SampleValidationError` after retries exhausted
+   * 
+   * @param config - Sample configuration with tools
+   * @returns Guaranteed result with non-empty toolCalls
+   * @throws SampleValidationError if no tool calls after retries
+   * 
+   * @example
+   * ```typescript
+   * const result = yield* ctx.sampleTools({
+   *   prompt: 'Choose a strategy',
+   *   tools: [
+   *     { name: 'offensive', inputSchema: z.object({ reason: z.string() }) },
+   *     { name: 'defensive', inputSchema: z.object({ threat: z.string() }) },
+   *   ],
+   *   retries: 3,  // optional, default 2
+   * })
+   * // result.toolCalls is guaranteed to be non-empty
+   * const call = result.toolCalls[0]
+   * ```
+   */
+  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>
+
+  /**
+   * Sample with guaranteed parsed schema.
+   * 
+   * Unlike raw `sample()`, this helper:
+   * - Validates that the model returned valid parsed output
+   * - Retries with a hint if parsing fails
+   * - Throws `SampleValidationError` after retries exhausted
+   * 
+   * @param config - Sample configuration with schema
+   * @returns Guaranteed result with parsed value (never null)
+   * @throws SampleValidationError if parsing fails after retries
+   * 
+   * @example
+   * ```typescript
+   * const MoveSchema = z.object({ cell: z.number().min(0).max(8) })
+   * const result = yield* ctx.sampleSchema({
+   *   prompt: 'Pick a cell (0-8)',
+   *   schema: MoveSchema,
+   *   retries: 3,  // optional, default 2
+   * })
+   * // result.parsed is guaranteed to be { cell: number }
+   * console.log('Cell:', result.parsed.cell)
+   * ```
+   */
+  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>
 
   // ---------------------------------------------------------------------------
   // User backchannel
@@ -632,7 +993,20 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   // LLM backchannel - same as McpToolContext
   // ---------------------------------------------------------------------------
 
-  sample(config: McpToolSampleConfig): Operation<SampleResult>
+  // Plain sample (no schema, no tools) - returns base result
+  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>
+  // Schema sample - returns result with parsed field
+  sample<T>(config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
+  // Tools sample - returns result with toolCalls field
+  sample(config: SampleConfigToolsPrompt | SampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
+  // Catch-all for the implementation
+  sample(config: McpToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+
+  /** Sample with guaranteed tool calls. See McpToolContext.sampleTools for details. */
+  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>
+
+  /** Sample with guaranteed parsed schema. See McpToolContext.sampleSchema for details. */
+  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>
 
   // ---------------------------------------------------------------------------
   // User backchannel - KEYED elicitation

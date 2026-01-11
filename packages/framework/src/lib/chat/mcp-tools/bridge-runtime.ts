@@ -33,13 +33,24 @@ import type {
   ElicitRequest,
   ElicitsMap,
   Message,
-  SampleResult,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SamplingToolDefinition,
+  SamplingToolChoice,
   ElicitResult,
   LogLevel,
+  SampleToolsConfig,
+  SampleToolsConfigMessages,
+  SampleToolsResult,
+  SampleSchemaConfig,
+  SampleSchemaConfigMessages,
+  SampleSchemaResult,
 } from './mcp-tool-types'
 import {
   McpToolDepthError,
   McpToolTokenError,
+  SampleValidationError,
 } from './mcp-tool-types'
 import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
 
@@ -197,7 +208,18 @@ export interface ElicitResponse<T = unknown> {
  * Sample response from external handler.
  */
 export interface SampleResponse {
-  result: SampleResult
+  result: SampleResultBase
+}
+
+/**
+ * Sample options for bridge events.
+ */
+export interface BridgeSampleOptions {
+  systemPrompt?: string
+  maxTokens?: number
+  tools?: SamplingToolDefinition[]
+  toolChoice?: SamplingToolChoice
+  schema?: Record<string, unknown>
 }
 
 /**
@@ -207,7 +229,7 @@ export type BridgeEvent =
   | { type: 'elicit'; request: ElicitRequest; responseSignal: Signal<ElicitResponse, void> }
   | { type: 'log'; level: LogLevel; message: string }
   | { type: 'notify'; message: string; progress?: number }
-  | { type: 'sample'; messages: Message[]; options?: { systemPrompt?: string; maxTokens?: number }; responseSignal: Signal<SampleResponse, void> }
+  | { type: 'sample'; messages: Message[]; options?: BridgeSampleOptions; responseSignal: Signal<SampleResponse, void> }
 
 /**
  * Sampling provider for the bridge runtime.
@@ -218,8 +240,8 @@ export type BridgeEvent =
 export interface BridgeSamplingProvider {
   sample(
     messages: Message[],
-    options?: { systemPrompt?: string; maxTokens?: number }
-  ): Operation<SampleResult>
+    options?: BridgeSampleOptions
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
 }
 
 /**
@@ -389,7 +411,9 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     },
 
     // LLM backchannel
-    sample(config: BranchSampleConfig): Operation<SampleResult> {
+    // Using type assertion because the implementation handles all overload variants,
+    // but TypeScript can't verify this without conditional types at the implementation level.
+    sample: ((config: BranchSampleConfig) => {
       return {
         *[Symbol.iterator]() {
           let messages: Message[]
@@ -403,13 +427,40 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             throw new Error('sample() requires either prompt or messages')
           }
 
-          const sampleOptions: { systemPrompt?: string; maxTokens?: number } = {}
+          // Build sample options including new fields
+          const sampleOptions: BridgeSampleOptions = {}
           const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt
           if (effectiveSystemPrompt !== undefined) {
             sampleOptions.systemPrompt = effectiveSystemPrompt
           }
           if (config.maxTokens !== undefined) {
             sampleOptions.maxTokens = config.maxTokens
+          }
+          
+          // Pass through tools if provided
+          if ('tools' in config && config.tools) {
+            // Convert Zod schemas in tool definitions to JSON Schema
+            sampleOptions.tools = config.tools.map(tool => {
+              const def: SamplingToolDefinition = {
+                name: tool.name,
+                // inputSchema could be Zod or already JSON Schema
+                inputSchema: 'safeParse' in tool.inputSchema 
+                  ? zodToJsonSchema(tool.inputSchema as z.ZodType)
+                  : tool.inputSchema,
+              }
+              if (tool.description !== undefined) {
+                def.description = tool.description
+              }
+              return def
+            })
+          }
+          if ('toolChoice' in config && config.toolChoice) {
+            sampleOptions.toolChoice = config.toolChoice
+          }
+          
+          // Convert schema from Zod to JSON Schema if provided
+          if ('schema' in config && config.schema) {
+            sampleOptions.schema = zodToJsonSchema(config.schema as z.ZodType)
           }
 
           // Create a signal for the response
@@ -455,7 +506,285 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           })
           addTokens(state.tokenTracker, estimatedTokens)
 
+          // If schema was provided, parse the response and add parsed/parseError
+          if ('schema' in config && config.schema) {
+            const schema = config.schema as z.ZodType
+            try {
+              const jsonParsed = JSON.parse(result.text)
+              const zodResult = schema.safeParse(jsonParsed)
+              if (zodResult.success) {
+                return {
+                  ...result,
+                  parsed: zodResult.data,
+                } as SampleResultWithParsed<unknown>
+              } else {
+                return {
+                  ...result,
+                  parsed: null,
+                  parseError: {
+                    message: zodResult.error.message,
+                    rawText: result.text,
+                  },
+                } as SampleResultWithParsed<unknown>
+              }
+            } catch (jsonError) {
+              return {
+                ...result,
+                parsed: null,
+                parseError: {
+                  message: jsonError instanceof Error ? jsonError.message : 'JSON parse error',
+                  rawText: result.text,
+                },
+              } as SampleResultWithParsed<unknown>
+            }
+          }
+
           return result
+        },
+      }
+    }) as McpToolContextWithElicits<TElicits>['sample'],
+
+    // Sample with guaranteed tool calls
+    sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult> {
+      const maxRetries = config.retries ?? 2
+      const toolChoice = config.toolChoice ?? 'required'
+      
+      return {
+        *[Symbol.iterator]() {
+          let lastResult: SampleResultBase | SampleResultWithToolCalls | undefined
+          
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Build messages for this attempt
+            let messages: Message[]
+            
+            if ('prompt' in config && config.prompt) {
+              const retryHint = attempt > 0 
+                ? `\n\n[IMPORTANT: You must call one of the available tools. Your previous response did not include a tool call.]`
+                : ''
+              const userMessage: Message = { role: 'user', content: config.prompt + retryHint }
+              messages = [...state.messages, userMessage]
+            } else if ('messages' in config && config.messages) {
+              // Messages mode - add retry hint to last message if retrying
+              if (attempt > 0 && config.messages.length > 0) {
+                const lastMsg = config.messages[config.messages.length - 1]!
+                messages = [
+                  ...config.messages.slice(0, -1),
+                  { ...lastMsg, content: lastMsg.content + '\n\n[IMPORTANT: You must call one of the available tools.]' }
+                ]
+              } else {
+                messages = config.messages
+              }
+            } else {
+              throw new Error('sampleTools() requires either prompt or messages')
+            }
+            
+            // Build sample options
+            const sampleOptions: BridgeSampleOptions = {}
+            const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt
+            if (effectiveSystemPrompt !== undefined) {
+              sampleOptions.systemPrompt = effectiveSystemPrompt
+            }
+            if (config.maxTokens !== undefined) {
+              sampleOptions.maxTokens = config.maxTokens
+            }
+            
+            // Convert tools
+            sampleOptions.tools = config.tools.map(tool => {
+              const def: SamplingToolDefinition = {
+                name: tool.name,
+                inputSchema: 'safeParse' in tool.inputSchema 
+                  ? zodToJsonSchema(tool.inputSchema as z.ZodType)
+                  : tool.inputSchema,
+              }
+              if (tool.description !== undefined) {
+                def.description = tool.description
+              }
+              return def
+            })
+            sampleOptions.toolChoice = toolChoice
+            
+            // Create response signal and send sample event
+            const responseSignal = createSignal<SampleResponse, void>()
+            const event: BridgeEvent = {
+              type: 'sample',
+              messages,
+              responseSignal,
+            }
+            if (Object.keys(sampleOptions).length > 0) {
+              (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
+            }
+            yield* state.eventChannel.send(event)
+            
+            // Wait for response
+            const subscription = yield* responseSignal
+            const next = yield* subscription.next()
+            if (next.done) {
+              throw new Error('Sample signal closed without response')
+            }
+            const result = next.value.result
+            lastResult = result
+            
+            // Track token usage
+            const estimatedTokens = estimateTokensFromConversation({
+              ...(sampleOptions.systemPrompt !== undefined
+                ? { systemPrompt: sampleOptions.systemPrompt }
+                : {}),
+              messages,
+              completion: result.text,
+            })
+            addTokens(state.tokenTracker, estimatedTokens)
+            
+            // Validate: must have tool calls
+            if (result.stopReason === 'toolUse' && 'toolCalls' in result && (result as SampleResultWithToolCalls).toolCalls.length > 0) {
+              // Update branch messages if using prompt mode
+              if ('prompt' in config && config.prompt) {
+                state.messages.push(
+                  { role: 'user', content: config.prompt },
+                  { role: 'assistant', content: result.text }
+                )
+              }
+              
+              return result as SampleToolsResult
+            }
+          }
+          
+          // All retries exhausted
+          throw new SampleValidationError(
+            'sampleTools',
+            maxRetries + 1,
+            lastResult!,
+            `sampleTools failed after ${maxRetries + 1} attempts: model did not return tool calls`
+          )
+        },
+      }
+    },
+
+    // Sample with guaranteed parsed schema
+    sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
+      const maxRetries = config.retries ?? 2
+      
+      return {
+        *[Symbol.iterator]() {
+          let lastResult: SampleResultBase | SampleResultWithParsed<T> | undefined
+          let lastError: string | undefined
+          
+          for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            // Build messages for this attempt
+            let messages: Message[]
+            
+            if ('prompt' in config && config.prompt) {
+              const retryHint = attempt > 0 && lastError
+                ? `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON matching the schema.]`
+                : ''
+              const userMessage: Message = { role: 'user', content: config.prompt + retryHint }
+              messages = [...state.messages, userMessage]
+            } else if ('messages' in config && config.messages) {
+              // Messages mode - add retry hint to last message if retrying
+              if (attempt > 0 && config.messages.length > 0 && lastError) {
+                const lastMsg = config.messages[config.messages.length - 1]!
+                messages = [
+                  ...config.messages.slice(0, -1),
+                  { ...lastMsg, content: lastMsg.content + `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]` }
+                ]
+              } else {
+                messages = config.messages
+              }
+            } else {
+              throw new Error('sampleSchema() requires either prompt or messages')
+            }
+            
+            // Build sample options
+            const sampleOptions: BridgeSampleOptions = {}
+            const effectiveSystemPrompt = config.systemPrompt ?? state.systemPrompt
+            if (effectiveSystemPrompt !== undefined) {
+              sampleOptions.systemPrompt = effectiveSystemPrompt
+            }
+            if (config.maxTokens !== undefined) {
+              sampleOptions.maxTokens = config.maxTokens
+            }
+            
+            // Convert schema
+            sampleOptions.schema = zodToJsonSchema(config.schema as z.ZodType)
+            
+            // Create response signal and send sample event
+            const responseSignal = createSignal<SampleResponse, void>()
+            const event: BridgeEvent = {
+              type: 'sample',
+              messages,
+              responseSignal,
+            }
+            if (Object.keys(sampleOptions).length > 0) {
+              (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
+            }
+            yield* state.eventChannel.send(event)
+            
+            // Wait for response
+            const subscription = yield* responseSignal
+            const next = yield* subscription.next()
+            if (next.done) {
+              throw new Error('Sample signal closed without response')
+            }
+            const result = next.value.result
+            
+            // Track token usage
+            const estimatedTokens = estimateTokensFromConversation({
+              ...(sampleOptions.systemPrompt !== undefined
+                ? { systemPrompt: sampleOptions.systemPrompt }
+                : {}),
+              messages,
+              completion: result.text,
+            })
+            addTokens(state.tokenTracker, estimatedTokens)
+            
+            // Parse schema
+            const schema = config.schema as z.ZodType
+            try {
+              const jsonParsed = JSON.parse(result.text)
+              const zodResult = schema.safeParse(jsonParsed)
+              if (zodResult.success) {
+                // Update branch messages if using prompt mode
+                if ('prompt' in config && config.prompt) {
+                  state.messages.push(
+                    { role: 'user', content: config.prompt },
+                    { role: 'assistant', content: result.text }
+                  )
+                }
+                
+                return {
+                  ...result,
+                  parsed: zodResult.data,
+                } as SampleSchemaResult<T>
+              } else {
+                lastError = zodResult.error.message
+                lastResult = {
+                  ...result,
+                  parsed: null,
+                  parseError: {
+                    message: zodResult.error.message,
+                    rawText: result.text,
+                  },
+                } as SampleResultWithParsed<T>
+              }
+            } catch (jsonError) {
+              lastError = jsonError instanceof Error ? jsonError.message : 'JSON parse error'
+              lastResult = {
+                ...result,
+                parsed: null,
+                parseError: {
+                  message: lastError,
+                  rawText: result.text,
+                },
+              } as SampleResultWithParsed<T>
+            }
+          }
+          
+          // All retries exhausted
+          throw new SampleValidationError(
+            'sampleSchema',
+            maxRetries + 1,
+            lastResult!,
+            `sampleSchema failed after ${maxRetries + 1} attempts: ${lastError}`
+          )
         },
       }
     },
