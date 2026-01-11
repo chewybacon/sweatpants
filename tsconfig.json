@@ -1,10 +1,17 @@
 {
   "extends": "@tanstack/ts-config/tsconfig.base.json",
   "compilerOptions": {
-    // Prefer source jumps for framework during local dev
+    "declaration": true,
     "paths": {
       "@sweatpants/framework": ["packages/framework/src"],
       "@sweatpants/framework/*": ["packages/framework/src/*"]
     }
-  }
+  },
+  "references": [
+    { "path": "./packages/elicit-context" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/framework" },
+    { "path": "./apps/hydra" }
+  ],
+  "files": []
 }
