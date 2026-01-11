@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    // DTS generation (handled by tsup, not tsc)
+    "declaration": true,
+    "declarationMap": true,
+    "noEmit": true,
+    
+    // Disable composite for tsup builds
+    "composite": false,
+    
+    // Suppress deprecation warnings
+    "ignoreDeprecations": "5.0"
+  }
+}
