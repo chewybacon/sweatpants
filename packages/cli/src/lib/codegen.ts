@@ -4,8 +4,8 @@
  * Generates TypeScript type definitions from MCP manifest data.
  */
 
-import type { McpManifest, McpToolDefinition } from './fetch-manifest'
-import { jsonSchemaToTs, toPascalCase } from './json-schema-to-ts'
+import type { McpManifest, McpToolDefinition } from './fetch-manifest.ts'
+import { jsonSchemaToTs, toPascalCase } from './json-schema-to-ts.ts'
 
 /**
  * Options for code generation.
