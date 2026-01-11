@@ -2,16 +2,16 @@
   "extends": "@sweatpants/ts-config/tsconfig.base.json",
   "compilerOptions": {
     "declaration": true,
-    "paths": {
-      "@sweatpants/framework": ["packages/framework/src"],
-      "@sweatpants/framework/*": ["packages/framework/src/*"]
-    }
+    "ignoreDeprecations": "5.0"
   },
   "references": [
     { "path": "./packages/elicit-context" },
     { "path": "./packages/cli" },
     { "path": "./packages/framework" },
-    { "path": "./apps/hydra" }
+    { "path": "./apps/hydra" },
+    { "path": "./apps/yo-chat" },
+    { "path": "./apps/yo-agent" },
+    { "path": "./apps/yo-mcp" }
   ],
   "files": []
 }
