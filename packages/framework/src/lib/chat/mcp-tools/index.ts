@@ -81,6 +81,13 @@ export type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
+  // Sample helper types (guaranteed results)
+  SampleToolsConfig,
+  SampleToolsConfigMessages,
+  SampleSchemaConfig,
+  SampleSchemaConfigMessages,
+  SampleToolsResult,
+  SampleSchemaResult,
   // Sampling tool types
   SamplingToolDefinition,
   SamplingToolCall,
@@ -108,6 +115,7 @@ export {
   McpToolTokenError,
   McpToolTimeoutError,
   McpDisconnectError,
+  SampleValidationError,
 } from './mcp-tool-types'
 
 // =============================================================================
