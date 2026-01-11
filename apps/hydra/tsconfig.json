@@ -1,5 +1,5 @@
 {
-  "extends": "@tanstack/ts-config/tsconfig.node.json",
+  "extends": "@sweatpants/ts-config/tsconfig.node.json",
   "compilerOptions": {
     "composite": true,
     "outDir": "./dist",

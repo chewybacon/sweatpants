@@ -28,7 +28,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "tsup": "^8.5.0",
