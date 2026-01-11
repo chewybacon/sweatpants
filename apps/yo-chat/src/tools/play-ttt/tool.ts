@@ -13,7 +13,6 @@
  */
 import { z } from 'zod'
 import { createMcpTool } from '@sweatpants/framework/chat'
-import type { SampleResultWithParsed, SampleResultWithToolCalls } from '@sweatpants/framework/chat'
 import {
   type Board,
   type Player,
@@ -117,7 +116,6 @@ Board positions:
       const { modelSymbol, userSymbol, modelGoesFirst } = handoff
       let board: Board = [...EMPTY_BOARD]
       let currentPlayer: Player = 'X' // X always goes first
-      const MAX_RETRIES = 3
       const moveHistory: GameMove[] = []
 
       yield* ctx.log('info', `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`)
@@ -137,8 +135,8 @@ Board positions:
             .map((cell, i) => (cell === null ? i : null))
             .filter((i): i is number => i !== null)
 
-          // L1: Strategy decision using tool calling
-          const strategyResult = yield* ctx.sample({
+          // L1: Strategy decision using tool calling (guaranteed to return tool calls)
+          const strategy = yield* ctx.sampleTools({
             prompt: `You are playing tic-tac-toe as ${modelSymbol}.
 
 Current board:
@@ -163,79 +161,60 @@ Analyze the board and choose your strategy.`,
                 }),
               },
             ],
-            toolChoice: 'required',
+            retries: 3,
           })
 
-          const strategy = strategyResult as SampleResultWithToolCalls
-          const chosenStrategy = strategy.toolCalls?.[0]
+          // sampleTools guarantees toolCalls[0] exists
+          const chosenStrategy = strategy.toolCalls[0]
           let playedCell: number
-          let strategyName: 'offensive' | 'defensive' | undefined
+          let strategyName: 'offensive' | 'defensive'
           let reasoning: string | undefined
 
-          if (!chosenStrategy) {
-            yield* ctx.log('warning', `No strategy chosen (toolCalls: ${JSON.stringify(strategy.toolCalls)}), defaulting to first empty cell`)
+          yield* ctx.log('info', `Strategy: ${chosenStrategy.name}`)
+          strategyName = chosenStrategy.name === 'play_offensive' ? 'offensive' : 'defensive'
+          const args = chosenStrategy.arguments as { reasoning?: string; threat?: string }
+          reasoning = args.reasoning || args.threat
+
+          // L2: Move selection using schema (guaranteed to parse successfully)
+          const moveResult = yield* ctx.sampleSchema({
+            messages: [
+              {
+                role: 'user',
+                content: `Board:\n${boardStr}\n\nEmpty positions: ${emptyPositions.join(', ')}\n\nPick your move.`,
+              },
+              {
+                role: 'assistant',
+                content: '',
+                tool_calls: [{
+                  id: chosenStrategy.id,
+                  type: 'function',
+                  function: {
+                    name: chosenStrategy.name,
+                    arguments: JSON.stringify(chosenStrategy.arguments),
+                  },
+                }],
+              },
+              {
+                role: 'tool',
+                content: `Strategy chosen: ${chosenStrategy.name}. Now pick a cell (0-8) from empty positions.`,
+                tool_call_id: chosenStrategy.id,
+              },
+            ] as any, // Using any because Message type doesn't include tool_calls
+            schema: MoveSchema,
+            retries: 3,
+          })
+
+          // sampleSchema guarantees parsed is non-null and valid
+          playedCell = moveResult.parsed.cell
+          
+          // Validate the move is actually empty (defense against hallucinated positions)
+          if (!emptyPositions.includes(playedCell)) {
+            yield* ctx.log('warning', `Model chose occupied cell ${playedCell}, falling back to first empty`)
             playedCell = emptyPositions[0]!
-            board = applyMove(board, playedCell, modelSymbol)
-          } else {
-            yield* ctx.log('info', `Strategy: ${chosenStrategy.name}`)
-            strategyName = chosenStrategy.name === 'play_offensive' ? 'offensive' : 'defensive'
-            const args = chosenStrategy.arguments as { reasoning?: string; threat?: string }
-            reasoning = args.reasoning || args.threat
-
-            // L2: Move selection using schema with retry loop
-            let moveSuccess = false
-            playedCell = emptyPositions[0]! // Default fallback
-            
-            for (let attempt = 0; attempt < MAX_RETRIES && !moveSuccess; attempt++) {
-              const retryHint = attempt > 0 
-                ? `\n\nYour previous move was invalid. Choose from empty positions: ${emptyPositions.join(', ')}`
-                : ''
-
-              // Build messages with tool result context
-              const moveResult = yield* ctx.sample({
-                messages: [
-                  {
-                    role: 'user',
-                    content: `Board:\n${boardStr}\n\nEmpty positions: ${emptyPositions.join(', ')}\n\nPick your move.${retryHint}`,
-                  },
-                  {
-                    role: 'assistant',
-                    content: '',
-                    tool_calls: [{
-                      id: chosenStrategy.id,
-                      type: 'function',
-                      function: {
-                        name: chosenStrategy.name,
-                        arguments: JSON.stringify(chosenStrategy.arguments),
-                      },
-                    }],
-                  },
-                  {
-                    role: 'tool',
-                    content: `Strategy chosen: ${chosenStrategy.name}. Now pick a cell (0-8) from empty positions.`,
-                    tool_call_id: chosenStrategy.id,
-                  },
-                ] as any, // Using any because Message type doesn't include tool_calls
-                schema: MoveSchema,
-              })
-
-              const parsed = (moveResult as SampleResultWithParsed<{ cell: number }>).parsed
-              if (parsed && emptyPositions.includes(parsed.cell)) {
-                playedCell = parsed.cell
-                board = applyMove(board, playedCell, modelSymbol)
-                moveSuccess = true
-                yield* ctx.log('info', `Model plays cell ${playedCell}`)
-              } else {
-                yield* ctx.log('warning', `Invalid move attempt ${attempt + 1}: ${JSON.stringify(parsed)}`)
-              }
-            }
-
-            // Fallback if all retries failed
-            if (!moveSuccess) {
-              board = applyMove(board, playedCell, modelSymbol)
-              yield* ctx.log('warning', `Fallback to cell ${playedCell}`)
-            }
           }
+          
+          board = applyMove(board, playedCell, modelSymbol)
+          yield* ctx.log('info', `Model plays cell ${playedCell}`)
 
           // Add model's move to history
           moveHistory.push({
