@@ -660,17 +660,12 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       const tracking = state.toolEmissions[patch.callId]
       if (!tracking) return state
 
-      // Mark as complete but preserve emissions for multi-turn tools
-      // Emissions are only cleaned up when the tool call itself completes
+      // Remove tracking from state - tool execution is complete
+      const { [patch.callId]: _completed, ...remainingEmissions } = state.toolEmissions
+
       return {
         ...state,
-        toolEmissions: {
-          ...state.toolEmissions,
-          [patch.callId]: {
-            ...tracking,
-            status: 'complete',
-          },
-        },
+        toolEmissions: remainingEmissions,
       }
     }
 
