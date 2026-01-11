@@ -158,7 +158,7 @@ For packages with multiple entry points:
 
 ```json
 {
-  "extends": "@tanstack/ts-config/tsconfig.package.json",
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
     "composite": true,
     "emitDeclarationOnly": true,
@@ -183,7 +183,7 @@ For packages with multiple entry points:
 
 ```json
 {
-  "extends": "@tanstack/ts-config/tsconfig.app.json",
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
@@ -204,7 +204,7 @@ For packages with multiple entry points:
 
 ```json
 {
-  "extends": "@tanstack/ts-config/tsconfig.base.json",
+  "extends": "@sweatpants/ts-config/tsconfig.base.json",
   "compilerOptions": {
     "declaration": true
   },

@@ -1,5 +1,5 @@
 {
-  "extends": "@tanstack/ts-config/tsconfig.app.json",
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
   "compilerOptions": {
     "types": ["vite/client"],
     "baseUrl": ".",

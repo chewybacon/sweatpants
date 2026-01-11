@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
