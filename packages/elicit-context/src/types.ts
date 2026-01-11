@@ -142,13 +142,13 @@ export type ExtractElicitResponse<T> = T extends ElicitDefinition<infer TSchema,
 
 /**
  * Extract the context type from an ElicitEntry.
- * Returns Record<string, never> if no context defined or if it's a bare schema.
+ * Returns empty object type if no context defined or if it's a bare schema.
  */
 export type ExtractElicitContext<T> = T extends ElicitDefinition<any, infer TSchema>
   ? TSchema extends undefined
-    ? Record<string, never>
+    ? {} // eslint-disable-line @typescript-eslint/no-empty-object-type
     : InferZodOutput<TSchema>
-  : Record<string, never>  // Bare schema has no context
+  : {}  // Bare schema has no context
 
 /**
  * Extract the response schema from an ElicitEntry.
