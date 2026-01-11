@@ -9,8 +9,8 @@
  * @packageDocumentation
  */
 
-export { encodeElicitContext } from './encode'
-export { decodeElicitContext, stripMessageContext } from './decode'
+export { encodeElicitContext } from './encode.ts'
+export { decodeElicitContext, stripMessageContext } from './decode.ts'
 export type {
   ElicitDefinition,
   ElicitsMap,
@@ -23,4 +23,4 @@ export type {
   ExtractElicitContext,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
-} from './types'
+} from './types.ts'
