@@ -1,8 +1,14 @@
 {
   "extends": "@tanstack/ts-config/tsconfig.package.json",
   "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules", "**/__tests__/**", "**/*.test.ts", "tests"]
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["dist", "node_modules", "**/__tests__/**", "**/*.test.ts", "tests"],
+  "references": [
+    { "path": "../elicit-context" }
+  ]
 }
