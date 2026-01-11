@@ -10,7 +10,7 @@ import fg from 'fast-glob'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-interface Match {
+export interface Match {
   file: string
   line: number
   content: string
@@ -88,11 +88,12 @@ export const grepSearch = createIsomorphicTool('grep_search')
               break
             }
 
-            if (regex.test(lines[i])) {
+            const line = lines[i]
+            if (line !== undefined && regex.test(line)) {
               matches.push({
                 file,
                 line: i + 1,
-                content: lines[i].slice(0, 200), // Truncate long lines
+                content: line.slice(0, 200), // Truncate long lines
               })
             }
             // Reset regex lastIndex for next test
