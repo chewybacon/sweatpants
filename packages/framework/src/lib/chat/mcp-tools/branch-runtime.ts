@@ -328,7 +328,7 @@ function createBranchContext(
             // Call sample
             const result = yield* client.sample(
               'prompt' in sampleConfig 
-                ? [...state.messages, { role: 'user', content: sampleConfig.prompt }]
+                ? [...state.messages, { role: 'user' as const, content: sampleConfig.prompt as string }]
                 : sampleConfig.messages,
               {
                 ...(sampleConfig.systemPrompt !== undefined ? { systemPrompt: sampleConfig.systemPrompt } : {}),
@@ -415,7 +415,7 @@ function createBranchContext(
             // Call sample
             const result = (yield* client.sample(
               'prompt' in sampleConfig 
-                ? [...state.messages, { role: 'user', content: sampleConfig.prompt }]
+                ? [...state.messages, { role: 'user' as const, content: sampleConfig.prompt as string }]
                 : sampleConfig.messages,
               {
                 ...(sampleConfig.systemPrompt !== undefined ? { systemPrompt: sampleConfig.systemPrompt } : {}),
