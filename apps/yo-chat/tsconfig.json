@@ -4,21 +4,7 @@
     "types": ["vite/client"],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@sweatpants/framework/vite": ["../../packages/framework/src/vite/index.ts"],
-      "@sweatpants/framework/handler": ["../../packages/framework/src/handler/index.ts"],
-      "@sweatpants/framework/handler/durable": ["../../packages/framework/src/handler/durable/index.ts"],
-      "@sweatpants/framework/chat": ["../../packages/framework/src/lib/chat/index.ts"],
-      "@sweatpants/framework/chat/durable-streams": ["../../packages/framework/src/lib/chat/durable-streams/index.ts"],
-      "@sweatpants/framework/chat/isomorphic-tools": [
-        "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
-      ],
-      "@sweatpants/framework/react/chat": [
-        "../../packages/framework/src/react/chat/index.ts"
-      ],
-      "@sweatpants/framework/react/chat/pipeline": [
-        "../../packages/framework/src/react/chat/pipeline/index.ts"
-      ]
+      "@/*": ["./src/*"]
     }
   },
   "include": [
@@ -28,5 +14,8 @@
     "components.json",
     "todos.json"
   ],
-  "exclude": ["dist", "node_modules"]
+  "exclude": ["dist", "node_modules"],
+  "references": [
+    { "path": "../../packages/framework/tsconfig.lib.json" }
+  ]
 }
