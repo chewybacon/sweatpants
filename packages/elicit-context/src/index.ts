@@ -13,6 +13,7 @@ export { encodeElicitContext } from './encode.ts'
 export { decodeElicitContext, stripMessageContext } from './decode.ts'
 export type {
   ElicitDefinition,
+  ElicitEntry,
   ElicitsMap,
   ElicitRequest,
   ElicitOptions,
