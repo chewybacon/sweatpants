@@ -271,7 +271,7 @@ export function createToolSession<
         })
       },
 
-      *respondToElicit(elicitId: string, response: ElicitResult<unknown>): Operation<void> {
+      *respondToElicit(elicitId: string, response: ElicitResult<unknown, unknown>): Operation<void> {
         const pending = state.pendingElicit
         if (!pending) {
           return

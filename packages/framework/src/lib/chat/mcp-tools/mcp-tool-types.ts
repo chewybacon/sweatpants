@@ -54,15 +54,106 @@ import type {
 // =============================================================================
 
 /**
+ * Elicitation exchange - captures an elicitation as a request/response message pair.
+ *
+ * This enables tools to accumulate elicitation exchanges as conversation history
+ * for sampling. The exchange captures:
+ * - The context passed to elicit() (fully typed)
+ * - The request as an assistant message with tool_call
+ * - The response as a tool result message
+ *
+ * @template TContext - The type of context passed to elicit()
+ * @template TResponse - The type of the user's response
+ *
+ * @example
+ * ```typescript
+ * const result = yield* ctx.elicit('pickMove', { message: 'Your turn!', board, moveHistory })
+ *
+ * if (result.action === 'accept') {
+ *   // Safe default - no context in arguments
+ *   history.push(...result.exchange.messages)
+ *
+ *   // Or with explicit derived context
+ *   history.push(...result.exchange.withArguments((ctx) => ({
+ *     boardState: formatBoard(ctx.board),
+ *   })))
+ * }
+ * ```
+ */
+export interface ElicitExchange<TContext> {
+  /**
+   * The captured context from the elicit call.
+   * This is everything passed to elicit() except the message.
+   */
+  context: TContext
+
+  /**
+   * The elicitation request as an assistant message with tool_call.
+   * The tool_call arguments are empty by default for safety.
+   */
+  request: AssistantToolCallMessage
+
+  /**
+   * The user's response as a tool result message.
+   * Content is the JSON-serialized response.
+   */
+  response: ToolResultMessage
+
+  /**
+   * Messages tuple [request, response] with empty arguments (safe default).
+   * Ready to spread into a conversation history.
+   */
+  messages: [AssistantToolCallMessage, ToolResultMessage]
+
+  /**
+   * Build messages with custom arguments derived from captured context.
+   *
+   * The callback receives the fully typed context and returns the arguments
+   * to include in the tool_call. This is opt-in context exposure.
+   *
+   * @param fn - Function that derives tool call arguments from context
+   * @returns Messages tuple with populated arguments
+   *
+   * @example
+   * ```typescript
+   * result.exchange.withArguments((ctx) => ({
+   *   moveNumber: ctx.moveHistory.length,
+   *   boardState: formatBoard(ctx.board),
+   * }))
+   * ```
+   */
+  withArguments(
+    fn: (context: TContext) => Record<string, unknown>
+  ): [AssistantToolCallMessage, ToolResultMessage]
+}
+
+/**
  * Result of an elicitation request.
  *
  * MCP elicitation has three response actions:
- * - `accept`: User submitted data (content contains the data)
+ * - `accept`: User submitted data (content and exchange available)
  * - `decline`: User explicitly declined (clicked "No", "Reject", etc.)
  * - `cancel`: User dismissed without choosing (closed dialog, pressed Escape)
+ *
+ * @template TContext - The type of context passed to elicit()
+ * @template TResponse - The type of the user's response
  */
-export type ElicitResult<T> =
-  | { action: 'accept'; content: T }
+export type ElicitResult<TContext, TResponse> =
+  | { action: 'accept'; content: TResponse; exchange: ElicitExchange<TContext> }
+  | { action: 'decline' }
+  | { action: 'cancel' }
+
+/**
+ * Raw elicit result without exchange.
+ * 
+ * Used by plugin handlers and transport layers that return just the
+ * action and content. The exchange is constructed by the bridge-runtime
+ * layer which has access to the original context.
+ *
+ * @template TResponse - The type of the user's response
+ */
+export type RawElicitResult<TResponse> =
+  | { action: 'accept'; content: TResponse }
   | { action: 'decline' }
   | { action: 'cancel' }
 
@@ -213,6 +304,77 @@ export interface Message {
   role: MessageRole
   content: string
 }
+
+// =============================================================================
+// EXTENDED MESSAGE TYPES (MCP++)
+// =============================================================================
+// The official MCP spec for sampling/createMessage only supports
+// TextContent | ImageContent | AudioContent. We extend this with
+// tool calling support for richer sampling patterns.
+
+/**
+ * A tool call made by the assistant.
+ * 
+ * Used in MCP++ sampling to represent tool calls in conversation history.
+ */
+export interface ToolCall {
+  /** Unique ID for this tool call (for correlation with results) */
+  id: string
+  
+  /** Always 'function' for now */
+  type: 'function'
+  
+  /** The function being called */
+  function: {
+    /** Function/tool name */
+    name: string
+    
+    /** Arguments to the function */
+    arguments: Record<string, unknown>
+  }
+}
+
+/**
+ * Assistant message with tool calls.
+ * 
+ * Represents an assistant turn that includes one or more tool calls.
+ * Used in MCP++ sampling to build conversation history with tool interactions.
+ */
+export interface AssistantToolCallMessage {
+  role: 'assistant'
+  
+  /** Optional text content alongside tool calls */
+  content: string | null
+  
+  /** Tool calls made by the assistant */
+  tool_calls: ToolCall[]
+}
+
+/**
+ * Tool result message.
+ * 
+ * Represents the result of a tool call.
+ * Used in MCP++ sampling to include tool results in conversation history.
+ */
+export interface ToolResultMessage {
+  role: 'tool'
+  
+  /** ID of the tool call this result is for */
+  tool_call_id: string
+  
+  /** The tool result (serialized as string) */
+  content: string
+}
+
+/**
+ * Extended message type supporting both basic messages and tool interactions.
+ * 
+ * This is the MCP++ message type that supports:
+ * - Basic text messages (user/assistant/system)
+ * - Assistant messages with tool calls
+ * - Tool result messages
+ */
+export type ExtendedMessage = Message | AssistantToolCallMessage | ToolResultMessage
 
 // =============================================================================
 // SAMPLING TYPES
@@ -875,7 +1037,7 @@ export interface McpToolContext {
    * }
    * ```
    */
-  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>>
+  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>>
 
   // ---------------------------------------------------------------------------
   // Sub-branches
@@ -1041,7 +1203,7 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   elicit<K extends keyof TElicits & string>(
     key: K,
     options: { message: string } & ExtractElicitContext<TElicits[K]>
-  ): Operation<ElicitResult<ExtractElicitResponse<TElicits[K]>>>
+  ): Operation<ElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>>
 
   // ---------------------------------------------------------------------------
   // Sub-branches - inherit keyed elicitation

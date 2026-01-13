@@ -97,6 +97,7 @@ export type {
   MessageRole,
   // Elicitation types
   ElicitResult,
+  RawElicitResult,
   ElicitConfig,
   ElicitsMap,
   ElicitId,

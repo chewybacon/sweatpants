@@ -39,6 +39,9 @@ import type {
   SamplingToolDefinition,
   SamplingToolChoice,
   ElicitResult,
+  ElicitExchange,
+  AssistantToolCallMessage,
+  ToolResultMessage,
   LogLevel,
   SampleToolsConfig,
   SampleToolsConfigMessages,
@@ -196,12 +199,12 @@ function createBufferedChannel<T>(): Channel<T, void> {
 /**
  * Elicitation response from the client.
  */
-export interface ElicitResponse<T = unknown> {
+export interface ElicitResponse<TContext = unknown, TResponse = unknown> {
   /** Matches the request id */
   id: ElicitId
 
   /** The user's response */
-  result: ElicitResult<T>
+  result: ElicitResult<TContext, TResponse>
 }
 
 /**
@@ -880,7 +883,57 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 `Elicit response validation failed for key "${key}": ${parseResult.error.message}`
               )
             }
-            return { action: 'accept', content: parseResult.data }
+
+            // Construct the exchange for the accept result
+            const toolCallId = `elicit_${id.callId}_${id.seq}`
+            const parsedContent = parseResult.data
+
+            // Build request message (assistant with tool_call)
+            const requestMessage: AssistantToolCallMessage = {
+              role: 'assistant',
+              content: message,
+              tool_calls: [{
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: key,
+                  arguments: {}, // Safe default - empty args
+                },
+              }],
+            }
+
+            // Build response message (tool result)
+            const responseMessage: ToolResultMessage = {
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: JSON.stringify(parsedContent),
+            }
+
+            // Create the exchange object
+            const exchange: ElicitExchange<typeof contextData> = {
+              context: contextData,
+              request: requestMessage,
+              response: responseMessage,
+              messages: [requestMessage, responseMessage],
+              withArguments(fn) {
+                const args = fn(contextData)
+                const requestWithArgs: AssistantToolCallMessage = {
+                  role: 'assistant',
+                  content: message,
+                  tool_calls: [{
+                    id: toolCallId,
+                    type: 'function',
+                    function: {
+                      name: key,
+                      arguments: args,
+                    },
+                  }],
+                }
+                return [requestWithArgs, responseMessage]
+              },
+            }
+
+            return { action: 'accept' as const, content: parsedContent, exchange }
           }
 
           return response.result
@@ -1142,7 +1195,7 @@ export function createBridgeHost<
 export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
   [K in keyof TElicits]: (
     request: ElicitRequest<K & string, any>
-  ) => Operation<ElicitResult<any>>
+  ) => Operation<ElicitResult<any, any>>
 }
 
 /**
