@@ -14,7 +14,7 @@ import { spawn, each, type Operation, type Channel } from 'effection'
 import type { ChatProvider } from '../../lib/chat/providers/types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
-import type { ElicitsMap, Message as McpMessage } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
+import type { ElicitsMap, ExtendedMessage } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import {
   createBridgeHost,
@@ -211,9 +211,10 @@ function* handleBridgeEvent(
       // Use the chat provider to sample
       try {
         // Convert MCP messages to chat messages
-        const chatMessages = event.messages.map((msg: McpMessage) => ({
+        // Note: ExtendedMessage.content can be null for tool_calls, default to empty string
+        const chatMessages = event.messages.map((msg: ExtendedMessage) => ({
           role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
+          content: msg.content ?? '',
         }))
 
         // Get the stream from provider

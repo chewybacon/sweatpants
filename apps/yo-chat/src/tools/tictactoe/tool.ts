@@ -11,9 +11,12 @@
  *
  * Compare this to play-ttt which uses MCP++ extensions (sampleTools, sampleSchema)
  * for guaranteed structured responses and strategic decision making.
+ *
+ * NEW: Demonstrates exchange accumulation - the model now sees the full game
+ * progression through accumulated conversation history (elicit exchanges + samples).
  */
 import { z } from 'zod'
-import { createMcpTool } from '@sweatpants/framework/chat'
+import { createMcpTool, type ExtendedMessage } from '@sweatpants/framework/chat'
 import {
   type Board,
   type Player,
@@ -111,12 +114,22 @@ Board positions:
      * - No structured output (schema), no tool forcing
      * - Must parse the response and hope for the best
      * - Falls back to random if parsing fails
+     *
+     * NEW: Implements exchange accumulation
+     * - Captures each elicit exchange using result.exchange.withArguments()
+     * - Captures model sampling turns as user/assistant messages
+     * - Passes accumulated history to subsequent ctx.sample() calls
+     * - Model now sees full game progression for better context
      */
     *client(handoff, ctx) {
       const { modelSymbol, userSymbol, modelGoesFirst } = handoff
       let board: Board = [...EMPTY_BOARD]
       let currentPlayer: Player = 'X' // X always goes first
       const moveHistory: GameMove[] = []
+
+      // Accumulate conversation history for model context
+      // This enables the model to see the full game progression
+      const conversationHistory: ExtendedMessage[] = []
 
       yield* ctx.log('info', `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`)
 
@@ -127,6 +140,7 @@ Board positions:
         if (isModelTurn) {
           // =================================================================
           // MODEL'S TURN: Plain MCP Sampling (no structured output)
+          // With conversation history accumulation for context
           // =================================================================
           yield* ctx.notify(`Model is thinking...`, 0.5)
 
@@ -135,17 +149,30 @@ Board positions:
             .map((cell, i) => (cell === null ? i : null))
             .filter((i): i is number => i !== null)
 
-          // Plain sampling - just ask for a number, hope for the best
-          const response = yield* ctx.sample({
-            prompt: `You are playing tic-tac-toe as ${modelSymbol}.
+          // Build the prompt for this turn
+          const prompt = `You are playing tic-tac-toe as ${modelSymbol}.
 
 Current board:
 ${boardStr}
 
 Empty positions: ${emptyPositions.join(', ')}
 
-Reply with ONLY a single digit (0-8) for your move. Nothing else.`,
+Reply with ONLY a single digit (0-8) for your move. Nothing else.`
+
+          // Sample with accumulated conversation history
+          // This gives the model context of the entire game progression
+          const response = yield* ctx.sample({
+            messages: [
+              ...conversationHistory,
+              { role: 'user', content: prompt },
+            ],
           })
+
+          // Add this exchange to conversation history
+          conversationHistory.push(
+            { role: 'user', content: prompt },
+            { role: 'assistant', content: response.text }
+          )
 
           yield* ctx.log('info', `Model response: "${response.text}"`)
 
@@ -182,7 +209,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`,
           })
         } else {
           // =================================================================
-          // USER'S TURN: Elicitation
+          // USER'S TURN: Elicitation with exchange accumulation
           // =================================================================
           const lastMove = moveHistory.length > 0
             ? { position: moveHistory[moveHistory.length - 1]!.position, player: moveHistory[moveHistory.length - 1]!.player }
@@ -206,6 +233,19 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`,
               boardDisplay: formatBoard(board),
             }
           }
+
+          // Capture the elicit exchange with enriched arguments
+          // This adds the user's move to conversation history so the model
+          // can see the progression of user moves
+          const exchangeMsgs = result.exchange.withArguments((context) => ({
+            // Include human-readable board state for model context
+            // Cast context.board since Zod arrays don't infer as tuples
+            boardState: formatBoard(context.board as Board),
+            userSymbol: context.userSymbol,
+            userMove: result.content.position,
+            moveNumber: context.moveHistory.length + 1,
+          }))
+          conversationHistory.push(...exchangeMsgs)
 
           const userPosition = result.content.position
           board = applyMove(board, userPosition, userSymbol)

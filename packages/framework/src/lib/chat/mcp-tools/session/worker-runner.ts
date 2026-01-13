@@ -36,6 +36,7 @@ import type {
   LogLevel,
   SampleResult,
   ElicitResult,
+  RawElicitResult,
 } from '../mcp-tool-types.ts'
 
 // =============================================================================
@@ -101,7 +102,7 @@ async function executeToolInWorker(
     // Signals for backchannel responses
     // These will be sent() from the message handler
     const sampleSignals = new Map<string, Signal<SampleResult, void>>()
-    const elicitSignals = new Map<string, Signal<ElicitResult<unknown, unknown>, void>>()
+    const elicitSignals = new Map<string, Signal<RawElicitResult<unknown>, void>>()
 
     // Subscribe to incoming messages
     transport.subscribe((message: HostToWorkerMessage) => {
@@ -186,8 +187,8 @@ async function executeToolInWorker(
       ): Operation<ElicitResult<unknown, T>> {
         const elicitId = `${sessionId}:elicit:${nextLsn()}`
 
-        // Create signal for response
-        const responseSignal = createSignal<ElicitResult<unknown, unknown>, void>()
+        // Create signal for response (receives RawElicitResult from transport)
+        const responseSignal = createSignal<RawElicitResult<unknown>, void>()
         elicitSignals.set(elicitId, responseSignal)
 
         // Send request
@@ -202,13 +203,68 @@ async function executeToolInWorker(
 
         // Wait for response
         const subscription = yield* responseSignal
-        const result = yield* subscription.next()
+        const rawResult = yield* subscription.next()
 
-        if (result.done) {
+        if (rawResult.done) {
           throw new Error('Elicit signal closed without response')
         }
 
-        return result.value as ElicitResult<unknown, T>
+        const response = rawResult.value
+
+        // If accepted, construct the exchange
+        if (response.action === 'accept') {
+          const toolCallId = `elicit_worker_${elicitId}`
+          const parsedContent = response.content as T
+
+          // Build minimal exchange for worker context
+          // Note: Worker doesn't have access to original context, so we use empty object
+          const exchange = {
+            context: {} as unknown,
+            request: {
+              role: 'assistant' as const,
+              content: options.message,
+              tool_calls: [{
+                id: toolCallId,
+                type: 'function' as const,
+                function: {
+                  name: key,
+                  arguments: {},
+                },
+              }],
+            },
+            response: {
+              role: 'tool' as const,
+              tool_call_id: toolCallId,
+              content: JSON.stringify(parsedContent),
+            },
+            messages: [] as Array<{ role: 'assistant' | 'tool'; content: string | null; tool_calls?: unknown[]; tool_call_id?: string }>,
+            withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
+              const args = fn({})
+              return [{
+                role: 'assistant' as const,
+                content: options.message,
+                tool_calls: [{
+                  id: toolCallId,
+                  type: 'function' as const,
+                  function: {
+                    name: key,
+                    arguments: args,
+                  },
+                }],
+              }, {
+                role: 'tool' as const,
+                tool_call_id: toolCallId,
+                content: JSON.stringify(parsedContent),
+              }]
+            },
+          }
+          // Fill in messages array
+          exchange.messages = [exchange.request, exchange.response] as typeof exchange.messages
+
+          return { action: 'accept' as const, content: parsedContent, exchange } as ElicitResult<unknown, T>
+        }
+
+        return response as ElicitResult<unknown, T>
       },
     }
 

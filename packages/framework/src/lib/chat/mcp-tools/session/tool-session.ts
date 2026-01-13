@@ -40,7 +40,7 @@ import type {
   CancelledEvent,
 } from './types.ts'
 import type {
-  ElicitResult,
+  RawElicitResult,
   SampleResult,
   ElicitsMap,
 } from '../mcp-tool-types.ts'
@@ -271,7 +271,7 @@ export function createToolSession<
         })
       },
 
-      *respondToElicit(elicitId: string, response: ElicitResult<unknown, unknown>): Operation<void> {
+      *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
         const pending = state.pendingElicit
         if (!pending) {
           return
