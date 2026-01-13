@@ -18,6 +18,7 @@ import type {
   McpToolServerContext,
   McpToolLimits,
   Message,
+  ExtendedMessage,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
@@ -76,7 +77,7 @@ export interface BranchMCPClient {
    * Maps to MCP: sampling/createMessage
    */
   sample(
-    messages: Message[],
+    messages: ExtendedMessage[],
     options?: BranchSampleOptions
   ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
 
@@ -130,11 +131,11 @@ function estimateTokensFromText(text: string): number {
 
 function estimateTokensFromConversation(options: {
   systemPrompt?: string
-  messages: Message[]
+  messages: ExtendedMessage[]
   completion: string
 }): number {
   const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0
-  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content), 0)
+  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content ?? ''), 0)
   const completion = estimateTokensFromText(options.completion)
   return system + convo + completion
 }
@@ -209,7 +210,7 @@ function createBranchContext(
     sample: ((config: BranchSampleConfig) => {
       return {
         *[Symbol.iterator]() {
-          let messages: Message[]
+          let messages: ExtendedMessage[]
 
           if ('prompt' in config && config.prompt) {
             // Auto-tracked mode: append to branch messages

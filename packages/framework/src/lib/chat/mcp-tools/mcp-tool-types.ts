@@ -535,10 +535,13 @@ interface SampleConfigPromptMode {
 
 /**
  * Sample with explicit messages (full control).
+ * 
+ * Supports ExtendedMessage to allow passing tool-call messages
+ * (e.g., from elicit exchanges) as conversation history.
  */
 interface SampleConfigMessagesMode {
-  /** Explicit messages array (not auto-tracked) */
-  messages: Message[]
+  /** Explicit messages array (not auto-tracked). Supports extended messages with tool_calls. */
+  messages: ExtendedMessage[]
   prompt?: never
 }
 
