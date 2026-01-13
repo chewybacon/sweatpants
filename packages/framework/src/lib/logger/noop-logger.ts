@@ -5,7 +5,7 @@
  * is not configured or in production environments where logging
  * should be disabled.
  */
-import type { Logger } from './types'
+import type { Logger } from './types.ts'
 
 const noop = () => {}
 

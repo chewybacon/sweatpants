@@ -4,17 +4,15 @@
  * Tests for the background task hook that allows running operations
  * without blocking the parent scope.
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { it as plainIt } from 'vitest'
 import { 
   sleep, 
   createScope, 
   call,
   createContext,
-  useScope,
-  type Operation,
 } from 'effection'
-import { useBackgroundTask, fireAndForget, useTaskPool } from '../use-background-task'
+import { useBackgroundTask, fireAndForget, useTaskPool } from '../use-background-task.ts'
 
 // =============================================================================
 // TEST CONTEXTS

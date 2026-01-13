@@ -20,10 +20,10 @@ import type {
   SessionHandle,
   SessionStatus,
   CreateSessionOptions,
-} from './types'
-import { writeFromStreamToBuffer } from './pull-stream'
-import { useLogger, LoggerFactoryContext } from '../../logger'
-import { useBackgroundTask, type BackgroundTaskHandle } from '../../effection'
+} from './types.ts'
+import { writeFromStreamToBuffer } from './pull-stream.ts'
+import { useLogger, LoggerFactoryContext } from '../../logger/index.ts'
+import { useBackgroundTask, type BackgroundTaskHandle } from '../../effection/index.ts'
 
 /**
  * Internal mutable state for tracking session status.

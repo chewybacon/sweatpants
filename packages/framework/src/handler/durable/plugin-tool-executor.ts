@@ -11,27 +11,27 @@
  * @packageDocumentation
  */
 import { spawn, each, type Operation, type Channel } from 'effection'
-import type { ChatProvider } from '../../lib/chat/providers/types'
-import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry'
-import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin'
-import type { ElicitsMap, Message as McpMessage } from '../../lib/chat/mcp-tools/mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder'
+import type { ChatProvider } from '../../lib/chat/providers/types.ts'
+import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
+import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
+import type { ElicitsMap, Message as McpMessage } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import {
   createBridgeHost,
   type BridgeEvent,
   type ElicitResponse,
   type SampleResponse,
-} from '../../lib/chat/mcp-tools/bridge-runtime'
+} from '../../lib/chat/mcp-tools/bridge-runtime.ts'
 import {
   createPluginClientContext,
   executePluginElicitHandlerFromRequest,
-} from '../../lib/chat/mcp-tools/plugin-executor'
+} from '../../lib/chat/mcp-tools/plugin-executor.ts'
 import type {
   ComponentEmissionPayload,
   PendingEmission,
-} from '../../lib/chat/isomorphic-tools/runtime/emissions'
-import type { StreamEvent } from '../types'
-import type { ToolCall, ToolExecutionResult } from './types'
+} from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
+import type { StreamEvent } from '../types.ts'
+import type { ToolCall, ToolExecutionResult } from './types.ts'
 
 // =============================================================================
 // TYPES

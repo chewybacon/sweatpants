@@ -52,8 +52,8 @@
  * ```
  */
 import type { ReactNode } from 'react'
-import type { FinalizedIsomorphicTool } from './builder'
-import type { IsomorphicHandoffEvent } from './types'
+import type { FinalizedIsomorphicTool } from './builder.ts'
+import type { IsomorphicHandoffEvent } from './types.ts'
 
 // =============================================================================
 // TYPE EXTRACTION

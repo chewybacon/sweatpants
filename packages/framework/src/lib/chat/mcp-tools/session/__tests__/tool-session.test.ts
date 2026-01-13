@@ -6,16 +6,16 @@
 import { describe, it, expect } from 'vitest'
 import { run, spawn, each, sleep } from 'effection'
 import { z } from 'zod'
-import { createMcpTool } from '../../mcp-tool-builder'
-import { createToolSession } from '../tool-session'
-import { createInMemoryToolSessionStore } from '../in-memory-store'
-import { createToolSessionRegistry } from '../session-registry'
-import { setupToolSessions, useToolSessionRegistry } from '../setup'
+import { createMcpTool } from '../../mcp-tool-builder.ts'
+import { createToolSession } from '../tool-session.ts'
+import { createInMemoryToolSessionStore } from '../in-memory-store.ts'
+import { createToolSessionRegistry } from '../session-registry.ts'
+import { setupToolSessions, useToolSessionRegistry } from '../setup.ts'
 import type {
   ToolSessionSamplingProvider,
   ToolSessionEvent,
   SampleResult,
-} from '../types'
+} from '../types.ts'
 
 // =============================================================================
 // TEST HELPERS

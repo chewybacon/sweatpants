@@ -1,4 +1,4 @@
-import { definePersona } from './types'
+import { definePersona } from './types.ts'
 
 export const mathAssistant = definePersona({
   name: 'math-assistant',

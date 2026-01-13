@@ -6,17 +6,17 @@
  */
 
 import type { ComponentType } from 'react'
-import type { Frame } from '../../react/chat/pipeline'
+import type { Frame } from '../../react/chat/pipeline/index.ts'
 import type {
   ChatMessage as BaseChatMessage,
   ChatToolCall as BaseChatToolCall,
   ChatEmission as BaseChatEmission,
   StreamingMessage as BaseStreamingMessage,
   MessagePart,
-} from '../../lib/chat/types/chat-message'
-import type { ChatState, PendingClientToolState, ToolEmissionTrackingState } from '../../lib/chat/state'
-import type { PendingHandoffState } from '../../lib/chat/patches/handoff'
-import type { PendingHandoff } from '../../lib/chat/isomorphic-tools'
+} from '../../lib/chat/types/chat-message.ts'
+import type { ChatState, PendingClientToolState, ToolEmissionTrackingState } from '../../lib/chat/state/index.ts'
+import type { PendingHandoffState } from '../../lib/chat/patches/handoff.ts'
+import type { PendingHandoff } from '../../lib/chat/isomorphic-tools/index.ts'
 
 // =============================================================================
 // INK-SPECIFIC TYPE ALIASES

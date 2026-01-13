@@ -5,8 +5,8 @@
  */
 
 import type { Operation, Channel } from 'effection'
-import type { ChatPatch } from '../patches'
-import type { ApiMessage, StreamResult } from './streaming'
+import type { ChatPatch } from '../patches/index.ts'
+import type { ApiMessage, StreamResult } from './streaming.ts'
 
 // =============================================================================
 // STREAMER

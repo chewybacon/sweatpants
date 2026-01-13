@@ -10,13 +10,13 @@
  */
 import type { Operation } from 'effection'
 import { marked } from 'marked'
-import type { Frame, Processor } from '../types'
+import type { Frame, Processor } from '../types.ts'
 import {
   updateBlockById,
   setBlockRendered,
   addTrace,
-} from '../frame'
-import { registerBuiltinProcessor } from '../resolver'
+} from '../frame.ts'
+import { registerBuiltinProcessor } from '../resolver.ts'
 
 // =============================================================================
 // HTML Escaping

@@ -37,8 +37,8 @@
  */
 import { createContext } from 'effection'
 import type { Context } from 'effection'
-import type { Streamer } from './options'
-import type { IsomorphicToolRegistry } from '../isomorphic-tools'
+import type { Streamer } from './options.ts'
+import type { IsomorphicToolRegistry } from '../isomorphic-tools/index.ts'
 
 // =============================================================================
 // BASE URL CONTEXT

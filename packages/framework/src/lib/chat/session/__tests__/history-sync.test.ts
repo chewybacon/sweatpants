@@ -10,8 +10,8 @@
  * preventing it from calling tools again.
  */
 import { describe, it, expect } from 'vitest'
-import type { Message } from '../../types'
-import type { ApiMessage } from '../streaming'
+import type { Message } from '../../types.ts'
+import type { ApiMessage } from '../streaming.ts'
 
 /**
  * Simulate the history sync logic from create-session.ts

@@ -30,13 +30,13 @@ import type {
   StartMessage,
   WorkerToolRegistry,
   WorkerToolContext,
-} from './worker-types'
+} from './worker-types.ts'
 import type {
   Message,
   LogLevel,
   SampleResult,
   ElicitResult,
-} from '../mcp-tool-types'
+} from '../mcp-tool-types.ts'
 
 // =============================================================================
 // WORKER RUNNER

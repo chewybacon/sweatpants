@@ -19,8 +19,8 @@ import type {
   ToolDiscoveryOptions,
   ResolvedToolDiscoveryOptions,
   DiscoveredTool,
-} from './types'
-import { resolveToolDiscoveryOptions } from './types'
+} from './types.ts'
+import { resolveToolDiscoveryOptions } from './types.ts'
 
 export function toolDiscoveryPlugin(
   userOptions: ToolDiscoveryOptions = {}

@@ -35,13 +35,13 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   SampleResult,
-} from './types'
+} from './types.ts'
 import type {
   HostTransport,
   WorkerToHostMessage,
   StartMessage,
-} from './worker-types'
-import type { ElicitResult } from '../mcp-tool-types'
+} from './worker-types.ts'
+import type { ElicitResult } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // WORKER TOOL SESSION
@@ -50,7 +50,7 @@ import type { ElicitResult } from '../mcp-tool-types'
 /**
  * Options for creating a worker tool session.
  */
-import type { Message } from '../mcp-tool-types'
+import type { Message } from '../mcp-tool-types.ts'
 
 /**
  * Options for creating a worker tool session.

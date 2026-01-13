@@ -13,7 +13,7 @@
  * ## Usage
  *
  * ```typescript
- * import { runAsAgent, createAgentLLMClient } from './agent-runtime'
+ * import { runAsAgent, createAgentLLMClient } from './agent-runtime.ts'
  *
  * // Create LLM client from your chat provider
  * const llm = createAgentLLMClient({ provider: openaiProvider })
@@ -30,10 +30,10 @@
  */
 import type { Operation, Stream, Subscription } from 'effection'
 import type { z } from 'zod'
-import type { AnyIsomorphicTool } from './types'
-import { type AgentToolContext, type PromptOptions, type ApprovalResult, validateContextMode } from './contexts'
-import type { ChatProvider, ChatStreamOptions } from '../providers/types'
-import type { Message, ChatEvent, ChatResult } from '../types'
+import type { AnyIsomorphicTool } from './types.ts'
+import { type AgentToolContext, type PromptOptions, type ApprovalResult, validateContextMode } from './contexts.ts'
+import type { ChatProvider, ChatStreamOptions } from '../providers/types.ts'
+import type { Message, ChatEvent, ChatResult } from '../types.ts'
 
 // --- LLM Client Types ---
 

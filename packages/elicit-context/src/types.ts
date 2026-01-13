@@ -25,17 +25,40 @@ export interface ElicitDefinition<
   TContextSchema = unknown
 > {
   /** Schema for the user's response (what they return) - any Zod schema */
-  response: TResponseSchema
+  response?: TResponseSchema
   
   /** Schema for context data sent to the plugin (what the tool provides for rendering) */
   context?: TContextSchema
 }
 
 /**
+ * An elicit entry can be either:
+ * - A bare Zod schema (simple case - just the response schema)
+ * - An ElicitDefinition with optional response and context schemas
+ * 
+ * This allows both simple and advanced usage:
+ * ```ts
+ * .elicits({
+ *   // Simple: just pass the response schema
+ *   confirm: z.object({ ok: z.boolean() }),
+ *   
+ *   // Advanced: full definition with context
+ *   pickFlight: {
+ *     response: z.object({ flightId: z.string() }),
+ *     context: z.object({ flights: z.array(FlightSchema) }),
+ *   },
+ * })
+ * ```
+ */
+export type ElicitEntry<TResponseSchema = unknown, TContextSchema = unknown> =
+  | TResponseSchema  // Bare schema (simple case)
+  | ElicitDefinition<TResponseSchema, TContextSchema>  // Full definition
+
+/**
  * Map of elicit keys to their definitions.
  * Used in .elicits() to define all possible elicitation points in a tool.
  */
-export type ElicitsMap = Record<string, ElicitDefinition<any, any>>
+export type ElicitsMap = Record<string, ElicitEntry<any, any>>
 
 /**
  * Request object passed to plugin elicit handlers.
@@ -110,33 +133,33 @@ export interface DecodedElicitContext<TContext = Record<string, unknown>> {
 type InferZodOutput<T> = T extends { _output: infer O } ? O : unknown
 
 /**
- * Extract the response type from an ElicitDefinition.
+ * Extract the response type from an ElicitEntry (bare schema or definition).
  * Works by inferring the Zod output type from the response schema.
  */
 export type ExtractElicitResponse<T> = T extends ElicitDefinition<infer TSchema, any>
   ? InferZodOutput<TSchema>
-  : never
+  : InferZodOutput<T>  // Bare schema case
 
 /**
- * Extract the context type from an ElicitDefinition.
- * Returns Record<string, never> if no context defined.
+ * Extract the context type from an ElicitEntry.
+ * Returns empty object type if no context defined or if it's a bare schema.
  */
 export type ExtractElicitContext<T> = T extends ElicitDefinition<any, infer TSchema>
   ? TSchema extends undefined
-    ? Record<string, never>
+    ? {} // eslint-disable-line @typescript-eslint/no-empty-object-type
     : InferZodOutput<TSchema>
-  : Record<string, never>
+  : {}  // Bare schema has no context
 
 /**
- * Extract the response schema from an ElicitDefinition.
+ * Extract the response schema from an ElicitEntry.
  */
 export type ExtractElicitResponseSchema<T> = T extends ElicitDefinition<infer TSchema, any>
   ? TSchema
-  : never
+  : T  // Bare schema is the response schema
 
 /**
- * Extract the context schema from an ElicitDefinition (if present).
+ * Extract the context schema from an ElicitEntry (if present).
  */
 export type ExtractElicitContextSchema<T> = T extends ElicitDefinition<any, infer TSchema>
   ? TSchema
-  : undefined
+  : undefined  // Bare schema has no context

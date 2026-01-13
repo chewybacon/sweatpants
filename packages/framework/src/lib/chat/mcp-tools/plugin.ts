@@ -66,12 +66,12 @@ import type {
   ElicitsMap,
   ElicitResult,
   ExtractElicitResponse,
-} from './mcp-tool-types'
+} from './mcp-tool-types.ts'
 import type { ElicitDefinition } from '@sweatpants/elicit-context'
-import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
+import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 
 // Re-export renderable types for plugin authors
-export type { RenderableProps, UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context'
+export type { RenderableProps, UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
 
 // Legacy type alias for backward compatibility
 type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
@@ -81,7 +81,7 @@ type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TCl
 // CLIENT CONTEXT (what onElicit handlers receive)
 // =============================================================================
 
-import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context'
+import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
 
 /**
  * Context available to onElicit handlers.

@@ -11,8 +11,8 @@ import {
   createBridgeHost,
   runBridgeTool,
   BranchElicitNotAllowedError,
-} from '../index'
-import type { BridgeSamplingProvider, BridgeEvent, ElicitResponse, SampleResult } from '../index'
+} from '../index.ts'
+import type { BridgeSamplingProvider, BridgeEvent, ElicitResponse, SampleResult } from '../index.ts'
 
 // Mock sampling provider
 function createMockSamplingProvider(responses: string[] = []): BridgeSamplingProvider & { calls: Array<{ messages: unknown[]; options?: unknown }> } {
