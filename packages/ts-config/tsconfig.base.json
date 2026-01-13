@@ -50,13 +50,7 @@
     // Interop Constraints
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
-    "moduleDetection": "force",
-
-    // Monorepo aware paths (to be extended in consuming projects)
-    "baseUrl": ".",
-    "paths": {
-      "@tanstack/*": ["../../packages/*/src", "../../apps/*/src"]
-    }
+    "moduleDetection": "force"
   }
 }
 

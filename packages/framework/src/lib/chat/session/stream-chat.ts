@@ -13,19 +13,19 @@
  */
 import type { Operation, Channel } from 'effection'
 import { call, useAbortSignal, each } from 'effection'
-import { parseNDJSON } from '../ndjson'
-import { BaseUrlContext } from './contexts'
-import type { ChatPatch } from '../patches'
-import type { Message } from '../types'
-import type { SessionOptions } from './options'
+import { parseNDJSON } from '../ndjson.ts'
+import { BaseUrlContext } from './contexts.ts'
+import type { ChatPatch } from '../patches/index.ts'
+import type { Message } from '../types.ts'
+import type { SessionOptions } from './options.ts'
 import type { 
   StreamEvent, 
   ApiMessage,
   StreamResult,
   IsomorphicHandoffStreamEvent,
   PluginElicitRequestStreamEvent,
-} from './streaming'
-import type { IsomorphicToolSchema } from '../isomorphic-tools'
+} from './streaming.ts'
+import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
 
 /**
  * Plugin elicit response from the client.

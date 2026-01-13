@@ -46,13 +46,13 @@ import type {
   SampleSchemaConfig,
   SampleSchemaConfigMessages,
   SampleSchemaResult,
-} from './mcp-tool-types'
+} from './mcp-tool-types.ts'
 import {
   McpToolDepthError,
   McpToolTokenError,
   SampleValidationError,
-} from './mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder'
+} from './mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 
 // Legacy type aliases for backward compatibility
 type BranchContextWithElicits<T extends ElicitsMap> = McpToolContextWithElicits<T>

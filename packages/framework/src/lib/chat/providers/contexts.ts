@@ -1,11 +1,11 @@
 import { createContext } from 'effection'
 
-import type { ChatStreamOptions, ChatProvider } from './types'
-import type { IsomorphicTool } from '../../../handler/types'
-import type { PersonaResolver } from '../../../handler/types'
-import type { PluginRegistry } from '../mcp-tools/plugin-registry'
-import type { McpToolRegistry } from '../../../handler/durable/types'
-import type { ToolSessionStore } from '../mcp-tools/session/types'
+import type { ChatStreamOptions, ChatProvider } from './types.ts'
+import type { IsomorphicTool } from '../../../handler/types.ts'
+import type { PersonaResolver } from '../../../handler/types.ts'
+import type { PluginRegistry } from '../mcp-tools/plugin-registry.ts'
+import type { McpToolRegistry } from '../../../handler/durable/types.ts'
+import type { ToolSessionStore } from '../mcp-tools/session/types.ts'
 
 export const ChatStreamConfigContext = createContext<ChatStreamOptions>('ChatStreamOptions')
 export const ChatApiKeyContext = createContext<string>('ChatApiKeyContext')

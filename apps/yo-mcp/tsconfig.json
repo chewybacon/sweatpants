@@ -1,15 +1,7 @@
 {
-  "extends": "@tanstack/ts-config/tsconfig.app.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@sweatpants/framework/chat/mcp-tools": [
-        "../../packages/framework/src/lib/chat/mcp-tools/index.ts"
-      ],
-      "@sweatpants/framework/chat/isomorphic-tools": [
-        "../../packages/framework/src/lib/chat/isomorphic-tools/index.ts"
-      ]
-    }
-  },
-  "include": ["src/**/*"]
+  "extends": "@sweatpants/ts-config/tsconfig.app.json",
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../packages/framework/tsconfig.lib.json" }
+  ]
 }

@@ -3,19 +3,19 @@
  *
  * Tests the browser context DSL with ctx.render().
  */
-import { describe, it, expect } from '../../__tests__/vitest-effection'
+import { describe, it, expect } from '../../__tests__/vitest-effection.ts'
 // import { run } from 'effection' // Removed
 import {
   createBrowserContext,
   createExecutionState,
   type RenderableProps,
-} from '../browser-context'
+} from '../browser-context.ts'
 import {
   createRuntime,
   COMPONENT_EMISSION_TYPE,
   type RuntimeConfig,
   type ComponentEmissionPayload,
-} from '../emissions'
+} from '../emissions.ts'
 
 // =============================================================================
 // TEST COMPONENTS

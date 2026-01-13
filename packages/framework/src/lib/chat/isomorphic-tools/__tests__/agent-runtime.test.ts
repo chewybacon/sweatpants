@@ -12,11 +12,11 @@
 import { z } from 'zod'
 import { spawn, all } from 'effection'
 import type { Operation } from 'effection'
-import { describe, it, expect } from './vitest-effection'
-import { createIsomorphicTool } from '../builder'
-import { executeServerPart, executeServerPhase2 } from '../executor'
-import { runAsAgent, createMockAgentToolContext } from '../agent-runtime'
-import type { AnyIsomorphicTool } from '../types'
+import { describe, it, expect } from './vitest-effection.ts'
+import { createIsomorphicTool } from '../builder.ts'
+import { executeServerPart, executeServerPhase2 } from '../executor.ts'
+import { runAsAgent, createMockAgentToolContext } from '../agent-runtime.ts'
+import type { AnyIsomorphicTool } from '../types.ts'
 
 // =============================================================================
 // TEST TOOLS (using new builder API with .context('agent'))

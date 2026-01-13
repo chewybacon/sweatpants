@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { ChatSession, Message, ToolCall, including } from '../interactors'
+ * import { ChatSession, Message, ToolCall, including } from '../interactors/index.ts'
  *
  * // Check session state
  * await ChatSession().has({ isStreaming: false, messageCount: 2 })
@@ -26,10 +26,10 @@
  */
 
 // Chat session interactor
-export { ChatSession } from './chat-session'
+export { ChatSession } from './chat-session.ts'
 
 // Message interactors
-export { Message, UserMessage, AssistantMessage, including } from './message'
+export { Message, UserMessage, AssistantMessage, including } from './message.ts'
 
 // Tool call interactors
 export {
@@ -39,7 +39,7 @@ export {
   CompletedToolCall,
   EmissionToolCall,
   type ToolCallState,
-} from './tool-call'
+} from './tool-call.ts'
 
 // Re-export common interactor utilities from @interactors/html
 export {

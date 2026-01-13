@@ -1,8 +1,11 @@
 {
-  "extends": "@tanstack/ts-config/tsconfig.package.json",
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
-    "types": ["node"]
+    "emitDeclarationOnly": true,
+    "ignoreDeprecations": "5.0"
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["dist", "node_modules", "**/__tests__/**", "**/*.test.ts", "tests"]
+  "references": [
+    { "path": "./tsconfig.lib.json" },
+    { "path": "./tsconfig.test.json" }
+  ]
 }

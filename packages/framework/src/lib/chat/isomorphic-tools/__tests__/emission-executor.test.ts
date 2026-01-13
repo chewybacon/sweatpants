@@ -7,17 +7,17 @@
  * - ctx.render() emitting through channel
  * - Response resuming the generator
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { createChannel, createSignal, spawn, each, sleep } from 'effection'
-import { createIsomorphicTool } from '../builder'
-import { executeClientPart } from '../executor'
-import type { IsomorphicHandoffEvent } from '../types'
-import type { ChatPatch } from '../../patches'
-import type { PendingEmission, ComponentEmissionPayload } from '../runtime/emissions'
-import type { ApprovalSignalValue } from '../runtime/tool-runtime'
+import { createIsomorphicTool } from '../builder.ts'
+import { executeClientPart } from '../executor.ts'
+import type { IsomorphicHandoffEvent } from '../types.ts'
+import type { ChatPatch } from '../../patches/index.ts'
+import type { PendingEmission, ComponentEmissionPayload } from '../runtime/emissions.ts'
+import type { ApprovalSignalValue } from '../runtime/tool-runtime.ts'
 import { z } from 'zod'
 import type { ComponentType } from 'react'
-import type { RenderableProps } from '../runtime/browser-context'
+import type { RenderableProps } from '../runtime/browser-context.ts'
 
 // Helper to cast emission payload
 function getPayload(emission: PendingEmission): ComponentEmissionPayload {

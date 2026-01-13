@@ -11,14 +11,14 @@
  * to verify the interactors work before adding server integration.
  */
 import { render, cleanup } from '@testing-library/react'
-import { describe, it, beforeEach, afterEach } from '../setup/vitest-effection'
+import { describe, it, beforeEach, afterEach } from '../setup/vitest-effection.ts'
 import { call } from 'effection'
 
 // Interactors
-import { ChatSession, Message, including } from '../interactors'
+import { ChatSession, Message, including } from '../interactors/index.ts'
 
 // Fixtures
-import { ChatDemo } from '../fixtures/ChatDemo'
+import { ChatDemo } from '../fixtures/ChatDemo.tsx'
 
 describe('Session Lifecycle - Component Only', () => {
   // Clean up React renders between tests

@@ -4,9 +4,9 @@
  * Provides setup helpers for initializing the logging infrastructure.
  */
 import type { Operation } from 'effection'
-import type { LoggerFactory } from './types'
-import { LoggerFactoryContext } from './context'
-import { createPinoLoggerFactory } from './pino-logger'
+import type { LoggerFactory } from './types.ts'
+import { LoggerFactoryContext } from './context.ts'
+import { createPinoLoggerFactory } from './pino-logger.ts'
 
 /**
  * Setup logger infrastructure as an initializer hook.

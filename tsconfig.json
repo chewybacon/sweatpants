@@ -1,10 +1,17 @@
 {
-  "extends": "@tanstack/ts-config/tsconfig.base.json",
+  "extends": "@sweatpants/ts-config/tsconfig.base.json",
   "compilerOptions": {
-    // Prefer source jumps for framework during local dev
-    "paths": {
-      "@sweatpants/framework": ["packages/framework/src"],
-      "@sweatpants/framework/*": ["packages/framework/src/*"]
-    }
-  }
+    "declaration": true,
+    "ignoreDeprecations": "5.0"
+  },
+  "references": [
+    { "path": "./packages/elicit-context" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/framework" },
+    { "path": "./apps/hydra" },
+    { "path": "./apps/yo-chat" },
+    { "path": "./apps/yo-agent" },
+    { "path": "./apps/yo-mcp" }
+  ],
+  "files": []
 }

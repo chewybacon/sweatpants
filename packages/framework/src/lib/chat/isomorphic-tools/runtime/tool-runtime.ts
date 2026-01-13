@@ -4,7 +4,7 @@
  * This module provides approval/permission types and error classes
  * for tool execution. Context types are defined in contexts.ts.
  */
-import type { BrowserToolContext } from '../contexts'
+import type { BrowserToolContext } from '../contexts.ts'
 
 /**
  * Approval configuration for tools.
@@ -39,8 +39,8 @@ export interface ApprovalSignalValue {
 export type ClientToolContext = BrowserToolContext
 
 // Re-export context types for convenience
-export type { BaseToolContext, BrowserToolContext, AgentToolContext } from '../contexts'
-export type { ApprovalResult, PermissionType } from '../contexts'
+export type { BaseToolContext, BrowserToolContext, AgentToolContext } from '../contexts.ts'
+export type { ApprovalResult, PermissionType } from '../contexts.ts'
 
 export class ToolDeniedError extends Error {
   constructor(

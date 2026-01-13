@@ -16,11 +16,11 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { resource, type Operation, type Subscription } from 'effection'
-import type { ChatEvent, ChatResult } from '../../lib/chat/types'
-import type { IsomorphicToolSchema } from '../../lib/chat/isomorphic-tools'
-import { HandoffReadyError } from '../../lib/chat/isomorphic-tools/types'
-import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types'
-import type { StreamEvent, ChatMessage } from '../types'
+import type { ChatEvent, ChatResult } from '../../lib/chat/types.ts'
+import type { IsomorphicToolSchema } from '../../lib/chat/isomorphic-tools/index.ts'
+import { HandoffReadyError } from '../../lib/chat/isomorphic-tools/types.ts'
+import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types.ts'
+import type { StreamEvent, ChatMessage } from '../types.ts'
 import type {
   ChatEngineParams,
   ChatEngine,
@@ -30,14 +30,14 @@ import type {
   IsomorphicTool,
   ToolExecutionResult,
   IsomorphicClientOutput,
-} from './types'
+} from './types.ts'
 import {
   getPluginForTool,
   isPluginTool,
   executePluginTool,
   pluginResultToToolResult,
   pluginResultToStreamEvent,
-} from './plugin-tool-executor'
+} from './plugin-tool-executor.ts'
 
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)

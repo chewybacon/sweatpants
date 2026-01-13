@@ -6,32 +6,14 @@ import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
 import { frameworkPlugin } from '@sweatpants/framework/vite'
 import { imagetools } from "vite-imagetools";
-import path from 'path'
-
 const isProd = process.env['NODE_ENV'] === 'production'
 
 // Workspace packages that should hot-reload in dev
+// Note: No resolve.alias needed - framework package.json exports have
+// "development" condition that Vite uses automatically in dev mode
 const workspacePackages = ['@sweatpants/framework']
 
-// Resolve paths relative to this config file
-const packagesDir = path.resolve(__dirname, '../../packages')
-
 const config = defineConfig({
-  resolve: isProd ? {} : {
-    alias: [
-      // Framework package - point to source files in dev
-      // IMPORTANT: More specific paths must come BEFORE less specific ones
-      { find: '@sweatpants/framework/react/chat/pipeline', replacement: path.join(packagesDir, 'framework/src/react/chat/pipeline/index.ts') },
-      { find: '@sweatpants/framework/react/chat', replacement: path.join(packagesDir, 'framework/src/react/chat/index.ts') },
-      { find: '@sweatpants/framework/chat/isomorphic-tools', replacement: path.join(packagesDir, 'framework/src/lib/chat/isomorphic-tools/index.ts') },
-      { find: '@sweatpants/framework/chat/durable-streams', replacement: path.join(packagesDir, 'framework/src/lib/chat/durable-streams/index.ts') },
-      { find: '@sweatpants/framework/chat', replacement: path.join(packagesDir, 'framework/src/lib/chat/index.ts') },
-      { find: '@sweatpants/framework/handler/durable', replacement: path.join(packagesDir, 'framework/src/handler/durable/index.ts') },
-      { find: '@sweatpants/framework/handler', replacement: path.join(packagesDir, 'framework/src/handler/index.ts') },
-      { find: '@sweatpants/framework/vite', replacement: path.join(packagesDir, 'framework/src/vite/index.ts') },
-    ],
-  },
-
   // Prevent Vite from pre-bundling workspace packages (allows HMR)
   optimizeDeps: {
     exclude: isProd ? [] : workspacePackages,

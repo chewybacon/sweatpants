@@ -7,14 +7,14 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
-import { createMcpTool } from '../../mcp-tool-builder'
-import { createInMemoryToolSessionStore } from '../../session/in-memory-store'
-import { createToolSessionRegistry } from '../../session/session-registry'
-import { createMcpHandler, generateMcpManifest } from '../mcp-handler'
-import type { ToolSessionSamplingProvider, SampleResult } from '../../session/types'
-import type { FinalizedMcpToolWithElicits } from '../../mcp-tool-builder'
-import type { ElicitsMap } from '../../mcp-tool-types'
-import { parseSseChunk } from '../../protocol/sse-formatter'
+import { createMcpTool } from '../../mcp-tool-builder.ts'
+import { createInMemoryToolSessionStore } from '../../session/in-memory-store.ts'
+import { createToolSessionRegistry } from '../../session/session-registry.ts'
+import { createMcpHandler, generateMcpManifest } from '../mcp-handler.ts'
+import type { ToolSessionSamplingProvider, SampleResult } from '../../session/types.ts'
+import type { FinalizedMcpToolWithElicits } from '../../mcp-tool-builder.ts'
+import type { ElicitsMap } from '../../mcp-tool-types.ts'
+import { parseSseChunk } from '../../protocol/sse-formatter.ts'
 
 // =============================================================================
 // TEST HELPERS

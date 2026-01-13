@@ -21,14 +21,14 @@
  * ```
  */
 import type { Operation } from 'effection'
-import type { SessionRegistry, TokenBufferStore, SessionRegistryStore } from './types'
-import { createInMemoryBufferStore, createInMemoryRegistryStore } from './in-memory-store'
-import { createSessionRegistry } from './session-registry'
+import type { SessionRegistry, TokenBufferStore, SessionRegistryStore } from './types.ts'
+import { createInMemoryBufferStore, createInMemoryRegistryStore } from './in-memory-store.ts'
+import { createSessionRegistry } from './session-registry.ts'
 import {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,
   SessionRegistryContext,
-} from './contexts'
+} from './contexts.ts'
 
 // =============================================================================
 // TYPES

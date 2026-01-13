@@ -4,13 +4,13 @@
  * Tests the generator execution flow with mock MCP client.
  */
 import { z } from 'zod'
-import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection'
+import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection.ts'
 import {
   createMCPTool,
   createMockMCPClient,
   runMCPTool,
   MCPCapabilityError,
-} from '../index'
+} from '../index.ts'
 
 describe('MCP Tool Execution', () => {
   describe('Simple Execute Tools', () => {

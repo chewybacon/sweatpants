@@ -23,8 +23,8 @@ import type {
   McpElicitResponse,
   McpSampleResponse,
   McpPostResult,
-} from './types'
-import type { McpSessionManager } from './session-manager'
+} from './types.ts'
+import type { McpSessionManager } from './session-manager.ts'
 
 // =============================================================================
 // POST HANDLER OPTIONS

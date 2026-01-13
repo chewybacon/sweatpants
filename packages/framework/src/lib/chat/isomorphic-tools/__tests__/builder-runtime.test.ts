@@ -4,13 +4,13 @@
  * These tests verify the builder produces working tools that integrate
  * with the executor.
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { z } from 'zod'
 import { sleep } from 'effection'
-import { createIsomorphicTool } from '../builder'
-import { executeServerPart, executeServerPhase2 } from '../executor'
-import { createIsomorphicToolRegistry } from '../registry'
-import type { AnyIsomorphicTool } from '../types'
+import { createIsomorphicTool } from '../builder.ts'
+import { executeServerPart, executeServerPhase2 } from '../executor.ts'
+import { createIsomorphicToolRegistry } from '../registry.ts'
+import type { AnyIsomorphicTool } from '../types.ts'
 
 describe('Isomorphic Tool Builder Runtime', () => {
   describe('Server Authority with Handoff', () => {

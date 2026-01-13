@@ -11,10 +11,10 @@
 import { z } from 'zod'
 import { spawn, all } from 'effection'
 import type { Operation } from 'effection'
-import { describe, it, expect } from './vitest-effection'
-import { createIsomorphicTool } from '../builder'
-import { executeServerPart, executeServerPhase2 } from '../executor'
-import type { AnyIsomorphicTool, BrowserToolContext, AgentToolContext } from '../types'
+import { describe, it, expect } from './vitest-effection.ts'
+import { createIsomorphicTool } from '../builder.ts'
+import { executeServerPart, executeServerPhase2 } from '../executor.ts'
+import type { AnyIsomorphicTool, BrowserToolContext, AgentToolContext } from '../types.ts'
 
 // =============================================================================
 // MOCK IMPLEMENTATIONS

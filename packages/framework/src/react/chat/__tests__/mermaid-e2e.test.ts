@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import { run } from 'effection'
-import { runPipeline, createPipeline } from '../pipeline'
+import { runPipeline, createPipeline } from '../pipeline/index.ts'
 
 describe('mermaid end-to-end', () => {
   describe('pipeline detection', () => {
@@ -40,7 +40,7 @@ Done.`
       expect(mermaidBlock?.renderPass).toBe('full')
       
       // Error should be stored in meta (mermaid needs DOM)
-      expect(mermaidBlock?.meta?.mermaidError).toBeDefined()
+      expect(mermaidBlock?.meta?.['mermaidError']).toBeDefined()
     })
 
     it('should detect sequenceDiagram syntax', async () => {
@@ -90,10 +90,10 @@ A-->B
       expect(mermaidBlock).toBeDefined()
 
       // JS block should NOT have mermaid error
-      expect(jsBlock?.meta?.mermaidError).toBeUndefined()
+      expect(jsBlock?.meta?.['mermaidError']).toBeUndefined()
       
       // Mermaid block should have error (no DOM in test)
-      expect(mermaidBlock?.meta?.mermaidError).toBeDefined()
+      expect(mermaidBlock?.meta?.['mermaidError']).toBeDefined()
     })
   })
 

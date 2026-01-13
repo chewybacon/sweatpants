@@ -4,11 +4,13 @@
  * Tests the new initializer hooks system and context-based dependency injection.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { createScope } from 'effection'
+import { createScope, resource } from 'effection'
+import type { Stream } from 'effection'
 import { z } from 'zod'
-import { createChatHandler, type InitializerContext } from '../index'
-import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts'
-import { type ChatProvider, type IsomorphicTool, type PersonaResolver } from '../types'
+import { createChatHandler, type InitializerContext } from '../index.ts'
+import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from '../../lib/chat/providers/contexts.ts'
+import { type ChatProvider, type IsomorphicTool, type PersonaResolver } from '../types.ts'
+import type { ChatEvent, ChatResult } from '../../lib/chat/types.ts'
 
 // Mock the modules
 vi.mock('../../lib/chat/personas', () => ({
@@ -20,21 +22,35 @@ vi.mock('../../lib/chat/personas', () => ({
   }),
 }))
 
+// Helper to create a mock stream that returns a result without yielding events
+function createMockStream(result: ChatResult): Stream<ChatEvent, ChatResult> {
+  return resource(function* (provide) {
+    let done = false
+    yield* provide({
+      next: function* () {
+        if (done) {
+          return { done: true, value: result } as const
+        }
+        done = true
+        return { done: true, value: result } as const
+      },
+    })
+  })
+}
+
 // Mock providers
+const mockUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
+
 const mockProvider: ChatProvider = {
   name: 'mock',
   capabilities: { thinking: true, toolCalling: true },
-  stream: function* () {
-    return { text: 'Mock response', toolCalls: [] }
-  },
+  stream: () => createMockStream({ text: 'Mock response', toolCalls: [], usage: mockUsage }),
 }
 
 const anotherMockProvider: ChatProvider = {
   name: 'another-mock',
   capabilities: { thinking: false, toolCalling: false },
-  stream: function* () {
-    return { text: 'Another mock response', toolCalls: [] }
-  },
+  stream: () => createMockStream({ text: 'Another mock response', toolCalls: [], usage: mockUsage }),
 }
 
 // Mock tools
@@ -167,10 +183,10 @@ describe('Chat Handler DI Context Injection', () => {
           })
           expect(yield* ProviderContext.get()).toBe(mockProvider)
 
-          // Test other provider
+          // Test other provider (using type assertion to test invalid input handling)
           yield* setupDynamicProvider({
             request: {} as Request,
-            body: { messages: [], provider: 'other' }
+            body: { messages: [], provider: 'other' as 'openai' }
           })
           expect(yield* ProviderContext.get()).toBe(anotherMockProvider)
         })
@@ -235,7 +251,7 @@ describe('Chat Handler DI Context Injection', () => {
 
       // Test that individual hooks throw correctly
       const [scope, destroy] = createScope()
-      let error: Error | null = null
+      let error: Error | undefined
 
       try {
         await scope.run(function* () {
@@ -249,7 +265,8 @@ describe('Chat Handler DI Context Injection', () => {
         destroy()
       }
 
-      expect(error?.message).toBe('Hook failed')
+      expect(error).toBeDefined()
+      expect(error!.message).toBe('Hook failed')
     })
 
     it('should provide helpful error messages for missing contexts', async () => {

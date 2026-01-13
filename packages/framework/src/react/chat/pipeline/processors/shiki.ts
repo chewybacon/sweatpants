@@ -11,18 +11,18 @@
  */
 import type { Operation } from 'effection'
 import { call } from 'effection'
-import type { Frame, Processor } from '../types'
+import type { Frame, Processor } from '../types.ts'
 import {
   updateBlockById,
   setBlockRendered,
   addTrace,
-} from '../frame'
+} from '../frame.ts'
 import {
   highlightCode,
   preloadHighlighter,
   isHighlighterReady,
-} from '../../shiki/loader'
-import { registerBuiltinProcessor } from '../resolver'
+} from '../../shiki/loader.ts'
+import { registerBuiltinProcessor } from '../resolver.ts'
 
 // =============================================================================
 // Quick Highlighting (Regex-based)

@@ -10,7 +10,7 @@
     "dev": "tsx src/cli.tsx",
     "build": "tsup",
     "start": "node dist/cli.js",
-    "check": "tsc --noEmit"
+    "check": "tsc -b"
   },
   "dependencies": {
     "@effectionx/jsonl-store": "^0.3.1",
@@ -28,7 +28,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "tsup": "^8.5.0",

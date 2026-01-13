@@ -9,19 +9,19 @@
  * 4. Session abort handling
  * 5. Error handling for missing sessions
  */
-import { describe, it, expect, beforeEach } from './vitest-effection'
+import { describe, it, expect, beforeEach } from './vitest-effection.ts'
 import { z } from 'zod'
 import { sleep } from 'effection'
-import { createMcpTool } from '../../../lib/chat/mcp-tools/mcp-tool-builder'
-import { createInMemoryToolSessionStore } from '../../../lib/chat/mcp-tools/session/in-memory-store'
-import { createToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/session-registry'
-import { createPluginSessionManager } from '../plugin-session-manager'
-import type { PluginSessionManager, CreatePluginSessionConfig } from '../plugin-session-manager'
-import type { ToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/types'
-import type { ChatProvider } from '../../../lib/chat/providers/types'
+import { createMcpTool } from '../../../lib/chat/mcp-tools/mcp-tool-builder.ts'
+import { createInMemoryToolSessionStore } from '../../../lib/chat/mcp-tools/session/in-memory-store.ts'
+import { createToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/session-registry.ts'
+import { createPluginSessionManager } from '../plugin-session-manager.ts'
+import type { PluginSessionManager, CreatePluginSessionConfig } from '../plugin-session-manager.ts'
+import type { ToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/types.ts'
+import type { ChatProvider } from '../../../lib/chat/providers/types.ts'
 import type { Stream } from 'effection'
 import { resource } from 'effection'
-import type { ChatEvent, ChatResult } from '../../../lib/chat/types'
+import type { ChatEvent, ChatResult } from '../../../lib/chat/types.ts'
 
 // =============================================================================
 // TEST FIXTURES
