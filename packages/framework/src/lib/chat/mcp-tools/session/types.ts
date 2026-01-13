@@ -224,7 +224,7 @@ export interface ToolSession<TResult = unknown> {
    * @param elicitId - The ID from the ElicitRequestEvent
    * @param response - The user's response
    */
-  respondToElicit(elicitId: string, response: ElicitResult<unknown>): Operation<void>
+  respondToElicit(elicitId: string, response: ElicitResult<unknown, unknown>): Operation<void>
 
   /**
    * Respond to a sampling request.

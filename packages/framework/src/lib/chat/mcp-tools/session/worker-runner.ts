@@ -101,7 +101,7 @@ async function executeToolInWorker(
     // Signals for backchannel responses
     // These will be sent() from the message handler
     const sampleSignals = new Map<string, Signal<SampleResult, void>>()
-    const elicitSignals = new Map<string, Signal<ElicitResult<unknown>, void>>()
+    const elicitSignals = new Map<string, Signal<ElicitResult<unknown, unknown>, void>>()
 
     // Subscribe to incoming messages
     transport.subscribe((message: HostToWorkerMessage) => {
@@ -183,11 +183,11 @@ async function executeToolInWorker(
       *elicit<T>(
         key: string,
         options: { message: string; schema: Record<string, unknown> }
-      ): Operation<ElicitResult<T>> {
+      ): Operation<ElicitResult<unknown, T>> {
         const elicitId = `${sessionId}:elicit:${nextLsn()}`
 
         // Create signal for response
-        const responseSignal = createSignal<ElicitResult<unknown>, void>()
+        const responseSignal = createSignal<ElicitResult<unknown, unknown>, void>()
         elicitSignals.set(elicitId, responseSignal)
 
         // Send request
@@ -208,7 +208,7 @@ async function executeToolInWorker(
           throw new Error('Elicit signal closed without response')
         }
 
-        return result.value as ElicitResult<T>
+        return result.value as ElicitResult<unknown, T>
       },
     }
 

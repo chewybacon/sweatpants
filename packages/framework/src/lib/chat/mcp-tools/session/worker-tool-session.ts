@@ -201,7 +201,7 @@ export function createWorkerToolSession(
         })
       },
 
-      *respondToElicit(elicitId: string, response: ElicitResult<unknown>): Operation<void> {
+      *respondToElicit(elicitId: string, response: ElicitResult<unknown, unknown>): Operation<void> {
         if (!pendingElicits.has(elicitId)) {
           throw new Error(`No pending elicit request with ID: ${elicitId}`)
         }

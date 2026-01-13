@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
 import { createBranchTool, makePlugin } from '../index.ts'
-import type { ElicitResult } from '../types.ts'
+import type { RawElicitResult } from '../types.ts'
 
 describe('makePlugin', () => {
   describe('type safety', () => {
@@ -34,7 +34,7 @@ describe('makePlugin', () => {
         .onElicit({
           confirm: function* (_req, _ctx) {
             // Return type must match { ok: boolean }
-            return { action: 'accept', content: { ok: true } } satisfies ElicitResult<{
+            return { action: 'accept', content: { ok: true } } satisfies RawElicitResult<{
               ok: boolean
             }>
           },
@@ -43,7 +43,7 @@ describe('makePlugin', () => {
             return {
               action: 'accept',
               content: { itemId: 'item-123' },
-            } satisfies ElicitResult<{ itemId: string }>
+            } satisfies RawElicitResult<{ itemId: string }>
           },
         })
         .build()

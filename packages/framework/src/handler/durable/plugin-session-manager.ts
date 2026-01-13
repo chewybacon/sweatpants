@@ -166,7 +166,7 @@ export interface PluginSession {
    * @param elicitId - The elicit ID from the elicit_request event
    * @param result - The user's response
    */
-  respondToElicit(elicitId: string, result: ElicitResult<unknown>): Operation<void>
+  respondToElicit(elicitId: string, result: ElicitResult<unknown, unknown>): Operation<void>
 
   /**
    * Abort the session.
@@ -488,7 +488,7 @@ export function createPluginSessionManager(
           }
         },
 
-        *respondToElicit(elicitId: string, result: ElicitResult<unknown>): Operation<void> {
+        *respondToElicit(elicitId: string, result: ElicitResult<unknown, unknown>): Operation<void> {
           yield* toolSession.respondToElicit(elicitId, result)
         },
 
