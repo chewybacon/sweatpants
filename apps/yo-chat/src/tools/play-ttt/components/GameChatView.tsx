@@ -211,7 +211,7 @@ export function GameChatView({
         </div>
       ) : (
         /* Game Over State */
-        <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-4 text-center">
+        <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-4 flex flex-col items-center">
           <div className="text-xl font-bold text-emerald-400 mb-2">
             {resultMessage || 'Game Over'}
           </div>

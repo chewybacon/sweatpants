@@ -1,17 +1,18 @@
 /**
- * /chat/tictactoe - Tic-Tac-Toe Game Demo (Plugin Version)
+ * /chat/tictactoe - Tic-Tac-Toe Game Demo (MCP Standard Sampling)
  *
- * Demonstrates the tictactoe MCP plugin:
- * - Model plays as X, user plays as O
- * - User clicks cells to make moves
- * - Plugin handles elicitation flow
+ * Demonstrates the tictactoe plugin using STANDARD MCP sampling:
+ * - Single tool call plays the entire game
+ * - Model uses plain text sampling (no structured output)
+ * - Often loses because it can't reliably pick strategic moves
  *
- * Phase 1: No mid-game chat (user can only click cells)
+ * Compare this to /chat/play-ttt which uses MCP++ extensions
+ * (sampleTools, sampleSchema) and wins much more often.
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
-import { tictactoePlugin } from '@/tools/tictactoe/plugin'
+import { tictactoePlugin } from '@/tools/tictactoe/plugin.ts'
 
 export const Route = createFileRoute('/chat/tictactoe/')({
   component: TicTacToeDemo,
@@ -69,7 +70,7 @@ function Message({ message }: { message: ChatMessage }) {
             isUser ? 'text-purple-400' : 'text-cyan-400'
           }`}
         >
-          {isUser ? 'You (O)' : 'Model (X)'}
+          {isUser ? 'You' : 'Model'}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>
           )}
@@ -142,14 +143,16 @@ function TicTacToeDemo() {
     // Tell server to only enable tictactoe plugin
     enabledPlugins: ['tictactoe'],
     // System prompt for the game
-    systemPrompt: `You are playing tic-tac-toe against the user. You are X, the user is O.
+    systemPrompt: `You are playing tic-tac-toe against the user.
 
-CRITICAL: You MUST use the tictactoe tool to play. Do NOT draw ASCII boards or describe moves in text.
+CRITICAL: You MUST use the tictactoe tool to play. Just call it once - it handles the entire game.
+Do NOT draw ASCII boards or describe moves in text. Just call the tool.
 
-To play:
-1. Call tictactoe with action="start" and your opening position (0-8)
-2. After each user move, call tictactoe with action="move", the current board, and your next position
-3. When the game ends, call tictactoe with action="end", the board, and the winner
+The tool will:
+1. Randomly assign X or O to you and the user
+2. Ask you for moves during the game (you'll respond with cell numbers 0-8)
+3. Handle user input
+4. Return the final result
 
 Board positions:
 0 | 1 | 2
@@ -158,7 +161,7 @@ Board positions:
 ---------
 6 | 7 | 8
 
-Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block opponent's winning moves.`,
+When asked for a move, respond with ONLY a single digit (0-8). Nothing else.`,
   })
 
   const [input, setInput] = useState('')
@@ -184,10 +187,10 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
           <div>
             <h1 className="text-3xl font-bold text-cyan-400 mb-2">Tic-Tac-Toe</h1>
             <p className="text-slate-400 text-sm">
-              Play against the model. You're O, model is X. Click cells to play.
+              MCP Standard Sampling - Model uses plain text responses
             </p>
             <p className="text-amber-500/70 text-xs mt-1">
-              Phase 1: Mid-game chat disabled (click cells only)
+              Watch the model struggle without structured output!
             </p>
           </div>
           <div className="text-xs">
@@ -205,6 +208,9 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
             <div className="text-slate-600 text-center py-16">
               <div className="text-4xl mb-4">X | O</div>
               <p className="mb-4">Challenge the model to a game!</p>
+              <p className="text-xs text-amber-500/50 mb-4">
+                (Using MCP standard sampling - no structured output)
+              </p>
               <button
                 onClick={() => send("Let's play tic-tac-toe!")}
                 className="px-4 py-2 bg-cyan-900/30 hover:bg-cyan-900/50 border border-cyan-800 rounded-lg transition-colors"
@@ -273,8 +279,8 @@ Strategy tips: Center (4) or corners (0,2,6,8) are strong openings. Block oppone
           </button>
           <div className="flex items-center gap-4">
             <span>
-              <span className="text-emerald-600">plugin:</span>
-              {' tictactoe'}
+              <span className="text-amber-600">MCP Standard</span>
+              {' (no structured output)'}
             </span>
             <span className="text-cyan-400">{messages.length} messages</span>
           </div>
