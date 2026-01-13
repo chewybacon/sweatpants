@@ -16,7 +16,7 @@
 import { createContext, type Operation } from 'effection'
 import type { ToolSessionRegistry } from '../session/types.ts'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
-import type { ElicitsMap, ElicitResult, SampleResult } from '../mcp-tool-types.ts'
+import type { ElicitsMap, ElicitResult, ElicitExchange, SampleResult } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,
   PendingElicitation,
@@ -27,6 +27,45 @@ import type {
 } from './types.ts'
 import { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'
 import type { JsonRpcId } from '../protocol/types.ts'
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Create a placeholder exchange for pass-through layers.
+ * 
+ * The session-manager doesn't have access to the original elicit context,
+ * so we create a minimal placeholder. The actual context is captured in
+ * the bridge-runtime where the elicit originates.
+ */
+function createPlaceholderExchange(content: unknown): ElicitExchange<unknown> {
+  const placeholderToolCallId = 'placeholder'
+  const request = {
+    role: 'assistant' as const,
+    content: null,
+    tool_calls: [{
+      id: placeholderToolCallId,
+      type: 'function' as const,
+      function: {
+        name: 'elicit',
+        arguments: {},
+      },
+    }],
+  }
+  const response = {
+    role: 'tool' as const,
+    tool_call_id: placeholderToolCallId,
+    content: JSON.stringify(content),
+  }
+  return {
+    context: {},
+    request,
+    response,
+    messages: [request, response],
+    withArguments: () => [request, response],
+  }
+}
 
 // =============================================================================
 // SESSION MANAGER CONTEXT
@@ -271,10 +310,19 @@ export class McpSessionManager {
     }
 
     // Build elicit result
-    let elicitResult: ElicitResult<unknown>
+    // Note: This is a pass-through layer. The context and exchange are
+    // constructed in the bridge-runtime when it receives this result.
+    // We use a minimal type here since the full exchange isn't available yet.
+    let elicitResult: ElicitResult<unknown, unknown>
     switch (action) {
       case 'accept':
-        elicitResult = { action: 'accept', content: content ?? {} }
+        // The bridge-runtime will wrap this with the exchange
+        elicitResult = { 
+          action: 'accept', 
+          content: content ?? {},
+          // Placeholder exchange - the bridge-runtime reconstructs this
+          exchange: createPlaceholderExchange(content ?? {})
+        }
         break
       case 'decline':
         elicitResult = { action: 'decline' }

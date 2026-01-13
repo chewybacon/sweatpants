@@ -41,7 +41,7 @@ import type {
   WorkerToHostMessage,
   StartMessage,
 } from './worker-types.ts'
-import type { ElicitResult } from '../mcp-tool-types.ts'
+import type { RawElicitResult } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // WORKER TOOL SESSION
@@ -201,7 +201,7 @@ export function createWorkerToolSession(
         })
       },
 
-      *respondToElicit(elicitId: string, response: ElicitResult<unknown>): Operation<void> {
+      *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
         if (!pendingElicits.has(elicitId)) {
           throw new Error(`No pending elicit request with ID: ${elicitId}`)
         }
