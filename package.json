@@ -1,5 +1,6 @@
 {
   "name": "sweatpants",
+  "packageManager": "pnpm@10.24.0",
   "version": "0.1.0",
   "description": "AI Chat Framework - Build interactive chat applications with streaming, tools, and durable sessions",
   "license": "MIT",
