@@ -31,11 +31,16 @@ export function* resolveChatStreamConfig(
     ? (process.env[defaults.envApiKeyName] as string | undefined)
     : undefined
 
+  const toolChoice = options?.toolChoice ?? ctxConfig?.toolChoice
+  const schema = options?.schema ?? ctxConfig?.schema
+
   return {
     baseUri: options?.baseUri ?? ctxConfig?.baseUri ?? defaults.baseUri,
     model: options?.model ?? ctxConfig?.model ?? defaults.model,
     apiKey: options?.apiKey ?? ctxApiKey ?? envApiKey ?? null,
     isomorphicToolSchemas:
       options?.isomorphicToolSchemas ?? ctxConfig?.isomorphicToolSchemas ?? [],
+    ...(toolChoice !== undefined && { toolChoice }),
+    ...(schema !== undefined && { schema }),
   }
 }
