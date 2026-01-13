@@ -337,10 +337,17 @@ export function createPluginSessionManager(
                 const sampleEvent = event as SampleRequestEvent
                 try {
                   // Convert messages to chat format
-                  const chatMessages = sampleEvent.messages.map(msg => ({
-                    role: msg.role as 'user' | 'assistant' | 'system',
-                    content: msg.content,
-                  }))
+                  const chatMessages = sampleEvent.messages.map(msg => {
+                    const mapped: any = {
+                      role: msg.role as 'user' | 'assistant' | 'system',
+                      content: msg.content,
+                    }
+                    // Capture extra properties that might be on the message object (passed as any)
+                    // This is a temporary debug step to see what's actually in sampleEvent.messages
+                    if ((msg as any).tool_calls) mapped.tool_calls = (msg as any).tool_calls
+                    if ((msg as any).tool_call_id) mapped.tool_call_id = (msg as any).tool_call_id
+                    return mapped
+                  })
 
                   // Build provider options
                   const streamOptions: ChatStreamOptions = {}
@@ -354,6 +361,16 @@ export function createPluginSessionManager(
                       isIsomorphic: true as const,
                       authority: 'server' as const, // Sampling tools run server-side
                     }))
+                    
+                    // Pass through toolChoice if specified
+                    if (sampleEvent.toolChoice) {
+                      streamOptions.toolChoice = sampleEvent.toolChoice
+                    }
+                  }
+
+                  // Pass through schema for structured output
+                  if (sampleEvent.schema) {
+                    streamOptions.schema = sampleEvent.schema
                   }
 
                   // Call the provider

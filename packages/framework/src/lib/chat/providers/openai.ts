@@ -55,8 +55,17 @@ interface OpenAIResponsesRequest {
   model: string
   input: OpenAIInputItem[]
   tools?: OpenAIFunctionTool[]
+  tool_choice?: 'auto' | 'none' | 'required'
   stream: boolean
   store?: boolean
+  text?: {
+    format: {
+      type: 'json_schema'
+      name: string
+      schema: Record<string, unknown>
+      strict?: boolean
+    }
+  }
 }
 
 // Streaming event types we care about
@@ -178,6 +187,22 @@ export const openaiProvider: ChatProvider = {
 
       if (allTools.length > 0) {
         request.tools = allTools
+        // Only set tool_choice if explicitly provided AND we have tools
+        if (values.toolChoice) {
+          request.tool_choice = values.toolChoice
+        }
+      }
+
+      // Add structured output schema if provided
+      if (values.schema) {
+        request.text = {
+          format: {
+            type: 'json_schema',
+            name: 'structured_output',
+            schema: values.schema,
+            strict: true,
+          },
+        }
       }
 
       const url = `${values.baseUri.replace(/\/$/, '')}/responses`
