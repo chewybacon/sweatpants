@@ -60,7 +60,7 @@ import type {
 } from '../../lib/chat/mcp-tools/session/types.ts'
 // Note: createToolSessionRegistry should be called at server startup, not here
 // import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry.ts'
-import type { ElicitsMap, ElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
+import type { ElicitsMap, RawElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 
@@ -166,7 +166,7 @@ export interface PluginSession {
    * @param elicitId - The elicit ID from the elicit_request event
    * @param result - The user's response
    */
-  respondToElicit(elicitId: string, result: ElicitResult<unknown, unknown>): Operation<void>
+  respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void>
 
   /**
    * Abort the session.
@@ -488,7 +488,7 @@ export function createPluginSessionManager(
           }
         },
 
-        *respondToElicit(elicitId: string, result: ElicitResult<unknown, unknown>): Operation<void> {
+        *respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void> {
           yield* toolSession.respondToElicit(elicitId, result)
         },
 

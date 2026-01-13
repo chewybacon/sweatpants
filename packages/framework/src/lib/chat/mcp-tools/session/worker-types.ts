@@ -39,6 +39,7 @@ import type {
   LogLevel,
   SampleResult,
   ElicitResult,
+  RawElicitResult,
   SamplingToolDefinition,
   SamplingToolChoice,
 } from '../mcp-tool-types.ts'
@@ -84,7 +85,7 @@ export interface ElicitResponseMessage {
   /** Correlates with ElicitRequestMessage.elicitId */
   elicitId: string
   /** The user's response */
-  response: ElicitResult<unknown, unknown>
+  response: RawElicitResult<unknown>
 }
 
 /**
