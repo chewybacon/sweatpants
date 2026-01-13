@@ -188,9 +188,21 @@ function createPluginSamplingProvider(): ToolSessionSamplingProvider {
       }))
 
       // Build provider options - only include isomorphicToolSchemas if tools were provided
-      const streamOptions = isomorphicToolSchemas && isomorphicToolSchemas.length > 0
-        ? { isomorphicToolSchemas }
-        : {}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const streamOptions: any = {}
+      
+      if (isomorphicToolSchemas && isomorphicToolSchemas.length > 0) {
+        streamOptions.isomorphicToolSchemas = isomorphicToolSchemas
+        // Pass through toolChoice if specified
+        if (options?.toolChoice) {
+          streamOptions.toolChoice = options.toolChoice
+        }
+      }
+
+      // Pass through schema for structured output
+      if (options?.schema) {
+        streamOptions.schema = options.schema
+      }
 
       // Prepend system prompt as a system message if provided
       const messagesWithSystem = options?.systemPrompt

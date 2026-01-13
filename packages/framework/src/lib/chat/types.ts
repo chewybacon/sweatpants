@@ -229,6 +229,10 @@ export interface OllamaChatRequest {
       parameters: Record<string, unknown>
     }
   }>
+  /** Tool choice: 'auto' (default), 'none', 'required', or specific tool name */
+  tool_choice?: 'auto' | 'none' | 'required' | string
+  /** Format for structured output: 'json' or a JSON schema object */
+  format?: 'json' | Record<string, unknown>
 }
 
 /**

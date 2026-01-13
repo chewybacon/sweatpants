@@ -27,6 +27,10 @@ export interface ChatStreamOptions {
   apiKey?: string | null
   /** Tool schemas to expose to the LLM */
   isomorphicToolSchemas?: IsomorphicToolSchema[]
+  /** How the model should choose tools: 'auto' | 'none' | 'required' */
+  toolChoice?: 'auto' | 'none' | 'required'
+  /** JSON Schema for structured output */
+  schema?: Record<string, unknown>
 }
 
 /**

@@ -67,29 +67,17 @@ test.describe('play_ttt Agentic Tool', () => {
     // Click the Start Game button
     await page.getByRole('button', { name: 'Start Game' }).click()
 
-    // Wait for streaming to start
-    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 30000 })
+    // Wait for streaming to start (use exact match to avoid matching "Thinking..." summary)
+    await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 30000 })
 
     // Wait for the board to appear - look for clickable cells (numbers 0-8)
-    // OR the model's first move (X or O)
+    // These are buttons with just a number (the position indicator for empty cells)
     const boardCell = page.locator('button').filter({ hasText: /^[0-8]$/ }).first()
-    const xMark = page.locator('.text-cyan-400').filter({ hasText: 'X' })
-    const oMark = page.locator('.text-purple-400').filter({ hasText: 'O' })
 
-    try {
-      // Wait for board - either empty cells or a played mark
-      await expect(boardCell.or(xMark).or(oMark)).toBeVisible({ timeout: 90000 })
-      console.log('TicTacToe board appeared!')
-
-      // The board should be visible
-      const board = page.locator('.grid-cols-3')
-      await expect(board).toBeVisible()
-
-      // Detect user symbol
-      const userSymbol = await detectUserSymbol(page)
-      console.log(`User is playing as: ${userSymbol || 'unknown'}`)
-
-    } catch (e) {
+    // Wait with a generous timeout since the model might take time
+    const boardAppeared = await boardCell.isVisible({ timeout: 90000 }).catch(() => false)
+    
+    if (!boardAppeared) {
       // Check for error
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -97,11 +85,24 @@ test.describe('play_ttt Agentic Tool', () => {
         throw new Error(`Tool execution error: ${errorText}`)
       }
 
-      await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 30000 })
+      // Wait for thinking to finish to see what happened
+      await expect(page.getByText('thinking...', { exact: true })).not.toBeVisible({ timeout: 60000 })
       const responseText = await page.locator('.prose').last().textContent()
       console.log('Board did not appear. Response:', responseText?.slice(0, 500))
       test.skip(true, 'LLM did not call play_ttt tool')
+      return
     }
+
+    console.log('TicTacToe board appeared!')
+
+    // Count empty cells - should have 8 or 9 (9 if user goes first, 8 if model goes first)
+    const emptyCellCount = await page.locator('button').filter({ hasText: /^[0-8]$/ }).count()
+    console.log(`Found ${emptyCellCount} empty cells`)
+    expect(emptyCellCount).toBeGreaterThanOrEqual(8)
+
+    // Detect user symbol
+    const userSymbol = await detectUserSymbol(page)
+    console.log(`User is playing as: ${userSymbol || 'unknown'}`)
   })
 
   test('user can click a cell to make a move', async ({ page }) => {
@@ -122,7 +123,7 @@ test.describe('play_ttt Agentic Tool', () => {
 
       // After clicking, the cell should show user's mark
       // Wait for the response and next board state
-      await expect(page.getByText('thinking...')).toBeVisible({ timeout: 10000 })
+      await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 10000 })
 
       console.log('Move registered, waiting for model response...')
 
@@ -161,10 +162,11 @@ test.describe('play_ttt Agentic Tool', () => {
       try {
         await expect(emptyCell.or(gameOver)).toBeVisible({ timeout: 90000 })
       } catch {
-        // Check if streaming is still happening
-        if (await page.getByText('thinking...').isVisible()) {
+        // Check if streaming is still happening (use exact match to avoid "Thinking..." summary)
+        const thinkingLocator = page.getByText('thinking...', { exact: true })
+        if (await thinkingLocator.isVisible()) {
           console.log('Still waiting for model response...')
-          await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 90000 })
+          await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
           continue
         }
         // Maybe game ended but we didn't detect it - check for game over UI
@@ -196,10 +198,11 @@ test.describe('play_ttt Agentic Tool', () => {
         
         await emptyCell.click()
 
-        // Wait for model's response
+        // Wait for model's response (use exact match to avoid "Thinking..." summary)
+        const thinkingLocator = page.getByText('thinking...', { exact: true })
         try {
-          await expect(page.getByText('thinking...')).toBeVisible({ timeout: 10000 })
-          await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 90000 })
+          await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
+          await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
         } catch {
           // Model might respond very quickly or game might end
           console.log('Quick response or game ended')
@@ -238,8 +241,8 @@ test.describe('play_ttt Agentic Tool', () => {
       await page.waitForTimeout(500)
       
       // The cell we clicked should now be filled (not a button with just a number)
-      // Or model should be thinking
-      const thinkingIndicator = page.getByText('thinking...')
+      // Or model should be thinking (use exact match to avoid "Thinking..." summary)
+      const thinkingIndicator = page.getByText('thinking...', { exact: true })
       const moveHistory = page.locator('[data-tsd-source*="GameMoveCard"]')
       
       // Either model is thinking, or we already have a move in history
@@ -270,9 +273,10 @@ test.describe('play_ttt Agentic Tool', () => {
     // Make a move
     await emptyCell.click()
 
-    // Wait for response
-    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 90000 })
+    // Wait for response (use exact match to avoid "Thinking..." summary)
+    const thinkingLocator = page.getByText('thinking...', { exact: true })
+    await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
+    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
 
     // After a few moves, we should see both X and O marks
     const totalMarks = (await xMarks.count()) + (await oMarks.count())
@@ -315,14 +319,15 @@ test.describe('play_ttt Agentic Tool', () => {
     await expect(emptyCell).toBeVisible({ timeout: 90000 })
 
     // Play through a few moves and verify game progresses
+    const thinkingLocator = page.getByText('thinking...', { exact: true })
     let moves = 0
     while (moves < 4 && await emptyCell.isVisible()) {
       await emptyCell.click()
       moves++
       
       try {
-        await expect(page.getByText('thinking...')).toBeVisible({ timeout: 10000 })
-        await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 90000 })
+        await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
+        await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
       } catch {
         break // Game might have ended
       }
@@ -356,9 +361,10 @@ test.describe('play_ttt Agentic Tool', () => {
     console.log('Making first user move...')
     await emptyCell.click()
     
-    // Wait for model response
-    await expect(page.getByText('thinking...')).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 90000 })
+    // Wait for model response (use exact match to avoid "Thinking..." summary)
+    const thinkingLocator = page.getByText('thinking...', { exact: true })
+    await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
+    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
 
     // After first round (user move + model response), we should have 2 move cards
     // Look for "Move #1" and "Move #2" in the history
@@ -379,8 +385,8 @@ test.describe('play_ttt Agentic Tool', () => {
       
       // Wait for model response
       try {
-        await expect(page.getByText('thinking...')).toBeVisible({ timeout: 10000 })
-        await expect(page.getByText('thinking...')).not.toBeVisible({ timeout: 90000 })
+        await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
+        await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
       } catch {
         // Game might have ended quickly
       }
@@ -434,7 +440,7 @@ test.describe('play_ttt Agentic Tool', () => {
 
       // Should be able to start a new game
       await page.getByRole('button', { name: 'Start Game' }).click()
-      await expect(page.getByText('thinking...')).toBeVisible({ timeout: 30000 })
+      await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 30000 })
 
       console.log('Game reset successful!')
 

@@ -39,6 +39,8 @@ import type {
   LogLevel,
   SampleResult,
   ElicitResult,
+  SamplingToolDefinition,
+  SamplingToolChoice,
 } from '../mcp-tool-types'
 
 // =============================================================================
@@ -151,6 +153,12 @@ export interface SampleRequestMessage {
   systemPrompt?: string
   /** Maximum tokens to generate */
   maxTokens?: number
+  /** Tool definitions for tool calling */
+  tools?: SamplingToolDefinition[]
+  /** How the model should choose tools */
+  toolChoice?: SamplingToolChoice
+  /** JSON Schema for structured output */
+  schema?: Record<string, unknown>
   lsn: number
 }
 
