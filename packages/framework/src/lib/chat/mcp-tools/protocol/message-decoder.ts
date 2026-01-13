@@ -25,7 +25,8 @@ import type {
 } from './types.ts'
 import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types.ts'
 import type { 
-  ElicitResult, 
+  ElicitResult,
+  ElicitExchange,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
@@ -45,7 +46,7 @@ export type DecodedSampleResult = SampleResultBase | SampleResultWithParsed<unkn
  * Result of decoding an MCP message.
  */
 export type DecodedMessage =
-  | { type: 'elicitation_response'; elicitId: string; result: ElicitResult<unknown> }
+  | { type: 'elicitation_response'; elicitId: string; result: ElicitResult<unknown, unknown> }
   | { type: 'sampling_response'; sampleId: string; result: DecodedSampleResult }
   | { type: 'tool_call'; name: string; args: Record<string, unknown>; requestId: string | number }
   | { type: 'error'; code: number; message: string; data?: unknown }
@@ -78,15 +79,44 @@ export function decodeElicitationResponse(
   const mcpResult = response.result
 
   // Map MCP action to our ElicitResult format
-  let elicitResult: ElicitResult<unknown>
+  let elicitResult: ElicitResult<unknown, unknown>
 
   switch (mcpResult.action) {
-    case 'accept':
+    case 'accept': {
+      const content = mcpResult.content ?? {}
+      // Create placeholder exchange - actual context is captured at the bridge-runtime level
+      const placeholderToolCallId = `decoded_${elicitId}`
+      const request = {
+        role: 'assistant' as const,
+        content: null,
+        tool_calls: [{
+          id: placeholderToolCallId,
+          type: 'function' as const,
+          function: {
+            name: 'elicit',
+            arguments: {},
+          },
+        }],
+      }
+      const responseMsg = {
+        role: 'tool' as const,
+        tool_call_id: placeholderToolCallId,
+        content: JSON.stringify(content),
+      }
+      const exchange: ElicitExchange<unknown> = {
+        context: {},
+        request,
+        response: responseMsg,
+        messages: [request, responseMsg],
+        withArguments: () => [request, responseMsg],
+      }
       elicitResult = {
         action: 'accept',
-        content: mcpResult.content ?? {},
+        content,
+        exchange,
       }
       break
+    }
     case 'decline':
       elicitResult = {
         action: 'decline',

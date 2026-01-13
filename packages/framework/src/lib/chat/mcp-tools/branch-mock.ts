@@ -52,7 +52,7 @@ export interface MockBranchClientConfig {
    * Pre-programmed elicitation responses.
    * Consumed in order as ctx.elicit() is called.
    */
-  elicitResponses?: ElicitResult<any>[]
+  elicitResponses?: ElicitResult<any, any>[]
 
   /**
    * Client capabilities.
@@ -200,7 +200,7 @@ export function createMockBranchClient(
       }
     },
 
-    elicit<T>(elicitConfig: ElicitConfig<T>): Operation<ElicitResult<T>> {
+    elicit<T>(elicitConfig: ElicitConfig<T>): Operation<ElicitResult<unknown, T>> {
       return {
         *[Symbol.iterator]() {
           if (!capabilities.elicitation) {

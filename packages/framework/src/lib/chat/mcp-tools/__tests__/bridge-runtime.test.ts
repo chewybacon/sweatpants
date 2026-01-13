@@ -12,7 +12,7 @@ import {
   runBridgeTool,
   BranchElicitNotAllowedError,
 } from '../index.ts'
-import type { BridgeSamplingProvider, BridgeEvent, ElicitResponse, SampleResult } from '../index.ts'
+import type { BridgeSamplingProvider, BridgeEvent, ElicitResponse, SampleResult, RawElicitResult } from '../index.ts'
 
 // Mock sampling provider
 function createMockSamplingProvider(responses: string[] = []): BridgeSamplingProvider & { calls: Array<{ messages: unknown[]; options?: unknown }> } {
@@ -617,6 +617,278 @@ describe('Bridge Runtime', () => {
       })
 
       expect(seqNumbers).toEqual([0, 1, 2])
+    })
+  })
+
+  describe('exchange accumulation', () => {
+    it('should include exchange on accepted elicit result', async () => {
+      const tool = createBranchTool('exchange_tool')
+        .description('Tool that captures exchange')
+        .parameters(z.object({}))
+        .elicits({
+          pick: { 
+            context: z.object({ options: z.array(z.string()) }),
+            response: z.object({ selected: z.string() }),
+          },
+        })
+        .execute(function* (_params, ctx) {
+          const result = yield* ctx.elicit('pick', {
+            message: 'Pick an option',
+            options: ['A', 'B', 'C'],  // context spread directly
+          })
+          
+          if (result.action === 'accept') {
+            // Verify exchange exists and has correct structure
+            expect(result.exchange).toBeDefined()
+            expect(result.exchange.context).toEqual({ options: ['A', 'B', 'C'] })
+            expect(result.exchange.request).toBeDefined()
+            expect(result.exchange.request.role).toBe('assistant')
+            expect(result.exchange.request.tool_calls).toHaveLength(1)
+            expect(result.exchange.response).toBeDefined()
+            expect(result.exchange.response.role).toBe('tool')
+            expect(result.exchange.messages).toHaveLength(2)
+            
+            return { selected: result.content.selected, hasExchange: true }
+          }
+          return { selected: null, hasExchange: false }
+        })
+
+      const result = await run(function* () {
+        const host = createBridgeHost({
+          tool,
+          params: {},
+        })
+
+        yield* spawn(function* () {
+          for (const event of yield* each(host.events)) {
+            if (event.type === 'elicit') {
+              event.responseSignal.send({
+                id: event.request.id,
+                result: { action: 'accept', content: { selected: 'B' } },
+              })
+            }
+            yield* each.next()
+          }
+        })
+
+        yield* sleep(0)
+        return yield* host.run()
+      })
+
+      expect(result).toEqual({ selected: 'B', hasExchange: true })
+    })
+
+    it('should allow withArguments to customize tool call arguments', async () => {
+      const tool = createBranchTool('with_args_tool')
+        .description('Tool that uses withArguments')
+        .parameters(z.object({}))
+        .elicits({
+          position: {
+            context: z.object({ board: z.array(z.string()), turn: z.number() }),
+            response: z.object({ row: z.number(), col: z.number() }),
+          },
+        })
+        .execute(function* (_params, ctx) {
+          const result = yield* ctx.elicit('position', {
+            message: 'Select a position',
+            board: ['X', '', 'O', '', '', '', '', '', ''],  // context spread
+            turn: 3,
+          })
+          
+          if (result.action === 'accept') {
+            // Use withArguments to create enriched messages
+            const messages = result.exchange.withArguments((context) => ({
+              boardState: context.board.join(','),
+              turnNumber: context.turn,
+              userChoice: `row=${result.content.row},col=${result.content.col}`,
+            }))
+            
+            expect(messages).toHaveLength(2)
+            const [requestMsg, responseMsg] = messages
+            
+            // Request message should have the custom arguments
+            expect(requestMsg.role).toBe('assistant')
+            expect(requestMsg.tool_calls).toHaveLength(1)
+            expect(requestMsg.tool_calls![0].function.arguments).toEqual({
+              boardState: 'X,,O,,,,,,',
+              turnNumber: 3,
+              userChoice: 'row=1,col=1',
+            })
+            
+            // Response message should be unchanged
+            expect(responseMsg.role).toBe('tool')
+            
+            return { row: result.content.row, col: result.content.col, messagesGenerated: true }
+          }
+          return { row: -1, col: -1, messagesGenerated: false }
+        })
+
+      const result = await run(function* () {
+        const host = createBridgeHost({
+          tool,
+          params: {},
+        })
+
+        yield* spawn(function* () {
+          for (const event of yield* each(host.events)) {
+            if (event.type === 'elicit') {
+              event.responseSignal.send({
+                id: event.request.id,
+                result: { action: 'accept', content: { row: 1, col: 1 } },
+              })
+            }
+            yield* each.next()
+          }
+        })
+
+        yield* sleep(0)
+        return yield* host.run()
+      })
+
+      expect(result).toEqual({ row: 1, col: 1, messagesGenerated: true })
+    })
+
+    it('should pass extended messages to sample when using messages mode', async () => {
+      const tool = createBranchTool('accumulate_tool')
+        .description('Tool that accumulates history')
+        .parameters(z.object({}))
+        .elicits({
+          choice: {
+            context: z.object({ step: z.number() }),
+            response: z.object({ value: z.string() }),
+          },
+        })
+        .execute(function* (_params, ctx) {
+          // First elicit
+          const first = yield* ctx.elicit('choice', {
+            message: 'Make first choice',
+            step: 1,  // context spread
+          })
+          
+          if (first.action !== 'accept') return { error: 'first declined' }
+          
+          // Capture the exchange messages
+          const history = first.exchange.withArguments((c) => ({
+            stepNumber: c.step,
+            userValue: first.content.value,
+          }))
+          
+          // Second elicit
+          const second = yield* ctx.elicit('choice', {
+            message: 'Make second choice',
+            step: 2,  // context spread
+          })
+          
+          if (second.action !== 'accept') return { error: 'second declined' }
+          
+          // Add second exchange to history
+          const history2 = second.exchange.withArguments((c) => ({
+            stepNumber: c.step,
+            userValue: second.content.value,
+          }))
+          
+          // Now sample with accumulated history
+          const allHistory = [...history, ...history2]
+          const sampleResult = yield* ctx.sample({
+            messages: [
+              ...allHistory,
+              { role: 'user', content: 'Summarize the choices made' },
+            ],
+          })
+          
+          return {
+            choices: [first.content.value, second.content.value],
+            summary: sampleResult.text,
+            historyLength: allHistory.length,
+          }
+        })
+
+      const samplingProvider = createMockSamplingProvider(['User chose alpha then beta'])
+      let capturedMessages: unknown[] = []
+      let elicitCount = 0
+
+      const result = await run(function* () {
+        const host = createBridgeHost({
+          tool,
+          params: {},
+        })
+
+        yield* spawn(function* () {
+          for (const event of yield* each(host.events)) {
+            if (event.type === 'elicit') {
+              elicitCount++
+              event.responseSignal.send({
+                id: event.request.id,
+                result: { action: 'accept', content: { value: elicitCount === 1 ? 'alpha' : 'beta' } },
+              })
+            } else if (event.type === 'sample') {
+              capturedMessages = [...event.messages]
+              const sampleResult = yield* samplingProvider.sample(event.messages, event.options)
+              event.responseSignal.send({ result: sampleResult })
+            }
+            yield* each.next()
+          }
+        })
+
+        yield* sleep(0)
+        return yield* host.run()
+      })
+
+      expect(result.choices).toEqual(['alpha', 'beta'])
+      expect(result.summary).toBe('User chose alpha then beta')
+      expect(result.historyLength).toBe(4) // 2 exchanges * 2 messages each
+      
+      // Verify the sample received extended messages with tool_calls
+      expect(capturedMessages.length).toBe(5) // 4 history + 1 user prompt
+      const assistantMsgs = capturedMessages.filter((m: any) => m.role === 'assistant')
+      expect(assistantMsgs.length).toBe(2)
+      assistantMsgs.forEach((msg: any) => {
+        expect(msg.tool_calls).toBeDefined()
+        expect(msg.tool_calls.length).toBe(1)
+      })
+    })
+
+    it('should not include exchange on declined elicit result', async () => {
+      const tool = createBranchTool('no_exchange_tool')
+        .description('Tool where elicit is declined')
+        .parameters(z.object({}))
+        .elicits({
+          confirm: { response: z.object({ ok: z.boolean() }) },
+        })
+        .execute(function* (_params, ctx) {
+          const result = yield* ctx.elicit('confirm', { message: 'Proceed?' })
+          
+          if (result.action === 'decline') {
+            // Declined results should not have exchange property
+            expect((result as any).exchange).toBeUndefined()
+            return { declined: true }
+          }
+          return { declined: false }
+        })
+
+      const result = await run(function* () {
+        const host = createBridgeHost({
+          tool,
+          params: {},
+        })
+
+        yield* spawn(function* () {
+          for (const event of yield* each(host.events)) {
+            if (event.type === 'elicit') {
+              event.responseSignal.send({
+                id: event.request.id,
+                result: { action: 'decline' },
+              })
+            }
+            yield* each.next()
+          }
+        })
+
+        yield* sleep(0)
+        return yield* host.run()
+      })
+
+      expect(result).toEqual({ declined: true })
     })
   })
 })

@@ -23,7 +23,7 @@
 import type { Operation, Channel } from 'effection'
 import type { ComponentType } from 'react'
 import type { z } from 'zod'
-import type { ElicitRequest, ElicitsMap, ElicitResult, ExtractElicitResponse } from './mcp-tool-types.ts'
+import type { ElicitRequest, ElicitsMap, ExtractElicitResponse, RawElicitResult } from './mcp-tool-types.ts'
 import type { PluginClientContext, PluginClientRegistration } from './plugin.ts'
 import {
   type RuntimePrimitive,
@@ -162,7 +162,7 @@ export function* executePluginElicitHandler<
   // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
   request: ElicitRequest<K, any>,
   ctx: PluginClientContext<ElicitRequest<K, any>>
-): Operation<ElicitResult<ExtractElicitResponse<TElicits[K]>>> {
+): Operation<RawElicitResult<ExtractElicitResponse<TElicits[K]>>> {
   const handler = plugin.handlers[key]
 
   if (!handler) {
@@ -190,7 +190,7 @@ export function* executePluginElicitHandlerFromRequest<TElicits extends ElicitsM
   plugin: PluginClientRegistration<TElicits>,
   request: ElicitRequest<string, z.ZodType>,
   ctx: PluginClientContext
-): Operation<ElicitResult<unknown>> {
+): Operation<RawElicitResult<unknown>> {
   const key = request.key as keyof TElicits & string
 
   if (!(key in plugin.handlers)) {
