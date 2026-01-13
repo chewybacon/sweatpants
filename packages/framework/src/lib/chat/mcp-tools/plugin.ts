@@ -64,8 +64,8 @@ import type { z } from 'zod'
 import type {
   ElicitRequest,
   ElicitsMap,
-  ElicitResult,
   ExtractElicitResponse,
+  RawElicitResult,
 } from './mcp-tool-types.ts'
 import type { ElicitDefinition } from '@sweatpants/elicit-context'
 import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
@@ -153,7 +153,7 @@ export type ElicitHandler<TKey extends string, TDef extends ElicitDefinition> = 
   // The actual response type is correctly inferred from the definition
   req: ElicitRequest<TKey, any>,
   ctx: PluginClientContext<ElicitRequest<TKey, any>>
-) => Operation<ElicitResult<ExtractElicitResponse<TDef>>>
+) => Operation<RawElicitResult<ExtractElicitResponse<TDef>>>
 
 /**
  * Map of elicitation handlers for all keys in a tool.
@@ -420,6 +420,6 @@ export type AnyMcpPlugin = McpPlugin<string, any, any, any, any, ElicitsMap>
 export interface PluginClientRegistrationInput {
   toolName: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: Record<string, (req: any, ctx: any) => Operation<ElicitResult<unknown>>>
+  handlers: Record<string, (req: any, ctx: any) => Operation<RawElicitResult<unknown>>>
   schemas: ElicitsMap
 }

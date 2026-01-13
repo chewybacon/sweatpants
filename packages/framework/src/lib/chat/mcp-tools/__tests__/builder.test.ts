@@ -127,8 +127,8 @@ describe('MCP Tool Builder Types', () => {
               schema: z.object({ choice: z.string() }),
             })
 
-            // result should be ElicitResult<{ choice: string }>
-            expectTypeOf(result).toEqualTypeOf<ElicitResult<{ choice: string }>>()
+            // result should be ElicitResult<unknown, { choice: string }>
+            expectTypeOf(result).toEqualTypeOf<ElicitResult<unknown, { choice: string }>>()
 
             if (result.action === 'accept') {
               expectTypeOf(result.content).toEqualTypeOf<{ choice: string }>()

@@ -33,12 +33,16 @@ import type {
   ElicitRequest,
   ElicitsMap,
   Message,
+  ExtendedMessage,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
   SamplingToolDefinition,
   SamplingToolChoice,
-  ElicitResult,
+  RawElicitResult,
+  ElicitExchange,
+  AssistantToolCallMessage,
+  ToolResultMessage,
   LogLevel,
   SampleToolsConfig,
   SampleToolsConfigMessages,
@@ -195,13 +199,17 @@ function createBufferedChannel<T>(): Channel<T, void> {
 
 /**
  * Elicitation response from the client.
+ * 
+ * Uses RawElicitResult (without exchange) because the transport layer
+ * only sends the action and content. The bridge-runtime constructs
+ * the full ElicitResult with exchange internally.
  */
-export interface ElicitResponse<T = unknown> {
+export interface ElicitResponse<TResponse = unknown> {
   /** Matches the request id */
   id: ElicitId
 
-  /** The user's response */
-  result: ElicitResult<T>
+  /** The user's response (without exchange - exchange is constructed by bridge) */
+  result: RawElicitResult<TResponse>
 }
 
 /**
@@ -229,7 +237,7 @@ export type BridgeEvent =
   | { type: 'elicit'; request: ElicitRequest; responseSignal: Signal<ElicitResponse, void> }
   | { type: 'log'; level: LogLevel; message: string }
   | { type: 'notify'; message: string; progress?: number }
-  | { type: 'sample'; messages: Message[]; options?: BridgeSampleOptions; responseSignal: Signal<SampleResponse, void> }
+  | { type: 'sample'; messages: ExtendedMessage[]; options?: BridgeSampleOptions; responseSignal: Signal<SampleResponse, void> }
 
 /**
  * Sampling provider for the bridge runtime.
@@ -239,7 +247,7 @@ export type BridgeEvent =
  */
 export interface BridgeSamplingProvider {
   sample(
-    messages: Message[],
+    messages: ExtendedMessage[],
     options?: BridgeSampleOptions
   ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
 }
@@ -317,11 +325,11 @@ function estimateTokensFromText(text: string): number {
 
 function estimateTokensFromConversation(options: {
   systemPrompt?: string
-  messages: Message[]
+  messages: ExtendedMessage[]
   completion: string
 }): number {
   const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0
-  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content), 0)
+  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content ?? ''), 0)
   const completion = estimateTokensFromText(options.completion)
   return system + convo + completion
 }
@@ -416,7 +424,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     sample: ((config: BranchSampleConfig) => {
       return {
         *[Symbol.iterator]() {
-          let messages: Message[]
+          let messages: ExtendedMessage[]
 
           if ('prompt' in config && config.prompt) {
             const userMessage: Message = { role: 'user', content: config.prompt }
@@ -880,7 +888,57 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 `Elicit response validation failed for key "${key}": ${parseResult.error.message}`
               )
             }
-            return { action: 'accept', content: parseResult.data }
+
+            // Construct the exchange for the accept result
+            const toolCallId = `elicit_${id.callId}_${id.seq}`
+            const parsedContent = parseResult.data
+
+            // Build request message (assistant with tool_call)
+            const requestMessage: AssistantToolCallMessage = {
+              role: 'assistant',
+              content: message,
+              tool_calls: [{
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: key,
+                  arguments: {}, // Safe default - empty args
+                },
+              }],
+            }
+
+            // Build response message (tool result)
+            const responseMessage: ToolResultMessage = {
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: JSON.stringify(parsedContent),
+            }
+
+            // Create the exchange object
+            const exchange: ElicitExchange<typeof contextData> = {
+              context: contextData,
+              request: requestMessage,
+              response: responseMessage,
+              messages: [requestMessage, responseMessage],
+              withArguments(fn) {
+                const args = fn(contextData)
+                const requestWithArgs: AssistantToolCallMessage = {
+                  role: 'assistant',
+                  content: message,
+                  tool_calls: [{
+                    id: toolCallId,
+                    type: 'function',
+                    function: {
+                      name: key,
+                      arguments: args,
+                    },
+                  }],
+                }
+                return [requestWithArgs, responseMessage]
+              },
+            }
+
+            return { action: 'accept' as const, content: parsedContent, exchange }
           }
 
           return response.result
@@ -1138,11 +1196,14 @@ export function createBridgeHost<
 /**
  * Handler map for elicitation requests.
  * Each key maps to a generator that handles that elicitation.
+ * 
+ * Handlers return RawElicitResult (without exchange) - the bridge-runtime
+ * constructs the exchange internally when the result is accepted.
  */
 export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
   [K in keyof TElicits]: (
     request: ElicitRequest<K & string, any>
-  ) => Operation<ElicitResult<any>>
+  ) => Operation<RawElicitResult<any>>
 }
 
 /**
@@ -1188,7 +1249,7 @@ export function runBridgeTool<
   systemPrompt?: string
   onLog?: (level: LogLevel, message: string) => void
   onNotify?: (message: string, progress?: number) => void
-  onSample?: (messages: Message[], options?: { systemPrompt?: string; maxTokens?: number }) => void
+  onSample?: (messages: ExtendedMessage[], options?: { systemPrompt?: string; maxTokens?: number }) => void
 }): Operation<TResult> {
   return {
     *[Symbol.iterator]() {

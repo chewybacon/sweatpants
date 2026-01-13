@@ -38,18 +38,25 @@ import type { z } from 'zod'
 // ELICITATION TYPES
 // =============================================================================
 
-/**
- * Result of an elicitation request.
- *
- * MCP elicitation has three response actions:
- * - `accept`: User submitted data (content contains the data)
- * - `decline`: User explicitly declined (clicked "No", "Reject", etc.)
- * - `cancel`: User dismissed without choosing (closed dialog, pressed Escape)
- */
-export type ElicitResult<T> =
-  | { action: 'accept'; content: T }
-  | { action: 'decline' }
-  | { action: 'cancel' }
+// Import from the canonical location
+import type {
+  ElicitExchange as _ElicitExchange,
+  ElicitResult as _ElicitResult,
+  RawElicitResult as _RawElicitResult,
+  AssistantToolCallMessage as _AssistantToolCallMessage,
+  ToolResultMessage as _ToolResultMessage,
+  ToolCall as _ToolCall,
+  ExtendedMessage as _ExtendedMessage,
+} from './mcp-tool-types.ts'
+
+// Re-export for consumers
+export type ElicitExchange<T> = _ElicitExchange<T>
+export type ElicitResult<TContext, TResponse> = _ElicitResult<TContext, TResponse>
+export type RawElicitResult<TResponse> = _RawElicitResult<TResponse>
+export type AssistantToolCallMessage = _AssistantToolCallMessage
+export type ToolResultMessage = _ToolResultMessage
+export type ToolCall = _ToolCall
+export type ExtendedMessage = _ExtendedMessage
 
 /**
  * Configuration for an elicitation request.
@@ -169,7 +176,7 @@ export interface MCPClientContext {
    * }
    * ```
    */
-  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>>
+  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>>
 
   /**
    * Request an LLM completion from the client via MCP sampling.
