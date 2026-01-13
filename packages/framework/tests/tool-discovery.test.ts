@@ -11,8 +11,8 @@ import {
   calculateImportPath,
   toCamelCase,
   resolveToolDiscoveryOptions,
-} from '../src/vite/index'
-import type { DiscoveredTool } from '../src/vite/index'
+} from '../src/vite/index.ts'
+import type { DiscoveredTool } from '../src/vite/index.ts'
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -644,7 +644,7 @@ describe('resolveToolDiscoveryOptions', () => {
 import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { toolDiscoveryPlugin } from '../src/vite/index'
+import { toolDiscoveryPlugin } from '../src/vite/index.ts'
 
 describe('integration: toolDiscoveryPlugin', () => {
   let tempDir: string

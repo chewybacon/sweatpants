@@ -105,10 +105,10 @@ export type {
 
   // SSE types
   SseEvent,
-} from './types'
+} from './types.ts'
 
 // Error codes
-export { JSON_RPC_ERROR_CODES, MCP_ERROR_CODES } from './types'
+export { JSON_RPC_ERROR_CODES, MCP_ERROR_CODES } from './types.ts'
 
 // Type guards
 export {
@@ -117,7 +117,7 @@ export {
   isTextContent,
   isToolUseContent,
   isToolResultContent,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // ENCODER
@@ -126,7 +126,7 @@ export {
 export type {
   EncoderContext,
   EncodedMessage,
-} from './message-encoder'
+} from './message-encoder.ts'
 
 export {
   // Individual encoders
@@ -143,7 +143,7 @@ export {
 
   // Helpers
   createEncoderContext,
-} from './message-encoder'
+} from './message-encoder.ts'
 
 // =============================================================================
 // DECODER
@@ -154,7 +154,7 @@ export type {
   PendingRequest,
   DecoderContext,
   ParsedJsonRpcMessage,
-} from './message-decoder'
+} from './message-decoder.ts'
 
 export {
   // Individual decoders
@@ -175,13 +175,13 @@ export {
   validateToolCallRequest,
   validateElicitationResponse,
   validateSamplingResponse,
-} from './message-decoder'
+} from './message-decoder.ts'
 
 // =============================================================================
 // SSE FORMATTER
 // =============================================================================
 
-export type { SseWriter } from './sse-formatter'
+export type { SseWriter } from './sse-formatter.ts'
 
 export {
   // Event ID handling
@@ -203,4 +203,4 @@ export {
   // Stream helpers
   createSseHeaders,
   createSseWriter,
-} from './sse-formatter'
+} from './sse-formatter.ts'

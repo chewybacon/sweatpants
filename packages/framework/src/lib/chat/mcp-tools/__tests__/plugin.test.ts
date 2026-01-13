@@ -5,8 +5,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
-import { createBranchTool, makePlugin } from '../index'
-import type { ElicitResult } from '../types'
+import { createBranchTool, makePlugin } from '../index.ts'
+import type { ElicitResult } from '../types.ts'
 
 describe('makePlugin', () => {
   describe('type safety', () => {

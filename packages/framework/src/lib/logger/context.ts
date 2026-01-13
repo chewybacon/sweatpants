@@ -5,8 +5,8 @@
  * Use setupLogger() to configure logging, then useLogger() to get loggers.
  */
 import { createContext, type Operation } from 'effection'
-import type { Logger, LoggerFactory } from './types'
-import { createNoopLogger } from './noop-logger'
+import type { Logger, LoggerFactory } from './types.ts'
+import { createNoopLogger } from './noop-logger.ts'
 
 /**
  * Effection context for the logger factory.

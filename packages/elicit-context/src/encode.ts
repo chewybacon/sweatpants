@@ -5,7 +5,7 @@
  * 1. Schema extension (x-elicit-context field) - primary
  * 2. Message boundary encoding - fallback for compatibility
  */
-import type { JsonSchema, EncodedElicitContext } from './types'
+import type { JsonSchema, EncodedElicitContext } from './types.ts'
 
 /**
  * Encode context data into an elicit request.

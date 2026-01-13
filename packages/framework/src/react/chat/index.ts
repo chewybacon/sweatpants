@@ -37,9 +37,9 @@
  */
 
 // --- Primary API ---
-export * from './useChat'
-export * from './useChatSession'
-export * from './ChatProvider'
+export * from './useChat.ts'
+export * from './useChatSession.ts'
+export * from './ChatProvider.tsx'
 
 // --- Pipeline System ---
 export {
@@ -111,10 +111,10 @@ export {
   createPipelineTransform,
   runPipeline,
   runPipelineStreaming,
-} from './pipeline'
+} from './pipeline/index.ts'
 
 // --- Types ---
-export * from './types'
+export * from './types.ts'
 
 // --- Additional Hooks ---
-export * from './usePersonas'
+export * from './usePersonas.ts'

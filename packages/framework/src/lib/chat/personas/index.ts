@@ -1,14 +1,14 @@
-import { mathAssistant } from './math-assistant'
-import { general } from './general'
+import { mathAssistant } from './math-assistant.ts'
+import { general } from './general.ts'
 import type {
   PersonaDefinition,
   ResolvedPersona,
   PersonaConfig,
   EffortLevel,
-} from './types'
+} from './types.ts'
 
-export * from './types'
-export { definePersona } from './types'
+export * from './types.ts'
+export { definePersona } from './types.ts'
 
 // Persona registry
 export const personas = {

@@ -50,7 +50,7 @@ export {
   type InferToolParams,
   type InferToolHandoff,
   type InferToolClientOutput,
-} from './builder'
+} from './builder.ts'
 
 // --- Type-Safe Client Hooks ---
 export {
@@ -66,7 +66,7 @@ export {
   type ExtractClientOutput,
   type ExtractParams,
   type ToolHandoffUnion,
-} from './client-hooks'
+} from './client-hooks.ts'
 
 // --- Tool Handlers (React Integration) ---
 export {
@@ -79,12 +79,12 @@ export {
   type TypedHandler,
   type ToolHandlerRegistry,
   type ToolHandlerBuilder,
-} from './tool-handlers'
+} from './tool-handlers.ts'
 
 // --- Registry ---
 export {
   createIsomorphicToolRegistry,
-} from './registry'
+} from './registry.ts'
 
 // --- Executor ---
 export {
@@ -95,10 +95,10 @@ export {
   executeIsomorphicToolsClientWithReactHandlers,
   formatIsomorphicToolResult,
   type ReactHandlerExecutionOptions,
-} from './executor'
+} from './executor.ts'
 
 // --- Demo Tools ---
-export { cardGameIsomorphicTools } from './card-game'
+export { cardGameIsomorphicTools } from './card-game.ts'
 
 // --- Types ---
 export type {
@@ -134,10 +134,10 @@ export type {
 
   // State
   IsomorphicToolState,
-} from './types'
+} from './types.ts'
 
 // --- Errors ---
-export { HandoffReadyError } from './types'
+export { HandoffReadyError } from './types.ts'
 
 // --- UI Requests (waitFor pattern) ---
 export {
@@ -151,7 +151,7 @@ export {
   type UIHandlerRegistry,
   type UIHandlerBuilder,
   type UIResponseValue,
-} from './ui-requests'
+} from './ui-requests.ts'
 
 // --- Emission Runtime (ctx.render pattern - new) ---
 export {
@@ -159,7 +159,7 @@ export {
   type ExtractResponse,
   type UserProps,
   type BrowserRenderContext,
-} from './runtime/browser-context'
+} from './runtime/browser-context.ts'
 
 // --- Agent Runtime (server-side agent execution) ---
 export {
@@ -171,4 +171,4 @@ export {
   type CreateAgentLLMClientOptions,
   type RunAsAgentOptions,
   type CreateMockAgentToolContextOptions,
-} from './agent-runtime'
+} from './agent-runtime.ts'

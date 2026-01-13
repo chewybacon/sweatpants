@@ -18,17 +18,17 @@
  * - Cleanup happens when session completes and all clients release
  * - Reconnection works within the same server
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { sleep, call, resource, useScope } from 'effection'
 import type { Operation, Stream, Subscription, Scope } from 'effection'
-import type { TokenFrame } from '../types'
+import type { TokenFrame } from '../types.ts'
 import {
   createMockLLMStream,
   createWebStreamFromBuffer,
   consumeResponse,
   createPullStream,
   setupInMemoryDurableStreams,
-} from './test-utils'
+} from './test-utils.ts'
 
 // =============================================================================
 // TEST HELPERS

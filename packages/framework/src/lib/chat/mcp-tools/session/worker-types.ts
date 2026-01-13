@@ -41,7 +41,7 @@ import type {
   ElicitResult,
   SamplingToolDefinition,
   SamplingToolChoice,
-} from '../mcp-tool-types'
+} from '../mcp-tool-types.ts'
 
 // =============================================================================
 // WORKER MESSAGES (Host → Worker)

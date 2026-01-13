@@ -11,7 +11,7 @@ import { promisify } from 'node:util'
 
 const execAsync = promisify(exec)
 
-interface Commit {
+export interface Commit {
   hash: string
   author: string
   date: string
@@ -61,8 +61,13 @@ export const gitLog = createIsomorphicTool('git_log')
         .split('---COMMIT---')
         .filter(Boolean)
         .map(block => {
-          const [hash, author, date, message] = block.trim().split('\n')
-          return { hash, author, date, message }
+          const parts = block.trim().split('\n')
+          return { 
+            hash: parts[0] ?? '', 
+            author: parts[1] ?? '', 
+            date: parts[2] ?? '', 
+            message: parts[3] ?? '' 
+          }
         })
 
       return { commits, count: commits.length }

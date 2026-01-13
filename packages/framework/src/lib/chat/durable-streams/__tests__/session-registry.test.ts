@@ -17,10 +17,10 @@
  *   4. Client finishes reading, releases
  *   5. Session is complete + refCount=0 → cleanup
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { sleep, resource } from 'effection'
 import type { Operation, Subscription, Stream } from 'effection'
-import type { TokenFrame } from '../types'
+import type { TokenFrame } from '../types.ts'
 import {
   createPullStream,
   createMockLLMStream,
@@ -28,7 +28,7 @@ import {
   useSessionRegistry,
   useTokenBufferStore,
   useSessionRegistryStore,
-} from './test-utils'
+} from './test-utils.ts'
 
 // =============================================================================
 // TEST HELPER: Create test registry with DI pattern

@@ -14,7 +14,7 @@
  * @packageDocumentation
  */
 import { type Operation, spawn, resource, sleep, createChannel, suspend } from 'effection'
-import { useBackgroundTask } from '../../../effection'
+import { useBackgroundTask } from '../../../effection/index.ts'
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -23,10 +23,10 @@ import type {
   ToolSessionOptions,
   ToolSessionSamplingProvider,
   ToolSessionStatus,
-} from './types'
-import type { ElicitsMap } from '../mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
-import { createToolSession } from './tool-session'
+} from './types.ts'
+import type { ElicitsMap } from '../mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import { createToolSession } from './tool-session.ts'
 
 // =============================================================================
 // SESSION REGISTRY IMPLEMENTATION

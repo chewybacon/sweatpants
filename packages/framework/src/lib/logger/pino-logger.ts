@@ -4,7 +4,7 @@
  * Default logger implementation using pino with pretty output in development.
  */
 import pino from 'pino'
-import type { Logger, LoggerFactory } from './types'
+import type { Logger, LoggerFactory } from './types.ts'
 
 const ROOT_NAME = 'framework'
 

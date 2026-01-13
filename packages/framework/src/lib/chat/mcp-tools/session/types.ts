@@ -36,8 +36,8 @@ import type {
   Message,
   LogLevel,
   ElicitsMap,
-} from '../mcp-tool-types'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder'
+} from '../mcp-tool-types.ts'
+import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
 
 // Re-export result types for convenience
 export type { 
@@ -45,7 +45,7 @@ export type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
-} from '../mcp-tool-types'
+} from '../mcp-tool-types.ts'
 
 // =============================================================================
 // SESSION STATUS

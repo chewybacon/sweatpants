@@ -9,31 +9,31 @@
 export {
   createChatSession,
   runChatSession,
-} from './create-session'
+} from './create-session.ts'
 
 export type {
   ChatSession,
   ClientToolSessionOptions,
   HandoffResponseSignalValue,
-} from './create-session'
+} from './create-session.ts'
 
 // Streaming
-export { streamChatOnce, toApiMessages } from './stream-chat'
-export type { StreamChatOptions, PluginElicitResponseData } from './stream-chat'
+export { streamChatOnce, toApiMessages } from './stream-chat.ts'
+export type { StreamChatOptions, PluginElicitResponseData } from './stream-chat.ts'
 
 // Transforms
 export {
   useTransformPipeline,
   passthroughTransform,
   loggingTransform,
-} from './transforms'
+} from './transforms.ts'
 
 // Contexts
 export {
   BaseUrlContext,
   StreamerContext,
   ToolRegistryContext,
-} from './contexts'
+} from './contexts.ts'
 
 // Streaming types
 export type {
@@ -49,7 +49,7 @@ export type {
   PluginSessionStatusStreamEvent,
   PluginSessionErrorStreamEvent,
   StreamEvent,
-} from './streaming'
+} from './streaming.ts'
 
 // Options and configuration
 export type {
@@ -58,4 +58,4 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from './options'
+} from './options.ts'

@@ -3,7 +3,7 @@
  * 
  * Extracts context data from MCP elicit requests and cleans messages.
  */
-import type { JsonSchema, DecodedElicitContext } from './types'
+import type { JsonSchema, DecodedElicitContext } from './types.ts'
 
 /**
  * Extract context from a message's boundary encoding.

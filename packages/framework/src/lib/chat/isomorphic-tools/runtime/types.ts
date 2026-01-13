@@ -27,7 +27,7 @@ export type {
   TokenUsage,
   ToolCallInfo,
   ServerToolResult,
-} from '../../core-types'
+} from '../../core-types.ts'
 
 // Patch types
 export type {
@@ -78,7 +78,7 @@ export type {
   ExecutionTrailPatch,
   // Union
   ChatPatch,
-} from '../../patches'
+} from '../../patches/index.ts'
 
 export {
   isCorePatch,
@@ -87,7 +87,7 @@ export {
   isIsomorphicToolPatch,
   isHandoffPatch,
   isExecutionTrailPatch,
-} from '../../patches'
+} from '../../patches/index.ts'
 
 // State types
 export type {
@@ -106,9 +106,9 @@ export type {
   ChatState,
   ToolEmissionState,
   ToolEmissionTrackingState,
-} from '../../state'
+} from '../../state/index.ts'
 
-export { groupTimelineByToolCall, initialChatState } from '../../state'
+export { groupTimelineByToolCall, initialChatState } from '../../state/index.ts'
 
 // Session types
 export type {
@@ -125,17 +125,17 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from '../../session'
+} from '../../session/index.ts'
 
 // Message types from lib/chat/types
-export type { Message, ToolCall } from '../../types'
+export type { Message, ToolCall } from '../../types.ts'
 
 // Isomorphic tool types
 export type {
   ServerToolContext,
   ServerAuthorityContext,
   IsomorphicHandoffEvent,
-} from '../types'
+} from '../types.ts'
 
 // =============================================================================
 // EXECUTOR-SPECIFIC TYPES (defined here only)

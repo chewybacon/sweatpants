@@ -11,7 +11,7 @@
  * 5. Timeout handling
  * 6. Session rehydration (orphaned state)
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { resource, spawn, sleep, createSignal, each, ensure, createScope, call } from 'effection'
 import type { Operation, Stream, Subscription, Signal } from 'effection'
 import type {
@@ -22,12 +22,12 @@ import type {
   SessionStatus,
   CreateSessionOptions,
   TokenFrame,
-} from '../types'
+} from '../types.ts'
 import {
   createInMemoryBuffer,
   createInMemoryBufferStore,
   createPullStream,
-} from './test-utils'
+} from './test-utils.ts'
 
 // =============================================================================
 // IN-MEMORY SESSION STORE (test-only, not in library)

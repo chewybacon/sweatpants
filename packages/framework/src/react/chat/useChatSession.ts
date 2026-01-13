@@ -17,18 +17,18 @@ import {
   createChatSession,
   type ChatSession,
   type ClientToolSessionOptions,
-} from '../../lib/chat/session'
-import { initialChatState } from '../../lib/chat/state'
-import type { TextPart, ReasoningPart } from '../../lib/chat/types/chat-message'
-import { createPipelineTransform, markdown } from './pipeline'
-import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState, ToolEmissionState, SessionOptions } from './types'
-import type { PluginElicitTrackingState } from '../../lib/chat/state/chat-state'
-import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools'
-import { useChatConfig } from './ChatProvider'
-import { createPluginRegistryFrom } from '../../lib/chat/mcp-tools/plugin-registry'
-import type { PluginClientRegistrationInput } from '../../lib/chat/mcp-tools/plugin'
-import { usePluginExecutor } from './usePluginExecutor'
-import type { EmissionPatch } from '../../lib/chat/patches/emission'
+} from '../../lib/chat/session/index.ts'
+import { initialChatState } from '../../lib/chat/state/index.ts'
+import type { TextPart, ReasoningPart } from '../../lib/chat/types/chat-message.ts'
+import { createPipelineTransform, markdown } from './pipeline/index.ts'
+import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState, ToolEmissionState, SessionOptions } from './types.ts'
+import type { PluginElicitTrackingState } from '../../lib/chat/state/chat-state.ts'
+import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools/index.ts'
+import { useChatConfig } from './ChatProvider.tsx'
+import { createPluginRegistryFrom } from '../../lib/chat/mcp-tools/plugin-registry.ts'
+import type { PluginClientRegistrationInput } from '../../lib/chat/mcp-tools/plugin.ts'
+import { usePluginExecutor } from './usePluginExecutor.ts'
+import type { EmissionPatch } from '../../lib/chat/patches/emission.ts'
 
 // =============================================================================
 // LOCAL EMISSION STATE REDUCER
