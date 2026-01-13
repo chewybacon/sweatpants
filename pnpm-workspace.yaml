@@ -46,8 +46,6 @@ catalog:
   web-vitals: ^5.1.0
   zod: 4.1.13
 
-injectWorkspacePackages: true
-
 onlyBuiltDependencies:
   - esbuild
 
