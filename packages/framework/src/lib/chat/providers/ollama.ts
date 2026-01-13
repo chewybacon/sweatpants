@@ -57,6 +57,8 @@ export const ollamaProvider: ChatProvider = {
         messages,
         stream: true,
         ...(allTools.length > 0 && { tools: allTools }),
+        ...(allTools.length > 0 && values.toolChoice && { tool_choice: values.toolChoice }),
+        ...(values.schema && { format: values.schema }),
       }
 
       const url = `${values.baseUri.replace(/\/$/, '')}/api/chat`

@@ -190,7 +190,7 @@ Analyze the board and choose your strategy.`,
                   type: 'function',
                   function: {
                     name: chosenStrategy.name,
-                    arguments: JSON.stringify(chosenStrategy.arguments),
+                    arguments: chosenStrategy.arguments as Record<string, unknown>,
                   },
                 }],
               },
