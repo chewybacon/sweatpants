@@ -188,6 +188,9 @@ export function createToolSession<
               messages: event.messages,
               systemPrompt: event.options?.systemPrompt,
               maxTokens: event.options?.maxTokens,
+              tools: event.options?.tools,
+              toolChoice: event.options?.toolChoice,
+              schema: event.options?.schema,
             } as Omit<SampleRequestEvent, 'lsn' | 'timestamp'>))
             break
           }
