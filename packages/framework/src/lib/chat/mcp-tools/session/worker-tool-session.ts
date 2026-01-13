@@ -291,6 +291,9 @@ function workerMessageToEvent(msg: WorkerToHostMessage): ToolSessionEvent | null
         messages: msg.messages,
         ...(msg.systemPrompt !== undefined && { systemPrompt: msg.systemPrompt }),
         ...(msg.maxTokens !== undefined && { maxTokens: msg.maxTokens }),
+        ...(msg.tools !== undefined && { tools: msg.tools }),
+        ...(msg.toolChoice !== undefined && { toolChoice: msg.toolChoice }),
+        ...(msg.schema !== undefined && { schema: msg.schema }),
         lsn: msg.lsn,
         timestamp: Date.now(),
       }
