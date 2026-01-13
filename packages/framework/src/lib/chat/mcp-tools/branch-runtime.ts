@@ -84,7 +84,7 @@ export interface BranchMCPClient {
    * Request user input.
    * Maps to MCP: elicitation/create
    */
-  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>>
+  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>>
 
   /**
    * Send a log message.
@@ -459,7 +459,7 @@ function createBranchContext(
     },
 
     // User backchannel
-    elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<T>> {
+    elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>> {
       return client.elicit(config)
     },
 

@@ -84,7 +84,7 @@ export interface ElicitResponseMessage {
   /** Correlates with ElicitRequestMessage.elicitId */
   elicitId: string
   /** The user's response */
-  response: ElicitResult<unknown>
+  response: ElicitResult<unknown, unknown>
 }
 
 /**
@@ -361,5 +361,5 @@ export interface WorkerToolContext {
   elicit<T>(
     key: string,
     options: { message: string; schema: Record<string, unknown> }
-  ): Operation<ElicitResult<T>>
+  ): Operation<ElicitResult<unknown, T>>
 }
