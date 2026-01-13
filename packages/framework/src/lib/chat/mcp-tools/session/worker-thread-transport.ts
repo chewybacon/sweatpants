@@ -32,7 +32,7 @@ import type {
   WorkerToHostMessage,
   SessionWorkerTransportFactory,
   Unsubscribe,
-} from './worker-types'
+} from './worker-types.ts'
 
 // =============================================================================
 // HOST-SIDE TRANSPORT (Main Thread)

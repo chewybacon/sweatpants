@@ -23,10 +23,10 @@ export type {
   TokenUsage,
   ToolCallInfo,
   ServerToolResult,
-} from '../../../lib/chat/core-types'
+} from '../../../lib/chat/core-types.ts'
 
 // Message types
-export type { Message, ToolCall } from '../../../lib/chat/types'
+export type { Message, ToolCall } from '../../../lib/chat/types.ts'
 
 // Chat message part types (parts-based model)
 // Note: ChatEmission, ChatToolCall, ChatMessage, StreamingMessage are exported from useChat.ts
@@ -38,7 +38,7 @@ export type {
   ToolResultPart,
   MessagePart,
   ContentPart,
-} from '../../../lib/chat/types/index'
+} from '../../../lib/chat/types/index.ts'
 
 export {
   getRenderedFromFrame,
@@ -50,7 +50,7 @@ export {
   createReasoningPart,
   createToolCallPart,
   createToolResultPart,
-} from '../../../lib/chat/types/chat-message'
+} from '../../../lib/chat/types/chat-message.ts'
 
 // Patch types
 export type {
@@ -121,7 +121,7 @@ export type {
   PluginElicitPatchUnion,
   // Union
   ChatPatch,
-} from '../../../lib/chat/patches'
+} from '../../../lib/chat/patches/index.ts'
 
 export {
   isCorePatch,
@@ -132,7 +132,7 @@ export {
   isExecutionTrailPatch,
   isEmissionPatch,
   isPluginElicitPatch,
-} from '../../../lib/chat/patches'
+} from '../../../lib/chat/patches/index.ts'
 
 // State types
 export type {
@@ -152,9 +152,9 @@ export type {
   ActiveStep,
   RenderedContent,
   // Note: ToolEmissionState and ToolEmissionTrackingState are exported from patches
-} from '../../../lib/chat/state'
+} from '../../../lib/chat/state/index.ts'
 
-export { groupTimelineByToolCall, initialChatState } from '../../../lib/chat/state'
+export { groupTimelineByToolCall, initialChatState } from '../../../lib/chat/state/index.ts'
 
 // Session types
 export type {
@@ -171,11 +171,11 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from '../../../lib/chat/session'
+} from '../../../lib/chat/session/index.ts'
 
 // Isomorphic tool types
 export type {
   ServerToolContext,
   ServerAuthorityContext,
   IsomorphicHandoffEvent,
-} from '../../../lib/chat/isomorphic-tools/types'
+} from '../../../lib/chat/isomorphic-tools/types.ts'

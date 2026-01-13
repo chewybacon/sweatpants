@@ -9,8 +9,8 @@
  * These tests should FAIL until the bugs are fixed.
  */
 import { describe, it, expect } from 'vitest'
-import { toApiMessages } from '../stream-chat'
-import type { Message } from '../../types'
+import { toApiMessages } from '../stream-chat.ts'
+import type { Message } from '../../types.ts'
 
 describe('toApiMessages', () => {
   it('should preserve tool_calls on assistant messages', () => {

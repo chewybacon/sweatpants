@@ -1246,6 +1246,7 @@ describe('V4 API: true idempotency via handoff injection', () => {
     function* serverOp(_: unknown, ctx: ServerContextV4) {
       yield* ctx.doClient<{ data: string }, { ok: boolean }>(function* (send) {
         throw new Error('Pre-send error')
+        // @ts-expect-error Intentionally unreachable code for testing error propagation
         // eslint-disable-next-line no-unreachable
         yield* send({ data: 'never reached' })
         return { handoff: { data: 'never reached' } }

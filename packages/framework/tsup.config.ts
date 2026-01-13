@@ -12,6 +12,7 @@ export default defineConfig({
     'react/chat': 'src/react/chat/index.ts',
     'react/chat/pipeline': 'src/react/chat/pipeline/index.ts',
   },
+  tsconfig: '../ts-config/tsconfig.tsup.json',
   format: ['cjs', 'esm'],
   dts: {
     resolve: true,

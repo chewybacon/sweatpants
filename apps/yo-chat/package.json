@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 8000",
-    "check": "tsc --noEmit",
+    "check": "tsc -b",
     "build": "vite build && pnpm run build:server",
     "build:server": "esbuild express-server.ts --bundle --platform=node --format=esm --outfile=dist/express-server.js --packages=external --external:./server/*",
     "preview": "vite preview",
@@ -58,7 +58,7 @@
     "@playwright/test": "^1.57.0",
     "@tailwindcss/typography": "0.5.0-alpha.3",
     "@tanstack/devtools-vite": "catalog:",
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@types/compression": "catalog:",

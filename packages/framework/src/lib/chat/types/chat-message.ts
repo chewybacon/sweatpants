@@ -33,7 +33,7 @@
  * ```
  */
 
-import type { Frame } from '../../../react/chat/pipeline/types'
+import type { Frame } from '../../../react/chat/pipeline/types.ts'
 
 // =============================================================================
 // PART ID GENERATION

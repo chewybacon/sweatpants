@@ -35,14 +35,14 @@
  */
 import type { Operation } from 'effection'
 import type { ComponentType } from 'react'
-import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from '../contexts'
+import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from '../contexts.ts'
 import {
   type RuntimePrimitive,
   type ComponentEmissionPayload,
   type Emission,
   COMPONENT_EMISSION_TYPE,
   getComponentKey,
-} from './emissions'
+} from './emissions.ts'
 
 // =============================================================================
 // RENDERABLE PROPS

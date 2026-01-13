@@ -49,15 +49,15 @@
  */
 import { useMemo, useEffect, useRef, useState } from 'react'
 import { run, call } from 'effection'
-import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession'
-import { deriveMessages, deriveStreamingMessage } from '../../lib/chat/state/derive-messages'
+import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn } from './useChatSession.ts'
+import { deriveMessages, deriveStreamingMessage } from '../../lib/chat/state/derive-messages.ts'
 import type {
   ChatMessage as BaseChatMessage,
   ChatToolCall as BaseChatToolCall,
   ChatEmission as BaseChatEmission,
   StreamingMessage as BaseStreamingMessage,
-} from '../../lib/chat/types/chat-message'
-import type { PipelineConfig, Processor } from './pipeline/types'
+} from '../../lib/chat/types/chat-message.ts'
+import type { PipelineConfig, Processor } from './pipeline/types.ts'
 import {
   createPipelineTransform,
   // Built-in processors
@@ -72,7 +72,7 @@ import {
   isShikiReady,
   isMermaidReady,
   isMathReady,
-} from './pipeline'
+} from './pipeline/index.ts'
 
 // --- React-specific type aliases ---
 

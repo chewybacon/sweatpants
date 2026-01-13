@@ -15,7 +15,7 @@ export type {
   ToolResultPart,
   MessagePart,
   ContentPart,
-} from './chat-message'
+} from './chat-message.ts'
 
 export {
   getRenderedFromFrame,
@@ -23,4 +23,4 @@ export {
   getMessageTextContent,
   getMessageReasoningContent,
   getMessageToolCalls,
-} from './chat-message'
+} from './chat-message.ts'

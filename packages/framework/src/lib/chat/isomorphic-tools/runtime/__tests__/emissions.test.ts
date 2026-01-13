@@ -15,7 +15,7 @@ import {
   type ComponentEmissionPayload,
   type PendingEmission,
   type RuntimeConfig,
-} from '../emissions'
+} from '../emissions.ts'
 
 describe('Emission Primitives', () => {
   describe('createRuntime', () => {

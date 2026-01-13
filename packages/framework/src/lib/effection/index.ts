@@ -13,4 +13,4 @@ export {
   type BackgroundTaskStatus,
   type TaskPool,
   type ContextEntry,
-} from './use-background-task'
+} from './use-background-task.ts'

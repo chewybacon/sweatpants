@@ -22,18 +22,18 @@
  * @packageDocumentation
  */
 import { resource, type Operation, type Subscription } from 'effection'
-import type { McpSseStreamRequest, McpSessionState } from './types'
-import type { McpSessionManager } from './session-manager'
+import type { McpSseStreamRequest, McpSessionState } from './types.ts'
+import type { McpSessionManager } from './session-manager.ts'
 import {
   encodeSessionEvent,
   createEncoderContext,
-} from '../protocol/message-encoder'
+} from '../protocol/message-encoder.ts'
 import {
   formatMessageAsSse,
   createPrimeEvent,
   createSseHeaders,
-} from '../protocol/sse-formatter'
-import type { JsonRpcId } from '../protocol/types'
+} from '../protocol/sse-formatter.ts'
+import type { JsonRpcId } from '../protocol/types.ts'
 
 // =============================================================================
 // SSE STREAM OPTIONS

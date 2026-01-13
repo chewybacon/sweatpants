@@ -14,9 +14,9 @@ export type {
   TimelineItem,
   TimelineToolCallGroup,
   GroupedTimelineItem,
-} from './timeline'
+} from './timeline.ts'
 
-export { groupTimelineByToolCall } from './timeline'
+export { groupTimelineByToolCall } from './timeline.ts'
 
 // Chat state types
 export type {
@@ -29,17 +29,17 @@ export type {
   // Emission types (ctx.render pattern)
   ToolEmissionState,
   ToolEmissionTrackingState,
-} from './chat-state'
+} from './chat-state.ts'
 
-export { initialChatState } from './chat-state'
+export { initialChatState } from './chat-state.ts'
 
 // Reducer (framework-agnostic)
-export { chatReducer } from './reducer'
+export { chatReducer } from './reducer.ts'
 
 // Message derivation (framework-agnostic)
-export type { ComponentExtractor } from './derive-messages'
+export type { ComponentExtractor } from './derive-messages.ts'
 export {
   deriveMessages,
   deriveCompletedMessages,
   deriveStreamingMessage,
-} from './derive-messages'
+} from './derive-messages.ts'

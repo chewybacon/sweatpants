@@ -2,14 +2,14 @@
  * react/chat/types.ts
  *
  * Re-exports all types from types/index.ts.
- * This file exists for convenience - imports like `from './types'` work.
+ * This file exists for convenience - imports like `from './types.ts'` work.
  */
 
 // Re-export everything from types/index.ts
-export * from './types/index'
+export * from './types/index.ts'
 
 // Also export RenderFrame (React-specific type)
-import type { RenderDelta, ContentMetadata } from './types/index'
+import type { RenderDelta, ContentMetadata } from './types/index.ts'
 
 /**
  * A single render frame with full animation support.

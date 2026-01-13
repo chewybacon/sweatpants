@@ -1,10 +1,10 @@
-import type { ChatProvider } from './types'
-import { ollamaProvider } from './ollama'
-import { openaiProvider } from './openai'
+import type { ChatProvider } from './types.ts'
+import { ollamaProvider } from './ollama.ts'
+import { openaiProvider } from './openai.ts'
 
-export type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from './types'
-export { ollamaProvider } from './ollama'
-export { openaiProvider } from './openai'
+export type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from './types.ts'
+export { ollamaProvider } from './ollama.ts'
+export { openaiProvider } from './openai.ts'
 
 /**
  * Get the chat provider based on environment configuration.

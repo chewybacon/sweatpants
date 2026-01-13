@@ -10,7 +10,7 @@ import {
   runBranchToolMock,
   runBranchTool,
   BranchDepthError,
-} from '../index'
+} from '../index.ts'
 
 describe('createBranchTool', () => {
   it('creates a tool with basic properties', () => {
@@ -181,18 +181,20 @@ describe('runBranchTool - elicitation', () => {
     const tool = createBranchTool('elicit')
       .description('Elicit tool')
       .parameters(z.object({}))
-      .elicits({})
-      .execute(function* (params, ctx) {
-        const result = yield* ctx.elicit({
+      .elicits({
+        pickOne: z.object({ choice: z.string() }),
+      })
+      .execute(function* (_params, ctx) {
+        const result = yield* ctx.elicit('pickOne', {
           message: 'Pick one',
-          schema: z.object({ choice: z.string() }),
         })
         return result
       })
 
     const result = await run(function* () {
+      // Type assertion needed: runBranchToolMock doesn't have overload for keyed elicits
       const { result } = yield* runBranchToolMock(
-        tool,
+        tool as any,
         {},
         { elicitResponses: [{ action: 'accept', content: { choice: 'A' } }] }
       )
@@ -206,18 +208,20 @@ describe('runBranchTool - elicitation', () => {
     const tool = createBranchTool('elicit_decline')
       .description('Elicit tool')
       .parameters(z.object({}))
-      .elicits({})
-      .execute(function* (params, ctx) {
-        const result = yield* ctx.elicit({
+      .elicits({
+        pickOne: z.object({ choice: z.string() }),
+      })
+      .execute(function* (_params, ctx) {
+        const result = yield* ctx.elicit('pickOne', {
           message: 'Pick one',
-          schema: z.object({ choice: z.string() }),
         })
         return result.action
       })
 
     const result = await run(function* () {
+      // Type assertion needed: runBranchToolMock doesn't have overload for keyed elicits
       const { result } = yield* runBranchToolMock(
-        tool,
+        tool as any,
         {},
         { elicitResponses: [{ action: 'decline' }] }
       )

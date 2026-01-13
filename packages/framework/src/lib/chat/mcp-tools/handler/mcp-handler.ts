@@ -16,7 +16,7 @@
  *
  * ```typescript
  * import { createMcpHandler } from './handler'
- * import { createSessionRegistry } from '../session'
+ * import { createSessionRegistry } from '../session/index.ts'
  *
  * const registry = createSessionRegistry(store)
  * const tools = new Map([['my_tool', myTool]])
@@ -34,17 +34,17 @@
  */
 import { createScope, type Operation } from 'effection'
 import { z } from 'zod'
-import type { McpHandlerConfig, McpHttpHandler, McpClassifiedRequest, McpSessionState, McpInitializeRequest, McpToolsListRequest } from './types'
-import { McpHandlerError } from './types'
-import { parseAndClassify } from './request-parser'
-import { createSessionManager, type McpSessionManager } from './session-manager'
-import { handlePost, type PostHandlerOptions } from './post-handler'
-import { createSseEventStream, type SseStreamOptions } from './get-handler'
+import type { McpHandlerConfig, McpHttpHandler, McpClassifiedRequest, McpSessionState, McpInitializeRequest, McpToolsListRequest } from './types.ts'
+import { McpHandlerError } from './types.ts'
+import { parseAndClassify } from './request-parser.ts'
+import { createSessionManager, type McpSessionManager } from './session-manager.ts'
+import { handlePost, type PostHandlerOptions } from './post-handler.ts'
+import { createSseEventStream, type SseStreamOptions } from './get-handler.ts'
 import {
   createPrimeEvent,
   createSseHeaders,
-} from '../protocol/sse-formatter'
-import { JSON_RPC_ERROR_CODES } from '../protocol/types'
+} from '../protocol/sse-formatter.ts'
+import { JSON_RPC_ERROR_CODES } from '../protocol/types.ts'
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -877,5 +877,5 @@ export function generateMcpManifest(
 // RE-EXPORTS
 // =============================================================================
 
-export type { McpHandlerConfig, McpHttpHandler } from './types'
-export { McpHandlerError, MCP_HANDLER_ERRORS } from './types'
+export type { McpHandlerConfig, McpHttpHandler } from './types.ts'
+export { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'

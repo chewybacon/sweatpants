@@ -22,14 +22,14 @@ export type {
   TokenUsage,
   ToolCallInfo,
   ServerToolResult,
-} from './core-types'
+} from './core-types.ts'
 
 // Re-export from isomorphic-tools
 export type {
   ServerToolContext,
   ServerAuthorityContext,
   IsomorphicHandoffEvent,
-} from './isomorphic-tools/types'
+} from './isomorphic-tools/types.ts'
 
 // Re-export from session
 export type {
@@ -46,7 +46,7 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from './session'
+} from './session/index.ts'
 
 // Re-export from state
 export type {
@@ -65,9 +65,9 @@ export type {
   ChatState,
   ToolEmissionState,
   ToolEmissionTrackingState,
-} from './state'
+} from './state/index.ts'
 
-export { groupTimelineByToolCall, initialChatState } from './state'
+export { groupTimelineByToolCall, initialChatState } from './state/index.ts'
 
 // Re-export from patches
 export type {
@@ -118,7 +118,7 @@ export type {
   ExecutionTrailPatch,
   // Union
   ChatPatch,
-} from './patches'
+} from './patches/index.ts'
 
 export {
   isCorePatch,
@@ -127,7 +127,7 @@ export {
   isIsomorphicToolPatch,
   isHandoffPatch,
   isExecutionTrailPatch,
-} from './patches'
+} from './patches/index.ts'
 
 // =============================================================================
 // MESSAGE TYPES (defined here - core to the chat protocol)
@@ -192,7 +192,7 @@ export interface ChatResult {
   text: string
   thinking?: string
   toolCalls?: ToolCall[]
-  usage: import('./core-types').TokenUsage
+  usage: import('./core-types.ts').TokenUsage
 }
 
 // =============================================================================

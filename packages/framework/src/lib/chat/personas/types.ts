@@ -1,7 +1,7 @@
 // --- Capabilities ---
 // Import from core-types (single source of truth)
-import type { Capabilities } from '../core-types'
-export type { Capabilities } from '../core-types'
+import type { Capabilities } from '../core-types.ts'
+export type { Capabilities } from '../core-types.ts'
 
 // --- Configuration ---
 

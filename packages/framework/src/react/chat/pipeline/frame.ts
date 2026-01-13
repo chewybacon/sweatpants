@@ -15,7 +15,7 @@ import type {
   TraceEntry,
   TraceAction,
   Annotation,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // ID Generation

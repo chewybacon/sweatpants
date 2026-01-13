@@ -10,16 +10,16 @@ import type {
   ToolSessionStore,
   ToolSessionSamplingProvider,
   ToolSessionRegistry,
-} from './types'
+} from './types.ts'
 import {
   ToolSessionStoreContext,
   ToolSessionRegistryContext,
   ToolSessionSamplingProviderContext,
-} from './contexts'
+} from './contexts.ts'
 import {
   createToolSessionRegistry,
   type ToolSessionRegistryOptions,
-} from './session-registry'
+} from './session-registry.ts'
 
 // =============================================================================
 // SETUP OPTIONS
@@ -131,4 +131,4 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
-} from './contexts'
+} from './contexts.ts'

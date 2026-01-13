@@ -11,7 +11,7 @@ import type {
   ToolSessionStore,
   ToolSessionEntry,
   ToolSessionStatus,
-} from './types'
+} from './types.ts'
 
 /**
  * Create an in-memory tool session store.

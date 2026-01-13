@@ -87,7 +87,7 @@ export function MessageList({ messages, isStreaming = false, height = 20, curren
 interface MessageBubbleProps {
   message: Message
   /** Frame for rendered content (for streaming assistant messages) */
-  frame?: Frame | null
+  frame?: Frame | null | undefined
 }
 
 function MessageBubble({ message, frame }: MessageBubbleProps) {

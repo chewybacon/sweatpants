@@ -1,6 +1,6 @@
 import type { Operation } from 'effection'
-import { ChatStreamConfigContext, ChatApiKeyContext } from './contexts'
-import type { ChatStreamOptions } from './types'
+import { ChatStreamConfigContext, ChatApiKeyContext } from './contexts.ts'
+import type { ChatStreamOptions } from './types.ts'
 
 export interface ResolveConfigDefaults {
   baseUri: string

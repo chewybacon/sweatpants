@@ -12,7 +12,7 @@
  * we no longer need settler negotiation.
  */
 import { type Operation, all as effectionAll } from 'effection'
-import type { Processor, ResolvedProcessors } from './types'
+import type { Processor, ResolvedProcessors } from './types.ts'
 
 // =============================================================================
 // Error Types
