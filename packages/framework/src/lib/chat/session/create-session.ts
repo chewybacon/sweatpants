@@ -63,18 +63,18 @@
  */
 import type { Operation, Task, Channel, Signal, Stream } from 'effection'
 import { spawn, each, createChannel, createSignal, resource, useScope, call } from 'effection'
-import { streamChatOnce, toApiMessages, type PluginElicitResponseData } from './stream-chat'
-import { useTransformPipeline } from './transforms'
-import { chatReducer, initialChatState } from '../state/reducer'
-import type { ChatState } from '../state/chat-state'
-import { StreamerContext, ToolRegistryContext, BaseUrlContext } from './contexts'
-import type { ChatPatch } from '../patches'
-import type { Message } from '../types'
-import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options'
-import type { StreamResult, ApiMessage } from './streaming'
-import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime'
-import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools'
-import type { PendingEmission } from '../isomorphic-tools/runtime/emissions'
+import { streamChatOnce, toApiMessages, type PluginElicitResponseData } from './stream-chat.ts'
+import { useTransformPipeline } from './transforms.ts'
+import { chatReducer, initialChatState } from '../state/reducer.ts'
+import type { ChatState } from '../state/chat-state.ts'
+import { StreamerContext, ToolRegistryContext, BaseUrlContext } from './contexts.ts'
+import type { ChatPatch } from '../patches/index.ts'
+import type { Message } from '../types.ts'
+import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
+import type { StreamResult, ApiMessage } from './streaming.ts'
+import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
+import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools/index.ts'
+import type { PendingEmission } from '../isomorphic-tools/runtime/emissions.ts'
 
 import {
   executeIsomorphicToolsClient,
@@ -82,7 +82,7 @@ import {
   formatIsomorphicToolResult,
   createUIRequestChannel,
   createIsomorphicToolRegistry,
-} from '../isomorphic-tools'
+} from '../isomorphic-tools/index.ts'
 
 /** Default streamer - uses fetch to call the chat API */
 const defaultStreamer: Streamer = streamChatOnce

@@ -9,9 +9,9 @@ import {
   validatePostHeaders,
   validateGetHeaders,
   classifyRequest,
-} from '../request-parser'
-import { McpHandlerError } from '../types'
-import type { McpParsedRequest } from '../types'
+} from '../request-parser.ts'
+import { McpHandlerError } from '../types.ts'
+import type { McpParsedRequest } from '../types.ts'
 
 // =============================================================================
 // REQUEST PARSER TESTS

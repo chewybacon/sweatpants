@@ -10,16 +10,16 @@
  */
 
 // Main handler factory
-export { createDurableChatHandler } from './handler'
+export { createDurableChatHandler } from './handler.ts'
 
 // Alias for consolidation - createChatHandler is the durable handler
-export { createDurableChatHandler as createChatHandler } from './handler'
+export { createDurableChatHandler as createChatHandler } from './handler.ts'
 
 // Chat engine
-export { createChatEngine } from './chat-engine'
+export { createChatEngine } from './chat-engine.ts'
 
 // Plugin session manager
-export { createPluginSessionManager } from './plugin-session-manager'
+export { createPluginSessionManager } from './plugin-session-manager.ts'
 export type {
   PluginSessionManager,
   PluginSession,
@@ -28,7 +28,7 @@ export type {
   PluginSessionInfo,
   PluginSessionManagerOptions,
   CreatePluginSessionConfig,
-} from './plugin-session-manager'
+} from './plugin-session-manager.ts'
 
 // Types
 export type {
@@ -64,4 +64,4 @@ export type {
 
   // MCP tool registry
   McpToolRegistry,
-} from './types'
+} from './types.ts'

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useChatConfig } from './ChatProvider'
+import { useChatConfig } from './ChatProvider.tsx'
 
 // Client-side view of persona (no system prompts)
 export interface PersonaInfo {

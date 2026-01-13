@@ -21,7 +21,7 @@
  */
 import { createContext } from 'effection'
 import type { Context } from 'effection'
-import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from './types'
+import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from './types.ts'
 
 // =============================================================================
 // TOKEN BUFFER STORE CONTEXT

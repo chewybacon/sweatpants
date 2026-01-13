@@ -1,7 +1,7 @@
 import type { Operation } from 'effection'
-import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from './providers/contexts'
-import type { ChatProvider } from './providers/types'
-import type { IsomorphicTool, PersonaResolver } from '../../handler/types'
+import { ProviderContext, ToolRegistryContext, PersonaResolverContext, MaxIterationsContext } from './providers/contexts.ts'
+import type { ChatProvider } from './providers/types.ts'
+import type { IsomorphicTool, PersonaResolver } from '../../handler/types.ts'
 
 /**
  * Test utilities for setting up DI contexts in unit tests

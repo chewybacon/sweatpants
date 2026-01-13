@@ -5,7 +5,7 @@
  * These patches enable progressive rendering with settled/pending content.
  */
 
-import type { ContentMetadata, RenderDelta, RevealHint } from '../core-types'
+import type { ContentMetadata, RenderDelta, RevealHint } from '../core-types.ts'
 
 // =============================================================================
 // BUFFER PATCHES

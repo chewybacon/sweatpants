@@ -78,13 +78,13 @@ export type {
   // Type helpers
   InferToolSessionResult,
   AnyToolSession,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // SESSION CREATION
 // =============================================================================
 
-export { createToolSession } from './tool-session'
+export { createToolSession } from './tool-session.ts'
 
 // =============================================================================
 // REGISTRY
@@ -93,7 +93,7 @@ export { createToolSession } from './tool-session'
 export {
   createToolSessionRegistry,
   type ToolSessionRegistryOptions,
-} from './session-registry'
+} from './session-registry.ts'
 
 // =============================================================================
 // STORES
@@ -102,7 +102,7 @@ export {
 export {
   createInMemoryToolSessionStore,
   createInMemoryToolSessionStoreWithDebug,
-} from './in-memory-store'
+} from './in-memory-store.ts'
 
 // =============================================================================
 // CONTEXTS AND SETUP
@@ -127,7 +127,7 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
-} from './setup'
+} from './setup.ts'
 
 // =============================================================================
 // WORKER-BASED SESSIONS
@@ -161,23 +161,23 @@ export type {
   WorkerToolRegistry,
   WorkerTool,
   WorkerToolContext,
-} from './worker-types'
+} from './worker-types.ts'
 
 export {
   // Transport implementations
   createWorkerThreadTransportFactory,
   createWorkerSideTransport,
   createInProcessTransportPair,
-} from './worker-thread-transport'
+} from './worker-thread-transport.ts'
 
 export {
   // Worker runner (runs inside worker)
   runWorker,
   createWorkerToolRegistry,
-} from './worker-runner'
+} from './worker-runner.ts'
 
 export {
   // Worker tool session adapter
   createWorkerToolSession,
   type WorkerToolSessionOptions,
-} from './worker-tool-session'
+} from './worker-tool-session.ts'

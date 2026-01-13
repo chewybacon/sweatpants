@@ -10,7 +10,7 @@
     "dev": "tsx src/cli.ts",
     "dev:silent": "pnpm --silent dev",
     "build": "tsup",
-    "check": "tsc --noEmit",
+    "check": "tsc -b",
     "start": "node dist/cli.js",
     "inspect": "tsx src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
     "test": "playwright test",
@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.49.0",
-    "@tanstack/ts-config": "workspace:*",
+    "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",

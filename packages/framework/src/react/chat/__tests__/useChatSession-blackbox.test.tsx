@@ -4,9 +4,9 @@ import { Readable } from 'node:stream'
 import { type ReactNode } from 'react'
 import { z } from 'zod'
 
-import { ChatProvider } from '../ChatProvider'
-import { useChatSession } from '../useChatSession'
-import type { PluginClientRegistrationInput } from '../../../lib/chat/mcp-tools/plugin'
+import { ChatProvider } from '../ChatProvider.tsx'
+import { useChatSession } from '../useChatSession.ts'
+import type { PluginClientRegistrationInput } from '../../../lib/chat/mcp-tools/plugin.ts'
 
 function ndjsonResponse(events: unknown[]): Response {
   const lines = events.map((event, i) => JSON.stringify({ lsn: i + 1, event }) + '\n')
@@ -183,8 +183,8 @@ describe('useChatSession (black-box)', () => {
     // Black-box assertion: request 2 body included the elicit response
     expect(fetchBodies.length).toBeGreaterThanOrEqual(2)
     const secondBody = fetchBodies[1] as Record<string, unknown>
-    expect(secondBody.pluginElicitResponses).toBeTruthy()
-    expect((secondBody.pluginElicitResponses as unknown[])[0]).toMatchObject({
+    expect(secondBody['pluginElicitResponses']).toBeTruthy()
+    expect((secondBody['pluginElicitResponses'] as unknown[])[0]).toMatchObject({
       sessionId: 'sess-1',
       callId: 'call-1',
       elicitId: 'elicit-1',

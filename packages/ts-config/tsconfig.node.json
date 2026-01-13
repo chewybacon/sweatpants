@@ -1,16 +1,10 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    // Node.js environment
+    // Node.js environment (no DOM types)
     "lib": ["ES2022"],
     "jsx": "react-jsx",
-    "noEmit": true,
-
-    // Node typically doesn't need DOM types
-    "skipLibCheck": true,
-
-    // Strict by default
-    "strict": true
+    "noEmit": true
   },
   "include": ["src", "tests"],
   "exclude": ["dist", "node_modules"]

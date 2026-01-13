@@ -6,12 +6,12 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { createInProcessTransportPair } from '../worker-thread-transport'
-import { runWorker, createWorkerToolRegistry } from '../worker-runner'
+import { createInProcessTransportPair } from '../worker-thread-transport.ts'
+import { runWorker, createWorkerToolRegistry } from '../worker-runner.ts'
 import type {
   WorkerToHostMessage,
   WorkerToolContext,
-} from '../worker-types'
+} from '../worker-types.ts'
 
 describe('WorkerRunner', () => {
   describe('simple tool (no backchannel)', () => {

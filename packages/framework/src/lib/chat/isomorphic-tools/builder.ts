@@ -58,12 +58,12 @@ import type { z } from 'zod'
 import type {
   ContextMode,
   ContextForMode,
-} from './contexts'
+} from './contexts.ts'
 import type {
   IsomorphicApprovalConfig,
   ServerToolContext,
   ServerAuthorityContext,
-} from './types'
+} from './types.ts'
 
 type BuilderAuthorityMode = 'server' | 'client'
 

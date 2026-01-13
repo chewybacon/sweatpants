@@ -1,6 +1,6 @@
 import type { Operation, Stream, Subscription } from 'effection'
 import { resource, call, useAbortSignal } from 'effection'
-import { parseNDJSON } from '../ndjson'
+import { parseNDJSON } from '../ndjson.ts'
 import type {
   OllamaMessage,
   OllamaChatRequest,
@@ -9,9 +9,9 @@ import type {
   ChatResult,
   TokenUsage,
   ToolCall,
-} from '../types'
-import type { ChatProvider, ChatStreamOptions } from './types'
-import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config'
+} from '../types.ts'
+import type { ChatProvider, ChatStreamOptions } from './types.ts'
+import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config.ts'
 
 type OllamaTool = NonNullable<OllamaChatRequest['tools']>[number]
 

@@ -22,15 +22,15 @@ import type {
   McpCreateMessageResult,
   McpToolCallParams,
   McpContentBlock,
-} from './types'
-import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types'
+} from './types.ts'
+import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types.ts'
 import type { 
   ElicitResult, 
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
   SamplingToolCall,
-} from '../mcp-tool-types'
+} from '../mcp-tool-types.ts'
 
 // =============================================================================
 // DECODED TYPES

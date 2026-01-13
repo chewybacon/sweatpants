@@ -22,7 +22,7 @@
  * ```
  */
 
-import type { PluginClientRegistrationInput } from './plugin'
+import type { PluginClientRegistrationInput } from './plugin.ts'
 
 // =============================================================================
 // PLUGIN REGISTRY INTERFACE

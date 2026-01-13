@@ -5,7 +5,7 @@
  * Configure interactors and other global settings here.
  */
 import { setDocumentResolver, setInteractorTimeout } from '@interactors/html'
-import { e2eConfig } from './config'
+import { e2eConfig } from './config.ts'
 
 // Configure Interactors to use the jsdom document
 setDocumentResolver(() => document)

@@ -29,15 +29,15 @@
  * ```
  */
 import type { Operation } from 'effection'
-import type { Frame, Processor, Annotation, Block } from '../types'
-import { addTrace } from '../frame'
+import type { Frame, Processor, Annotation, Block } from '../types.ts'
+import { addTrace } from '../frame.ts'
 import {
   renderMath,
   renderMathSync,
   preloadKatex as preloadKatexLoader,
   isKatexReady as isKatexReadyLoader,
-} from '../../math/loader'
-import { registerBuiltinProcessor } from '../resolver'
+} from '../../math/loader.ts'
+import { registerBuiltinProcessor } from '../resolver.ts'
 
 // =============================================================================
 // Math Detection

@@ -39,7 +39,7 @@ import type {
   LogLevel,
   SampleResult,
   ElicitResult,
-} from '../mcp-tool-types'
+} from '../mcp-tool-types.ts'
 
 // =============================================================================
 // WORKER MESSAGES (Host → Worker)

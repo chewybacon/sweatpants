@@ -23,8 +23,8 @@
 import type { Operation, Channel } from 'effection'
 import type { ComponentType } from 'react'
 import type { z } from 'zod'
-import type { ElicitRequest, ElicitsMap, ElicitResult, ExtractElicitResponse } from './mcp-tool-types'
-import type { PluginClientContext, PluginClientRegistration } from './plugin'
+import type { ElicitRequest, ElicitsMap, ElicitResult, ExtractElicitResponse } from './mcp-tool-types.ts'
+import type { PluginClientContext, PluginClientRegistration } from './plugin.ts'
 import {
   type RuntimePrimitive,
   type ComponentEmissionPayload,
@@ -33,8 +33,8 @@ import {
   getComponentKey,
   createRuntime,
   createComponentHandler,
-} from '../isomorphic-tools/runtime/emissions'
-import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context'
+} from '../isomorphic-tools/runtime/emissions.ts'
+import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
 
 // =============================================================================
 // CONTEXT CREATION

@@ -13,7 +13,7 @@ import type {
   IsomorphicToolRegistry,
   IsomorphicToolSchema,
   ServerOnlyToolDef,
-} from './types'
+} from './types.ts'
 
 /**
  * Create an isomorphic tool registry.

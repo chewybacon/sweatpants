@@ -54,16 +54,16 @@ import type {
   PipelineConfig,
   ParseContext,
   ProcessFn,
-} from './types'
-import { emptyFrame } from './frame'
-import { createParser } from './parser'
-import { resolveProcessors } from './resolver'
+} from './types.ts'
+import { emptyFrame } from './frame.ts'
+import { createParser } from './parser.ts'
+import { resolveProcessors } from './resolver.ts'
 
 // Import built-in processors to ensure they register themselves
-import { markdown } from './processors/markdown'
-import { shiki } from './processors/shiki'
-import { mermaid } from './processors/mermaid'
-import { math } from './processors/math'
+import { markdown } from './processors/markdown.ts'
+import { shiki } from './processors/shiki.ts'
+import { mermaid } from './processors/mermaid.ts'
+import { math } from './processors/math.ts'
 
 // =============================================================================
 // Presets
@@ -298,9 +298,9 @@ export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
 // =============================================================================
 
 // Import patch types
-import type { ChatPatch } from '../types'
-import type { ContentPartType, PartFramePatch, PartEndPatch } from '../../../lib/chat/patches'
-import { generatePartId } from '../../../lib/chat/types/chat-message'
+import type { ChatPatch } from '../types.ts'
+import type { ContentPartType, PartFramePatch, PartEndPatch } from '../../../lib/chat/patches/index.ts'
+import { generatePartId } from '../../../lib/chat/types/chat-message.ts'
 
 /**
  * Create a patch transform from a pipeline config.
