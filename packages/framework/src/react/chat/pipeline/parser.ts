@@ -20,7 +20,7 @@
  * - Closing: ``` or ~~~
  * - Content between is a code block, not text
  */
-import type { Parser, ParserFactory, ParseContext, Frame } from './types'
+import type { Parser, ParserFactory, ParseContext, Frame } from './types.ts'
 import {
   createTextBlock,
   createCodeBlock,
@@ -32,7 +32,7 @@ import {
   completeBlock,
   clearActiveBlock,
   addTrace,
-} from './frame'
+} from './frame.ts'
 
 // =============================================================================
 // Fence Detection

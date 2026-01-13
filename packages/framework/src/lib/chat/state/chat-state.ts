@@ -19,13 +19,13 @@
  * - A complete ChatMessage is added to `messages`
  */
 
-import type { Message } from '../types'
-import type { Capabilities } from '../core-types'
-import type { PendingHandoffState } from '../patches/handoff'
-import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission'
-import type { PluginElicitState, PluginElicitTrackingState } from '../patches/plugin'
-import type { MessagePart } from '../types/chat-message'
-import type { ContentPartType } from '../patches/base'
+import type { Message } from '../types.ts'
+import type { Capabilities } from '../core-types.ts'
+import type { PendingHandoffState } from '../patches/handoff.ts'
+import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission.ts'
+import type { PluginElicitState, PluginElicitTrackingState } from '../patches/plugin.ts'
+import type { MessagePart } from '../types/chat-message.ts'
+import type { ContentPartType } from '../patches/base.ts'
 
 // Re-export emission types for convenience
 export type { ToolEmissionState, ToolEmissionTrackingState }

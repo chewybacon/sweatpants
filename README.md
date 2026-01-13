@@ -129,6 +129,43 @@ cd packages/framework && pnpm test
 cd apps/yo-chat && pnpm dev
 ```
 
+## Development Workflow
+
+### TypeScript Incremental Builds
+
+This monorepo uses TypeScript project references for fast incremental builds:
+
+```bash
+# Build all tsc-buildable workspaces
+pnpm tsc -b
+
+# Clean and rebuild
+pnpm tsc -b --clean && pnpm tsc -b
+
+# Build specific workspace
+cd packages/framework
+pnpm tsc -b
+```
+
+### Development Exports
+
+Packages export TypeScript source files via the `development` condition:
+
+- VSCode automatically resolves to source files
+- No build required for IntelliSense
+- "Go to Definition" jumps to .ts files, not .d.ts
+
+### Workspace Structure
+
+- **tsc-buildable**: elicit-context, cli, framework, hydra
+  - Use `pnpm tsc -b` for builds
+  - Participate in incremental build chain
+
+- **Bundler-based**: yo-agent, yo-chat, yo-mcp
+  - Use tsup/vite for builds
+  - Type-check with `pnpm check`
+  - Not part of `tsc -b` chain
+
 ## Architecture
 
 ```

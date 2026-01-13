@@ -20,7 +20,7 @@ import {
   type Signal,
 } from 'effection'
 
-import type { HostMessage, WorkerMessage } from './worker-message-loop.test'
+import type { HostMessage, WorkerMessage } from './worker-message-loop.test.ts'
 
 // =============================================================================
 // MESSAGE HANDLING

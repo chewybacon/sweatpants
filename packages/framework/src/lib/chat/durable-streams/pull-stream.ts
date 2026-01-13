@@ -7,8 +7,8 @@
  */
 import { resource } from 'effection'
 import type { Operation, Stream, Subscription } from 'effection'
-import type { TokenBuffer, TokenFrame } from './types'
-import { useLogger } from '../../logger'
+import type { TokenBuffer, TokenFrame } from './types.ts'
+import { useLogger } from '../../logger/index.ts'
 
 /**
  * Creates a pull-based stream from a TokenBuffer.

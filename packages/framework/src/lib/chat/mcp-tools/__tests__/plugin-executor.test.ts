@@ -8,10 +8,10 @@ import {
   createPluginClientContext,
   executePluginElicitHandler,
   executePluginElicitHandlerFromRequest,
-} from '../plugin-executor'
-import type { PluginClientRegistration } from '../plugin'
-import type { ElicitRequest, ElicitId } from '../mcp-tool-types'
-import type { PendingEmission, ComponentEmissionPayload } from '../../isomorphic-tools/runtime/emissions'
+} from '../plugin-executor.ts'
+import type { PluginClientRegistration } from '../plugin.ts'
+import type { ElicitRequest, ElicitId } from '../mcp-tool-types.ts'
+import type { PendingEmission, ComponentEmissionPayload } from '../../isomorphic-tools/runtime/emissions.ts'
 
 // Helper to create a valid ElicitRequest
 function createElicitRequest<K extends string>(

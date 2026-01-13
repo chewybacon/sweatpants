@@ -72,7 +72,7 @@ import type {
   McpToolHandoffConfigWithElicits,
   McpToolLimits,
   ElicitsMap,
-} from './mcp-tool-types'
+} from './mcp-tool-types.ts'
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS

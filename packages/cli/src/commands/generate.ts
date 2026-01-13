@@ -7,8 +7,8 @@
 import { defineCommand } from 'citty'
 import { writeFile, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { fetchManifest } from '../lib/fetch-manifest'
-import { generateTypes } from '../lib/codegen'
+import { fetchManifest } from '../lib/fetch-manifest.ts'
+import { generateTypes } from '../lib/codegen.ts'
 
 export const generateCommand = defineCommand({
   meta: {

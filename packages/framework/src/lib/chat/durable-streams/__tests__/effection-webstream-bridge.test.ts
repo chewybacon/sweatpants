@@ -14,15 +14,15 @@
  * - Make it work with standard Response objects
  * - Allow a "client" to read from it like a normal fetch response
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { spawn, sleep, call, useScope } from 'effection'
 import type { Operation, Subscription, Scope } from 'effection'
-import type { TokenFrame } from '../types'
+import type { TokenFrame } from '../types.ts'
 import {
   createInMemoryBuffer,
   createPullStream,
   createWebStreamFromBuffer,
-} from './test-utils'
+} from './test-utils.ts'
 
 // =============================================================================
 // ALTERNATIVE APPROACH: Pumper with async queue (for exploration)

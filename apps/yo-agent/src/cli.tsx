@@ -54,6 +54,7 @@ function AgentApp({
       const timer = setTimeout(() => setLastHmrEvent(null), 3000)
       return () => clearTimeout(timer)
     }
+    return undefined
   }, [lastHmrEvent])
 
   const contextValue: AgentContextValue = {

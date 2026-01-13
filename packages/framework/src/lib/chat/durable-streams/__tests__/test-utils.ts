@@ -7,31 +7,31 @@
  */
 import { resource, sleep } from 'effection'
 import type { Operation, Stream } from 'effection'
-import type { TokenFrame } from '../types'
+import type { TokenFrame } from '../types.ts'
 
 // Re-export library implementations for test convenience
 export {
   createInMemoryBuffer,
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
-} from '../in-memory-store'
+} from '../in-memory-store.ts'
 
-export { createPullStream, writeFromStreamToBuffer } from '../pull-stream'
+export { createPullStream, writeFromStreamToBuffer } from '../pull-stream.ts'
 
-export { createWebStreamFromBuffer } from '../web-stream-bridge'
+export { createWebStreamFromBuffer } from '../web-stream-bridge.ts'
 
 // Re-export DI helpers for test convenience
 export {
   setupInMemoryDurableStreams,
   setupDurableStreams,
   type DurableStreamsSetup,
-} from '../setup'
+} from '../setup.ts'
 
 export {
   useSessionRegistry,
   useTokenBufferStore,
   useSessionRegistryStore,
-} from '../use'
+} from '../use.ts'
 
 // =============================================================================
 // MOCK LLM STREAM

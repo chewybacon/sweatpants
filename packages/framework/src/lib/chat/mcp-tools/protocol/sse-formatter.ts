@@ -21,7 +21,7 @@
  * @see https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#resumability-and-redelivery
  * @packageDocumentation
  */
-import type { SseEvent } from './types'
+import type { SseEvent } from './types.ts'
 
 // =============================================================================
 // EVENT ID GENERATION

@@ -10,10 +10,10 @@
  * 3. ReadableStream.pull() calls scope.run(() => subscription.next())
  * 4. Cleanup scope on completion or cancel
  */
-import { describe, it, expect } from './vitest-effection'
+import { describe, it, expect } from './vitest-effection.ts'
 import { createScope, resource, sleep, call } from 'effection'
 import type { Operation, Stream } from 'effection'
-import { createStreamingHandler, useHandlerContext } from '../../streaming'
+import { createStreamingHandler, useHandlerContext } from '../../streaming.ts'
 
 // =============================================================================
 // TEST HELPERS

@@ -64,13 +64,13 @@
  * @packageDocumentation
  */
 import type { ReactNode } from 'react'
-import type { FinalizedIsomorphicTool } from './builder'
+import type { FinalizedIsomorphicTool } from './builder.ts'
 import type { z } from 'zod'
 import type {
   ServerAuthorityToolDef,
   ClientAuthorityToolDef,
   AnyIsomorphicTool,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // TYPE HELPERS

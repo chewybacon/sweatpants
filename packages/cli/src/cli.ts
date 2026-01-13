@@ -8,7 +8,7 @@
  */
 
 import { defineCommand, runMain } from 'citty'
-import { generateCommand } from './commands/generate'
+import { generateCommand } from './commands/generate.ts'
 
 const main = defineCommand({
   meta: {

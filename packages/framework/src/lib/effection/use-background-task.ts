@@ -70,7 +70,7 @@
  */
 
 import { createScope, call, resource } from 'effection'
-import type { Operation, Scope } from 'effection'
+import type { Operation, Scope, Context } from 'effection'
 
 // =============================================================================
 // TYPES
@@ -119,7 +119,7 @@ export interface BackgroundTaskHandle<T = void> {
  * A context value to be passed to the background task.
  */
 export interface ContextEntry<T = unknown> {
-  context: { set: (value: T) => Operation<T>; get: () => Operation<T | undefined> }
+  context: Context<T>
   value: T
 }
 

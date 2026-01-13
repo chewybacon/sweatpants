@@ -19,19 +19,19 @@ export type {
   Capabilities,
   TokenUsage,
   AuthorityMode,
-} from '../lib/chat/core-types'
+} from '../lib/chat/core-types.ts'
 
 // Message types - re-export for convenience
-export type { Message } from '../lib/chat/types'
+export type { Message } from '../lib/chat/types.ts'
 
 // Tool context types
 export type {
   ServerToolContext,
   ServerAuthorityContext,
-} from '../lib/chat/isomorphic-tools/types'
+} from '../lib/chat/isomorphic-tools/types.ts'
 
 // Provider types - re-export from canonical location
-export type { ChatProvider } from '../lib/chat/providers/types'
+export type { ChatProvider } from '../lib/chat/providers/types.ts'
 
 // =============================================================================
 // HANDLER-SPECIFIC TYPES

@@ -1,15 +1,15 @@
 import type { Operation, Stream, Subscription } from 'effection'
 import { resource, call, useAbortSignal } from 'effection'
-import { parseSSE } from '../sse'
-import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config'
+import { parseSSE } from '../sse.ts'
+import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config.ts'
 import type {
   Message,
   ChatEvent,
   ChatResult,
   TokenUsage,
   ToolCall,
-} from '../types'
-import type { ChatProvider, ChatStreamOptions } from './types'
+} from '../types.ts'
+import type { ChatProvider, ChatStreamOptions } from './types.ts'
 
 
 

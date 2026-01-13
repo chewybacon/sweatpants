@@ -10,11 +10,11 @@
 import { resource, sleep } from 'effection'
 import type { Operation, Stream } from 'effection'
 import { z } from 'zod'
-import type { ChatEvent, ChatResult, Message } from '../../../lib/chat/types'
-import type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from '../../../lib/chat/providers/types'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts'
-import { setupInMemoryDurableStreams, type DurableStreamsSetup } from '../../../lib/chat/durable-streams'
-import type { IsomorphicTool, ToolSchema, InitializerHook, DurableStreamEvent } from '../types'
+import type { ChatEvent, ChatResult, Message } from '../../../lib/chat/types.ts'
+import type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from '../../../lib/chat/providers/types.ts'
+import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import { setupInMemoryDurableStreams, type DurableStreamsSetup } from '../../../lib/chat/durable-streams/index.ts'
+import type { IsomorphicTool, ToolSchema, InitializerHook, DurableStreamEvent } from '../types.ts'
 
 // =============================================================================
 // MOCK PROVIDER
@@ -402,6 +402,7 @@ export function createChatRequest(
     lastLSN?: number
     persona?: string
     enabledTools?: boolean | string[]
+    enabledPlugins?: string[]
     systemPrompt?: string
     isomorphicTools?: ToolSchema[]
   } = {}

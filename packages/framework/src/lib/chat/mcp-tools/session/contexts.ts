@@ -24,7 +24,7 @@ import type {
   ToolSessionRegistry,
   ToolSessionStore,
   ToolSessionSamplingProvider,
-} from './types'
+} from './types.ts'
 
 // =============================================================================
 // CONTEXTS

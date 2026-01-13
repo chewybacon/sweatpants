@@ -7,7 +7,7 @@
  */
 import { resource, call, type Operation } from 'effection'
 import { spawn as spawnProcess, type ChildProcess } from 'child_process'
-import { e2eConfig } from './config'
+import { e2eConfig } from './config.ts'
 import * as path from 'path'
 
 export interface TestServerHandle {
