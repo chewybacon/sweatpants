@@ -184,6 +184,7 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
                 type: 'tool_use',
                 id: toolCallId,
                 name: 'elicit',
+                // Keep input empty; echo data in tool_result for history
                 input: {},
               }],
             }

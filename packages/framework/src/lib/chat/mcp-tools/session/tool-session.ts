@@ -41,7 +41,7 @@ import type {
 } from './types.ts'
 import type {
   RawElicitResult,
-  SampleResult,
+  RawSampleResult,
   ElicitsMap,
 } from '../mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
@@ -291,7 +291,7 @@ export function createToolSession<
         yield* sleep(0)
       },
 
-      *respondToSample(sampleId: string, response: SampleResult): Operation<void> {
+      *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
         const pending = state.pendingSample
         if (!pending) {
           return

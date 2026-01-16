@@ -255,11 +255,93 @@ export interface SampleExchange<TParsed = undefined> {
    */
   messages: McpMessage[]
 
-  /**
-   * Parsed structured data (only present when schema was used).
-   * Extracted from the tool_use input and validated against the schema.
-   */
-  parsed: TParsed
+   /**
+    * Parsed structured data (only present when schema was used).
+    * Validated against the schema and stored on the exchange for consumers.
+    */
+   parsed: TParsed
+ }
+
+/**
+ * Reserved tool name for structured output.
+ * Clients can intercept this and use native provider implementations.
+ */
+export const SCHEMA_TOOL_NAME = '__schema__'
+
+/**
+ * Create a SampleExchange for raw sampling (no schema).
+ * 
+ * @param promptText - The user's prompt text
+ * @param responseText - The assistant's response text
+ */
+export function createRawSampleExchange(
+  promptText: string,
+  responseText: string
+): SampleExchange<undefined> {
+  const request: McpMessage & { role: 'user' } = {
+    role: 'user',
+    content: [{ type: 'text', text: promptText }],
+  }
+  const response: McpMessage & { role: 'assistant' } = {
+    role: 'assistant',
+    content: [{ type: 'text', text: responseText }],
+  }
+  return {
+    request,
+    response,
+    messages: [request, response],
+    parsed: undefined,
+  }
+}
+
+/**
+ * Create a SampleExchange for structured output (with schema).
+ * Uses the __schema__ meta-tool pattern with 3 messages.
+ * 
+ * @param promptText - The user's prompt text
+ * @param parsed - The parsed/validated data
+ * @param toolCallId - Unique ID for the tool call
+ */
+export function createStructuredSampleExchange<T>(
+  promptText: string,
+  parsed: T,
+  toolCallId: string
+): SampleExchange<T> {
+  const request: McpMessage & { role: 'user' } = {
+    role: 'user',
+    content: [{ type: 'text', text: promptText }],
+  }
+  
+  // Assistant responds with __schema__ tool_use
+  // Input is intentionally blank; parsed data is echoed in tool_result
+  const toolUse: McpMessage & { role: 'assistant' } = {
+    role: 'assistant',
+    content: [{
+      type: 'tool_use',
+      id: toolCallId,
+      name: SCHEMA_TOOL_NAME,
+      input: {},
+    }],
+  }
+  
+  // Construct tool_result with the parsed data echoed back
+  // This keeps MCP compliance while "virtually" moving input to the result
+  // Parsed data also stays on the exchange for consumers
+  const toolResult: McpMessage & { role: 'user' } = {
+    role: 'user',
+    content: [{
+      type: 'tool_result',
+      toolUseId: toolCallId,
+      content: [{ type: 'text', text: JSON.stringify(parsed) }],
+    }],
+  }
+  
+  return {
+    request,
+    response: toolUse,
+    messages: [request, toolUse, toolResult],
+    parsed,
+  }
 }
 
 // =============================================================================
@@ -662,6 +744,15 @@ export interface SampleResultBase {
 
   /** Why generation stopped */
   stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
+
+  /**
+   * Exchange for history accumulation.
+   * Contains the request/response messages in MCP format.
+   * 
+   * - Raw sampling: 2 messages [user, assistant]
+   * - With tool calls: messages depend on response
+   */
+  exchange: SampleExchange<undefined>
 }
 
 /**
@@ -669,7 +760,76 @@ export interface SampleResultBase {
  *
  * @template T - The type of the parsed output
  */
-export interface SampleResultWithParsed<T> extends SampleResultBase {
+export interface SampleResultWithParsed<T> extends Omit<SampleResultBase, 'exchange'> {
+  /**
+   * Parsed and validated output.
+   * Null if parsing/validation failed (check parseError).
+   */
+  parsed: T | null
+
+  /**
+   * Error from parsing or validation.
+   * Present when parsed is null.
+   */
+  parseError?: {
+    /** Error message */
+    message: string
+    /** Raw text that failed to parse */
+    rawText: string
+  }
+
+  /**
+   * Exchange for history accumulation.
+   * Contains 3 messages for structured output: [request, toolUse, toolResult]
+   */
+  exchange: SampleExchange<T | null>
+}
+
+/**
+ * Result when using tool calling.
+ */
+export interface SampleResultWithToolCalls extends SampleResultBase {
+  /**
+   * Tool calls made by the model.
+   * Present when stopReason is 'toolUse'.
+   */
+  toolCalls: SamplingToolCall[]
+}
+
+/**
+ * Legacy type alias for backwards compatibility.
+ * @deprecated Use SampleResultBase for plain results
+ */
+export type SampleResult = SampleResultBase
+
+// -----------------------------------------------------------------------------
+// RAW SAMPLE RESULT TYPES (for decoder/handler layers without exchange)
+// -----------------------------------------------------------------------------
+
+/**
+ * Raw sample result without exchange.
+ * 
+ * Used by decoder and handler layers that don't have access to the original
+ * prompt text needed to construct exchanges. The exchange is added by the
+ * runtime layer (bridge-runtime, branch-runtime) which has the context.
+ */
+export interface RawSampleResultBase {
+  /** The generated text */
+  text: string
+
+  /** Model that generated the response */
+  model?: string
+
+  /** Why generation stopped */
+  stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
+}
+
+/**
+ * Raw result with parsed data but no exchange.
+ * 
+ * @template T - The type of the parsed output
+ */
+export interface RawSampleResultWithParsed<T> extends RawSampleResultBase {
   /**
    * Parsed and validated output.
    * Null if parsing/validation failed (check parseError).
@@ -689,9 +849,9 @@ export interface SampleResultWithParsed<T> extends SampleResultBase {
 }
 
 /**
- * Result when using tool calling.
+ * Raw result with tool calls but no exchange.
  */
-export interface SampleResultWithToolCalls extends SampleResultBase {
+export interface RawSampleResultWithToolCalls extends RawSampleResultBase {
   /**
    * Tool calls made by the model.
    * Present when stopReason is 'toolUse'.
@@ -700,10 +860,13 @@ export interface SampleResultWithToolCalls extends SampleResultBase {
 }
 
 /**
- * Legacy type alias for backwards compatibility.
- * @deprecated Use SampleResultBase for plain results
+ * Union type for all raw sample results (without exchange).
+ * Used by decoder and handler layers.
  */
-export type SampleResult = SampleResultBase
+export type RawSampleResult = 
+  | RawSampleResultBase 
+  | RawSampleResultWithParsed<unknown> 
+  | RawSampleResultWithToolCalls
 
 // =============================================================================
 // SAMPLE HELPER CONFIG TYPES
@@ -784,9 +947,11 @@ export interface SampleToolsResult extends SampleResultBase {
 /**
  * Guaranteed result from sampleSchema - parsed is always present and non-null.
  */
-export interface SampleSchemaResult<T> extends SampleResultBase {
+export interface SampleSchemaResult<T> extends Omit<SampleResultBase, 'exchange'> {
   /** Guaranteed parsed value */
   parsed: T
+  /** Exchange with typed parsed data */
+  exchange: SampleExchange<T>
 }
 
 /**
@@ -796,7 +961,7 @@ export class SampleValidationError extends Error {
   constructor(
     public readonly helperName: 'sampleTools' | 'sampleSchema',
     public readonly attempts: number,
-    public readonly lastResult: SampleResultBase,
+    public readonly lastResult: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls,
     message: string
   ) {
     super(message)

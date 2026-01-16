@@ -16,7 +16,7 @@
 import { createContext, type Operation } from 'effection'
 import type { ToolSessionRegistry } from '../session/types.ts'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
-import type { ElicitsMap, ElicitResult, ElicitExchange, SampleResult } from '../mcp-tool-types.ts'
+import type { ElicitsMap, ElicitResult, ElicitExchange, RawSampleResultBase } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,
   PendingElicitation,
@@ -49,6 +49,7 @@ function createPlaceholderExchange(content: unknown): ElicitExchange<unknown> {
       type: 'tool_use' as const,
       id: placeholderToolCallId,
       name: 'elicit',
+      // Keep input empty; echo data in tool_result for history
       input: {},
     }],
   }
@@ -386,7 +387,7 @@ export class McpSessionManager {
       textContent = String(content)
     }
 
-    const sampleResult: SampleResult = {
+    const sampleResult: RawSampleResultBase = {
       text: textContent,
       model,
       ...(stopReason !== undefined ? { stopReason } : {}),

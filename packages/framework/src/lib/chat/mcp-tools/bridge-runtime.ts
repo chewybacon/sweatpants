@@ -54,6 +54,8 @@ import {
   McpToolDepthError,
   McpToolTokenError,
   SampleValidationError,
+  createRawSampleExchange,
+  createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 
@@ -212,10 +214,21 @@ export interface ElicitResponse<TResponse = unknown> {
 }
 
 /**
+ * Raw sample result from provider (without exchange).
+ * The bridge constructs the exchange after receiving this.
+ */
+interface RawSampleResult {
+  text: string
+  model?: string
+  stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
+  toolCalls?: { id: string; name: string; arguments: Record<string, unknown> }[]
+}
+
+/**
  * Sample response from external handler.
  */
 export interface SampleResponse {
-  result: SampleResultBase
+  result: RawSampleResult
 }
 
 /**
@@ -539,6 +552,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           })
           addTokens(state.tokenTracker, estimatedTokens)
 
+          // Extract prompt text for exchange construction
+          const promptText = 'prompt' in config && config.prompt
+            ? config.prompt
+            : messages[messages.length - 1]?.content ?? ''
+          const promptTextStr = typeof promptText === 'string' ? promptText : JSON.stringify(promptText)
+
           // If schema was provided, parse the response and add parsed/parseError
           if ('schema' in config && config.schema) {
             const schema = config.schema as z.ZodType
@@ -546,11 +565,24 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               const jsonParsed = JSON.parse(result.text)
               const zodResult = schema.safeParse(jsonParsed)
               if (zodResult.success) {
+                // Create structured exchange with 3 messages
+                const exchange = createStructuredSampleExchange(
+                  promptTextStr,
+                  zodResult.data,
+                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                )
                 return {
                   ...result,
                   parsed: zodResult.data,
+                  exchange,
                 } as SampleResultWithParsed<unknown>
               } else {
+                // Create structured exchange even for parse errors
+                const exchange = createStructuredSampleExchange(
+                  promptTextStr,
+                  null,
+                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                )
                 return {
                   ...result,
                   parsed: null,
@@ -558,9 +590,16 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                     message: zodResult.error.message,
                     rawText: result.text,
                   },
+                  exchange,
                 } as SampleResultWithParsed<unknown>
               }
             } catch (jsonError) {
+              // Create structured exchange even for JSON parse errors
+              const exchange = createStructuredSampleExchange(
+                promptTextStr,
+                null,
+                `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+              )
               return {
                 ...result,
                 parsed: null,
@@ -568,11 +607,17 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   message: jsonError instanceof Error ? jsonError.message : 'JSON parse error',
                   rawText: result.text,
                 },
+                exchange,
               } as SampleResultWithParsed<unknown>
             }
           }
 
-          return result
+          // Raw sample - create 2-message exchange
+          const exchange = createRawSampleExchange(promptTextStr, result.text)
+          return {
+            ...result,
+            exchange,
+          }
         },
       }
     }) as McpToolContextWithElicits<TElicits>['sample'],
@@ -655,7 +700,17 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               throw new Error('Sample signal closed without response')
             }
             const result = next.value.result
-            lastResult = result
+            
+            // Extract prompt text for exchange
+            const promptText = 'prompt' in config && config.prompt
+              ? config.prompt
+              : messages[messages.length - 1]?.content ?? ''
+            const promptTextStr = typeof promptText === 'string' ? promptText : JSON.stringify(promptText)
+            
+            // Create exchange for this result
+            const exchange = createRawSampleExchange(promptTextStr, result.text)
+            const resultWithExchange = { ...result, exchange }
+            lastResult = resultWithExchange
             
             // Track token usage
             const estimatedTokens = estimateTokensFromConversation({
@@ -668,7 +723,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             addTokens(state.tokenTracker, estimatedTokens)
             
             // Validate: must have tool calls
-            if (result.stopReason === 'toolUse' && 'toolCalls' in result && (result as SampleResultWithToolCalls).toolCalls.length > 0) {
+            if (result.stopReason === 'toolUse' && result.toolCalls && result.toolCalls.length > 0) {
               // Update branch messages if using prompt mode
               if ('prompt' in config && config.prompt) {
                 state.messages.push(
@@ -677,7 +732,11 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 )
               }
               
-              return result as SampleToolsResult
+              return {
+                ...resultWithExchange,
+                toolCalls: result.toolCalls as [{ id: string; name: string; arguments: Record<string, unknown> }, ...{ id: string; name: string; arguments: Record<string, unknown> }[]],
+                stopReason: 'toolUse' as const,
+              } as SampleToolsResult
             }
           }
           
@@ -769,6 +828,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             })
             addTokens(state.tokenTracker, estimatedTokens)
             
+            // Extract prompt text for exchange
+            const promptText = 'prompt' in config && config.prompt
+              ? config.prompt
+              : messages[messages.length - 1]?.content ?? ''
+            const promptTextStr = typeof promptText === 'string' ? promptText : JSON.stringify(promptText)
+            
             // Parse schema
             const schema = config.schema as z.ZodType
             try {
@@ -783,12 +848,25 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   )
                 }
                 
+                // Create structured exchange
+                const exchange = createStructuredSampleExchange(
+                  promptTextStr,
+                  zodResult.data,
+                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                )
+                
                 return {
                   ...result,
                   parsed: zodResult.data,
+                  exchange,
                 } as SampleSchemaResult<T>
               } else {
                 lastError = zodResult.error.message
+                const exchange = createStructuredSampleExchange(
+                  promptTextStr,
+                  null,
+                  `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+                )
                 lastResult = {
                   ...result,
                   parsed: null,
@@ -796,10 +874,16 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                     message: zodResult.error.message,
                     rawText: result.text,
                   },
+                  exchange,
                 } as SampleResultWithParsed<T>
               }
             } catch (jsonError) {
               lastError = jsonError instanceof Error ? jsonError.message : 'JSON parse error'
+              const exchange = createStructuredSampleExchange(
+                promptTextStr,
+                null,
+                `schema_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+              )
               lastResult = {
                 ...result,
                 parsed: null,
@@ -807,6 +891,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   message: lastError,
                   rawText: result.text,
                 },
+                exchange,
               } as SampleResultWithParsed<T>
             }
           }
@@ -815,7 +900,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           throw new SampleValidationError(
             'sampleSchema',
             maxRetries + 1,
-            lastResult!,
+            lastResult! as SampleResultBase,
             `sampleSchema failed after ${maxRetries + 1} attempts: ${lastError}`
           )
         },

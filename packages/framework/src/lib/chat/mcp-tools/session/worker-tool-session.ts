@@ -34,7 +34,7 @@ import type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionEvent,
-  SampleResult,
+  RawSampleResult,
 } from './types.ts'
 import type {
   HostTransport,
@@ -216,7 +216,7 @@ export function createWorkerToolSession(
         status = 'running'
       },
 
-      *respondToSample(sampleId: string, response: SampleResult): Operation<void> {
+      *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
         if (!pendingSamples.has(sampleId)) {
           throw new Error(`No pending sample request with ID: ${sampleId}`)
         }

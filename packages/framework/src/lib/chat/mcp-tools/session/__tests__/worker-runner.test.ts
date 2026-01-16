@@ -12,6 +12,7 @@ import type {
   WorkerToHostMessage,
   WorkerToolContext,
 } from '../worker-types.ts'
+import type { SampleResultBase } from '../../mcp-tool-types.ts'
 
 describe('WorkerRunner', () => {
   describe('simple tool (no backchannel)', () => {
@@ -190,6 +191,130 @@ describe('WorkerRunner', () => {
       // Verify we got a sample request
       const sampleRequest = messages.find((m) => m.type === 'sample_request')
       expect(sampleRequest).toBeDefined()
+
+      hostTransport.close()
+    })
+
+    it('builds exchange with last user message', async () => {
+      const [hostTransport, workerTransport] = createInProcessTransportPair()
+
+      const registry = createWorkerToolRegistry([
+        {
+          name: 'echo',
+          *handler(_params: unknown, ctx: WorkerToolContext) {
+            const response = yield* ctx.sample([
+              { role: 'system', content: 'System prompt ignored' },
+              { role: 'user', content: 'First user message' },
+              { role: 'assistant', content: 'Assistant filler' },
+              { role: 'user', content: 'Final user prompt' },
+            ])
+
+            const result = response as SampleResultBase
+            return {
+              text: result.text,
+              exchange: result.exchange,
+            }
+          },
+        },
+      ])
+
+      const messages: WorkerToHostMessage[] = []
+      hostTransport.subscribe((msg) => {
+        messages.push(msg)
+
+        if (msg.type === 'sample_request') {
+          hostTransport.send({
+            type: 'sample_response',
+            sampleId: msg.sampleId,
+            response: {
+              text: 'Echoed response',
+              model: 'test-model',
+              stopReason: 'endTurn',
+            },
+          })
+        }
+      })
+
+      runWorker(workerTransport, registry)
+      await waitForMessage(messages, 'ready')
+
+      hostTransport.send({
+        type: 'start',
+        toolName: 'echo',
+        params: {},
+        sessionId: 'test-session',
+      })
+
+      const result = await waitForMessage(messages, 'result')
+      expect(result.type).toBe('result')
+
+      const payload = (result as { result: { text: string; exchange: SampleResultBase['exchange'] } }).result
+      expect(payload.text).toBe('Echoed response')
+      expect(payload.exchange.messages).toHaveLength(2)
+      expect(payload.exchange.request.content).toEqual([
+        { type: 'text', text: 'Final user prompt' },
+      ])
+      expect(payload.exchange.response.content).toEqual([
+        { type: 'text', text: 'Echoed response' },
+      ])
+
+      hostTransport.close()
+    })
+
+    it('uses empty prompt when no user messages exist', async () => {
+      const [hostTransport, workerTransport] = createInProcessTransportPair()
+
+      const registry = createWorkerToolRegistry([
+        {
+          name: 'echo',
+          *handler(_params: unknown, ctx: WorkerToolContext) {
+            const response = yield* ctx.sample([
+              { role: 'assistant', content: 'No user messages' },
+            ])
+
+            const result = response as SampleResultBase
+            return {
+              text: result.text,
+              exchange: result.exchange,
+            }
+          },
+        },
+      ])
+
+      const messages: WorkerToHostMessage[] = []
+      hostTransport.subscribe((msg) => {
+        messages.push(msg)
+
+        if (msg.type === 'sample_request') {
+          hostTransport.send({
+            type: 'sample_response',
+            sampleId: msg.sampleId,
+            response: {
+              text: 'No user prompt response',
+              model: 'test-model',
+              stopReason: 'endTurn',
+            },
+          })
+        }
+      })
+
+      runWorker(workerTransport, registry)
+      await waitForMessage(messages, 'ready')
+
+      hostTransport.send({
+        type: 'start',
+        toolName: 'echo',
+        params: {},
+        sessionId: 'test-session',
+      })
+
+      const result = await waitForMessage(messages, 'result')
+      expect(result.type).toBe('result')
+
+      const payload = (result as { result: { exchange: SampleResultBase['exchange'] } }).result
+      expect(payload.exchange.request.content).toEqual([
+        { type: 'text', text: '' },
+      ])
 
       hostTransport.close()
     })
