@@ -39,7 +39,8 @@ import {
   McpToolTokenError,
   SampleValidationError,
 } from './mcp-tool-types.ts'
-import type { FinalizedMcpTool } from './mcp-tool-builder.ts'
+import type { FinalizedMcpTool, FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
+import type { ElicitsMap } from './mcp-tool-types.ts'
 
 // Legacy type aliases for backward compatibility
 type BranchContext = McpToolContext
@@ -49,8 +50,11 @@ type BranchServerContext = McpToolServerContext
 type BranchLimits = McpToolLimits
 const BranchDepthError = McpToolDepthError
 const BranchTokenError = McpToolTokenError
+
+// Type alias that accepts both FinalizedMcpTool and FinalizedMcpToolWithElicits
 type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResult> = 
-  FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
+  | FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
+  | FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, ElicitsMap>
 
 // =============================================================================
 // MCP CLIENT INTERFACE
@@ -655,14 +659,17 @@ export function runBranchTool<
         const branchCtx = createBranchContext(initialState, client)
 
         // Client phase
-        const clientResult = yield* clientFn(handoff, branchCtx)
+        // Cast needed because FinalizedBranchTool is a union type that may expect
+        // McpToolContextWithElicits, but we provide McpToolContext which is runtime-compatible
+        const clientResult = yield* clientFn(handoff, branchCtx as any)
 
         // Phase 2: after()
         result = yield* after(handoff, clientResult, serverCtx, validatedParams)
       } else if (tool.execute) {
         // Simple execute with branch context
         const branchCtx = createBranchContext(initialState, client)
-        result = yield* tool.execute(validatedParams, branchCtx)
+        // Cast needed because tool.execute may expect McpToolContextWithElicits
+        result = yield* tool.execute(validatedParams, branchCtx as any)
       } else {
         throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
       }
