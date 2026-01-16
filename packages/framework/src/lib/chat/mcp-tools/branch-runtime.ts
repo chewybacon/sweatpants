@@ -320,7 +320,7 @@ function createBranchContext(
       
       return {
         *[Symbol.iterator]() {
-          let lastResult: SampleResultBase | SampleResultWithToolCalls | undefined
+          let lastResult: SampleResultBase | SampleResultWithToolCalls | SampleResultWithParsed<unknown> | undefined
           
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             // Build the sample config

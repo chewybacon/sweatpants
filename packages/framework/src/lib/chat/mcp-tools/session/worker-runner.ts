@@ -37,8 +37,10 @@ import type {
   SampleResult,
   ElicitResult,
   RawElicitResult,
+  RawSampleResult,
   McpMessage,
 } from '../mcp-tool-types.ts'
+import { createRawSampleExchange } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // WORKER RUNNER
@@ -102,7 +104,8 @@ async function executeToolInWorker(
 
     // Signals for backchannel responses
     // These will be sent() from the message handler
-    const sampleSignals = new Map<string, Signal<SampleResult, void>>()
+    // Note: sampleSignals receives RawSampleResult from transport, exchange is constructed in sample()
+    const sampleSignals = new Map<string, Signal<RawSampleResult, void>>()
     const elicitSignals = new Map<string, Signal<RawElicitResult<unknown>, void>>()
 
     // Subscribe to incoming messages
@@ -157,8 +160,8 @@ async function executeToolInWorker(
       ): Operation<SampleResult> {
         const sampleId = `${sessionId}:sample:${nextLsn()}`
 
-        // Create signal for response
-        const responseSignal = createSignal<SampleResult, void>()
+        // Create signal for response (receives RawSampleResult from transport)
+        const responseSignal = createSignal<RawSampleResult, void>()
         sampleSignals.set(sampleId, responseSignal)
 
         // Send request
@@ -179,7 +182,17 @@ async function executeToolInWorker(
           throw new Error('Sample signal closed without response')
         }
 
-        return result.value
+        // Extract prompt text from last user message for exchange
+        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
+        const promptText = typeof lastUserMsg?.content === 'string' 
+          ? lastUserMsg.content 
+          : ''
+
+        // Construct exchange from raw result
+        const rawResult = result.value
+        const exchange = createRawSampleExchange(promptText, rawResult.text)
+
+        return { ...rawResult, exchange }
       },
 
       *elicit<T>(

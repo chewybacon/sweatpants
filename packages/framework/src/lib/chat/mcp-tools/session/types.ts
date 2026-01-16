@@ -28,9 +28,9 @@
 import type { Operation, Stream } from 'effection'
 import type {
   RawElicitResult,
-  SampleResultBase,
-  SampleResultWithParsed,
-  SampleResultWithToolCalls,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
   SamplingToolDefinition,
   SamplingToolChoice,
   Message,
@@ -45,6 +45,10 @@ export type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
+  RawSampleResult,
 } from '../mcp-tool-types.ts'
 
 // =============================================================================
@@ -230,9 +234,9 @@ export interface ToolSession<TResult = unknown> {
    * Respond to a sampling request.
    *
    * @param sampleId - The ID from the SampleRequestEvent
-   * @param response - The LLM's response (may include parsed data or tool calls)
+   * @param response - The LLM's response (raw result without exchange - exchange is constructed by runtime)
    */
-  respondToSample(sampleId: string, response: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls): Operation<void>
+  respondToSample(sampleId: string, response: RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls): Operation<void>
 
   /**
    * Emit an internal event to wake up the SSE stream.
@@ -404,12 +408,12 @@ export interface ToolSessionSamplingProvider {
    * 
    * @param messages - Messages to send to the LLM
    * @param options - Sampling options including tools and schema
-   * @returns The LLM response, potentially with parsed data or tool calls
+   * @returns The LLM response (raw result without exchange)
    */
   sample(
     messages: Message[],
     options?: ToolSessionSamplingOptions
-  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+  ): Operation<RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls>
 }
 
 /**
