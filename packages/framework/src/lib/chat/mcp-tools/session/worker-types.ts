@@ -37,7 +37,7 @@ import type { Operation } from 'effection'
 import type {
   Message,
   LogLevel,
-  SampleResult,
+  RawSampleResult,
   ElicitResult,
   RawElicitResult,
   SamplingToolDefinition,
@@ -73,8 +73,8 @@ export interface SampleResponseMessage {
   type: 'sample_response'
   /** Correlates with SampleRequestMessage.sampleId */
   sampleId: string
-  /** The LLM's response */
-  response: SampleResult
+  /** The LLM's response (raw result without exchange) */
+  response: RawSampleResult
 }
 
 /**
@@ -347,13 +347,13 @@ export interface WorkerToolContext {
   progress(message: string, progress?: number): void
 
   /**
-   * Request LLM sampling.
+   * Request an LLM completion.
    * Suspends until response is received via transport.
    */
   sample(
     messages: Message[],
     options?: { systemPrompt?: string; maxTokens?: number }
-  ): Operation<SampleResult>
+  ): Operation<RawSampleResult>
 
   /**
    * Request user input.

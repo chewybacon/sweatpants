@@ -49,6 +49,17 @@ import type {
   McpContentBlock as _McpContentBlock,
   McpToolUseContent as _McpToolUseContent,
   McpToolResultContent as _McpToolResultContent,
+  RawSampleResultBase as _RawSampleResultBase,
+  RawSampleResultWithParsed as _RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls as _RawSampleResultWithToolCalls,
+  RawSampleResult as _RawSampleResult,
+} from './mcp-tool-types.ts'
+
+// Re-export helper functions
+export {
+  SCHEMA_TOOL_NAME,
+  createRawSampleExchange,
+  createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
 
 // Re-export for consumers
@@ -63,6 +74,12 @@ export type McpMessage = _McpMessage
 export type McpContentBlock = _McpContentBlock
 export type McpToolUseContent = _McpToolUseContent
 export type McpToolResultContent = _McpToolResultContent
+
+// Raw sample result types (without exchange - for decoder/handler layers)
+export type RawSampleResultBase = _RawSampleResultBase
+export type RawSampleResultWithParsed<T> = _RawSampleResultWithParsed<T>
+export type RawSampleResultWithToolCalls = _RawSampleResultWithToolCalls
+export type RawSampleResult = _RawSampleResult
 
 /**
  * Configuration for an elicitation request.

@@ -22,7 +22,7 @@ import type {
   LogLevel,
   McpMessage,
 } from './mcp-tool-types.ts'
-import { McpCapabilityError } from './mcp-tool-types.ts'
+import { McpCapabilityError, createRawSampleExchange } from './mcp-tool-types.ts'
 import type { FinalizedMcpTool, FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 import type { ElicitsMap } from './mcp-tool-types.ts'
 
@@ -194,16 +194,20 @@ export function createMockBranchClient(
             throw new Error('Mock branch client: No more sample responses configured')
           }
 
+          // Extract the prompt text from the last user message for exchange construction
+          const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
+          const promptText = lastUserMsg?.content ?? ''
+
           // Handle different response types
           if (typeof response === 'function') {
             const result = response(messages)
             if (typeof result === 'string') {
-              return { text: result }
+              return { text: result, exchange: createRawSampleExchange(promptText, result) }
             }
             return result
           }
           if (typeof response === 'string') {
-            return { text: response }
+            return { text: response, exchange: createRawSampleExchange(promptText, response) }
           }
           return response
         },
@@ -234,7 +238,8 @@ export function createMockBranchClient(
               type: 'tool_use',
               id: mockToolCallId,
               name: '__elicit__',
-              input: { message: elicitConfig.message },
+              // Keep input empty; echo data in tool_result for history
+              input: {},
             }],
           }
 
