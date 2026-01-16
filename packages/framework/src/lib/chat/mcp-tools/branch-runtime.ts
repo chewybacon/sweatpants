@@ -133,13 +133,39 @@ function estimateTokensFromText(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+/**
+ * Extract text content from a message for token estimation.
+ * Handles both simple string content and MCP content blocks.
+ */
+function getMessageTextContent(msg: ExtendedMessage): string {
+  if (typeof msg.content === 'string') {
+    return msg.content
+  }
+  if (msg.content === null || msg.content === undefined) {
+    return ''
+  }
+  // MCP content blocks
+  const blocks = Array.isArray(msg.content) ? msg.content : [msg.content]
+  return blocks
+    .map(block => {
+      if (block.type === 'text') return block.text
+      if (block.type === 'tool_use') return JSON.stringify(block.input)
+      if (block.type === 'tool_result') {
+        const innerBlocks = Array.isArray(block.content) ? block.content : [block.content]
+        return innerBlocks.map(b => b.type === 'text' ? b.text : '').join('')
+      }
+      return ''
+    })
+    .join('')
+}
+
 function estimateTokensFromConversation(options: {
   systemPrompt?: string
   messages: ExtendedMessage[]
   completion: string
 }): number {
   const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0
-  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content ?? ''), 0)
+  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(getMessageTextContent(msg)), 0)
   const completion = estimateTokensFromText(options.completion)
   return system + convo + completion
 }

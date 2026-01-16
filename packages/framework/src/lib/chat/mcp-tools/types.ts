@@ -43,20 +43,26 @@ import type {
   ElicitExchange as _ElicitExchange,
   ElicitResult as _ElicitResult,
   RawElicitResult as _RawElicitResult,
-  AssistantToolCallMessage as _AssistantToolCallMessage,
-  ToolResultMessage as _ToolResultMessage,
-  ToolCall as _ToolCall,
   ExtendedMessage as _ExtendedMessage,
+  SampleExchange as _SampleExchange,
+  McpMessage as _McpMessage,
+  McpContentBlock as _McpContentBlock,
+  McpToolUseContent as _McpToolUseContent,
+  McpToolResultContent as _McpToolResultContent,
 } from './mcp-tool-types.ts'
 
 // Re-export for consumers
 export type ElicitExchange<T> = _ElicitExchange<T>
 export type ElicitResult<TContext, TResponse> = _ElicitResult<TContext, TResponse>
 export type RawElicitResult<TResponse> = _RawElicitResult<TResponse>
-export type AssistantToolCallMessage = _AssistantToolCallMessage
-export type ToolResultMessage = _ToolResultMessage
-export type ToolCall = _ToolCall
 export type ExtendedMessage = _ExtendedMessage
+export type SampleExchange<T = undefined> = _SampleExchange<T>
+
+// MCP content block types
+export type McpMessage = _McpMessage
+export type McpContentBlock = _McpContentBlock
+export type McpToolUseContent = _McpToolUseContent
+export type McpToolResultContent = _McpToolResultContent
 
 /**
  * Configuration for an elicitation request.

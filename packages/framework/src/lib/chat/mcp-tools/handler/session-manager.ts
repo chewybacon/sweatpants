@@ -38,25 +38,27 @@ import type { JsonRpcId } from '../protocol/types.ts'
  * The session-manager doesn't have access to the original elicit context,
  * so we create a minimal placeholder. The actual context is captured in
  * the bridge-runtime where the elicit originates.
+ * 
+ * Uses MCP content block format.
  */
 function createPlaceholderExchange(content: unknown): ElicitExchange<unknown> {
   const placeholderToolCallId = 'placeholder'
   const request = {
     role: 'assistant' as const,
-    content: null,
-    tool_calls: [{
+    content: [{
+      type: 'tool_use' as const,
       id: placeholderToolCallId,
-      type: 'function' as const,
-      function: {
-        name: 'elicit',
-        arguments: {},
-      },
+      name: 'elicit',
+      input: {},
     }],
   }
   const response = {
-    role: 'tool' as const,
-    tool_call_id: placeholderToolCallId,
-    content: JSON.stringify(content),
+    role: 'user' as const,
+    content: [{
+      type: 'tool_result' as const,
+      toolUseId: placeholderToolCallId,
+      content: [{ type: 'text' as const, text: JSON.stringify(content) }],
+    }],
   }
   return {
     context: {},
