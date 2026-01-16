@@ -41,8 +41,7 @@ import type {
   SamplingToolChoice,
   RawElicitResult,
   ElicitExchange,
-  AssistantToolCallMessage,
-  ToolResultMessage,
+  McpMessage,
   LogLevel,
   SampleToolsConfig,
   SampleToolsConfigMessages,
@@ -323,13 +322,39 @@ function estimateTokensFromText(text: string): number {
   return Math.ceil(text.length / 4)
 }
 
+/**
+ * Extract text content from a message for token estimation.
+ * Handles both simple string content and MCP content blocks.
+ */
+function getMessageTextContent(msg: ExtendedMessage): string {
+  if (typeof msg.content === 'string') {
+    return msg.content
+  }
+  if (msg.content === null || msg.content === undefined) {
+    return ''
+  }
+  // MCP content blocks
+  const blocks = Array.isArray(msg.content) ? msg.content : [msg.content]
+  return blocks
+    .map(block => {
+      if (block.type === 'text') return block.text
+      if (block.type === 'tool_use') return JSON.stringify(block.input)
+      if (block.type === 'tool_result') {
+        const innerBlocks = Array.isArray(block.content) ? block.content : [block.content]
+        return innerBlocks.map(b => b.type === 'text' ? b.text : '').join('')
+      }
+      return ''
+    })
+    .join('')
+}
+
 function estimateTokensFromConversation(options: {
   systemPrompt?: string
   messages: ExtendedMessage[]
   completion: string
 }): number {
   const system = options.systemPrompt ? estimateTokensFromText(options.systemPrompt) : 0
-  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(msg.content ?? ''), 0)
+  const convo = options.messages.reduce((sum, msg) => sum + estimateTokensFromText(getMessageTextContent(msg)), 0)
   const completion = estimateTokensFromText(options.completion)
   return system + convo + completion
 }
@@ -889,29 +914,32 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               )
             }
 
-            // Construct the exchange for the accept result
+            // Construct the exchange for the accept result using MCP format
             const toolCallId = `elicit_${id.callId}_${id.seq}`
             const parsedContent = parseResult.data
 
-            // Build request message (assistant with tool_call)
-            const requestMessage: AssistantToolCallMessage = {
+            // Build request message (assistant with tool_use content)
+            const requestMessage: McpMessage & { role: 'assistant' } = {
               role: 'assistant',
-              content: message,
-              tool_calls: [{
-                id: toolCallId,
-                type: 'function',
-                function: {
+              content: [
+                { type: 'text', text: message },
+                {
+                  type: 'tool_use',
+                  id: toolCallId,
                   name: key,
-                  arguments: {}, // Safe default - empty args
+                  input: {}, // Safe default - empty input
                 },
-              }],
+              ],
             }
 
-            // Build response message (tool result)
-            const responseMessage: ToolResultMessage = {
-              role: 'tool',
-              tool_call_id: toolCallId,
-              content: JSON.stringify(parsedContent),
+            // Build response message (user with tool_result content)
+            const responseMessage: McpMessage & { role: 'user' } = {
+              role: 'user',
+              content: [{
+                type: 'tool_result',
+                toolUseId: toolCallId,
+                content: [{ type: 'text', text: JSON.stringify(parsedContent) }],
+              }],
             }
 
             // Create the exchange object
@@ -922,17 +950,17 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               messages: [requestMessage, responseMessage],
               withArguments(fn) {
                 const args = fn(contextData)
-                const requestWithArgs: AssistantToolCallMessage = {
+                const requestWithArgs: McpMessage & { role: 'assistant' } = {
                   role: 'assistant',
-                  content: message,
-                  tool_calls: [{
-                    id: toolCallId,
-                    type: 'function',
-                    function: {
+                  content: [
+                    { type: 'text', text: message },
+                    {
+                      type: 'tool_use',
+                      id: toolCallId,
                       name: key,
-                      arguments: args,
+                      input: args,
                     },
-                  }],
+                  ],
                 }
                 return [requestWithArgs, responseMessage]
               },

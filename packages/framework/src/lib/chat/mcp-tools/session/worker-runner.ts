@@ -37,6 +37,7 @@ import type {
   SampleResult,
   ElicitResult,
   RawElicitResult,
+  McpMessage,
 } from '../mcp-tool-types.ts'
 
 // =============================================================================
@@ -211,55 +212,49 @@ async function executeToolInWorker(
 
         const response = rawResult.value
 
-        // If accepted, construct the exchange
+        // If accepted, construct the exchange using MCP content blocks
         if (response.action === 'accept') {
-          const toolCallId = `elicit_worker_${elicitId}`
+          const toolUseId = `elicit_worker_${elicitId}`
           const parsedContent = response.content as T
 
-          // Build minimal exchange for worker context
+          // Build minimal exchange for worker context using MCP format
           // Note: Worker doesn't have access to original context, so we use empty object
+          const request: McpMessage & { role: 'assistant' } = {
+            role: 'assistant' as const,
+            content: [{
+              type: 'tool_use' as const,
+              id: toolUseId,
+              name: key,
+              input: {},
+            }],
+          }
+          const responseMsg: McpMessage & { role: 'user' } = {
+            role: 'user' as const,
+            content: [{
+              type: 'tool_result' as const,
+              toolUseId: toolUseId,
+              content: [{ type: 'text' as const, text: JSON.stringify(parsedContent) }],
+            }],
+          }
           const exchange = {
             context: {} as unknown,
-            request: {
-              role: 'assistant' as const,
-              content: options.message,
-              tool_calls: [{
-                id: toolCallId,
-                type: 'function' as const,
-                function: {
-                  name: key,
-                  arguments: {},
-                },
-              }],
-            },
-            response: {
-              role: 'tool' as const,
-              tool_call_id: toolCallId,
-              content: JSON.stringify(parsedContent),
-            },
-            messages: [] as Array<{ role: 'assistant' | 'tool'; content: string | null; tool_calls?: unknown[]; tool_call_id?: string }>,
-            withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
+            request,
+            response: responseMsg,
+            messages: [request, responseMsg] as [McpMessage, McpMessage],
+            withArguments(fn: (ctx: unknown) => Record<string, unknown>): [McpMessage, McpMessage] {
               const args = fn({})
-              return [{
+              const requestWithArgs: McpMessage & { role: 'assistant' } = {
                 role: 'assistant' as const,
-                content: options.message,
-                tool_calls: [{
-                  id: toolCallId,
-                  type: 'function' as const,
-                  function: {
-                    name: key,
-                    arguments: args,
-                  },
+                content: [{
+                  type: 'tool_use' as const,
+                  id: toolUseId,
+                  name: key,
+                  input: args,
                 }],
-              }, {
-                role: 'tool' as const,
-                tool_call_id: toolCallId,
-                content: JSON.stringify(parsedContent),
-              }]
+              }
+              return [requestWithArgs, responseMsg]
             },
           }
-          // Fill in messages array
-          exchange.messages = [exchange.request, exchange.response] as typeof exchange.messages
 
           return { action: 'accept' as const, content: parsedContent, exchange } as ElicitResult<unknown, T>
         }

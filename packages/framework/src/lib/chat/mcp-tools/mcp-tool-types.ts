@@ -48,6 +48,18 @@ import type {
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
 } from '@sweatpants/elicit-context'
+import type {
+  McpMessage,
+} from './protocol/types.js'
+
+// Re-export MCP types for convenience
+export type {
+  McpMessage,
+  McpContentBlock,
+  McpTextContent,
+  McpToolUseContent,
+  McpToolResultContent,
+} from './protocol/types.js'
 
 // =============================================================================
 // ELICITATION TYPES (shared)
@@ -56,14 +68,17 @@ import type {
 /**
  * Elicitation exchange - captures an elicitation as a request/response message pair.
  *
+ * Uses MCP content block format:
+ * - Request: assistant message with tool_use content block
+ * - Response: user message with tool_result content block
+ *
  * This enables tools to accumulate elicitation exchanges as conversation history
  * for sampling. The exchange captures:
  * - The context passed to elicit() (fully typed)
- * - The request as an assistant message with tool_call
- * - The response as a tool result message
+ * - The request as an assistant message with tool_use
+ * - The response as a user message with tool_result
  *
  * @template TContext - The type of context passed to elicit()
- * @template TResponse - The type of the user's response
  *
  * @example
  * ```typescript
@@ -88,30 +103,30 @@ export interface ElicitExchange<TContext> {
   context: TContext
 
   /**
-   * The elicitation request as an assistant message with tool_call.
-   * The tool_call arguments are empty by default for safety.
+   * The elicitation request as an assistant message with tool_use content.
+   * The tool_use input is empty by default for safety.
    */
-  request: AssistantToolCallMessage
+  request: McpMessage & { role: 'assistant' }
 
   /**
-   * The user's response as a tool result message.
+   * The user's response as a user message with tool_result content.
    * Content is the JSON-serialized response.
    */
-  response: ToolResultMessage
+  response: McpMessage & { role: 'user' }
 
   /**
    * Messages tuple [request, response] with empty arguments (safe default).
    * Ready to spread into a conversation history.
    */
-  messages: [AssistantToolCallMessage, ToolResultMessage]
+  messages: [McpMessage, McpMessage]
 
   /**
    * Build messages with custom arguments derived from captured context.
    *
    * The callback receives the fully typed context and returns the arguments
-   * to include in the tool_call. This is opt-in context exposure.
+   * to include in the tool_use input. This is opt-in context exposure.
    *
-   * @param fn - Function that derives tool call arguments from context
+   * @param fn - Function that derives tool_use input from context
    * @returns Messages tuple with populated arguments
    *
    * @example
@@ -124,7 +139,7 @@ export interface ElicitExchange<TContext> {
    */
   withArguments(
     fn: (context: TContext) => Record<string, unknown>
-  ): [AssistantToolCallMessage, ToolResultMessage]
+  ): [McpMessage, McpMessage]
 }
 
 /**
@@ -176,6 +191,75 @@ export interface ElicitConfig<T> {
    * Nested objects and arrays are NOT supported.
    */
   schema: z.ZodType<T>
+}
+
+// =============================================================================
+// SAMPLE EXCHANGE TYPE
+// =============================================================================
+
+/**
+ * Sampling exchange - captures a sampling interaction as accumulate-able messages.
+ *
+ * An exchange represents the interaction for context history purposes.
+ * It's not a pedantic record of what went over the wire - it models the
+ * data flow correctly so the context window makes sense.
+ *
+ * Uses MCP content block format:
+ * - Raw sampling: 2 messages [user, assistant]
+ * - Structured output: 3 messages [user, assistant (tool_use), user (tool_result)]
+ *
+ * For structured output, the "response" is split into 2 messages to be MCP-compliant
+ * (tool_use MUST be followed by tool_result).
+ *
+ * @template TParsed - The type of parsed structured output (undefined for raw sampling)
+ *
+ * @example Raw sampling
+ * ```typescript
+ * const result = yield* ctx.sample({ prompt: 'Analyze this' })
+ * history.push(...result.exchange.messages) // 2 messages
+ * ```
+ *
+ * @example Structured output
+ * ```typescript
+ * const result = yield* ctx.sample({
+ *   prompt: 'Pick a move',
+ *   schema: z.object({ cell: z.number() })
+ * })
+ * if (result.parsed) {
+ *   history.push(...result.exchange.messages) // 3 messages
+ *   console.log('Move:', result.exchange.parsed.cell)
+ * }
+ * ```
+ */
+export interface SampleExchange<TParsed = undefined> {
+  /**
+   * The request message we sent to the model.
+   * Always a user message with text content.
+   */
+  request: McpMessage & { role: 'user' }
+
+  /**
+   * The assistant's response message.
+   * - Raw sampling: text content
+   * - Structured output: tool_use content (calling __schema__)
+   */
+  response: McpMessage & { role: 'assistant' }
+
+  /**
+   * All messages for history accumulation.
+   * - Raw sampling: [request, response] = 2 messages
+   * - Structured output: [request, toolUse, toolResult] = 3 messages
+   *
+   * For structured output, we construct the toolResult as an acknowledgment
+   * to close the interaction properly for MCP compliance.
+   */
+  messages: McpMessage[]
+
+  /**
+   * Parsed structured data (only present when schema was used).
+   * Extracted from the tool_use input and validated against the schema.
+   */
+  parsed: TParsed
 }
 
 // =============================================================================
@@ -306,75 +390,42 @@ export interface Message {
 }
 
 // =============================================================================
-// EXTENDED MESSAGE TYPES (MCP++)
+// EXTENDED MESSAGE TYPES (MCP)
 // =============================================================================
-// The official MCP spec for sampling/createMessage only supports
-// TextContent | ImageContent | AudioContent. We extend this with
-// tool calling support for richer sampling patterns.
 
 /**
- * A tool call made by the assistant.
+ * Extended message type supporting both basic messages and MCP content blocks.
  * 
- * Used in MCP++ sampling to represent tool calls in conversation history.
+ * This type supports:
+ * - Basic text messages (user/assistant/system with string content)
+ * - MCP messages with content blocks (tool_use, tool_result, etc.)
+ *
+ * Use MCP content block format for tool interactions:
+ * - Assistant tool calls: role 'assistant' with tool_use content blocks
+ * - Tool results: role 'user' with tool_result content blocks
+ *
+ * @example Basic text message
+ * ```typescript
+ * const msg: ExtendedMessage = { role: 'user', content: 'Hello' }
+ * ```
+ *
+ * @example MCP tool use
+ * ```typescript
+ * const msg: ExtendedMessage = {
+ *   role: 'assistant',
+ *   content: [{ type: 'tool_use', id: 'call_1', name: 'get_weather', input: { city: 'NYC' } }]
+ * }
+ * ```
+ *
+ * @example MCP tool result
+ * ```typescript
+ * const msg: ExtendedMessage = {
+ *   role: 'user',
+ *   content: [{ type: 'tool_result', toolUseId: 'call_1', content: [{ type: 'text', text: '72F' }] }]
+ * }
+ * ```
  */
-export interface ToolCall {
-  /** Unique ID for this tool call (for correlation with results) */
-  id: string
-  
-  /** Always 'function' for now */
-  type: 'function'
-  
-  /** The function being called */
-  function: {
-    /** Function/tool name */
-    name: string
-    
-    /** Arguments to the function */
-    arguments: Record<string, unknown>
-  }
-}
-
-/**
- * Assistant message with tool calls.
- * 
- * Represents an assistant turn that includes one or more tool calls.
- * Used in MCP++ sampling to build conversation history with tool interactions.
- */
-export interface AssistantToolCallMessage {
-  role: 'assistant'
-  
-  /** Optional text content alongside tool calls */
-  content: string | null
-  
-  /** Tool calls made by the assistant */
-  tool_calls: ToolCall[]
-}
-
-/**
- * Tool result message.
- * 
- * Represents the result of a tool call.
- * Used in MCP++ sampling to include tool results in conversation history.
- */
-export interface ToolResultMessage {
-  role: 'tool'
-  
-  /** ID of the tool call this result is for */
-  tool_call_id: string
-  
-  /** The tool result (serialized as string) */
-  content: string
-}
-
-/**
- * Extended message type supporting both basic messages and tool interactions.
- * 
- * This is the MCP++ message type that supports:
- * - Basic text messages (user/assistant/system)
- * - Assistant messages with tool calls
- * - Tool result messages
- */
-export type ExtendedMessage = Message | AssistantToolCallMessage | ToolResultMessage
+export type ExtendedMessage = Message | McpMessage
 
 // =============================================================================
 // SAMPLING TYPES

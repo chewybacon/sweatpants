@@ -26,11 +26,17 @@ export type {
   SamplingToolCall,
   SamplingToolDefinition,
   SamplingToolChoice,
-  // Extended message types for conversation history with tool interactions
+  // Extended message type for conversation history
   ExtendedMessage,
-  AssistantToolCallMessage,
-  ToolResultMessage,
-  ToolCall,
+  // MCP message types for tool interactions
+  McpMessage,
+  McpContentBlock,
+  McpTextContent,
+  McpToolUseContent,
+  McpToolResultContent,
+  // Exchange types for history accumulation
+  ElicitExchange,
+  SampleExchange,
 } from './mcp-tools/mcp-tool-types.ts'
 
 // Plugin builder (browser-safe)
