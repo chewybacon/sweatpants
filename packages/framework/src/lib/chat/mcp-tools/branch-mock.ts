@@ -17,15 +17,23 @@ import type {
   SampleResult,
   ElicitConfig,
   ElicitResult,
+  RawElicitResult,
+  ElicitExchange,
   LogLevel,
+  AssistantToolCallMessage,
+  ToolResultMessage,
 } from './mcp-tool-types.ts'
 import { McpCapabilityError } from './mcp-tool-types.ts'
-import type { FinalizedMcpTool } from './mcp-tool-builder.ts'
+import type { FinalizedMcpTool, FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
+import type { ElicitsMap } from './mcp-tool-types.ts'
 
 // Legacy type aliases for backward compatibility
 const MCPCapabilityError = McpCapabilityError
+
+// Type alias that accepts both FinalizedMcpTool and FinalizedMcpToolWithElicits
 type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResult> = 
-  FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
+  | FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
+  | FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, ElicitsMap>
 
 // =============================================================================
 // MOCK CLIENT CONFIGURATION
@@ -51,8 +59,11 @@ export interface MockBranchClientConfig {
   /**
    * Pre-programmed elicitation responses.
    * Consumed in order as ctx.elicit() is called.
+   * 
+   * The mock will automatically construct the ElicitExchange wrapper.
+   * Just provide the raw response (action and content).
    */
-  elicitResponses?: ElicitResult<any, any>[]
+  elicitResponses?: RawElicitResult<any>[]
 
   /**
    * Client capabilities.
@@ -210,12 +221,58 @@ export function createMockBranchClient(
           elicitCalls.push(elicitConfig)
           config.onElicit?.(elicitConfig)
 
-          const response = elicitResponses.shift()
-          if (!response) {
+          const rawResponse = elicitResponses.shift()
+          if (!rawResponse) {
             throw new Error('Mock branch client: No more elicit responses configured')
           }
 
-          return response
+          // Construct mock exchange messages
+          const mockToolCallId = `mock_elicit_${Date.now()}`
+          
+          const requestMessage: AssistantToolCallMessage = {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{
+              id: mockToolCallId,
+              type: 'function',
+              function: {
+                name: '__elicit__',
+                arguments: { message: elicitConfig.message },
+              },
+            }],
+          }
+
+          const responseContent = rawResponse.action === 'accept'
+            ? JSON.stringify(rawResponse.content)
+            : JSON.stringify({ action: rawResponse.action })
+
+          const responseMessage: ToolResultMessage = {
+            role: 'tool',
+            tool_call_id: mockToolCallId,
+            content: responseContent,
+          }
+
+          // Build mock exchange
+          const mockExchange: ElicitExchange<unknown> = {
+            context: undefined,
+            request: requestMessage,
+            response: responseMessage,
+            messages: [requestMessage, responseMessage],
+            withArguments: () => [requestMessage, responseMessage],
+          }
+
+          // Return ElicitResult with exchange
+          if (rawResponse.action === 'accept') {
+            return {
+              action: 'accept',
+              content: rawResponse.content,
+              exchange: mockExchange,
+            } as ElicitResult<unknown, T>
+          } else if (rawResponse.action === 'decline') {
+            return { action: 'decline' } as ElicitResult<unknown, T>
+          } else {
+            return { action: 'cancel' } as ElicitResult<unknown, T>
+          }
         },
       }
     },

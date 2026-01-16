@@ -28,9 +28,13 @@ import type {
   MCPClientContext,
   MCPServerContext,
   ElicitResult,
+  RawElicitResult,
   ElicitConfig,
   SampleConfig,
   LogLevel,
+  ElicitExchange,
+  AssistantToolCallMessage,
+  ToolResultMessage,
 } from './types.ts'
 import {
   MCPCapabilityError,
@@ -48,8 +52,12 @@ export interface MockMCPClientConfig {
   /**
    * Pre-programmed elicitation responses.
    * Consumed in order as ctx.elicit() is called.
+   * 
+   * Can be either:
+   * - RawElicitResult (simple: { action, content }) - exchange will be constructed
+   * - ElicitResult (full: { action, content, exchange }) - used as-is
    */
-  elicitResponses?: ElicitResult<any, any>[]
+  elicitResponses?: (RawElicitResult<any> | ElicitResult<any, any>)[]
 
   /**
    * Pre-programmed sampling responses.
@@ -159,7 +167,49 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
               throw new Error('Mock MCP client: No more elicit responses configured')
             }
 
-            return response
+            // If response already has exchange, return as-is
+            if ('exchange' in response) {
+              return response as ElicitResult<unknown, T>
+            }
+
+            // For decline/cancel, no exchange needed
+            if (response.action !== 'accept') {
+              return response as ElicitResult<unknown, T>
+            }
+
+            // Construct a mock exchange for accept responses
+            const toolCallId = `mock_elicit_${Date.now()}`
+            const request: AssistantToolCallMessage = {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: 'elicit',
+                  arguments: {},
+                },
+              }],
+            }
+            const toolResponse: ToolResultMessage = {
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: JSON.stringify(response.content),
+            }
+            
+            const exchange: ElicitExchange<unknown> = {
+              context: {},
+              request,
+              response: toolResponse,
+              messages: [request, toolResponse],
+              withArguments: () => [request, toolResponse],
+            }
+
+            return {
+              action: 'accept',
+              content: response.content as T,
+              exchange,
+            }
           }
         }
       },
