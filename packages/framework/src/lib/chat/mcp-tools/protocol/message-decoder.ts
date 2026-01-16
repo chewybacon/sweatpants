@@ -22,6 +22,7 @@ import type {
   McpCreateMessageResult,
   McpToolCallParams,
   McpContentBlock,
+  McpMessage,
 } from './types.ts'
 import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types.ts'
 import type { 
@@ -84,24 +85,25 @@ export function decodeElicitationResponse(
   switch (mcpResult.action) {
     case 'accept': {
       const content = mcpResult.content ?? {}
-      // Create placeholder exchange - actual context is captured at the bridge-runtime level
-      const placeholderToolCallId = `decoded_${elicitId}`
-      const request = {
+      // Create placeholder exchange using MCP content blocks
+      // Actual context is captured at the bridge-runtime level
+      const placeholderToolUseId = `decoded_${elicitId}`
+      const request: McpMessage & { role: 'assistant' } = {
         role: 'assistant' as const,
-        content: null,
-        tool_calls: [{
-          id: placeholderToolCallId,
-          type: 'function' as const,
-          function: {
-            name: 'elicit',
-            arguments: {},
-          },
+        content: [{
+          type: 'tool_use' as const,
+          id: placeholderToolUseId,
+          name: 'elicit',
+          input: {},
         }],
       }
-      const responseMsg = {
-        role: 'tool' as const,
-        tool_call_id: placeholderToolCallId,
-        content: JSON.stringify(content),
+      const responseMsg: McpMessage & { role: 'user' } = {
+        role: 'user' as const,
+        content: [{
+          type: 'tool_result' as const,
+          toolUseId: placeholderToolUseId,
+          content: [{ type: 'text' as const, text: JSON.stringify(content) }],
+        }],
       }
       const exchange: ElicitExchange<unknown> = {
         context: {},

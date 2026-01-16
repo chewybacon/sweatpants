@@ -20,8 +20,7 @@ import type {
   RawElicitResult,
   ElicitExchange,
   LogLevel,
-  AssistantToolCallMessage,
-  ToolResultMessage,
+  McpMessage,
 } from './mcp-tool-types.ts'
 import { McpCapabilityError } from './mcp-tool-types.ts'
 import type { FinalizedMcpTool, FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
@@ -226,19 +225,16 @@ export function createMockBranchClient(
             throw new Error('Mock branch client: No more elicit responses configured')
           }
 
-          // Construct mock exchange messages
+          // Construct mock exchange messages using MCP format
           const mockToolCallId = `mock_elicit_${Date.now()}`
           
-          const requestMessage: AssistantToolCallMessage = {
+          const requestMessage: McpMessage & { role: 'assistant' } = {
             role: 'assistant',
-            content: null,
-            tool_calls: [{
+            content: [{
+              type: 'tool_use',
               id: mockToolCallId,
-              type: 'function',
-              function: {
-                name: '__elicit__',
-                arguments: { message: elicitConfig.message },
-              },
+              name: '__elicit__',
+              input: { message: elicitConfig.message },
             }],
           }
 
@@ -246,10 +242,13 @@ export function createMockBranchClient(
             ? JSON.stringify(rawResponse.content)
             : JSON.stringify({ action: rawResponse.action })
 
-          const responseMessage: ToolResultMessage = {
-            role: 'tool',
-            tool_call_id: mockToolCallId,
-            content: responseContent,
+          const responseMessage: McpMessage & { role: 'user' } = {
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              toolUseId: mockToolCallId,
+              content: [{ type: 'text', text: responseContent }],
+            }],
           }
 
           // Build mock exchange

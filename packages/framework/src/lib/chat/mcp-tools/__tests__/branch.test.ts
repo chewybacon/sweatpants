@@ -201,7 +201,9 @@ describe('runBranchTool - elicitation', () => {
       return result
     })
 
-    expect(result).toEqual({ action: 'accept', content: { choice: 'A' } })
+    expect(result).toMatchObject({ action: 'accept', content: { choice: 'A' } })
+    // Exchange should be present on accepted result
+    expect((result as any).exchange).toBeDefined()
   })
 
   it('handles decline response', async () => {
