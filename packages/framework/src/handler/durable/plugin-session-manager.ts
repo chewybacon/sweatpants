@@ -54,9 +54,9 @@ import type {
   ToolSessionStatus,
   SampleRequestEvent,
   ToolSessionRegistry,
-  SampleResultBase,
-  SampleResultWithParsed,
-  SampleResultWithToolCalls,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
 } from '../../lib/chat/mcp-tools/session/types.ts'
 // Note: createToolSessionRegistry should be called at server startup, not here
 // import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry.ts'
@@ -401,7 +401,7 @@ export function createPluginSessionManager(
                   const responseText = chatResult?.text ?? fullText
 
                   // Determine response type and build result
-                  let result: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls
+                  let result: RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls
 
                   if (toolCalls.length > 0) {
                     // Tool calling response

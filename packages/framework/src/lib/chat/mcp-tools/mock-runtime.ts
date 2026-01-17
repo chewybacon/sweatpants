@@ -33,8 +33,7 @@ import type {
   SampleConfig,
   LogLevel,
   ElicitExchange,
-  AssistantToolCallMessage,
-  ToolResultMessage,
+  McpMessage,
 } from './types.ts'
 import {
   MCPCapabilityError,
@@ -177,24 +176,25 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
               return response as ElicitResult<unknown, T>
             }
 
-            // Construct a mock exchange for accept responses
+            // Construct a mock exchange for accept responses using MCP format
             const toolCallId = `mock_elicit_${Date.now()}`
-            const request: AssistantToolCallMessage = {
+            const request: McpMessage & { role: 'assistant' } = {
               role: 'assistant',
-              content: null,
-              tool_calls: [{
+              content: [{
+                type: 'tool_use',
                 id: toolCallId,
-                type: 'function',
-                function: {
-                  name: 'elicit',
-                  arguments: {},
-                },
+                name: 'elicit',
+                // Keep input empty; echo data in tool_result for history
+                input: {},
               }],
             }
-            const toolResponse: ToolResultMessage = {
-              role: 'tool',
-              tool_call_id: toolCallId,
-              content: JSON.stringify(response.content),
+            const toolResponse: McpMessage & { role: 'user' } = {
+              role: 'user',
+              content: [{
+                type: 'tool_result',
+                toolUseId: toolCallId,
+                content: [{ type: 'text', text: JSON.stringify(response.content) }],
+              }],
             }
             
             const exchange: ElicitExchange<unknown> = {
