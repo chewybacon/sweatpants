@@ -16,7 +16,7 @@
 import { createContext, type Operation } from 'effection'
 import type { ToolSessionRegistry } from '../session/types.ts'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
-import type { ElicitsMap, ElicitResult, ElicitExchange, SampleResult } from '../mcp-tool-types.ts'
+import type { ElicitsMap, ElicitResult, ElicitExchange, RawSampleResultBase } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,
   PendingElicitation,
@@ -38,25 +38,28 @@ import type { JsonRpcId } from '../protocol/types.ts'
  * The session-manager doesn't have access to the original elicit context,
  * so we create a minimal placeholder. The actual context is captured in
  * the bridge-runtime where the elicit originates.
+ * 
+ * Uses MCP content block format.
  */
 function createPlaceholderExchange(content: unknown): ElicitExchange<unknown> {
   const placeholderToolCallId = 'placeholder'
   const request = {
     role: 'assistant' as const,
-    content: null,
-    tool_calls: [{
+    content: [{
+      type: 'tool_use' as const,
       id: placeholderToolCallId,
-      type: 'function' as const,
-      function: {
-        name: 'elicit',
-        arguments: {},
-      },
+      name: 'elicit',
+      // Keep input empty; echo data in tool_result for history
+      input: {},
     }],
   }
   const response = {
-    role: 'tool' as const,
-    tool_call_id: placeholderToolCallId,
-    content: JSON.stringify(content),
+    role: 'user' as const,
+    content: [{
+      type: 'tool_result' as const,
+      toolUseId: placeholderToolCallId,
+      content: [{ type: 'text' as const, text: JSON.stringify(content) }],
+    }],
   }
   return {
     context: {},
@@ -384,7 +387,7 @@ export class McpSessionManager {
       textContent = String(content)
     }
 
-    const sampleResult: SampleResult = {
+    const sampleResult: RawSampleResultBase = {
       text: textContent,
       model,
       ...(stopReason !== undefined ? { stopReason } : {}),

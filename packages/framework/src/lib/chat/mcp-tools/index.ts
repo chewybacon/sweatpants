@@ -117,6 +117,10 @@ export {
   McpToolTimeoutError,
   McpDisconnectError,
   SampleValidationError,
+  // Sample exchange helpers
+  SCHEMA_TOOL_NAME,
+  createRawSampleExchange,
+  createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
 
 // =============================================================================

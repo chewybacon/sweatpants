@@ -638,14 +638,23 @@ describe('Bridge Runtime', () => {
           })
           
           if (result.action === 'accept') {
-            // Verify exchange exists and has correct structure
+            // Verify exchange exists and has correct structure (MCP format)
             expect(result.exchange).toBeDefined()
             expect(result.exchange.context).toEqual({ options: ['A', 'B', 'C'] })
             expect(result.exchange.request).toBeDefined()
             expect(result.exchange.request.role).toBe('assistant')
-            expect(result.exchange.request.tool_calls).toHaveLength(1)
+            // MCP format: content has text block and tool_use block
+            const requestContent = result.exchange.request.content as unknown[]
+            expect(Array.isArray(requestContent)).toBe(true)
+            expect(requestContent.length).toBe(2)
+            expect(requestContent[0]).toMatchObject({ type: 'text' })
+            expect(requestContent[1]).toMatchObject({ type: 'tool_use' })
             expect(result.exchange.response).toBeDefined()
-            expect(result.exchange.response.role).toBe('tool')
+            expect(result.exchange.response.role).toBe('user')
+            // MCP format: response is user role with tool_result
+            const responseContent = result.exchange.response.content
+            expect(Array.isArray(responseContent)).toBe(true)
+            expect((responseContent as unknown[])[0]).toMatchObject({ type: 'tool_result' })
             expect(result.exchange.messages).toHaveLength(2)
             
             return { selected: result.content.selected, hasExchange: true }
@@ -706,17 +715,25 @@ describe('Bridge Runtime', () => {
             expect(messages).toHaveLength(2)
             const [requestMsg, responseMsg] = messages
             
-            // Request message should have the custom arguments
+            // Request message should have the custom arguments (MCP format)
+            // Content has 2 blocks: [text, tool_use]
             expect(requestMsg.role).toBe('assistant')
-            expect(requestMsg.tool_calls).toHaveLength(1)
-            expect(requestMsg.tool_calls![0].function.arguments).toEqual({
-              boardState: 'X,,O,,,,,,',
-              turnNumber: 3,
-              userChoice: 'row=1,col=1',
+            const requestContent = requestMsg.content as unknown[]
+            expect(requestContent).toHaveLength(2)
+            expect(requestContent[0]).toMatchObject({ type: 'text' })
+            expect(requestContent[1]).toMatchObject({
+              type: 'tool_use',
+              input: {
+                boardState: 'X,,O,,,,,,',
+                turnNumber: 3,
+                userChoice: 'row=1,col=1',
+              },
             })
             
-            // Response message should be unchanged
-            expect(responseMsg.role).toBe('tool')
+            // Response message should be user role with tool_result (MCP format)
+            expect(responseMsg.role).toBe('user')
+            const responseContent = responseMsg.content as unknown[]
+            expect(responseContent[0]).toMatchObject({ type: 'tool_result' })
             
             return { row: result.content.row, col: result.content.col, messagesGenerated: true }
           }
@@ -838,13 +855,14 @@ describe('Bridge Runtime', () => {
       expect(result.summary).toBe('User chose alpha then beta')
       expect(result.historyLength).toBe(4) // 2 exchanges * 2 messages each
       
-      // Verify the sample received extended messages with tool_calls
+      // Verify the sample received extended messages with tool_use content blocks (MCP format)
       expect(capturedMessages.length).toBe(5) // 4 history + 1 user prompt
       const assistantMsgs = capturedMessages.filter((m: any) => m.role === 'assistant')
       expect(assistantMsgs.length).toBe(2)
       assistantMsgs.forEach((msg: any) => {
-        expect(msg.tool_calls).toBeDefined()
-        expect(msg.tool_calls.length).toBe(1)
+        // MCP format uses content array with tool_use blocks, not tool_calls
+        const toolUseBlocks = (msg.content as any[]).filter((b: any) => b.type === 'tool_use')
+        expect(toolUseBlocks.length).toBe(1)
       })
     })
 

@@ -72,6 +72,32 @@ export type PluginToolResult =
 // =============================================================================
 
 /**
+ * Extract text content from a message for passing to chat provider.
+ * Handles both simple string content and MCP content blocks.
+ */
+function getMessageTextContent(msg: ExtendedMessage): string {
+  if (typeof msg.content === 'string') {
+    return msg.content
+  }
+  if (msg.content === null || msg.content === undefined) {
+    return ''
+  }
+  // MCP content blocks
+  const blocks = Array.isArray(msg.content) ? msg.content : [msg.content]
+  return blocks
+    .map(block => {
+      if (block.type === 'text') return block.text
+      if (block.type === 'tool_use') return JSON.stringify(block.input)
+      if (block.type === 'tool_result') {
+        const innerBlocks = Array.isArray(block.content) ? block.content : [block.content]
+        return innerBlocks.map(b => b.type === 'text' ? b.text : '').join('')
+      }
+      return ''
+    })
+    .join('')
+}
+
+/**
  * Check if a tool is a plugin tool (has .elicits property).
  */
 export function isPluginTool(
@@ -211,10 +237,10 @@ function* handleBridgeEvent(
       // Use the chat provider to sample
       try {
         // Convert MCP messages to chat messages
-        // Note: ExtendedMessage.content can be null for tool_calls, default to empty string
+        // Extract text content from messages (handles both string and MCP content blocks)
         const chatMessages = event.messages.map((msg: ExtendedMessage) => ({
           role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content ?? '',
+          content: getMessageTextContent(msg),
         }))
 
         // Get the stream from provider
