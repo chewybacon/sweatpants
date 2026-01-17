@@ -117,6 +117,80 @@ Elicits fork right to user. Samples fork right to LLM. All join back.
 
 ---
 
+<div class="grid grid-cols-[40%_60%] h-full">
+
+<div>
+
+## Composite ButterBots
+
+`book_trip` orchestrates flight, hotel, car.
+
+But who owns the LLM?
+
+Sub-tools don't call the LLM directly.
+
+They ask the **client** to sample.
+
+</div>
+
+<div class="pl-4">
+
+```mermaid {scale: 0.46}
+sequenceDiagram
+  participant C as Client
+  participant BT as book_trip
+  participant BF as book_flight
+  participant BH as book_hotel
+  participant BR as rent_car
+
+  C->>BT: fork
+  BT->>BF: fork
+  BF->>C: sample(parse destination)
+  C-->>BF: { from, to }
+  BF->>C: elicit(pick flight)
+  C-->>BF: UA-1234
+  BF-->>BT: join { ticket }
+  BT->>BH: fork (flight dates)
+  BH->>C: elicit(pick room)
+  C-->>BH: Suite 401
+  BH-->>BT: join { confirmation }
+  BT->>BR: fork
+  BR->>C: elicit(pick car)
+  C-->>BR: Sedan
+  BR-->>BT: join { rental }
+  BT-->>C: join { itinerary }
+```
+
+</div>
+
+</div>
+
+---
+
+# Why Client Affinity Matters
+
+The client owns:
+- The **user connection** (for elicitations)
+- The **LLM API key** (for sampling)
+
+<v-clicks>
+
+If sub-tools owned the LLM relationship:
+- They'd need their own API keys
+- Or the parent "loans" credentials down the tree
+- Cost/billing fragments across agents
+- Auth becomes a nightmare
+
+</v-clicks>
+
+<v-click>
+
+**The rule:** Depth doesn't change the client anchor.
+
+</v-click>
+
+---
+
 # MCP Gives Us the Primitives
 
 MCP already encodes fork/join.
