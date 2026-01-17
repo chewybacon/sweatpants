@@ -8,7 +8,10 @@
     "export:mcp-native": "slidev export principal-engineers/mcp-native/slides.md --output mcp-native.pdf",
     "dev:effection": "slidev effection-team/structured-concurrency/slides.md --open",
     "build:effection": "slidev build effection-team/structured-concurrency/slides.md --out dist/effection",
-    "export:effection": "slidev export effection-team/structured-concurrency/slides.md --output effection.pdf"
+    "export:effection": "slidev export effection-team/structured-concurrency/slides.md --output effection.pdf",
+    "dev:fork-join": "slidev tech-leads/context-fork-join/slides.md --open",
+    "build:fork-join": "slidev build tech-leads/context-fork-join/slides.md --out dist/fork-join",
+    "export:fork-join": "slidev export tech-leads/context-fork-join/slides.md --output fork-join.pdf"
   },
   "dependencies": {
     "@slidev/cli": "^51.4.3",

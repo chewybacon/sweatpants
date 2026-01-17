@@ -116,11 +116,24 @@ export function encodeLogNotification(
 
 /**
  * Encode an elicit request event as an MCP elicitation/create request.
+ * 
+ * Note: MCP 2025-11-25 supports URL mode elicitation for sensitive data flows
+ * (OAuth, payments, etc.), but sweatpants does not support this yet.
+ * If URL mode is requested, we throw a clear error.
  */
 export function encodeElicitationRequest(
   event: ElicitRequestEvent,
   requestId: JsonRpcId
 ): JsonRpcRequest<'elicitation/create', McpElicitationParams> {
+  // Guard against URL mode elicitation (not supported)
+  if ((event as { mode?: string }).mode === 'url') {
+    throw new Error(
+      'URL elicitation mode is not supported by sweatpants. ' +
+      'Use form mode (default) instead. ' +
+      'See: https://modelcontextprotocol.io/specification/2025-11-25/client/elicitation'
+    )
+  }
+
   return {
     jsonrpc: '2.0',
     id: requestId,
@@ -134,7 +147,25 @@ export function encodeElicitationRequest(
 }
 
 /**
+ * Reserved tool name for structured output.
+ * Clients can intercept this and use native provider implementations.
+ */
+export const SCHEMA_TOOL_NAME = '__schema__'
+
+/**
  * Encode a sample request event as an MCP sampling/createMessage request.
+ * 
+ * When a schema is provided, we use the __schema__ meta-tool pattern:
+ * - Convert schema to a tool with name '__schema__'
+ * - Set toolChoice to 'required'
+ * - Client responds with tool_use containing data in input
+ * 
+ * Note: For internal exchanges, we mirror structured data into tool_result
+ * with an empty tool_use input to model the flow in history. This encoder
+ * still sends __schema__ as a tool to clients.
+ *
+ * This allows smart clients to use native structured output features
+ * while naive clients can fall through to tool calling.
  */
 export function encodeSamplingRequest(
   event: SampleRequestEvent,
@@ -153,16 +184,32 @@ export function encodeSamplingRequest(
     }))
 
   // Build MCP tools from our tool definitions
-  const mcpTools: McpToolDefinition[] | undefined = event.tools?.map(tool => ({
+  let mcpTools: McpToolDefinition[] | undefined = event.tools?.map(tool => ({
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
     inputSchema: tool.inputSchema as Record<string, unknown>,
   }))
 
   // Build MCP tool choice
-  const mcpToolChoice: McpToolChoice | undefined = event.toolChoice
+  let mcpToolChoice: McpToolChoice | undefined = event.toolChoice
     ? { mode: event.toolChoice }
     : undefined
+
+  // __schema__ meta-tool pattern: convert schema to a reserved tool
+  // This allows clients to use native structured output or fall through to tool calling
+  if (event.schema !== undefined) {
+    const schemaTool: McpToolDefinition = {
+      name: SCHEMA_TOOL_NAME,
+      description: 'Respond with structured data matching this schema.',
+      inputSchema: event.schema as Record<string, unknown>,
+    }
+    
+    // Prepend __schema__ tool (or create tools array)
+    mcpTools = mcpTools ? [schemaTool, ...mcpTools] : [schemaTool]
+    
+    // Force tool use if schema is provided
+    mcpToolChoice = { mode: 'required' }
+  }
 
   return {
     jsonrpc: '2.0',
@@ -174,8 +221,6 @@ export function encodeSamplingRequest(
       maxTokens: event.maxTokens ?? 4096,
       ...(mcpTools !== undefined && mcpTools.length > 0 && { tools: mcpTools }),
       ...(mcpToolChoice !== undefined && { toolChoice: mcpToolChoice }),
-      // Note: schema is passed through as-is (already converted from Zod to JSON Schema)
-      ...(event.schema !== undefined && { metadata: { responseSchema: event.schema } }),
     },
   }
 }
