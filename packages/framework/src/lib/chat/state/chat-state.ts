@@ -23,7 +23,7 @@ import type { Message } from '../types.ts'
 import type { Capabilities } from '../core-types.ts'
 import type { PendingHandoffState } from '../patches/handoff.ts'
 import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission.ts'
-import type { PluginElicitState, PluginElicitTrackingState } from '../patches/plugin.ts'
+import type { PluginElicitState, PluginElicitTrackingState } from '../patches/elicit.ts'
 import type { MessagePart } from '../types/chat-message.ts'
 import type { ContentPartType } from '../patches/base.ts'
 
