@@ -109,13 +109,6 @@ export type {
   PendingHandoffPatch,
   HandoffCompletePatch,
   HandoffPatch,
-  // Execution trail patches
-  ExecutionTrailStepData,
-  ExecutionTrailStartPatch,
-  ExecutionTrailStepPatch,
-  ExecutionTrailCompletePatch,
-  ExecutionTrailStepResponsePatch,
-  ExecutionTrailPatch,
   // Union
   ChatPatch,
 } from './patches/index.ts'
@@ -126,7 +119,6 @@ export {
   isClientToolPatch,
   isIsomorphicToolPatch,
   isHandoffPatch,
-  isExecutionTrailPatch,
 } from './patches/index.ts'
 
 // =============================================================================

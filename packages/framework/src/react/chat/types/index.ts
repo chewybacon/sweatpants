@@ -96,13 +96,6 @@ export type {
   PendingHandoffPatch,
   HandoffCompletePatch,
   HandoffPatch,
-  // Execution trail patches
-  ExecutionTrailStepData,
-  ExecutionTrailStartPatch,
-  ExecutionTrailStepPatch,
-  ExecutionTrailCompletePatch,
-  ExecutionTrailStepResponsePatch,
-  ExecutionTrailPatch,
   // Emission patches (new ctx.render() pattern)
   ToolEmissionState,
   ToolEmissionTrackingState,
@@ -129,7 +122,6 @@ export {
   isClientToolPatch,
   isIsomorphicToolPatch,
   isHandoffPatch,
-  isExecutionTrailPatch,
   isEmissionPatch,
   isPluginElicitPatch,
 } from '../../../lib/chat/patches/index.ts'
