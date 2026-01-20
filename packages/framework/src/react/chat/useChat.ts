@@ -387,22 +387,31 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     transforms,
   })
 
-  const { state, send, abort, reset } = session
+  const { state, send, abort, reset, toolEmissions } = session
 
   // Component extractor for React - extracts the _component from emission payload
   const extractComponent = (emission: { payload: { _component?: React.ComponentType<any> } }) =>
     emission.payload._component
 
+  // Build options for deriveMessages (toolEmissions are React-local state)
+  const deriveOptions = useMemo(() => ({
+    toolEmissions: toolEmissions.reduce((acc, tracking) => {
+      acc[tracking.callId] = tracking
+      return acc
+    }, {} as Record<string, typeof toolEmissions[0]>),
+    pendingElicits: state.pendingElicits,
+  }), [toolEmissions, state.pendingElicits])
+
   // Derive messages using the framework-agnostic derivation function
   const messages: ChatMessage[] = useMemo(
-    () => deriveMessages<React.ComponentType<any>>(state, extractComponent),
-    [state]
+    () => deriveMessages<React.ComponentType<any>>(state, deriveOptions, extractComponent),
+    [state, deriveOptions]
   )
 
   // Derive streaming message using the framework-agnostic derivation function
   const streamingMessage: StreamingMessage | null = useMemo(
-    () => deriveStreamingMessage<React.ComponentType<any>>(state, extractComponent),
-    [state]
+    () => deriveStreamingMessage<React.ComponentType<any>>(state, deriveOptions, extractComponent),
+    [state, deriveOptions]
   )
 
   return {

@@ -464,13 +464,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       let session: SessionHandle<string>;
 
-      // Debug: log which path we're taking and if we have plugin responses
+      // Debug: log which path we're taking and if we have elicit responses
       log.debug(
         {
           sessionId,
           isReconnect,
-          hasPluginResponses: !!body.pluginElicitResponses,
-          pluginResponseCount: body.pluginElicitResponses?.length ?? 0,
+          hasElicitResponses: !!(body.elicitResponses || body.pluginElicitResponses),
+          elicitResponseCount: (body.elicitResponses || body.pluginElicitResponses)?.length ?? 0,
         },
         "determining path",
       );
@@ -512,9 +512,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(pluginRegistry && { pluginRegistry }),
           ...(mcpToolRegistry && { mcpToolRegistry }),
           ...(pluginSessionManager && { pluginSessionManager }),
-          // Pass plugin elicit responses if provided
-          ...(body.pluginElicitResponses && {
-            pluginElicitResponses: body.pluginElicitResponses,
+          // Pass elicit responses if provided (support both old and new field names)
+          ...((body.elicitResponses || body.pluginElicitResponses) && {
+            elicitResponses: body.elicitResponses || body.pluginElicitResponses,
           }),
           ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
         });

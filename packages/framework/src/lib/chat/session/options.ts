@@ -187,10 +187,10 @@ export type ChatCommand =
     }
   | {
       /**
-       * Respond to a pending plugin elicitation.
+       * Respond to a pending elicitation.
        * The response is stored and sent with the next message.
        */
-      type: 'plugin_elicit_response'
+      type: 'elicit_response'
       /** Session ID (same as callId from the original tool call) */
       sessionId: string
       /** Original tool call ID for conversation correlation */

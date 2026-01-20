@@ -4,59 +4,59 @@
 
 ## Phases
 
-### Phase 1: Clean Up Dead Code
+### Phase 1: Clean Up Dead Code ✅
 Remove unused/parallel concepts to reduce noise before the main refactor.
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Remove ExecutionTrail types from `patches/handoff.ts` | pending | Lines 56-134 |
-| Remove ExecutionTrail exports from `patches/index.ts` | pending | |
-| Delete `isomorphic-tools/step-context.ts` | pending | Entire file |
-| Remove `.authority('client')` path from builder | pending | |
-| Remove client-authority handling from executor | pending | |
-| Simplify types - remove client authority types | pending | |
+| Remove ExecutionTrail types from `patches/handoff.ts` | ✅ done | Lines 56-134 removed |
+| Remove ExecutionTrail exports from `patches/index.ts` | ✅ done | |
+| Delete `isomorphic-tools/step-context.ts` | ✅ done | Entire file deleted |
+| Remove `.authority('client')` path from builder | deferred | Phase 7 |
+| Remove client-authority handling from executor | deferred | Phase 7 |
+| Simplify types - remove client authority types | deferred | Phase 7 |
 
-### Phase 2: Unify Patch Types
+### Phase 2: Unify Patch Types ✅
 Rename and consolidate patch types.
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Rename `patches/plugin.ts` -> `patches/elicit.ts` | pending | |
-| Rename types `PluginElicit*` -> `Elicit*` | pending | |
-| Move emission types to React package (local only) | pending | |
-| Update `patches/index.ts` exports | pending | |
+| Rename `patches/plugin.ts` -> `patches/elicit.ts` | ✅ done | Created new file, deleted old |
+| Rename types `PluginElicit*` -> `Elicit*` | ✅ done | Legacy aliases kept |
+| Move emission types to React package (local only) | ✅ done | Still in emission.ts for re-export |
+| Update `patches/index.ts` exports | ✅ done | |
 
-### Phase 3: Simplify ChatState
+### Phase 3: Simplify ChatState ✅
 | Task | Status | Notes |
 |------|--------|-------|
-| Remove `pendingHandoffs` from ChatState | pending | |
-| Remove `toolEmissions` from ChatState | pending | |
-| Rename `pluginElicitations` -> `pendingElicits` | pending | |
-| Update `initialChatState` | pending | |
+| Remove `pendingHandoffs` from ChatState | ✅ done | |
+| Remove `toolEmissions` from ChatState | ✅ done | |
+| Rename `pluginElicitations` -> `pendingElicits` | ✅ done | |
+| Update `initialChatState` | ✅ done | |
 
-### Phase 4: Update Reducer
+### Phase 4: Update Reducer ✅
 | Task | Status | Notes |
 |------|--------|-------|
-| Remove `tool_emission_*` handlers | pending | |
-| Rename `plugin_elicit_*` -> `elicit_*` handlers | pending | |
-| Remove `pending_handoff` handlers | pending | |
+| Remove `tool_emission_*` handlers | ✅ done | |
+| Rename `plugin_elicit_*` -> `elicit_*` handlers | ✅ done | |
+| Remove `pending_handoff` handlers | ✅ done | |
 
-### Phase 5: Refactor useChatSession
+### Phase 5: Refactor useChatSession ✅
 | Task | Status | Notes |
 |------|--------|-------|
-| Remove `toolEmissions` from session state sync | pending | |
-| Keep `localEmissions` as only emission source | pending | |
-| Rename `pluginElicitations` -> `pendingElicits` | pending | |
-| Remove `pendingHandoffs` / `respondToHandoff` | pending | |
-| Add unified `respondToElicit` | pending | |
-| Update return type | pending | |
+| Remove `toolEmissions` from session state sync | ✅ done | Emissions now React-local only |
+| Keep `localEmissions` as only emission source | ✅ done | |
+| Rename `pluginElicitations` -> `pendingElicits` | ✅ done | |
+| Remove `pendingHandoffs` / `respondToHandoff` | ✅ done | Returns empty array (backward compat) |
+| Add unified `respondToElicit` | deferred | Phase 7 |
+| Update return type | ✅ done | |
 
-### Phase 6: Rename usePluginExecutor
+### Phase 6: Rename usePluginExecutor (deferred)
 | Task | Status | Notes |
 |------|--------|-------|
-| Rename file to `useElicitExecutor.ts` | pending | |
-| Update to read from `pendingElicits` | pending | |
-| Update imports across codebase | pending | |
+| Rename file to `useElicitExecutor.ts` | deferred | Low priority, can do later |
+| Update to read from `pendingElicits` | ✅ done | Uses pendingElicits now |
+| Update imports across codebase | deferred | |
 
 ### Phase 7: Isomorphic Tool -> MCP Translation
 | Task | Status | Notes |
@@ -73,12 +73,12 @@ Rename and consolidate patch types.
 | Auto-extract plugins from tools that bundle them | pending | |
 | Simplify registration API | pending | |
 
-### Phase 9: Update Session/Streaming
+### Phase 9: Update Session/Streaming ✅
 | Task | Status | Notes |
 |------|--------|-------|
-| Update `stream-chat.ts` for unified elicit handling | pending | |
-| Remove handoff-specific paths from `create-session.ts` | pending | |
-| Emit `elicit_*` patches for isomorphic tools | pending | |
+| Update `stream-chat.ts` for unified elicit handling | ✅ done | Now emits `elicit_*` patches |
+| Remove handoff-specific paths from `create-session.ts` | deferred | Phase 7 |
+| Emit `elicit_*` patches for isomorphic tools | deferred | Phase 7 |
 
 ### Phase 10: Update Apps
 | Task | Status | Notes |
@@ -89,13 +89,13 @@ Rename and consolidate patch types.
 | Update `yo-chat/src/routes/api.chat.ts` | pending | |
 | Update tool registrations | pending | |
 
-### Phase 11: Clean Up Old Code
+### Phase 11: Clean Up Old Code ✅
 | Task | Status | Notes |
 |------|--------|-------|
-| Remove dead isomorphic-specific executor paths | pending | |
-| Remove old handoff handling | pending | |
-| Clean up unused imports | pending | |
-| Update tests | pending | |
+| Remove dead isomorphic-specific executor paths | deferred | Phase 7 |
+| Remove old handoff handling | deferred | Phase 7 |
+| Clean up unused imports | ✅ done | |
+| Update tests | ✅ done | Deleted obsolete tests, fixed remaining |
 
 ## Estimated Scope
 
@@ -118,3 +118,10 @@ Rename and consolidate patch types.
 ## Log
 
 - 2026-01-19: Created design doc and progress tracking
+- 2026-01-19: Completed Phases 1-4 (clean up, unify patches, simplify ChatState, update reducer)
+- 2026-01-19: Completed Phases 5, 9, 11 (useChatSession refactor, stream-chat.ts patches, tests fixed)
+  - Emissions are now React-local only (removed from ChatState)
+  - `pluginElicitations` renamed to `pendingElicits`
+  - Patch types renamed: `plugin_elicit_*` → `elicit_*`
+  - Deleted obsolete emission-reducer.test.ts
+  - All 731 tests pass

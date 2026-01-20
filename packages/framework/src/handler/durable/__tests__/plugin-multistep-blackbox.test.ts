@@ -246,10 +246,10 @@ describe('Plugin multi-step elicitation (black-box)', () => {
               enabledPlugins: ['book_flight']
             })
           )
-          expect(r1.type).toBe('plugin_elicit')
+          expect(r1.type).toBe('elicit')
 
-          if (r1.type !== 'plugin_elicit') {
-            throw new Error('Expected plugin_elicit result')
+          if (r1.type !== 'elicit') {
+            throw new Error('Expected elicit result')
           }
 
           const first = r1.pendingElicitations[0]
@@ -258,7 +258,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           expect(first!.key).toBe('pickFlight')
 
           // Ensure client state has the pending elicitation
-          expect(currentState.pluginElicitations[first!.callId]).toBeTruthy()
+          expect(currentState.pendingElicits[first!.callId]).toBeTruthy()
 
           // Request 2: respond to pickFlight, expect pickSeat elicitation
           const pickFlightResponse: PluginElicitResponseData = {
@@ -273,13 +273,13 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
               enabledPlugins: ['book_flight'],
-              pluginElicitResponses: [pickFlightResponse],
+              elicitResponses: [pickFlightResponse],
             })
           )
 
-          expect(r2.type).toBe('plugin_elicit')
-          if (r2.type !== 'plugin_elicit') {
-            throw new Error('Expected plugin_elicit result')
+          expect(r2.type).toBe('elicit')
+          if (r2.type !== 'elicit') {
+            throw new Error('Expected elicit result')
           }
 
           const second = r2.pendingElicitations[0]
@@ -299,7 +299,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
               enabledPlugins: ['book_flight'],
-              pluginElicitResponses: [pickSeatResponse],
+              elicitResponses: [pickSeatResponse],
             })
           )
 
@@ -448,7 +448,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
 
           const elicit1 = result1.events
             .map(({ event }) => event as any)
-            .find((e) => e.type === 'plugin_elicit_request') as any | undefined
+            .find((e) => e.type === 'elicit_request') as any | undefined
 
           expect(elicit1).toBeTruthy()
           expect(elicit1!.key).toBe('pickFlight')
@@ -468,7 +468,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
               messages: [{ role: 'user', content: 'Book a flight' }],
               enabledTools: true,
               enabledPlugins: ['book_flight'],
-              pluginElicitResponses: [pickFlightResponse],
+              elicitResponses: [pickFlightResponse],
             }),
           })
 
@@ -480,7 +480,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
 
           const elicit2 = result2.events
             .map(({ event }) => event as any)
-            .find((e) => e.type === 'plugin_elicit_request') as any | undefined
+            .find((e) => e.type === 'elicit_request') as any | undefined
 
           expect(elicit2).toBeTruthy()
           expect(elicit2!.callId).toBe(elicit1!.callId)
