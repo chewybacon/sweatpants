@@ -32,12 +32,6 @@ export type { ToolEmissionState, ToolEmissionTrackingState }
 // Re-export elicit types
 export type { ElicitState, ElicitTrackingState }
 
-// Legacy aliases
-/** @deprecated Use ElicitState instead */
-export type PluginElicitState = ElicitState
-/** @deprecated Use ElicitTrackingState instead */
-export type PluginElicitTrackingState = ElicitTrackingState
-
 // =============================================================================
 // STREAMING PARTS STATE
 // =============================================================================
@@ -171,39 +165,4 @@ export const initialChatState: ChatState = {
   pendingClientTools: {},
   pendingElicits: {},
   toolEmissions: {},
-}
-
-// =============================================================================
-// LEGACY TYPE ALIASES (for migration)
-// =============================================================================
-
-/**
- * @deprecated Use StreamingPartsState instead.
- */
-export type ResponseStep =
-  | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_call'
-      id: string
-      name: string
-      arguments: string
-      result?: string
-      error?: string
-      state: 'pending' | 'complete' | 'error'
-    }
-  | { type: 'text'; content: string }
-
-/**
- * @deprecated Use StreamingPartsState instead.
- */
-export interface ActiveStep {
-  type: 'thinking' | 'text'
-  content: string
-}
-
-/**
- * @deprecated No longer needed with parts-based model.
- */
-export interface RenderedContent {
-  output?: string
 }

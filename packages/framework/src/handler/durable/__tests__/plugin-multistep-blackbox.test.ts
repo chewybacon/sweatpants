@@ -25,7 +25,7 @@ import {
   ToolRegistryContext,
 } from '../../../lib/chat/providers/contexts.ts'
 
-import { streamChatOnce, type PluginElicitResponseData } from '../../../lib/chat/session/stream-chat.ts'
+import { streamChatOnce, type ElicitResponseData } from '../../../lib/chat/session/stream-chat.ts'
 import type { ApiMessage } from '../../../lib/chat/session/streaming.ts'
 import type { ChatPatch } from '../../../lib/chat/patches/index.ts'
 import { initialChatState } from '../../../lib/chat/state/chat-state.ts'
@@ -261,7 +261,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           expect(currentState.pendingElicits[first!.callId]).toBeTruthy()
 
           // Request 2: respond to pickFlight, expect pickSeat elicitation
-          const pickFlightResponse: PluginElicitResponseData = {
+          const pickFlightResponse: ElicitResponseData = {
             sessionId: first!.sessionId,
             callId: first!.callId,
             elicitId: first!.elicitId,
@@ -287,7 +287,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           expect(second!.key).toBe('pickSeat')
 
           // Request 3: respond to pickSeat, expect completion
-          const pickSeatResponse: PluginElicitResponseData = {
+          const pickSeatResponse: ElicitResponseData = {
             sessionId: second!.sessionId,
             callId: second!.callId,
             elicitId: second!.elicitId,
@@ -454,7 +454,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
           expect(elicit1!.key).toBe('pickFlight')
 
           // REQUEST 2 (black-box resume)
-          const pickFlightResponse: PluginElicitResponseData = {
+          const pickFlightResponse: ElicitResponseData = {
             sessionId: elicit1!.sessionId,
             callId: elicit1!.callId,
             elicitId: elicit1!.elicitId,

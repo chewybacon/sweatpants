@@ -216,17 +216,3 @@ export type PluginContextForKey<
   TElicits extends ElicitsMap,
   K extends keyof TElicits & string,
 > = PluginClientContext<ElicitRequest<K, any>>
-
-// =============================================================================
-// DEPRECATED ALIASES (for backwards compatibility)
-// =============================================================================
-
-/**
- * @deprecated Use `executeElicitHandler` instead
- */
-export const executePluginElicitHandler = executeElicitHandler
-
-/**
- * @deprecated Use `executeElicitHandlerFromRequest` instead
- */
-export const executePluginElicitHandlerFromRequest = executeElicitHandlerFromRequest

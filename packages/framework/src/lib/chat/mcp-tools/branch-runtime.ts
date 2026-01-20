@@ -42,17 +42,8 @@ import {
 import type { FinalizedMcpTool, FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 import type { ElicitsMap } from './mcp-tool-types.ts'
 
-// Legacy type aliases for backward compatibility
-type BranchContext = McpToolContext
-type BranchOptions = McpToolBranchOptions
-type BranchSampleConfig = McpToolSampleConfig
-type BranchServerContext = McpToolServerContext
-type BranchLimits = McpToolLimits
-const BranchDepthError = McpToolDepthError
-const BranchTokenError = McpToolTokenError
-
 // Type alias that accepts both FinalizedMcpTool and FinalizedMcpToolWithElicits
-type FinalizedBranchTool<TName extends string, TParams, THandoff, TClient, TResult> = 
+type AnyFinalizedMcpTool<TName extends string, TParams, THandoff, TClient, TResult> = 
   | FinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>
   | FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, ElicitsMap>
 
@@ -174,7 +165,7 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
   for (let current: TokenTracker | undefined = tracker; current; current = current.parent) {
     current.used += tokens
     if (current.budget !== undefined && current.used > current.budget) {
-      throw new BranchTokenError(current.used, current.budget)
+      throw new McpToolTokenError(current.used, current.budget)
     }
   }
 }
@@ -199,7 +190,7 @@ interface BranchState {
   depth: number
 
   /** Limits for this branch */
-  limits: BranchLimits
+  limits: McpToolLimits
 
   /** Token tracker for budgets (shared with parents) */
   tokenTracker: TokenTracker
@@ -210,12 +201,12 @@ interface BranchState {
 // =============================================================================
 
 /**
- * Create a BranchContext for executing a branch.
+ * Create a McpToolContext for executing a branch.
  */
-function createBranchContext(
+function createMcpToolContext(
   state: BranchState,
   client: BranchMCPClient
-): BranchContext {
+): McpToolContext {
   return {
     // Read-only parent context
     get parentMessages() {
@@ -237,7 +228,7 @@ function createBranchContext(
     // TODO: Implement schema parsing at response level in Phase 4
     // Using type assertion because the implementation handles all overload variants,
     // but TypeScript can't verify this without conditional types at the implementation level.
-    sample: ((config: BranchSampleConfig) => {
+    sample: ((config: McpToolSampleConfig) => {
       return {
         *[Symbol.iterator]() {
           let messages: ExtendedMessage[]
@@ -496,8 +487,8 @@ function createBranchContext(
 
     // Sub-branches
     branch<T>(
-      fn: (ctx: BranchContext) => Operation<T>,
-      options: BranchOptions = {}
+      fn: (ctx: McpToolContext) => Operation<T>,
+      options: McpToolBranchOptions = {}
     ): Operation<T> {
       return {
         *[Symbol.iterator]() {
@@ -506,7 +497,7 @@ function createBranchContext(
           const maxDepth = options.maxDepth ?? state.limits.maxDepth
 
           if (maxDepth !== undefined && newDepth > maxDepth) {
-            throw new BranchDepthError(newDepth, maxDepth)
+            throw new McpToolDepthError(newDepth, maxDepth)
           }
 
           // Build new branch state
@@ -522,7 +513,7 @@ function createBranchContext(
           }
 
           // Build limits, preserving undefined handling
-          const newLimits: BranchLimits = {}
+          const newLimits: McpToolLimits = {}
           if (options.maxDepth !== undefined) {
             newLimits.maxDepth = options.maxDepth
           } else if (state.limits.maxDepth !== undefined) {
@@ -565,7 +556,7 @@ function createBranchContext(
           }
 
           // Create context for sub-branch
-          const subContext = createBranchContext(newState, client)
+          const subContext = createMcpToolContext(newState, client)
 
           // Execute sub-branch
           // TODO: Add timeout handling with Effection
@@ -602,7 +593,7 @@ export interface RunBranchToolOptions {
   callId?: string
 
   /** Override limits from tool definition */
-  limits?: BranchLimits
+  limits?: McpToolLimits
 
   /** Initial messages (parent context) */
   parentMessages?: Message[]
@@ -626,7 +617,7 @@ export function runBranchTool<
   TClient,
   TResult,
 >(
-  tool: FinalizedBranchTool<TName, TParams, THandoff, TClient, TResult>,
+  tool: AnyFinalizedMcpTool<TName, TParams, THandoff, TClient, TResult>,
   params: TParams,
   client: BranchMCPClient,
   options: RunBranchToolOptions = {}
@@ -644,13 +635,13 @@ export function runBranchTool<
       const validatedParams = parseResult.data as TParams
 
       // Merge limits
-      const limits: BranchLimits = {
+      const limits: McpToolLimits = {
         ...tool.limits,
         ...options.limits,
       }
 
       // Create server context
-      const serverCtx: BranchServerContext = { callId, signal }
+      const serverCtx: McpToolServerContext = { callId, signal }
 
       const rootTokenTracker: TokenTracker = { used: 0 }
       if (limits.maxTokens !== undefined) {
@@ -682,10 +673,10 @@ export function runBranchTool<
         const handoff = yield* before(validatedParams, serverCtx)
 
         // Create branch context for client phase
-        const branchCtx = createBranchContext(initialState, client)
+        const branchCtx = createMcpToolContext(initialState, client)
 
         // Client phase
-        // Cast needed because FinalizedBranchTool is a union type that may expect
+        // Cast needed because AnyFinalizedMcpTool is a union type that may expect
         // McpToolContextWithElicits, but we provide McpToolContext which is runtime-compatible
         const clientResult = yield* clientFn(handoff, branchCtx as any)
 
@@ -693,7 +684,7 @@ export function runBranchTool<
         result = yield* after(handoff, clientResult, serverCtx, validatedParams)
       } else if (tool.execute) {
         // Simple execute with branch context
-        const branchCtx = createBranchContext(initialState, client)
+        const branchCtx = createMcpToolContext(initialState, client)
         // Cast needed because tool.execute may expect McpToolContextWithElicits
         result = yield* tool.execute(validatedParams, branchCtx as any)
       } else {

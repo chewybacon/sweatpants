@@ -117,28 +117,3 @@ export type ElicitPatchUnion =
   | ElicitPatch
   | ElicitResponsePatch
   | ElicitCompletePatch
-
-// =============================================================================
-// LEGACY ALIASES (for migration)
-// =============================================================================
-
-/** @deprecated Use ElicitState instead */
-export type PluginElicitState = ElicitState
-
-/** @deprecated Use ElicitTrackingState instead */
-export type PluginElicitTrackingState = ElicitTrackingState
-
-/** @deprecated Use ElicitStartPatch instead */
-export type PluginElicitStartPatch = ElicitStartPatch
-
-/** @deprecated Use ElicitPatch instead */
-export type PluginElicitPatch = ElicitPatch
-
-/** @deprecated Use ElicitResponsePatch instead */
-export type PluginElicitResponsePatch = ElicitResponsePatch
-
-/** @deprecated Use ElicitCompletePatch instead */
-export type PluginElicitCompletePatch = ElicitCompletePatch
-
-/** @deprecated Use ElicitPatchUnion instead */
-export type PluginElicitPatchUnion = ElicitPatchUnion

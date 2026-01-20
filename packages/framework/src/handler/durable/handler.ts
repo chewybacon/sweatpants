@@ -469,8 +469,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         {
           sessionId,
           isReconnect,
-          hasElicitResponses: !!(body.elicitResponses || body.pluginElicitResponses),
-          elicitResponseCount: (body.elicitResponses || body.pluginElicitResponses)?.length ?? 0,
+          hasElicitResponses: !!body.elicitResponses,
+          elicitResponseCount: body.elicitResponses?.length ?? 0,
         },
         "determining path",
       );
@@ -512,9 +512,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(pluginRegistry && { pluginRegistry }),
           ...(mcpToolRegistry && { mcpToolRegistry }),
           ...(pluginSessionManager && { pluginSessionManager }),
-          // Pass elicit responses if provided (support both old and new field names)
-          ...((body.elicitResponses || body.pluginElicitResponses) && {
-            elicitResponses: body.elicitResponses || body.pluginElicitResponses,
+          // Pass elicit responses if provided
+          ...(body.elicitResponses && {
+            elicitResponses: body.elicitResponses,
           }),
           ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
         });

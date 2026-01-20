@@ -52,7 +52,6 @@ export type {
   ElicitHandler,
   ElicitHandlers,
   InferElicits,
-  InferPluginElicits, // deprecated
   InferPluginTool,
   AnyMcpPlugin,
   RenderableProps,
