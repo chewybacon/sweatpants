@@ -12,13 +12,13 @@
  * @example React
  * ```tsx
  * const messages = useMemo(() =>
- *   deriveMessages<React.ComponentType<any>>(state),
- *   [state]
+ *   deriveMessages<React.ComponentType<any>>(state, { toolEmissions, pendingElicits }),
+ *   [state, toolEmissions, pendingElicits]
  * )
  * ```
  */
 
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitTrackingState } from './chat-state.ts'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, ElicitTrackingState } from './chat-state.ts'
 import type {
   ChatMessage,
   MessagePart,
@@ -42,6 +42,23 @@ import type {
 export type ComponentExtractor<TComponent> = (
   emission: ToolEmissionState
 ) => TComponent | undefined
+
+// =============================================================================
+// DERIVE OPTIONS
+// =============================================================================
+
+/**
+ * Options for deriving messages.
+ *
+ * These provide the emissions and elicitations that are managed outside
+ * ChatState (e.g., React-local state for emissions).
+ */
+export interface DeriveMessagesOptions {
+  /** Tool emissions keyed by call ID */
+  toolEmissions?: Record<string, ToolEmissionTrackingState>
+  /** Pending elicitations keyed by call ID */
+  pendingElicits?: Record<string, ElicitTrackingState>
+}
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -96,13 +113,13 @@ function buildEmissionsForToolCall<TComponent>(
 }
 
 /**
- * Build plugin elicits for a tool call part from the pluginElicitations state.
+ * Build plugin elicits for a tool call part from the pendingElicits state.
  */
 function buildPluginElicitsForToolCall(
   callId: string,
-  pluginElicitations: Record<string, PluginElicitTrackingState>
+  pendingElicits: Record<string, ElicitTrackingState>
 ): PluginElicit[] {
-  const tracking = pluginElicitations[callId]
+  const tracking = pendingElicits[callId]
   if (!tracking?.elicitations) return []
 
   return tracking.elicitations.map((e) => ({
@@ -124,7 +141,7 @@ function buildPluginElicitsForToolCall(
 function enrichToolCallPart<TComponent>(
   part: ToolCallPart<TComponent>,
   toolEmissions: Record<string, ToolEmissionTrackingState>,
-  pluginElicitations: Record<string, PluginElicitTrackingState>,
+  pendingElicits: Record<string, ElicitTrackingState>,
   extractComponent: ComponentExtractor<TComponent>
 ): ToolCallPart<TComponent> {
   const emissions = buildEmissionsForToolCall(
@@ -134,7 +151,7 @@ function enrichToolCallPart<TComponent>(
   )
   const pluginElicits = buildPluginElicitsForToolCall(
     part.callId,
-    pluginElicitations
+    pendingElicits
   )
 
   const hasNewEmissions = emissions.length > 0
@@ -159,12 +176,12 @@ function enrichToolCallPart<TComponent>(
 function enrichParts<TComponent>(
   parts: MessagePart<TComponent>[],
   toolEmissions: Record<string, ToolEmissionTrackingState>,
-  pluginElicitations: Record<string, PluginElicitTrackingState>,
+  pendingElicits: Record<string, ElicitTrackingState>,
   extractComponent: ComponentExtractor<TComponent>
 ): MessagePart<TComponent>[] {
   return parts.map((part) => {
     if (part.type === 'tool-call') {
-      return enrichToolCallPart(part, toolEmissions, pluginElicitations, extractComponent)
+      return enrichToolCallPart(part, toolEmissions, pendingElicits, extractComponent)
     }
     return part
   })
@@ -184,13 +201,18 @@ function enrichParts<TComponent>(
  * falling back to constructing parts from message content.
  *
  * @param state - The current ChatState
+ * @param options - Options containing toolEmissions and pendingElicits
  * @param extractComponent - Function to extract the component from an emission
  * @returns Array of ChatMessage objects for completed messages
  */
 export function deriveCompletedMessages<TComponent>(
   state: ChatState,
+  options: DeriveMessagesOptions,
   extractComponent: ComponentExtractor<TComponent>
 ): ChatMessage<TComponent>[] {
+  const toolEmissions = options.toolEmissions ?? {}
+  const pendingElicits = options.pendingElicits ?? {}
+
   return state.messages
     .filter((msg) => msg.role !== 'tool') // Filter out tool result messages
     .map((msg): ChatMessage<TComponent> => {
@@ -204,8 +226,8 @@ export function deriveCompletedMessages<TComponent>(
         // Use the stored parts (they have frames from the pipeline)
         const enrichedParts = enrichParts(
           storedParts as MessagePart<TComponent>[],
-          state.toolEmissions,
-          state.pluginElicitations,
+          toolEmissions,
+          pendingElicits,
           extractComponent
         )
         
@@ -259,8 +281,8 @@ export function deriveCompletedMessages<TComponent>(
           // Enrich with emissions and plugin elicits
           const enrichedPart = enrichToolCallPart(
             toolPart,
-            state.toolEmissions,
-            state.pluginElicitations,
+            toolEmissions,
+            pendingElicits,
             extractComponent
           )
           parts.push(enrichedPart)
@@ -283,20 +305,25 @@ export function deriveCompletedMessages<TComponent>(
  * StreamingMessage with the current parts.
  *
  * @param state - The current ChatState
+ * @param options - Options containing toolEmissions and pendingElicits
  * @param extractComponent - Function to extract the component from an emission
  * @returns StreamingMessage or null
  */
 export function deriveStreamingMessage<TComponent>(
   state: ChatState,
+  options: DeriveMessagesOptions,
   extractComponent: ComponentExtractor<TComponent>
 ): StreamingMessage<TComponent> | null {
   if (!state.isStreaming) return null
 
+  const toolEmissions = options.toolEmissions ?? {}
+  const pendingElicits = options.pendingElicits ?? {}
+
   // Enrich parts with emissions and plugin elicits
   const parts = enrichParts(
     state.streaming.parts as MessagePart<TComponent>[],
-    state.toolEmissions,
-    state.pluginElicitations,
+    toolEmissions,
+    pendingElicits,
     extractComponent
   )
 
@@ -314,15 +341,17 @@ export function deriveStreamingMessage<TComponent>(
  * messages with the current streaming message (if any).
  *
  * @param state - The current ChatState
+ * @param options - Options containing toolEmissions and pendingElicits
  * @param extractComponent - Function to extract the component from an emission
  * @returns Array of ChatMessage objects including streaming message
  */
 export function deriveMessages<TComponent>(
   state: ChatState,
+  options: DeriveMessagesOptions,
   extractComponent: ComponentExtractor<TComponent>
 ): ChatMessage<TComponent>[] {
-  const completedMessages = deriveCompletedMessages(state, extractComponent)
-  const streamingMessage = deriveStreamingMessage(state, extractComponent)
+  const completedMessages = deriveCompletedMessages(state, options, extractComponent)
+  const streamingMessage = deriveStreamingMessage(state, options, extractComponent)
 
   if (!streamingMessage) {
     return completedMessages

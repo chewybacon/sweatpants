@@ -260,7 +260,8 @@ export type {
   PluginClientContext,
   ElicitHandler,
   ElicitHandlers,
-  InferPluginElicits,
+  InferElicits,
+  InferPluginElicits, // deprecated
   InferPluginTool,
   AnyMcpPlugin,
   // Re-export renderable types for plugin authors
@@ -272,6 +273,9 @@ export type {
 // Plugin execution
 export {
   createPluginClientContext,
+  executeElicitHandler,
+  executeElicitHandlerFromRequest,
+  // Deprecated aliases
   executePluginElicitHandler,
   executePluginElicitHandlerFromRequest,
 } from './plugin-executor.ts'

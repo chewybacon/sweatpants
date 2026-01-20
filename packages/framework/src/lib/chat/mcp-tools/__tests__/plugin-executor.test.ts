@@ -6,8 +6,8 @@ import { run, createChannel } from 'effection'
 import { z } from 'zod'
 import {
   createPluginClientContext,
-  executePluginElicitHandler,
-  executePluginElicitHandlerFromRequest,
+  executeElicitHandler,
+  executeElicitHandlerFromRequest,
 } from '../plugin-executor.ts'
 import type { PluginClientRegistration } from '../plugin.ts'
 import type { ElicitRequest, ElicitId } from '../mcp-tool-types.ts'
@@ -93,7 +93,7 @@ describe('createPluginClientContext', () => {
   })
 })
 
-describe('executePluginElicitHandler', () => {
+describe('executeElicitHandler', () => {
   const testSchema = z.object({ choice: z.string() })
 
   const mockPlugin: PluginClientRegistration<{ testKey: typeof testSchema }> = {
@@ -123,7 +123,7 @@ describe('executePluginElicitHandler', () => {
         emissionChannel: channel,
       })
 
-      return yield* executePluginElicitHandler(
+      return yield* executeElicitHandler(
         mockPlugin,
         'testKey',
         request as ElicitRequest<'testKey', typeof testSchema>,
@@ -153,13 +153,13 @@ describe('executePluginElicitHandler', () => {
         })
 
         // @ts-expect-error - Testing unknown key
-        return yield* executePluginElicitHandler(mockPlugin, 'unknownKey', request, ctx as any)
+        return yield* executeElicitHandler(mockPlugin, 'unknownKey', request, ctx as any)
       })
     ).rejects.toThrow(/no handler for elicitation key/)
   })
 })
 
-describe('executePluginElicitHandlerFromRequest', () => {
+describe('executeElicitHandlerFromRequest', () => {
   const testSchema = z.object({ value: z.number() })
 
   const mockPlugin: PluginClientRegistration<{ pickNumber: typeof testSchema }> = {
@@ -188,7 +188,7 @@ describe('executePluginElicitHandlerFromRequest', () => {
         emissionChannel: channel,
       })
 
-      return yield* executePluginElicitHandlerFromRequest(mockPlugin, request, ctx as any)
+      return yield* executeElicitHandlerFromRequest(mockPlugin, request, ctx as any)
     })
 
     expect(result.action).toBe('accept')

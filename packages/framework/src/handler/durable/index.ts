@@ -43,7 +43,8 @@ export type {
   ToolRegistry,
   IsomorphicTool,
   ToolExecutionResult,
-  PluginElicitRequestData,
+  ElicitRequestData,
+  PluginElicitRequestData, // deprecated alias
 
   // Client output types
   IsomorphicClientOutput,
@@ -54,8 +55,9 @@ export type {
   InitializerHook,
   ChatRequestBody,
 
-  // Plugin types
-  PluginElicitResponse,
+  // Elicit types
+  ElicitResponse,
+  PluginElicitResponse, // deprecated alias
   PluginAbortRequest,
 
   // Protocol types
