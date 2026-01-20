@@ -63,7 +63,7 @@
  */
 import type { Operation, Task, Channel, Signal, Stream } from 'effection'
 import { spawn, each, createChannel, createSignal, resource, useScope, call } from 'effection'
-import { streamChatOnce, toApiMessages, type PluginElicitResponseData } from './stream-chat.ts'
+import { streamChatOnce, toApiMessages, type ElicitResponseData } from './stream-chat.ts'
 import { useTransformPipeline } from './transforms.ts'
 import { chatReducer, initialChatState } from '../state/reducer.ts'
 import type { ChatState } from '../state/chat-state.ts'
@@ -218,7 +218,11 @@ export function* runChatSession(
   const disabledToolNames = new Set<string>()
   
   // Track pending plugin elicit responses (sent with next message)
-  const pendingPluginElicitResponses: PluginElicitResponseData[] = []
+  const pendingElicitResponses: ElicitResponseData[] = []
+  
+  // Track pending tool_calls that are awaiting elicitation (need tool result messages if cancelled)
+  // These are tool_calls from assistant messages that haven't received their tool result yet
+  let pendingToolCalls: Array<{ id: string; name: string }> = []
 
   // Create approval signal if not provided (for client tools)
   const approvalSignal = options.approvalSignal ?? createSignal<ApprovalSignalValue, void>()
@@ -232,6 +236,22 @@ export function* runChatSession(
         if (currentRequestTask) {
           yield* currentRequestTask.halt()
           currentRequestTask = null
+        }
+
+        // CRITICAL: If we had pending tool_calls from an elicit state, we need to add
+        // "cancelled" tool result messages so OpenAI doesn't complain about missing tool outputs.
+        // This happens when the user sends a new message while a tool was waiting for elicitation.
+        if (pendingToolCalls.length > 0) {
+          for (const tc of pendingToolCalls) {
+            const cancelledToolMsg: Message = {
+              id: crypto.randomUUID(),
+              role: 'tool',
+              content: 'Tool execution was cancelled by user sending a new message.',
+              tool_call_id: tc.id,
+            }
+            history.push(cancelledToolMsg)
+          }
+          pendingToolCalls = []
         }
 
         // Create user message
@@ -333,14 +353,14 @@ export function* runChatSession(
             }> = []
             
             // Capture pending plugin elicit responses for this request
-            let pluginElicitResponsesToSend: PluginElicitResponseData[] = []
+            let elicitResponsesToSend: ElicitResponseData[] = []
             
             // eslint-disable-next-line no-constant-condition
             while (true) {
               // Move pending responses to this request (only on first iteration or if new ones arrived)
-              if (pendingPluginElicitResponses.length > 0) {
-                pluginElicitResponsesToSend = [...pendingPluginElicitResponses]
-                pendingPluginElicitResponses.length = 0
+              if (pendingElicitResponses.length > 0) {
+                elicitResponsesToSend = [...pendingElicitResponses]
+                pendingElicitResponses.length = 0
               }
               
               result = yield* streamer(
@@ -350,21 +370,21 @@ export function* runChatSession(
                   ...options,
                   isomorphicToolSchemas,
                   isomorphicClientOutputs: isomorphicClientOutputs.length > 0 ? isomorphicClientOutputs : undefined,
-                  pluginElicitResponses: pluginElicitResponsesToSend.length > 0 ? pluginElicitResponsesToSend : undefined,
+                  elicitResponses: elicitResponsesToSend.length > 0 ? elicitResponsesToSend : undefined,
                 } as any // Type cast needed for extended options
               )
               
               // Clear client outputs and plugin responses after sending (they've been processed)
               isomorphicClientOutputs = []
-              pluginElicitResponsesToSend = []
+              elicitResponsesToSend = []
               
               // If complete, we're done
               if (result.type === 'complete') {
                 break
               }
               
-              // Plugin elicitation - sync conversation state and break the loop
-              if (result.type === 'plugin_elicit') {
+              // Elicitation - sync conversation state and break the loop
+              if (result.type === 'elicit') {
                 // CRITICAL: Sync conversation state to history so the next request
                 // includes the assistant message with tool_calls. Without this,
                 // the next request will send tool results to OpenAI without the
@@ -422,10 +442,16 @@ export function* runChatSession(
                   history.push(assistantMsg)
                 }
                 
+                // Track pending tool_calls so we can add cancelled results if user sends new message
+                pendingToolCalls = result.conversationState.toolCalls.map(tc => ({
+                  id: tc.id,
+                  name: tc.name,
+                }))
+                
                 // Patches have already been emitted by stream-chat.
-                // React state now has the pending elicitations in pluginElicitations.
+                // React state now has the pending elicitations in pendingElicits.
                 // The UI will render based on this state and collect user responses.
-                // When user sends next message, we'll include pluginElicitResponses.
+                // When user sends next message, we'll include elicitResponses.
                 // For now, break the loop - the request is "complete" from session perspective.
                 break
               }
@@ -585,6 +611,9 @@ export function* runChatSession(
               break
             }
 
+            // Tool calls completed - clear pending tracking
+            pendingToolCalls = []
+            
             // Get tool results from the complete result (these have the actual content
             // from phase 2 processing that the server did)
             const completeResult = result as { 
@@ -742,7 +771,7 @@ export function* runChatSession(
         // Clear history and disabled tools
         history.length = 0
         disabledToolNames.clear()
-        pendingPluginElicitResponses.length = 0
+        pendingElicitResponses.length = 0
         yield* patches.send({ type: 'reset' })
         break
       }
@@ -807,7 +836,7 @@ export function* runChatSession(
             let currentMessages: ApiMessage[] = toApiMessages(history)
             
             // Capture plugin elicit responses for this continuation
-            let pluginElicitResponsesToSend: PluginElicitResponseData[] = []
+            let elicitResponsesToSend: ElicitResponseData[] = []
             
             // Run the continuation loop - may loop if plugin tools need multiple elicitations
             let result: StreamResult
@@ -815,9 +844,9 @@ export function* runChatSession(
             // eslint-disable-next-line no-constant-condition
             while (true) {
               // Move pending responses to this request (only on first iteration or if new ones arrived)
-              if (pendingPluginElicitResponses.length > 0) {
-                pluginElicitResponsesToSend = [...pendingPluginElicitResponses]
-                pendingPluginElicitResponses.length = 0
+              if (pendingElicitResponses.length > 0) {
+                elicitResponsesToSend = [...pendingElicitResponses]
+                pendingElicitResponses.length = 0
               }
               
               result = yield* streamer(
@@ -826,20 +855,20 @@ export function* runChatSession(
                 {
                   ...options,
                   isomorphicToolSchemas,
-                  pluginElicitResponses: pluginElicitResponsesToSend.length > 0 ? pluginElicitResponsesToSend : undefined,
+                  elicitResponses: elicitResponsesToSend.length > 0 ? elicitResponsesToSend : undefined,
                 } as any
               )
               
               // Clear plugin responses after sending (they've been processed)
-              pluginElicitResponsesToSend = []
+              elicitResponsesToSend = []
               
               // If complete, we're done
               if (result.type === 'complete') {
                 break
               }
               
-              // Plugin elicitation - sync conversation state and break the loop
-              if (result.type === 'plugin_elicit') {
+              // Elicitation - sync conversation state and break the loop
+              if (result.type === 'elicit') {
                 // CRITICAL: Sync conversation state to history so the next request
                 // includes the assistant message with tool_calls. Without this,
                 // the next request will send tool results to OpenAI without the
@@ -897,8 +926,14 @@ export function* runChatSession(
                   history.push(assistantMsg)
                 }
                 
+                // Track pending tool_calls so we can add cancelled results if user sends new message
+                pendingToolCalls = result.conversationState.toolCalls.map(tc => ({
+                  id: tc.id,
+                  name: tc.name,
+                }))
+                
                 // Patches have already been emitted by stream-chat.
-                // React state now has the pending elicitations in pluginElicitations.
+                // React state now has the pending elicitations in pendingElicits.
                 // The UI will render based on this state and collect user responses.
                 // When user responds, another 'continue' command will be dispatched.
                 break
@@ -910,6 +945,9 @@ export function* runChatSession(
             
             // Handle final result
             if (result.type === 'complete') {
+              // Tool calls completed - clear pending tracking
+              pendingToolCalls = []
+              
               const completeResult = result as { 
                 type: 'complete'
                 text: string
@@ -966,7 +1004,7 @@ export function* runChatSession(
                 })
               }
             }
-            // plugin_elicit result: patches already emitted, session waits for user response
+            // elicit result: patches already emitted, session waits for user response
             
             yield* streamPatches.send({ type: 'streaming_end' })
             streamingEndSent = true
@@ -990,9 +1028,9 @@ export function* runChatSession(
         break
       }
 
-      case 'plugin_elicit_response': {
+      case 'elicit_response': {
         // Store the response to be sent with the next message (or continuation)
-        pendingPluginElicitResponses.push({
+        pendingElicitResponses.push({
           sessionId: cmd.sessionId,
           callId: cmd.callId,
           elicitId: cmd.elicitId,
@@ -1001,7 +1039,7 @@ export function* runChatSession(
         
         // Emit a patch to update the local state
         yield* patches.send({
-          type: 'plugin_elicit_response',
+          type: 'elicit_response',
           callId: cmd.callId,
           elicitId: cmd.elicitId,
           response: cmd.result,

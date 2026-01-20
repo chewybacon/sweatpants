@@ -159,7 +159,7 @@ function toolResultToStreamEvent(result: ToolExecutionResult): StreamEvent {
   if (result.kind === 'plugin_awaiting') {
     // Plugin tool is waiting for elicitation - emit elicit request
     return {
-      type: 'plugin_elicit_request',
+      type: 'elicit_request',
       sessionId: result.sessionId,
       callId: result.callId,
       toolName: result.toolName,
@@ -442,7 +442,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     pluginEmissionChannel,
     mcpToolRegistry,
     pluginSessionManager,
-    pluginElicitResponses,
+    elicitResponses,
     pluginAbort,
   } = params
 
@@ -503,8 +503,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     state.pendingEvents.push({
       type: 'debug_marker',
       phase: 'engine_startup',
-      hasPluginResponses: !!(pluginElicitResponses && pluginElicitResponses.length > 0),
-      pluginResponseCount: pluginElicitResponses?.length ?? 0,
+      hasElicitResponses: !!(elicitResponses && elicitResponses.length > 0),
+      elicitResponseCount: elicitResponses?.length ?? 0,
       hasPluginSessionManager: !!pluginSessionManager,
       hasMcpToolRegistry: !!mcpToolRegistry,
     } as any)
@@ -531,7 +531,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               // Determine next phase based on what needs processing
               if (pluginAbort) {
                 state.phase = 'process_plugin_abort'
-              } else if (pluginElicitResponses && pluginElicitResponses.length > 0) {
+              } else if (elicitResponses && elicitResponses.length > 0) {
                 state.phase = 'process_plugin_responses'
               } else if (isomorphicClientOutputs.length > 0) {
                 state.phase = 'process_client_outputs'
@@ -543,7 +543,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Same logic without session info
             if (pluginAbort) {
               state.phase = 'process_plugin_abort'
-            } else if (pluginElicitResponses && pluginElicitResponses.length > 0) {
+            } else if (elicitResponses && elicitResponses.length > 0) {
               state.phase = 'process_plugin_responses'
             } else if (isomorphicClientOutputs.length > 0) {
               state.phase = 'process_client_outputs'
@@ -572,7 +572,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               } catch (_error) {
                 // Session might not exist - emit error
                 state.pendingEvents.push({
-                  type: 'plugin_session_error',
+                  type: 'tool_session_error',
                   sessionId,
                   callId: sessionId,
                   error: 'SESSION_NOT_FOUND',
@@ -582,7 +582,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             }
             
             // Move to next phase
-            if (pluginElicitResponses && pluginElicitResponses.length > 0) {
+            if (elicitResponses && elicitResponses.length > 0) {
               state.phase = 'process_plugin_responses'
             } else if (isomorphicClientOutputs.length > 0) {
               state.phase = 'process_client_outputs'
@@ -599,15 +599,15 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
           case 'process_plugin_responses': {
             // Resume suspended plugin sessions with elicit responses
-            if (pluginElicitResponses && pluginSessionManager) {
+            if (elicitResponses && pluginSessionManager) {
               // Debug: emit a marker event so we know this phase is running
               state.pendingEvents.push({
                 type: 'debug_marker',
                 phase: 'process_plugin_responses',
-                responseCount: pluginElicitResponses.length,
+                responseCount: elicitResponses.length,
               } as any)
               
-              for (const response of pluginElicitResponses) {
+              for (const response of elicitResponses) {
                 const { sessionId, callId, elicitId, result } = response
                 
                 // Look up the session (pass provider for session recovery)
@@ -624,7 +624,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 if (!session) {
                   // Session not found - emit error
                   state.pendingEvents.push({
-                    type: 'plugin_session_error',
+                    type: 'tool_session_error',
                     sessionId,
                     callId,
                     error: 'SESSION_NOT_FOUND',
@@ -665,7 +665,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   case 'elicit_request': {
                     // Another elicitation needed - emit event and go to awaiting phase
                     state.pendingEvents.push({
-                      type: 'plugin_elicit_request',
+                      type: 'elicit_request',
                       sessionId,
                       callId,
                       toolName: session.toolName,
@@ -750,7 +750,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             
             // Check if we need to await more elicitation
             if (state.awaitingElicitResult) {
-              state.phase = 'plugin_awaiting_elicit'
+              state.phase = 'awaiting_elicit'
             } else if (isomorphicClientOutputs.length > 0) {
               state.phase = 'process_client_outputs'
             } else {
@@ -1029,10 +1029,10 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             
             if (pluginAwaitingResults.length > 0) {
               // CRITICAL: Add assistant message with tool_calls to conversationMessages
-              // BEFORE going to plugin_awaiting_elicit. This ensures the conversation
+              // BEFORE going to awaiting_elicit. This ensures the conversation
               // state includes the tool call that's awaiting elicitation, so when the
               // client syncs and sends the next request, the LLM sees the proper
-              // tool_call -> tool_result sequence. Without this, multi-turn plugin
+              // tool_call -> tool_result sequence. Without this, multi-turn elicit
               // conversations (like tictactoe) fail with "No tool call found" errors.
               state.conversationMessages.push({
                 role: 'assistant',
@@ -1051,7 +1051,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               for (const r of pluginAwaitingResults) {
                 if (r.ok && r.kind === 'plugin_awaiting') {
                   state.pendingEvents.push({
-                    type: 'plugin_elicit_request',
+                    type: 'elicit_request',
                     sessionId: r.sessionId,
                     callId: r.callId,
                     toolName: r.toolName,
@@ -1063,7 +1063,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   state.awaitingElicitResult = r
                 }
               }
-              state.phase = 'plugin_awaiting_elicit'
+              state.phase = 'awaiting_elicit'
               
               // Return first pending event
               if (state.pendingEvents.length > 0) {
@@ -1166,12 +1166,34 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             return yield* this.next()
           }
 
-          case 'plugin_awaiting_elicit': {
-            // A plugin tool is awaiting elicitation
+          case 'awaiting_elicit': {
+            // A tool is awaiting elicitation
             // Emit conversation state for client to render UI and send response
-            const toolCalls = state.toolCalls || []
+            let toolCalls = state.toolCalls || []
             const results = state.toolResults || []
             const providerResult = state.providerResult
+            
+            // CRITICAL FIX: If toolCalls is empty but we have an awaiting elicit result,
+            // extract the tool call info from conversationMessages. This happens when
+            // resuming from elicitation - the original state.toolCalls was set during
+            // the first request's provider_streaming phase, but on subsequent requests
+            // (elicit responses), we create a new engine with fresh state.
+            if (toolCalls.length === 0 && state.awaitingElicitResult) {
+              // Find assistant message with tool_calls in conversationMessages
+              const assistantWithToolCalls = state.conversationMessages.find(
+                msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
+              )
+              if (assistantWithToolCalls && assistantWithToolCalls.tool_calls) {
+                toolCalls = assistantWithToolCalls.tool_calls.map(tc => ({
+                  id: tc.id,
+                  type: 'function' as const,
+                  function: {
+                    name: tc.function.name,
+                    arguments: tc.function.arguments,
+                  },
+                }))
+              }
+            }
             
             const conversationState: StreamEvent = {
               type: 'conversation_state',

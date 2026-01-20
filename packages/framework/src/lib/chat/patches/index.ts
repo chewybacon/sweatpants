@@ -58,13 +58,6 @@ export type {
   PendingHandoffPatch,
   HandoffCompletePatch,
   HandoffPatch,
-  // Execution trail patches
-  ExecutionTrailStepData,
-  ExecutionTrailStartPatch,
-  ExecutionTrailStepPatch,
-  ExecutionTrailCompletePatch,
-  ExecutionTrailStepResponsePatch,
-  ExecutionTrailPatch,
 } from './handoff.ts'
 
 export type {
@@ -79,23 +72,23 @@ export type {
 } from './emission.ts'
 
 export type {
-  // Plugin elicitation patches (MCP plugin tools)
-  PluginElicitState,
-  PluginElicitTrackingState,
-  PluginElicitStartPatch,
-  PluginElicitPatch,
-  PluginElicitResponsePatch,
-  PluginElicitCompletePatch,
-  PluginElicitPatchUnion,
-} from './plugin.ts'
+  // Elicitation patches (unified for all tools)
+  ElicitState,
+  ElicitTrackingState,
+  ElicitStartPatch,
+  ElicitPatch,
+  ElicitResponsePatch,
+  ElicitCompletePatch,
+  ElicitPatchUnion,
+} from './elicit.ts'
 
 // Import for union type construction
 import type { CorePatch } from './base.ts'
 import type { BufferPatch } from './buffer.ts'
 import type { ClientToolPatch, IsomorphicToolPatch } from './tool.ts'
-import type { HandoffPatch, ExecutionTrailPatch } from './handoff.ts'
+import type { HandoffPatch } from './handoff.ts'
 import type { EmissionPatch } from './emission.ts'
-import type { PluginElicitPatchUnion } from './plugin.ts'
+import type { ElicitPatchUnion } from './elicit.ts'
 
 /**
  * All chat patches - the complete union of all patch types.
@@ -106,9 +99,8 @@ import type { PluginElicitPatchUnion } from './plugin.ts'
  * - ClientToolPatch: Browser-side tool execution
  * - IsomorphicToolPatch: Server+client tool state
  * - HandoffPatch: Tool handoff to React UI
- * - ExecutionTrailPatch: ctx.render() pattern steps (legacy)
- * - EmissionPatch: Tool emissions (new ctx.render() pattern)
- * - PluginElicitPatchUnion: MCP plugin tool elicitation
+ * - EmissionPatch: Tool emissions (ctx.render() pattern)
+ * - ElicitPatchUnion: Tool elicitation (unified)
  */
 export type ChatPatch =
   | CorePatch
@@ -116,9 +108,8 @@ export type ChatPatch =
   | ClientToolPatch
   | IsomorphicToolPatch
   | HandoffPatch
-  | ExecutionTrailPatch
   | EmissionPatch
-  | PluginElicitPatchUnion
+  | ElicitPatchUnion
 
 // =============================================================================
 // TYPE GUARDS
@@ -189,18 +180,6 @@ export function isHandoffPatch(patch: ChatPatch): patch is HandoffPatch {
 }
 
 /**
- * Check if a patch is an execution trail patch.
- */
-export function isExecutionTrailPatch(patch: ChatPatch): patch is ExecutionTrailPatch {
-  return [
-    'execution_trail_start',
-    'execution_trail_step',
-    'execution_trail_complete',
-    'execution_trail_step_response',
-  ].includes(patch.type)
-}
-
-/**
  * Check if a patch is an emission patch.
  */
 export function isEmissionPatch(patch: ChatPatch): patch is EmissionPatch {
@@ -213,13 +192,13 @@ export function isEmissionPatch(patch: ChatPatch): patch is EmissionPatch {
 }
 
 /**
- * Check if a patch is a plugin elicit patch.
+ * Check if a patch is an elicit patch.
  */
-export function isPluginElicitPatch(patch: ChatPatch): patch is PluginElicitPatchUnion {
+export function isElicitPatch(patch: ChatPatch): patch is ElicitPatchUnion {
   return [
-    'plugin_elicit_start',
-    'plugin_elicit',
-    'plugin_elicit_response',
-    'plugin_elicit_complete',
+    'elicit_start',
+    'elicit',
+    'elicit_response',
+    'elicit_complete',
   ].includes(patch.type)
 }

@@ -51,7 +51,7 @@ export type {
   PluginClientContext,
   ElicitHandler,
   ElicitHandlers,
-  InferPluginElicits,
+  InferElicits,
   InferPluginTool,
   AnyMcpPlugin,
   RenderableProps,
