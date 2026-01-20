@@ -97,7 +97,7 @@ export interface McpToolRegistry {
 }
 
 /**
- * Elicitation request event data.
+ * Elicitation request from server to client.
  */
 export interface ElicitRequestData {
   sessionId: string
@@ -109,8 +109,20 @@ export interface ElicitRequestData {
   schema: Record<string, unknown>
 }
 
-/** @deprecated Use ElicitRequestData instead */
-export type PluginElicitRequestData = ElicitRequestData
+/**
+ * Result of tool execution.
+ */
+export interface ElicitRequestData {
+  sessionId: string
+  callId: string
+  toolName: string
+  elicitId: string
+  key: string
+  message: string
+  schema: Record<string, unknown>
+}
+
+
 
 /**
  * Result of tool execution.
@@ -240,9 +252,6 @@ export interface ChatEngineParams {
    * When resuming a session, these are processed first.
    */
   elicitResponses?: ElicitResponse[]
-  
-  /** @deprecated Use elicitResponses instead */
-  pluginElicitResponses?: ElicitResponse[]
 
   /**
    * Request to abort a specific plugin session.
@@ -303,8 +312,7 @@ export interface ElicitResponse {
   }
 }
 
-/** @deprecated Use ElicitResponse instead */
-export type PluginElicitResponse = ElicitResponse
+
 
 /**
  * Request to abort a plugin session.
@@ -346,9 +354,6 @@ export interface ChatRequestBody {
    * collects the user's response, and sends it back here.
    */
   elicitResponses?: ElicitResponse[]
-  
-  /** @deprecated Use elicitResponses instead */
-  pluginElicitResponses?: ElicitResponse[]
 
   /**
    * Request to abort a tool session.

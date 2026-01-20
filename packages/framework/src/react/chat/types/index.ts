@@ -104,14 +104,14 @@ export type {
   ToolEmissionResponsePatch,
   ToolEmissionCompletePatch,
   EmissionPatch,
-  // Plugin elicitation patches (MCP plugin tools)
-  PluginElicitState,
-  PluginElicitTrackingState,
-  PluginElicitStartPatch,
-  PluginElicitPatch,
-  PluginElicitResponsePatch,
-  PluginElicitCompletePatch,
-  PluginElicitPatchUnion,
+  // Elicitation patches (MCP plugin tools)
+  ElicitState,
+  ElicitTrackingState,
+  ElicitStartPatch,
+  ElicitPatch,
+  ElicitResponsePatch,
+  ElicitCompletePatch,
+  ElicitPatchUnion,
   // Union
   ChatPatch,
 } from '../../../lib/chat/patches/index.ts'
@@ -123,7 +123,7 @@ export {
   isIsomorphicToolPatch,
   isHandoffPatch,
   isEmissionPatch,
-  isPluginElicitPatch,
+  isElicitPatch,
 } from '../../../lib/chat/patches/index.ts'
 
 // State types
@@ -139,11 +139,6 @@ export type {
   StreamingPartsState,
   PendingClientToolState,
   ChatState,
-  // Legacy (deprecated)
-  ResponseStep,
-  ActiveStep,
-  RenderedContent,
-  // Note: ToolEmissionState and ToolEmissionTrackingState are exported from patches
 } from '../../../lib/chat/state/index.ts'
 
 export { groupTimelineByToolCall, initialChatState } from '../../../lib/chat/state/index.ts'

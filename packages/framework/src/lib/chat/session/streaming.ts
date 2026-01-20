@@ -93,9 +93,6 @@ export interface StreamElicitResult {
   conversationState: ConversationState
 }
 
-/** @deprecated Use StreamElicitResult instead */
-export type StreamPluginElicitResult = StreamElicitResult
-
 // =============================================================================
 // STREAM EVENTS
 // =============================================================================
@@ -148,9 +145,6 @@ export interface ElicitRequestStreamEvent {
   schema: Record<string, unknown>
 }
 
-/** @deprecated Use ElicitRequestStreamEvent instead */
-export type PluginElicitRequestStreamEvent = ElicitRequestStreamEvent
-
 /**
  * Event emitted when a tool session status changes.
  */
@@ -162,9 +156,6 @@ export interface ToolSessionStatusStreamEvent {
   status: 'running' | 'awaiting_elicit' | 'completed' | 'failed' | 'aborted'
 }
 
-/** @deprecated Use ToolSessionStatusStreamEvent instead */
-export type PluginSessionStatusStreamEvent = ToolSessionStatusStreamEvent
-
 /**
  * Event emitted when a tool session has an error.
  */
@@ -175,9 +166,6 @@ export interface ToolSessionErrorStreamEvent {
   error: 'SESSION_NOT_FOUND' | 'SESSION_ABORTED' | 'INTERNAL_ERROR'
   message: string
 }
-
-/** @deprecated Use ToolSessionErrorStreamEvent instead */
-export type PluginSessionErrorStreamEvent = ToolSessionErrorStreamEvent
 
 /**
  * All stream event types.

@@ -219,6 +219,10 @@ export function* runChatSession(
   
   // Track pending plugin elicit responses (sent with next message)
   const pendingElicitResponses: ElicitResponseData[] = []
+  
+  // Track pending tool_calls that are awaiting elicitation (need tool result messages if cancelled)
+  // These are tool_calls from assistant messages that haven't received their tool result yet
+  let pendingToolCalls: Array<{ id: string; name: string }> = []
 
   // Create approval signal if not provided (for client tools)
   const approvalSignal = options.approvalSignal ?? createSignal<ApprovalSignalValue, void>()
@@ -232,6 +236,22 @@ export function* runChatSession(
         if (currentRequestTask) {
           yield* currentRequestTask.halt()
           currentRequestTask = null
+        }
+
+        // CRITICAL: If we had pending tool_calls from an elicit state, we need to add
+        // "cancelled" tool result messages so OpenAI doesn't complain about missing tool outputs.
+        // This happens when the user sends a new message while a tool was waiting for elicitation.
+        if (pendingToolCalls.length > 0) {
+          for (const tc of pendingToolCalls) {
+            const cancelledToolMsg: Message = {
+              id: crypto.randomUUID(),
+              role: 'tool',
+              content: 'Tool execution was cancelled by user sending a new message.',
+              tool_call_id: tc.id,
+            }
+            history.push(cancelledToolMsg)
+          }
+          pendingToolCalls = []
         }
 
         // Create user message
@@ -422,6 +442,12 @@ export function* runChatSession(
                   history.push(assistantMsg)
                 }
                 
+                // Track pending tool_calls so we can add cancelled results if user sends new message
+                pendingToolCalls = result.conversationState.toolCalls.map(tc => ({
+                  id: tc.id,
+                  name: tc.name,
+                }))
+                
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
                 // The UI will render based on this state and collect user responses.
@@ -585,6 +611,9 @@ export function* runChatSession(
               break
             }
 
+            // Tool calls completed - clear pending tracking
+            pendingToolCalls = []
+            
             // Get tool results from the complete result (these have the actual content
             // from phase 2 processing that the server did)
             const completeResult = result as { 
@@ -897,6 +926,12 @@ export function* runChatSession(
                   history.push(assistantMsg)
                 }
                 
+                // Track pending tool_calls so we can add cancelled results if user sends new message
+                pendingToolCalls = result.conversationState.toolCalls.map(tc => ({
+                  id: tc.id,
+                  name: tc.name,
+                }))
+                
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
                 // The UI will render based on this state and collect user responses.
@@ -910,6 +945,9 @@ export function* runChatSession(
             
             // Handle final result
             if (result.type === 'complete') {
+              // Tool calls completed - clear pending tracking
+              pendingToolCalls = []
+              
               const completeResult = result as { 
                 type: 'complete'
                 text: string
