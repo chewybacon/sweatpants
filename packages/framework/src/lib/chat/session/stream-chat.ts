@@ -23,14 +23,14 @@ import type {
   ApiMessage,
   StreamResult,
   IsomorphicHandoffStreamEvent,
-  PluginElicitRequestStreamEvent,
+  ElicitRequestStreamEvent,
 } from './streaming.ts'
 import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
 
 /**
- * Plugin elicit response from the client.
+ * Elicit response from the client.
  */
-export interface PluginElicitResponseData {
+export interface ElicitResponseData {
   /** Session ID (same as callId from the original tool call) */
   sessionId: string
   /** Original tool call ID for conversation correlation */
@@ -43,6 +43,9 @@ export interface PluginElicitResponseData {
     content?: unknown
   }
 }
+
+/** @deprecated Use ElicitResponseData instead */
+export type PluginElicitResponseData = ElicitResponseData
 
 /**
  * Options for streamChatOnce, extending SessionOptions with isomorphic tool schemas.
@@ -68,10 +71,13 @@ export interface StreamChatOptions extends SessionOptions {
   }>
 
   /**
-   * Responses to pending plugin elicitation requests.
-   * Sent when resuming a conversation with plugin tool elicitations.
+   * Responses to pending elicitation requests.
+   * Sent when resuming a conversation with tool elicitations.
    */
-  pluginElicitResponses?: PluginElicitResponseData[]
+  elicitResponses?: ElicitResponseData[]
+
+  /** @deprecated Use elicitResponses instead */
+  pluginElicitResponses?: ElicitResponseData[]
 }
 
 /**
@@ -114,8 +120,8 @@ export function* streamChatOnce(
         isomorphicTools: options.isomorphicToolSchemas,
         // Include client outputs from isomorphic tools that need server validation
         isomorphicClientOutputs: options.isomorphicClientOutputs,
-        // Include plugin elicit responses for resuming plugin sessions
-        pluginElicitResponses: options.pluginElicitResponses,
+        // Include elicit responses for resuming tool sessions (support both old and new field names)
+        elicitResponses: options.elicitResponses || options.pluginElicitResponses,
       }),
       signal,
     })
@@ -147,8 +153,8 @@ export function* streamChatOnce(
   
   // Collect isomorphic handoff events (multiple can arrive before stream ends)
   const isomorphicHandoffs: IsomorphicHandoffStreamEvent[] = []
-  // Collect plugin elicit requests (for plugin tool elicitation)
-  const pluginElicitRequests: PluginElicitRequestStreamEvent[] = []
+  // Collect elicit requests (for tool elicitation)
+  const elicitRequests: ElicitRequestStreamEvent[] = []
   // Track which tool calls have started emission tracking (to emit tool_emission_start once)
   const emissionStartedForCall = new Set<string>()
   // Collect conversation state (sent when isomorphic tools are involved)
@@ -256,24 +262,24 @@ export function* streamChatOnce(
         }
         break
 
-      case 'plugin_elicit_request':
-        // Collect plugin elicit requests - we'll return them all at the end
-        pluginElicitRequests.push(event)
+      case 'elicit_request':
+        // Collect elicit requests - we'll return them all at the end
+        elicitRequests.push(event)
         
-        // Emit plugin_elicit_start if we haven't for this call yet
+        // Emit elicit_start if we haven't for this call yet
         if (!emissionStartedForCall.has(event.callId)) {
           emissionStartedForCall.add(event.callId)
           yield* patches.send({
-            type: 'plugin_elicit_start',
+            type: 'elicit_start',
             callId: event.callId,
             toolName: event.toolName,
           })
         }
         
-        // Emit the elicitation as a plugin_elicit patch
+        // Emit the elicitation as an elicit patch
         // The x-model-context in the schema contains the context data (e.g., flights array)
         yield* patches.send({
-          type: 'plugin_elicit',
+          type: 'elicit',
           callId: event.callId,
           elicit: {
             elicitId: event.elicitId,
@@ -289,12 +295,12 @@ export function* streamChatOnce(
         })
         break
 
-      case 'plugin_session_status':
+      case 'tool_session_status':
         // Status updates - could be used for UI feedback
         // For now, just log in development
         break
 
-      case 'plugin_session_error':
+      case 'tool_session_error':
         yield* patches.send({ type: 'error', message: event.message })
         break
     }
@@ -302,9 +308,9 @@ export function* streamChatOnce(
     yield* each.next()
   }
 
-  // After stream ends, check if we have plugin elicit requests
+  // After stream ends, check if we have elicit requests
   // These take priority as they need immediate user interaction
-  if (pluginElicitRequests.length > 0) {
+  if (elicitRequests.length > 0) {
     // Build conversation state - CRITICAL: must include the assistant message with tool_calls
     // so the next request can resume the tool call properly
     const state = conversationState ?? {
@@ -319,8 +325,8 @@ export function* streamChatOnce(
     }
     
     return {
-      type: 'plugin_elicit',
-      pendingElicitations: pluginElicitRequests,
+      type: 'elicit',
+      pendingElicitations: elicitRequests,
       conversationState: state,
     }
   }

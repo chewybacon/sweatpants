@@ -32,7 +32,7 @@ export type EnginePhase =
   | 'provider_complete'
   | 'executing_tools'
   | 'tools_complete'
-  | 'plugin_awaiting_elicit'    // Plugin tool waiting for elicitation
+  | 'awaiting_elicit'           // Tool waiting for elicitation
   | 'complete'
   | 'error'
   | 'handoff_pending'
@@ -97,9 +97,9 @@ export interface McpToolRegistry {
 }
 
 /**
- * Plugin elicitation request event data.
+ * Elicitation request event data.
  */
-export interface PluginElicitRequestData {
+export interface ElicitRequestData {
   sessionId: string
   callId: string
   toolName: string
@@ -108,6 +108,9 @@ export interface PluginElicitRequestData {
   message: string
   schema: Record<string, unknown>
 }
+
+/** @deprecated Use ElicitRequestData instead */
+export type PluginElicitRequestData = ElicitRequestData
 
 /**
  * Result of tool execution.
@@ -134,7 +137,7 @@ export type ToolExecutionResult =
       callId: string
       toolName: string
       sessionId: string
-      elicitRequest: PluginElicitRequestData
+      elicitRequest: ElicitRequestData
     }
   | {
       ok: false
@@ -233,10 +236,13 @@ export interface ChatEngineParams {
   pluginSessionManager?: PluginSessionManager
 
   /**
-   * Responses to pending plugin elicitation requests.
+   * Responses to pending elicitation requests.
    * When resuming a session, these are processed first.
    */
-  pluginElicitResponses?: PluginElicitResponse[]
+  elicitResponses?: ElicitResponse[]
+  
+  /** @deprecated Use elicitResponses instead */
+  pluginElicitResponses?: ElicitResponse[]
 
   /**
    * Request to abort a specific plugin session.
@@ -277,10 +283,10 @@ export interface InitializerContext {
 export type InitializerHook = (ctx: InitializerContext) => Operation<void>
 
 /**
- * Response to a plugin elicitation request.
+ * Response to an elicitation request.
  * Sent by the client when user completes an elicitation UI.
  */
-export interface PluginElicitResponse {
+export interface ElicitResponse {
   /** Session ID (same as callId from the original tool call) */
   sessionId: string
 
@@ -296,6 +302,9 @@ export interface PluginElicitResponse {
     content?: unknown
   }
 }
+
+/** @deprecated Use ElicitResponse instead */
+export type PluginElicitResponse = ElicitResponse
 
 /**
  * Request to abort a plugin session.
@@ -332,15 +341,18 @@ export interface ChatRequestBody {
   provider?: 'ollama' | 'openai'
 
   /**
-   * Responses to pending plugin elicitation requests.
-   * When a plugin tool emits plugin_elicit_request, the client renders UI,
+   * Responses to pending elicitation requests.
+   * When a tool emits elicit_request, the client renders UI,
    * collects the user's response, and sends it back here.
    */
-  pluginElicitResponses?: PluginElicitResponse[]
+  elicitResponses?: ElicitResponse[]
+  
+  /** @deprecated Use elicitResponses instead */
+  pluginElicitResponses?: ElicitResponse[]
 
   /**
-   * Request to abort a specific plugin session.
-   * Used when the user cancels an in-progress plugin tool.
+   * Request to abort a tool session.
+   * Used when the user cancels an in-progress tool.
    */
   pluginAbort?: PluginAbortRequest
 }

@@ -24,7 +24,7 @@ import {
 } from '../../lib/chat/mcp-tools/bridge-runtime.ts'
 import {
   createPluginClientContext,
-  executePluginElicitHandlerFromRequest,
+  executeElicitHandlerFromRequest,
 } from '../../lib/chat/mcp-tools/plugin-executor.ts'
 import type {
   ComponentEmissionPayload,
@@ -216,7 +216,7 @@ function* handleBridgeEvent(
 
       try {
         // Execute the plugin's handler for this elicitation key
-        const result = yield* executePluginElicitHandlerFromRequest(plugin, event.request, ctx)
+        const result = yield* executeElicitHandlerFromRequest(plugin, event.request, ctx)
 
         // Send the response back to the tool
         event.responseSignal.send({

@@ -384,9 +384,12 @@ export function makePlugin<
 /**
  * Extract the elicits map from a plugin.
  */
-export type InferPluginElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E>
+export type InferElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E>
   ? E
   : never
+
+/** @deprecated Use InferElicits instead */
+export type InferPluginElicits<T> = InferElicits<T>
 
 /**
  * Extract the tool type from a plugin.

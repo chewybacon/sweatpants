@@ -54,7 +54,7 @@ export interface ConversationState {
 /**
  * Result of a streaming chat request.
  */
-export type StreamResult = StreamCompleteResult | StreamIsomorphicHandoffResult | StreamPluginElicitResult
+export type StreamResult = StreamCompleteResult | StreamIsomorphicHandoffResult | StreamElicitResult
 
 /**
  * Normal completion - assistant finished responding.
@@ -82,16 +82,19 @@ export interface StreamIsomorphicHandoffResult {
 }
 
 /**
- * Server has a plugin tool awaiting elicitation from the client.
- * The stream is paused, waiting for client to send `pluginElicitResponses`.
+ * Server has a tool awaiting elicitation from the client.
+ * The stream is paused, waiting for client to send `elicitResponses`.
  */
-export interface StreamPluginElicitResult {
-  type: 'plugin_elicit'
-  /** Pending elicitation requests from plugin tools */
-  pendingElicitations: PluginElicitRequestStreamEvent[]
+export interface StreamElicitResult {
+  type: 'elicit'
+  /** Pending elicitation requests from tools */
+  pendingElicitations: ElicitRequestStreamEvent[]
   /** Conversation state for re-initiation (includes assistant message with tool_calls) */
   conversationState: ConversationState
 }
+
+/** @deprecated Use StreamElicitResult instead */
+export type StreamPluginElicitResult = StreamElicitResult
 
 // =============================================================================
 // STREAM EVENTS
@@ -125,15 +128,15 @@ export interface IsomorphicHandoffStreamEvent {
 }
 
 /**
- * Event emitted when a plugin tool needs elicitation from the client.
+ * Event emitted when a tool needs elicitation from the client.
  */
-export interface PluginElicitRequestStreamEvent {
-  type: 'plugin_elicit_request'
-  /** Session ID for the plugin session */
+export interface ElicitRequestStreamEvent {
+  type: 'elicit_request'
+  /** Session ID for the tool session */
   sessionId: string
   /** Tool call ID from the LLM */
   callId: string
-  /** Name of the plugin tool */
+  /** Name of the tool */
   toolName: string
   /** Unique ID for this elicitation request */
   elicitId: string
@@ -145,27 +148,36 @@ export interface PluginElicitRequestStreamEvent {
   schema: Record<string, unknown>
 }
 
+/** @deprecated Use ElicitRequestStreamEvent instead */
+export type PluginElicitRequestStreamEvent = ElicitRequestStreamEvent
+
 /**
- * Event emitted when a plugin session status changes.
+ * Event emitted when a tool session status changes.
  */
-export interface PluginSessionStatusStreamEvent {
-  type: 'plugin_session_status'
+export interface ToolSessionStatusStreamEvent {
+  type: 'tool_session_status'
   sessionId: string
   callId: string
   toolName: string
   status: 'running' | 'awaiting_elicit' | 'completed' | 'failed' | 'aborted'
 }
 
+/** @deprecated Use ToolSessionStatusStreamEvent instead */
+export type PluginSessionStatusStreamEvent = ToolSessionStatusStreamEvent
+
 /**
- * Event emitted when a plugin session has an error.
+ * Event emitted when a tool session has an error.
  */
-export interface PluginSessionErrorStreamEvent {
-  type: 'plugin_session_error'
+export interface ToolSessionErrorStreamEvent {
+  type: 'tool_session_error'
   sessionId: string
   callId: string
   error: 'SESSION_NOT_FOUND' | 'SESSION_ABORTED' | 'INTERNAL_ERROR'
   message: string
 }
+
+/** @deprecated Use ToolSessionErrorStreamEvent instead */
+export type PluginSessionErrorStreamEvent = ToolSessionErrorStreamEvent
 
 /**
  * All stream event types.
@@ -188,6 +200,6 @@ export type StreamEvent =
   | { type: 'error'; message: string; recoverable: boolean }
   | IsomorphicHandoffStreamEvent
   | ConversationStateStreamEvent
-  | PluginElicitRequestStreamEvent
-  | PluginSessionStatusStreamEvent
-  | PluginSessionErrorStreamEvent
+  | ElicitRequestStreamEvent
+  | ToolSessionStatusStreamEvent
+  | ToolSessionErrorStreamEvent
