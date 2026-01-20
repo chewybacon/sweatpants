@@ -124,52 +124,7 @@ export {
 } from './mcp-tool-types.ts'
 
 // =============================================================================
-// LEGACY ALIASES (for backward compatibility during migration)
-// Branch* -> McpTool* mapping
-// =============================================================================
-
-// Re-export createMcpTool as createBranchTool for backward compatibility
-export { createMcpTool as createBranchTool } from './mcp-tool-builder.ts'
-
-// Re-export builder types with legacy names
-export type {
-  McpToolBuilderBase as BranchToolBuilderBase,
-  McpToolBuilderWithDescription as BranchToolBuilderWithDescription,
-  McpToolBuilderWithParams as BranchToolBuilderWithParams,
-  McpToolBuilderWithElicits as BranchToolBuilderWithElicits,
-  FinalizedMcpTool as FinalizedBranchTool,
-  FinalizedMcpToolWithElicits as FinalizedBranchToolWithElicits,
-  McpToolTypes as BranchToolTypes,
-  InferMcpToolResult as InferBranchResult,
-  InferMcpToolParams as InferBranchParams,
-  InferMcpToolHandoff as InferBranchHandoff,
-  InferMcpToolClient as InferBranchClient,
-  InferMcpToolElicits as InferBranchElicits,
-  AnyMcpTool as AnyBranchTool,
-  AnyBridgeableMcpTool as AnyBridgeableBranchTool,
-} from './mcp-tool-builder.ts'
-
-// Re-export context/config types with legacy names
-export type {
-  McpToolContext as BranchContext,
-  McpToolContextWithElicits as BranchContextWithElicits,
-  McpToolServerContext as BranchServerContext,
-  McpToolHandoffConfig as BranchHandoffConfig,
-  McpToolHandoffConfigWithElicits as BranchHandoffConfigWithElicits,
-  McpToolBranchOptions as BranchOptions,
-  McpToolLimits as BranchLimits,
-  McpToolSampleConfig as BranchSampleConfig,
-} from './mcp-tool-types.ts'
-
-// Re-export errors with legacy names
-export {
-  McpToolDepthError as BranchDepthError,
-  McpToolTokenError as BranchTokenError,
-  McpToolTimeoutError as BranchTimeoutError,
-} from './mcp-tool-types.ts'
-
-// =============================================================================
-// ORIGINAL MCP BUILDER (simpler, no sub-branching) - DEPRECATED
+// ORIGINAL MCP BUILDER (simpler, no sub-branching)
 // =============================================================================
 
 export { createMCPTool } from './builder.ts'
@@ -192,13 +147,7 @@ export type {
   MCPHandoffConfig,
   MCPToolDef,
   AnyMCPTool,
-  // Note: ElicitResult and ElicitConfig are already exported from mcp-tool-types
-  // These are aliases for backward compat
-  // ElicitResult,
-  // ElicitConfig,
   SampleConfig,
-  // ModelPreferences already exported above
-  // LogLevel already exported above
   InferMCPToolParams,
   InferMCPToolResult,
   InferMCPToolHandoff,
@@ -208,8 +157,6 @@ export type {
 // Legacy errors (shared) - keep for compatibility
 export {
   MCPCapabilityError,
-  // ElicitationDeclinedError already exported above
-  // ElicitationCancelledError already exported above
   MCPTimeoutError,
   MCPDisconnectError,
 } from './types.ts'
@@ -261,7 +208,6 @@ export type {
   ElicitHandler,
   ElicitHandlers,
   InferElicits,
-  InferPluginElicits, // deprecated
   InferPluginTool,
   AnyMcpPlugin,
   // Re-export renderable types for plugin authors
@@ -275,9 +221,6 @@ export {
   createPluginClientContext,
   executeElicitHandler,
   executeElicitHandlerFromRequest,
-  // Deprecated aliases
-  executePluginElicitHandler,
-  executePluginElicitHandlerFromRequest,
 } from './plugin-executor.ts'
 export type {
   CreatePluginClientContextOptions,

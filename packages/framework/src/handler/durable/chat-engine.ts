@@ -442,11 +442,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     pluginEmissionChannel,
     mcpToolRegistry,
     pluginSessionManager,
+    elicitResponses,
     pluginAbort,
   } = params
-
-  // Support both new and deprecated field names
-  const elicitResponses = params.elicitResponses || params.pluginElicitResponses
 
   // Build schema lookup map
   const schemaByName = new Map<string, ToolSchema>()
@@ -1171,9 +1169,31 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           case 'awaiting_elicit': {
             // A tool is awaiting elicitation
             // Emit conversation state for client to render UI and send response
-            const toolCalls = state.toolCalls || []
+            let toolCalls = state.toolCalls || []
             const results = state.toolResults || []
             const providerResult = state.providerResult
+            
+            // CRITICAL FIX: If toolCalls is empty but we have an awaiting elicit result,
+            // extract the tool call info from conversationMessages. This happens when
+            // resuming from elicitation - the original state.toolCalls was set during
+            // the first request's provider_streaming phase, but on subsequent requests
+            // (elicit responses), we create a new engine with fresh state.
+            if (toolCalls.length === 0 && state.awaitingElicitResult) {
+              // Find assistant message with tool_calls in conversationMessages
+              const assistantWithToolCalls = state.conversationMessages.find(
+                msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
+              )
+              if (assistantWithToolCalls && assistantWithToolCalls.tool_calls) {
+                toolCalls = assistantWithToolCalls.tool_calls.map(tc => ({
+                  id: tc.id,
+                  type: 'function' as const,
+                  function: {
+                    name: tc.function.name,
+                    arguments: tc.function.arguments,
+                  },
+                }))
+              }
+            }
             
             const conversationState: StreamEvent = {
               type: 'conversation_state',

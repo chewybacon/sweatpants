@@ -44,7 +44,6 @@ export type {
   IsomorphicTool,
   ToolExecutionResult,
   ElicitRequestData,
-  PluginElicitRequestData, // deprecated alias
 
   // Client output types
   IsomorphicClientOutput,
@@ -57,7 +56,6 @@ export type {
 
   // Elicit types
   ElicitResponse,
-  PluginElicitResponse, // deprecated alias
   PluginAbortRequest,
 
   // Protocol types

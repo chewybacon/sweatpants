@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest'
 import { run, spawn, each, sleep } from 'effection'
 import { z } from 'zod'
 import {
-  createBranchTool,
+  createMcpTool,
   createBridgeHost,
 } from '../index'
 import type {
@@ -80,7 +80,7 @@ describe('ctx.sample() with schema', () => {
   it('should pass schema to sampling provider options', async () => {
     const MoveSchema = z.object({ cell: z.number().min(0).max(8) })
 
-    const tool = createBranchTool('schema_test')
+    const tool = createMcpTool('schema_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -123,7 +123,7 @@ describe('ctx.sample() with schema', () => {
   it('should return parsed object for valid JSON response', async () => {
     const MoveSchema = z.object({ cell: z.number() })
 
-    const tool = createBranchTool('parse_test')
+    const tool = createMcpTool('parse_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -167,7 +167,7 @@ describe('ctx.sample() with schema', () => {
   it('should return parseError for invalid JSON response', async () => {
     const MoveSchema = z.object({ cell: z.number() })
 
-    const tool = createBranchTool('invalid_json_test')
+    const tool = createMcpTool('invalid_json_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -211,7 +211,7 @@ describe('ctx.sample() with schema', () => {
   it('should return parseError for schema validation failure', async () => {
     const MoveSchema = z.object({ cell: z.number().min(0).max(8) })
 
-    const tool = createBranchTool('schema_mismatch_test')
+    const tool = createMcpTool('schema_mismatch_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -257,7 +257,7 @@ describe('ctx.sample() with schema', () => {
     const MoveSchema = z.object({ cell: z.number() })
     let attempts = 0
 
-    const tool = createBranchTool('retry_test')
+    const tool = createMcpTool('retry_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -315,7 +315,7 @@ describe('ctx.sample() with schema', () => {
 
 describe('ctx.sample() with tools', () => {
   it('should pass tools and toolChoice to provider', async () => {
-    const tool = createBranchTool('tools_test')
+    const tool = createMcpTool('tools_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -376,7 +376,7 @@ describe('ctx.sample() with tools', () => {
   })
 
   it('should return toolCalls when stopReason is toolUse', async () => {
-    const tool = createBranchTool('tool_calls_test')
+    const tool = createMcpTool('tool_calls_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -435,7 +435,7 @@ describe('ctx.sample() with tools', () => {
   })
 
   it('should support multi-turn with tool results', async () => {
-    const tool = createBranchTool('multi_turn_test')
+    const tool = createMcpTool('multi_turn_test')
       .description('Test tool')
       .parameters(z.object({}))
       .elicits({})
@@ -533,7 +533,7 @@ describe('ctx.sample() with tools', () => {
 describe('Decision tree pattern (L1 tools -> L2 schema)', () => {
   it('should implement 2-level decision tree for game AI', async () => {
     // This test validates the full pattern used in play_ttt
-    const tool = createBranchTool('decision_tree')
+    const tool = createMcpTool('decision_tree')
       .description('Decision tree test')
       .parameters(z.object({ board: z.string() }))
       .elicits({})

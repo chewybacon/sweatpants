@@ -44,9 +44,6 @@ export interface ElicitResponseData {
   }
 }
 
-/** @deprecated Use ElicitResponseData instead */
-export type PluginElicitResponseData = ElicitResponseData
-
 /**
  * Options for streamChatOnce, extending SessionOptions with isomorphic tool schemas.
  */
@@ -75,9 +72,6 @@ export interface StreamChatOptions extends SessionOptions {
    * Sent when resuming a conversation with tool elicitations.
    */
   elicitResponses?: ElicitResponseData[]
-
-  /** @deprecated Use elicitResponses instead */
-  pluginElicitResponses?: ElicitResponseData[]
 }
 
 /**
@@ -120,8 +114,8 @@ export function* streamChatOnce(
         isomorphicTools: options.isomorphicToolSchemas,
         // Include client outputs from isomorphic tools that need server validation
         isomorphicClientOutputs: options.isomorphicClientOutputs,
-        // Include elicit responses for resuming tool sessions (support both old and new field names)
-        elicitResponses: options.elicitResponses || options.pluginElicitResponses,
+        // Include elicit responses for resuming tool sessions
+        elicitResponses: options.elicitResponses,
       }),
       signal,
     })

@@ -25,12 +25,6 @@ import type { Message } from '../types.ts'
 export type { ChatState, ToolEmissionState, ToolEmissionTrackingState, ElicitState, ElicitTrackingState }
 export { initialChatState }
 
-// Legacy aliases
-/** @deprecated Use ElicitState instead */
-export type PluginElicitState = ElicitState
-/** @deprecated Use ElicitTrackingState instead */
-export type PluginElicitTrackingState = ElicitTrackingState
-
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
@@ -425,15 +419,6 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
 
     case 'reset':
       return initialChatState
-
-    // --- Buffer patches (legacy - may be removed) ---
-    case 'buffer_settled':
-    case 'buffer_pending':
-    case 'buffer_raw':
-    case 'buffer_renderable':
-      // These are handled by the parts/frames now
-      // Just pass through for backwards compatibility
-      return state
 
     // --- Client Tool Patches ---
 

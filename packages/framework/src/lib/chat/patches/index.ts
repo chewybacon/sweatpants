@@ -80,14 +80,6 @@ export type {
   ElicitResponsePatch,
   ElicitCompletePatch,
   ElicitPatchUnion,
-  // Legacy aliases
-  PluginElicitState,
-  PluginElicitTrackingState,
-  PluginElicitStartPatch,
-  PluginElicitPatch,
-  PluginElicitResponsePatch,
-  PluginElicitCompletePatch,
-  PluginElicitPatchUnion,
 } from './elicit.ts'
 
 // Import for union type construction
@@ -209,12 +201,4 @@ export function isElicitPatch(patch: ChatPatch): patch is ElicitPatchUnion {
     'elicit_response',
     'elicit_complete',
   ].includes(patch.type)
-}
-
-/**
- * Check if a patch is a plugin elicit patch.
- * @deprecated Use isElicitPatch instead
- */
-export function isPluginElicitPatch(patch: ChatPatch): patch is ElicitPatchUnion {
-  return isElicitPatch(patch)
 }
