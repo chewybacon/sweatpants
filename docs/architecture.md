@@ -233,12 +233,11 @@ const LocationProtocol = createProtocol({
 
 ```ts
 import { createImplementation, call } from "@sweatpants/core";
-import { send } from "@sweatpants/agent";
 
 const browserLocation = createImplementation(LocationProtocol, function* () {
   return {
-    *getLocation({ accuracy }) {
-      // send is a free function that uses context to stream progress back
+    // send is passed as second argument, typed to the protocol's progress schema
+    *getLocation({ accuracy }, send) {
       yield* send({ status: "requesting-permission" });
 
       const position = yield* call(() =>
