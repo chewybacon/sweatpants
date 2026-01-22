@@ -572,13 +572,248 @@ yield* FlightContext.set(mockFlightAgent, function* () {
 yield* ElicitProtocol.implement(testElicitMock);
 ```
 
+## Layered Architecture
+
+The system is organized into three layers, each with distinct responsibilities:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     STATE MANAGEMENT                            │
+│                                                                 │
+│  - Conversation history (event sourcing)                        │
+│  - Coroutine tree (parent/child messages)                       │
+│  - Rewind = return to higher node in tree                       │
+│  - Cancel = halt current subtree                                │
+│  - Context = history up to current node                         │
+│  - Compaction via middleware (summarization)                    │
+│  - Reflog for recovery of discarded branches                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        PROTOCOL                                 │
+│                                                                 │
+│  - Invoke method in another environment                         │
+│  - Declaration (schema) / Implementation separation             │
+│  - Progress streaming (send)                                    │
+│  - Middleware: retry, validation, PII filtering                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       TRANSPORT                                 │
+│                                                                 │
+│  - Move bytes between environments                              │
+│  - Backend-driven request/response                              │
+│  - SSE+POST, WebSocket, etc.                                    │
+│  - No semantic understanding                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Backend-Driven Communication
+
+Communication between backend and frontend is **backend-driven**. The backend always initiates, the frontend always responds. There is no frontend-initiated communication.
+
+**The loop:**
+
+```
+Backend (driver)                    Frontend (reactor)
+──────────────────                  ──────────────────
+
+loop {
+  decide next action
+       │
+       ▼
+  send message ──────────────────►  receive message
+                                    render/execute
+                                    wait for user
+                                    send response
+  receive response  ◄──────────────   
+       │
+       ▼
+  process response
+  continue loop
+}
+```
+
+**Key properties:**
+
+- Backend controls the flow
+- Frontend is reactive (receives instructions, sends back results)
+- Backend controls asynchrony — when new input arrives while processing, backend decides what to do (queue, interrupt, merge)
+
+**Response interpretation:**
+
+- **Structured response** (user clicked specific UI element) → Backend processes directly
+- **Unstructured/text response** (user typed something) → Backend sends to LLM to interpret
+
+The backend doesn't know the nature of user's response until it sends the response to the LLM for interpretation.
+
+## Transport Layer
+
+Transport moves bytes between environments. It has no semantic understanding.
+
+**Interface:**
+
+```ts
+// Backend side
+interface BackendTransport {
+  send<TRequest, TResponse>(message: TRequest): Stream<never, TResponse>;
+}
+
+// Frontend side
+interface FrontendTransport {
+  messages: Stream<BackendMessage, void>;
+  respond(message: FrontendMessage): Operation<void>;
+}
+
+// Message types
+type BackendMessage = {
+  elicitId: string;
+  type: string;  // elicit type (e.g., 'location', 'flight-selection')
+  payload: unknown;
+};
+
+type FrontendMessage = 
+  | { type: 'response'; elicitId: string; payload: unknown }
+  | { type: 'cancel' }
+  | { type: 'rewind'; toElicitId: string };
+```
+
+**Transport implementations:**
+
+| Transport | Backend → Frontend | Frontend → Backend |
+|-----------|-------------------|-------------------|
+| SSE + POST | Server-Sent Events | HTTP POST |
+| WebSocket | WebSocket message | WebSocket message |
+
+Transport is swappable — agent code doesn't change when switching from SSE to WebSocket.
+
+## Coroutine Tree Model
+
+Every message in a chat is a coroutine, child of the parent message. The conversation forms a tree, not a linear sequence.
+
+```
+[greeting]
+    │
+    └── [user message 1]
+            │
+            ├── [elicit: pick flight]
+            │       │
+            │       └── [response: FL001]
+            │               │
+            │               └── [elicit: pick seat]
+            │                       │
+            │                       └── [response: 3A]
+            │
+            └── [notify: "Booking complete!"]
+```
+
+**Operations on the tree:**
+
+| Operation | Meaning |
+|-----------|---------|
+| **Rewind** | Return to a higher node, continue from there with new input |
+| **Cancel** | Halt current node and its children |
+| **Fork** | Create a branch (side quest) |
+
+**Context** at any point = path from root to current node.
+
+## State Management: Event Sourcing + Reflog
+
+### Event Sourcing
+
+The conversation history is an append-only log of events. The current state is derived by replaying events from root to current node.
+
+### Compaction via Middleware
+
+Long conversation branches can be compacted (summarized) without destroying history:
+
+```
+Before compaction:
+
+[greeting]
+    └── [user msg 1]
+            └── [elicit: pick flight]
+                    └── [response: FL001]
+                            └── [elicit: pick seat]
+                                    └── [response: 3A]
+                                            └── [notify: booked!]
+                                                    └── [user msg 2: "weather?"]
+                                                            └── (current)
+
+After compaction:
+
+[greeting]
+    └── [user msg 1]
+            └── [summary: "User booked flight FL001, seat 3A to Tokyo"]  ← compressed
+                    └── [user msg 2: "weather?"]
+                            └── (current)
+```
+
+Compaction is controlled by middleware — different conversations can have different compression strategies.
+
+### Reflog for Recovery
+
+Like git reflog, all states ever reached are preserved. Discarded branches (from rewind, edit, cancel) are recoverable.
+
+```
+Main conversation (current HEAD):
+
+[greeting] ── [msg1] ── [summary: booked] ── [msg2: weather?] ── [location]
+                                                                     ▲
+                                                                   HEAD
+
+Reflog (all states ever reached):
+
+abc123  HEAD@{0}  location elicit
+def456  HEAD@{1}  msg2: "what's the weather?"  
+789abc  HEAD@{2}  summary created (compacted flight booking)
+...
+fed321  HEAD@{8}  response: seat 3A        ← still recoverable
+cba987  HEAD@{9}  elicit: pick seat
+...
+```
+
+**Reflog operations:**
+
+- `recover(reflogEntry)` — restore a discarded branch
+- `inspect(reflogEntry)` — view without restoring
+- `gc()` — clean up old entries (middleware-controlled)
+
+**Benefits:**
+
+- Compaction doesn't destroy history
+- Discarded branches are preserved
+- Recovery is always possible ("undo my last edit")
+- Debugging — inspect how conversation evolved
+
+## User Interrupts
+
+Users can interrupt the current flow:
+
+| Action | Effect |
+|--------|--------|
+| **Stop/Cancel** | Halt current operation, return to waiting state |
+| **Edit previous message** | Rewind to that point in the tree, continue with edited input |
+| **Change mind** | May trigger rewind or be interpreted as new input by LLM |
+
+These are **not** transport-level concerns — they are state management operations. The transport just delivers the signal; the state management layer interprets it.
+
+```ts
+type FrontendMessage = 
+  | { type: 'response'; elicitId: string; payload: unknown }
+  | { type: 'cancel' }
+  | { type: 'rewind'; toElicitId: string };
+```
+
 ## Open Areas
 
 The following areas require further design:
 
 - Exact rules for implicit vs explicit agent instantiation
-- Fork/forward/back API specifics
 - Plugin extension point interface design
 - MCP bidirectional integration (exposing tools + consuming external tools)
 - Pipeline stages for `elicit`/`notify`
 - Tangent detection (system-level vs agent-level)
+- Reflog retention policies and garbage collection
