@@ -20,6 +20,16 @@ The architecture is built on Effection's structured concurrency model:
 - **Context** flows down the scope tree, can be overridden at any level
 - **Resources** are bound to scope lifetime (automatic cleanup)
 
+## Glossary
+
+- **Agent**: A coroutine-bound unit of behavior that exposes tools and may hold state.
+- **Tool**: A typed operation provided by an agent; implemented as a coroutine.
+- **Protocol**: A declarative contract for cross-environment method calls.
+- **Elicit**: A structured request for user/environment input.
+- **Transport**: A byte-level channel that moves protocol messages between environments.
+- **Middleware**: Interceptors that wrap operations across the scope hierarchy.
+- **Context**: The structured value store inherited by child scopes.
+
 ## Composition Hierarchy
 
 The system has three levels of composition:
@@ -106,6 +116,44 @@ Tools can be exported as standalone functions for use in distributed libraries:
 
 ```ts
 export const { bookFlight } = Chat.tools;
+```
+
+## Layered Architecture
+
+The system is organized into three layers, each with distinct responsibilities:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     STATE MANAGEMENT                            │
+│                                                                 │
+│  - Conversation history (event sourcing)                        │
+│  - Coroutine tree (parent/child messages)                       │
+│  - Rewind = return to higher node in tree                       │
+│  - Cancel = halt current subtree                                │
+│  - Context = history up to current node                         │
+│  - Compaction via middleware (summarization)                    │
+│  - Reflog for recovery of discarded branches                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        PROTOCOL                                 │
+│                                                                 │
+│  - Invoke method in another environment                         │
+│  - Declaration (schema) / Implementation separation             │
+│  - Progress streaming (send)                                    │
+│  - Middleware: retry, validation, PII filtering                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       TRANSPORT                                 │
+│                                                                 │
+│  - Move bytes between environments                              │
+│  - Backend-driven request/response                              │
+│  - SSE+POST, WebSocket, etc.                                    │
+│  - No semantic understanding                                    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Primitives
@@ -206,6 +254,44 @@ type ElicitResult<T> =
   | { action: "other"; content: string }; // user went off-script
 ```
 
+## Elicit Use Cases
+
+### Multiple Agents Sharing Same Elicit
+
+- Single implementation serves all agents
+- Requests queue by default; UI controls queue behavior
+- Coroutine context provides agent identity for attribution
+
+### Agent Asking User for Input via Chat
+
+- Typed elicit components with schemas
+- Calling coroutine suspends; others can continue
+- `action: 'other'` for when user goes off-script
+
+### MCP Invoking Tool Which Causes Elicit
+
+- Agent decoupled from invocation source (MCP, HTTP) and elicit target (chat UI, CLI)
+- MCP blocks until user completes elicit
+- Same tool code works regardless of invocation path
+
+### Device API Access (Location, Clipboard)
+
+- Elicit broader than forms — device capability access
+- Permission denial is `{ action: 'denied' }`, not an error
+- Framework provides standard elicit types with `createElicit`
+
+### Backend-Authoritative Interactions
+
+- Backend controls state, validation, authorization
+- Frontend is presentation layer only
+- Example: "Draw a card" — backend picks, frontend reveals
+
+### Compound Elicits (Choice + Type Something)
+
+- Single elicit type = single UI component
+- Compound schema handles multiple interaction modes
+- Distinct from `action: 'other'` (designed option vs. off-script)
+
 ## Protocol System
 
 The protocol system separates declaration from implementation, enabling environment-agnostic method invocation.
@@ -232,7 +318,7 @@ const LocationProtocol = createProtocol({
 **Implementation (frontend — browser environment):**
 
 ```ts
-import { createImplementation, call } from "@sweatpants/core";
+import { createImplementation, withResolvers } from "@sweatpants/core";
 
 const browserLocation = createImplementation(LocationProtocol, function* () {
   return {
@@ -240,13 +326,13 @@ const browserLocation = createImplementation(LocationProtocol, function* () {
     *getLocation({ accuracy }, send) {
       yield* send({ status: "requesting-permission" });
 
-      const position = yield* call(() =>
-        new Promise((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: accuracy === "high",
-          });
-        })
-      );
+      const { operation, resolve, reject } = withResolvers<GeolocationPosition>();
+      
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: accuracy === "high",
+      });
+      
+      const position = yield* operation;
 
       yield* send({ status: "acquiring" });
 
@@ -341,6 +427,118 @@ const WeatherAgent = createAgent({
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Backend-Driven Communication
+
+Communication between backend and frontend is **backend-driven**. The backend always initiates, the frontend always responds. There is no frontend-initiated communication.
+
+**The loop:**
+
+```
+Backend (driver)                    Frontend (reactor)
+──────────────────                  ──────────────────
+
+loop {
+  decide next action
+       │
+       ▼
+  send message ──────────────────►  receive message
+                                    render/execute
+                                    wait for user
+                                    send response
+  receive response  ◄──────────────   
+       │
+       ▼
+  process response
+  continue loop
+}
+```
+
+**Key properties:**
+
+- Backend controls the flow
+- Frontend is reactive (receives instructions, sends back results)
+- Backend controls asynchrony — when new input arrives while processing, backend decides what to do (queue, interrupt, merge)
+
+**Response interpretation:**
+
+- **Structured response** (user clicked specific UI element) → Backend processes directly
+- **Unstructured/text response** (user typed something) → Backend sends to LLM to interpret
+
+The backend doesn't know the nature of user's response until it sends the response to the LLM for interpretation.
+
+## Transport Layer
+
+Transport moves bytes between environments. It has no semantic understanding.
+
+**Interface:**
+
+```ts
+// Backend side
+interface BackendTransport {
+  /**
+   * Send a message and get back a stream.
+   * Stream yields progress events from frontend, closes with final response.
+   */
+  send<TRequest, TProgress, TResponse>(message: TRequest): Stream<TProgress, TResponse>;
+}
+
+// Frontend side
+interface FrontendTransport {
+  messages: Stream<IncomingMessage, void>;
+}
+
+interface IncomingMessage<T = unknown> {
+  id: string;
+  kind: 'elicit' | 'notify';
+  type: string;  // e.g., 'location', 'flight-selection', 'progress'
+  payload: T;
+  
+  /**
+   * Send incremental progress back to backend (ephemeral, not persisted)
+   */
+  progress(data: unknown): Operation<void>;
+  
+  /**
+   * Complete with final response
+   */
+  respond(response: ElicitResponse | NotifyResponse): Operation<void>;
+}
+```
+
+**Example flow with progress:**
+
+```
+Backend                              Frontend
+───────                              ────────
+
+send({ type: 'location' }) ────────► receive message
+
+    (backend waiting on stream)      calls geolocation API
+                                     
+progress({ status: 'requesting' }) ◄─ permission prompt shown
+    ▲ (yielded from stream)          
+                                     user grants permission
+progress({ status: 'acquiring' })  ◄─ GPS acquiring
+    ▲ (yielded from stream)
+                                     position acquired
+respond({ status: 'accepted',      ◄─ final response
+         content: { lat, lng } })
+    ▲ (stream closes with value)
+```
+
+**Backpressure:**
+
+Both elicit and notify wait for the frontend to complete before returning. This provides natural backpressure — the agent can't get ahead of the client.
+
+**Transport implementations:**
+
+| Transport | Backend → Frontend | Frontend → Backend |
+|-----------|-------------------|-------------------|
+| SSE + POST | Server-Sent Events | HTTP POST |
+| WebSocket | WebSocket message | WebSocket message |
+
+Transport is swappable — agent code doesn't change when switching from SSE to WebSocket.
 
 ## Middleware System
 
@@ -519,44 +717,6 @@ Main flow                          Side quest
 - Optional explicit navigation for power users
 - Serializable state for persistence (architected from start, required by 1.0)
 
-## Elicit Use Cases
-
-### Multiple Agents Sharing Same Elicit
-
-- Single implementation serves all agents
-- Requests queue by default; UI controls queue behavior
-- Coroutine context provides agent identity for attribution
-
-### Agent Asking User for Input via Chat
-
-- Typed elicit components with schemas
-- Calling coroutine suspends; others can continue
-- `action: 'other'` for when user goes off-script
-
-### MCP Invoking Tool Which Causes Elicit
-
-- Agent decoupled from invocation source (MCP, HTTP) and elicit target (chat UI, CLI)
-- MCP blocks until user completes elicit
-- Same tool code works regardless of invocation path
-
-### Device API Access (Location, Clipboard)
-
-- Elicit broader than forms — device capability access
-- Permission denial is `{ action: 'denied' }`, not an error
-- Framework provides standard elicit types with `createElicit`
-
-### Backend-Authoritative Interactions
-
-- Backend controls state, validation, authorization
-- Frontend is presentation layer only
-- Example: "Draw a card" — backend picks, frontend reveals
-
-### Compound Elicits (Choice + Type Something)
-
-- Single elicit type = single UI component
-- Compound schema handles multiple interaction modes
-- Distinct from `action: 'other'` (designed option vs. off-script)
-
 ## Testing
 
 Testing is a first-class concern. The context-based resolution enables clean substitution:
@@ -571,156 +731,6 @@ yield* FlightContext.set(mockFlightAgent, function* () {
 // Inject mock elicit implementation
 yield* ElicitProtocol.implement(testElicitMock);
 ```
-
-## Layered Architecture
-
-The system is organized into three layers, each with distinct responsibilities:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     STATE MANAGEMENT                            │
-│                                                                 │
-│  - Conversation history (event sourcing)                        │
-│  - Coroutine tree (parent/child messages)                       │
-│  - Rewind = return to higher node in tree                       │
-│  - Cancel = halt current subtree                                │
-│  - Context = history up to current node                         │
-│  - Compaction via middleware (summarization)                    │
-│  - Reflog for recovery of discarded branches                    │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        PROTOCOL                                 │
-│                                                                 │
-│  - Invoke method in another environment                         │
-│  - Declaration (schema) / Implementation separation             │
-│  - Progress streaming (send)                                    │
-│  - Middleware: retry, validation, PII filtering                 │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       TRANSPORT                                 │
-│                                                                 │
-│  - Move bytes between environments                              │
-│  - Backend-driven request/response                              │
-│  - SSE+POST, WebSocket, etc.                                    │
-│  - No semantic understanding                                    │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Backend-Driven Communication
-
-Communication between backend and frontend is **backend-driven**. The backend always initiates, the frontend always responds. There is no frontend-initiated communication.
-
-**The loop:**
-
-```
-Backend (driver)                    Frontend (reactor)
-──────────────────                  ──────────────────
-
-loop {
-  decide next action
-       │
-       ▼
-  send message ──────────────────►  receive message
-                                    render/execute
-                                    wait for user
-                                    send response
-  receive response  ◄──────────────   
-       │
-       ▼
-  process response
-  continue loop
-}
-```
-
-**Key properties:**
-
-- Backend controls the flow
-- Frontend is reactive (receives instructions, sends back results)
-- Backend controls asynchrony — when new input arrives while processing, backend decides what to do (queue, interrupt, merge)
-
-**Response interpretation:**
-
-- **Structured response** (user clicked specific UI element) → Backend processes directly
-- **Unstructured/text response** (user typed something) → Backend sends to LLM to interpret
-
-The backend doesn't know the nature of user's response until it sends the response to the LLM for interpretation.
-
-## Transport Layer
-
-Transport moves bytes between environments. It has no semantic understanding.
-
-**Interface:**
-
-```ts
-// Backend side
-interface BackendTransport {
-  /**
-   * Send a message and get back a stream.
-   * Stream yields progress events from frontend, closes with final response.
-   */
-  send<TRequest, TProgress, TResponse>(message: TRequest): Stream<TProgress, TResponse>;
-}
-
-// Frontend side
-interface FrontendTransport {
-  messages: Stream<IncomingMessage, void>;
-}
-
-interface IncomingMessage<T = unknown> {
-  id: string;
-  kind: 'elicit' | 'notify';
-  type: string;  // e.g., 'location', 'flight-selection', 'progress'
-  payload: T;
-  
-  /**
-   * Send incremental progress back to backend (ephemeral, not persisted)
-   */
-  progress(data: unknown): Operation<void>;
-  
-  /**
-   * Complete with final response
-   */
-  respond(response: ElicitResponse | NotifyResponse): Operation<void>;
-}
-```
-
-**Example flow with progress:**
-
-```
-Backend                              Frontend
-───────                              ────────
-
-send({ type: 'location' }) ────────► receive message
-
-    (backend waiting on stream)      calls geolocation API
-                                     
-progress({ status: 'requesting' }) ◄─ permission prompt shown
-    ▲ (yielded from stream)          
-                                     user grants permission
-progress({ status: 'acquiring' })  ◄─ GPS acquiring
-    ▲ (yielded from stream)
-                                     position acquired
-respond({ status: 'accepted',      ◄─ final response
-         content: { lat, lng } })
-    ▲ (stream closes with value)
-```
-
-**Backpressure:**
-
-Both elicit and notify wait for the frontend to complete before returning. This provides natural backpressure — the agent can't get ahead of the client.
-
-**Transport implementations:**
-
-| Transport | Backend → Frontend | Frontend → Backend |
-|-----------|-------------------|-------------------|
-| SSE + POST | Server-Sent Events | HTTP POST |
-| WebSocket | WebSocket message | WebSocket message |
-
-Transport is swappable — agent code doesn't change when switching from SSE to WebSocket.
 
 ## Data Model
 
