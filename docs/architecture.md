@@ -658,26 +658,60 @@ Transport moves bytes between environments. It has no semantic understanding.
 ```ts
 // Backend side
 interface BackendTransport {
-  send<TRequest, TResponse>(message: TRequest): Stream<never, TResponse>;
+  /**
+   * Send a message and get back a stream.
+   * Stream yields progress events from frontend, closes with final response.
+   */
+  send<TRequest, TProgress, TResponse>(message: TRequest): Stream<TProgress, TResponse>;
 }
 
 // Frontend side
 interface FrontendTransport {
   messages: Stream<BackendMessage, void>;
-  respond(message: FrontendMessage): Operation<void>;
 }
 
-// Message types
-type BackendMessage = {
+interface BackendMessage<T = unknown> {
   elicitId: string;
   type: string;  // elicit type (e.g., 'location', 'flight-selection')
-  payload: unknown;
-};
+  payload: T;
+  
+  /**
+   * Send incremental progress back to backend
+   */
+  progress(data: unknown): Operation<void>;
+  
+  /**
+   * Complete with final response
+   */
+  respond(data: unknown): Operation<void>;
+}
 
+// Message types (over the wire)
 type FrontendMessage = 
+  | { type: 'progress'; elicitId: string; payload: unknown }
   | { type: 'response'; elicitId: string; payload: unknown }
   | { type: 'cancel' }
   | { type: 'rewind'; toElicitId: string };
+```
+
+**Example flow with progress:**
+
+```
+Backend                              Frontend
+───────                              ────────
+
+send({ type: 'location' }) ────────► receive message
+
+    (backend waiting on stream)      calls geolocation API
+                                     
+progress({ status: 'requesting' }) ◄─ permission prompt shown
+    ▲ (yielded from stream)          
+                                     user grants permission
+progress({ status: 'acquiring' })  ◄─ GPS acquiring
+    ▲ (yielded from stream)
+                                     position acquired
+response({ lat, lng })             ◄─ final response
+    ▲ (stream closes with value)
 ```
 
 **Transport implementations:**
