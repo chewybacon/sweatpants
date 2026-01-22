@@ -210,43 +210,97 @@ type ElicitResult<T> =
 
 The protocol system separates declaration from implementation, enabling environment-agnostic method invocation.
 
-### Declaration
+### Example: Location Protocol
 
-Protocols define method signatures with schemas for args, progress, and returns:
+A Location agent needs to retrieve the user's location. The backend agent doesn't know how to access GPS — that's a frontend capability. The protocol bridges this gap.
+
+**Declaration (shared between backend and frontend):**
 
 ```ts
 import { createProtocol } from "@sweatpants/core";
+import { z } from "zod";
 
-const protocol = createProtocol({
-  echo: {
-    args: schema.StringArr,
-    progress: schema.Progress,
-    returns: schema.Result,
+const LocationProtocol = createProtocol({
+  getLocation: {
+    args: z.object({ accuracy: z.enum(["high", "low"]) }),
+    progress: z.object({ status: z.enum(["requesting-permission", "acquiring"]) }),
+    returns: z.object({ lat: z.number(), lng: z.number() }),
   },
 });
 ```
 
-### Implementation
-
-Implementations are environment-specific:
+**Implementation (frontend — browser environment):**
 
 ```ts
 import { createImplementation } from "@sweatpants/core";
 
-const inspector = createImplementation(protocol, function* () {
+const browserLocation = createImplementation(LocationProtocol, function* () {
   return {
-    *echo(...args): Stream<Progress, Result> {
-      // Browser implementation, CLI implementation, test mock, etc.
+    *getLocation({ accuracy }): Stream<Progress, Location> {
+      return {
+        *[Symbol.iterator]() {
+          // Stream progress to backend
+          yield { status: "requesting-permission" };
+
+          const position = yield* new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: accuracy === "high",
+            });
+          });
+
+          yield { status: "acquiring" };
+
+          return {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+        },
+      };
     },
   };
 });
 ```
 
-### Usage
+**Implementation (CLI — prompts user to type location):**
 
 ```ts
-const handle = yield* inspector.attach();
-const stream = handle.invoke({ name: "echo", args: ["hello"] });
+const cliLocation = createImplementation(LocationProtocol, function* () {
+  return {
+    *getLocation({ accuracy }): Stream<Progress, Location> {
+      return {
+        *[Symbol.iterator]() {
+          const input = yield* prompt("Enter your location (lat,lng): ");
+          const [lat, lng] = input.split(",").map(Number);
+          return { lat, lng };
+        },
+      };
+    },
+  };
+});
+```
+
+**Usage in an agent (backend — doesn't know which implementation):**
+
+```ts
+const WeatherAgent = createAgent({
+  getLocalWeather: createTool("get-local-weather")
+    .description("Get weather for user's current location")
+    .execute(function* () {
+      // Backend calls protocol — transport handles routing to frontend
+      const handle = yield* LocationProtocol.attach();
+      const location = yield* handle.invoke({
+        name: "getLocation",
+        args: { accuracy: "low" },
+      });
+
+      if (location.action === "denied") {
+        return Err(new Error("location_permission_denied"));
+      }
+
+      const weather = yield* fetchWeather(location.content);
+      return Ok(weather);
+    }),
+});
 ```
 
 ### Key Properties
