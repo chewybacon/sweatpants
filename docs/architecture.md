@@ -232,29 +232,28 @@ const LocationProtocol = createProtocol({
 **Implementation (frontend — browser environment):**
 
 ```ts
-import { createImplementation } from "@sweatpants/core";
+import { createImplementation, call } from "@sweatpants/core";
+import { send } from "@sweatpants/agent";
 
 const browserLocation = createImplementation(LocationProtocol, function* () {
   return {
-    *getLocation({ accuracy }): Stream<Progress, Location> {
-      return {
-        *[Symbol.iterator]() {
-          // Stream progress to backend
-          yield { status: "requesting-permission" };
+    *getLocation({ accuracy }) {
+      // send is a free function that uses context to stream progress back
+      yield* send({ status: "requesting-permission" });
 
-          const position = yield* new Promise((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, {
-              enableHighAccuracy: accuracy === "high",
-            });
+      const position = yield* call(() =>
+        new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: accuracy === "high",
           });
+        })
+      );
 
-          yield { status: "acquiring" };
+      yield* send({ status: "acquiring" });
 
-          return {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-        },
+      return {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
       };
     },
   };
@@ -266,14 +265,10 @@ const browserLocation = createImplementation(LocationProtocol, function* () {
 ```ts
 const cliLocation = createImplementation(LocationProtocol, function* () {
   return {
-    *getLocation({ accuracy }): Stream<Progress, Location> {
-      return {
-        *[Symbol.iterator]() {
-          const input = yield* prompt("Enter your location (lat,lng): ");
-          const [lat, lng] = input.split(",").map(Number);
-          return { lat, lng };
-        },
-      };
+    *getLocation({ accuracy }) {
+      const input = yield* prompt("Enter your location (lat,lng): ");
+      const [lat, lng] = input.split(",").map(Number);
+      return { lat, lng };
     },
   };
 });
