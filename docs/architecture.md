@@ -667,31 +667,25 @@ interface BackendTransport {
 
 // Frontend side
 interface FrontendTransport {
-  messages: Stream<BackendMessage, void>;
+  messages: Stream<IncomingMessage, void>;
 }
 
-interface BackendMessage<T = unknown> {
-  elicitId: string;
-  type: string;  // elicit type (e.g., 'location', 'flight-selection')
+interface IncomingMessage<T = unknown> {
+  id: string;
+  kind: 'elicit' | 'notify';
+  type: string;  // e.g., 'location', 'flight-selection', 'progress'
   payload: T;
   
   /**
-   * Send incremental progress back to backend
+   * Send incremental progress back to backend (ephemeral, not persisted)
    */
   progress(data: unknown): Operation<void>;
   
   /**
    * Complete with final response
    */
-  respond(data: unknown): Operation<void>;
+  respond(response: ElicitResponse | NotifyResponse): Operation<void>;
 }
-
-// Message types (over the wire)
-type FrontendMessage = 
-  | { type: 'progress'; elicitId: string; payload: unknown }
-  | { type: 'response'; elicitId: string; payload: unknown }
-  | { type: 'cancel' }
-  | { type: 'rewind'; toElicitId: string };
 ```
 
 **Example flow with progress:**
@@ -710,9 +704,14 @@ progress({ status: 'requesting' }) ◄─ permission prompt shown
 progress({ status: 'acquiring' })  ◄─ GPS acquiring
     ▲ (yielded from stream)
                                      position acquired
-response({ lat, lng })             ◄─ final response
+respond({ status: 'accepted',      ◄─ final response
+         content: { lat, lng } })
     ▲ (stream closes with value)
 ```
+
+**Backpressure:**
+
+Both elicit and notify wait for the frontend to complete before returning. This provides natural backpressure — the agent can't get ahead of the client.
 
 **Transport implementations:**
 
@@ -723,104 +722,113 @@ response({ lat, lng })             ◄─ final response
 
 Transport is swappable — agent code doesn't change when switching from SSE to WebSocket.
 
-## Coroutine Tree Model
+## Data Model
 
-Every message in a chat is a coroutine, child of the parent message. The conversation forms a tree, not a linear sequence.
+The data model defines what gets persisted. Effection manages the runtime state (coroutine tree, middleware); the data model captures the conversation for context and rewind.
+
+### Message
+
+The fundamental unit of a conversation.
+
+```ts
+interface Message {
+  id: string;
+  parentId: string | null;
+  
+  role: 'user' | 'assistant';
+  content: string;
+  
+  // If this message involved a frontend invocation
+  invocation?: Invocation;
+  
+  createdAt: number;
+}
+```
+
+### Invocation
+
+Both elicit and notify invoke frontend methods. They go through the same transport, both wait for completion (backpressure), but differ in response type.
+
+```ts
+type Invocation = ElicitInvocation | NotifyInvocation;
+
+interface ElicitInvocation {
+  kind: 'elicit';
+  type: string;              // e.g., 'location', 'flight-selection'
+  request: unknown;          // what was asked
+  response: ElicitResponse;  // user's response
+}
+
+interface NotifyInvocation {
+  kind: 'notify';
+  type: string;              // e.g., 'progress', 'status', 'card-reveal'
+  payload: unknown;          // what was shown
+  response: NotifyResponse;  // acknowledgment
+}
+```
+
+### Response Types
+
+```ts
+// Elicit returns user's choice — discriminated union
+type ElicitResponse =
+  | { status: 'accepted'; content: unknown }
+  | { status: 'declined' }
+  | { status: 'cancelled' }
+  | { status: 'denied' }                      // permission denied (device APIs)
+  | { status: 'other'; content: string };     // user went off-script
+
+// Notify returns acknowledgment — frontend finished rendering
+type NotifyResponse = 
+  | { ok: true }
+  | { ok: false; error: Error };
+```
+
+### Conversation
+
+```ts
+interface Conversation {
+  id: string;
+  messages: Message[];  // append-only
+}
+```
+
+### Key Properties
+
+- **Tree structure is implicit**: `parentId` relationships form the tree. Branches occur when two messages share the same `parentId`.
+- **Append-only**: Messages are never deleted. Discarded branches (from rewind/edit) remain in the array, just not in the current path.
+- **Progress is ephemeral**: Progress events during an elicit are not persisted — only the final response.
+- **Compaction**: Summarizing a subtree means adding a new message with the summary as content. The original messages remain (like git history).
+
+## Conversation Tree
+
+The conversation forms a tree, not a linear sequence. Each message is a child of a parent message.
 
 ```
-[greeting]
+[assistant: greeting]
     │
-    └── [user message 1]
+    └── [user: "book a flight to Tokyo"]
             │
-            ├── [elicit: pick flight]
+            ├── [assistant: elicit(pick-flight)]
             │       │
-            │       └── [response: FL001]
+            │       └── [user: selected FL001]
             │               │
-            │               └── [elicit: pick seat]
+            │               └── [assistant: elicit(pick-seat)]
             │                       │
-            │                       └── [response: 3A]
+            │                       └── [user: selected 3A]
             │
-            └── [notify: "Booking complete!"]
+            └── [assistant: notify(booking-complete)]
 ```
 
 **Operations on the tree:**
 
 | Operation | Meaning |
 |-----------|---------|
-| **Rewind** | Return to a higher node, continue from there with new input |
-| **Cancel** | Halt current node and its children |
-| **Fork** | Create a branch (side quest) |
+| **Rewind** | User edits a previous message — continue from that point with new input |
+| **Cancel** | Halt current operation, return to waiting state |
+| **Fork** | Create a branch (side quest) — original path preserved |
 
-**Context** at any point = path from root to current node.
-
-## State Management: Event Sourcing + Reflog
-
-### Event Sourcing
-
-The conversation history is an append-only log of events. The current state is derived by replaying events from root to current node.
-
-### Compaction via Middleware
-
-Long conversation branches can be compacted (summarized) without destroying history:
-
-```
-Before compaction:
-
-[greeting]
-    └── [user msg 1]
-            └── [elicit: pick flight]
-                    └── [response: FL001]
-                            └── [elicit: pick seat]
-                                    └── [response: 3A]
-                                            └── [notify: booked!]
-                                                    └── [user msg 2: "weather?"]
-                                                            └── (current)
-
-After compaction:
-
-[greeting]
-    └── [user msg 1]
-            └── [summary: "User booked flight FL001, seat 3A to Tokyo"]  ← compressed
-                    └── [user msg 2: "weather?"]
-                            └── (current)
-```
-
-Compaction is controlled by middleware — different conversations can have different compression strategies.
-
-### Reflog for Recovery
-
-Like git reflog, all states ever reached are preserved. Discarded branches (from rewind, edit, cancel) are recoverable.
-
-```
-Main conversation (current HEAD):
-
-[greeting] ── [msg1] ── [summary: booked] ── [msg2: weather?] ── [location]
-                                                                     ▲
-                                                                   HEAD
-
-Reflog (all states ever reached):
-
-abc123  HEAD@{0}  location elicit
-def456  HEAD@{1}  msg2: "what's the weather?"  
-789abc  HEAD@{2}  summary created (compacted flight booking)
-...
-fed321  HEAD@{8}  response: seat 3A        ← still recoverable
-cba987  HEAD@{9}  elicit: pick seat
-...
-```
-
-**Reflog operations:**
-
-- `recover(reflogEntry)` — restore a discarded branch
-- `inspect(reflogEntry)` — view without restoring
-- `gc()` — clean up old entries (middleware-controlled)
-
-**Benefits:**
-
-- Compaction doesn't destroy history
-- Discarded branches are preserved
-- Recovery is always possible ("undo my last edit")
-- Debugging — inspect how conversation evolved
+**Context** = path from root to current message. This is what gets sent to the LLM.
 
 ## User Interrupts
 
@@ -832,14 +840,13 @@ Users can interrupt the current flow:
 | **Edit previous message** | Rewind to that point in the tree, continue with edited input |
 | **Change mind** | May trigger rewind or be interpreted as new input by LLM |
 
-These are **not** transport-level concerns — they are state management operations. The transport just delivers the signal; the state management layer interprets it.
+These are **not** transport-level concerns — they are state management operations. The transport delivers the signal; the state management layer interprets it.
 
 ```ts
-type FrontendMessage = 
-  | { type: 'response'; elicitId: string; payload: unknown }
+// Wire format for user interrupts
+type InterruptMessage = 
   | { type: 'cancel' }
-  | { type: 'rewind'; toElicitId: string };
-```
+  | { type: 'rewind'; toMessageId: string };
 
 ## Open Areas
 
@@ -848,6 +855,5 @@ The following areas require further design:
 - Exact rules for implicit vs explicit agent instantiation
 - Plugin extension point interface design
 - MCP bidirectional integration (exposing tools + consuming external tools)
-- Pipeline stages for `elicit`/`notify`
 - Tangent detection (system-level vs agent-level)
-- Reflog retention policies and garbage collection
+- Compaction strategies and middleware
