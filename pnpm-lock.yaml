@@ -12,6 +12,9 @@ catalogs:
     '@effectionx/raf':
       specifier: ^0.1.1
       version: 0.1.1
+    '@effectionx/websocket':
+      specifier: ^2.3.0
+      version: 2.3.0
     '@t3-oss/env-core':
       specifier: ^0.13.8
       version: 0.13.10
@@ -508,6 +511,30 @@ importers:
         specifier: ^1.6.0
         version: 1.6.1(@types/node@20.19.28)(jsdom@27.4.0)(lightningcss@1.30.2)
 
+  packages/core:
+    devDependencies:
+      '@effectionx/websocket':
+        specifier: 'catalog:'
+        version: 2.3.0(effection@4.0.0)
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      effection:
+        specifier: 'catalog:'
+        version: 4.0.0
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/elicit-context:
     devDependencies:
       '@types/node':
@@ -881,6 +908,12 @@ packages:
   '@effectionx/tinyexec@0.3.1':
     resolution: {integrity: sha512-FV4XRhsq1jHFgRqQUU/YgUsfNqjlq0+wg8YqvDS2wmwWPsUzBfjiijsmkrowVU5AVtrxda7b+8WE2BWPcoPz0w==}
     engines: {node: '>= 16'}
+
+  '@effectionx/websocket@2.3.0':
+    resolution: {integrity: sha512-FpAptS5zvmw5jJVQp69BqPzAfgstaYKP/D+EThjaAsT/zxlfwqYnKeZNvgePxM3y8q/zmMrBi5QGud8CRkV5Yg==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
 
   '@emnapi/core@1.8.1':
     resolution: {integrity: sha512-AvT9QFpxK0Zd8J0jopedNm+w/2fIzvtPKPjqyw9jwvBaReTTqPBk9Hixaz7KbjimP+QNz605/XnjFcDAL2pqBg==}
@@ -7019,6 +7052,10 @@ snapshots:
     dependencies:
       effection: 4.0.0
       tinyexec: 0.3.2
+
+  '@effectionx/websocket@2.3.0(effection@4.0.0)':
+    dependencies:
+      effection: 4.0.0
 
   '@emnapi/core@1.8.1':
     dependencies:
