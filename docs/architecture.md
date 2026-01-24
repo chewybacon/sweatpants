@@ -192,6 +192,86 @@ const result = yield* sample({
 // Returns structured data with confidence
 ```
 
+### Model Configuration
+
+Models are configured through context. The `with*` functions set context for a scope, while `use*` functions return a reference.
+
+**Setting model context for a scope:**
+
+```ts
+function* bookingAgent() {
+  // withModel sets context for the scope
+  yield* withModel('gpt-4-turbo', function* () {
+    yield* sample({ prompt: '...' });  // uses gpt-4-turbo
+    yield* sample({ prompt: '...' });  // uses gpt-4-turbo
+  });
+}
+```
+
+**Getting a model reference for per-call override:**
+
+```ts
+function* bookingAgent() {
+  // useModel returns a reference to a model
+  const mainModel = yield* useModel('gpt-4-turbo');
+  const cheapModel = yield* useModel('gpt-3.5-turbo');
+  
+  // Use main model for complex analysis
+  yield* sample({ prompt: 'Complex analysis...', model: mainModel });
+  
+  // Use cheaper model for simple classification
+  yield* sample({ prompt: 'Yes or no?', model: cheapModel });
+}
+```
+
+**Named model aliases:**
+
+Models can be referenced by alias names that resolve to configured models at call time:
+
+```ts
+// 'core.side-quest-detection' resolves to a cheap/fast model by default
+const classificationModel = yield* useModel('core.side-quest-detection');
+
+yield* sample({
+  model: classificationModel,
+  prompt: 'Is this a side quest?'
+});
+```
+
+**Provider configuration:**
+
+Providers (OpenAI, Anthropic, Ollama) are configured separately from models:
+
+```ts
+yield* withProvider('openai', { apiKey: '...' }, function* () {
+  yield* withModel('gpt-4-turbo', function* () {
+    yield* sample({ prompt: '...' });
+  });
+});
+```
+
+**Model override via middleware:**
+
+Middleware can override the model based on prompt content:
+
+```ts
+yield* around({
+  *['sample.input']([{ prompt, model }], next) {
+    if (isSimpleClassification(prompt)) {
+      const cheapModel = yield* useModel('gpt-3.5-turbo');
+      return yield* ModelContext.with(cheapModel, function* () {
+        return yield* next({ prompt });
+      });
+    }
+    return yield* next({ prompt, model });
+  }
+});
+```
+
+**Default model:**
+
+If no model is set in context and none passed to `sample`, a global default is used.
+
 ### Elicit Types
 
 Elicit is a general mechanism for requesting something from the user's environment. Each elicit type has a schema and corresponding implementation.
@@ -527,6 +607,77 @@ respond({ status: 'accepted',      ◄─ final response
     ▲ (stream closes with value)
 ```
 
+**Backend code example:**
+
+```ts
+import { each } from "effection";
+
+function* getLocalWeather(transport: BackendTransport) {
+  const stream = transport.send({
+    id: generateId(),
+    kind: 'elicit',
+    type: 'location',
+    payload: { enableHighAccuracy: true }
+  });
+
+  // Consume progress events as they arrive
+  for (const progress of yield* each(stream)) {
+    console.log('Progress:', progress);  // { status: 'requesting' }, { status: 'acquiring' }
+    yield* each.next();
+  }
+  
+  // Stream closes with final response
+  const response = yield* stream;
+  
+  if (response.status === 'accepted') {
+    return yield* fetchWeather(response.content);
+  }
+  
+  return { error: 'Location denied' };
+}
+```
+
+**Frontend code example:**
+
+```ts
+import { each, withResolvers } from "effection";
+
+function* handleMessages(transport: FrontendTransport) {
+  for (const message of yield* each(transport.messages)) {
+    if (message.kind === 'elicit' && message.type === 'location') {
+      yield* handleLocationElicit(message);
+    }
+    yield* each.next();
+  }
+}
+
+function* handleLocationElicit(message: IncomingMessage) {
+  yield* message.progress({ status: 'requesting' });
+  
+  const { operation, resolve, reject } = withResolvers<GeolocationPosition>();
+  
+  navigator.geolocation.getCurrentPosition(resolve, reject, {
+    enableHighAccuracy: message.payload.enableHighAccuracy,
+  });
+  
+  try {
+    const position = yield* operation;
+    
+    yield* message.progress({ status: 'acquiring' });
+    
+    yield* message.respond({
+      status: 'accepted',
+      content: {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      }
+    });
+  } catch (error) {
+    yield* message.respond({ status: 'denied' });
+  }
+}
+```
+
 **Backpressure:**
 
 Both elicit and notify wait for the frontend to complete before returning. This provides natural backpressure — the agent can't get ahead of the client.
@@ -716,6 +867,117 @@ Main flow                          Side quest
 - Auto-return on completion (default behavior)
 - Optional explicit navigation for power users
 - Serializable state for persistence (architected from start, required by 1.0)
+
+### Side Quest Detection
+
+Side quest detection is implemented as middleware. It has access to both elicit input and output, which allows detecting the difference between what was asked and what was answered.
+
+```ts
+import { createArraySignal, type ArraySignal } from "@effectionx/signals";
+
+interface SideQuestResolution {
+  topic: string;
+  query: string;
+  answer: string;
+  timestamp: number;
+}
+
+const SideQuestContext = createContext<ArraySignal<SideQuestResolution>>('side-quests');
+
+// withSideQuestDetection installs middleware on current scope
+function* withSideQuestDetection(
+  onSideQuest: (topic: string, content: string) => Operation<SideQuestResolution>
+): Operation<void> {
+  const sideQuests = yield* createArraySignal<SideQuestResolution>([]);
+  yield* SideQuestContext.set(sideQuests);
+  
+  // Use a named model alias that resolves to a cheap/fast classification model
+  const classificationModel = yield* useModel('core.side-quest-detection');
+  
+  yield* around({
+    *elicit([request], next) {
+      // Loop: user may take multiple side quests before answering
+      while (true) {
+        const response = yield* next(request);
+        
+        if (response.status !== 'other') {
+          return response;  // User answered the question
+        }
+        
+        // Detect if this is a side quest
+        const interpretation = yield* sample({
+          model: classificationModel,
+          prompt: `User was asked: ${request.message}
+                   User responded: ${response.content}
+                   Is this a side quest (unrelated topic) or an attempt to answer?`
+        });
+        
+        if (!interpretation.isSideQuest) {
+          return response;  // Not a side quest, return as 'other'
+        }
+        
+        // Handle the side quest and get resolution
+        const resolution = yield* onSideQuest(interpretation.topic, response.content);
+        
+        // Store resolution (ArraySignal handles immutability)
+        sideQuests.push(resolution);
+        
+        // Loop: re-elicit the original question
+      }
+    }
+  });
+}
+
+// Helper to access side quest resolutions
+function* useSideQuests(): Operation<readonly SideQuestResolution[]> {
+  const signal = yield* SideQuestContext.get();
+  return signal.valueOf();
+}
+```
+
+**Usage:**
+
+```ts
+function* bookingAgent() {
+  yield* withSideQuestDetection(function* (topic, content) {
+    const answer = yield* handleSideQuest(topic, content);
+    return {
+      topic,
+      query: content,
+      answer,
+      timestamp: Date.now(),
+    };
+  });
+  
+  // All elicits in bookingFlow now have side quest detection
+  yield* bookingFlow();
+  
+  // Can access side quest history
+  const sideQuests = yield* useSideQuests();
+  console.log(`User took ${sideQuests.length} side quests`);
+}
+```
+
+**Example flow:**
+
+```
+Agent: "Where do you want to fly?"
+
+User: "What's the weather in Tokyo?"     ← side quest #1
+  → handleSideQuest("weather", "...")
+  → "Tokyo will be 72°F next week"
+
+Agent: "Where do you want to fly?"        ← re-elicit
+
+User: "How much is a hotel there?"        ← side quest #2
+  → handleSideQuest("hotel", "...")
+  → "Hotels start at $150/night"
+
+Agent: "Where do you want to fly?"        ← re-elicit
+
+User: "Tokyo"                             ← finally answers
+  → response: { status: 'accepted', content: 'Tokyo' }
+```
 
 ## Testing
 
