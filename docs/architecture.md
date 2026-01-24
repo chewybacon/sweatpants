@@ -272,6 +272,61 @@ yield* around({
 
 If no model is set in context and none passed to `sample`, a global default is used.
 
+**Model consensus (cross-model validation):**
+
+For critical decisions, you can validate a response by asking multiple models the same prompt and checking agreement:
+
+```ts
+import { all } from "effection";
+
+function* withModelConsensus(
+  validationModels: string[],
+  threshold: number = 0.8  // require 80% agreement
+): Operation<void> {
+  yield* around({
+    *['sample.output']([response], next) {
+      const primaryResult = yield* next(response);
+      
+      // Get responses from validation models
+      const validationResults = yield* all(
+        validationModels.map(function* (modelName) {
+          const model = yield* useModel(modelName);
+          return yield* sample({
+            model,
+            prompt: response.prompt
+          });
+        })
+      );
+      
+      // Check agreement across models
+      const agreement = calculateAgreement(primaryResult, validationResults);
+      
+      if (agreement < threshold) {
+        // Models disagree — return with low confidence
+        return { ...primaryResult, confidence: agreement };
+      }
+      
+      return primaryResult;
+    }
+  });
+}
+
+// Usage: validate critical decisions with multiple models
+function* criticalDecisionAgent() {
+  yield* withModelConsensus(['gpt-4', 'claude-3-opus'], 0.8);
+  
+  // This sample will be validated against both models
+  const decision = yield* sample({ 
+    prompt: 'Should we proceed with this irreversible action?' 
+  });
+  
+  if (decision.confidence < 0.8) {
+    // Escalate to human review
+    yield* elicit({ type: 'human-review', decision });
+  }
+}
+```
+
 ### Elicit Types
 
 Elicit is a general mechanism for requesting something from the user's environment. Each elicit type has a schema and corresponding implementation.
