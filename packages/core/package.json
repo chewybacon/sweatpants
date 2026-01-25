@@ -1,0 +1,85 @@
+{
+  "name": "@sweatpants/core",
+  "version": "0.1.0",
+  "description": "Core primitives for Sweatpants agent framework - transport, protocol, and data model",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./transport": {
+      "development": {
+        "import": "./src/transport/index.ts",
+        "types": "./src/transport/index.ts"
+      },
+      "import": {
+        "types": "./dist/transport.d.ts",
+        "default": "./dist/transport.js"
+      }
+    },
+    "./transport/sse": {
+      "development": {
+        "import": "./src/transport/sse/index.ts",
+        "types": "./src/transport/sse/index.ts"
+      },
+      "import": {
+        "types": "./dist/transport/sse.d.ts",
+        "default": "./dist/transport/sse.js"
+      }
+    },
+    "./transport/websocket": {
+      "development": {
+        "import": "./src/transport/websocket/index.ts",
+        "types": "./src/transport/websocket/index.ts"
+      },
+      "import": {
+        "types": "./dist/transport/websocket.d.ts",
+        "default": "./dist/transport/websocket.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check": "tsc -b",
+    "test": "vitest"
+  },
+  "peerDependencies": {
+    "@effectionx/websocket": "^2.3.0",
+    "effection": "^4.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@effectionx/node": "catalog:",
+    "@effectionx/stream-helpers": "catalog:",
+    "@effectionx/vitest": "catalog:",
+    "@effectionx/websocket": "catalog:",
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/ws": "catalog:",
+    "effection": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "ws": "catalog:",
+    "zod": "catalog:"
+  },
+  "keywords": [
+    "effection",
+    "agent",
+    "transport",
+    "protocol"
+  ],
+  "license": "MIT"
+}

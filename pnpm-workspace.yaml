@@ -4,7 +4,11 @@ packages:
 
 catalog:
   '@effectionx/context-api': ^0.2.1
+  '@effectionx/node': ^0.2.0
   '@effectionx/raf': ^0.1.1
+  '@effectionx/stream-helpers': ^0.7.1
+  '@effectionx/vitest': ^0.1.0
+  '@effectionx/websocket': ^2.3.0
   '@t3-oss/env-core': ^0.13.8
   '@tailwindcss/vite': ^4.0.6
   '@tanstack/devtools-vite': ^0.3.11
@@ -21,6 +25,7 @@ catalog:
   '@types/morgan': ^1.9.10
   '@types/node': ^22.10.2
   '@types/react': ^19.0.0
+  '@types/ws': ^8.18.1
   '@types/react-dom': ^19.2.0
   '@vitejs/plugin-react': ^5.0.4
   acorn: ^8.14.0
@@ -44,6 +49,7 @@ catalog:
   vite-tsconfig-paths: ^5.1.4
   vitest: ^3.0.5
   web-vitals: ^5.1.0
+  ws: ^8.19.0
   zod: 4.1.13
 
 onlyBuiltDependencies:
