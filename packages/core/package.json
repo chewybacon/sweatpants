@@ -61,6 +61,7 @@
     "zod": "^4.0.0"
   },
   "devDependencies": {
+    "@effectionx/context-api": "catalog:",
     "@effectionx/node": "catalog:",
     "@effectionx/stream-helpers": "catalog:",
     "@effectionx/vitest": "catalog:",

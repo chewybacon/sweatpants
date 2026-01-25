@@ -18,3 +18,14 @@ export {
   type InterruptMessage,
   type CorrelatedTransport,
 } from "./transport/index.ts";
+
+// Re-export tool utilities and types
+export {
+  createTool,
+  type ToolConfig,
+  type ToolImplFn,
+  type Tool,
+  type ToolMiddleware,
+  type ToolFactoryWithImpl,
+  type ToolFactoryWithoutImpl,
+} from "./tool/index.ts";
