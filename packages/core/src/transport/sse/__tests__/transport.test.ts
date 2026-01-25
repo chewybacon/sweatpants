@@ -1,360 +1,389 @@
-/**
- * Tests for SSE+POST Transport
- *
- * These tests validate the transport layer in isolation using mock
- * SSE and POST handlers. The tests verify:
- *
- * 1. Backend can send messages via onSend callback
- * 2. Frontend can send progress that arrives on backend stream
- * 3. Frontend can respond and backend stream closes with response
- * 4. Multiple concurrent requests work correctly
- * 5. All response types are handled correctly
- */
-
-import { describe, it, expect } from "vitest";
-import {
-  run,
-  spawn,
-  sleep,
-  type Operation,
-  type Stream,
-  type Subscription,
-} from "effection";
-import {
-  createSSEBackendTransport,
-  type SSEBackendTransport,
-} from "../backend.ts";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { describe, it, expect } from "@effectionx/vitest";
+import { spawn, sleep, resource, withResolvers, type Operation } from "effection";
+import { createSSEPrincipal } from "../principal.ts";
+import { createCorrelation, type CorrelatedTransport } from "../../correlation.ts";
 import type {
+  PrincipalTransport,
   TransportRequest,
   ElicitResponse,
+  ProgressMessage,
+  ResponseMessage,
 } from "../../../types/transport.ts";
 
-/**
- * Helper to consume a stream, collecting progress and returning the final value.
- */
-function* consumeStream<T, R>(
-  stream: Stream<T, R>,
-  onProgress?: (value: T) => void
-): Operation<R> {
-  const subscription: Subscription<T, R> = yield* stream;
-  let next = yield* subscription.next();
+// ============================================================================
+// Test Utilities
+// ============================================================================
 
-  while (!next.done) {
-    if (onProgress) {
-      onProgress(next.value);
-    }
-    next = yield* subscription.next();
-  }
-
-  return next.value;
+interface SSETestServer {
+  principal: PrincipalTransport;
+  correlated: CorrelatedTransport;
+  operative: {
+    send: (msg: ProgressMessage | ResponseMessage) => Operation<void>;
+    received: TransportRequest[];
+  };
 }
 
-describe("SSE+POST Transport", () => {
-  describe("BackendTransport", () => {
-    it("should send messages via onSend callback", async () => {
-      await run(function* () {
-        const sentMessages: TransportRequest[] = [];
+function useSSETestServer(): Operation<SSETestServer> {
+  return resource(function* (provide) {
+    const postedRequests: TransportRequest[] = [];
+    const sseResponses: ServerResponse[] = [];
 
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend(message) {
-              sentMessages.push(message);
-            },
-          }
-        );
-
-        const message: TransportRequest = {
-          id: "msg-1",
-          kind: "elicit",
-          type: "location",
-          payload: { accuracy: "high" },
-        };
-
-        // Spawn a task to consume the stream
-        yield* spawn(function* () {
-          yield* consumeStream(transport.send(message));
-        });
-
-        // Yield to let the spawned task start and subscribe
-        yield* sleep(0);
-
-        // The message should be sent when the stream starts
-        expect(sentMessages).toHaveLength(1);
-        expect(sentMessages[0]).toEqual(message);
-
-        // Send the response to complete the stream
-        yield* transport.receiveResponse("msg-1", {
-          status: "accepted",
-          content: { lat: 40.7128, lng: -74.006 },
-        });
-      });
-    });
-
-    it("should receive progress events via stream", async () => {
-      await run(function* () {
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend() {
-              // No-op for this test
-            },
-          }
-        );
-
-        const message: TransportRequest = {
-          id: "msg-1",
-          kind: "elicit",
-          type: "location",
-          payload: { accuracy: "high" },
-        };
-
-        const progressReceived: unknown[] = [];
-        let streamComplete = false;
-
-        // Spawn a task to consume the stream
-        yield* spawn(function* () {
-          yield* consumeStream(transport.send(message), (progress) => {
-            progressReceived.push(progress);
+    const httpServer = createServer(
+      (req: IncomingMessage, res: ServerResponse) => {
+        if (req.url === "/sse" && req.method === "GET") {
+          // SSE endpoint
+          res.writeHead(200, {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            Connection: "keep-alive",
           });
-          streamComplete = true;
-        });
+          sseResponses.push(res);
+        } else if (req.url === "/post" && req.method === "POST") {
+          // POST endpoint for requests
+          let body = "";
+          req.on("data", (chunk) => {
+            body += chunk;
+          });
+          req.on("end", () => {
+            try {
+              const request = JSON.parse(body);
+              postedRequests.push(request);
+              res.writeHead(200, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ ok: true }));
+            } catch {
+              res.writeHead(400);
+              res.end("Invalid JSON");
+            }
+          });
+        } else {
+          res.writeHead(404);
+          res.end("Not found");
+        }
+      }
+    );
 
-        // Yield to let the spawned task start and subscribe
-        yield* sleep(0);
+    // Listen on random port
+    const listening = withResolvers<void>();
+    httpServer.listen(0, () => listening.resolve());
+    yield* listening.operation;
 
-        // Send progress events
-        yield* transport.receiveProgress("msg-1", {
-          status: "requesting-permission",
-        });
-        
-        // Yield to let the consumer process the progress
-        yield* sleep(0);
-        
-        yield* transport.receiveProgress("msg-1", { status: "acquiring" });
-        
-        // Yield to let the consumer process the progress
-        yield* sleep(0);
+    const address = httpServer.address();
+    const port = typeof address === "object" && address ? address.port : 0;
 
-        // Send final response to close the stream
-        yield* transport.receiveResponse("msg-1", {
-          status: "accepted",
-          content: { lat: 40.7128, lng: -74.006 },
-        });
+    // Create principal transport
+    const principal = yield* createSSEPrincipal({
+      sseUrl: `http://localhost:${port}/sse`,
+      postUrl: `http://localhost:${port}/post`,
+    });
+    const correlated = yield* createCorrelation(principal);
 
-        // Yield to let the stream complete
-        yield* sleep(0);
+    // Wait for SSE connection
+    yield* sleep(10);
 
-        expect(streamComplete).toBe(true);
-        expect(progressReceived).toHaveLength(2);
-        expect(progressReceived[0]).toEqual({ status: "requesting-permission" });
-        expect(progressReceived[1]).toEqual({ status: "acquiring" });
+    try {
+      yield* provide({
+        principal,
+        correlated,
+        operative: {
+          send: (msg: ProgressMessage | ResponseMessage): Operation<void> => ({
+            *[Symbol.iterator]() {
+              const res = sseResponses[0];
+              if (!res) {
+                throw new Error("No SSE connection established");
+              }
+              const { operation, resolve, reject } = withResolvers<void>();
+              res.write(`data: ${JSON.stringify(msg)}\n\n`, "utf-8", (err) => {
+                if (err) {
+                  reject(err);
+                } else {
+                  resolve();
+                }
+              });
+              return yield* operation;
+            },
+          }),
+          received: postedRequests,
+        },
+      });
+    } finally {
+      for (const res of sseResponses) {
+        res.end();
+      }
+      const closed = withResolvers<void>();
+      httpServer.close(() => closed.resolve());
+      yield* closed.operation;
+    }
+  });
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+describe("SSE+POST Transport", () => {
+  describe("PrincipalTransport (with correlation)", () => {
+    it("should send messages via POST", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
+
+      const message: TransportRequest = {
+        id: "msg-1",
+        kind: "elicit",
+        type: "location",
+        payload: { accuracy: "high" },
+      };
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request(message);
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+      });
+
+      yield* sleep(20);
+
+      expect(operative.received).toHaveLength(1);
+      expect(operative.received[0]).toEqual(message);
+
+      // Complete the request
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: { status: "accepted", content: {} },
       });
     });
 
-    it("should close stream with final response", async () => {
-      await run(function* () {
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend() {
-              // No-op
-            },
-          }
-        );
+    it("should receive progress events via stream", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
 
-        const message: TransportRequest = {
+      const message: TransportRequest = {
+        id: "msg-1",
+        kind: "elicit",
+        type: "location",
+        payload: { accuracy: "high" },
+      };
+
+      let result: IteratorResult<unknown, ElicitResponse>;
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+
+        // First progress
+        result = yield* subscription.next();
+        expect(result.done).toBe(false);
+        expect(result.value).toEqual({ status: "requesting-permission" });
+
+        // Second progress
+        result = yield* subscription.next();
+        expect(result.done).toBe(false);
+        expect(result.value).toEqual({ status: "acquiring" });
+
+        // Final response
+        result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({
+          status: "accepted",
+          content: { lat: 40.7128, lng: -74.006 },
+        });
+      });
+
+      yield* sleep(20);
+
+      // Operative sends progress updates
+      yield* operative.send({
+        type: "progress",
+        id: "msg-1",
+        data: { status: "requesting-permission" },
+      });
+
+      yield* sleep(20);
+
+      yield* operative.send({
+        type: "progress",
+        id: "msg-1",
+        data: { status: "acquiring" },
+      });
+
+      yield* sleep(20);
+
+      // Operative sends final response
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: {
+          status: "accepted",
+          content: { lat: 40.7128, lng: -74.006 },
+        },
+      });
+    });
+
+    it("should close stream with final response", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
+
+      const message: TransportRequest = {
+        id: "msg-1",
+        kind: "elicit",
+        type: "location",
+        payload: { accuracy: "high" },
+      };
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+
+        // Final response (no progress)
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({
+          status: "accepted",
+          content: { lat: 40.7128, lng: -74.006 },
+        });
+      });
+
+      yield* sleep(20);
+
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: {
+          status: "accepted",
+          content: { lat: 40.7128, lng: -74.006 },
+        },
+      });
+    });
+
+    it("should handle multiple concurrent requests", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
+
+      const responses: Record<string, ElicitResponse | undefined> = {};
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
           id: "msg-1",
           kind: "elicit",
           type: "location",
           payload: { accuracy: "high" },
-        };
-
-        let finalResponse: ElicitResponse | undefined;
-
-        // Spawn a task to consume the stream and capture the final response
-        yield* spawn(function* () {
-          finalResponse = yield* consumeStream(
-            transport.send<unknown, unknown, ElicitResponse>(message)
-          );
         });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        if (result.done) {
+          responses["msg-1"] = result.value;
+        }
+      });
 
-        // Yield to let the spawned task start and subscribe
-        yield* sleep(0);
-
-        // Send final response
-        yield* transport.receiveResponse("msg-1", {
-          status: "accepted",
-          content: { lat: 40.7128, lng: -74.006 },
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+          id: "msg-2",
+          kind: "elicit",
+          type: "clipboard-read",
+          payload: {},
         });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        if (result.done) {
+          responses["msg-2"] = result.value;
+        }
+      });
 
-        // Yield to let the spawned task process the response
-        yield* sleep(0);
+      yield* sleep(20);
 
-        expect(finalResponse).toEqual({
-          status: "accepted",
-          content: { lat: 40.7128, lng: -74.006 },
-        });
+      expect(operative.received).toHaveLength(2);
+
+      // Respond out of order
+      yield* operative.send({
+        type: "response",
+        id: "msg-2",
+        response: { status: "accepted", content: { text: "Hello clipboard" } },
+      });
+
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: { status: "denied" },
+      });
+
+      yield* sleep(20);
+
+      expect(responses["msg-1"]).toEqual({ status: "denied" });
+      expect(responses["msg-2"]).toEqual({
+        status: "accepted",
+        content: { text: "Hello clipboard" },
       });
     });
 
-    it("should handle multiple concurrent requests", async () => {
-      await run(function* () {
-        const sentMessages: TransportRequest[] = [];
+    it("should handle declined response", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
 
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend(message) {
-              sentMessages.push(message);
-            },
-          }
-        );
-
-        const responses: Record<string, ElicitResponse> = {};
-
-        // Start two concurrent requests
-        yield* spawn(function* () {
-          responses["msg-1"] = yield* consumeStream(
-            transport.send<unknown, unknown, ElicitResponse>({
-              id: "msg-1",
-              kind: "elicit",
-              type: "location",
-              payload: { accuracy: "high" },
-            })
-          );
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+          id: "msg-1",
+          kind: "elicit",
+          type: "confirmation",
+          payload: { message: "Book this flight?" },
         });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({ status: "declined" });
+      });
 
-        yield* spawn(function* () {
-          responses["msg-2"] = yield* consumeStream(
-            transport.send<unknown, unknown, ElicitResponse>({
-              id: "msg-2",
-              kind: "elicit",
-              type: "clipboard-read",
-              payload: {},
-            })
-          );
-        });
+      yield* sleep(20);
 
-        // Yield to let spawned tasks start
-        yield* sleep(0);
-
-        // Both messages should be sent
-        expect(sentMessages).toHaveLength(2);
-
-        // Respond to both in reverse order
-        yield* transport.receiveResponse("msg-2", {
-          status: "accepted",
-          content: { text: "Hello clipboard" },
-        });
-
-        yield* transport.receiveResponse("msg-1", {
-          status: "denied",
-        });
-
-        // Yield to let spawned tasks process responses
-        yield* sleep(0);
-
-        expect(responses["msg-1"]).toEqual({ status: "denied" });
-        expect(responses["msg-2"]).toEqual({
-          status: "accepted",
-          content: { text: "Hello clipboard" },
-        });
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: { status: "declined" },
       });
     });
 
-    it("should handle declined response", async () => {
-      await run(function* () {
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend() {},
-          }
-        );
+    it("should handle 'other' response when user goes off-script", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
 
-        let response: ElicitResponse | undefined;
-
-        yield* spawn(function* () {
-          response = yield* consumeStream(
-            transport.send<unknown, unknown, ElicitResponse>({
-              id: "msg-1",
-              kind: "elicit",
-              type: "confirmation",
-              payload: { message: "Book this flight?" },
-            })
-          );
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+          id: "msg-1",
+          kind: "elicit",
+          type: "flight-selection",
+          payload: { flights: [] },
         });
-
-        yield* sleep(0);
-
-        yield* transport.receiveResponse("msg-1", { status: "declined" });
-
-        yield* sleep(0);
-
-        expect(response).toEqual({ status: "declined" });
-      });
-    });
-
-    it("should handle 'other' response when user goes off-script", async () => {
-      await run(function* () {
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend() {},
-          }
-        );
-
-        let response: ElicitResponse | undefined;
-
-        yield* spawn(function* () {
-          response = yield* consumeStream(
-            transport.send<unknown, unknown, ElicitResponse>({
-              id: "msg-1",
-              kind: "elicit",
-              type: "flight-selection",
-              payload: { flights: [] },
-            })
-          );
-        });
-
-        yield* sleep(0);
-
-        yield* transport.receiveResponse("msg-1", {
-          status: "other",
-          content: "Actually, what's the weather like in Tokyo?",
-        });
-
-        yield* sleep(0);
-
-        expect(response).toEqual({
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({
           status: "other",
           content: "Actually, what's the weather like in Tokyo?",
         });
       });
+
+      yield* sleep(20);
+
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: {
+          status: "other",
+          content: "Actually, what's the weather like in Tokyo?",
+        },
+      });
     });
 
-    it("should handle cancelled response", async () => {
-      await run(function* () {
-        const transport: SSEBackendTransport = yield* createSSEBackendTransport(
-          {
-            *onSend() {},
-          }
-        );
+    it("should handle cancelled response", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
 
-        let response: ElicitResponse | undefined;
-
-        yield* spawn(function* () {
-          response = yield* consumeStream(
-            transport.send<unknown, unknown, ElicitResponse>({
-              id: "msg-1",
-              kind: "elicit",
-              type: "form",
-              payload: { fields: [] },
-            })
-          );
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+          id: "msg-1",
+          kind: "elicit",
+          type: "form",
+          payload: { fields: [] },
         });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({ status: "cancelled" });
+      });
 
-        yield* sleep(0);
+      yield* sleep(20);
 
-        yield* transport.receiveResponse("msg-1", { status: "cancelled" });
-
-        yield* sleep(0);
-
-        expect(response).toEqual({ status: "cancelled" });
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: { status: "cancelled" },
       });
     });
   });
