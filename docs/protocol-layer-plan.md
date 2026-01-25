@@ -7,7 +7,7 @@ Make each tool that's passed into `createAgent` invoke a protocol method and sen
 ## Key Insight
 
 We will use `createApi` from `effection/experimental` directly. This gives us:
-- Middleware support via `.decorate()` (we'll expose as `.around()`)
+- Middleware support via `.decorate()` (we'll expose as `.decorate()`)
 - Scoped middleware that inherits down the Effection scope tree
 - Operations that are yieldable
 
@@ -71,7 +71,7 @@ const search = yield* Search();
 const result = yield* search({ destination: "Tokyo", date: "2024-01-15" });
 
 // Override behavior via middleware (not by passing impl)
-yield* Search.around(function* (args, next) {
+yield* Search.decorate(function* (args, next) {
   console.log("before search");
   const result = yield* next(...args);
   console.log("after search");
@@ -101,7 +101,7 @@ const getLocation = yield* GetLocation(function* ({ accuracy }, send) {
 const location = yield* getLocation({ accuracy: "high" });
 
 // Middleware
-yield* GetLocation.around(function* (args, next) {
+yield* GetLocation.decorate(function* (args, next) {
   return yield* next(...args);
 });
 ```
@@ -218,7 +218,7 @@ const GetLocation = createTool({ ... });  // no impl
 const getLocation = yield* GetLocation();  // ✅ Routes to Operative via transport
 
 // Override behavior? Use middleware, not impl override
-yield* Search.around(function* (args, next) {
+yield* Search.decorate(function* (args, next) {
   // intercept, modify, or replace behavior
   return yield* next(...args);
 });
@@ -245,7 +245,7 @@ const flight = yield* Flight({ apiKey: "..." });
 yield* flight.tools.search({ destination: "Tokyo", date: "2024-01-15" });
 
 // Agent-level middleware (object form for multiple tools)
-yield* Flight.around({
+yield* Flight.decorate({
   search(args, next) {
     return yield* next(...args);
   },
@@ -268,8 +268,8 @@ const BuiltInApi = createApi("sweatpants", {
 // Export operations for direct use
 export const { elicit, notify, sample } = BuiltInApi.operations;
 
-// Export freestanding around for built-ins
-export function around(handlers: {
+// Export freestanding decorate for built-ins
+export function decorate(handlers: {
   elicit?: Middleware,
   notify?: Middleware,
   sample?: Middleware,
@@ -283,7 +283,7 @@ yield* notify("Processing...", 0.5);
 yield* sample({ prompt: "...", maxTokens: 150 });
 
 // Middleware for built-ins:
-yield* around({
+yield* decorate({
   *sample(args, next) {
     // redact PII, etc.
     return yield* next(...args);
@@ -355,12 +355,12 @@ function createTool<TInput, TProgress, TOutput>(
 
 interface ToolFactoryWithImpl<TInput, TOutput> {
   (): Operation<Tool<TInput, TOutput>>;
-  around(middleware: MiddlewareFn): Operation<void>;
+  decorate(middleware: MiddlewareFn): Operation<void>;
 }
 
 interface ToolFactoryWithoutImpl<TInput, TProgress, TOutput> {
   (impl?: ToolImplFn<TInput, TProgress, TOutput>): Operation<Tool<TInput, TOutput>>;
-  around(middleware: MiddlewareFn): Operation<void>;
+  decorate(middleware: MiddlewareFn): Operation<void>;
 }
 ```
 
@@ -370,7 +370,7 @@ When called (e.g., `yield* Search()` or `yield* GetLocation(impl)`):
 - Creates API with the impl as the single operation
 - If no impl provided and none in config, uses default impl that routes to transport
 - Returns the activated tool function
-- Exposes `.around()` that delegates to `api.decorate()`
+- Exposes `.decorate()` that delegates to `api.decorate()`
 
 ### Phase 2: Transport Integration
 
@@ -421,7 +421,7 @@ export const BuiltInApi = createApi("sweatpants", {
 });
 
 export const { elicit, notify, sample } = BuiltInApi.operations;
-export const around = (handlers) => BuiltInApi.decorate(handlers);
+export const decorate = (handlers) => BuiltInApi.decorate(handlers);
 ```
 
 ### Phase 4: Agent Infrastructure
@@ -451,7 +451,7 @@ function createAgent(config: AgentConfig) {
     };
   }
   
-  Agent.around = (handlers) => api.decorate(handlers);
+  Agent.decorate = (handlers) => api.decorate(handlers);
   
   return Agent;
 }
@@ -493,7 +493,7 @@ packages/core/src/
 ├── builtins/
 │   ├── index.ts
 │   ├── api.ts             # BuiltInApi
-│   └── around.ts          # freestanding around()
+│   └── decorate.ts        # freestanding decorate()
 ├── operative/
 │   ├── index.ts
 │   └── handler.ts
