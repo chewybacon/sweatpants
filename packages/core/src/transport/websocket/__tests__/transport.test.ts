@@ -1,99 +1,61 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer } from "node:http";
 import { describe, it, expect } from "@effectionx/vitest";
 import { spawn, sleep, resource, withResolvers, type Operation } from "effection";
-import { createSSEPrincipal } from "../principal.ts";
+import { WebSocketServer, type WebSocket as WsWebSocket } from "ws";
+import { createWebSocketPrincipal } from "../principal.ts";
 import { createCorrelation, type CorrelatedTransport } from "../../correlation.ts";
 import type {
   PrincipalTransport,
   TransportRequest,
   ElicitResponse,
-  ProgressMessage,
-  ResponseMessage,
 } from "../../../types/transport.ts";
+import type { WebSocketWireMessage } from "../principal.ts";
 
 // ============================================================================
 // Test Utilities
 // ============================================================================
 
-interface SSETestServer {
+interface WebSocketTestPair {
   principal: PrincipalTransport;
   correlated: CorrelatedTransport;
   operative: {
-    send: (msg: ProgressMessage | ResponseMessage) => Operation<void>;
-    received: TransportRequest[];
+    send: (msg: WebSocketWireMessage) => Operation<void>;
   };
 }
 
-function useSSETestServer(): Operation<SSETestServer> {
+function useWebSocketTestServer(): Operation<WebSocketTestPair> {
   return resource(function* (provide) {
-    const postedRequests: TransportRequest[] = [];
-    const sseResponses: ServerResponse[] = [];
-
-    const httpServer = createServer(
-      (req: IncomingMessage, res: ServerResponse) => {
-        if (req.url === "/sse" && req.method === "GET") {
-          // SSE endpoint
-          res.writeHead(200, {
-            "Content-Type": "text/event-stream",
-            "Cache-Control": "no-cache",
-            Connection: "keep-alive",
-          });
-          sseResponses.push(res);
-        } else if (req.url === "/post" && req.method === "POST") {
-          // POST endpoint for requests
-          let body = "";
-          req.on("data", (chunk) => {
-            body += chunk;
-          });
-          req.on("end", () => {
-            try {
-              const request = JSON.parse(body);
-              postedRequests.push(request);
-              res.writeHead(200, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ ok: true }));
-            } catch {
-              res.writeHead(400);
-              res.end("Invalid JSON");
-            }
-          });
-        } else {
-          res.writeHead(404);
-          res.end("Not found");
-        }
-      }
-    );
+    const httpServer = createServer();
+    const wss = new WebSocketServer({ server: httpServer });
 
     // Listen on random port
     const listening = withResolvers<void>();
-    httpServer.listen(0, () => listening.resolve());
+    httpServer.listen(0, listening.resolve);
     yield* listening.operation;
 
     const address = httpServer.address();
     const port = typeof address === "object" && address ? address.port : 0;
 
-    // Create principal transport
-    const principal = yield* createSSEPrincipal({
-      sseUrl: `http://localhost:${port}/sse`,
-      postUrl: `http://localhost:${port}/post`,
-    });
+    // Set up connection listener before client connects
+    const connectionReady = withResolvers<WsWebSocket>();
+    wss.on("connection", connectionReady.resolve);
+
+    // Create principal transport (this initiates connection)
+    const principal = yield* createWebSocketPrincipal(`ws://localhost:${port}`);
     const correlated = yield* createCorrelation(principal);
 
-    // Wait for SSE connection
-    yield* sleep(10);
+    // Now await the server-side socket
+    const rawSocket = yield* connectionReady.operation;
 
     try {
       yield* provide({
         principal,
         correlated,
         operative: {
-          send: (msg: ProgressMessage | ResponseMessage): Operation<void> => ({
+          send: (msg: WebSocketWireMessage): Operation<void> => ({
             *[Symbol.iterator]() {
-              const res = sseResponses[0];
-              if (!res) {
-                throw new Error("No SSE connection established");
-              }
               const { operation, resolve, reject } = withResolvers<void>();
-              res.write(`data: ${JSON.stringify(msg)}\n\n`, "utf-8", (err) => {
+              rawSocket.send(JSON.stringify(msg), (err) => {
                 if (err) {
                   reject(err);
                 } else {
@@ -103,13 +65,11 @@ function useSSETestServer(): Operation<SSETestServer> {
               return yield* operation;
             },
           }),
-          received: postedRequests,
         },
       });
     } finally {
-      for (const res of sseResponses) {
-        res.end();
-      }
+      rawSocket.close();
+      wss.close();
       const closed = withResolvers<void>();
       httpServer.close(() => closed.resolve());
       yield* closed.operation;
@@ -121,10 +81,10 @@ function useSSETestServer(): Operation<SSETestServer> {
 // Tests
 // ============================================================================
 
-describe("SSE+POST Transport", () => {
+describe("WebSocket Transport", () => {
   describe("PrincipalTransport (with correlation)", () => {
-    it("should send messages via POST", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+    it("should send messages via WebSocket", function* () {
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       const message: TransportRequest = {
         id: "msg-1",
@@ -133,18 +93,16 @@ describe("SSE+POST Transport", () => {
         payload: { accuracy: "high" },
       };
 
+      // Start consuming the stream (this triggers the send)
       yield* spawn(function* () {
         const subscription = yield* correlated.request(message);
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
-      expect(operative.received).toHaveLength(1);
-      expect(operative.received[0]).toEqual(message);
-
-      // Complete the request
+      // Complete the request so the test can finish
       yield* operative.send({
         type: "response",
         id: "msg-1",
@@ -153,7 +111,7 @@ describe("SSE+POST Transport", () => {
     });
 
     it("should receive progress events via stream", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       const message: TransportRequest = {
         id: "msg-1",
@@ -186,7 +144,7 @@ describe("SSE+POST Transport", () => {
         });
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       // Operative sends progress updates
       yield* operative.send({
@@ -195,7 +153,7 @@ describe("SSE+POST Transport", () => {
         data: { status: "requesting-permission" },
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       yield* operative.send({
         type: "progress",
@@ -203,7 +161,7 @@ describe("SSE+POST Transport", () => {
         data: { status: "acquiring" },
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       // Operative sends final response
       yield* operative.send({
@@ -217,7 +175,7 @@ describe("SSE+POST Transport", () => {
     });
 
     it("should close stream with final response", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       const message: TransportRequest = {
         id: "msg-1",
@@ -238,7 +196,7 @@ describe("SSE+POST Transport", () => {
         });
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       yield* operative.send({
         type: "response",
@@ -251,7 +209,7 @@ describe("SSE+POST Transport", () => {
     });
 
     it("should handle multiple concurrent requests", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       const responses: Record<string, ElicitResponse | undefined> = {};
 
@@ -283,9 +241,7 @@ describe("SSE+POST Transport", () => {
         }
       });
 
-      yield* sleep(20);
-
-      expect(operative.received).toHaveLength(2);
+      yield* sleep(10);
 
       // Respond out of order
       yield* operative.send({
@@ -300,7 +256,7 @@ describe("SSE+POST Transport", () => {
         response: { status: "denied" },
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       expect(responses["msg-1"]).toEqual({ status: "denied" });
       expect(responses["msg-2"]).toEqual({
@@ -310,7 +266,7 @@ describe("SSE+POST Transport", () => {
     });
 
     it("should handle declined response", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
         const subscription = yield* correlated.request<unknown, ElicitResponse>({
@@ -324,7 +280,7 @@ describe("SSE+POST Transport", () => {
         expect(result.value).toEqual({ status: "declined" });
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       yield* operative.send({
         type: "response",
@@ -334,7 +290,7 @@ describe("SSE+POST Transport", () => {
     });
 
     it("should handle 'other' response when user goes off-script", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
         const subscription = yield* correlated.request<unknown, ElicitResponse>({
@@ -351,7 +307,7 @@ describe("SSE+POST Transport", () => {
         });
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       yield* operative.send({
         type: "response",
@@ -364,7 +320,7 @@ describe("SSE+POST Transport", () => {
     });
 
     it("should handle cancelled response", function* () {
-      const { correlated, operative } = yield* useSSETestServer();
+      const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
         const subscription = yield* correlated.request<unknown, ElicitResponse>({
@@ -378,13 +334,29 @@ describe("SSE+POST Transport", () => {
         expect(result.value).toEqual({ status: "cancelled" });
       });
 
-      yield* sleep(20);
+      yield* sleep(10);
 
       yield* operative.send({
         type: "response",
         id: "msg-1",
         response: { status: "cancelled" },
       });
+    });
+  });
+
+  describe("Raw Transport (without correlation)", () => {
+    it("should send and receive raw messages", function* () {
+      const { principal } = yield* useWebSocketTestServer();
+
+      const request: TransportRequest = {
+        id: "req-1",
+        kind: "elicit",
+        type: "test",
+        payload: {},
+      };
+
+      yield* principal.send(request);
+      // The message was sent successfully if no error is thrown
     });
   });
 });

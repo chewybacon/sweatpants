@@ -1,16 +1,20 @@
-/**
- * Transport layer for backend-frontend communication.
- *
- * This module exports the transport interfaces and utilities.
- * Specific implementations (SSE, WebSocket) are in their own submodules.
- */
-
+// Types
 export type {
-  BackendTransport,
-  FrontendTransport,
-  IncomingMessage,
+  Transport,
+  PrincipalTransport,
+  OperativeTransport,
   TransportRequest,
+  ProgressMessage,
+  ResponseMessage,
+  PrincipalIncoming,
+  PrincipalOutgoing,
+  OperativeIncoming,
+  OperativeOutgoing,
   InterruptMessage,
   ElicitResponse,
   NotifyResponse,
 } from "../types/transport.ts";
+
+// Core utilities
+export { createTransportPair } from "./pair.ts";
+export { createCorrelation, type CorrelatedTransport } from "./correlation.ts";

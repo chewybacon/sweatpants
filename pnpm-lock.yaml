@@ -9,9 +9,18 @@ catalogs:
     '@effectionx/context-api':
       specifier: ^0.2.1
       version: 0.2.1
+    '@effectionx/node':
+      specifier: ^0.2.0
+      version: 0.2.0
     '@effectionx/raf':
       specifier: ^0.1.1
       version: 0.1.1
+    '@effectionx/stream-helpers':
+      specifier: ^0.7.1
+      version: 0.7.1
+    '@effectionx/vitest':
+      specifier: ^0.1.0
+      version: 0.1.0
     '@effectionx/websocket':
       specifier: ^2.3.0
       version: 2.3.0
@@ -66,6 +75,9 @@ catalogs:
     '@types/react-dom':
       specifier: ^19.2.0
       version: 19.2.3
+    '@types/ws':
+      specifier: ^8.18.1
+      version: 8.18.1
     '@vitejs/plugin-react':
       specifier: ^5.0.4
       version: 5.1.2
@@ -123,6 +135,9 @@ catalogs:
     web-vitals:
       specifier: ^5.1.0
       version: 5.1.0
+    ws:
+      specifier: ^8.19.0
+      version: 8.19.0
     zod:
       specifier: 4.1.13
       version: 4.1.13
@@ -513,6 +528,15 @@ importers:
 
   packages/core:
     devDependencies:
+      '@effectionx/node':
+        specifier: 'catalog:'
+        version: 0.2.0(effection@4.0.0)
+      '@effectionx/stream-helpers':
+        specifier: 'catalog:'
+        version: 0.7.1(effection@4.0.0)
+      '@effectionx/vitest':
+        specifier: 'catalog:'
+        version: 0.1.0(effection@4.0.0)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effectionx/websocket':
         specifier: 'catalog:'
         version: 2.3.0(effection@4.0.0)
@@ -522,6 +546,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.1
       effection:
         specifier: 'catalog:'
         version: 4.0.0
@@ -534,6 +561,12 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+      ws:
+        specifier: 'catalog:'
+        version: 8.19.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
 
   packages/elicit-context:
     devDependencies:
@@ -897,6 +930,12 @@ packages:
     resolution: {integrity: sha512-5s2V//G0rSznZJhfCtIq5qfiT0CARz7TFKC6LTtkU4YxJEbTGH4KUXUxbVImhhSpZIgM4m9MfyfpmrKN9SkXpw==}
     engines: {node: '>= 16'}
 
+  '@effectionx/node@0.2.0':
+    resolution: {integrity: sha512-eBknFGcpylbnl6IIkyAbEJdE4Nc1s3nIgWXQ3fKG1ZtxCXli4D+RpQNYqn8BkXgCM/tAuGhxHHDU/x8D3msMuQ==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
   '@effectionx/process@0.6.2':
     resolution: {integrity: sha512-U94gqTNXASRw8KBJOtSE+MaWL09Tox7la9/rmJCzUpaLWSmrSOvH28NCv++PKKy8qNCErD+QQip5q+E8lARNEQ==}
     engines: {node: '>= 16'}
@@ -905,9 +944,40 @@ packages:
     resolution: {integrity: sha512-bEf7FTHjO7kzX4zcSiwLpTSfNANKTuB5kxLVyL9eP3vs11+T/IPR8FNZifqkw0gV1/nRXCjBopPLIlzcrB7zZg==}
     engines: {node: '>= 16'}
 
+  '@effectionx/signals@0.5.0':
+    resolution: {integrity: sha512-lvS9D/+2YI0tpSqvYIZk4MrF5noV178iEk97zeD/nyPsQhkh06bsA0bIu6oa7Vf6IkJKOcs6qB3X0HwdSBWAsg==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
+  '@effectionx/stream-helpers@0.7.1':
+    resolution: {integrity: sha512-g1uQCD0MaPzXC0HSCcRMXWeiBVZSyR5FHarBul4c6gSL2hbgvjBxybWvw8SHwVVq9oSZED8XGnzenHnwo1o1Sg==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
+  '@effectionx/test-adapter@0.7.0':
+    resolution: {integrity: sha512-/+7jQuyjVdiimBcFRj5RiQZV7QpiFatzYMovYtmx+wKXBCCqSPjeg1GaBI8FMYJDXOH7HagWphau3Z+XJStqtg==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
+  '@effectionx/timebox@0.4.0':
+    resolution: {integrity: sha512-nLjQCKshBMyfmh/JAcQVwlyQEF9QvUmZIFunc3zGU92x9y5NJstwZ8/e/fid4Z8om3n6afFSOl89HoyW/1/uXA==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
   '@effectionx/tinyexec@0.3.1':
     resolution: {integrity: sha512-FV4XRhsq1jHFgRqQUU/YgUsfNqjlq0+wg8YqvDS2wmwWPsUzBfjiijsmkrowVU5AVtrxda7b+8WE2BWPcoPz0w==}
     engines: {node: '>= 16'}
+
+  '@effectionx/vitest@0.1.0':
+    resolution: {integrity: sha512-iNglMahG3dXW3QmnJpPpjflyGcnAtxevWYily5okIWEu9+vLYdVPJ+3AqS7MSuEWwuGy2Yt6qdfnVT+lKrL3fQ==}
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+      vitest: ^3 || ^4
 
   '@effectionx/websocket@2.3.0':
     resolution: {integrity: sha512-FpAptS5zvmw5jJVQp69BqPzAfgstaYKP/D+EThjaAsT/zxlfwqYnKeZNvgePxM3y8q/zmMrBi5QGud8CRkV5Yg==}
@@ -3000,6 +3070,9 @@ packages:
   '@types/web-bluetooth@0.0.21':
     resolution: {integrity: sha512-oIQLCGWtcFZy2JW77j9k8nHzAOpqMHLQejDA48XXMWH6tjCQHz5RCFz1bzsmROyL6PUm+LLnUiI4BCn221inxA==}
 
+  '@types/ws@8.18.1':
+    resolution: {integrity: sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==}
+
   '@typescript/ata@0.9.8':
     resolution: {integrity: sha512-+M815CeDRJS5H5ciWfhFCKp25nNfF+LFWawWAaBhNlquFb2wS5IIMDI+2bKWN3GuU6mpj+FzySsOD29M4nG8Xg==}
     peerDependencies:
@@ -4440,6 +4513,9 @@ packages:
   immediate@3.0.6:
     resolution: {integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==}
 
+  immutable@5.1.4:
+    resolution: {integrity: sha512-p6u1bG3YSnINT5RQmx/yRZBpenIl30kVxkTLDyHLIMk0gict704Q9n+thfDI7lTRm9vXdDYutVzXhzcThxTnXA==}
+
   indent-string@5.0.0:
     resolution: {integrity: sha512-m6FAo/spmsW2Ab2fU35JTYwtOKa2yAwXSwgjSv1TJzh4Mh7mC3lzAOVLBprb72XsTrgkEIsl7YrFNAiDiRhIGg==}
     engines: {node: '>=12'}
@@ -5552,6 +5628,9 @@ packages:
 
   remark-stringify@11.0.0:
     resolution: {integrity: sha512-1OSmLd3awB/t8qdoEOMazZkNsfVTeY4fTsgzcQFdXNq8ToTN4ZGwrMnlda4K6smTFKD+GRV6O48i6Z4iKgPPpw==}
+
+  remeda@2.33.4:
+    resolution: {integrity: sha512-ygHswjlc/opg2VrtiYvUOPLjxjtdKvjGz1/plDhkG66hjNjFr1xmfrs2ClNFo/E6TyUFiwYNh53bKV26oBoMGQ==}
 
   require-directory@2.1.1:
     resolution: {integrity: sha512-fGxEI7+wsG9xrvdjsrlmL22OMTTiHRwAMroiEeMgq8gzoLC/PQr7RsRDSTLUg/bZAZtF+TVIkHc6/4RIKrui+Q==}
@@ -7036,6 +7115,10 @@ snapshots:
     dependencies:
       effection: 4.0.0
 
+  '@effectionx/node@0.2.0(effection@4.0.0)':
+    dependencies:
+      effection: 4.0.0
+
   '@effectionx/process@0.6.2':
     dependencies:
       '@types/cross-spawn': 6.0.6
@@ -7048,10 +7131,37 @@ snapshots:
     dependencies:
       effection: 4.0.0
 
+  '@effectionx/signals@0.5.0(effection@4.0.0)':
+    dependencies:
+      effection: 4.0.0
+      immutable: 5.1.4
+
+  '@effectionx/stream-helpers@0.7.1(effection@4.0.0)':
+    dependencies:
+      '@effectionx/signals': 0.5.0(effection@4.0.0)
+      '@effectionx/timebox': 0.4.0(effection@4.0.0)
+      effection: 4.0.0
+      immutable: 5.1.4
+      remeda: 2.33.4
+
+  '@effectionx/test-adapter@0.7.0(effection@4.0.0)':
+    dependencies:
+      effection: 4.0.0
+
+  '@effectionx/timebox@0.4.0(effection@4.0.0)':
+    dependencies:
+      effection: 4.0.0
+
   '@effectionx/tinyexec@0.3.1':
     dependencies:
       effection: 4.0.0
       tinyexec: 0.3.2
+
+  '@effectionx/vitest@0.1.0(effection@4.0.0)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
+    dependencies:
+      '@effectionx/test-adapter': 0.7.0(effection@4.0.0)
+      effection: 4.0.0
+      vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   '@effectionx/websocket@2.3.0(effection@4.0.0)':
     dependencies:
@@ -9056,6 +9166,10 @@ snapshots:
 
   '@types/web-bluetooth@0.0.21': {}
 
+  '@types/ws@8.18.1':
+    dependencies:
+      '@types/node': 22.19.5
+
   '@typescript/ata@0.9.8(typescript@5.9.3)':
     dependencies:
       typescript: 5.9.3
@@ -10788,6 +10902,8 @@ snapshots:
 
   immediate@3.0.6: {}
 
+  immutable@5.1.4: {}
+
   indent-string@5.0.0: {}
 
   inherits@2.0.4: {}
@@ -12149,6 +12265,8 @@ snapshots:
       '@types/mdast': 4.0.4
       mdast-util-to-markdown: 2.1.2
       unified: 11.0.5
+
+  remeda@2.33.4: {}
 
   require-directory@2.1.1: {}
 
