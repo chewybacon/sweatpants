@@ -26,7 +26,9 @@ The architecture is built on Effection's structured concurrency model:
 - **Tool**: A typed operation provided by an agent; implemented as a coroutine.
 - **Protocol**: A declarative contract for cross-environment method calls.
 - **Elicit**: A structured request for user/environment input.
-- **Transport**: A byte-level channel that moves protocol messages between environments.
+- **Principal**: The agent-side of communication; initiates requests for elicit/notify operations.
+- **Operative**: The UI-side of communication; receives requests and sends progress/responses.
+- **Transport**: A bidirectional stream that moves messages between Principal and Operative. Implemented in `@sweatpants/core`.
 - **Middleware**: Interceptors that wrap operations across the scope hierarchy.
 - **Context**: The structured value store inherited by child scopes.
 
@@ -149,10 +151,10 @@ The system is organized into three layers, each with distinct responsibilities:
 ┌─────────────────────────────────────────────────────────────────┐
 │                       TRANSPORT                                 │
 │                                                                 │
-│  - Move bytes between environments                              │
-│  - Backend-driven request/response                              │
-│  - SSE+POST, WebSocket, etc.                                    │
-│  - No semantic understanding                                    │
+│  - Move messages between Principal and Operative                │
+│  - Principal-driven request/response                            │
+│  - SSE+POST, WebSocket, in-memory pair                          │
+│  - Implemented in @sweatpants/core                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -415,11 +417,11 @@ type ElicitResult<T> =
 - Permission denial is `{ action: 'denied' }`, not an error
 - Framework provides standard elicit types with `createElicit`
 
-### Backend-Authoritative Interactions
+### Principal-Authoritative Interactions
 
-- Backend controls state, validation, authorization
-- Frontend is presentation layer only
-- Example: "Draw a card" — backend picks, frontend reveals
+- Principal controls state, validation, authorization
+- Operative is presentation layer only
+- Example: "Draw a card" — Principal picks, Operative reveals
 
 ### Compound Elicits (Choice + Type Something)
 
@@ -433,9 +435,9 @@ The protocol system separates declaration from implementation, enabling environm
 
 ### Example: Location Protocol
 
-A Location agent needs to retrieve the user's location. The backend agent doesn't know how to access GPS — that's a frontend capability. The protocol bridges this gap.
+A Location agent needs to retrieve the user's location. The Principal (agent) doesn't know how to access GPS — that's an Operative capability. The protocol bridges this gap.
 
-**Declaration (shared between backend and frontend):**
+**Declaration (shared between Principal and Operative):**
 
 ```ts
 import { createProtocol } from "@sweatpants/core";
@@ -450,7 +452,7 @@ const LocationProtocol = createProtocol({
 });
 ```
 
-**Implementation (frontend — browser environment):**
+**Implementation (Operative — browser environment):**
 
 ```ts
 import { createImplementation, withResolvers } from "@sweatpants/core";
@@ -494,14 +496,14 @@ const cliLocation = createImplementation(LocationProtocol, function* () {
 });
 ```
 
-**Usage in an agent (backend — doesn't know which implementation):**
+**Usage in an agent (Principal — doesn't know which implementation):**
 
 ```ts
 const WeatherAgent = createAgent({
   getLocalWeather: createTool("get-local-weather")
     .description("Get weather for user's current location")
     .execute(function* () {
-      // Backend calls protocol — transport handles routing to frontend
+      // Principal calls protocol — transport handles routing to Operative
       const handle = yield* LocationProtocol.attach();
       const location = yield* handle.invoke({
         name: "getLocation",
@@ -528,7 +530,7 @@ const WeatherAgent = createAgent({
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         BACKEND                                 │
+│                        PRINCIPAL                                │
 │                                                                 │
 │   Chat Agent                                                    │
 │   ┌─────────────────────────────────────────────────────────┐   │
@@ -551,7 +553,7 @@ const WeatherAgent = createAgent({
 └──────────────────────────────│──────────────────────────────────┘
                                │ transport (contextual)
 ┌──────────────────────────────│──────────────────────────────────┐
-│                         FRONTEND                                │
+│                        OPERATIVE                                │
 │                              ▼                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │  Implementation: elicit (UI Chat)                       │   │
@@ -563,15 +565,15 @@ const WeatherAgent = createAgent({
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Backend-Driven Communication
+## Principal-Driven Communication
 
-Communication between backend and frontend is **backend-driven**. The backend always initiates, the frontend always responds. There is no frontend-initiated communication.
+Communication between Principal and Operative is **Principal-driven**. The Principal always initiates, the Operative always responds. There is no Operative-initiated communication.
 
 **The loop:**
 
 ```
-Backend (driver)                    Frontend (reactor)
-──────────────────                  ──────────────────
+Principal (driver)                  Operative (reactor)
+──────────────────                  ───────────────────
 
 loop {
   decide next action
@@ -591,160 +593,190 @@ loop {
 
 **Key properties:**
 
-- Backend controls the flow
-- Frontend is reactive (receives instructions, sends back results)
-- Backend controls asynchrony — when new input arrives while processing, backend decides what to do (queue, interrupt, merge)
+- Principal controls the flow
+- Operative is reactive (receives instructions, sends back results)
+- Principal controls asynchrony — when new input arrives while processing, Principal decides what to do (queue, interrupt, merge)
 
 **Response interpretation:**
 
-- **Structured response** (user clicked specific UI element) → Backend processes directly
-- **Unstructured/text response** (user typed something) → Backend sends to LLM to interpret
+- **Structured response** (user clicked specific UI element) → Principal processes directly
+- **Unstructured/text response** (user typed something) → Principal sends to LLM to interpret
 
-The backend doesn't know the nature of user's response until it sends the response to the LLM for interpretation.
+The Principal doesn't know the nature of user's response until it sends the response to the LLM for interpretation.
 
 ## Transport Layer
 
-Transport moves bytes between environments. It has no semantic understanding.
+The transport layer (`@sweatpants/core`) provides the communication substrate between Principal (agent) and Operative (UI). It moves messages between environments with no semantic understanding of the protocols built on top.
 
-**Interface:**
+### Transport Interface
+
+Transport is a bidirectional stream that can send and receive messages:
 
 ```ts
-// Backend side
-interface BackendTransport {
-  /**
-   * Send a message and get back a stream.
-   * Stream yields progress events from frontend, closes with final response.
-   */
-  send<TRequest, TProgress, TResponse>(message: TRequest): Stream<TProgress, TResponse>;
+import type { Operation, Stream } from "effection";
+
+/**
+ * A bidirectional transport that can send and receive messages.
+ * Extends Stream to allow consuming received messages.
+ */
+interface Transport<TSend, TReceive> extends Stream<TReceive, void> {
+  send(message: TSend): Operation<void>;
 }
 
-// Frontend side
-interface FrontendTransport {
-  messages: Stream<IncomingMessage, void>;
-}
+// Principal sends requests, receives progress/responses
+type PrincipalTransport = Transport<TransportRequest, ProgressMessage | ResponseMessage>;
 
-interface IncomingMessage<T = unknown> {
+// Operative receives requests, sends progress/responses
+type OperativeTransport = Transport<ProgressMessage | ResponseMessage, TransportRequest>;
+```
+
+### Wire Message Types
+
+```ts
+/** A request message sent from Principal to Operative */
+interface TransportRequest<TPayload = unknown> {
   id: string;
-  kind: 'elicit' | 'notify';
-  type: string;  // e.g., 'location', 'flight-selection', 'progress'
-  payload: T;
-  
-  /**
-   * Send incremental progress back to backend (ephemeral, not persisted)
-   */
-  progress(data: unknown): Operation<void>;
-  
-  /**
-   * Complete with final response
-   */
-  respond(response: ElicitResponse | NotifyResponse): Operation<void>;
+  kind: "elicit" | "notify";
+  type: string;
+  payload: TPayload;
+}
+
+/** A progress update sent from Operative to Principal */
+interface ProgressMessage<TData = unknown> {
+  type: "progress";
+  id: string;
+  data: TData;
+}
+
+/** A final response sent from Operative to Principal */
+interface ResponseMessage {
+  type: "response";
+  id: string;
+  response: ElicitResponse | NotifyResponse;
 }
 ```
 
-**Example flow with progress:**
+### Transport Implementations
 
-```
-Backend                              Frontend
-───────                              ────────
+| Implementation | Use Case | Principal → Operative | Operative → Principal |
+|----------------|----------|----------------------|----------------------|
+| `createTransportPair()` | Testing | In-memory channel | In-memory channel |
+| `createWebSocketPrincipal/Operative` | Real-time apps | WebSocket | WebSocket |
+| `createSSEPrincipal/Operative` | HTTP-only environments | HTTP POST | Server-Sent Events |
 
-send({ type: 'location' }) ────────► receive message
-
-    (backend waiting on stream)      calls geolocation API
-                                     
-progress({ status: 'requesting' }) ◄─ permission prompt shown
-    ▲ (yielded from stream)          
-                                     user grants permission
-progress({ status: 'acquiring' })  ◄─ GPS acquiring
-    ▲ (yielded from stream)
-                                     position acquired
-respond({ status: 'accepted',      ◄─ final response
-         content: { lat, lng } })
-    ▲ (stream closes with value)
-```
-
-**Backend code example:**
+**In-memory transport for testing:**
 
 ```ts
-import { each } from "effection";
+import { createTransportPair } from "@sweatpants/core";
 
-function* getLocalWeather(transport: BackendTransport) {
-  const stream = transport.send({
-    id: generateId(),
-    kind: 'elicit',
-    type: 'location',
+function* testSetup() {
+  const [principal, operative] = yield* createTransportPair();
+  // principal and operative are connected in-memory
+}
+```
+
+**WebSocket transport:**
+
+```ts
+import { createWebSocketPrincipal } from "@sweatpants/core";
+
+function* connectAgent() {
+  const transport = yield* createWebSocketPrincipal("wss://example.com/agent");
+  // Use transport for agent communication
+}
+```
+
+**SSE transport:**
+
+```ts
+import { createSSEPrincipal } from "@sweatpants/core";
+
+function* connectAgent() {
+  const transport = yield* createSSEPrincipal({
+    sseUrl: "https://example.com/events",   // Receive progress/responses
+    postUrl: "https://example.com/request", // Send requests
+  });
+}
+```
+
+### Correlation Layer
+
+The raw transport is message-based — it doesn't associate responses with requests. The correlation layer adds request/response matching:
+
+```ts
+import { createCorrelation, type CorrelatedTransport } from "@sweatpants/core";
+
+interface CorrelatedTransport {
+  /**
+   * Send a request and get a stream of progress updates
+   * that closes with the final response.
+   */
+  request<TProgress, TResponse>(
+    message: TransportRequest
+  ): Stream<TProgress, TResponse>;
+}
+
+function* setupAgent(transport: PrincipalTransport) {
+  const correlated = yield* createCorrelation(transport);
+  
+  // Now requests automatically correlate with responses
+  const stream = correlated.request({
+    id: "loc-1",
+    kind: "elicit",
+    type: "location",
     payload: { enableHighAccuracy: true }
   });
-
-  // Consume progress events as they arrive
-  for (const progress of yield* each(stream)) {
-    console.log('Progress:', progress);  // { status: 'requesting' }, { status: 'acquiring' }
-    yield* each.next();
-  }
   
-  // Stream closes with final response
-  const response = yield* stream;
-  
-  if (response.status === 'accepted') {
-    return yield* fetchWeather(response.content);
-  }
-  
-  return { error: 'Location denied' };
+  // Stream yields progress for this specific request
+  // Stream closes with the response for this request
 }
 ```
 
-**Frontend code example:**
+**Why separate correlation from transport?**
 
-```ts
-import { each, withResolvers } from "effection";
+1. **Multiple concurrent requests** — Several elicit/notify operations can be in flight simultaneously
+2. **Out-of-order responses** — Responses may arrive in different order than requests were sent
+3. **Progress routing** — Progress updates need to reach the correct waiting operation
+4. **Separation of concerns** — Transport handles bytes, correlation handles request/response matching
 
-function* handleMessages(transport: FrontendTransport) {
-  for (const message of yield* each(transport.messages)) {
-    if (message.kind === 'elicit' && message.type === 'location') {
-      yield* handleLocationElicit(message);
-    }
-    yield* each.next();
-  }
-}
+### Example Flow
 
-function* handleLocationElicit(message: IncomingMessage) {
-  yield* message.progress({ status: 'requesting' });
-  
-  const { operation, resolve, reject } = withResolvers<GeolocationPosition>();
-  
-  navigator.geolocation.getCurrentPosition(resolve, reject, {
-    enableHighAccuracy: message.payload.enableHighAccuracy,
-  });
-  
-  try {
-    const position = yield* operation;
-    
-    yield* message.progress({ status: 'acquiring' });
-    
-    yield* message.respond({
-      status: 'accepted',
-      content: {
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
-      }
-    });
-  } catch (error) {
-    yield* message.respond({ status: 'denied' });
-  }
-}
+```
+Principal                              Operative
+─────────                              ─────────
+
+transport.send({                       
+  id: "loc-1",                         
+  kind: "elicit",             
+  type: "location",          ────────► receives TransportRequest
+  payload: { ... }                     
+})                                     
+                                       calls geolocation API
+                                       
+                             ◄──────── transport.send({
+progress received                        type: "progress",
+(routed by id: "loc-1")                  id: "loc-1",
+                                         data: { status: "acquiring" }
+                                       })
+                                       
+                                       position acquired
+                                       
+                             ◄──────── transport.send({
+response received                        type: "response",
+(routed by id: "loc-1")                  id: "loc-1",
+                                         response: { status: "accepted", content: { lat, lng } }
+                                       })
 ```
 
-**Backpressure:**
+### Backpressure
 
-Both elicit and notify wait for the frontend to complete before returning. This provides natural backpressure — the agent can't get ahead of the client.
+Communication is naturally backpressured:
 
-**Transport implementations:**
+- Principal blocks when calling `request()` until the response arrives
+- Operative processes one request at a time (per request ID)
+- Progress updates flow without blocking, allowing UI feedback during long operations
 
-| Transport | Backend → Frontend | Frontend → Backend |
-|-----------|-------------------|-------------------|
-| SSE + POST | Server-Sent Events | HTTP POST |
-| WebSocket | WebSocket message | WebSocket message |
-
-Transport is swappable — agent code doesn't change when switching from SSE to WebSocket.
+This prevents the agent from getting ahead of the UI — each operation completes before the next begins.
 
 ## Middleware System
 
@@ -1036,7 +1068,80 @@ User: "Tokyo"                             ← finally answers
 
 ## Testing
 
-Testing is a first-class concern. The context-based resolution enables clean substitution:
+Testing is a first-class concern. The framework is designed for testability at every layer.
+
+### Effection Testing with Vitest
+
+Use `@effectionx/vitest` to test generator functions directly:
+
+```ts
+import { describe, it, expect } from "@effectionx/vitest";
+
+describe("LocationAgent", () => {
+  it("fetches weather for user location", function* () {
+    // Test generator functions with yield*
+    const result = yield* getLocalWeather();
+    expect(result.temperature).toBeDefined();
+  });
+});
+```
+
+### Transport Testing with createTransportPair
+
+Test Principal/Operative communication without network overhead:
+
+```ts
+import { describe, it, expect } from "@effectionx/vitest";
+import { spawn } from "effection";
+import { createTransportPair, createCorrelation } from "@sweatpants/core";
+
+describe("Agent communication", () => {
+  it("handles location elicit", function* () {
+    const [principal, operative] = yield* createTransportPair();
+    const correlated = yield* createCorrelation(principal);
+
+    // Spawn operative handler
+    yield* spawn(function* () {
+      const sub = yield* operative;
+      const { value: request } = yield* sub.next();
+      
+      // Simulate UI handling
+      yield* operative.send({
+        type: "progress",
+        id: request.id,
+        data: { status: "acquiring" }
+      });
+      
+      yield* operative.send({
+        type: "response",
+        id: request.id,
+        response: { status: "accepted", content: { lat: 35.6, lng: 139.7 } }
+      });
+    });
+
+    // Principal makes request
+    const stream = correlated.request({
+      id: "test-1",
+      kind: "elicit",
+      type: "location",
+      payload: {}
+    });
+
+    // Verify progress and response
+    const sub = yield* stream;
+    const { value: progress } = yield* sub.next();
+    expect(progress).toEqual({ status: "acquiring" });
+    
+    const { done, value: response } = yield* sub.next();
+    expect(done).toBe(true);
+    expect(response.status).toBe("accepted");
+  });
+});
+```
+
+### Context-Based Test Substitution
+
+The context-based resolution enables clean mocking:
 
 ```ts
 // Inject mock agents
@@ -1047,6 +1152,24 @@ yield* FlightContext.set(mockFlightAgent, function* () {
 
 // Inject mock elicit implementation
 yield* ElicitProtocol.implement(testElicitMock);
+```
+
+### Integration Testing with Real Servers
+
+For integration tests, use actual WebSocket or SSE transports:
+
+```ts
+import { describe, it } from "@effectionx/vitest";
+import { createWebSocketPrincipal } from "@sweatpants/core";
+
+describe("Integration", () => {
+  it("connects to real server", function* () {
+    const transport = yield* createWebSocketPrincipal("ws://localhost:8080");
+    const correlated = yield* createCorrelation(transport);
+    
+    // Test against real server
+  });
+});
 ```
 
 ## Data Model
@@ -1065,7 +1188,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   
-  // If this message involved a frontend invocation
+  // If this message involved an Operative invocation
   invocation?: Invocation;
   
   createdAt: number;
@@ -1074,7 +1197,7 @@ interface Message {
 
 ### Invocation
 
-Both elicit and notify invoke frontend methods. They go through the same transport, both wait for completion (backpressure), but differ in response type.
+Both elicit and notify invoke Operative methods. They go through the same transport, both wait for completion (backpressure), but differ in response type.
 
 ```ts
 type Invocation = ElicitInvocation | NotifyInvocation;
@@ -1105,7 +1228,7 @@ type ElicitResponse =
   | { status: 'denied' }                      // permission denied (device APIs)
   | { status: 'other'; content: string };     // user went off-script
 
-// Notify returns acknowledgment — frontend finished rendering
+// Notify returns acknowledgment — Operative finished rendering
 type NotifyResponse = 
   | { ok: true }
   | { ok: false; error: Error };
