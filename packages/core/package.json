@@ -57,11 +57,12 @@
   },
   "peerDependencies": {
     "@effectionx/websocket": "^2.3.0",
-    "effection": "^4.0.0",
     "zod": "^4.0.0"
   },
+  "dependencies": {
+    "effection": "https://pkg.pr.new/thefrontside/effection@1074"
+  },
   "devDependencies": {
-    "@effectionx/context-api": "catalog:",
     "@effectionx/node": "catalog:",
     "@effectionx/stream-helpers": "catalog:",
     "@effectionx/vitest": "catalog:",
