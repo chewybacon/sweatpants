@@ -1,4 +1,5 @@
 export { createProtocol, createImplementation } from "./create.ts";
+export { serveProtocol } from "./serve.ts";
 export type {
   Method,
   Methods,
