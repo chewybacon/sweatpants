@@ -32,3 +32,18 @@ export {
 
 // Re-export context utilities
 export { TransportContext } from "./context/index.ts";
+
+// Re-export built-in operations and types
+export {
+  SweatpantsApi,
+  elicit,
+  notify,
+  sample,
+  type ElicitOptions,
+  type ElicitResult,
+  type NotifyOptions,
+  type NotifyResult,
+  type SampleOptions,
+  type SampleResult,
+  type SampleMessage,
+} from "./builtins/index.ts";
