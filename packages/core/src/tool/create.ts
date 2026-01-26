@@ -1,5 +1,5 @@
 import { createApi } from "@effectionx/context-api";
-import type { Operation } from "effection";
+import type { Operation, Subscription } from "effection";
 import type { ZodSchema, infer as ZodInfer } from "zod";
 import type {
   ToolConfig,
@@ -9,6 +9,8 @@ import type {
   ToolFactoryWithImpl,
   ToolFactoryWithoutImpl,
 } from "./types.ts";
+import { TransportContext } from "../context/transport.ts";
+import type { ElicitResponse } from "../types/transport.ts";
 
 /**
  * Creates a tool with implementation provided in config.
@@ -116,11 +118,50 @@ export function createTool<
         } else {
           // No impl - route to transport
           yield* api.around({
-            *invoke([_args], _next) {
-              // TODO: Get transport from context and send request
-              throw new Error(
-                `Tool "${config.name}" has no impl and transport routing is not yet implemented.`
-              );
+            *invoke([args], _next) {
+              // Get transport from context
+              const transport = yield* TransportContext.expect();
+              
+              // Generate unique request ID
+              const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+              
+              // Send request through transport and get response stream
+              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
+                id: requestId,
+                kind: "elicit",
+                type: config.name,
+                payload: args,
+              });
+              
+              // Subscribe to the stream
+              const subscription: Subscription<ZodInfer<TProgress>, ElicitResponse> = yield* stream;
+              
+              // Consume the stream until we get the final response
+              // Progress updates are currently ignored (TODO: expose via callback or context)
+              let result = yield* subscription.next();
+              while (!result.done) {
+                // Progress update - currently ignored
+                // In the future, we could emit these via a progress context
+                result = yield* subscription.next();
+              }
+              
+              // result.value is the final response (ElicitResponse)
+              const response = result.value;
+              
+              if (response.status === "accepted") {
+                return response.content as Output;
+              } else if (response.status === "declined") {
+                throw new Error(`Tool "${config.name}" request was declined`);
+              } else if (response.status === "cancelled") {
+                throw new Error(`Tool "${config.name}" request was cancelled`);
+              } else if (response.status === "denied") {
+                throw new Error(`Tool "${config.name}" request was denied`);
+              } else if (response.status === "other") {
+                throw new Error(`Tool "${config.name}" request failed: ${response.content}`);
+              }
+              
+              // TypeScript exhaustiveness check
+              throw new Error(`Tool "${config.name}" received unexpected response status`);
             },
           });
         }
