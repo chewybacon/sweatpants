@@ -1,5 +1,13 @@
-import type { Operation } from "effection";
+import type { Context, Operation } from "effection";
 import type { ZodSchema, infer as ZodInfer } from "zod";
+
+/**
+ * A binding of a context to a value, used for Tool.withContext().
+ */
+export interface ContextBinding<T = unknown> {
+  context: Context<T>;
+  value: T;
+}
 
 /**
  * Configuration for creating a tool.
@@ -70,6 +78,12 @@ export interface ToolFactoryWithImpl<
   decorate(
     middleware: ToolMiddleware<TInput, TOutput>,
   ): Operation<void>;
+  /** 
+   * Return a new tool factory with context binding.
+   * When the tool is invoked, it will run within the given context.
+   * Multiple withContext calls chain - first is outermost, last is innermost.
+   */
+  withContext<T>(context: Context<T>, value: T): ToolFactoryWithImpl<TInput, TOutput>;
   /** Tool metadata */
   readonly name: string;
   readonly description: string;
@@ -92,6 +106,12 @@ export interface ToolFactoryWithoutImpl<
   decorate(
     middleware: ToolMiddleware<TInput, TOutput>,
   ): Operation<void>;
+  /** 
+   * Return a new tool factory with context binding.
+   * When the tool is invoked, it will run within the given context.
+   * Multiple withContext calls chain - first is outermost, last is innermost.
+   */
+  withContext<T>(context: Context<T>, value: T): ToolFactoryWithoutImpl<TInput, TProgress, TOutput>;
   /** Tool metadata */
   readonly name: string;
   readonly description: string;
