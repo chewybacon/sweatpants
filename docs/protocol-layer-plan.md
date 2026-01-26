@@ -504,25 +504,144 @@ packages/core/src/
 └── types/                 # (already exists)
 ```
 
-## Implementation Order
+## Implementation Status
 
-1. **Phase 1.1-1.2**: `createTool` types and basic structure
-2. **Phase 1.3**: Tool with impl (yieldable)
-3. **Test**: Tool with impl using `createTransportPair`
-4. **Phase 1.4**: Tool without impl (callable)
-5. **Phase 2**: Transport integration
-6. **Test**: Tool without impl, impl on operative side
-7. **Phase 3**: Built-in API (elicit, notify, sample)
-8. **Phase 4**: Agent infrastructure
-9. **Phase 5**: Operative handler
+All phases have been implemented. See the completed work below.
 
-## Open Questions
+### Completed Phases
 
-1. **effection import path**: Need to verify - is it `effection/experimental` or `@effectionx/context-api`?
+| Phase | Commit | Description |
+|-------|--------|-------------|
+| Phase 1 | `051155c` | `createTool` with middleware support via `effection/experimental` createApi |
+| Phase 2 | `97db626` | Transport routing for tools without impl |
+| Phase 3 | `dbe7da9` | `SweatpantsApi` (elicit, notify, sample) built-in operations |
+| Phase 4 | `101e773` | `createAgent` for grouping tools with shared config |
+| Phase 5 | `4c97074` | `Tool.withContext()` for scoped context binding |
+| Phase 6 | `348acac` | Protocol layer (`createProtocol`, `createImplementation`, `Handle.invoke()`) |
+| Phase 7 | `c404d66` | `serveProtocol` for operative-side request handling |
+| Phase 8 | `45600a6` | `SweatpantsProtocol` for operative-side builtin handling |
 
-2. **Agent config access**: When tools inside an agent need config, they access it via context set up by `yield* Flight(config)`.
+### Key Additions Beyond Original Plan
 
-3. **Progress for local impl**: Routes through in-memory transport for consistency.
+#### Tool.withContext() (Phase 5)
+
+Enables routing different tools to different transports via scoped context:
+
+```ts
+const Agent = createAgent({
+  tools: { 
+    shell: ShellTool.withContext(TransportContext, stdioTransport), 
+    search: SearchTool.withContext(TransportContext, httpTransport),
+  },
+});
+
+// Chaining - first is outermost, last is innermost
+const ConfiguredTool = Tool
+  .withContext(TransportContext, stdioTransport)
+  .withContext(LoggingContext, logger);
+```
+
+#### Protocol Layer (Phases 6-8)
+
+A unified protocol abstraction for defining and dispatching operations:
+
+```ts
+// Define a protocol with typed methods
+const MyProtocol = createProtocol({
+  search: {
+    input: z.object({ query: z.string() }),
+    progress: z.object({ percent: z.number() }),
+    output: z.object({ results: z.array(z.string()) }),
+  },
+});
+
+// Create implementation on operative side
+const inspector = createImplementation(MyProtocol, function*() {
+  return {
+    search(args) {
+      return resource(function*(provide) {
+        // Stream progress and return result
+        yield* provide({
+          *next() {
+            return { done: true, value: { results: ["..."] } };
+          }
+        });
+      });
+    },
+  };
+});
+
+// Serve the protocol
+const handle = yield* inspector.attach();
+yield* serveProtocol(handle, operativeTransport);
+```
+
+#### SweatpantsProtocol
+
+Pre-defined protocol for the built-in operations (elicit, notify, sample):
+
+```ts
+// Operative side can implement the builtins
+const inspector = createImplementation(SweatpantsProtocol, function*() {
+  return {
+    elicit(payload) { /* show UI, return result */ },
+    notify(payload) { /* show notification */ },
+    sample(payload) { /* call LLM */ },
+  };
+});
+
+const handle = yield* inspector.attach();
+yield* serveProtocol(handle, operativeTransport);
+```
+
+### File Structure (Final)
+
+```
+packages/core/src/
+├── tool/
+│   ├── index.ts
+│   ├── create.ts          # createTool with withContext support
+│   ├── types.ts
+│   └── __tests__/
+│       ├── create.test.ts
+│       ├── context.test.ts
+│       └── transport.test.ts
+├── agent/
+│   ├── index.ts
+│   ├── create.ts          # createAgent with config support
+│   ├── types.ts
+│   └── __tests__/
+│       └── create.test.ts
+├── builtins/
+│   ├── index.ts
+│   ├── api.ts             # SweatpantsApi (createApi-based)
+│   ├── protocol.ts        # SweatpantsProtocol (protocol-based)
+│   ├── types.ts
+│   └── __tests__/
+│       ├── api.test.ts
+│       └── protocol.test.ts
+├── protocol/
+│   ├── index.ts
+│   ├── create.ts          # createProtocol, createImplementation
+│   ├── serve.ts           # serveProtocol
+│   ├── types.ts
+│   └── __tests__/
+│       ├── create.test.ts
+│       └── serve.test.ts
+├── context/
+│   ├── index.ts
+│   └── transport.ts       # TransportContext
+├── transport/             # (already existed)
+└── types/                 # (already existed)
+```
+
+### Resolved Questions
+
+1. **effection import path**: Uses `effection/experimental` for `createApi`. The main `effection` package is used for core primitives.
+
+2. **Agent config access**: Config is set in a scoped context during agent activation. Tools access it via `AgentFactory.useConfig()`.
+
+3. **Progress for local impl**: Currently a no-op placeholder. Full progress routing through transport is a future enhancement.
 
 ## Future Considerations
 
