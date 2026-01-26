@@ -29,3 +29,6 @@ export {
   type ToolFactoryWithImpl,
   type ToolFactoryWithoutImpl,
 } from "./tool/index.ts";
+
+// Re-export context utilities
+export { TransportContext } from "./context/index.ts";
