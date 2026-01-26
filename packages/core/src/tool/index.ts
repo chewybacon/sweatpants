@@ -6,4 +6,5 @@ export type {
   ToolMiddleware,
   ToolFactoryWithImpl,
   ToolFactoryWithoutImpl,
+  ContextBinding,
 } from "./types.ts";
