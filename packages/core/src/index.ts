@@ -28,6 +28,7 @@ export {
   type ToolMiddleware,
   type ToolFactoryWithImpl,
   type ToolFactoryWithoutImpl,
+  type ContextBinding,
 } from "./tool/index.ts";
 
 // Re-export context utilities
@@ -62,3 +63,19 @@ export {
   type InputFromFactory,
   type OutputFromFactory,
 } from "./agent/index.ts";
+
+// Re-export protocol utilities and types
+export {
+  createProtocol,
+  createImplementation,
+  type Method,
+  type Methods,
+  type Protocol,
+  type InvocationArgs,
+  type InvocationResult,
+  type MethodHandler,
+  type MethodHandlers,
+  type Implementation,
+  type Handle,
+  type Inspector,
+} from "./protocol/index.ts";
