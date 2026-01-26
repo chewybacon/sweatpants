@@ -68,6 +68,7 @@ export {
 export {
   createProtocol,
   createImplementation,
+  serveProtocol,
   type Method,
   type Methods,
   type Protocol,
