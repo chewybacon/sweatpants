@@ -1,4 +1,4 @@
-import { createApi } from "@effectionx/context-api";
+import { createApi } from "effection/experimental";
 import type { Operation, Subscription } from "effection";
 import type { ZodSchema, infer as ZodInfer } from "zod";
 import type {
@@ -109,16 +109,16 @@ export function createTool<
           };
 
           // Install the impl as middleware that replaces the default
-          yield* api.around({
-            *invoke([args], _next) {
+          yield* api.decorate({
+            *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // @ts-expect-error - send typing is complex, will refine later
               return yield* actualImpl(args, send);
             },
           });
         } else {
           // No impl - route to transport
-          yield* api.around({
-            *invoke([args], _next) {
+          yield* api.decorate({
+            *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // Get transport from context
               const transport = yield* TransportContext.expect();
               
@@ -180,8 +180,8 @@ export function createTool<
   factory.decorate = function (
     middleware: ToolMiddleware<TInput, TOutput>,
   ): Operation<void> {
-    return api.around({
-      *invoke([args], next) {
+    return api.decorate({
+      *invoke([args]: [Input], next: (...args: [Input]) => Operation<Output>) {
         return yield* middleware(args, (...a) => next(...a));
       },
     });
