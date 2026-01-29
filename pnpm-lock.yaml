@@ -586,6 +586,9 @@ importers:
 
   packages/framework:
     dependencies:
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../core
       '@sweatpants/elicit-context':
         specifier: workspace:*
         version: link:../elicit-context
