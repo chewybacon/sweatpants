@@ -34,14 +34,26 @@
  */
 
 import type { Operation } from 'effection'
+import type { z } from 'zod'
 import type {
   Message,
+  ExtendedMessage,
   LogLevel,
   RawSampleResult,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
   ElicitResult,
   RawElicitResult,
   SamplingToolDefinition,
   SamplingToolChoice,
+  SamplingToolCall,
+  ModelPreferences,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SampleToolsResult,
+  SampleSchemaResult,
 } from '../mcp-tool-types.ts'
 
 // =============================================================================
@@ -148,12 +160,14 @@ export interface SampleRequestMessage {
   type: 'sample_request'
   /** Unique ID for correlation */
   sampleId: string
-  /** Messages to send to LLM */
-  messages: Message[]
+  /** Messages to send to LLM. Supports ExtendedMessage for tool call history. */
+  messages: ExtendedMessage[]
   /** Optional system prompt */
   systemPrompt?: string
   /** Maximum tokens to generate */
   maxTokens?: number
+  /** Model preferences for the client */
+  modelPreferences?: ModelPreferences
   /** Tool definitions for tool calling */
   tools?: SamplingToolDefinition[]
   /** How the model should choose tools */
@@ -330,10 +344,175 @@ export interface WorkerTool {
   handler: (params: unknown, ctx: WorkerToolContext) => Generator<unknown, unknown, unknown>
 }
 
+// =============================================================================
+// WORKER SAMPLE CONFIG TYPES
+// =============================================================================
+
+/**
+ * Base sample configuration for workers.
+ */
+interface WorkerSampleConfigBase {
+  /** Optional system prompt override */
+  systemPrompt?: string
+
+  /** Maximum tokens to generate */
+  maxTokens?: number
+
+  /** Model preferences for the client */
+  modelPreferences?: ModelPreferences
+}
+
+/**
+ * Plain sample config - no schema or tools.
+ */
+interface WorkerSampleConfigPlain extends WorkerSampleConfigBase {
+  schema?: never
+  tools?: never
+  toolChoice?: never
+}
+
+/**
+ * Sample config with structured output schema.
+ * @template T - The type of the parsed output
+ */
+interface WorkerSampleConfigWithSchema<T = unknown> extends WorkerSampleConfigBase {
+  /**
+   * Zod schema for structured output.
+   * Will be serialized to JSON schema for transport.
+   */
+  schema: z.ZodType<T>
+  tools?: never
+  toolChoice?: never
+}
+
+/**
+ * Sample config with tool definitions.
+ */
+interface WorkerSampleConfigWithTools extends WorkerSampleConfigBase {
+  /** Tools available for the model to call */
+  tools: SamplingToolDefinition[]
+  /** How the model should choose tools */
+  toolChoice?: SamplingToolChoice
+  schema?: never
+}
+
+/**
+ * Sample with prompt string.
+ */
+interface WorkerSampleConfigPromptMode {
+  /** The prompt to send */
+  prompt: string
+  messages?: never
+}
+
+/**
+ * Sample with explicit messages array.
+ * Supports ExtendedMessage for tool call history.
+ */
+interface WorkerSampleConfigMessagesMode {
+  /** Explicit messages array. Supports ExtendedMessage with tool_use/tool_result. */
+  messages: ExtendedMessage[]
+  prompt?: never
+}
+
+/** Plain sample with prompt */
+export type WorkerSampleConfigPlainPrompt = WorkerSampleConfigPlain & WorkerSampleConfigPromptMode
+
+/** Plain sample with messages */
+export type WorkerSampleConfigPlainMessages = WorkerSampleConfigPlain & WorkerSampleConfigMessagesMode
+
+/** Schema sample with prompt */
+export type WorkerSampleConfigSchemaPrompt<T = unknown> = WorkerSampleConfigWithSchema<T> & WorkerSampleConfigPromptMode
+
+/** Schema sample with messages */
+export type WorkerSampleConfigSchemaMessages<T = unknown> = WorkerSampleConfigWithSchema<T> & WorkerSampleConfigMessagesMode
+
+/** Tools sample with prompt */
+export type WorkerSampleConfigToolsPrompt = WorkerSampleConfigWithTools & WorkerSampleConfigPromptMode
+
+/** Tools sample with messages */
+export type WorkerSampleConfigToolsMessages = WorkerSampleConfigWithTools & WorkerSampleConfigMessagesMode
+
+/**
+ * Full sample config union type for workers.
+ * Matches McpToolSampleConfig from mcp-tool-types.ts.
+ */
+export type WorkerSampleConfig =
+  | WorkerSampleConfigPlainPrompt
+  | WorkerSampleConfigPlainMessages
+  | WorkerSampleConfigSchemaPrompt
+  | WorkerSampleConfigSchemaMessages
+  | WorkerSampleConfigToolsPrompt
+  | WorkerSampleConfigToolsMessages
+
+// =============================================================================
+// WORKER SAMPLE HELPER CONFIG TYPES
+// =============================================================================
+
+/**
+ * Base config for sample helpers with retry support.
+ */
+interface WorkerSampleHelperConfigBase extends WorkerSampleConfigBase {
+  /**
+   * Number of retry attempts if validation fails.
+   * @default 2
+   */
+  retries?: number
+}
+
+/**
+ * Config for sampleTools helper with prompt.
+ */
+export interface WorkerSampleToolsConfig extends WorkerSampleHelperConfigBase {
+  /** The prompt to send */
+  prompt: string
+  /** Tools available for the model to call */
+  tools: SamplingToolDefinition[]
+  /** How the model should choose tools. @default 'required' */
+  toolChoice?: SamplingToolChoice
+}
+
+/**
+ * Config for sampleTools helper with messages.
+ */
+export interface WorkerSampleToolsConfigMessages extends WorkerSampleHelperConfigBase {
+  /** Explicit messages array */
+  messages: ExtendedMessage[]
+  /** Tools available for the model to call */
+  tools: SamplingToolDefinition[]
+  /** How the model should choose tools. @default 'required' */
+  toolChoice?: SamplingToolChoice
+}
+
+/**
+ * Config for sampleSchema helper with prompt.
+ */
+export interface WorkerSampleSchemaConfig<T> extends WorkerSampleHelperConfigBase {
+  /** The prompt to send */
+  prompt: string
+  /** Zod schema for structured output */
+  schema: z.ZodType<T>
+}
+
+/**
+ * Config for sampleSchema helper with messages.
+ */
+export interface WorkerSampleSchemaConfigMessages<T> extends WorkerSampleHelperConfigBase {
+  /** Explicit messages array */
+  messages: ExtendedMessage[]
+  /** Zod schema for structured output */
+  schema: z.ZodType<T>
+}
+
+// =============================================================================
+// WORKER TOOL CONTEXT
+// =============================================================================
+
 /**
  * Tool context available in workers.
  *
- * This is a subset of McpToolContext that works over the transport boundary.
+ * Provides full MCP sampling and elicitation capabilities over the transport boundary.
+ * Matches the McpToolContext interface from mcp-tool-types.ts.
  */
 export interface WorkerToolContext {
   /**
@@ -346,14 +525,53 @@ export interface WorkerToolContext {
    */
   progress(message: string, progress?: number): void
 
+  // ---------------------------------------------------------------------------
+  // Sample overloads - match McpToolContext signature
+  // ---------------------------------------------------------------------------
+
   /**
-   * Request an LLM completion.
-   * Suspends until response is received via transport.
+   * Plain sample (no schema, no tools) - returns base result.
    */
-  sample(
-    messages: Message[],
-    options?: { systemPrompt?: string; maxTokens?: number }
-  ): Operation<RawSampleResult>
+  sample(config: WorkerSampleConfigPlainPrompt | WorkerSampleConfigPlainMessages): Operation<SampleResultBase>
+
+  /**
+   * Schema sample - returns result with parsed field.
+   */
+  sample<T>(config: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
+
+  /**
+   * Tools sample - returns result with toolCalls field.
+   */
+  sample(config: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
+
+  /**
+   * Generic sample - returns appropriate result type based on config.
+   */
+  sample(config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+
+  // ---------------------------------------------------------------------------
+  // Sample helpers with retry logic
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Sample with guaranteed tool calls.
+   * Retries if the model doesn't return tool calls.
+   *
+   * @throws SampleValidationError if no tool calls after retries
+   */
+  sampleTools(config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages): Operation<SampleToolsResult>
+
+  /**
+   * Sample with guaranteed parsed schema.
+   * Retries if parsing/validation fails.
+   *
+   * @throws SampleValidationError if parsing fails after retries
+   */
+  sampleSchema<T>(config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>
+
+  // ---------------------------------------------------------------------------
+  // Elicitation
+  // ---------------------------------------------------------------------------
 
   /**
    * Request user input.
@@ -363,4 +581,30 @@ export interface WorkerToolContext {
     key: string,
     options: { message: string; schema: Record<string, unknown> }
   ): Operation<ElicitResult<unknown, T>>
+}
+
+// =============================================================================
+// RE-EXPORT TYPES FOR CONVENIENCE
+// =============================================================================
+
+export type {
+  // Message types
+  Message,
+  ExtendedMessage,
+  // Raw result types (wire format)
+  RawSampleResult,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
+  // Full result types (with exchange)
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SampleToolsResult,
+  SampleSchemaResult,
+  // Tool types
+  SamplingToolDefinition,
+  SamplingToolCall,
+  SamplingToolChoice,
+  ModelPreferences,
 }

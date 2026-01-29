@@ -47,7 +47,7 @@ import type {
   WorkerTransport,
   HostToWorkerMessage,
 } from './worker-types.ts'
-import type { Message, LogLevel, RawElicitResult } from '../mcp-tool-types.ts'
+import type { ExtendedMessage, LogLevel, RawElicitResult, ModelPreferences } from '../mcp-tool-types.ts'
 
 // =============================================================================
 // SIGNAL CORRELATED TRANSPORT
@@ -161,9 +161,10 @@ function sendRequest(
   if (message.kind === 'elicit' && message.type === 'sample') {
     // Sample request
     const payload = message.payload as {
-      messages: Message[]
+      messages: ExtendedMessage[]
       systemPrompt?: string
       maxTokens?: number
+      modelPreferences?: ModelPreferences
       tools?: unknown[]
       toolChoice?: string
       schema?: Record<string, unknown>
@@ -175,6 +176,7 @@ function sendRequest(
       messages: payload.messages,
       ...(payload.systemPrompt !== undefined && { systemPrompt: payload.systemPrompt }),
       ...(payload.maxTokens !== undefined && { maxTokens: payload.maxTokens }),
+      ...(payload.modelPreferences !== undefined && { modelPreferences: payload.modelPreferences }),
       ...(payload.tools !== undefined && { tools: payload.tools }),
       ...(payload.toolChoice !== undefined && { toolChoice: payload.toolChoice }),
       ...(payload.schema !== undefined && { schema: payload.schema }),
