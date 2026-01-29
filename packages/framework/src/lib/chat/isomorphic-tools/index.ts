@@ -84,6 +84,7 @@ export {
 // --- Registry ---
 export {
   createIsomorphicToolRegistry,
+  type ToolInput,
 } from './registry.ts'
 
 // --- Executor ---

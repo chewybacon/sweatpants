@@ -208,6 +208,14 @@ export function createTool<
     value: config.description,
     writable: false,
   });
+  Object.defineProperty(factory, "schemas", {
+    value: {
+      input: config.input,
+      output: config.output,
+      progress: config.progress,
+    },
+    writable: false,
+  });
 
   return factory as ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput>;
 }
@@ -349,6 +357,14 @@ function createToolWithBindings<
   });
   Object.defineProperty(factory, "description", {
     value: config.description,
+    writable: false,
+  });
+  Object.defineProperty(factory, "schemas", {
+    value: {
+      input: config.input,
+      output: config.output,
+      progress: config.progress,
+    },
     writable: false,
   });
 
