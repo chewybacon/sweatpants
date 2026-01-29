@@ -212,3 +212,9 @@ export {
   createCoreToolSession,
   type CoreToolSessionOptions,
 } from './tool-session-core.ts'
+
+export {
+  // Signal-based correlated transport - implements CorrelatedTransport using signals
+  // See docs/adr-signal-based-transport.md for architecture rationale
+  createSignalCorrelatedTransport,
+} from './signal-correlated-transport.ts'
