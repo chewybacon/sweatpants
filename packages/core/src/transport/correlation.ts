@@ -81,18 +81,17 @@ export function* createCorrelation(
       return resource(function* (provide) {
         const channel = createChannel<TProgress, TResponse>();
 
-        pending.set(message.id, {
-          id: message.id,
-          channel: channel as Channel<unknown, unknown>,
-        });
-
         try {
-          // Send the request
-          yield* transport.send(message);
-
           // Provide the subscription to progress updates
           const subscription: Subscription<TProgress, TResponse> =
             yield* channel;
+          pending.set(message.id, {
+            id: message.id,
+            channel: channel as Channel<unknown, unknown>,
+          });
+
+          // Send the request after the subscription is established
+          yield* transport.send(message);
           yield* provide(subscription);
         } finally {
           pending.delete(message.id);
