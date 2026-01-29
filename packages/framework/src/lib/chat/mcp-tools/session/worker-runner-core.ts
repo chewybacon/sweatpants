@@ -13,26 +13,23 @@
  * instead of using core's `createCorrelation`. This handles the worker scenario
  * where responses can take arbitrarily long (user closes tab, returns later).
  *
- * ## Message Flow
+ * ## Full MCP Feature Support
  *
- * ```
- * Worker                                Host
- * ──────────────────────────────────────────────
- * createSignalCorrelatedTransport() ──►
+ * This implementation provides full MCP sampling capabilities:
+ * - `prompt` or `messages` input modes
+ * - `ExtendedMessage` support (tool_use, tool_result content blocks)
+ * - `schema` for structured output with parsing
+ * - `tools` + `toolChoice` for tool calling
+ * - `sampleTools()` helper with retry logic
+ * - `sampleSchema()` helper with retry logic
  *
- * ctx.sample() ───► transport.request()
- *              ◄─── sample_response ◄─── LLM
- *
- * ctx.elicit() ──► transport.request()
- *              ◄── elicit_response ◄─── UI
- *
- * result ─────────────────────────────► host
- * ```
+ * See `docs/mcp-core-full-parity-plan.md` for the implementation plan.
  *
  * @packageDocumentation
  */
 
 import { run, type Operation, type Subscription } from 'effection'
+import { z } from 'zod'
 import { TransportContext } from '@sweatpants/core'
 import type { ElicitResponse, CorrelatedTransport } from '@sweatpants/core'
 import type {
@@ -40,15 +37,36 @@ import type {
   StartMessage,
   WorkerToolRegistry,
   WorkerToolContext,
+  WorkerSampleConfig,
+  WorkerSampleConfigPlainPrompt,
+  WorkerSampleConfigPlainMessages,
+  WorkerSampleConfigSchemaPrompt,
+  WorkerSampleConfigSchemaMessages,
+  WorkerSampleConfigToolsPrompt,
+  WorkerSampleConfigToolsMessages,
+  WorkerSampleToolsConfig,
+  WorkerSampleToolsConfigMessages,
+  WorkerSampleSchemaConfig,
+  WorkerSampleSchemaConfigMessages,
+  ExtendedMessage,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SampleToolsResult,
+  SampleSchemaResult,
+  SamplingToolDefinition,
 } from './worker-types.ts'
 import type {
-  Message,
   LogLevel,
-  SampleResult,
   ElicitResult,
   McpMessage,
+  SampleExchange,
 } from '../mcp-tool-types.ts'
-import { createRawSampleExchange } from '../mcp-tool-types.ts'
+import {
+  createRawSampleExchange,
+  createStructuredSampleExchange,
+  SampleValidationError,
+} from '../mcp-tool-types.ts'
 import { createSignalCorrelatedTransport } from './signal-correlated-transport.ts'
 
 // =============================================================================
@@ -150,14 +168,63 @@ async function executeToolWithCore(
 }
 
 // =============================================================================
+// HELPERS
+// =============================================================================
+
+/**
+ * Convert a Zod schema to JSON Schema.
+ */
+function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
+  return z.toJSONSchema(schema) as Record<string, unknown>
+}
+
+/**
+ * Generate a unique ID for internal use.
+ */
+function generateId(prefix: string): string {
+  return `${prefix}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`
+}
+
+/**
+ * Extract prompt text from config for exchange building.
+ */
+function getPromptText(config: WorkerSampleConfig): string {
+  if ('prompt' in config && config.prompt !== undefined) {
+    return config.prompt
+  }
+  // For messages mode, try to find the last user message
+  if ('messages' in config && config.messages !== undefined) {
+    const lastUserMsg = [...config.messages].reverse().find(m => m.role === 'user')
+    if (lastUserMsg && typeof lastUserMsg.content === 'string') {
+      return lastUserMsg.content
+    }
+  }
+  return ''
+}
+
+/**
+ * Convert config messages to ExtendedMessage array.
+ * Handles both prompt mode (creates user message) and messages mode.
+ */
+function getMessages(config: WorkerSampleConfig): ExtendedMessage[] {
+  if ('prompt' in config && config.prompt !== undefined) {
+    return [{ role: 'user' as const, content: config.prompt }]
+  }
+  if ('messages' in config && config.messages !== undefined) {
+    return config.messages
+  }
+  return []
+}
+
+// =============================================================================
 // CONTEXT CREATION
 // =============================================================================
 
 /**
  * Create a WorkerToolContext backed by a CorrelatedTransport.
  *
- * This provides the same interface as the original worker-runner but
- * routes requests through core's transport infrastructure.
+ * This provides full MCP sampling and elicitation capabilities
+ * over the transport boundary. Matches the McpToolContext interface.
  */
 function createWorkerContextFromTransport(
   transport: CorrelatedTransport,
@@ -167,6 +234,280 @@ function createWorkerContextFromTransport(
 ): WorkerToolContext {
   let sampleSeq = 0
   let elicitSeq = 0
+
+  // ---------------------------------------------------------------------------
+  // Sample Implementation
+  // ---------------------------------------------------------------------------
+
+  function* sampleImpl(config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
+    const sampleId = `${sessionId}:sample:${++sampleSeq}`
+    const promptText = getPromptText(config)
+    const messages = getMessages(config)
+
+    // Build request payload
+    const payload: Record<string, unknown> = {
+      messages,
+      maxTokens: config.maxTokens,
+      systemPrompt: config.systemPrompt,
+      modelPreferences: config.modelPreferences,
+    }
+
+    // Add schema if present (structured output)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const configAny = config as any
+    if (configAny.schema) {
+      payload.schema = zodToJsonSchema(configAny.schema)
+    }
+
+    // Add tools if present
+    if (configAny.tools) {
+      payload.tools = (configAny.tools as SamplingToolDefinition[]).map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema instanceof Object && 'parse' in tool.inputSchema
+          ? zodToJsonSchema(tool.inputSchema as z.ZodType)
+          : tool.inputSchema,
+      }))
+      payload.toolChoice = configAny.toolChoice ?? 'auto'
+    }
+
+    // Send request through correlated transport
+    const stream = transport.request<unknown, ElicitResponse>({
+      id: sampleId,
+      kind: 'elicit',
+      type: 'sample',
+      payload,
+    })
+
+    const subscription: Subscription<unknown, ElicitResponse> = yield* stream
+
+    // Consume until response
+    let result = yield* subscription.next()
+    while (!result.done) {
+      result = yield* subscription.next()
+    }
+
+    const response = result.value
+
+    if (response.status !== 'accepted') {
+      throw new Error(`Sample request failed: ${response.status}`)
+    }
+
+    // Parse response content
+    const rawResult = response.content as {
+      text: string
+      model?: string
+      stopReason?: string
+      parsed?: unknown
+      parseError?: { message: string; rawText: string }
+      toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
+    }
+
+    // Build result based on what was requested
+    if ('schema' in config && configAny.schema) {
+      // Structured output result
+      const toolCallId = generateId(`${sampleId}:schema`)
+      const parsed = rawResult.parsed ?? null
+      const exchange = parsed !== null
+        ? createStructuredSampleExchange(promptText, parsed, toolCallId)
+        : (createRawSampleExchange(promptText, rawResult.text) as unknown as SampleExchange<null>)
+
+      return {
+        text: rawResult.text,
+        model: rawResult.model,
+        stopReason: rawResult.stopReason,
+        parsed,
+        parseError: rawResult.parseError,
+        exchange: {
+          ...exchange,
+          parsed,
+        },
+      } as SampleResultWithParsed<unknown>
+    }
+
+    if ('tools' in config && configAny.tools) {
+      // Tool calling result
+      return {
+        text: rawResult.text,
+        model: rawResult.model,
+        stopReason: rawResult.stopReason,
+        toolCalls: rawResult.toolCalls ?? [],
+        exchange: createRawSampleExchange(promptText, rawResult.text),
+      } as SampleResultWithToolCalls
+    }
+
+    // Plain result
+    return {
+      text: rawResult.text,
+      model: rawResult.model,
+      stopReason: rawResult.stopReason,
+      exchange: createRawSampleExchange(promptText, rawResult.text),
+    } as SampleResultBase
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sample Helpers (sampleTools, sampleSchema)
+  // ---------------------------------------------------------------------------
+
+  function* sampleToolsImpl(config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages): Operation<SampleToolsResult> {
+    const maxAttempts = (config.retries ?? 2) + 1
+    let lastResult: SampleResultWithToolCalls | undefined
+    let currentConfig = config
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = yield* sampleImpl({
+        ...currentConfig,
+        toolChoice: currentConfig.toolChoice ?? 'required',
+      } as WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages) as Operation<SampleResultWithToolCalls>
+
+      lastResult = result
+
+      if (result.stopReason === 'toolUse' && result.toolCalls && result.toolCalls.length > 0) {
+        return result as SampleToolsResult
+      }
+
+      // Add retry hint for next attempt
+      if (attempt < maxAttempts && 'prompt' in currentConfig) {
+        currentConfig = {
+          ...currentConfig,
+          prompt: `${currentConfig.prompt}\n\nPlease call one of the available tools.`,
+        } as WorkerSampleToolsConfig
+      }
+    }
+
+    throw new SampleValidationError(
+      'sampleTools',
+      maxAttempts,
+      lastResult!,
+      `Model did not call any tools after ${maxAttempts} attempts`
+    )
+  }
+
+  function* sampleSchemaImpl<T>(config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
+    const maxAttempts = (config.retries ?? 2) + 1
+    let lastResult: SampleResultWithParsed<T> | undefined
+    let currentConfig = config
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const result = yield* sampleImpl(currentConfig as WorkerSampleConfigSchemaPrompt | WorkerSampleConfigSchemaMessages) as Operation<SampleResultWithParsed<T>>
+
+      lastResult = result
+
+      if (result.parsed !== null) {
+        return {
+          text: result.text,
+          model: result.model,
+          stopReason: result.stopReason,
+          parsed: result.parsed,
+          exchange: result.exchange as SampleExchange<T>,
+        } as SampleSchemaResult<T>
+      }
+
+      // Add retry hint for next attempt
+      if (attempt < maxAttempts && 'prompt' in currentConfig) {
+        const errorHint = result.parseError?.message ?? 'Invalid response format'
+        currentConfig = {
+          ...currentConfig,
+          prompt: `${currentConfig.prompt}\n\nPrevious attempt failed: ${errorHint}. Please provide a valid response.`,
+        } as WorkerSampleSchemaConfig<T>
+      }
+    }
+
+    throw new SampleValidationError(
+      'sampleSchema',
+      maxAttempts,
+      lastResult!,
+      `Model did not return valid parsed output after ${maxAttempts} attempts`
+    )
+  }
+
+  // ---------------------------------------------------------------------------
+  // Elicit Implementation
+  // ---------------------------------------------------------------------------
+
+  function* elicitImpl<T>(
+    key: string,
+    options: { message: string; schema: Record<string, unknown> }
+  ): Operation<ElicitResult<unknown, T>> {
+    const elicitId = `${sessionId}:elicit:${++elicitSeq}`
+
+    // Send request through correlated transport
+    const stream = transport.request<unknown, ElicitResponse>({
+      id: elicitId,
+      kind: 'elicit',
+      type: 'elicit',
+      payload: {
+        key,
+        message: options.message,
+        schema: options.schema,
+      },
+    })
+
+    const subscription: Subscription<unknown, ElicitResponse> = yield* stream
+
+    // Consume until response
+    let result = yield* subscription.next()
+    while (!result.done) {
+      result = yield* subscription.next()
+    }
+
+    const response = result.value
+
+    if (response.status === 'accepted') {
+      const parsedContent = response.content as T
+      const toolUseId = `elicit_core_${elicitId}`
+
+      // Build exchange using MCP format
+      const request: McpMessage & { role: 'assistant' } = {
+        role: 'assistant' as const,
+        content: [{
+          type: 'tool_use' as const,
+          id: toolUseId,
+          name: key,
+          input: {},
+        }],
+      }
+      const responseMsg: McpMessage & { role: 'user' } = {
+        role: 'user' as const,
+        content: [{
+          type: 'tool_result' as const,
+          toolUseId,
+          content: [{ type: 'text' as const, text: JSON.stringify(parsedContent) }],
+        }],
+      }
+      const exchange = {
+        context: {} as unknown,
+        request,
+        response: responseMsg,
+        messages: [request, responseMsg] as [McpMessage, McpMessage],
+        withArguments(fn: (ctx: unknown) => Record<string, unknown>): [McpMessage, McpMessage] {
+          const args = fn({})
+          const requestWithArgs: McpMessage & { role: 'assistant' } = {
+            role: 'assistant' as const,
+            content: [{
+              type: 'tool_use' as const,
+              id: toolUseId,
+              name: key,
+              input: args,
+            }],
+          }
+          return [requestWithArgs, responseMsg]
+        },
+      }
+
+      return { action: 'accept' as const, content: parsedContent, exchange } as ElicitResult<unknown, T>
+    }
+
+    if (response.status === 'declined') {
+      return { action: 'decline' }
+    }
+
+    return { action: 'cancel' }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Return Context Object
+  // ---------------------------------------------------------------------------
 
   return {
     log(level: LogLevel, message: string): void {
@@ -189,135 +530,26 @@ function createWorkerContextFromTransport(
       })
     },
 
-    *sample(
-      messages: Message[],
-      options?: { systemPrompt?: string; maxTokens?: number }
-    ): Operation<SampleResult> {
-      const sampleId = `${sessionId}:sample:${++sampleSeq}`
-
-      // Send request through correlated transport
-      const stream = transport.request<unknown, ElicitResponse>({
-        id: sampleId,
-        kind: 'elicit',
-        type: 'sample',
-        payload: {
-          messages,
-          systemPrompt: options?.systemPrompt,
-          maxTokens: options?.maxTokens,
-        },
-      })
-
-      const subscription: Subscription<unknown, ElicitResponse> = yield* stream
-
-      // Consume until response
-      let result = yield* subscription.next()
-      while (!result.done) {
-        result = yield* subscription.next()
-      }
-
-      const response = result.value
-
-      if (response.status !== 'accepted') {
-        throw new Error(`Sample request failed: ${response.status}`)
-      }
-
-      // Parse response content
-      const rawResult = response.content as {
-        text: string
-        model?: string
-        stopReason?: string
-      }
-
-      // Extract prompt text from last user message for exchange
-      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
-      const promptText = typeof lastUserMsg?.content === 'string'
-        ? lastUserMsg.content
-        : ''
-
-      // Construct exchange
-      const exchange = createRawSampleExchange(promptText, rawResult.text)
-
-      return { ...rawResult, exchange }
+    // Sample with overloads
+    sample(config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
+      return sampleImpl(config)
     },
 
-    *elicit<T>(
+    // Sample helpers
+    sampleTools(config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages): Operation<SampleToolsResult> {
+      return sampleToolsImpl(config)
+    },
+
+    sampleSchema<T>(config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
+      return sampleSchemaImpl(config)
+    },
+
+    // Elicit
+    elicit<T>(
       key: string,
       options: { message: string; schema: Record<string, unknown> }
     ): Operation<ElicitResult<unknown, T>> {
-      const elicitId = `${sessionId}:elicit:${++elicitSeq}`
-
-      // Send request through correlated transport
-      const stream = transport.request<unknown, ElicitResponse>({
-        id: elicitId,
-        kind: 'elicit',
-        type: 'elicit',
-        payload: {
-          key,
-          message: options.message,
-          schema: options.schema,
-        },
-      })
-
-      const subscription: Subscription<unknown, ElicitResponse> = yield* stream
-
-      // Consume until response
-      let result = yield* subscription.next()
-      while (!result.done) {
-        result = yield* subscription.next()
-      }
-
-      const response = result.value
-
-      if (response.status === 'accepted') {
-        const parsedContent = response.content as T
-        const toolUseId = `elicit_core_${elicitId}`
-
-        // Build exchange using MCP format
-        const request: McpMessage & { role: 'assistant' } = {
-          role: 'assistant' as const,
-          content: [{
-            type: 'tool_use' as const,
-            id: toolUseId,
-            name: key,
-            input: {},
-          }],
-        }
-        const responseMsg: McpMessage & { role: 'user' } = {
-          role: 'user' as const,
-          content: [{
-            type: 'tool_result' as const,
-            toolUseId,
-            content: [{ type: 'text' as const, text: JSON.stringify(parsedContent) }],
-          }],
-        }
-        const exchange = {
-          context: {} as unknown,
-          request,
-          response: responseMsg,
-          messages: [request, responseMsg] as [McpMessage, McpMessage],
-          withArguments(fn: (ctx: unknown) => Record<string, unknown>): [McpMessage, McpMessage] {
-            const args = fn({})
-            const requestWithArgs: McpMessage & { role: 'assistant' } = {
-              role: 'assistant' as const,
-              content: [{
-                type: 'tool_use' as const,
-                id: toolUseId,
-                name: key,
-                input: args,
-              }],
-            }
-            return [requestWithArgs, responseMsg]
-          },
-        }
-
-        return { action: 'accept' as const, content: parsedContent, exchange } as ElicitResult<unknown, T>
-      }
-
-      if (response.status === 'declined') {
-        return { action: 'decline' }
-      }
-
-      return { action: 'cancel' }
+      return elicitImpl(key, options)
     },
   }
 }
