@@ -9,9 +9,18 @@
  *
  * 1. Creates an in-process transport pair (host ↔ worker)
  * 2. Starts the worker runner in a separate async context
- * 3. Creates a WorkerToolSession that bridges to ToolSession interface
+ * 3. Creates a CoreToolSession that bridges to ToolSession interface
  * 4. Tool generator runs in worker's `run()` with its own Effection scope
  * 5. Messages flow via postMessage-style transport
+ *
+ * ## Full MCP Feature Support
+ *
+ * This implementation uses the core-based runtime which provides:
+ * - Full `sample()` with prompt/messages, schema, tools support
+ * - `sampleTools()` and `sampleSchema()` helpers with retry logic
+ * - `ExtendedMessage` support for tool call history
+ *
+ * See `docs/mcp-core-full-parity-plan.md` for details.
  *
  * @packageDocumentation
  */
@@ -22,11 +31,18 @@ import type {
   ToolSession,
   ToolSessionOptions,
 } from './types.ts'
-import type { ElicitsMap } from '../mcp-tool-types.ts'
+import type {
+  ElicitsMap,
+  McpToolSampleConfig,
+  SampleToolsConfig,
+  SampleToolsConfigMessages,
+  SampleSchemaConfig,
+  SampleSchemaConfigMessages,
+} from '../mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
 import { createInProcessTransportPair } from './worker-thread-transport.ts'
-import { runWorker, createWorkerToolRegistry } from './worker-runner.ts'
-import { createWorkerToolSession } from './worker-tool-session.ts'
+import { runWorkerCore, createWorkerToolRegistry } from './worker-runner-core.ts'
+import { createCoreToolSession } from './tool-session-core.ts'
 import type { WorkerToolContext } from './worker-types.ts'
 
 // =============================================================================
@@ -36,8 +52,8 @@ import type { WorkerToolContext } from './worker-types.ts'
 /**
  * Adapt a FinalizedMcpToolWithElicits to the simple WorkerTool interface.
  *
- * The bridge-runtime provides a rich context, but for the worker we need
- * a simpler interface that uses the transport-based context.
+ * The adapted context provides full MCP sampling capabilities by passing
+ * through to the WorkerToolContext which now has full feature support.
  */
 function adaptToolForWorker<
   TName extends string,
@@ -53,7 +69,12 @@ function adaptToolForWorker<
     name: tool.name,
     *handler(params: unknown, ctx: WorkerToolContext) {
       // Create a context that adapts WorkerToolContext to McpToolContext
+      // Now with full feature support via core-based runtime
       const adaptedCtx = {
+        // ---------------------------------------------------------------------------
+        // Logging and Progress
+        // ---------------------------------------------------------------------------
+
         *log(level: 'debug' | 'info' | 'warning' | 'error', message: string) {
           ctx.log(level, message)
         },
@@ -62,22 +83,47 @@ function adaptToolForWorker<
           ctx.progress(message, progress)
         },
 
-        *sample(config: { prompt: string; maxTokens?: number }) {
-          // Convert simple prompt to messages format
-          const messages = [{ role: 'user' as const, content: config.prompt }]
-          // Only include maxTokens if defined (exactOptionalPropertyTypes)
-          const options = config.maxTokens !== undefined
-            ? { maxTokens: config.maxTokens }
-            : {}
-          return yield* ctx.sample(messages, options)
+        // ---------------------------------------------------------------------------
+        // Sample - Full MCP Feature Support
+        // ---------------------------------------------------------------------------
+
+        /**
+         * Sample the LLM with full MCP config support.
+         * Supports: prompt/messages, systemPrompt, maxTokens, schema, tools, toolChoice
+         */
+        *sample(config: McpToolSampleConfig) {
+          // Pass through to worker context which has full support
+          return yield* ctx.sample(config as Parameters<typeof ctx.sample>[0])
         },
 
+        /**
+         * Sample with guaranteed tool calls.
+         * Retries if the model doesn't return tool calls.
+         */
+        *sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages) {
+          return yield* ctx.sampleTools(config as Parameters<typeof ctx.sampleTools>[0])
+        },
+
+        /**
+         * Sample with guaranteed parsed schema.
+         * Retries if parsing/validation fails.
+         */
+        *sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>) {
+          return yield* ctx.sampleSchema(config as Parameters<typeof ctx.sampleSchema>[0])
+        },
+
+        // ---------------------------------------------------------------------------
+        // Elicitation
+        // ---------------------------------------------------------------------------
+
+        /**
+         * Request user input via elicitation.
+         */
         *elicit<K extends keyof TElicits>(
           key: K,
           options: { message: string }
         ) {
           // Get ElicitDefinition from tool's elicits definition
-          // ElicitsMap is Record<string, ElicitDefinition> - extract the response schema
           const definition = tool.elicits[key]
           if (!definition) {
             throw new Error(`Unknown elicit key: ${String(key)}`)
@@ -86,7 +132,7 @@ function adaptToolForWorker<
           // Extract response schema from definition
           const zodSchema = definition.response
 
-          // Convert Zod schema to JSON schema (simplified)
+          // Convert Zod schema to JSON schema
           const jsonSchema = zodToJsonSchema(zodSchema)
 
           return yield* ctx.elicit(String(key), {
@@ -113,10 +159,8 @@ function adaptToolForWorker<
 /**
  * Convert Zod schema to JSON Schema for MCP elicitation.
  * Uses Zod's built-in toJSONSchema() method.
- * 
- * Note: Uses `any` for schema type to handle Zod v3/v4 compatibility.
  */
-function zodToJsonSchema(schema: any): Record<string, unknown> {
+function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
   return z.toJSONSchema(schema) as Record<string, unknown>
 }
 
@@ -129,6 +173,9 @@ function zodToJsonSchema(schema: any): Record<string, unknown> {
  *
  * This is a drop-in replacement for createToolSession that uses
  * message-passing instead of direct Signal communication.
+ *
+ * Uses the core-based runtime (runWorkerCore + createCoreToolSession)
+ * for full MCP feature support.
  *
  * @param tool - The tool to execute
  * @param params - Tool parameters
@@ -156,9 +203,9 @@ export function createWorkerBasedToolSession<
     const adaptedTool = adaptToolForWorker(tool)
     const registry = createWorkerToolRegistry([adaptedTool])
 
-    // Start the worker runner in its own async context
+    // Start the core-based worker runner in its own async context
     // This gives it a clean Effection scope via run()
-    runWorker(workerTransport, registry)
+    runWorkerCore(workerTransport, registry)
 
     // Wait for worker to be ready
     yield* call(() => new Promise<void>((resolve) => {
@@ -170,17 +217,25 @@ export function createWorkerBasedToolSession<
       })
     }))
 
-    // Create the worker tool session adapter
-    const session = yield* createWorkerToolSession(hostTransport, {
-      sessionId,
+    // Send the start message to the worker
+    // (createCoreToolSession doesn't send it, unlike createWorkerToolSession)
+    hostTransport.send({
+      type: 'start',
       toolName: tool.name,
       params,
+      sessionId,
       ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
       ...(options.parentMessages !== undefined && { parentMessages: options.parentMessages }),
     })
 
+    // Create the core tool session adapter
+    const session = yield* createCoreToolSession<TResult>(hostTransport, {
+      sessionId,
+      toolName: tool.name,
+    })
+
     try {
-      yield* provide(session as ToolSession<TResult>)
+      yield* provide(session)
     } finally {
       hostTransport.close()
     }
