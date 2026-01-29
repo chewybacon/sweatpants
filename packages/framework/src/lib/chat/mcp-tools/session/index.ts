@@ -181,3 +181,34 @@ export {
   createWorkerToolSession,
   type WorkerToolSessionOptions,
 } from './worker-tool-session.ts'
+
+// =============================================================================
+// CORE-BASED IMPLEMENTATIONS (experimental)
+// =============================================================================
+
+export {
+  // PostMessage transport bridge - adapts SessionWorkerTransport to core Transport
+  bridgeToTransport,
+  mapElicitActionToStatus,
+  mapStatusToElicitAction,
+} from './postmessage-transport.ts'
+
+export {
+  // Core-based context factory - creates McpToolContext backed by CorrelatedTransport
+  createCoreContext,
+  createCoreContextWithElicits,
+  createContextFromTransport,
+  createContextWithElicitsFromTransport,
+  type CoreContextOptions,
+} from './core-context.ts'
+
+export {
+  // Core-based worker runner - alternative to runWorker using core transport
+  runWorkerCore,
+} from './worker-runner-core.ts'
+
+export {
+  // Core-based tool session - alternative to createWorkerToolSession
+  createCoreToolSession,
+  type CoreToolSessionOptions,
+} from './tool-session-core.ts'

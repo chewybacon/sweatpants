@@ -87,6 +87,11 @@ export interface ToolFactoryWithImpl<
   /** Tool metadata */
   readonly name: string;
   readonly description: string;
+  /** Tool schemas for input/output validation */
+  readonly schemas: {
+    readonly input: TInput;
+    readonly output: TOutput;
+  };
 }
 
 /**
@@ -115,4 +120,10 @@ export interface ToolFactoryWithoutImpl<
   /** Tool metadata */
   readonly name: string;
   readonly description: string;
+  /** Tool schemas for input/output/progress validation */
+  readonly schemas: {
+    readonly input: TInput;
+    readonly output: TOutput;
+    readonly progress: TProgress;
+  };
 }
