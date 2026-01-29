@@ -476,12 +476,18 @@ export function* runChatSession(
                 // Always create it - tools that don't use it simply won't emit
                 const emissionChannel = createChannel<PendingEmission, void>()
                 
+                // IMPORTANT: Subscribe to channel BEFORE spawning tool execution
+                // This ensures we don't miss emissions due to race conditions
+                const emissionSubscription = yield* emissionChannel
+                
                 // Spawn a task to forward emissions to patches
                 yield* spawn(function* () {
                   // Capture scope to run operations from sync callbacks
                   const scope = yield* useScope()
                   
-                  for (const pendingEmission of yield* each(emissionChannel)) {
+                  let next = yield* emissionSubscription.next()
+                  while (!next.done) {
+                    const pendingEmission = next.value
                     const { emission, respond } = pendingEmission
                     // Extract callId from emission id (format: "callId-em-N")
                     const callId = emission.id.split('-em-')[0] as string
@@ -515,7 +521,7 @@ export function* runChatSession(
                       },
                       respond: wrappedRespond,
                     } as ChatPatch)
-                    yield* each.next()
+                    next = yield* emissionSubscription.next()
                   }
                 })
                 
