@@ -5,6 +5,7 @@
 ## Table of Contents
 
 - [The Problem We're Solving](#the-problem-were-solving)
+- [Architecture Overview](#architecture-overview)
 - [End-to-End Flow: Book a Flight](#end-to-end-flow-book-a-flight)
 - [Chapter 1: The Execution Model](#chapter-1-the-execution-model)
 - [Chapter 2: Session Management](#chapter-2-session-management)
@@ -12,7 +13,8 @@
 - [Chapter 4: Serialization Boundaries](#chapter-4-serialization-boundaries)
 - [Chapter 5: The Chat Engine](#chapter-5-the-chat-engine)
 - [Chapter 6: The React Bridge](#chapter-6-the-react-bridge)
-- [Chapter 7: Extension Points](#chapter-7-extension-points)
+- [Chapter 7: The Core Package](#chapter-7-the-core-package)
+- [Chapter 8: Extension Points](#chapter-8-extension-points)
 
 ---
 
@@ -36,6 +38,73 @@ This is **hard**. The framework essentially builds:
 - A **checkpoint/restore system** (generator suspension)
 - A **message bus** (events across boundaries)
 - A **serialization layer** (state that travels over HTTP)
+
+---
+
+## Architecture Overview
+
+The Sweatpants system is split into two packages:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           @sweatpants/core                                   │
+│                                                                              │
+│  Transport-agnostic primitives for building agentic tools:                   │
+│  • createTool() - Define tools with Zod schemas                             │
+│  • createAgent() - Group tools with shared config                            │
+│  • elicit/notify/sample - Built-in operations                               │
+│  • Transport layer - Principal/Operative communication                       │
+│                                                                              │
+│  Location: packages/core/                                                    │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ imports
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         @sweatpants/framework                                │
+│                                                                              │
+│  Full-stack framework for multi-turn agentic chat:                           │
+│  • Chat Engine - State machine orchestrating LLM + tools                     │
+│  • Session Management - Tracking suspended tools across requests             │
+│  • Durable Streams - LSN-based event replay                                  │
+│  • React Bridge - Client-side hooks and plugins                              │
+│  • Core Adapter - Bridges core tools to framework isomorphic tools           │
+│                                                                              │
+│  Location: packages/framework/                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Two Ways to Build Tools
+
+| Approach | Package | Best For | Suspension |
+|----------|---------|----------|------------|
+| **Core Tools** | `@sweatpants/core` | Simple tools, type-safe APIs, reusable across contexts | Via Transport |
+| **MCP/Plugin Tools** | `@sweatpants/framework` | Complex multi-turn UI, deep React integration | Via Signals |
+
+Core tools can be **automatically adapted** to work in the framework:
+
+```typescript
+// Core tool defined in packages/core
+const SearchFlights = createTool({
+  name: 'search_flights',
+  input: z.object({ destination: z.string() }),
+  output: z.object({ flights: z.array(FlightSchema) }),
+  impl: function* ({ destination }) {
+    yield* notify({ message: `Searching for flights to ${destination}...` })
+    const flights = yield* searchApi(destination)
+    return { flights }
+  },
+})
+
+// Used in framework - automatically adapted
+import { createIsomorphicToolRegistry } from '@sweatpants/framework'
+
+const registry = createIsomorphicToolRegistry([
+  SearchFlights,  // Core tool - auto-adapted
+  drawCardTool,   // Framework isomorphic tool - used as-is
+])
+```
+
+**See:** [Chapter 7: The Core Package](#chapter-7-the-core-package) for full details.
 
 ---
 
@@ -797,7 +866,303 @@ POST /api/chat {
 
 ---
 
-## Chapter 7: Extension Points
+## Chapter 7: The Core Package
+
+*"A simpler way to build tools"*
+
+### The Problem
+
+The framework's MCP tools (with plugins, signals, sessions) are powerful but complex. Many tools just need to:
+- Define inputs/outputs with Zod schemas
+- Call `elicit()` or `notify()` a few times
+- Return a result
+
+Core provides a simpler, transport-agnostic API for these cases.
+
+### Principal/Operative Model
+
+Core tools use a **Principal/Operative** communication model:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Principal as Principal (Server/Agent)
+    participant Transport
+    participant Operative as Operative (Client/UI)
+
+    Note over Principal: Tool calls elicit()
+    Principal->>Transport: TransportRequest {id, kind: "elicit", type, payload}
+    Transport->>Operative: Request arrives
+    
+    Note over Operative: UI handles request
+    Operative-->>Transport: ProgressMessage (optional)
+    Transport-->>Principal: Progress update
+    
+    Operative-->>Transport: ResponseMessage {status, content}
+    Transport-->>Principal: Final response
+    Note over Principal: Tool resumes
+```
+
+| Role | Description | Package Location |
+|------|-------------|------------------|
+| **Principal** | Initiates requests (`elicit`, `notify`, `sample`) | Tool code on server |
+| **Operative** | Handles requests, returns responses | UI on client |
+| **Transport** | Bidirectional message channel | Pluggable (WebSocket, SSE, HTTP) |
+
+**See:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+
+### Creating Core Tools
+
+Tools are created with `createTool()` and activated with a generator call:
+
+```typescript
+import { createTool, notify } from '@sweatpants/core'
+
+// Define tool with Zod schemas
+const ProcessData = createTool({
+  name: 'process_data',
+  description: 'Process user data with progress updates',
+  input: z.object({
+    data: z.array(z.string()),
+    options: z.object({ verbose: z.boolean() }).optional(),
+  }),
+  output: z.object({
+    processed: z.number(),
+    results: z.array(z.string()),
+  }),
+  impl: function* ({ data, options }) {
+    const results: string[] = []
+    
+    for (let i = 0; i < data.length; i++) {
+      // Send progress notification
+      yield* notify({
+        message: `Processing item ${i + 1}/${data.length}`,
+        progress: (i + 1) / data.length,
+      })
+      
+      results.push(data[i].toUpperCase())
+    }
+    
+    return { processed: data.length, results }
+  },
+})
+
+// Activate and invoke
+const processTool = yield* ProcessData()
+const result = yield* processTool({ data: ['a', 'b', 'c'] })
+```
+
+**See:** [`packages/core/src/tool/create.ts#L16-L220`](../../core/src/tool/create.ts#L16-L220)
+
+### Built-in Operations
+
+Core provides three operations that route through transport:
+
+```typescript
+import { elicit, notify, sample } from '@sweatpants/core'
+
+// Elicit - Request structured data from user (causes suspension)
+const confirmation = yield* elicit({
+  type: 'confirmation',
+  message: 'Book this flight?',
+  schema: z.boolean(),
+})
+if (confirmation.status === 'accepted') {
+  // User confirmed
+}
+
+// Notify - Send progress notification (does NOT suspend)
+yield* notify({
+  message: 'Searching flights...',
+  progress: 0.5,
+  level: 'info',  // 'info' | 'warning' | 'error'
+})
+
+// Sample - Request LLM completion (handled by operative)
+const completion = yield* sample({
+  prompt: 'Summarize these flight options...',
+  maxTokens: 150,
+})
+```
+
+**See:** [`packages/core/src/builtins/api.ts#L44-L203`](../../core/src/builtins/api.ts#L44-L203)
+
+### Agents: Grouping Tools
+
+Agents group related tools with optional shared configuration:
+
+```typescript
+import { createAgent, createTool } from '@sweatpants/core'
+
+// Define tools
+const Search = createTool({ name: 'search', /* ... */ })
+const Book = createTool({ name: 'book', /* ... */ })
+
+// Create agent with config
+const FlightAgent = createAgent({
+  name: 'flight',
+  description: 'Flight booking agent',
+  config: z.object({
+    apiKey: z.string(),
+    baseUrl: z.string().default('https://api.flights.com'),
+  }),
+  tools: { search: Search, book: Book },
+})
+
+// Activate agent with config
+const agent = yield* FlightAgent({ apiKey: 'sk-...' })
+
+// Use tools through agent
+const flights = yield* agent.search({ destination: 'Tokyo' })
+const booking = yield* agent.book({ flightId: flights[0].id })
+
+// Access config from within tool impl
+const Search = createTool({
+  name: 'search',
+  impl: function* (args) {
+    const config = yield* FlightAgent.useConfig()
+    // config.apiKey, config.baseUrl available
+  },
+})
+```
+
+**See:** [`packages/core/src/agent/create.ts#L14-L179`](../../core/src/agent/create.ts#L14-L179)
+
+### Framework Integration: The Adapter
+
+Core tools are automatically adapted to work with the framework's isomorphic tool system:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     Framework Tool Registry                                  │
+│                                                                              │
+│  createIsomorphicToolRegistry([                                              │
+│    ProcessData,    // Core tool (auto-detected)                              │
+│    drawCardTool,   // Framework isomorphic tool                              │
+│  ])                                                                          │
+│         │                                                                    │
+│         ▼                                                                    │
+│  ┌─────────────────┐                                                        │
+│  │ isCoreToolFactory │ ─── true ───► adaptCoreTool()                        │
+│  │    detection    │                      │                                  │
+│  └─────────────────┘                      ▼                                  │
+│                              ┌──────────────────────────┐                    │
+│                              │   AnyIsomorphicTool      │                    │
+│                              │                          │                    │
+│                              │  .server() runs:         │                    │
+│                              │    withFrameworkTransport()                   │
+│                              │      └─ TransportContext.with()               │
+│                              │           └─ core tool execution              │
+│                              │                └─ notify() → patch            │
+│                              └──────────────────────────┘                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Detection
+
+The registry detects core tools by checking for the factory signature:
+
+```typescript
+// From: src/lib/chat/core-tools/adapter.ts#L44-L60
+function isCoreToolFactory(value: unknown): value is CoreToolFactory {
+  if (typeof value !== 'function') return false
+  const fn = value as Record<string, unknown>
+  return (
+    typeof fn['decorate'] === 'function' &&
+    typeof fn['withContext'] === 'function' &&
+    typeof fn['name'] === 'string' &&
+    typeof fn['schemas'] === 'object' &&
+    'input' in (fn['schemas'] as object)
+  )
+}
+```
+
+#### Adaptation
+
+Core tools become server-authority isomorphic tools:
+
+```typescript
+// From: src/lib/chat/core-tools/adapter.ts#L74-L101
+function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTool {
+  return {
+    name: coreToolFactory.name,
+    description: coreToolFactory.description,
+    parameters: coreToolFactory.schemas.input,  // Maps input → parameters
+    authority: 'server',
+    contextMode: 'headless',  // Core tools don't need browser APIs
+
+    *server(params, ctx) {
+      return yield* withFrameworkTransport(ctx, function* () {
+        const tool = yield* coreToolFactory()
+        return yield* tool(params)
+      })
+    },
+  }
+}
+```
+
+**See:** [`src/lib/chat/core-tools/adapter.ts`](../src/lib/chat/core-tools/adapter.ts)
+
+#### Transport Bridge
+
+The framework transport bridges core operations to framework patches:
+
+```typescript
+// From: src/lib/chat/core-tools/framework-transport.ts#L42-L90
+function createFrameworkTransport(config: FrameworkBridgeConfig): CorrelatedTransport {
+  return {
+    request(message) {
+      return resource(function* (provide) {
+        if (message.kind === 'notify') {
+          // Convert to framework patch
+          const patch: ClientToolProgressPatch = {
+            type: 'client_tool_progress',
+            id: config.callId,
+            message: payload.message,
+            progress: payload.progress,
+          }
+          yield* config.emitPatch(patch)
+          
+          // Return immediate success
+          yield* provide({ *next() { return { done: true, value: { ok: true } } } })
+        }
+        
+        if (message.kind === 'elicit') {
+          // Full elicit bridging (Phase 6) - not yet implemented
+          throw new Error('Core tool elicit() not yet supported in framework bridge')
+        }
+      })
+    },
+  }
+}
+```
+
+**See:** [`src/lib/chat/core-tools/framework-transport.ts`](../src/lib/chat/core-tools/framework-transport.ts)
+
+### When to Use Core vs Framework Tools
+
+| Use Case | Recommended | Why |
+|----------|-------------|-----|
+| Simple data processing with progress | **Core** | `notify()` is simple, no React needed |
+| Complex multi-step UI wizard | **Framework MCP** | Plugin handlers, custom React components |
+| Tools shared across projects | **Core** | Transport-agnostic, no framework deps |
+| Tools needing LLM sub-calls | **Either** | Both support `sample()` |
+| Tools with streaming responses | **Framework MCP** | Deeper streaming integration |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| [`packages/core/src/tool/create.ts`](../../core/src/tool/create.ts) | `createTool()` implementation |
+| [`packages/core/src/agent/create.ts`](../../core/src/agent/create.ts) | `createAgent()` implementation |
+| [`packages/core/src/builtins/api.ts`](../../core/src/builtins/api.ts) | `elicit`, `notify`, `sample` operations |
+| [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts) | Transport types |
+| [`src/lib/chat/core-tools/adapter.ts`](../src/lib/chat/core-tools/adapter.ts) | Core → Framework adaptation |
+| [`src/lib/chat/core-tools/framework-transport.ts`](../src/lib/chat/core-tools/framework-transport.ts) | Transport bridge |
+
+---
+
+## Chapter 8: Extension Points
 
 *"How do I add a new capability?"*
 
@@ -845,5 +1210,6 @@ The framework uses in-memory session storage. To add Redis:
 
 ## What's Next
 
-- **[GLOSSARY.md](./GLOSSARY.md)** - Framework-specific terminology
+- **[GLOSSARY.md](./GLOSSARY.md)** - Framework-specific terminology (includes Core terms)
 - **[TRACE.md](./TRACE.md)** - Line-by-line execution trace of book_flight
+- **[packages/core/](../../core/)** - Core package source code
