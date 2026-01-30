@@ -21,13 +21,13 @@ import {
 import { initialChatState } from '../../lib/chat/state/index.ts'
 import type { TextPart, ReasoningPart } from '../../lib/chat/types/chat-message.ts'
 import { createPipelineTransform, markdown } from './pipeline/index.ts'
-import type { ChatState, PendingClientToolState, PendingHandoffState, ToolEmissionTrackingState, ToolEmissionState, SessionOptions } from './types.ts'
-import type { PluginElicitTrackingState } from '../../lib/chat/state/chat-state.ts'
+import type { ChatState, PendingClientToolState, ToolEmissionTrackingState, ToolEmissionState, SessionOptions } from './types.ts'
+import type { ElicitTrackingState } from '../../lib/chat/state/chat-state.ts'
 import type { PendingHandoff, ToolHandlerRegistry } from '../../lib/chat/isomorphic-tools/index.ts'
 import { useChatConfig } from './ChatProvider.tsx'
 import { createPluginRegistryFrom } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { PluginClientRegistrationInput } from '../../lib/chat/mcp-tools/plugin.ts'
-import { usePluginExecutor } from './usePluginExecutor.ts'
+import { useElicitExecutor } from './useElicitExecutor.ts'
 import type { EmissionPatch } from '../../lib/chat/patches/emission.ts'
 
 // =============================================================================
@@ -164,8 +164,7 @@ export interface UseChatSessionOptions extends SessionOptions {
    *
    * When a server-side plugin tool calls `ctx.elicit()`, the framework
    * automatically executes the matching plugin handler which uses `ctx.render()`.
-   * Handler emissions are routed to `toolEmissions` state and rendered
-   * like any other tool emission.
+   * Handler emissions are routed to local React state and rendered via toolEmissions.
    *
    * @example
    * ```tsx
@@ -424,33 +423,29 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
 
   // Derive pending handoffs from state
   // Map from PendingHandoffState (internal) to PendingHandoff (external API)
-  const pendingHandoffs: PendingHandoff[] = Object.values(state.pendingHandoffs).map(
-    (h: PendingHandoffState): PendingHandoff => ({
-      callId: h.callId,
-      toolName: h.toolName,
-      params: h.params,
-      data: h.data,
-      authority: h.authority,
-      usesHandoff: h.usesHandoff,
-    })
-  )
+  // TODO: pendingHandoffs will be replaced by pendingElicits in Phase 7
+  const pendingHandoffs: PendingHandoff[] = []
 
-  // Merge session tool emissions with local plugin emissions
+  // Tool emissions come from both:
+  // 1. state.toolEmissions - isomorphic tools via ctx.render() (server-side, through patch stream)
+  // 2. localEmissions - plugin handlers via ctx.render() (client-side, via useElicitExecutor)
+  // Merge both sources, with local emissions taking precedence (they have respond callbacks)
   const toolEmissions: ToolEmissionTrackingState[] = useMemo(() => {
-    const sessionEmissions = Object.values(state.toolEmissions)
-    const pluginEmissions = Object.values(localEmissions)
-    return [...sessionEmissions, ...pluginEmissions]
+    const merged: Record<string, ToolEmissionTrackingState> = { ...state.toolEmissions }
+    
+    // Overlay local emissions (these have the respond callbacks)
+    for (const [callId, tracking] of Object.entries(localEmissions)) {
+      merged[callId] = tracking
+    }
+    
+    return Object.values(merged)
   }, [state.toolEmissions, localEmissions])
 
   // Create state with merged emissions for consumers like deriveMessages
-  // This ensures plugin handler emissions are visible alongside session emissions
-  const stateWithMergedEmissions: ChatState = useMemo(() => ({
+  // This ensures plugin handler emissions are visible alongside other data
+  const stateWithMergedEmissions = useMemo(() => ({
     ...state,
-    toolEmissions: {
-      ...state.toolEmissions,
-      ...localEmissions,
-    },
-  }), [state, localEmissions])
+  }), [state])
 
   // Ref for local emissions (needed in respondToEmission callback)
   const localEmissionsRef = useRef(localEmissions)
@@ -458,19 +453,12 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     localEmissionsRef.current = localEmissions
   }, [localEmissions])
 
-  // Respond to a pending emission (checks both session and local emissions)
+  // Respond to a pending emission
+  // Checks both local emissions (plugin handlers) and state emissions (isomorphic tools)
   const respondToEmission = useCallback((callId: string, emissionId: string, response: unknown) => {
-    // First check session emissions
-    const sessionTracking = stateRef.current.toolEmissions[callId]
-    const sessionEmission = sessionTracking?.emissions.find(e => e.id === emissionId)
-    if (sessionEmission?.respond) {
-      sessionEmission.respond(response)
-      return
-    }
-
-    // Then check local emissions (from plugin handlers)
+    // Check local emissions first (plugin handlers have priority, they have respond callbacks)
     const localTracking = localEmissionsRef.current[callId]
-    const localEmission = localTracking?.emissions.find(e => e.id === emissionId)
+    const localEmission = localTracking?.emissions.find((e: ToolEmissionState) => e.id === emissionId)
     if (localEmission?.respond) {
       localEmission.respond(response)
       // Also update local state to mark as responded
@@ -480,23 +468,31 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         emissionId,
         response,
       })
+      return
     }
-  }, [])
 
-  // Get plugin elicitations from state (MCP plugin tools)
-  const pluginElicitations: PluginElicitTrackingState[] = Object.values(state.pluginElicitations)
+    // Check state emissions (isomorphic tools via ctx.render from server)
+    const stateTracking = stateRef.current.toolEmissions[callId]
+    const stateEmission = stateTracking?.emissions.find((e: ToolEmissionState) => e.id === emissionId)
+    if (stateEmission?.respond) {
+      stateEmission.respond(response)
+      // The respond callback sends tool_emission_response patch to update state
+    }
+  }, [dispatchLocalEmission])
 
-  // Respond to a pending plugin elicitation (internal - used by usePluginExecutor)
+  // Get pending elicits from state (MCP plugin tools)
+  const pendingElicits: ElicitTrackingState[] = Object.values(state.pendingElicits)
+
+  // Respond to a pending plugin elicitation (internal - used by useElicitExecutor)
   // This dispatches a command to the session which stores the response
   // and sends it with the next message.
-  const respondToPluginElicit = useCallback((
+  const respondToElicit = useCallback((
     elicit: { sessionId: string; callId: string; elicitId: string },
     result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }
   ) => {
-    // Dispatch a plugin_elicit_response command to the session
-    // The session stores it and includes it in the next request
+    // Dispatch an elicit_response command to the session
     dispatchRef.current?.({
-      type: 'plugin_elicit_response',
+      type: 'elicit_response',
       sessionId: elicit.sessionId,
       callId: elicit.callId,
       elicitId: elicit.elicitId,
@@ -517,11 +513,11 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   }, [])
 
   // Auto-execute plugin handlers when elicitations arrive
-  usePluginExecutor({
-    pluginElicitations,
+  useElicitExecutor({
+    pendingElicits: pendingElicits,
     registry: pluginRegistry,
     dispatchEmissionPatch,
-    respondToPluginElicit,
+    respondToElicit,
   })
 
   return {

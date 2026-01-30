@@ -5,14 +5,14 @@
  */
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
-import { createBranchTool, makePlugin } from '../index.ts'
+import { createMcpTool, makePlugin } from '../index.ts'
 import type { RawElicitResult } from '../types.ts'
 
 describe('makePlugin', () => {
   describe('type safety', () => {
     it('should enforce exhaustive elicitation handlers', () => {
       // Define a bridgeable tool
-      const tool = createBranchTool('test_tool')
+      const tool = createMcpTool('test_tool')
         .description('Test tool')
         .parameters(z.object({ input: z.string() }))
         .elicits({
@@ -60,7 +60,7 @@ describe('makePlugin', () => {
     })
 
     it('should preserve tool types through plugin', () => {
-      const tool = createBranchTool('typed_tool')
+      const tool = createMcpTool('typed_tool')
         .description('Typed tool')
         .parameters(z.object({ count: z.number() }))
         .elicits({
@@ -100,7 +100,7 @@ describe('makePlugin', () => {
   describe('elicit key typing', () => {
     it('ctx.elicit should only accept declared keys', () => {
       // This is a compile-time test - if this compiles, the types work
-      const tool = createBranchTool('key_test')
+      const tool = createMcpTool('key_test')
         .description('Key test')
         .parameters(z.object({}))
         .elicits({

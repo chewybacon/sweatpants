@@ -21,15 +21,16 @@
 
 import type { Message } from '../types.ts'
 import type { Capabilities } from '../core-types.ts'
-import type { PendingHandoffState } from '../patches/handoff.ts'
 import type { ToolEmissionState, ToolEmissionTrackingState } from '../patches/emission.ts'
-import type { PluginElicitState, PluginElicitTrackingState } from '../patches/plugin.ts'
+import type { ElicitState, ElicitTrackingState } from '../patches/elicit.ts'
 import type { MessagePart } from '../types/chat-message.ts'
 import type { ContentPartType } from '../patches/base.ts'
 
-// Re-export emission types for convenience
+// Re-export emission types for convenience (used by React-local state)
 export type { ToolEmissionState, ToolEmissionTrackingState }
-export type { PluginElicitState, PluginElicitTrackingState }
+
+// Re-export elicit types
+export type { ElicitState, ElicitTrackingState }
 
 // =============================================================================
 // STREAMING PARTS STATE
@@ -118,29 +119,32 @@ export interface ChatState {
   /** Pending client tools awaiting approval or executing */
   pendingClientTools: Record<string, PendingClientToolState>
 
-  /** Pending tool handoffs waiting for React UI handlers */
-  pendingHandoffs: Record<string, PendingHandoffState>
-
   /**
-   * Active tool emissions from ctx.render() pattern.
+   * Pending elicitations for tools that need client input.
    * Keyed by tool call ID.
    *
-   * When a tool completes, emissions collapse into a trace in the tool message.
+   * This is the unified elicitation system used by both MCP tools and isomorphic tools.
+   * The elicitation flow is:
+   * 1. Server emits elicit_start when tool begins
+   * 2. Server emits elicit when tool needs client input
+   * 3. Client renders UI based on elicit key and context
+   * 4. User responds, client sends elicit_response
+   * 5. Server emits elicit_complete when tool finishes
+   */
+  pendingElicits: Record<string, ElicitTrackingState>
+
+  /**
+   * Tool emissions for isomorphic tools (ctx.render pattern).
+   * Keyed by tool call ID.
+   *
+   * The emission flow is:
+   * 1. Server emits tool_emission_start when tool begins
+   * 2. Server emits tool_emission when tool calls ctx.render()
+   * 3. Client renders component based on emission payload
+   * 4. User responds, client sends tool_emission_response
+   * 5. Server emits tool_emission_complete when tool finishes
    */
   toolEmissions: Record<string, ToolEmissionTrackingState>
-
-  /**
-   * Plugin elicitation state for MCP plugin tools.
-   * Keyed by tool call ID.
-   *
-   * Plugin tools run on the server but need client-side UI for elicitation.
-   * The elicitation flow is:
-   * 1. Server emits plugin_elicit_request
-   * 2. Client receives and stores in pluginElicitations
-   * 3. Client renders UI based on elicit key and context
-   * 4. User responds, client sends pluginElicitResponses in next request
-   */
-  pluginElicitations: Record<string, PluginElicitTrackingState>
 }
 
 /**
@@ -159,42 +163,6 @@ export const initialChatState: ChatState = {
   capabilities: null,
   persona: null,
   pendingClientTools: {},
-  pendingHandoffs: {},
+  pendingElicits: {},
   toolEmissions: {},
-  pluginElicitations: {},
-}
-
-// =============================================================================
-// LEGACY TYPE ALIASES (for migration)
-// =============================================================================
-
-/**
- * @deprecated Use StreamingPartsState instead.
- */
-export type ResponseStep =
-  | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_call'
-      id: string
-      name: string
-      arguments: string
-      result?: string
-      error?: string
-      state: 'pending' | 'complete' | 'error'
-    }
-  | { type: 'text'; content: string }
-
-/**
- * @deprecated Use StreamingPartsState instead.
- */
-export interface ActiveStep {
-  type: 'thinking' | 'text'
-  content: string
-}
-
-/**
- * @deprecated No longer needed with parts-based model.
- */
-export interface RenderedContent {
-  output?: string
 }

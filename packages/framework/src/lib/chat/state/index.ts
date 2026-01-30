@@ -20,9 +20,6 @@ export { groupTimelineByToolCall } from './timeline.ts'
 
 // Chat state types
 export type {
-  ResponseStep,
-  ActiveStep,
-  RenderedContent,
   PendingClientToolState,
   ChatState,
   StreamingPartsState,

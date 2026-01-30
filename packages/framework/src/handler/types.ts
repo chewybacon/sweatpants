@@ -197,9 +197,9 @@ export type StreamEvent =
       message: string
       recoverable: boolean
     }
-  // Plugin tool events
+  // Tool elicit events
   | {
-      type: 'plugin_elicit_request'
+      type: 'elicit_request'
       sessionId: string
       callId: string
       toolName: string
@@ -209,7 +209,7 @@ export type StreamEvent =
       schema: Record<string, unknown>
     }
   | {
-      type: 'plugin_session_error'
+      type: 'tool_session_error'
       sessionId: string
       callId: string
       error: 'SESSION_NOT_FOUND' | 'SESSION_ABORTED' | 'INTERNAL_ERROR'

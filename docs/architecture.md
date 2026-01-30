@@ -1,0 +1,1309 @@
+# Sweatpants Architecture
+
+This document describes the architecture for Sweatpants, an agent framework built on Effection's structured concurrency primitives.
+
+## Overview
+
+Sweatpants provides a composable, middleware-driven architecture for building AI agents. The design emphasizes:
+
+- **Structured concurrency**: All operations are coroutines with predictable lifecycle management
+- **Protocol-based communication**: Declaration separate from implementation enables environment-agnostic code
+- **Middleware at every level**: Intercept and transform any operation at any scope
+- **Context-driven resolution**: Configuration and implementations flow down the coroutine hierarchy
+
+## Foundation: Effection Structured Concurrency
+
+The architecture is built on Effection's structured concurrency model:
+
+- **Coroutines** (`function*` / `yield*`) as the execution primitive
+- **Scopes** form a hierarchy (parent → child relationships)
+- **Context** flows down the scope tree, can be overridden at any level
+- **Resources** are bound to scope lifetime (automatic cleanup)
+
+## Glossary
+
+- **Agent**: A coroutine-bound unit of behavior that exposes tools and may hold state.
+- **Tool**: A typed operation provided by an agent; implemented as a coroutine.
+- **Protocol**: A declarative contract for cross-environment method calls.
+- **Elicit**: A structured request for user/environment input.
+- **Principal**: The agent-side of communication; initiates requests for elicit/notify operations.
+- **Operative**: The UI-side of communication; receives requests and sends progress/responses.
+- **Transport**: A bidirectional stream that moves messages between Principal and Operative. Implemented in `@sweatpants/core`.
+- **Middleware**: Interceptors that wrap operations across the scope hierarchy.
+- **Context**: The structured value store inherited by child scopes.
+
+## Composition Hierarchy
+
+The system has three levels of composition:
+
+```
+Program
+  └── Agents (coroutines with tools, stateful or stateless)
+        └── Tools (operations that use core primitives)
+```
+
+### Program Level
+
+The program is the entry point. It sets root context, loads configuration, starts the server, and instantiates agents.
+
+```ts
+import { main } from "effection";
+import { createServer, useConfig, useModel } from "@sweatpants/core";
+import { Chat } from "./agents/chat";
+
+await main(function* () {
+  const config = yield* useConfig();
+
+  const server = createServer({
+    host: config.server.host,
+    port: config.server.port,
+  });
+
+  yield* useModel(config.defaults.provider, config.defaults.model);
+
+  const agent = yield* Chat;
+
+  server.use("/chat", agent);
+
+  yield* server;
+});
+```
+
+### Agent Level
+
+Each agent has a role defined by the tools it exposes. Agents can be stateful (maintain resources, accumulate state) or stateless (pure transformations).
+
+```ts
+const Chat = createAgent({
+  bookFlight: createTool("book-flight")
+    .description("Search for a flight and book it")
+    .parameter(z.string().describe("Description of a trip"))
+    .execute(function* (trip) {
+      // Agent implementation
+    }),
+});
+```
+
+**Agent instantiation:**
+
+- **Explicit**: `yield* Agent` — starts the coroutine, binds resources, puts instance in context
+- **Implicit**: Call `Agent.tools.method()` — resolves agent from context (suitable for stateless agents)
+
+**Agent identity is context-dependent**: The same code (`Flight.tools.search`) can talk to different agent instances based on what's in the coroutine context. Parent coroutines can override agent instances for their children.
+
+### Tool Level
+
+Tools are operations that use core primitives and can call other agents' tools.
+
+```ts
+const Chat = createAgent({
+  bookFlight: createTool("book-flight")
+    .execute(function* (trip) {
+      // Use core primitives
+      const summary = yield* sample({ prompt: `...` });
+      yield* notify("Processing...", 0.5);
+
+      // Call another agent's tool
+      const result = yield* Flight.tools.search({
+        destination,
+        date,
+      });
+
+      return Ok(result);
+    }),
+});
+```
+
+Tools can be exported as standalone functions for use in distributed libraries:
+
+```ts
+export const { bookFlight } = Chat.tools;
+```
+
+## Layered Architecture
+
+The system is organized into three layers, each with distinct responsibilities:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     STATE MANAGEMENT                            │
+│                                                                 │
+│  - Conversation history (event sourcing)                        │
+│  - Coroutine tree (parent/child messages)                       │
+│  - Rewind = return to higher node in tree                       │
+│  - Cancel = halt current subtree                                │
+│  - Context = history up to current node                         │
+│  - Compaction via middleware (summarization)                    │
+│  - Reflog for recovery of discarded branches                    │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        PROTOCOL                                 │
+│                                                                 │
+│  - Invoke method in another environment                         │
+│  - Declaration (schema) / Implementation separation             │
+│  - Progress streaming (send)                                    │
+│  - Middleware: retry, validation, PII filtering                 │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       TRANSPORT                                 │
+│                                                                 │
+│  - Move messages between Principal and Operative                │
+│  - Principal-driven request/response                            │
+│  - SSE+POST, WebSocket, in-memory pair                          │
+│  - Implemented in @sweatpants/core                              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Core Primitives
+
+The core primitives from `@sweatpants/agent` are the building blocks all other tools are built from:
+
+| Primitive | Purpose |
+|-----------|---------|
+| `sample` | LLM calls with pipeline stages |
+| `elicit` | Structured user input |
+| `notify` | Progress/status to user |
+| `log` | Logging |
+
+### Sample Pipeline
+
+The `sample` primitive is a pipeline with middleware points at each stage:
+
+```
+sample.input → sample.output → sample.metadata → sample.confidence
+```
+
+| Stage | Purpose | Middleware Use Case |
+|-------|---------|---------------------|
+| `input` | Prepare/transform prompt | PII filtering, prompt enrichment |
+| `output` | Handle raw model response | Retry on invalid format, parse/validate |
+| `metadata` | Extract structured data | Control extraction, transform structure |
+| `confidence` | Evaluate confidence | Retry if below threshold, escalate |
+
+When middleware at any stage decides to retry, execution returns to `input` and the full pipeline re-runs.
+
+```ts
+const result = yield* sample({
+  prompt: `Extract destination and date from: ${trip}`,
+  maxTokens: 150,
+});
+// Returns structured data with confidence
+```
+
+### Model Configuration
+
+Models are configured through context. The `with*` functions set context for a scope, while `use*` functions return a reference.
+
+**Setting model context for a scope:**
+
+```ts
+function* bookingAgent() {
+  // withModel sets context for the scope
+  yield* withModel('gpt-4-turbo', function* () {
+    yield* sample({ prompt: '...' });  // uses gpt-4-turbo
+    yield* sample({ prompt: '...' });  // uses gpt-4-turbo
+  });
+}
+```
+
+**Getting a model reference for per-call override:**
+
+```ts
+function* bookingAgent() {
+  // useModel returns a reference to a model
+  const mainModel = yield* useModel('gpt-4-turbo');
+  const cheapModel = yield* useModel('gpt-3.5-turbo');
+  
+  // Use main model for complex analysis
+  yield* sample({ prompt: 'Complex analysis...', model: mainModel });
+  
+  // Use cheaper model for simple classification
+  yield* sample({ prompt: 'Yes or no?', model: cheapModel });
+}
+```
+
+**Named model aliases:**
+
+Models can be referenced by alias names that resolve to configured models at call time:
+
+```ts
+// 'core.side-quest-detection' resolves to a cheap/fast model by default
+const classificationModel = yield* useModel('core.side-quest-detection');
+
+yield* sample({
+  model: classificationModel,
+  prompt: 'Is this a side quest?'
+});
+```
+
+**Provider configuration:**
+
+Providers (OpenAI, Anthropic, Ollama) are configured separately from models:
+
+```ts
+yield* withProvider('openai', { apiKey: '...' }, function* () {
+  yield* withModel('gpt-4-turbo', function* () {
+    yield* sample({ prompt: '...' });
+  });
+});
+```
+
+**Model override via middleware:**
+
+Middleware can override the model based on prompt content:
+
+```ts
+yield* around({
+  *['sample.input']([{ prompt, model }], next) {
+    if (isSimpleClassification(prompt)) {
+      const cheapModel = yield* useModel('gpt-3.5-turbo');
+      return yield* ModelContext.with(cheapModel, function* () {
+        return yield* next({ prompt });
+      });
+    }
+    return yield* next({ prompt, model });
+  }
+});
+```
+
+**Default model:**
+
+If no model is set in context and none passed to `sample`, a global default is used.
+
+**Model consensus (cross-model validation):**
+
+For critical decisions, you can validate a response by asking multiple models the same prompt and checking agreement:
+
+```ts
+import { all } from "effection";
+
+function* withModelConsensus(
+  validationModels: string[],
+  threshold: number = 0.8  // require 80% agreement
+): Operation<void> {
+  yield* around({
+    *['sample.output']([response], next) {
+      const primaryResult = yield* next(response);
+      
+      // Get responses from validation models
+      const validationResults = yield* all(
+        validationModels.map(function* (modelName) {
+          const model = yield* useModel(modelName);
+          return yield* sample({
+            model,
+            prompt: response.prompt
+          });
+        })
+      );
+      
+      // Check agreement across models
+      const agreement = calculateAgreement(primaryResult, validationResults);
+      
+      if (agreement < threshold) {
+        // Models disagree — return with low confidence
+        return { ...primaryResult, confidence: agreement };
+      }
+      
+      return primaryResult;
+    }
+  });
+}
+
+// Usage: validate critical decisions with multiple models
+function* criticalDecisionAgent() {
+  yield* withModelConsensus(['gpt-4', 'claude-3-opus'], 0.8);
+  
+  // This sample will be validated against both models
+  const decision = yield* sample({ 
+    prompt: 'Should we proceed with this irreversible action?' 
+  });
+  
+  if (decision.confidence < 0.8) {
+    // Escalate to human review
+    yield* elicit({ type: 'human-review', decision });
+  }
+}
+```
+
+### Elicit Types
+
+Elicit is a general mechanism for requesting something from the user's environment. Each elicit type has a schema and corresponding implementation.
+
+**Framework-provided elicit types:**
+
+```ts
+import { createElicit } from "@sweatpants/agent";
+
+export const locationElicit = createElicit({
+  name: "location",
+  description: "Request user location from device GPS",
+  input: z.object({ accuracy: z.enum(["high", "low"]) }),
+  output: z.object({ lat: z.number(), lng: z.number() }),
+  actions: ["accept", "denied", "cancel"],
+});
+
+export const clipboardReadElicit = createElicit({
+  name: "clipboard-read",
+  description: "Read text from user clipboard",
+  input: z.object({}),
+  output: z.object({ text: z.string() }),
+  actions: ["accept", "denied", "cancel"],
+});
+
+export const clipboardWriteElicit = createElicit({
+  name: "clipboard-write",
+  description: "Copy text to user clipboard",
+  input: z.object({ text: z.string() }),
+  output: z.object({ success: z.boolean() }),
+  actions: ["accept", "denied"],
+});
+```
+
+**Custom app-specific elicit types:**
+
+```ts
+const flightSelectionElicit = createElicit({
+  name: "flight-selection",
+  description: "User selects a flight from options",
+  input: z.object({
+    flights: z.array(FlightSchema),
+    message: z.string(),
+  }),
+  output: z.object({
+    flightId: z.string(),
+    seat: z.string(),
+  }),
+});
+```
+
+**Elicit return type:**
+
+```ts
+type ElicitResult<T> =
+  | { action: "accept"; content: T }
+  | { action: "decline" }        // user explicitly said no
+  | { action: "cancel" }         // user dismissed/closed
+  | { action: "denied" }         // permission denied (device APIs)
+  | { action: "other"; content: string }; // user went off-script
+```
+
+## Elicit Use Cases
+
+### Multiple Agents Sharing Same Elicit
+
+- Single implementation serves all agents
+- Requests queue by default; UI controls queue behavior
+- Coroutine context provides agent identity for attribution
+
+### Agent Asking User for Input via Chat
+
+- Typed elicit components with schemas
+- Calling coroutine suspends; others can continue
+- `action: 'other'` for when user goes off-script
+
+### MCP Invoking Tool Which Causes Elicit
+
+- Agent decoupled from invocation source (MCP, HTTP) and elicit target (chat UI, CLI)
+- MCP blocks until user completes elicit
+- Same tool code works regardless of invocation path
+
+### Device API Access (Location, Clipboard)
+
+- Elicit broader than forms — device capability access
+- Permission denial is `{ action: 'denied' }`, not an error
+- Framework provides standard elicit types with `createElicit`
+
+### Principal-Authoritative Interactions
+
+- Principal controls state, validation, authorization
+- Operative is presentation layer only
+- Example: "Draw a card" — Principal picks, Operative reveals
+
+### Compound Elicits (Choice + Type Something)
+
+- Single elicit type = single UI component
+- Compound schema handles multiple interaction modes
+- Distinct from `action: 'other'` (designed option vs. off-script)
+
+## Protocol System
+
+The protocol system separates declaration from implementation, enabling environment-agnostic method invocation.
+
+### Example: Location Protocol
+
+A Location agent needs to retrieve the user's location. The Principal (agent) doesn't know how to access GPS — that's an Operative capability. The protocol bridges this gap.
+
+**Declaration (shared between Principal and Operative):**
+
+```ts
+import { createProtocol } from "@sweatpants/core";
+import { z } from "zod";
+
+const LocationProtocol = createProtocol({
+  getLocation: {
+    args: z.object({ accuracy: z.enum(["high", "low"]) }),
+    progress: z.object({ status: z.enum(["requesting-permission", "acquiring"]) }),
+    returns: z.object({ lat: z.number(), lng: z.number() }),
+  },
+});
+```
+
+**Implementation (Operative — browser environment):**
+
+```ts
+import { createImplementation, withResolvers } from "@sweatpants/core";
+
+const browserLocation = createImplementation(LocationProtocol, function* () {
+  return {
+    // send is passed as second argument, typed to the protocol's progress schema
+    *getLocation({ accuracy }, send) {
+      yield* send({ status: "requesting-permission" });
+
+      const { operation, resolve, reject } = withResolvers<GeolocationPosition>();
+      
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: accuracy === "high",
+      });
+      
+      const position = yield* operation;
+
+      yield* send({ status: "acquiring" });
+
+      return {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+    },
+  };
+});
+```
+
+**Implementation (CLI — prompts user to type location):**
+
+```ts
+const cliLocation = createImplementation(LocationProtocol, function* () {
+  return {
+    *getLocation({ accuracy }) {
+      const input = yield* prompt("Enter your location (lat,lng): ");
+      const [lat, lng] = input.split(",").map(Number);
+      return { lat, lng };
+    },
+  };
+});
+```
+
+**Usage in an agent (Principal — doesn't know which implementation):**
+
+```ts
+const WeatherAgent = createAgent({
+  getLocalWeather: createTool("get-local-weather")
+    .description("Get weather for user's current location")
+    .execute(function* () {
+      // Principal calls protocol — transport handles routing to Operative
+      const handle = yield* LocationProtocol.attach();
+      const location = yield* handle.invoke({
+        name: "getLocation",
+        args: { accuracy: "low" },
+      });
+
+      if (location.action === "denied") {
+        return Err(new Error("location_permission_denied"));
+      }
+
+      const weather = yield* fetchWeather(location.content);
+      return Ok(weather);
+    }),
+});
+```
+
+### Key Properties
+
+- **Methods return `Stream<Progress, Return>`**: Progress events flow during execution, final result closes the stream
+- **Same protocol, multiple implementations**: UI chat, CLI, test mock, automated
+- **Transport is contextual**: WebSocket, HTTP SSE, in-memory — caller doesn't know or care
+
+### Example: Elicit Across Environments
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        PRINCIPAL                                │
+│                                                                 │
+│   Chat Agent                                                    │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  yield* elicit({                                        │   │
+│   │    type: 'form',                                        │   │
+│   │    message: "Select a flight",                          │   │
+│   │    schema: FlightSelectionSchema                        │   │
+│   │  })                                                     │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+│                              │ invoke via protocol              │
+│                              ▼                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  Protocol: elicit                                       │   │
+│   │  - args: { type, message, schema }                      │   │
+│   │  - progress: { status }                                 │   │
+│   │  - returns: { action, content }                         │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                              │                                  │
+└──────────────────────────────│──────────────────────────────────┘
+                               │ transport (contextual)
+┌──────────────────────────────│──────────────────────────────────┐
+│                        OPERATIVE                                │
+│                              ▼                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  Implementation: elicit (UI Chat)                       │   │
+│   │  - Renders flight selection form                        │   │
+│   │  - Streams progress: "rendering" → "waiting"            │   │
+│   │  - Returns: { action: 'accept', content: { flightId } } │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Principal-Driven Communication
+
+Communication between Principal and Operative is **Principal-driven**. The Principal always initiates, the Operative always responds. There is no Operative-initiated communication.
+
+**The loop:**
+
+```
+Principal (driver)                  Operative (reactor)
+──────────────────                  ───────────────────
+
+loop {
+  decide next action
+       │
+       ▼
+  send message ──────────────────►  receive message
+                                    render/execute
+                                    wait for user
+                                    send response
+  receive response  ◄──────────────   
+       │
+       ▼
+  process response
+  continue loop
+}
+```
+
+**Key properties:**
+
+- Principal controls the flow
+- Operative is reactive (receives instructions, sends back results)
+- Principal controls asynchrony — when new input arrives while processing, Principal decides what to do (queue, interrupt, merge)
+
+**Response interpretation:**
+
+- **Structured response** (user clicked specific UI element) → Principal processes directly
+- **Unstructured/text response** (user typed something) → Principal sends to LLM to interpret
+
+The Principal doesn't know the nature of user's response until it sends the response to the LLM for interpretation.
+
+## Transport Layer
+
+The transport layer (`@sweatpants/core`) provides the communication substrate between Principal (agent) and Operative (UI). It moves messages between environments with no semantic understanding of the protocols built on top.
+
+### Transport Interface
+
+Transport is a bidirectional stream that can send and receive messages:
+
+```ts
+import type { Operation, Stream } from "effection";
+
+/**
+ * A bidirectional transport that can send and receive messages.
+ * Extends Stream to allow consuming received messages.
+ */
+interface Transport<TSend, TReceive> extends Stream<TReceive, void> {
+  send(message: TSend): Operation<void>;
+}
+
+// Principal sends requests, receives progress/responses
+type PrincipalTransport = Transport<TransportRequest, ProgressMessage | ResponseMessage>;
+
+// Operative receives requests, sends progress/responses
+type OperativeTransport = Transport<ProgressMessage | ResponseMessage, TransportRequest>;
+```
+
+### Wire Message Types
+
+```ts
+/** A request message sent from Principal to Operative */
+interface TransportRequest<TPayload = unknown> {
+  id: string;
+  kind: "elicit" | "notify";
+  type: string;
+  payload: TPayload;
+}
+
+/** A progress update sent from Operative to Principal */
+interface ProgressMessage<TData = unknown> {
+  type: "progress";
+  id: string;
+  data: TData;
+}
+
+/** A final response sent from Operative to Principal */
+interface ResponseMessage {
+  type: "response";
+  id: string;
+  response: ElicitResponse | NotifyResponse;
+}
+```
+
+### Transport Implementations
+
+| Implementation | Use Case | Principal → Operative | Operative → Principal |
+|----------------|----------|----------------------|----------------------|
+| `createTransportPair()` | Testing | In-memory channel | In-memory channel |
+| `createWebSocketPrincipal/Operative` | Real-time apps | WebSocket | WebSocket |
+| `createSSEPrincipal/Operative` | HTTP-only environments | HTTP POST | Server-Sent Events |
+
+**In-memory transport for testing:**
+
+```ts
+import { createTransportPair } from "@sweatpants/core";
+
+function* testSetup() {
+  const [principal, operative] = yield* createTransportPair();
+  // principal and operative are connected in-memory
+}
+```
+
+**WebSocket transport:**
+
+```ts
+import { createWebSocketPrincipal } from "@sweatpants/core";
+
+function* connectAgent() {
+  const transport = yield* createWebSocketPrincipal("wss://example.com/agent");
+  // Use transport for agent communication
+}
+```
+
+**SSE transport:**
+
+```ts
+import { createSSEPrincipal } from "@sweatpants/core";
+
+function* connectAgent() {
+  const transport = yield* createSSEPrincipal({
+    sseUrl: "https://example.com/events",   // Receive progress/responses
+    postUrl: "https://example.com/request", // Send requests
+  });
+}
+```
+
+### Correlation Layer
+
+The raw transport is message-based — it doesn't associate responses with requests. The correlation layer adds request/response matching:
+
+```ts
+import { createCorrelation, type CorrelatedTransport } from "@sweatpants/core";
+
+interface CorrelatedTransport {
+  /**
+   * Send a request and get a stream of progress updates
+   * that closes with the final response.
+   */
+  request<TProgress, TResponse>(
+    message: TransportRequest
+  ): Stream<TProgress, TResponse>;
+}
+
+function* setupAgent(transport: PrincipalTransport) {
+  const correlated = yield* createCorrelation(transport);
+  
+  // Now requests automatically correlate with responses
+  const stream = correlated.request({
+    id: "loc-1",
+    kind: "elicit",
+    type: "location",
+    payload: { enableHighAccuracy: true }
+  });
+  
+  // Stream yields progress for this specific request
+  // Stream closes with the response for this request
+}
+```
+
+**Why separate correlation from transport?**
+
+1. **Multiple concurrent requests** — Several elicit/notify operations can be in flight simultaneously
+2. **Out-of-order responses** — Responses may arrive in different order than requests were sent
+3. **Progress routing** — Progress updates need to reach the correct waiting operation
+4. **Separation of concerns** — Transport handles bytes, correlation handles request/response matching
+
+### Example Flow
+
+```
+Principal                              Operative
+─────────                              ─────────
+
+transport.send({                       
+  id: "loc-1",                         
+  kind: "elicit",             
+  type: "location",          ────────► receives TransportRequest
+  payload: { ... }                     
+})                                     
+                                       calls geolocation API
+                                       
+                             ◄──────── transport.send({
+progress received                        type: "progress",
+(routed by id: "loc-1")                  id: "loc-1",
+                                         data: { status: "acquiring" }
+                                       })
+                                       
+                                       position acquired
+                                       
+                             ◄──────── transport.send({
+response received                        type: "response",
+(routed by id: "loc-1")                  id: "loc-1",
+                                         response: { status: "accepted", content: { lat, lng } }
+                                       })
+```
+
+### Backpressure
+
+Communication is naturally backpressured:
+
+- Principal blocks when calling `request()` until the response arrives
+- Operative processes one request at a time (per request ID)
+- Progress updates flow without blocking, allowing UI feedback during long operations
+
+This prevents the agent from getting ahead of the UI — each operation completes before the next begins.
+
+## Middleware System
+
+Middleware can intercept any operation at any level of the scope hierarchy.
+
+### Installation
+
+```ts
+yield* api.decorate(
+  {
+    methodName(args, next) {
+      // transform args
+      const result = next(...args);
+      // transform result
+      return result;
+    },
+  },
+  { at: "max" | "min" }
+);
+```
+
+### Priority: max vs min
+
+- **max**: First to see input (outer scopes outermost)
+- **min**: First to see output (inner scopes closest to core)
+
+### Execution Order
+
+```
+OUTER SCOPE (max) ────────────────────────────────────────────────────────
+  │                                                                     ▲
+  ▼                                                                     │
+INNER SCOPE (max) ────────────────────────────────────────────────      │
+  │                                                              ▲      │
+  ▼                                                              │      │
+INNER SCOPE (min) ────────────────────────────────────────       │      │
+  │                                                      ▲       │      │
+  ▼                                                      │       │      │
+OUTER SCOPE (min) ────────────────────────────           │       │      │
+  │                                          ▲           │       │      │
+  ▼                                          │           │       │      │
+                      CORE                   └───────────┴───────┴──────┘
+```
+
+### Use Cases
+
+**PII filtering (max priority):**
+
+```ts
+yield* around(
+  {
+    *sample([{ prompt, maxTokens }], next) {
+      const sanitizedPrompt = redactPII(prompt);
+      return yield* next({ prompt: sanitizedPrompt, maxTokens });
+    },
+  },
+  { at: "max" }
+);
+```
+
+**Confidence checking (min priority):**
+
+```ts
+yield* around(
+  {
+    *sample([args], next) {
+      const result = yield* next(args);
+      if (result.confidence < 0.8) {
+        // retry or escalate
+      }
+      return result;
+    },
+  },
+  { at: "min" }
+);
+```
+
+**Scoped configuration:**
+
+```ts
+const HttpConfig = Context.create<{ retries: number; timeout: number }>(
+  "http-config",
+  { retries: 3, timeout: 5000 }
+);
+
+// Increase retries for flaky services
+yield* HttpConfig.with({ retries: 10, timeout: 15000 }, function* () {
+  yield* ExternalServiceAgent.tools.fetchData({ endpoint: "/unstable-api" });
+});
+```
+
+## Plugin System
+
+Plugins extend agent capabilities through a unified `use` interface.
+
+```ts
+yield* agent.use(plugin);
+```
+
+- Plugins define extension points
+- Agents implement required interfaces for compatibility
+- Type safety + runtime validation enforce compatibility
+
+Examples: HTTP routes, MCP exposure, transport bindings.
+
+## Result Handling
+
+The `Ok`/`Err` pattern distinguishes expected outcomes from unexpected failures:
+
+```ts
+import { Ok, Err } from "effection";
+
+function* bookFlight(flightId: string) {
+  const confirmation = yield* elicit(confirmationElicit);
+
+  if (confirmation.action === "decline") {
+    return Err(new Error("user_declined"));
+  }
+
+  if (confirmation.action === "cancel") {
+    return Err(new Error("user_cancelled"));
+  }
+
+  // ... proceed with booking
+  return Ok({ bookingId: "..." });
+}
+```
+
+Callers must handle results explicitly — there's no automatic propagation.
+
+## Agent State Management
+
+### State Encapsulation
+
+State is encapsulated within agents and accessed only through their tools. There is no point-to-point state communication between agents.
+
+### Fork/Forward/Back
+
+Parent agents can manage subagent state through fork/forward/back operations:
+
+- **Fork**: Create a branch of execution with copied state
+- **Forward**: Advance state (commit)
+- **Back**: Restore to a previous checkpoint
+
+This enables scenarios like "try this approach, if it fails, roll back and try another."
+
+### Side Quests
+
+Users can take tangents mid-conversation without losing context:
+
+```
+Main flow                          Side quest
+──────────                         ──────────
+
+1. Agent asks about flight
+2. User selecting dates
+3. yield* elicit(dateSelection)
+        │
+        │ ◄── User: "Wait, what's the weather in Tokyo?"
+        │
+        ├─────────────────────────► 4. Fork: new coroutine
+        │ (suspended, not lost)        5. Weather agent responds
+        │                              6. User: "Ok thanks"
+        │                              7. Coroutine completes
+        │ ◄────────────────────────────┘
+        │
+        ▼ (resume exactly here)
+4. User completes date selection
+5. Agent continues booking
+```
+
+**Properties:**
+
+- Coroutine tree, not stack — suspended state preserved
+- Auto-return on completion (default behavior)
+- Optional explicit navigation for power users
+- Serializable state for persistence (architected from start, required by 1.0)
+
+### Side Quest Detection
+
+Side quest detection is implemented as middleware. It has access to both elicit input and output, which allows detecting the difference between what was asked and what was answered.
+
+```ts
+import { createArraySignal, type ArraySignal } from "@effectionx/signals";
+
+interface SideQuestResolution {
+  topic: string;
+  query: string;
+  answer: string;
+  timestamp: number;
+}
+
+const SideQuestContext = createContext<ArraySignal<SideQuestResolution>>('side-quests');
+
+// withSideQuestDetection installs middleware on current scope
+function* withSideQuestDetection(
+  onSideQuest: (topic: string, content: string) => Operation<SideQuestResolution>
+): Operation<void> {
+  const sideQuests = yield* createArraySignal<SideQuestResolution>([]);
+  yield* SideQuestContext.set(sideQuests);
+  
+  // Use a named model alias that resolves to a cheap/fast classification model
+  const classificationModel = yield* useModel('core.side-quest-detection');
+  
+  yield* around({
+    *elicit([request], next) {
+      // Loop: user may take multiple side quests before answering
+      while (true) {
+        const response = yield* next(request);
+        
+        if (response.status !== 'other') {
+          return response;  // User answered the question
+        }
+        
+        // Detect if this is a side quest
+        const interpretation = yield* sample({
+          model: classificationModel,
+          prompt: `User was asked: ${request.message}
+                   User responded: ${response.content}
+                   Is this a side quest (unrelated topic) or an attempt to answer?`
+        });
+        
+        if (!interpretation.isSideQuest) {
+          return response;  // Not a side quest, return as 'other'
+        }
+        
+        // Handle the side quest and get resolution
+        const resolution = yield* onSideQuest(interpretation.topic, response.content);
+        
+        // Store resolution (ArraySignal handles immutability)
+        sideQuests.push(resolution);
+        
+        // Loop: re-elicit the original question
+      }
+    }
+  });
+}
+
+// Helper to access side quest resolutions
+function* useSideQuests(): Operation<readonly SideQuestResolution[]> {
+  const signal = yield* SideQuestContext.get();
+  return signal.valueOf();
+}
+```
+
+**Usage:**
+
+```ts
+function* bookingAgent() {
+  yield* withSideQuestDetection(function* (topic, content) {
+    const answer = yield* handleSideQuest(topic, content);
+    return {
+      topic,
+      query: content,
+      answer,
+      timestamp: Date.now(),
+    };
+  });
+  
+  // All elicits in bookingFlow now have side quest detection
+  yield* bookingFlow();
+  
+  // Can access side quest history
+  const sideQuests = yield* useSideQuests();
+  console.log(`User took ${sideQuests.length} side quests`);
+}
+```
+
+**Example flow:**
+
+```
+Agent: "Where do you want to fly?"
+
+User: "What's the weather in Tokyo?"     ← side quest #1
+  → handleSideQuest("weather", "...")
+  → "Tokyo will be 72°F next week"
+
+Agent: "Where do you want to fly?"        ← re-elicit
+
+User: "How much is a hotel there?"        ← side quest #2
+  → handleSideQuest("hotel", "...")
+  → "Hotels start at $150/night"
+
+Agent: "Where do you want to fly?"        ← re-elicit
+
+User: "Tokyo"                             ← finally answers
+  → response: { status: 'accepted', content: 'Tokyo' }
+```
+
+## Testing
+
+Testing is a first-class concern. The framework is designed for testability at every layer.
+
+### Effection Testing with Vitest
+
+Use `@effectionx/vitest` to test generator functions directly:
+
+```ts
+import { describe, it, expect } from "@effectionx/vitest";
+
+describe("LocationAgent", () => {
+  it("fetches weather for user location", function* () {
+    // Test generator functions with yield*
+    const result = yield* getLocalWeather();
+    expect(result.temperature).toBeDefined();
+  });
+});
+```
+
+### Transport Testing with createTransportPair
+
+Test Principal/Operative communication without network overhead:
+
+```ts
+import { describe, it, expect } from "@effectionx/vitest";
+import { spawn } from "effection";
+import { createTransportPair, createCorrelation } from "@sweatpants/core";
+
+describe("Agent communication", () => {
+  it("handles location elicit", function* () {
+    const [principal, operative] = yield* createTransportPair();
+    const correlated = yield* createCorrelation(principal);
+
+    // Spawn operative handler
+    yield* spawn(function* () {
+      const sub = yield* operative;
+      const { value: request } = yield* sub.next();
+      
+      // Simulate UI handling
+      yield* operative.send({
+        type: "progress",
+        id: request.id,
+        data: { status: "acquiring" }
+      });
+      
+      yield* operative.send({
+        type: "response",
+        id: request.id,
+        response: { status: "accepted", content: { lat: 35.6, lng: 139.7 } }
+      });
+    });
+
+    // Principal makes request
+    const stream = correlated.request({
+      id: "test-1",
+      kind: "elicit",
+      type: "location",
+      payload: {}
+    });
+
+    // Verify progress and response
+    const sub = yield* stream;
+    const { value: progress } = yield* sub.next();
+    expect(progress).toEqual({ status: "acquiring" });
+    
+    const { done, value: response } = yield* sub.next();
+    expect(done).toBe(true);
+    expect(response.status).toBe("accepted");
+  });
+});
+```
+
+### Context-Based Test Substitution
+
+The context-based resolution enables clean mocking:
+
+```ts
+// Inject mock agents
+yield* FlightContext.set(mockFlightAgent, function* () {
+  // Chat's calls to Flight hit the mock
+  yield* Chat.tools.bookFlight(...);
+});
+
+// Inject mock elicit implementation
+yield* ElicitProtocol.implement(testElicitMock);
+```
+
+### Integration Testing with Real Servers
+
+For integration tests, use actual WebSocket or SSE transports:
+
+```ts
+import { describe, it } from "@effectionx/vitest";
+import { createWebSocketPrincipal } from "@sweatpants/core";
+
+describe("Integration", () => {
+  it("connects to real server", function* () {
+    const transport = yield* createWebSocketPrincipal("ws://localhost:8080");
+    const correlated = yield* createCorrelation(transport);
+    
+    // Test against real server
+  });
+});
+```
+
+## Data Model
+
+The data model defines what gets persisted. Effection manages the runtime state (coroutine tree, middleware); the data model captures the conversation for context and rewind.
+
+### Message
+
+The fundamental unit of a conversation.
+
+```ts
+interface Message {
+  id: string;
+  parentId: string | null;
+  
+  role: 'user' | 'assistant';
+  content: string;
+  
+  // If this message involved an Operative invocation
+  invocation?: Invocation;
+  
+  createdAt: number;
+}
+```
+
+### Invocation
+
+Both elicit and notify invoke Operative methods. They go through the same transport, both wait for completion (backpressure), but differ in response type.
+
+```ts
+type Invocation = ElicitInvocation | NotifyInvocation;
+
+interface ElicitInvocation {
+  kind: 'elicit';
+  type: string;              // e.g., 'location', 'flight-selection'
+  request: unknown;          // what was asked
+  response: ElicitResponse;  // user's response
+}
+
+interface NotifyInvocation {
+  kind: 'notify';
+  type: string;              // e.g., 'progress', 'status', 'card-reveal'
+  payload: unknown;          // what was shown
+  response: NotifyResponse;  // acknowledgment
+}
+```
+
+### Response Types
+
+```ts
+// Elicit returns user's choice — discriminated union
+type ElicitResponse =
+  | { status: 'accepted'; content: unknown }
+  | { status: 'declined' }
+  | { status: 'cancelled' }
+  | { status: 'denied' }                      // permission denied (device APIs)
+  | { status: 'other'; content: string };     // user went off-script
+
+// Notify returns acknowledgment — Operative finished rendering
+type NotifyResponse = 
+  | { ok: true }
+  | { ok: false; error: Error };
+```
+
+### Conversation
+
+```ts
+interface Conversation {
+  id: string;
+  messages: Message[];  // append-only
+}
+```
+
+### Key Properties
+
+- **Tree structure is implicit**: `parentId` relationships form the tree. Branches occur when two messages share the same `parentId`.
+- **Append-only**: Messages are never deleted. Discarded branches (from rewind/edit) remain in the array, just not in the current path.
+- **Progress is ephemeral**: Progress events during an elicit are not persisted — only the final response.
+- **Compaction**: Summarizing a subtree means adding a new message with the summary as content. The original messages remain (like git history).
+
+## Conversation Tree
+
+The conversation forms a tree, not a linear sequence. Each message is a child of a parent message.
+
+```
+[assistant: greeting]
+    │
+    └── [user: "book a flight to Tokyo"]
+            │
+            ├── [assistant: elicit(pick-flight)]
+            │       │
+            │       └── [user: selected FL001]
+            │               │
+            │               └── [assistant: elicit(pick-seat)]
+            │                       │
+            │                       └── [user: selected 3A]
+            │
+            └── [assistant: notify(booking-complete)]
+```
+
+**Operations on the tree:**
+
+| Operation | Meaning |
+|-----------|---------|
+| **Rewind** | User edits a previous message — continue from that point with new input |
+| **Cancel** | Halt current operation, return to waiting state |
+| **Fork** | Create a branch (side quest) — original path preserved |
+
+**Context** = path from root to current message. This is what gets sent to the LLM.
+
+## User Interrupts
+
+Users can interrupt the current flow:
+
+| Action | Effect |
+|--------|--------|
+| **Stop/Cancel** | Halt current operation, return to waiting state |
+| **Edit previous message** | Rewind to that point in the tree, continue with edited input |
+| **Change mind** | May trigger rewind or be interpreted as new input by LLM |
+
+These are **not** transport-level concerns — they are state management operations. The transport delivers the signal; the state management layer interprets it.
+
+```ts
+// Wire format for user interrupts
+type InterruptMessage = 
+  | { type: 'cancel' }
+  | { type: 'rewind'; toMessageId: string };
+
+## Open Areas
+
+The following areas require further design:
+
+- Exact rules for implicit vs explicit agent instantiation
+- Plugin extension point interface design
+- MCP bidirectional integration (exposing tools + consuming external tools)
+- Tangent detection (system-level vs agent-level)
+- Compaction strategies and middleware

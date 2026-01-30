@@ -1,25 +1,26 @@
 /**
- * usePluginExecutor.ts
+ * useElicitExecutor.ts
  *
- * Automatically executes plugin elicitation handlers when plugin_elicit patches arrive.
+ * Automatically executes plugin elicitation handlers when elicit patches arrive.
  * Routes handler emissions through the same state as isomorphic tools (toolEmissions).
  *
  * ## How It Works
  *
- * 1. Watches `pluginElicitations` for new pending elicitations
+ * 1. Watches `pendingElicits` for new pending elicitations
  * 2. Looks up the plugin by `toolName` in the registry
  * 3. Executes the handler (which uses `ctx.render()`)
  * 4. Handler emissions are forwarded as `tool_emission` patches
- * 5. When handler completes, sends `plugin_elicit_response` automatically
+ * 5. When handler completes, sends `elicit_response` automatically
  */
 import { useEffect, useRef } from 'react'
 import type { ComponentType } from 'react'
 import { run, createSignal } from 'effection'
 import type { Task, Operation } from 'effection'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
-import type { PluginElicitTrackingState, PluginElicitState } from '../../lib/chat/state/chat-state.ts'
+import type { ElicitTrackingState } from '../../lib/chat/state/chat-state.ts'
+import type { ElicitState } from '../../lib/chat/patches/elicit.ts'
 import type { EmissionPatch } from '../../lib/chat/patches/emission.ts'
-import { executePluginElicitHandlerFromRequest } from '../../lib/chat/mcp-tools/plugin-executor.ts'
+import { executeElicitHandlerFromRequest } from '../../lib/chat/mcp-tools/plugin-executor.ts'
 import type { PluginClientContext } from '../../lib/chat/mcp-tools/plugin.ts'
 import type { ElicitRequest, ElicitId } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import { MODEL_CONTEXT_SCHEMA_KEY } from '../../lib/chat/mcp-tools/model-context.ts'
@@ -28,9 +29,9 @@ import { MODEL_CONTEXT_SCHEMA_KEY } from '../../lib/chat/mcp-tools/model-context
 // TYPES
 // =============================================================================
 
-export interface UsePluginExecutorOptions {
-  /** Current plugin elicitations from state */
-  pluginElicitations: PluginElicitTrackingState[]
+export interface UseElicitExecutorOptions {
+  /** Current pending elicitations from state */
+  pendingElicits: ElicitTrackingState[]
 
   /** Registry of plugin client registrations */
   registry: PluginRegistry
@@ -38,8 +39,8 @@ export interface UsePluginExecutorOptions {
   /** Dispatch an emission patch to add emission to state */
   dispatchEmissionPatch: (patch: EmissionPatch) => void
 
-  /** Send plugin elicit response back to server */
-  respondToPluginElicit: (
+  /** Send elicit response back to server */
+  respondToElicit: (
     elicit: { sessionId: string; callId: string; elicitId: string },
     result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }
   ) => void
@@ -53,14 +54,14 @@ export interface UsePluginExecutorOptions {
  * Hook that automatically executes plugin handlers when elicitations arrive.
  *
  * This bridges the gap between server-side plugin tools and client-side rendering:
- * - Server emits `plugin_elicit` when tool calls `ctx.elicit()`
+ * - Server emits `elicit` when tool calls `ctx.elicit()`
  * - This hook runs the plugin's handler which uses `ctx.render()`
  * - Handler emissions are routed to `toolEmissions` state
  * - UI renders emissions with `onRespond` wired up automatically
  * - When handler completes, response is sent back to server
  */
-export function usePluginExecutor(options: UsePluginExecutorOptions): void {
-  const { pluginElicitations, registry, dispatchEmissionPatch, respondToPluginElicit } = options
+export function useElicitExecutor(options: UseElicitExecutorOptions): void {
+  const { pendingElicits, registry, dispatchEmissionPatch, respondToElicit } = options
 
   // Track which elicitations we've already started executing
   const executingRef = useRef<Set<string>>(new Set())
@@ -70,7 +71,7 @@ export function usePluginExecutor(options: UsePluginExecutorOptions): void {
 
   useEffect(() => {
     // Find pending elicitations that we haven't started executing yet
-    for (const tracking of pluginElicitations) {
+    for (const tracking of pendingElicits) {
       for (const elicit of tracking.elicitations) {
         // Skip if not pending or already executing
         if (elicit.status !== 'pending') continue
@@ -104,7 +105,7 @@ export function usePluginExecutor(options: UsePluginExecutorOptions): void {
             plugin,
             elicit,
             dispatchEmissionPatch,
-            respondToPluginElicit
+            respondToElicit
           )
         })
 
@@ -123,7 +124,7 @@ export function usePluginExecutor(options: UsePluginExecutorOptions): void {
         })
       }
     }
-  }, [pluginElicitations, registry, dispatchEmissionPatch, respondToPluginElicit])
+  }, [pendingElicits, registry, dispatchEmissionPatch, respondToElicit])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -146,9 +147,9 @@ export function usePluginExecutor(options: UsePluginExecutorOptions): void {
  */
 function* executePluginHandler(
   plugin: ReturnType<PluginRegistry['get']>,
-  elicit: PluginElicitState,
+  elicit: ElicitState,
   dispatchEmissionPatch: (patch: EmissionPatch) => void,
-  respondToPluginElicit: UsePluginExecutorOptions['respondToPluginElicit']
+  respondToElicit: UseElicitExecutorOptions['respondToElicit']
 ) {
   if (!plugin) return
 
@@ -251,10 +252,10 @@ function* executePluginHandler(
 
   try {
     // Execute the handler
-    const result = yield* executePluginElicitHandlerFromRequest(plugin, elicitRequest, ctx)
+    const result = yield* executeElicitHandlerFromRequest(plugin, elicitRequest, ctx)
 
     // Handler completed - send the response back to server
-    respondToPluginElicit(
+    respondToElicit(
       {
         sessionId: elicit.sessionId,
         callId: elicit.callId,
@@ -270,7 +271,7 @@ function* executePluginHandler(
     })
   } catch (err) {
     // On error, send cancel response
-    respondToPluginElicit(
+    respondToElicit(
       {
         sessionId: elicit.sessionId,
         callId: elicit.callId,

@@ -20,19 +20,19 @@ describe('chatReducer (pure logic)', () => {
     expect(nextState.messages.length).toBe(1)
   })
 
-  it('should preserve toolEmissions state on streaming_start', () => {
-    // Tool emissions are tracked separately and persist across streaming sessions.
-    // They're cleaned up when the tool completes via tool_emission_complete patch.
+  it('should preserve pendingElicits state on streaming_start', () => {
+    // Elicitations are tracked separately and persist across streaming sessions.
+    // They're cleaned up when the tool completes via elicit_complete patch.
     const startState: ChatState = {
       ...initialChatState,
       messages: [{ id: '1', role: 'user', content: 'first message' }],
       isStreaming: false,
-      toolEmissions: {
+      pendingElicits: {
         'call-123': {
           callId: 'call-123',
           toolName: 'myTool',
-          emissions: [],
-          status: 'running',
+          elicitations: [],
+          status: 'awaiting_elicit',
           startedAt: Date.now(),
         },
       },
@@ -41,8 +41,8 @@ describe('chatReducer (pure logic)', () => {
     const patch: ChatPatch = { type: 'streaming_start' }
     const nextState = chatReducer(startState, patch)
     
-    // toolEmissions should NOT be cleared - they persist until tool_emission_complete
-    expect(nextState.toolEmissions['call-123']).toBeDefined()
+    // pendingElicits should NOT be cleared - they persist until elicit_complete
+    expect(nextState.pendingElicits['call-123']).toBeDefined()
   })
 
   it('should accumulate streaming text into a text part', () => {

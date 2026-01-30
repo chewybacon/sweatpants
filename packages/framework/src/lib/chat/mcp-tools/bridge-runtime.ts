@@ -59,19 +59,6 @@ import {
 } from './mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 
-// Legacy type aliases for backward compatibility
-type BranchContextWithElicits<T extends ElicitsMap> = McpToolContextWithElicits<T>
-type BranchHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
-  McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
-type BranchLimits = McpToolLimits
-type BranchOptions = McpToolBranchOptions
-type BranchSampleConfig = McpToolSampleConfig
-type BranchServerContext = McpToolServerContext
-const BranchDepthError = McpToolDepthError
-const BranchTokenError = McpToolTokenError
-type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
-  FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
-
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
 // =============================================================================
@@ -281,7 +268,7 @@ export interface BridgeHostConfig<
   TElicits extends ElicitsMap = ElicitsMap,
 > {
   /** Tool being executed */
-  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 
   /** Tool parameters */
   params: TParams
@@ -293,7 +280,7 @@ export interface BridgeHostConfig<
   callId?: string
 
   /** Override limits from tool definition */
-  limits?: BranchLimits
+  limits?: McpToolLimits
 
   /** Initial messages (parent context) */
   parentMessages?: Message[]
@@ -376,7 +363,7 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
   for (let current: TokenTracker | undefined = tracker; current; current = current.parent) {
     current.used += tokens
     if (current.budget !== undefined && current.used > current.budget) {
-      throw new BranchTokenError(current.used, current.budget)
+      throw new McpToolTokenError(current.used, current.budget)
     }
   }
 }
@@ -391,7 +378,7 @@ interface BranchState<TElicits extends ElicitsMap> {
   parentMessages: readonly Message[]
   parentSystemPrompt?: string
   depth: number
-  limits: BranchLimits
+  limits: McpToolLimits
   tokenTracker: TokenTracker
 
   // Bridge-specific state
@@ -438,7 +425,7 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
 
 function createBridgeContext<TElicits extends ElicitsMap>(
   state: BranchState<TElicits>
-): BranchContextWithElicits<TElicits> {
+): McpToolContextWithElicits<TElicits> {
   return {
     // Read-only parent context
     get parentMessages() {
@@ -459,7 +446,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     // LLM backchannel
     // Using type assertion because the implementation handles all overload variants,
     // but TypeScript can't verify this without conditional types at the implementation level.
-    sample: ((config: BranchSampleConfig) => {
+    sample: ((config: McpToolSampleConfig) => {
       return {
         *[Symbol.iterator]() {
           let messages: ExtendedMessage[]
@@ -1061,8 +1048,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
     // Sub-branches - inherit keyed elicitation
     branch<T>(
-      fn: (ctx: BranchContextWithElicits<TElicits>) => Operation<T>,
-      options: BranchOptions = {}
+      fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
+      options: McpToolBranchOptions = {}
     ): Operation<T> {
       return {
         *[Symbol.iterator]() {
@@ -1070,7 +1057,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           const maxDepth = options.maxDepth ?? state.limits.maxDepth
 
           if (maxDepth !== undefined && newDepth > maxDepth) {
-            throw new BranchDepthError(newDepth, maxDepth)
+            throw new McpToolDepthError(newDepth, maxDepth)
           }
 
           const inheritMessages = options.inheritMessages ?? true
@@ -1084,7 +1071,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             newMessages = [...newMessages, ...options.messages]
           }
 
-          const newLimits: BranchLimits = {}
+          const newLimits: McpToolLimits = {}
           if (options.maxDepth !== undefined) {
             newLimits.maxDepth = options.maxDepth
           } else if (state.limits.maxDepth !== undefined) {
@@ -1227,13 +1214,13 @@ export function createBridgeHost<
           const validatedParams = parseResult.data as TParams
 
           // Merge limits
-          const limits: BranchLimits = {
+          const limits: McpToolLimits = {
             ...tool.limits,
             ...overrideLimits,
           }
 
           // Create server context
-          const serverCtx: BranchServerContext = {
+          const serverCtx: McpToolServerContext = {
             callId,
             signal,
           }
@@ -1266,7 +1253,7 @@ export function createBridgeHost<
           let result: TResult
 
           if (tool.handoffConfig) {
-            const handoffConfig = tool.handoffConfig as BranchHandoffConfigWithElicits<
+            const handoffConfig = tool.handoffConfig as McpToolHandoffConfigWithElicits<
               TParams,
               THandoff,
               TClient,
@@ -1351,13 +1338,13 @@ export function runBridgeTool<
   TResult,
   TElicits extends ElicitsMap,
 >(config: {
-  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
   params: TParams
   samplingProvider: BridgeSamplingProvider
   handlers: BridgeElicitHandlers<TElicits>
   signal?: AbortSignal
   callId?: string
-  limits?: BranchLimits
+  limits?: McpToolLimits
   parentMessages?: Message[]
   systemPrompt?: string
   onLog?: (level: LogLevel, message: string) => void

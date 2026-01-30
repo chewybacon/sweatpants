@@ -99,9 +99,11 @@ export interface SessionOptions {
   enabledPlugins?: string[]
 
   /**
-   * @deprecated Use `tools` instead.
-   * Tools to enable (manual mode).
-   * Can be an array of tool names or `true` to enable all.
+   * Tools to enable by name (for server-side tool selection).
+   * Can be an array of tool names or `true` to enable all tools.
+   * 
+   * For client-side tool configuration, prefer using `tools` instead
+   * which takes tool objects directly.
    */
   enabledTools?: string[] | boolean
 
@@ -187,10 +189,10 @@ export type ChatCommand =
     }
   | {
       /**
-       * Respond to a pending plugin elicitation.
+       * Respond to a pending elicitation.
        * The response is stored and sent with the next message.
        */
-      type: 'plugin_elicit_response'
+      type: 'elicit_response'
       /** Session ID (same as callId from the original tool call) */
       sessionId: string
       /** Original tool call ID for conversation correlation */

@@ -5,16 +5,16 @@ import { describe, it, expect } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
 import {
-  createBranchTool,
+  createMcpTool,
   createMockBranchClient,
   runBranchToolMock,
   runBranchTool,
-  BranchDepthError,
+  McpToolDepthError,
 } from '../index.ts'
 
-describe('createBranchTool', () => {
+describe('createMcpTool', () => {
   it('creates a tool with basic properties', () => {
-    const tool = createBranchTool('test_tool')
+    const tool = createMcpTool('test_tool')
       .description('A test tool')
       .parameters(z.object({ input: z.string() }))
       .elicits({})
@@ -28,7 +28,7 @@ describe('createBranchTool', () => {
   })
 
   it('creates a tool with handoff pattern', () => {
-    const tool = createBranchTool('handoff_tool')
+    const tool = createMcpTool('handoff_tool')
       .description('A handoff tool')
       .parameters(z.object({ input: z.string() }))
       .elicits({})
@@ -50,7 +50,7 @@ describe('createBranchTool', () => {
   })
 
   it('supports limits configuration', () => {
-    const tool = createBranchTool('limited_tool')
+    const tool = createMcpTool('limited_tool')
       .description('A limited tool')
       .parameters(z.object({}))
       .limits({ maxDepth: 3, maxTokens: 1000, timeout: 5000 })
@@ -65,7 +65,7 @@ describe('createBranchTool', () => {
 
 describe('runBranchTool - simple execute', () => {
   it('executes a simple tool', async () => {
-    const tool = createBranchTool('simple')
+    const tool = createMcpTool('simple')
       .description('Simple tool')
       .parameters(z.object({ value: z.number() }))
       .elicits({})
@@ -82,7 +82,7 @@ describe('runBranchTool - simple execute', () => {
   })
 
   it('executes tool with sampling', async () => {
-    const tool = createBranchTool('sampler')
+    const tool = createMcpTool('sampler')
       .description('Sampling tool')
       .parameters(z.object({ prompt: z.string() }))
       .elicits({})
@@ -110,7 +110,7 @@ describe('runBranchTool - simple execute', () => {
   })
 
   it('tracks conversation with auto-tracked prompts', async () => {
-    const tool = createBranchTool('multi_turn')
+    const tool = createMcpTool('multi_turn')
       .description('Multi-turn tool')
       .parameters(z.object({}))
       .elicits({})
@@ -141,7 +141,7 @@ describe('runBranchTool - simple execute', () => {
   })
 
   it('supports explicit messages mode', async () => {
-    const tool = createBranchTool('explicit')
+    const tool = createMcpTool('explicit')
       .description('Explicit messages tool')
       .parameters(z.object({}))
       .elicits({})
@@ -178,7 +178,7 @@ describe('runBranchTool - simple execute', () => {
 
 describe('runBranchTool - elicitation', () => {
   it('handles accept response', async () => {
-    const tool = createBranchTool('elicit')
+    const tool = createMcpTool('elicit')
       .description('Elicit tool')
       .parameters(z.object({}))
       .elicits({
@@ -207,7 +207,7 @@ describe('runBranchTool - elicitation', () => {
   })
 
   it('handles decline response', async () => {
-    const tool = createBranchTool('elicit_decline')
+    const tool = createMcpTool('elicit_decline')
       .description('Elicit tool')
       .parameters(z.object({}))
       .elicits({
@@ -236,7 +236,7 @@ describe('runBranchTool - elicitation', () => {
 
 describe('runBranchTool - sub-branches', () => {
   it('executes a sub-branch', async () => {
-    const tool = createBranchTool('branching')
+    const tool = createMcpTool('branching')
       .description('Branching tool')
       .parameters(z.object({}))
       .elicits({})
@@ -266,7 +266,7 @@ describe('runBranchTool - sub-branches', () => {
   })
 
   it('inherits messages by default', async () => {
-    const tool = createBranchTool('inherit')
+    const tool = createMcpTool('inherit')
       .description('Inheriting tool')
       .parameters(z.object({}))
       .elicits({})
@@ -295,7 +295,7 @@ describe('runBranchTool - sub-branches', () => {
   })
 
   it('can start fresh with inheritMessages: false', async () => {
-    const tool = createBranchTool('fresh')
+    const tool = createMcpTool('fresh')
       .description('Fresh branch tool')
       .parameters(z.object({}))
       .elicits({})
@@ -331,7 +331,7 @@ describe('runBranchTool - sub-branches', () => {
   })
 
   it('tracks depth correctly', async () => {
-    const tool = createBranchTool('depth')
+    const tool = createMcpTool('depth')
       .description('Depth tracking tool')
       .parameters(z.object({}))
       .elicits({})
@@ -358,7 +358,7 @@ describe('runBranchTool - sub-branches', () => {
   })
 
   it('enforces depth limits', async () => {
-    const tool = createBranchTool('limited')
+    const tool = createMcpTool('limited')
       .description('Depth limited tool')
       .parameters(z.object({}))
       .limits({ maxDepth: 1 })
@@ -378,11 +378,11 @@ describe('runBranchTool - sub-branches', () => {
         const { result } = yield* runBranchToolMock(tool, {})
         return result
       })
-    ).rejects.toThrow(BranchDepthError)
+    ).rejects.toThrow(McpToolDepthError)
   })
 
   it('allows override of depth limit per branch', async () => {
-    const tool = createBranchTool('override')
+    const tool = createMcpTool('override')
       .description('Override limits tool')
       .parameters(z.object({}))
       .limits({ maxDepth: 1 })
@@ -413,7 +413,7 @@ describe('runBranchTool - handoff pattern', () => {
   it('executes before/client/after phases', async () => {
     const phases: string[] = []
 
-    const tool = createBranchTool('handoff')
+    const tool = createMcpTool('handoff')
       .description('Handoff tool')
       .parameters(z.object({ input: z.string() }))
       .elicits({})
@@ -450,7 +450,7 @@ describe('runBranchTool - handoff pattern', () => {
     let beforeCallId: string | undefined
     let afterCallId: string | undefined
 
-    const tool = createBranchTool('context')
+    const tool = createMcpTool('context')
       .description('Context tool')
       .parameters(z.object({}))
       .elicits({})
@@ -479,7 +479,7 @@ describe('runBranchTool - handoff pattern', () => {
 
 describe('runBranchTool - logging', () => {
   it('sends log messages', async () => {
-    const tool = createBranchTool('logger')
+    const tool = createMcpTool('logger')
       .description('Logging tool')
       .parameters(z.object({}))
       .elicits({})
@@ -503,7 +503,7 @@ describe('runBranchTool - logging', () => {
   })
 
   it('sends progress notifications', async () => {
-    const tool = createBranchTool('notifier')
+    const tool = createMcpTool('notifier')
       .description('Notification tool')
       .parameters(z.object({}))
       .elicits({})
@@ -529,7 +529,7 @@ describe('runBranchTool - logging', () => {
 
 describe('runBranchTool - validation', () => {
   it('validates parameters', async () => {
-    const tool = createBranchTool('validated')
+    const tool = createMcpTool('validated')
       .description('Validated tool')
       .parameters(z.object({ count: z.number().min(1).max(10) }))
       .elicits({})
@@ -559,7 +559,7 @@ describe('runBranchTool - validation', () => {
 
 describe('dynamic sample responses', () => {
   it('supports function responses', async () => {
-    const tool = createBranchTool('dynamic')
+    const tool = createMcpTool('dynamic')
       .description('Dynamic response tool')
       .parameters(z.object({}))
       .elicits({})

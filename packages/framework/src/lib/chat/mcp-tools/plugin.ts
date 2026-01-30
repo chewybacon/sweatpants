@@ -73,10 +73,6 @@ import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
 // Re-export renderable types for plugin authors
 export type { RenderableProps, UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
 
-// Legacy type alias for backward compatibility
-type FinalizedBranchToolWithElicits<TName extends string, TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap> = 
-  FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
-
 // =============================================================================
 // CLIENT CONTEXT (what onElicit handlers receive)
 // =============================================================================
@@ -183,7 +179,7 @@ export interface PluginServerRegistration<
   TElicits extends ElicitsMap,
 > {
   /** Tools to register with the chat handler */
-  tools: [FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>]
+  tools: [FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>]
 
   /** Tool name (for lookup) */
   toolName: TName
@@ -221,7 +217,7 @@ export interface McpPlugin<
   client: PluginClientRegistration<TElicits>
 
   /** Original tool (for advanced use cases) */
-  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 }
 
 // =============================================================================
@@ -304,7 +300,7 @@ interface PluginBuilderState<
   TResult,
   TElicits extends ElicitsMap,
 > {
-  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
   handlers?: ElicitHandlers<TElicits>
 }
 
@@ -372,7 +368,7 @@ export function makePlugin<
   TResult,
   TElicits extends ElicitsMap,
 >(
-  tool: FinalizedBranchToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
 ): PluginBuilder<TName, TParams, THandoff, TClient, TResult, TElicits> {
   return createPluginBuilder({ tool })
 }
@@ -384,7 +380,7 @@ export function makePlugin<
 /**
  * Extract the elicits map from a plugin.
  */
-export type InferPluginElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E>
+export type InferElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E>
   ? E
   : never
 
@@ -399,7 +395,7 @@ export type InferPluginTool<T> = T extends McpPlugin<
   infer R,
   infer E
 >
-  ? FinalizedBranchToolWithElicits<N, P, H, C, R, E>
+  ? FinalizedMcpToolWithElicits<N, P, H, C, R, E>
   : never
 
 /**
