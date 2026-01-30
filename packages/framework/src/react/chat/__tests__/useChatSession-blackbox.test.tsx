@@ -84,9 +84,9 @@ describe('useChatSession (black-box)', () => {
         type: 'tool_calls',
         calls: [{ id: 'call-1', name: 'book_flight', arguments: { from: 'NYC', to: 'LAX' } }],
       },
-      // Then the plugin elicit request arrives (tool is running and needs user input)
+      // Then the elicit request arrives (tool is running and needs user input)
       {
-        type: 'plugin_elicit_request',
+        type: 'elicit_request',
         sessionId: 'sess-1',
         callId: 'call-1',
         toolName: 'book_flight',
@@ -104,7 +104,7 @@ describe('useChatSession (black-box)', () => {
         persona: null,
       },
       {
-        type: 'plugin_elicit_request',
+        type: 'elicit_request',
         sessionId: 'sess-1',
         callId: 'call-1',
         toolName: 'book_flight',
@@ -183,8 +183,8 @@ describe('useChatSession (black-box)', () => {
     // Black-box assertion: request 2 body included the elicit response
     expect(fetchBodies.length).toBeGreaterThanOrEqual(2)
     const secondBody = fetchBodies[1] as Record<string, unknown>
-    expect(secondBody['pluginElicitResponses']).toBeTruthy()
-    expect((secondBody['pluginElicitResponses'] as unknown[])[0]).toMatchObject({
+    expect(secondBody['elicitResponses']).toBeTruthy()
+    expect((secondBody['elicitResponses'] as unknown[])[0]).toMatchObject({
       sessionId: 'sess-1',
       callId: 'call-1',
       elicitId: 'elicit-1',

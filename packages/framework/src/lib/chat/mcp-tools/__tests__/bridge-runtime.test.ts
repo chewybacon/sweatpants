@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { run, spawn, each, sleep } from 'effection'
 import { z } from 'zod'
 import {
-  createBranchTool,
+  createMcpTool,
   createBridgeHost,
   runBridgeTool,
   BranchElicitNotAllowedError,
@@ -36,7 +36,7 @@ function createMockSamplingProvider(responses: string[] = []): BridgeSamplingPro
 describe('Bridge Runtime', () => {
   describe('createBridgeHost', () => {
     it('should run a simple tool without elicitation', async () => {
-      const tool = createBranchTool('simple_tool')
+      const tool = createMcpTool('simple_tool')
         .description('Simple tool')
         .parameters(z.object({ input: z.string() }))
         .elicits({})
@@ -57,7 +57,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should emit elicit events and wait for responses', async () => {
-      const tool = createBranchTool('elicit_tool')
+      const tool = createMcpTool('elicit_tool')
         .description('Tool with elicitation')
         .parameters(z.object({}))
         .elicits({
@@ -114,7 +114,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should handle declined elicitation', async () => {
-      const tool = createBranchTool('decline_tool')
+      const tool = createMcpTool('decline_tool')
         .description('Tool with declined elicitation')
         .parameters(z.object({}))
         .elicits({
@@ -157,7 +157,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should handle multiple elicitations in sequence', async () => {
-      const tool = createBranchTool('multi_elicit')
+      const tool = createMcpTool('multi_elicit')
         .description('Tool with multiple elicitations')
         .parameters(z.object({}))
         .elicits({
@@ -211,7 +211,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should validate elicit responses with Zod', async () => {
-      const tool = createBranchTool('validate_tool')
+      const tool = createMcpTool('validate_tool')
         .description('Tool that validates responses')
         .parameters(z.object({}))
         .elicits({
@@ -250,7 +250,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should emit log and notify events', async () => {
-      const tool = createBranchTool('logging_tool')
+      const tool = createMcpTool('logging_tool')
         .description('Tool that logs')
         .parameters(z.object({}))
         .elicits({})
@@ -305,7 +305,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should emit sample events for observability', async () => {
-      const tool = createBranchTool('sample_tool')
+      const tool = createMcpTool('sample_tool')
         .description('Tool that samples')
         .parameters(z.object({}))
         .elicits({})
@@ -350,7 +350,7 @@ describe('Bridge Runtime', () => {
 
   describe('runBridgeTool', () => {
     it('should run a tool with handlers', async () => {
-      const tool = createBranchTool('handled_tool')
+      const tool = createMcpTool('handled_tool')
         .description('Tool with handlers')
         .parameters(z.object({ input: z.string() }))
         .elicits({
@@ -385,7 +385,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should call onLog and onNotify callbacks', async () => {
-      const tool = createBranchTool('callback_tool')
+      const tool = createMcpTool('callback_tool')
         .description('Tool with callbacks')
         .parameters(z.object({}))
         .elicits({})
@@ -423,7 +423,7 @@ describe('Bridge Runtime', () => {
 
   describe('Phase 5: Branching constraints', () => {
     it('should throw BranchElicitNotAllowedError when elicit called in sub-branch', async () => {
-      const tool = createBranchTool('nested_elicit')
+      const tool = createMcpTool('nested_elicit')
         .description('Tool that tries to elicit in branch')
         .parameters(z.object({}))
         .elicits({
@@ -465,7 +465,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should allow elicit at root level (depth 0)', async () => {
-      const tool = createBranchTool('root_elicit')
+      const tool = createMcpTool('root_elicit')
         .description('Tool that elicits at root')
         .parameters(z.object({}))
         .elicits({
@@ -507,7 +507,7 @@ describe('Bridge Runtime', () => {
     it('should execute before/client/after phases correctly', async () => {
       const phases: string[] = []
 
-      const tool = createBranchTool('handoff_tool')
+      const tool = createMcpTool('handoff_tool')
         .description('Tool with handoff')
         .parameters(z.object({ count: z.number() }))
         .elicits({
@@ -571,7 +571,7 @@ describe('Bridge Runtime', () => {
 
   describe('elicit sequence tracking', () => {
     it('should assign sequential IDs to elicit requests', async () => {
-      const tool = createBranchTool('seq_tool')
+      const tool = createMcpTool('seq_tool')
         .description('Tool with sequential elicits')
         .parameters(z.object({}))
         .elicits({
@@ -622,7 +622,7 @@ describe('Bridge Runtime', () => {
 
   describe('exchange accumulation', () => {
     it('should include exchange on accepted elicit result', async () => {
-      const tool = createBranchTool('exchange_tool')
+      const tool = createMcpTool('exchange_tool')
         .description('Tool that captures exchange')
         .parameters(z.object({}))
         .elicits({
@@ -688,7 +688,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should allow withArguments to customize tool call arguments', async () => {
-      const tool = createBranchTool('with_args_tool')
+      const tool = createMcpTool('with_args_tool')
         .description('Tool that uses withArguments')
         .parameters(z.object({}))
         .elicits({
@@ -766,7 +766,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should pass extended messages to sample when using messages mode', async () => {
-      const tool = createBranchTool('accumulate_tool')
+      const tool = createMcpTool('accumulate_tool')
         .description('Tool that accumulates history')
         .parameters(z.object({}))
         .elicits({
@@ -867,7 +867,7 @@ describe('Bridge Runtime', () => {
     })
 
     it('should not include exchange on declined elicit result', async () => {
-      const tool = createBranchTool('no_exchange_tool')
+      const tool = createMcpTool('no_exchange_tool')
         .description('Tool where elicit is declined')
         .parameters(z.object({}))
         .elicits({
