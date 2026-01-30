@@ -4,7 +4,226 @@ Terms as they're used in the Sweatpants framework. Some may differ from general 
 
 ---
 
-## Core Concepts
+## @sweatpants/core Concepts
+
+### Agent
+
+A group of related tools with optional shared configuration. Created with `createAgent()`.
+
+**File:** [`packages/core/src/agent/create.ts`](../../core/src/agent/create.ts)
+
+```typescript
+const FlightAgent = createAgent({
+  name: 'flight',
+  description: 'Flight booking agent',
+  config: z.object({ apiKey: z.string() }),
+  tools: { search: Search, book: Book },
+})
+
+// Activate with config
+const agent = yield* FlightAgent({ apiKey: 'sk-...' })
+
+// Use tools
+yield* agent.search({ destination: 'Tokyo' })
+
+// Access config from tool impl
+const config = yield* FlightAgent.useConfig()
+```
+
+---
+
+### CorrelatedTransport
+
+A wrapper around `Transport` that maps request IDs to response streams. Used by Principal to track in-flight requests.
+
+**File:** [`packages/core/src/transport/correlation.ts`](../../core/src/transport/correlation.ts)
+
+```typescript
+const transport = createCorrelation(principalTransport)
+
+// Send request, get back a stream of progress + response
+const stream = transport.request<Progress, Response>({
+  id: 'req-123',
+  kind: 'elicit',
+  type: 'pickFlight',
+  payload: { flights: [...] },
+})
+
+// Consume stream
+const subscription = yield* stream
+let result = yield* subscription.next()
+while (!result.done) {
+  // Handle progress
+  result = yield* subscription.next()
+}
+// result.value is the final response
+```
+
+---
+
+### Core Tool / Tool Factory
+
+A tool created with `createTool()` from `@sweatpants/core`. Returns a factory that, when called, activates the tool.
+
+**File:** [`packages/core/src/tool/create.ts`](../../core/src/tool/create.ts)
+
+```typescript
+// Define tool
+const ProcessData = createTool({
+  name: 'process_data',
+  description: 'Process user data',
+  input: z.object({ data: z.array(z.string()) }),
+  output: z.object({ processed: z.number() }),
+  impl: function* ({ data }) {
+    yield* notify({ message: 'Processing...' })
+    return { processed: data.length }
+  },
+})
+
+// Activate (returns callable Tool)
+const tool = yield* ProcessData()
+
+// Invoke
+const result = yield* tool({ data: ['a', 'b'] })
+```
+
+**Compare with:** [Isomorphic Tool](#isomorphic-tool), [MCP Tool](#mcp-tool--plugin-tool)
+
+---
+
+### Operative
+
+The side that handles user interaction in the Principal/Operative model. Typically the client/UI.
+
+- Receives `TransportRequest` messages
+- Shows UI, gets user input
+- Sends `ProgressMessage` and `ResponseMessage` back
+
+**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+
+**Compare with:** [Principal](#principal)
+
+---
+
+### Principal
+
+The side that initiates work in the Principal/Operative model. Typically the server/agent.
+
+- Sends `TransportRequest` messages (elicit, notify, sample)
+- Receives `ProgressMessage` and `ResponseMessage`
+- Runs tool code
+
+**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+
+**Compare with:** [Operative](#operative)
+
+---
+
+### Transport
+
+A bidirectional interface for sending and receiving messages. Extends Effection `Stream`.
+
+**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+
+```typescript
+interface Transport<TSend, TReceive> extends Stream<TReceive, void> {
+  send(message: TSend): Operation<void>
+}
+
+// Concrete types
+type PrincipalTransport = Transport<PrincipalOutgoing, PrincipalIncoming>
+type OperativeTransport = Transport<OperativeOutgoing, OperativeIncoming>
+```
+
+**Implementations:**
+- In-memory pairs (`createTransportPair`) for testing
+- WebSocket transport (`createWebSocketPrincipal`, `createWebSocketOperative`)
+- SSE transport (`createSSEPrincipal`, `createSSEOperative`)
+
+---
+
+### TransportContext
+
+Effection context that provides a `CorrelatedTransport` to tools. Set by the framework when running core tools.
+
+**File:** [`packages/core/src/context/transport.ts`](../../core/src/context/transport.ts)
+
+```typescript
+// Framework sets up transport
+yield* TransportContext.with(correlatedTransport, function* () {
+  // Core tools can now use elicit/notify/sample
+  const tool = yield* ProcessData()
+  yield* tool({ data: [...] })
+})
+
+// Inside core operations (internal use)
+const transport = yield* TransportContext.expect()
+const stream = transport.request({ ... })
+```
+
+---
+
+### TransportRequest
+
+Message sent from Principal to Operative requesting an action.
+
+**File:** [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts)
+
+```typescript
+interface TransportRequest<TPayload = unknown> {
+  id: string           // Unique request ID for correlation
+  kind: 'elicit' | 'notify'
+  type: string         // e.g., 'pickFlight', 'confirmation'
+  payload: TPayload    // Request-specific data
+}
+```
+
+---
+
+## Framework Core Integration
+
+### Core Tool Adapter
+
+Converts `@sweatpants/core` tools to framework isomorphic tools. Auto-detected by the registry.
+
+**File:** [`src/lib/chat/core-tools/adapter.ts`](../src/lib/chat/core-tools/adapter.ts)
+
+```typescript
+// Detection
+function isCoreToolFactory(value: unknown): value is CoreToolFactory
+
+// Conversion
+function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTool
+```
+
+The adapted tool:
+- Maps `input` schema → `parameters`
+- Runs as `authority: 'server'`
+- Uses `contextMode: 'headless'` (no browser APIs)
+
+---
+
+### Framework Transport Bridge
+
+Connects core tool operations to the framework's patch-based streaming system.
+
+**File:** [`src/lib/chat/core-tools/framework-transport.ts`](../src/lib/chat/core-tools/framework-transport.ts)
+
+```typescript
+// Wrap core tool execution
+yield* withFrameworkTransport(ctx, function* () {
+  const tool = yield* ProcessData()
+  return yield* tool({ data: [...] })
+})
+```
+
+When core tools call:
+- `notify()` → emits `ClientToolProgressPatch` to client
+- `elicit()` → (Phase 6) will suspend and emit elicit patch
+
+---
+
+## Framework Core Concepts
 
 ### BridgeHost
 
