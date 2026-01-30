@@ -1,8 +1,89 @@
 import { describe, it, expect } from "@effectionx/vitest";
+import { createContext } from "effection";
 import { z } from "zod";
 import { createTool } from "../create.ts";
 
 describe("createTool", () => {
+  describe("schemas property", () => {
+    it("should expose input and output schemas on factory with impl", function* () {
+      const inputSchema = z.object({ query: z.string() });
+      const outputSchema = z.object({ results: z.array(z.string()) });
+      const progressSchema = z.object({ percent: z.number() });
+
+      const Search = createTool({
+        name: "search",
+        description: "Search tool",
+        input: inputSchema,
+        output: outputSchema,
+        progress: progressSchema,
+        impl: function* () {
+          return { results: [] };
+        },
+      });
+
+      expect(Search.schemas).toBeDefined();
+      expect(Search.schemas.input).toBe(inputSchema);
+      expect(Search.schemas.output).toBe(outputSchema);
+    });
+
+    it("should expose input, output, and progress schemas on factory without impl", function* () {
+      const inputSchema = z.object({ accuracy: z.enum(["high", "low"]) });
+      const outputSchema = z.object({ lat: z.number(), lng: z.number() });
+      const progressSchema = z.object({ status: z.string() });
+
+      const GetLocation = createTool({
+        name: "get-location",
+        description: "Get user location",
+        input: inputSchema,
+        output: outputSchema,
+        progress: progressSchema,
+      });
+
+      expect(GetLocation.schemas).toBeDefined();
+      expect(GetLocation.schemas.input).toBe(inputSchema);
+      expect(GetLocation.schemas.output).toBe(outputSchema);
+      expect(GetLocation.schemas.progress).toBe(progressSchema);
+    });
+
+    it("should have undefined progress schema when not provided", function* () {
+      const NoProgress = createTool({
+        name: "no-progress",
+        description: "Tool without progress",
+        input: z.object({}),
+        output: z.object({}),
+      });
+
+      expect(NoProgress.schemas).toBeDefined();
+      expect(NoProgress.schemas.input).toBeDefined();
+      expect(NoProgress.schemas.output).toBeDefined();
+      expect(NoProgress.schemas.progress).toBeUndefined();
+    });
+
+    it("should preserve schemas through withContext", function* () {
+      const inputSchema = z.object({ query: z.string() });
+      const outputSchema = z.object({ results: z.array(z.string()) });
+
+      const Search = createTool({
+        name: "search",
+        description: "Search tool",
+        input: inputSchema,
+        output: outputSchema,
+        progress: z.object({}),
+        impl: function* () {
+          return { results: [] };
+        },
+      });
+
+      // Create context-bound version
+      const TestContext = createContext<string>("test");
+      const BoundSearch = Search.withContext(TestContext, "test-value");
+
+      expect(BoundSearch.schemas).toBeDefined();
+      expect(BoundSearch.schemas.input).toBe(inputSchema);
+      expect(BoundSearch.schemas.output).toBe(outputSchema);
+    });
+  });
+
   describe("with impl in config", () => {
     it("should create and activate a tool with impl", function* () {
       const Search = createTool({

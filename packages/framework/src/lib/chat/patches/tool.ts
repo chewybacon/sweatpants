@@ -74,6 +74,8 @@ export interface ClientToolProgressPatch {
   id: string
   /** Progress message */
   message: string
+  /** Progress percentage (0.0 - 1.0), optional */
+  progress?: number
 }
 
 /**
