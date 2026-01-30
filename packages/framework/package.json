@@ -102,6 +102,20 @@
         "default": "./dist/chat/mcp-tools.cjs"
       }
     },
+    "./chat/core-tools": {
+      "development": {
+        "import": "./src/lib/chat/core-tools/index.ts",
+        "types": "./src/lib/chat/core-tools/index.ts"
+      },
+      "import": {
+        "types": "./dist/chat/core-tools.d.ts",
+        "default": "./dist/chat/core-tools.js"
+      },
+      "require": {
+        "types": "./dist/chat/core-tools.d.cts",
+        "default": "./dist/chat/core-tools.cjs"
+      }
+    },
     "./react/chat": {
       "development": {
         "import": "./src/react/chat/index.ts",
@@ -188,6 +202,7 @@
     }
   },
   "dependencies": {
+    "@sweatpants/core": "workspace:*",
     "@sweatpants/elicit-context": "workspace:*",
     "fast-glob": "^3.3.2",
     "pino": "^9.6.0",

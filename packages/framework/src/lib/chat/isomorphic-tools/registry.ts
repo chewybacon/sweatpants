@@ -6,6 +6,9 @@
  * - Schema generation for LLM (tool definitions)
  * - Server-only tool extraction (for server executor)
  * - Client tool lookup (for handoff processing)
+ *
+ * Also accepts @sweatpants/core tools, which are automatically
+ * adapted to the isomorphic tool interface.
  */
 import { z } from 'zod'
 import type {
@@ -14,16 +17,42 @@ import type {
   IsomorphicToolSchema,
   ServerOnlyToolDef,
 } from './types.ts'
+import { adaptCoreTool, isCoreToolFactory, type CoreToolFactory } from '../core-tools/adapter.ts'
+
+/**
+ * Input types accepted by the registry.
+ *
+ * - `AnyIsomorphicTool`: Framework isomorphic tools
+ * - `CoreToolFactory`: @sweatpants/core tools (automatically adapted)
+ */
+export type ToolInput = AnyIsomorphicTool | CoreToolFactory
 
 /**
  * Create an isomorphic tool registry.
  *
+ * Accepts both framework isomorphic tools and @sweatpants/core tools.
+ * Core tools are automatically adapted to the isomorphic tool interface.
+ *
  * @example
  * ```typescript
+ * import { createTool } from '@sweatpants/core'
+ *
+ * // Core tool
+ * const ProcessData = createTool({
+ *   name: 'process_data',
+ *   description: 'Process data',
+ *   input: z.object({ id: z.string() }),
+ *   output: z.object({ result: z.string() }),
+ *   impl: function* ({ id }) {
+ *     return { result: 'done' }
+ *   },
+ * })
+ *
+ * // Mix core and isomorphic tools
  * const registry = createIsomorphicToolRegistry([
- *   drawCardTool,
- *   confirmSeenTool,
- *   getUserChoiceTool,
+ *   ProcessData,      // Core tool (adapted automatically)
+ *   drawCardTool,     // Framework isomorphic tool
+ *   confirmSeenTool,  // Framework isomorphic tool
  * ])
  *
  * // Get schemas for LLM
@@ -31,20 +60,23 @@ import type {
  *
  * // Get server tools for executor
  * const serverTools = registry.toServerTools()
- *
- * // Lookup tool for handoff processing
- * const tool = registry.get('draw_card')
  * ```
  */
 export function createIsomorphicToolRegistry(
-  tools: AnyIsomorphicTool[]
+  tools: ToolInput[]
 ): IsomorphicToolRegistry {
   const map = new Map<string, AnyIsomorphicTool>()
+
   for (const tool of tools) {
-    if (map.has(tool.name)) {
-      throw new Error(`Duplicate isomorphic tool name: ${tool.name}`)
+    // Normalize core tools to isomorphic interface
+    const normalized = isCoreToolFactory(tool)
+      ? adaptCoreTool(tool)
+      : tool
+
+    if (map.has(normalized.name)) {
+      throw new Error(`Duplicate tool name: ${normalized.name}`)
     }
-    map.set(tool.name, tool)
+    map.set(normalized.name, normalized)
   }
 
   return {
