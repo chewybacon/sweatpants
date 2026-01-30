@@ -19,7 +19,7 @@ export type {
 
 // Streaming
 export { streamChatOnce, toApiMessages } from './stream-chat.ts'
-export type { StreamChatOptions, PluginElicitResponseData } from './stream-chat.ts'
+export type { StreamChatOptions, ElicitResponseData } from './stream-chat.ts'
 
 // Transforms
 export {
@@ -42,12 +42,12 @@ export type {
   StreamResult,
   StreamCompleteResult,
   StreamIsomorphicHandoffResult,
-  StreamPluginElicitResult,
+  StreamElicitResult,
   ConversationStateStreamEvent,
   IsomorphicHandoffStreamEvent,
-  PluginElicitRequestStreamEvent,
-  PluginSessionStatusStreamEvent,
-  PluginSessionErrorStreamEvent,
+  ElicitRequestStreamEvent,
+  ToolSessionStatusStreamEvent,
+  ToolSessionErrorStreamEvent,
   StreamEvent,
 } from './streaming.ts'
 

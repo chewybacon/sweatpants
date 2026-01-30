@@ -14,7 +14,7 @@
  *
  * When content type switches, the current part is finalized and a new one starts.
  */
-import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState, StreamingPartsState } from './chat-state.ts'
+import type { ChatState, ToolEmissionState, ToolEmissionTrackingState, ElicitState, ElicitTrackingState, StreamingPartsState } from './chat-state.ts'
 import { initialChatState } from './chat-state.ts'
 import type { ChatPatch, ContentPartType } from '../patches/index.ts'
 import type { MessagePart, TextPart, ReasoningPart, ToolCallPart } from '../types/chat-message.ts'
@@ -22,7 +22,7 @@ import { generatePartId, getRenderedFromFrame } from '../types/chat-message.ts'
 import type { Message } from '../types.ts'
 
 // Re-export types for convenience
-export type { ChatState, ToolEmissionState, ToolEmissionTrackingState, PluginElicitState, PluginElicitTrackingState }
+export type { ChatState, ToolEmissionState, ToolEmissionTrackingState, ElicitState, ElicitTrackingState }
 export { initialChatState }
 
 // =============================================================================
@@ -420,15 +420,6 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
     case 'reset':
       return initialChatState
 
-    // --- Buffer patches (legacy - may be removed) ---
-    case 'buffer_settled':
-    case 'buffer_pending':
-    case 'buffer_raw':
-    case 'buffer_renderable':
-      // These are handled by the parts/frames now
-      // Just pass through for backwards compatibility
-      return state
-
     // --- Client Tool Patches ---
 
     case 'client_tool_awaiting_approval':
@@ -527,157 +518,13 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       }
     }
 
-    // --- Tool Handoff Patches (for React Tool Handlers) ---
+    // --- Elicitation Patches (unified for all tools) ---
 
-    case 'pending_handoff': {
+    case 'elicit_start': {
       return {
         ...state,
-        pendingHandoffs: {
-          ...state.pendingHandoffs,
-          [patch.handoff.callId]: patch.handoff,
-        },
-      }
-    }
-
-    case 'handoff_complete': {
-      const { [patch.callId]: _completed, ...remaining } = state.pendingHandoffs
-      return {
-        ...state,
-        pendingHandoffs: remaining,
-      }
-    }
-
-    // --- Tool Emission Patches (ctx.render() pattern) ---
-
-    case 'tool_emission_start': {
-      // Preserve existing emissions when re-starting (e.g., for multi-turn elicits)
-      const existingTracking = state.toolEmissions[patch.callId]
-      return {
-        ...state,
-        toolEmissions: {
-          ...state.toolEmissions,
-          [patch.callId]: {
-            callId: patch.callId,
-            toolName: patch.toolName,
-            emissions: existingTracking?.emissions ?? [],
-            status: 'running',
-            startedAt: existingTracking?.startedAt ?? Date.now(),
-          },
-        },
-      }
-    }
-
-    case 'tool_emission': {
-      const tracking = state.toolEmissions[patch.callId]
-
-      // Build the emission state
-      const newEmission: ToolEmissionState = {
-        ...patch.emission,
-        callId: patch.callId,
-        toolName: tracking?.toolName ?? '',
-      }
-      if (patch.respond) {
-        newEmission.respond = patch.respond
-      }
-
-      if (!tracking) {
-        // Auto-create tracking if not started explicitly
-        return {
-          ...state,
-          toolEmissions: {
-            ...state.toolEmissions,
-            [patch.callId]: {
-              callId: patch.callId,
-              toolName: '',
-              emissions: [newEmission],
-              status: 'running',
-              startedAt: Date.now(),
-            },
-          },
-        }
-      }
-
-      // Also update the tool-call part's emissions if it exists
-      const updatedParts = state.streaming.parts.map((part) => {
-        if (part.type === 'tool-call' && part.callId === patch.callId) {
-          return {
-            ...part,
-            emissions: [...part.emissions, {
-              id: patch.emission.id,
-              status: patch.emission.status as 'pending' | 'complete',
-              component: patch.emission.payload._component,
-              props: patch.emission.payload.props,
-            }],
-          }
-        }
-        return part
-      })
-
-      return {
-        ...state,
-        streaming: {
-          ...state.streaming,
-          parts: updatedParts,
-        },
-        toolEmissions: {
-          ...state.toolEmissions,
-          [patch.callId]: {
-            ...tracking,
-            emissions: [...tracking.emissions, newEmission],
-          },
-        },
-      }
-    }
-
-    case 'tool_emission_response': {
-      const tracking = state.toolEmissions[patch.callId]
-      if (!tracking) return state
-
-      return {
-        ...state,
-        toolEmissions: {
-          ...state.toolEmissions,
-          [patch.callId]: {
-            ...tracking,
-            emissions: tracking.emissions.map((emission): ToolEmissionState => {
-              if (emission.id !== patch.emissionId) {
-                return emission
-              }
-              // Create completed emission without respond callback
-              const { respond: _respond, ...rest } = emission
-              return {
-                ...rest,
-                status: 'complete',
-                response: patch.response,
-              }
-            }),
-          },
-        },
-      }
-    }
-
-    case 'tool_emission_complete': {
-      const tracking = state.toolEmissions[patch.callId]
-      if (!tracking) return state
-
-      // Remove tracking from state - tool execution is complete
-      const { [patch.callId]: _completed, ...remainingEmissions } = state.toolEmissions
-
-      return {
-        ...state,
-        toolEmissions: remainingEmissions,
-      }
-    }
-
-    // =========================================================================
-    // PLUGIN ELICITATION PATCHES
-    // =========================================================================
-
-    case 'plugin_elicit_start': {
-      return {
-        ...state,
-        pluginElicitations: {
-          ...state.pluginElicitations,
+        pendingElicits: {
+          ...state.pendingElicits,
           [patch.callId]: {
             callId: patch.callId,
             toolName: patch.toolName,
@@ -689,8 +536,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       }
     }
 
-    case 'plugin_elicit': {
-      const tracking = state.pluginElicitations[patch.callId]
+    case 'elicit': {
+      const tracking = state.pendingElicits[patch.callId]
       const toolName = tracking?.toolName ?? ''
 
       const newElicit = {
@@ -699,8 +546,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         toolName,
       }
 
-      // Build the plugin elicit for the tool-call part
-      const pluginElicitForPart = {
+      // Build the elicit for the tool-call part
+      const elicitForPart = {
         id: patch.elicit.elicitId,
         key: patch.elicit.key,
         message: patch.elicit.message,
@@ -716,7 +563,7 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
         if (part.type === 'tool-call' && part.callId === patch.callId) {
           return {
             ...part,
-            pluginElicits: [...(part.pluginElicits ?? []), pluginElicitForPart],
+            pluginElicits: [...(part.pluginElicits ?? []), elicitForPart],
           }
         }
         return part
@@ -730,8 +577,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
             ...state.streaming,
             parts: updatedParts,
           },
-          pluginElicitations: {
-            ...state.pluginElicitations,
+          pendingElicits: {
+            ...state.pendingElicits,
             [patch.callId]: {
               callId: patch.callId,
               toolName: '',
@@ -749,8 +596,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           ...state.streaming,
           parts: updatedParts,
         },
-        pluginElicitations: {
-          ...state.pluginElicitations,
+        pendingElicits: {
+          ...state.pendingElicits,
           [patch.callId]: {
             ...tracking,
             elicitations: [...tracking.elicitations, newElicit],
@@ -759,8 +606,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       }
     }
 
-    case 'plugin_elicit_response': {
-      const tracking = state.pluginElicitations[patch.callId]
+    case 'elicit_response': {
+      const tracking = state.pendingElicits[patch.callId]
       if (!tracking) return state
 
       // Update the tool-call part's pluginElicits status
@@ -784,8 +631,8 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
           ...state.streaming,
           parts: updatedParts,
         },
-        pluginElicitations: {
-          ...state.pluginElicitations,
+        pendingElicits: {
+          ...state.pendingElicits,
           [patch.callId]: {
             ...tracking,
             elicitations: tracking.elicitations.map((e) =>
@@ -798,12 +645,134 @@ export function chatReducer(state: ChatState, patch: ChatPatch): ChatState {
       }
     }
 
-    case 'plugin_elicit_complete': {
-      const { [patch.callId]: _completed, ...remainingElicitations } = state.pluginElicitations
+    case 'elicit_complete': {
+      const { [patch.callId]: _completed, ...remainingElicitations } = state.pendingElicits
 
       return {
         ...state,
-        pluginElicitations: remainingElicitations,
+        pendingElicits: remainingElicitations,
+      }
+    }
+
+    // --- Tool Emission Patches (isomorphic tools ctx.render pattern) ---
+    // These patches manage the toolEmissions state at the ChatState level.
+    // React hooks hydrate these into components for tool-call parts.
+
+    case 'tool_emission_start': {
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            callId: patch.callId,
+            toolName: patch.toolName,
+            emissions: [],
+            status: 'running',
+            startedAt: Date.now(),
+          },
+        },
+      }
+    }
+
+    case 'tool_emission': {
+      const tracking = state.toolEmissions[patch.callId]
+      const toolName = tracking?.toolName ?? patch.toolName ?? ''
+
+      const newEmission: ToolEmissionState = {
+        ...patch.emission,
+        callId: patch.callId,
+        toolName,
+      }
+      // Only add respond if it's defined (avoid exactOptionalPropertyTypes issues)
+      if (patch.respond) {
+        newEmission.respond = patch.respond
+      }
+
+      if (!tracking) {
+        // Auto-create tracking if not started explicitly
+        return {
+          ...state,
+          toolEmissions: {
+            ...state.toolEmissions,
+            [patch.callId]: {
+              callId: patch.callId,
+              toolName,
+              emissions: [newEmission],
+              status: 'running',
+              startedAt: Date.now(),
+            },
+          },
+        }
+      }
+
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            ...tracking,
+            emissions: [...tracking.emissions, newEmission],
+          },
+        },
+      }
+    }
+
+    case 'tool_emission_response': {
+      const tracking = state.toolEmissions[patch.callId]
+      if (!tracking) return state
+
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: {
+            ...tracking,
+            emissions: tracking.emissions.map((e) => {
+              if (e.id !== patch.emissionId) return e
+              // Create new emission without respond callback
+              const updated: ToolEmissionState = {
+                id: e.id,
+                callId: e.callId,
+                toolName: e.toolName,
+                type: e.type,
+                payload: e.payload,
+                status: 'complete',
+                response: patch.response,
+                timestamp: e.timestamp,
+              }
+              if (e.error) updated.error = e.error
+              return updated
+            }),
+          },
+        },
+      }
+    }
+
+    case 'tool_emission_complete': {
+      const tracking = state.toolEmissions[patch.callId]
+      if (!tracking) {
+        // Already cleaned up or never started
+        return state
+      }
+
+      // Build the updated tracking state explicitly to avoid exactOptionalPropertyTypes issues
+      const updated: ToolEmissionTrackingState = {
+        callId: tracking.callId,
+        toolName: tracking.toolName,
+        emissions: tracking.emissions,
+        status: patch.error ? 'error' : 'complete',
+        startedAt: tracking.startedAt,
+        completedAt: Date.now(),
+      }
+      if (patch.result !== undefined) updated.result = patch.result
+      if (patch.error) updated.error = patch.error
+
+      return {
+        ...state,
+        toolEmissions: {
+          ...state.toolEmissions,
+          [patch.callId]: updated,
+        },
       }
     }
 

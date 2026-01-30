@@ -153,7 +153,7 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
  * @param ctx - The plugin client context
  * @returns The handler result
  */
-export function* executePluginElicitHandler<
+export function* executeElicitHandler<
   TElicits extends ElicitsMap,
   K extends keyof TElicits & string,
 >(
@@ -186,7 +186,7 @@ export function* executePluginElicitHandler<
  * @param ctx - The plugin client context
  * @returns The handler result
  */
-export function* executePluginElicitHandlerFromRequest<TElicits extends ElicitsMap>(
+export function* executeElicitHandlerFromRequest<TElicits extends ElicitsMap>(
   plugin: PluginClientRegistration<TElicits>,
   request: ElicitRequest<string, z.ZodType>,
   ctx: PluginClientContext

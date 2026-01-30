@@ -270,16 +270,27 @@ export function useInkChat(options: UseInkChatOptions = {}): UseInkChatReturn {
   const extractComponent = (emission: { payload: { _component?: ComponentType<any> } }) =>
     emission.payload._component
 
+  // Build derive options from session emissions and elicits
+  const deriveOptions = useMemo(() => {
+    // Convert arrays to Record keyed by callId
+    const toolEmissions: Record<string, ToolEmissionTrackingState> = {}
+    for (const tracking of session.toolEmissions) {
+      toolEmissions[tracking.callId] = tracking
+    }
+    // pendingElicits come from state.pendingElicits (already a Record)
+    return { toolEmissions, pendingElicits: state.pendingElicits }
+  }, [session.toolEmissions, state.pendingElicits])
+
   // Derive messages using the framework-agnostic derivation function
   const messages: InkChatMessage[] = useMemo(
-    () => deriveMessages<ComponentType<any>>(state, extractComponent),
-    [state]
+    () => deriveMessages<ComponentType<any>>(state, deriveOptions, extractComponent),
+    [state, deriveOptions]
   )
 
   // Derive streaming message
   const streamingMessage: InkStreamingMessage | null = useMemo(
-    () => deriveStreamingMessage<ComponentType<any>>(state, extractComponent),
-    [state]
+    () => deriveStreamingMessage<ComponentType<any>>(state, deriveOptions, extractComponent),
+    [state, deriveOptions]
   )
 
   return {
