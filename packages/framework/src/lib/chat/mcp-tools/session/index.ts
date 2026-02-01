@@ -130,45 +130,31 @@ export {
 } from './setup.ts'
 
 // =============================================================================
-// WORKER-BASED SESSIONS
+// WORKER-BASED SESSIONS (using @sweatpants/core worker transport)
 // =============================================================================
 
 export type {
-  // Transport types
-  SessionWorkerTransport,
-  SessionWorkerTransportFactory,
-  HostTransport,
-  WorkerTransport,
-  Unsubscribe,
-  
-  // Message types
-  HostToWorkerMessage,
-  WorkerToHostMessage,
-  StartMessage,
-  SampleRequestMessage,
-  SampleResponseMessage,
-  ElicitRequestMessage,
-  ElicitResponseMessage,
-  ProgressMessage,
-  LogMessage,
-  ResultMessage,
-  ErrorMessage,
-  CancelledMessage,
-  CancelMessage,
-  ReadyMessage,
+  // MCP-specific worker types
+  McpWorkerInitData,
+  McpWorkerRequest,
+  McpWorkerResponse,
+  McpWorkerResult,
+  McpProgressRequest,
+  McpLogRequest,
+  McpSampleRequest,
+  McpElicitRequest,
+  McpHostProgress,
   
   // Tool registry for workers
   WorkerToolRegistry,
   WorkerTool,
   WorkerToolContext,
+  
+  // Sample config types
+  WorkerSampleConfig,
+  WorkerSampleToolsConfig,
+  WorkerSampleSchemaConfig,
 } from './worker-types.ts'
-
-export {
-  // Transport implementations
-  createWorkerThreadTransportFactory,
-  createWorkerSideTransport,
-  createInProcessTransportPair,
-} from './worker-thread-transport.ts'
 
 export {
   // Worker runner (runs inside worker)
@@ -180,18 +166,13 @@ export {
   // Worker tool session adapter
   createWorkerToolSession,
   type WorkerToolSessionOptions,
+  type SampleRequestHandler,
+  type ElicitRequestHandler,
 } from './worker-tool-session.ts'
 
 // =============================================================================
-// CORE-BASED IMPLEMENTATIONS (experimental)
+// CORE-BASED IMPLEMENTATIONS
 // =============================================================================
-
-export {
-  // PostMessage transport bridge - adapts SessionWorkerTransport to core Transport
-  bridgeToTransport,
-  mapElicitActionToStatus,
-  mapStatusToElicitAction,
-} from './postmessage-transport.ts'
 
 export {
   // Core-based context factory - creates McpToolContext backed by CorrelatedTransport
@@ -201,20 +182,3 @@ export {
   createContextWithElicitsFromTransport,
   type CoreContextOptions,
 } from './core-context.ts'
-
-export {
-  // Core-based worker runner - alternative to runWorker using core transport
-  runWorkerCore,
-} from './worker-runner-core.ts'
-
-export {
-  // Core-based tool session - alternative to createWorkerToolSession
-  createCoreToolSession,
-  type CoreToolSessionOptions,
-} from './tool-session-core.ts'
-
-export {
-  // Signal-based correlated transport - implements CorrelatedTransport using signals
-  // See docs/adr-signal-based-transport.md for architecture rationale
-  createSignalCorrelatedTransport,
-} from './signal-correlated-transport.ts'
