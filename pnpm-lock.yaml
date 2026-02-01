@@ -24,6 +24,9 @@ catalogs:
     '@effectionx/websocket':
       specifier: ^2.3.0
       version: 2.3.0
+    '@effectionx/worker':
+      specifier: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138
+      version: 0.4.1
     '@t3-oss/env-core':
       specifier: ^0.13.8
       version: 0.13.10
@@ -141,6 +144,10 @@ catalogs:
     zod:
       specifier: 4.1.13
       version: 4.1.13
+
+overrides:
+  '@effectionx/signals': ^0.5.0
+  '@effectionx/timebox': ^0.4.0
 
 importers:
 
@@ -544,6 +551,9 @@ importers:
       '@effectionx/websocket':
         specifier: 'catalog:'
         version: 2.3.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
+      '@effectionx/worker':
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -992,6 +1002,13 @@ packages:
   '@effectionx/websocket@2.3.0':
     resolution: {integrity: sha512-FpAptS5zvmw5jJVQp69BqPzAfgstaYKP/D+EThjaAsT/zxlfwqYnKeZNvgePxM3y8q/zmMrBi5QGud8CRkV5Yg==}
     version: 2.3.0
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
+  '@effectionx/worker@https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138':
+    resolution: {tarball: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138}
+    version: 0.4.1
     engines: {node: '>= 22'}
     peerDependencies:
       effection: ^3 || ^4
@@ -6715,6 +6732,9 @@ packages:
   web-vitals@5.1.0:
     resolution: {integrity: sha512-ArI3kx5jI0atlTtmV0fWU3fjpLmq/nD3Zr1iFFlJLaqa5wLBkUSzINwBPySCX/8jRyjlmy1Volw1kz1g9XE4Jg==}
 
+  web-worker@1.5.0:
+    resolution: {integrity: sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==}
+
   webidl-conversions@8.0.1:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
@@ -7191,6 +7211,13 @@ snapshots:
   '@effectionx/websocket@2.3.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
     dependencies:
       effection: https://pkg.pr.new/thefrontside/effection@6a01504
+
+  '@effectionx/worker@https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+    dependencies:
+      '@effectionx/signals': 0.5.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
+      '@effectionx/timebox': 0.4.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
+      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      web-worker: 1.5.0
 
   '@emnapi/core@1.8.1':
     dependencies:
@@ -13362,6 +13389,8 @@ snapshots:
       xml-name-validator: 5.0.0
 
   web-vitals@5.1.0: {}
+
+  web-worker@1.5.0: {}
 
   webidl-conversions@8.0.1: {}
 
