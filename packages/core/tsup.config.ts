@@ -6,6 +6,7 @@ export default defineConfig({
     transport: "src/transport/index.ts",
     "transport/sse": "src/transport/sse/index.ts",
     "transport/websocket": "src/transport/websocket/index.ts",
+    "transport/worker": "src/transport/worker/index.ts",
   },
   format: ["esm"],
   dts: true,
