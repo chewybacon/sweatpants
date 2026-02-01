@@ -71,7 +71,7 @@
     "zod": "^4.0.0"
   },
   "dependencies": {
-    "effection": "https://pkg.pr.new/thefrontside/effection@6a01504"
+    "effection": "catalog:"
   },
   "devDependencies": {
     "@effectionx/node": "catalog:",
