@@ -196,6 +196,110 @@ async function main() {
       }
     }
 
+    if (scenario === 'multi_sample') {
+      let sampleCount = 0
+      const onSampleRequest: SampleRequestHandler = function* () {
+        yield* sleep(25)
+        sampleCount++
+        return {
+          text: `Response ${sampleCount}`,
+          model: 'test-model',
+          stopReason: 'endTurn',
+        }
+      }
+
+      const session = yield* createWorkerToolSession(
+        {
+          sessionId: 'test-session',
+          toolName: 'multi_sample',
+          params: { count: 3 },
+          workerUrl,
+        },
+        onSampleRequest,
+        createUnexpectedElicitHandler()
+      )
+
+      yield* collectEvents(session, events)
+      const resultEvent = yield* waitForEvent(events, 'result', 2000)
+      const status = yield* session.status()
+
+      return {
+        status,
+        result: resultEvent?.type === 'result' ? resultEvent.result : null,
+        eventTypes: events.map((event) => event.type),
+      }
+    }
+
+    if (scenario === 'elicit_decline') {
+      const onElicitRequest: ElicitRequestHandler = function* () {
+        yield* sleep(25)
+        return {
+          action: 'decline',
+        }
+      }
+
+      const session = yield* createWorkerToolSession(
+        {
+          sessionId: 'test-session',
+          toolName: 'confirmer',
+          params: { action: 'format disk' },
+          workerUrl,
+        },
+        createUnexpectedSampleHandler(),
+        onElicitRequest
+      )
+
+      yield* collectEvents(session, events)
+      const resultEvent = yield* waitForEvent(events, 'result')
+      const status = yield* session.status()
+
+      return {
+        status,
+        result: resultEvent?.type === 'result' ? resultEvent.result : null,
+        eventTypes: events.map((event) => event.type),
+      }
+    }
+
+    if (scenario === 'sample_then_elicit') {
+      const onSampleRequest: SampleRequestHandler = function* () {
+        yield* sleep(25)
+        return {
+          text: 'Hello Alice!',
+          model: 'test-model',
+          stopReason: 'endTurn',
+        }
+      }
+
+      const onElicitRequest: ElicitRequestHandler = function* () {
+        yield* sleep(25)
+        return {
+          action: 'accept',
+          content: { approved: true, edited: false },
+        }
+      }
+
+      const session = yield* createWorkerToolSession(
+        {
+          sessionId: 'test-session',
+          toolName: 'greet_with_confirm',
+          params: { name: 'Alice', style: 'casual' },
+          workerUrl,
+        },
+        onSampleRequest,
+        onElicitRequest
+      )
+
+      yield* collectEvents(session, events)
+      const resultEvent = yield* waitForEvent(events, 'result', 2000)
+      const status = yield* session.status()
+
+      return {
+        status,
+        result: resultEvent?.type === 'result' ? resultEvent.result : null,
+        eventTypes: events.map((event) => event.type),
+      }
+    }
+
     throw new Error(`Unknown scenario: ${scenario}`)
   })
 

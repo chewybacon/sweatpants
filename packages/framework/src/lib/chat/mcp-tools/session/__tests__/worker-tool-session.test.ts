@@ -84,4 +84,36 @@ describe('WorkerToolSession', () => {
       })
     })
   })
+
+  describe('multiple sample calls', () => {
+    it('handles sequential sample requests', async () => {
+      const result = await runScenario('multi_sample')
+
+      expect(result.status).toBe('completed')
+      expect(result.result).toEqual({
+        responses: ['Response 1', 'Response 2', 'Response 3'],
+      })
+    })
+  })
+
+  describe('elicitation decline', () => {
+    it('handles user declining elicitation', async () => {
+      const result = await runScenario('elicit_decline')
+
+      expect(result.status).toBe('completed')
+      expect(result.result).toEqual({ cancelled: true })
+    })
+  })
+
+  describe('complex flows', () => {
+    it('handles sample followed by elicit', async () => {
+      const result = await runScenario('sample_then_elicit')
+
+      expect(result.status).toBe('completed')
+      expect(result.result).toEqual({
+        greeting: 'Hello Alice!',
+        wasEdited: false,
+      })
+    })
+  })
 })
