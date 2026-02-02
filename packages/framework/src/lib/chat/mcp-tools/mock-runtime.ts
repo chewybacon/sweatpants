@@ -359,22 +359,3 @@ export function runMCPTool<
     }
   }
 }
-
-/**
- * Execute an MCP tool and expect it to succeed.
- * Throws if the tool execution fails.
- */
-export function runMCPToolOrThrow<
-  TName extends string,
-  TParams,
-  THandoff,
-  TClient,
-  TResult,
->(
-  tool: FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult>,
-  params: TParams,
-  client: MockMCPClient,
-  options: RunMCPToolOptions = {}
-): Operation<TResult> {
-  return runMCPTool(tool, params, client, options)
-}

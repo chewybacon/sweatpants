@@ -337,6 +337,9 @@ export function* runChatSession(
             let result: StreamResult
             let currentMessages: ApiMessage[] = toApiMessages(history)
             
+            // Track original history length to know what messages need syncing after the loop
+            const originalHistoryLength = history.length
+            
             // Client outputs from isomorphic tools that need server phase 2
             // Populated for:
             // - Client-authority tools: server validates client output
@@ -636,10 +639,9 @@ export function* runChatSession(
               }
             }
             
-            // Find new messages that need to be added to history
-            const originalHistoryLength = history.length
-            
-            // Add any new messages from currentMessages
+            // Sync new messages from currentMessages to history
+            // This is critical for multi-turn tool calling - without this,
+            // subsequent requests won't include tool_calls in history
             for (let i = originalHistoryLength; i < currentMessages.length; i++) {
               const apiMsg = currentMessages[i]!
               

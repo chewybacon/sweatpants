@@ -156,16 +156,15 @@ export type {
 
 // Legacy errors (shared) - keep for compatibility
 export {
-  MCPCapabilityError,
-  MCPTimeoutError,
-  MCPDisconnectError,
-} from './types.ts'
+  McpCapabilityError as MCPCapabilityError,
+  McpToolTimeoutError as MCPTimeoutError,
+  McpDisconnectError as MCPDisconnectError,
+} from './mcp-tool-types.ts'
 
 // Original mock runtime
 export {
   createMockMCPClient,
   runMCPTool,
-  runMCPToolOrThrow,
 } from './mock-runtime.ts'
 export type {
   MockMCPClient,

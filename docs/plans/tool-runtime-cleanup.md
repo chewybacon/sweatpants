@@ -4,7 +4,7 @@
 
 The tool runtime code in `packages/framework/src/lib/chat/mcp-tools/` has accumulated dead code, duplicates, and backward compatibility layers from 4-5 rewrites. This plan tracks the cleanup effort.
 
-## Status: Phase 1 Complete, Phase 2 Pending
+## Status: Phase 2 In Progress
 
 ---
 
@@ -44,15 +44,15 @@ The branch-based agent-to-agent transport is being replaced by a new approach in
 
 | # | Item | Location | Notes |
 |---|------|----------|-------|
-| 1 | `runMCPToolOrThrow` | `mock-runtime.ts:367-380` | Exported but never imported |
-| 2 | Duplicate error classes | `types.ts:431-478` | `MCPCapabilityError`, `MCPTimeoutError`, `MCPDisconnectError` |
-| 3 | Underscore aliases | `types.ts:41-82` | `_MCPToolRef`, etc. - unused re-exports |
+| 1 | `runMCPToolOrThrow` | `mock-runtime.ts` | Exported but never imported | **Removed** |
+| 2 | Duplicate error classes | `types.ts` | `MCPCapabilityError`, `MCPTimeoutError`, `MCPDisconnectError` | **Removed** |
+| 3 | Underscore aliases | `types.ts` | `_MCPToolRef`, etc. - unused re-exports | **Removed** |
 
 ### Consolidate
 
 | # | Item | Notes |
 |---|------|-------|
-| 4 | Error classes | Keep only in `mcp-tool-types.ts`, remove from `types.ts` |
+| 4 | Error classes | Canonical in `mcp-tool-types.ts`; `types.ts` now uses canonical exports |
 
 ### Keep (For Now)
 
