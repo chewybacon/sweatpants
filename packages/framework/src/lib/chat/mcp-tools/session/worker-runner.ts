@@ -29,7 +29,7 @@ import {
   type WorkerMessage,
   type WorkerSampleResponse,
   type WorkerElicitResponse,
-} from '@sweatpants/core'
+} from '@sweatpants/core/transport/worker'
 import type { Operation } from 'effection'
 import type {
   WorkerToolRegistry,
