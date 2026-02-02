@@ -46,20 +46,41 @@ Before diving into components, let's trace a complete `book_flight` tool executi
 ```mermaid
 sequenceDiagram
     autonumber
-    participant User
-    participant Operative
-    participant Transport
     participant Principal
+    participant Transport
+    participant Operative
+    participant User
     participant LLM
 
-    User->>Operative: "Book me a flight to Tokyo"
-    Operative->>Transport: POST /api/chat { message }
-    Transport->>Principal: deliver message to agent
+    rect rgb(40, 40, 60)
+        Note over Principal,Operative: Session bootstrap (Principal-driven)
+        Principal->>Transport: elicit { type: "prompt", message: "What can I help you with?" }
+        Transport->>Operative: request { id: "p1", kind: "elicit", type: "prompt", payload }
+        Operative->>Operative: render chat input (agent-specific purpose)
+        User->>Operative: "Book me a flight to Tokyo"
+        Operative->>Transport: response { id: "p1", action: "accept", content: "Book me a flight to Tokyo" }
+        Transport->>Principal: response delivered
+    end
+
     Principal->>LLM: sample("interpret user request")
     LLM-->>Principal: tool_call: book_flight
 
     rect rgb(40, 40, 80)
         Note over Principal,LLM: Tool Execution Begins (Principal)
+
+        Note over Principal,Operative: Elicit (Location Lookup)
+        Principal->>Transport: elicit { id: "loc-1", type: "location", payload: { accuracy: "high" } }
+        Transport->>Operative: request { id: "loc-1", kind: "elicit", type: "location", payload }
+        Operative->>Operative: request permission + acquire GPS
+        Operative->>Transport: progress { id: "loc-1", data: { status: "requesting-permission" } }
+        Transport-->>Principal: progress delivered
+        Operative->>Transport: progress { id: "loc-1", data: { status: "acquiring" } }
+        Transport-->>Principal: progress delivered
+        Note over Principal,Operative: Principal SUSPENDED (blocking)
+        User->>Operative: grants permission
+        Operative->>Transport: response { id: "loc-1", action: "accept", content: { lat, lng } }
+        Transport->>Principal: response delivered
+
         Principal->>LLM: ctx.sample("Find flights...")
         LLM-->>Principal: "Found 3 flights: ..."
     end
@@ -99,12 +120,22 @@ sequenceDiagram
         LLM-->>Principal: "Your flight is booked!"
     end
 
-    Principal->>Transport: notify/complete { confirmation: "ABC123" }
+    rect rgb(40, 40, 60)
+        Note over Principal,Operative: Close the loop (Principal-driven)
+        Principal->>Transport: elicit { type: "prompt", message: "Can I help you with anything else?" }
+        Transport->>Operative: request { id: "p2", kind: "elicit", type: "prompt", payload }
+        Operative->>Operative: render chat input
+        User->>Operative: "No, thanks"
+        Operative->>Transport: response { id: "p2", action: "decline" }
+        Transport->>Principal: response delivered
+    end
+
+    Principal->>Transport: event { type: "complete", confirmation: "ABC123" }
     Transport->>Operative: event { type: "complete" }
     Operative->>User: shows confirmation
 ```
 
-**Key insight**: The tool generator runs across **3 separate HTTP requests**, suspending and resuming at each `ctx.elicit()` call.
+**Key insight**: The tool generator runs across multiple HTTP requests, suspending and resuming at each `ctx.elicit()` call.
 
 ---
 
