@@ -174,26 +174,6 @@ export type {
 } from './mock-runtime.ts'
 
 // =============================================================================
-// BRANCH RUNTIME (uses new types internally)
-// =============================================================================
-
-export { runBranchTool } from './branch-runtime.ts'
-export type {
-  BranchMCPClient,
-  RunBranchToolOptions,
-} from './branch-runtime.ts'
-
-// Branch mock runtime
-export {
-  createMockBranchClient,
-  runBranchToolMock,
-} from './branch-mock.ts'
-export type {
-  MockBranchClient,
-  MockBranchClientConfig,
-} from './branch-mock.ts'
-
-// =============================================================================
 // PLUGIN SYSTEM (bridgeable tools -> framework-native plugins)
 // =============================================================================
 
