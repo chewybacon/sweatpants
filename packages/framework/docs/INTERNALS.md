@@ -115,78 +115,96 @@ Before diving into components, let's trace a complete `book_flight` tool executi
 ```mermaid
 sequenceDiagram
     autonumber
+    participant Principal
+    participant Transport
+    participant Operative
     participant User
-    participant React
-    participant Handler
-    participant Engine
-    participant Session
-    participant Tool
     participant LLM
 
-    User->>React: "Book me a flight to Tokyo"
-    React->>Handler: POST /api/chat
-    Handler->>Engine: createChatEngine()
-    Engine->>LLM: stream messages
-    LLM-->>Engine: tool_call: book_flight
-    
+    rect rgb(40, 40, 60)
+        Note over Principal,Operative: Session bootstrap (Principal-driven)
+        Principal->>Transport: elicit { type: "prompt", message: "What can I help you with?" }
+        Transport->>Operative: request { id: "p1", kind: "elicit", type: "prompt", payload }
+        Operative->>Operative: render chat input (agent-specific purpose)
+        User->>Operative: "Book me a flight to Tokyo"
+        Operative->>Transport: response { id: "p1", action: "accept", content: "Book me a flight to Tokyo" }
+        Transport->>Principal: response delivered
+    end
+
+    Principal->>LLM: sample("interpret user request")
+    LLM-->>Principal: tool_call: book_flight
+
     rect rgb(40, 40, 80)
-        Note over Engine,Tool: Tool Execution Begins
-        Engine->>Session: PluginSessionManager.create()
-        Session->>Tool: BridgeHost.run(generator)
-        Tool->>Tool: *before() - validate params
-        Tool->>LLM: ctx.sample("Find flights...")
-        LLM-->>Tool: "Found 3 flights: ..."
+        Note over Principal,LLM: Tool Execution Begins (Principal)
+
+        Note over Principal,Operative: Elicit (Location Lookup)
+        Principal->>Transport: elicit { id: "loc-1", type: "location", payload: { accuracy: "high" } }
+        Transport->>Operative: request { id: "loc-1", kind: "elicit", type: "location", payload }
+        Operative->>Operative: request permission + acquire GPS
+        Operative->>Transport: progress { id: "loc-1", data: { status: "requesting-permission" } }
+        Transport-->>Principal: progress delivered
+        Operative->>Transport: progress { id: "loc-1", data: { status: "acquiring" } }
+        Transport-->>Principal: progress delivered
+        Note over Principal,Operative: Principal SUSPENDED (blocking)
+        User->>Operative: grants permission
+        Operative->>Transport: response { id: "loc-1", action: "accept", content: { lat, lng } }
+        Transport->>Principal: response delivered
+
+        Principal->>LLM: ctx.sample("Find flights...")
+        LLM-->>Principal: "Found 3 flights: ..."
     end
 
     rect rgb(80, 40, 40)
-        Note over Tool,React: First Suspension (Pick Flight)
-        Tool->>Session: ctx.elicit('pickFlight', {flights})
-        Session->>Engine: elicit_request event
-        Engine->>Handler: emit to stream
-        Handler-->>React: NDJSON: {lsn: 5, event: {type: "elicit_request"}}
-        React->>React: useElicitExecutor renders FlightPicker
+        Note over Principal,Operative: Elicit #1 (Pick Flight)
+        Principal->>Transport: elicit request { type: "pickFlight", flights: [...] }
+        Transport->>Operative: request { id: "e1", kind: "elicit", type: "pickFlight", payload }
+        Operative->>Operative: render FlightPicker
+        Operative->>Transport: progress { id: "e1", status: "rendering" }
+        Transport-->>Principal: progress delivered
     end
-    
-    Note over User,React: Tool SUSPENDED - HTTP request ends
 
-    User->>React: Clicks "Flight JL-401"
-    React->>Handler: POST /api/chat {elicitResponses: [...]}
-    Handler->>Engine: process_plugin_responses phase
-    Engine->>Session: session.respondToElicit()
-    
-    rect rgb(40, 80, 40)
-        Note over Session,Tool: Tool Resumes
-        Session->>Tool: signal.send(response)
-        Tool->>Tool: Generator continues from yield*
-    end
+    Note over Principal,Operative: Principal SUSPENDED (waiting for response)
+
+    User->>Operative: clicks "Flight JL-401"
+    Operative->>Transport: response { id: "e1", action: "accept", content: { flightId: "JL-401" } }
+    Transport->>Principal: response delivered
 
     rect rgb(80, 40, 40)
-        Note over Tool,React: Second Suspension (Pick Seat)
-        Tool->>Session: ctx.elicit('pickSeat', {seatMap})
-        Session-->>React: elicit_request event
-        React->>React: renders SeatPicker
+        Note over Principal,Operative: Elicit #2 (Pick Seat)
+        Principal->>Transport: elicit request { type: "pickSeat", seatMap: [...] }
+        Transport->>Operative: request { id: "e2", kind: "elicit", type: "pickSeat", payload }
+        Operative->>Operative: render SeatPicker
     end
 
-    Note over User,React: Tool SUSPENDED again
+    Note over Principal,Operative: Principal SUSPENDED again
 
-    User->>React: Clicks seat "12A"
-    React->>Handler: POST /api/chat {elicitResponses: [...]}
-    Session->>Tool: signal.send(response)
-    
+    User->>Operative: clicks seat "12A"
+    Operative->>Transport: response { id: "e2", action: "accept", content: { seat: "12A" } }
+    Transport->>Principal: response delivered
+
     rect rgb(40, 40, 80)
-        Note over Tool,LLM: Final Processing
-        Tool->>Tool: *after() - format result
-        Tool-->>Session: return {confirmation: "ABC123"}
-        Session-->>Engine: tool_result event
-        Engine->>LLM: Continue with result
-        LLM-->>Engine: "Your flight is booked!"
+        Note over Principal,LLM: Final Processing
+        Principal->>Principal: complete booking logic
+        Principal->>LLM: sample("Summarize booking confirmation")
+        LLM-->>Principal: "Your flight is booked!"
     end
 
-    Engine-->>React: complete event
-    React->>User: Shows confirmation
+    rect rgb(40, 40, 60)
+        Note over Principal,Operative: Close the loop (Principal-driven)
+        Principal->>Transport: elicit { type: "prompt", message: "Can I help you with anything else?" }
+        Transport->>Operative: request { id: "p2", kind: "elicit", type: "prompt", payload }
+        Operative->>Operative: render chat input
+        User->>Operative: "No, thanks"
+        Operative->>Transport: response { id: "p2", action: "decline" }
+        Transport->>Principal: response delivered
+    end
+
+    Principal->>Transport: event { type: "complete", confirmation: "ABC123" }
+    Transport->>Operative: event { type: "complete" }
+    Operative->>User: shows confirmation
 ```
 
-**Key insight**: The tool generator runs across **3 separate HTTP requests**, suspending and resuming at each `ctx.elicit()` call.
+**Key insight**: The tool generator runs across multiple HTTP requests, suspending and resuming at each `ctx.elicit()` call.
 
 ---
 
@@ -237,7 +255,7 @@ stateDiagram-v2
     Running --> Failed: throw error
     Completed --> [*]
     Failed --> [*]
-    
+
     note right of Suspended
         HTTP request ends here.
         Generator frozen in memory.
@@ -303,6 +321,7 @@ Multiple users, multiple tools, tools at different stages of completion. We need
 ### Session Hierarchy
 
 ```
+Principal runtime (server)
 SessionRegistry (handler scope - survives all requests)
   └── Session (conversation-level, keyed by X-Session-Id header)
         │
@@ -310,7 +329,7 @@ SessionRegistry (handler scope - survives all requests)
               │
               ├── PluginSession (tool: book_flight, callId: call_abc123)
               │     └── ToolSession
-              │           └── BridgeHost (running generator)
+              │           └── BridgeHost (Principal executing generator)
               │
               ├── PluginSession (tool: play_ttt, callId: call_def456)
               │     └── ToolSession (suspended at elicit)
@@ -350,15 +369,15 @@ POST /api/chat
 ```mermaid
 stateDiagram-v2
     [*] --> Created: PluginSessionManager.create()
-    Created --> Running: Tool starts executing
+    Created --> Running: tool starts executing
     Running --> AwaitingElicit: ctx.elicit() called
     AwaitingElicit --> Running: respondToElicit()
     Running --> AwaitingSample: ctx.sample() called
     AwaitingSample --> Running: respondToSample()
-    Running --> Completed: Tool returns result
-    Running --> Failed: Tool throws error
+    Running --> Completed: tool returns result
+    Running --> Failed: tool throws error
     AwaitingElicit --> Aborted: session.abort()
-    Completed --> [*]: Session cleaned up
+    Completed --> [*]: session cleaned up
     Failed --> [*]
     Aborted --> [*]
 ```
@@ -421,58 +440,25 @@ Tool needs to show UI, but it's suspended on the server. Events need to:
 
 ### Event Flow Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  BridgeHost (Tool Execution)                                                 │
-│                                                                              │
-│    ctx.elicit('pickFlight', {flights})                                       │
-│           │                                                                  │
-│           ▼                                                                  │
-│    eventChannel.send({ type: 'elicit', request, responseSignal })           │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  ToolSession (Event Queue)                                                   │
-│                                                                              │
-│    Converts BridgeEvent → ToolSessionEvent                                   │
-│    Assigns LSN (Log Sequence Number)                                         │
-│    Queues for consumer                                                       │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  PluginSessionManager                                                        │
-│                                                                              │
-│    Filters events (handles sample_request internally)                        │
-│    Returns elicit_request, result, error to caller                          │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  ChatEngine                                                                  │
-│                                                                              │
-│    Converts PluginSessionEvent → StreamEvent                                 │
-│    Emits: elicit_request, tool_result, tool_error                           │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  DurableHandler                                                              │
-│                                                                              │
-│    Wraps event with LSN: { lsn: 5, event: {...} }                           │
-│    Buffers in TokenBuffer                                                    │
-│    Writes to NDJSON HTTP stream                                              │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│  React (Client)                                                              │
-│                                                                              │
-│    useChatSession() parses NDJSON                                            │
-│    Converts to patches → reducer → state                                     │
-│    useElicitExecutor() renders UI component                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Principal["Principal (server runtime)"]
+        BridgeHost["BridgeHost (tool execution)\nctx.elicit('pickFlight', {flights})"]
+        ToolSession["ToolSession (event queue + LSN)\nconverts BridgeEvent → ToolSessionEvent"]
+        PluginSessionManager["PluginSessionManager\nfilters events; returns elicit_request / result / error"]
+        ChatEngine["ChatEngine\nconverts PluginSessionEvent → StreamEvent"]
+        BridgeHost --> ToolSession --> PluginSessionManager --> ChatEngine
+    end
+
+    subgraph Transport["Transport (NDJSON/SSE)"]
+        DurableHandler["DurableHandler\nwraps event with LSN, buffers, writes NDJSON"]
+    end
+
+    subgraph Operative["Operative (React client)"]
+        ReactClient["useChatSession() parses NDJSON → patches → reducer → state\nuseElicitExecutor() renders UI component"]
+    end
+
+    ChatEngine --> DurableHandler --> ReactClient
 ```
 
 ### Event Types
@@ -525,45 +511,23 @@ State needs to cross HTTP boundaries. But not everything is serializable:
 
 ### Serialization Boundary Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              SERVER (Memory)                                 │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  BridgeHost {                                                                │
-│    generator: [Generator object]    ← NOT serialized (stays in memory)      │
-│    eventChannel: [Channel]          ← NOT serialized                         │
-│    responseSignal: [Signal]         ← NOT serialized                         │
-│  }                                                                           │
-│                                                                              │
-│  ToolSession {                                                               │
-│    id: "call_xyz789"               ← Session ID travels                      │
-│    status: "awaiting_elicit"       ← Status travels                          │
-│  }                                                                           │
-│                                                                              │
-└─────────────────────────────────────┬───────────────────────────────────────┘
-                                      │
-                                      │ HTTP / NDJSON
-                                      │
-┌─────────────────────────────────────┴───────────────────────────────────────┐
-│                              WIRE (JSON)                                     │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  elicit_request: {                                                           │
-│    sessionId: "call_xyz789",                                                 │
-│    callId: "call_xyz789",                                                    │
-│    toolName: "book_flight",                                                  │
-│    elicitId: "call_xyz789:elicit:5",                                         │
-│    key: "pickFlight",                                                        │
-│    message: "Select your flight",                                            │
-│    schema: { type: "object", ... }                                           │
-│  }                                                                           │
-│                                                                              │
-│  x-model-context (in schema): {                                              │
-│    flights: [{ id: "JL-401", price: 599, ... }, ...]                         │
-│  }                                                                           │
-│                                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    subgraph Principal["PRINCIPAL (Server Runtime / Memory)"]
+        BridgeHost["BridgeHost\ngenerator, eventChannel, responseSignal\n(not serialized)"]
+        ToolSession["ToolSession\nid: call_xyz789\nstatus: awaiting_elicit"]
+    end
+
+    subgraph Wire["WIRE (JSON)"]
+        ElicitRequest["elicit_request\nsessionId: call_xyz789\nkey: pickFlight\nmessage + schema + x-model-context"]
+    end
+
+    subgraph Operative["OPERATIVE (React Client)"]
+        ReactUI["useChatSession() parses NDJSON\nrenders elicit UI"]
+    end
+
+    BridgeHost --> ElicitRequest --> ReactUI
+    ToolSession --> ElicitRequest
 ```
 
 ### The `x-model-context` Pattern
@@ -631,42 +595,42 @@ The chat engine is a **pull-based state machine**. Each call to `next()` advance
 ```mermaid
 stateDiagram-v2
     [*] --> init
-    
+
     init --> process_plugin_abort: pluginAbort present
     init --> process_plugin_responses: elicitResponses present
     init --> process_client_outputs: clientOutputs present
     init --> start_iteration: nothing pending
-    
+
     process_plugin_abort --> process_plugin_responses
     process_plugin_abort --> process_client_outputs
     process_plugin_abort --> start_iteration
-    
+
     process_plugin_responses --> awaiting_elicit: tool needs more elicits
     process_plugin_responses --> process_client_outputs
     process_plugin_responses --> start_iteration: all responses handled
-    
+
     process_client_outputs --> start_iteration
-    
+
     start_iteration --> streaming_provider: iteration < max
     start_iteration --> error: iteration >= max
-    
+
     streaming_provider --> provider_complete: stream done
-    
+
     provider_complete --> executing_tools: has tool_calls
     provider_complete --> complete: no tool_calls
-    
+
     executing_tools --> tools_complete
-    
+
     tools_complete --> awaiting_elicit: plugin needs elicit
     tools_complete --> handoff_pending: isomorphic handoff
     tools_complete --> start_iteration: tools done, continue loop
-    
+
     awaiting_elicit --> handoff_pending: emit conversation_state
-    
+
     handoff_pending --> done
     complete --> done
     error --> done
-    
+
     done --> [*]
 ```
 
@@ -748,72 +712,37 @@ Server state needs to become React state:
 
 ### Data Flow
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  HTTP Response (NDJSON)                                                       │
-│                                                                               │
-│  {"lsn":1,"event":{"type":"session_info",...}}                               │
-│  {"lsn":2,"event":{"type":"text","content":"Let me"}}                        │
-│  {"lsn":3,"event":{"type":"text","content":" help you"}}                     │
-│  {"lsn":4,"event":{"type":"tool_calls","calls":[...]}}                       │
-│  {"lsn":5,"event":{"type":"elicit_request","key":"pickFlight",...}}          │
-│  {"lsn":6,"event":{"type":"conversation_state",...}}                         │
-└─────────────────────────────────────────────────┬────────────────────────────┘
-                                                  │
-                                                  ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  useChatSession()                                                             │
-│                                                                               │
-│  Parses NDJSON → Converts to patches → Applies to reducer                    │
-└─────────────────────────────────────────────────┬────────────────────────────┘
-                                                  │
-                                                  ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  ChatState                                                                    │
-│                                                                               │
-│  {                                                                            │
-│    messages: [...],                                                           │
-│    pendingToolCalls: [...],                                                   │
-│    pendingElicits: [                                                          │
-│      { sessionId: "call_xyz", key: "pickFlight", ... }                       │
-│    ],                                                                         │
-│    isStreaming: false,                                                        │
-│  }                                                                            │
-└─────────────────────────────────────────────────┬────────────────────────────┘
-                                                  │
-                                                  ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  useElicitExecutor()                                                          │
-│                                                                               │
-│  for (elicit of pendingElicits) {                                            │
-│    const handler = plugin.handlers[elicit.key]                               │
-│    const result = yield* handler(elicit, ctx)                                │
-│    sendElicitResponse(result)                                                │
-│  }                                                                            │
-└─────────────────────────────────────────────────┬────────────────────────────┘
-                                                  │
-                                                  ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│  Plugin Handler: ctx.render(FlightPicker, props)                              │
-│                                                                               │
-│  Renders React component, waits for user interaction                          │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Operative["Operative (React)"]
+        NDJSON["HTTP Response (NDJSON)\n{lsn:1 session_info} → ... → {lsn:6 conversation_state}"]
+        UseChatSession["useChatSession()\nParses NDJSON → patches → reducer"]
+        ChatState["ChatState\nmessages, pendingToolCalls, pendingElicits, isStreaming"]
+        UseElicitExecutor["useElicitExecutor()\nfor each pending elicit, run handler"]
+        PluginHandler["Plugin handler: ctx.render(FlightPicker, props)\nwaits for user interaction"]
+
+        NDJSON --> UseChatSession --> ChatState --> UseElicitExecutor --> PluginHandler
+    end
 ```
 
 ### Hooks Hierarchy
 
-```
-useChat()                    # High-level API
-  │
-  └── useChatSession()       # Low-level session management
-        │
-        ├── Stream parsing (NDJSON)
-        ├── Patch application (reducer)
-        ├── State management
-        │
-        └── useElicitExecutor()   # Auto-execution of plugin handlers
-              │
-              └── Plugin handlers call ctx.render()
+```mermaid
+flowchart TD
+    UseChat["useChat()\nHigh-level API"]
+    UseChatSession["useChatSession()\nLow-level session management"]
+    StreamParsing["Stream parsing (NDJSON)"]
+    PatchApplication["Patch application (reducer)"]
+    StateManagement["State management"]
+    UseElicitExecutor["useElicitExecutor()\nAuto-execution of plugin handlers"]
+    PluginHandlers["Plugin handlers call ctx.render()"]
+
+    UseChat --> UseChatSession
+    UseChatSession --> StreamParsing
+    StreamParsing --> PatchApplication
+    PatchApplication --> StateManagement
+    StateManagement --> UseElicitExecutor
+    UseElicitExecutor --> PluginHandlers
 ```
 
 ### Sending Elicit Responses

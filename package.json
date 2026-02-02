@@ -4,6 +4,12 @@
   "version": "0.1.0",
   "description": "AI Chat Framework - Build interactive chat applications with streaming, tools, and durable sessions",
   "license": "MIT",
+  "pnpm": {
+    "overrides": {
+      "@effectionx/signals": "^0.5.0",
+      "@effectionx/timebox": "^0.4.0"
+    }
+  },
   "scripts": {
     "dev": "pnpm run -r --parallel --aggregate-output dev",
     "dev:yo-chat": "pnpm -C packages/framework dev --watch & pnpm -C apps/yo-chat dev",

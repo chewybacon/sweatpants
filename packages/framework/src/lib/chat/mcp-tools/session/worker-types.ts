@@ -1,34 +1,40 @@
 /**
  * Worker Transport Types for Tool Sessions
  *
- * Defines interfaces for running tool generators in isolated workers
- * with pub/sub communication. The transport abstraction allows different
- * backends: Node.js worker_threads, Cloudflare Durable Objects, etc.
+ * Defines types for running tool generators in isolated workers using
+ * @effectionx/worker with progress streaming and backpressure.
  *
  * ## Architecture
  *
+ * Uses @effectionx/worker's bidirectional communication:
+ * - Worker (Principal) sends requests via send.stream()
+ * - Host (Operative) receives requests via worker.forEach()
+ * - Progress flows from Host → Worker with backpressure via ctx.progress()
+ *
  * ```
- * Main Thread                           Worker Thread
+ * Worker (Principal)                    Host (Operative)
  * ────────────────────────────────────────────────────────────
- * SessionWorkerHost                     SessionWorkerRunner
- *   │                                     │
- *   │ ──── StartMessage ──────────────► │
- *   │                                     │ run(toolGenerator)
- *   │ ◄──── ProgressMessage ─────────── │
- *   │ ◄──── SampleRequestMessage ────── │
- *   │                                     │ yield* waitForMessage()
- *   │ ──── SampleResponseMessage ─────► │
- *   │                                     │ (resumes)
- *   │ ◄──── ResultMessage ───────────── │
- *   │                                     │ (exits)
+ *                                        │
+ * ctx.sample({ prompt })                 │
+ *   │                                    │
+ *   │── send.stream(request) ──────────►│
+ *                                        │ worker.forEach((req, ctx) => ...)
+ *   │◄── ctx.progress(update) ──────────│ (with backpressure)
+ *   │◄── response ──────────────────────│
+ *                                        │
+ * yield* workerResult ◄──────────────────│ return finalResult
  * ```
  *
- * ## Design Principles
+ * ## Progress with Backpressure
  *
- * - Transport is message-based (postMessage-style)
- * - All messages are JSON-serializable
- * - Worker runs until tool completes (never preemptively killed)
- * - Effection runs independently in each thread
+ * Tool's ctx.progress() calls send a request to the host, which emits
+ * the progress event and returns an ack. This provides natural backpressure -
+ * if the host is slow, the worker naturally slows down.
+ *
+ * ## Cancellation
+ *
+ * Uses Effection's structured concurrency - closing the worker resource
+ * cleanly shuts down the worker scope.
  *
  * @packageDocumentation
  */
@@ -57,15 +63,13 @@ import type {
 } from '../mcp-tool-types.ts'
 
 // =============================================================================
-// WORKER MESSAGES (Host → Worker)
+// WORKER INIT DATA
 // =============================================================================
 
 /**
- * Start the tool execution.
- * Sent once when the worker is created.
+ * Initialization data passed to the worker.
  */
-export interface StartMessage {
-  type: 'start'
+export interface McpWorkerInitData {
   /** Tool name to look up in the registry */
   toolName: string
   /** Tool parameters (JSON-serializable) */
@@ -78,88 +82,45 @@ export interface StartMessage {
   parentMessages?: Message[]
 }
 
-/**
- * Response to a sampling request.
- */
-export interface SampleResponseMessage {
-  type: 'sample_response'
-  /** Correlates with SampleRequestMessage.sampleId */
-  sampleId: string
-  /** The LLM's response (raw result without exchange) */
-  response: RawSampleResult
-}
-
-/**
- * Response to an elicitation request.
- */
-export interface ElicitResponseMessage {
-  type: 'elicit_response'
-  /** Correlates with ElicitRequestMessage.elicitId */
-  elicitId: string
-  /** The user's response */
-  response: RawElicitResult<unknown>
-}
-
-/**
- * Cancel the tool execution.
- */
-export interface CancelMessage {
-  type: 'cancel'
-  /** Optional cancellation reason */
-  reason?: string
-}
-
-/**
- * All messages the host can send to the worker.
- */
-export type HostToWorkerMessage =
-  | StartMessage
-  | SampleResponseMessage
-  | ElicitResponseMessage
-  | CancelMessage
-
 // =============================================================================
-// WORKER MESSAGES (Worker → Host)
+// WORKER REQUESTS (Worker → Host)
 // =============================================================================
 
 /**
- * Worker is ready to receive the start message.
+ * Base request interface with ID for correlation.
  */
-export interface ReadyMessage {
-  type: 'ready'
+interface McpRequestBase {
+  /** Unique ID for correlation */
+  id: string
 }
 
 /**
- * Progress notification from the tool.
+ * Progress notification request from the tool.
+ * Worker sends this and waits for ack (backpressure).
  */
-export interface ProgressMessage {
+export interface McpProgressRequest extends McpRequestBase {
   type: 'progress'
   /** Human-readable progress message */
   message: string
   /** Optional progress value 0-1 */
   progress?: number
-  /** Event sequence number */
-  lsn: number
 }
 
 /**
- * Log message from the tool.
+ * Log message request from the tool.
+ * Fire-and-forget (no backpressure).
  */
-export interface LogMessage {
+export interface McpLogRequest extends McpRequestBase {
   type: 'log'
   level: LogLevel
   message: string
-  lsn: number
 }
 
 /**
- * Tool is requesting LLM sampling.
- * Worker will pause until SampleResponseMessage is received.
+ * Sample request - tool is requesting LLM sampling.
  */
-export interface SampleRequestMessage {
-  type: 'sample_request'
-  /** Unique ID for correlation */
-  sampleId: string
+export interface McpSampleRequest extends McpRequestBase {
+  type: 'sample'
   /** Messages to send to LLM. Supports ExtendedMessage for tool call history. */
   messages: ExtendedMessage[]
   /** Optional system prompt */
@@ -174,141 +135,132 @@ export interface SampleRequestMessage {
   toolChoice?: SamplingToolChoice
   /** JSON Schema for structured output */
   schema?: Record<string, unknown>
-  lsn: number
 }
 
 /**
- * Tool is requesting user input.
- * Worker will pause until ElicitResponseMessage is received.
+ * Elicit request - tool is requesting user input.
  */
-export interface ElicitRequestMessage {
-  type: 'elicit_request'
-  /** Unique ID for correlation */
-  elicitId: string
+export interface McpElicitRequest extends McpRequestBase {
+  type: 'elicit'
   /** Elicitation key */
   key: string
   /** Message to display to user */
   message: string
   /** JSON Schema for expected response */
   schema: Record<string, unknown>
-  lsn: number
 }
 
 /**
- * Tool completed successfully.
+ * All request types the worker can send to the host.
  */
-export interface ResultMessage {
-  type: 'result'
-  /** The tool's return value */
-  result: unknown
-  lsn: number
+export type McpWorkerRequest =
+  | McpProgressRequest
+  | McpLogRequest
+  | McpSampleRequest
+  | McpElicitRequest
+
+// =============================================================================
+// WORKER RESPONSES (Host → Worker)
+// =============================================================================
+
+/**
+ * Ack response for progress requests.
+ */
+export interface McpProgressResponse {
+  type: 'progress'
+  ack: true
 }
 
 /**
- * Tool failed with an error.
+ * Ack response for log requests.
  */
-export interface ErrorMessage {
-  type: 'error'
-  name: string
+export interface McpLogResponse {
+  type: 'log'
+  ack: true
+}
+
+/**
+ * Sample response from the host.
+ */
+export interface McpSampleResponse {
+  type: 'sample'
+  /** The LLM's response (raw result without exchange) */
+  result: RawSampleResult
+}
+
+/**
+ * Elicit response from the host.
+ */
+export interface McpElicitResponse {
+  type: 'elicit'
+  /** The user's response */
+  result: RawElicitResult<unknown>
+}
+
+/**
+ * All response types the host can send to the worker.
+ */
+export type McpWorkerResponse =
+  | McpProgressResponse
+  | McpLogResponse
+  | McpSampleResponse
+  | McpElicitResponse
+
+// =============================================================================
+// HOST PROGRESS (Host → Worker, in-band via @effectionx/worker)
+// =============================================================================
+
+/**
+ * Progress message sent from host to worker during request processing.
+ * Uses @effectionx/worker's built-in progress streaming with backpressure.
+ */
+export interface McpHostProgress {
+  type: 'host_progress'
+  /** Human-readable status message */
   message: string
-  stack?: string
-  lsn: number
+  /** Optional progress value 0-1 */
+  progress?: number
+}
+
+// =============================================================================
+// WORKER RESULT
+// =============================================================================
+
+/**
+ * Successful result from the worker.
+ */
+export interface McpWorkerSuccessResult<T = unknown> {
+  type: 'success'
+  value: T
 }
 
 /**
- * Tool was cancelled.
+ * Error result from the worker.
  */
-export interface CancelledMessage {
+export interface McpWorkerErrorResult {
+  type: 'error'
+  error: {
+    name: string
+    message: string
+    stack?: string
+  }
+}
+
+/**
+ * Cancelled result from the worker.
+ */
+export interface McpWorkerCancelledResult {
   type: 'cancelled'
   reason?: string
-  lsn: number
 }
 
 /**
- * All messages the worker can send to the host.
+ * Result from the worker - success, error, or cancelled.
  */
-export type WorkerToHostMessage =
-  | ReadyMessage
-  | ProgressMessage
-  | LogMessage
-  | SampleRequestMessage
-  | ElicitRequestMessage
-  | ResultMessage
-  | ErrorMessage
-  | CancelledMessage
-
-// =============================================================================
-// TRANSPORT INTERFACE
-// =============================================================================
-
-/**
- * Unsubscribe function returned by subscribe().
- */
-export type Unsubscribe = () => void
-
-/**
- * Transport interface for worker communication.
- *
- * This is the abstraction that allows different backends:
- * - Node.js worker_threads
- * - Cloudflare Durable Objects + WebSocket
- * - In-process (for testing)
- *
- * Both the host and worker use this interface, but with different
- * message type parameters.
- */
-export interface SessionWorkerTransport<TSend, TReceive> {
-  /**
-   * Send a message to the other side.
-   * This is fire-and-forget (no acknowledgment).
-   */
-  send(message: TSend): void
-
-  /**
-   * Subscribe to messages from the other side.
-   * Returns an unsubscribe function.
-   */
-  subscribe(handler: (message: TReceive) => void): Unsubscribe
-
-  /**
-   * Close the transport.
-   * After this, send() and subscribe() should not be called.
-   */
-  close(): void
-}
-
-/**
- * Transport from the host's perspective.
- */
-export type HostTransport = SessionWorkerTransport<HostToWorkerMessage, WorkerToHostMessage>
-
-/**
- * Transport from the worker's perspective.
- */
-export type WorkerTransport = SessionWorkerTransport<WorkerToHostMessage, HostToWorkerMessage>
-
-// =============================================================================
-// TRANSPORT FACTORY
-// =============================================================================
-
-/**
- * Factory for creating worker transports.
- *
- * Different implementations create the transport differently:
- * - WorkerThreadTransportFactory: Spawns a new worker_threads.Worker
- * - DurableObjectTransportFactory: Creates a Durable Object and WebSocket
- * - InProcessTransportFactory: Creates a pair of in-memory transports
- */
-export interface SessionWorkerTransportFactory {
-  /**
-   * Create a new worker and return the host-side transport.
-   *
-   * @param workerPath - Path to the worker entry point (for worker_threads)
-   * @param sessionId - Session ID for the worker
-   * @returns The host-side transport
-   */
-  create(workerPath: string, sessionId: string): Operation<HostTransport>
-}
+export type McpWorkerResult<T = unknown> =
+  | McpWorkerSuccessResult<T>
+  | McpWorkerErrorResult
+  | McpWorkerCancelledResult
 
 // =============================================================================
 // TOOL REGISTRY FOR WORKERS
@@ -513,17 +465,25 @@ export interface WorkerSampleSchemaConfigMessages<T> extends WorkerSampleHelperC
  *
  * Provides full MCP sampling and elicitation capabilities over the transport boundary.
  * Matches the McpToolContext interface from mcp-tool-types.ts.
+ *
+ * ## Progress with Backpressure
+ *
+ * Unlike the old fire-and-forget model, progress() now sends a request to the host
+ * and waits for an ack. This provides backpressure - if the host is slow to process
+ * events, the worker naturally slows down.
  */
 export interface WorkerToolContext {
   /**
    * Log a message.
+   * Fire-and-forget (no backpressure).
    */
   log(level: LogLevel, message: string): void
 
   /**
    * Send a progress notification.
+   * Blocks until the host acknowledges (backpressure).
    */
-  progress(message: string, progress?: number): void
+  progress(message: string, progress?: number): Operation<void>
 
   // ---------------------------------------------------------------------------
   // Sample overloads - match McpToolContext signature
@@ -596,15 +556,18 @@ export type {
   RawSampleResultBase,
   RawSampleResultWithParsed,
   RawSampleResultWithToolCalls,
+  RawElicitResult,
   // Full result types (with exchange)
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
   SampleToolsResult,
   SampleSchemaResult,
+  ElicitResult,
   // Tool types
   SamplingToolDefinition,
   SamplingToolCall,
   SamplingToolChoice,
   ModelPreferences,
+  LogLevel,
 }

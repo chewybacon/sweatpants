@@ -2,45 +2,104 @@
  * Worker Runner
  *
  * This module runs inside a worker thread and executes tool generators.
- * It communicates with the host via the worker transport.
+ * It uses @sweatpants/core's worker transport for communication with the host.
  *
  * ## Lifecycle
  *
- * 1. Worker starts, sends 'ready' message
- * 2. Host sends 'start' message with tool name and params
- * 3. Worker looks up tool in registry, executes handler
- * 4. When tool calls ctx.sample(), worker sends 'sample_request' and waits
- * 5. Host responds with 'sample_response', worker resumes
- * 6. Tool completes, worker sends 'result' and exits
+ * 1. Worker starts via @effectionx/worker's workerMain()
+ * 2. Receives init data with tool name, params, sessionId
+ * 3. Looks up tool in registry, creates MCP context
+ * 4. Executes tool handler, sending requests (sample/elicit/progress) to host
+ * 5. Returns final result to host
  *
- * ## Signal Pattern
+ * ## Architecture
  *
- * The key insight is that Effection signals work perfectly for the
- * message → resume pattern when both sides are in the SAME process/scope.
- * By running the tool generator inside the worker with its own `run()`,
- * we have a single Effection scope where signals work as expected.
+ * Uses @sweatpants/core's worker transport:
+ * - Worker sends requests via send.stream() (sample, elicit)
+ * - Host processes requests and returns responses
+ * - Progress/log are fire-and-forget (logged locally)
  *
  * @packageDocumentation
  */
 
-import { run, createSignal, type Operation, type Signal } from 'effection'
+import {
+  runToolWorker as coreRunToolWorker,
+  type WorkerToolContext as CoreWorkerToolContext,
+  type WorkerInitData as CoreWorkerInitData,
+  type WorkerMessage,
+  type WorkerSampleResponse,
+  type WorkerElicitResponse,
+} from '@sweatpants/core'
+import type { Operation } from 'effection'
 import type {
-  WorkerTransport,
-  HostToWorkerMessage,
-  StartMessage,
   WorkerToolRegistry,
   WorkerToolContext,
-} from './worker-types.ts'
+  WorkerSampleConfig,
+  WorkerSampleConfigSchemaPrompt,
+  WorkerSampleConfigSchemaMessages,
+  WorkerSampleConfigToolsPrompt,
+  WorkerSampleConfigToolsMessages,
+  WorkerSampleToolsConfig,
+  WorkerSampleToolsConfigMessages,
+  WorkerSampleSchemaConfig,
+  WorkerSampleSchemaConfigMessages,
+} from './worker-types.js'
 import type {
   Message,
+  ExtendedMessage,
   LogLevel,
-  SampleResult,
+  SampleResultBase,
+  SampleResultWithParsed,
+  SampleResultWithToolCalls,
+  SampleToolsResult,
+  SampleSchemaResult,
   ElicitResult,
-  RawElicitResult,
-  RawSampleResult,
-  McpMessage,
-} from '../mcp-tool-types.ts'
-import { createRawSampleExchange } from '../mcp-tool-types.ts'
+  SamplingToolDefinition,
+} from '../mcp-tool-types.js'
+import {
+  createRawSampleExchange,
+  createStructuredSampleExchange,
+  SampleValidationError,
+} from '../mcp-tool-types.js'
+
+// =============================================================================
+// TYPE CONVERSION HELPERS
+// =============================================================================
+
+/**
+ * Convert framework Message/ExtendedMessage to core WorkerMessage.
+ */
+function toWorkerMessage(msg: Message | ExtendedMessage): WorkerMessage {
+  // If it's a basic Message with string content
+  if (typeof msg.content === 'string') {
+    return {
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    }
+  }
+  
+  // It's an McpMessage with content blocks - pass through
+  // The core transport supports the same content block structure
+  return msg as WorkerMessage
+}
+
+/**
+ * Convert tool definition to core format.
+ * Handles both Zod schemas and raw JSON schemas.
+ */
+function toWorkerToolDefinition(tool: SamplingToolDefinition): {
+  name: string
+  description?: string
+  inputSchema: Record<string, unknown>
+} {
+  // The inputSchema should already be a JSON Schema object (not a Zod type)
+  // since it comes from the sampling tool definition
+  return {
+    name: tool.name,
+    ...(tool.description !== undefined && { description: tool.description }),
+    inputSchema: tool.inputSchema as Record<string, unknown>,
+  }
+}
 
 // =============================================================================
 // WORKER RUNNER
@@ -49,214 +108,312 @@ import { createRawSampleExchange } from '../mcp-tool-types.ts'
 /**
  * Run a tool session worker.
  *
- * This is the entry point for the worker thread. It:
- * 1. Sends 'ready' to indicate it's listening
- * 2. Waits for 'start' message
- * 3. Executes the tool
- * 4. Sends result/error when done
+ * This is the entry point for the worker thread. It uses @sweatpants/core's
+ * runToolWorker to handle the communication protocol, and wraps the core
+ * context with MCP-specific functionality (exchanges, retry helpers).
  *
- * @param transport - The worker-side transport
  * @param registry - Registry of available tools
  */
-export function runWorker(transport: WorkerTransport, registry: WorkerToolRegistry): void {
-  // Signal indicates we're ready
-  transport.send({ type: 'ready' })
+export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
+  await coreRunToolWorker(function* (initData: CoreWorkerInitData, coreCtx: CoreWorkerToolContext) {
+    const { toolName, params, sessionId } = initData
 
-  // Wait for start message
-  const unsubscribe = transport.subscribe(async (message) => {
-    if (message.type === 'start') {
-      unsubscribe()
-      await executeToolInWorker(transport, registry, message)
+    // Look up tool
+    const tool = registry.get(toolName)
+    if (!tool) {
+      throw new Error(`Tool not found: ${toolName}`)
     }
+
+    // Create MCP tool context that wraps core context
+    const ctx = createMcpWorkerContext(coreCtx, sessionId)
+
+    // Execute the tool
+    return yield* tool.handler(params, ctx) as Operation<unknown>
   })
 }
 
-/**
- * Execute a tool inside the worker.
- *
- * @param transport - The worker-side transport
- * @param registry - Registry of available tools
- * @param startMessage - The start message with tool name and params
- */
-async function executeToolInWorker(
-  transport: WorkerTransport,
-  registry: WorkerToolRegistry,
-  startMessage: StartMessage
-): Promise<void> {
-  const { toolName, params, sessionId } = startMessage
+// =============================================================================
+// MCP WORKER CONTEXT
+// =============================================================================
 
-  // Look up tool
-  const tool = registry.get(toolName)
-  if (!tool) {
-    transport.send({
-      type: 'error',
-      name: 'ToolNotFound',
-      message: `Tool not found: ${toolName}`,
-      lsn: 1,
-    })
-    return
+/**
+ * Create an MCP-flavored worker context from the core context.
+ *
+ * This wraps the core's simple sample/elicit with:
+ * - Exchange construction for history accumulation
+ * - Retry helpers (sampleTools, sampleSchema)
+ * - Proper typing for MCP sample configs
+ */
+function createMcpWorkerContext(
+  coreCtx: CoreWorkerToolContext,
+  sessionId: string
+): WorkerToolContext {
+  let toolCallIdCounter = 0
+  const generateToolCallId = () => `${sessionId}:tc:${++toolCallIdCounter}`
+
+  // Helper to extract prompt text for exchange construction
+  function extractPromptText(config: WorkerSampleConfig): string {
+    if ('prompt' in config && config.prompt) {
+      return config.prompt
+    }
+    if ('messages' in config && config.messages) {
+      const lastUserMsg = [...config.messages].reverse().find(m => m.role === 'user')
+      if (lastUserMsg) {
+        return typeof lastUserMsg.content === 'string' 
+          ? lastUserMsg.content 
+          : '[complex content]'
+      }
+    }
+    return ''
   }
 
-  // Run the tool in an Effection scope
-  await run(function* () {
-    let lsn = 0
-    const nextLsn = () => ++lsn
+  // Helper to build messages for core sample
+  function buildMessages(config: WorkerSampleConfig): WorkerMessage[] {
+    if ('prompt' in config && config.prompt) {
+      return [{ role: 'user', content: config.prompt }]
+    }
+    if ('messages' in config && config.messages) {
+      return config.messages.map(toWorkerMessage)
+    }
+    return []
+  }
 
-    // Signals for backchannel responses
-    // These will be sent() from the message handler
-    // Note: sampleSignals receives RawSampleResult from transport, exchange is constructed in sample()
-    const sampleSignals = new Map<string, Signal<RawSampleResult, void>>()
-    const elicitSignals = new Map<string, Signal<RawElicitResult<unknown>, void>>()
+  // The unified sample implementation
+  function* sampleImpl(config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
+    const messages = buildMessages(config)
+    const promptText = extractPromptText(config)
 
-    // Subscribe to incoming messages
-    transport.subscribe((message: HostToWorkerMessage) => {
-      switch (message.type) {
-        case 'sample_response': {
-          const signal = sampleSignals.get(message.sampleId)
-          if (signal) {
-            signal.send(message.response)
-            sampleSignals.delete(message.sampleId)
-          }
-          break
-        }
-        case 'elicit_response': {
-          const signal = elicitSignals.get(message.elicitId)
-          if (signal) {
-            signal.send(message.response)
-            elicitSignals.delete(message.elicitId)
-          }
-          break
-        }
-        case 'cancel': {
-          // TODO: Implement cancellation
-          break
-        }
+    // Build core sample options
+    const coreOptions: Parameters<typeof coreCtx.sample>[0] = {
+      messages,
+      ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+      ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+      ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
+    }
+
+    // Handle schema (convert Zod to JSON schema marker)
+    if ('schema' in config && config.schema) {
+      // The schema will be handled by the sampling provider
+      // For now, we pass a marker that indicates structured output is expected
+      coreOptions.schema = { $zodSchema: true }
+    }
+
+    // Handle tools
+    if ('tools' in config && config.tools) {
+      coreOptions.tools = config.tools.map(toWorkerToolDefinition)
+      if (config.toolChoice !== undefined) {
+        coreOptions.toolChoice = config.toolChoice
       }
-    })
+    }
 
-    // Create tool context
-    const ctx: WorkerToolContext = {
-      log(level: LogLevel, message: string): void {
-        transport.send({
-          type: 'log',
-          level,
-          message,
-          lsn: nextLsn(),
-        })
-      },
+    // Call core sample
+    const response: WorkerSampleResponse = yield* coreCtx.sample(coreOptions)
 
-      progress(message: string, progressValue?: number): void {
-        transport.send({
-          type: 'progress',
-          message,
-          ...(progressValue !== undefined && { progress: progressValue }),
-          lsn: nextLsn(),
-        })
-      },
+    // Build result based on what was requested
+    if ('schema' in config && config.schema) {
+      // Schema sample - parse and build structured exchange
+      const parsed = response.parsed ?? null
+      const parseError = response.parseError
 
-      *sample(
-        messages: Message[],
-        options?: { systemPrompt?: string; maxTokens?: number }
-      ): Operation<SampleResult> {
-        const sampleId = `${sessionId}:sample:${nextLsn()}`
+      const exchange = parsed !== null
+        ? createStructuredSampleExchange(promptText, parsed, generateToolCallId())
+        : createRawSampleExchange(promptText, response.text)
 
-        // Create signal for response (receives RawSampleResult from transport)
-        const responseSignal = createSignal<RawSampleResult, void>()
-        sampleSignals.set(sampleId, responseSignal)
+      const result: SampleResultWithParsed<unknown> = {
+        text: response.text,
+        ...(response.model !== undefined && { model: response.model }),
+        ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
+        parsed,
+        ...(parseError !== undefined && { parseError }),
+        exchange: exchange as SampleResultWithParsed<unknown>['exchange'],
+      }
+      return result
+    }
 
-        // Send request
-        transport.send({
-          type: 'sample_request',
-          sampleId,
-          messages,
-          ...(options?.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
-          ...(options?.maxTokens !== undefined && { maxTokens: options.maxTokens }),
-          lsn: lsn,
-        })
+    if ('tools' in config && config.tools && response.toolCalls) {
+      // Tools sample
+      const exchange = createRawSampleExchange(promptText, response.text)
+      const result: SampleResultWithToolCalls = {
+        text: response.text,
+        ...(response.model !== undefined && { model: response.model }),
+        ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
+        exchange,
+        toolCalls: response.toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: tc.arguments,
+        })),
+      }
+      return result
+    }
 
-        // Wait for response
-        const subscription = yield* responseSignal
-        const result = yield* subscription.next()
+    // Plain sample
+    const exchange = createRawSampleExchange(promptText, response.text)
+    const result: SampleResultBase = {
+      text: response.text,
+      ...(response.model !== undefined && { model: response.model }),
+      ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
+      exchange,
+    }
+    return result
+  }
 
-        if (result.done) {
-          throw new Error('Sample signal closed without response')
+  // The context object
+  const ctx: WorkerToolContext = {
+    log(level: LogLevel, message: string): void {
+      coreCtx.log(level, message)
+    },
+
+    progress(message: string, progressValue?: number): Operation<void> {
+      // Core context has fire-and-forget progress
+      coreCtx.progress(message, progressValue)
+      // Return a no-op operation for backpressure compatibility
+      return {
+        *[Symbol.iterator]() {
+          // No-op - progress is fire-and-forget in the new model
+        },
+      }
+    },
+
+    // Sample - delegates to sampleImpl (overloads are defined in the interface)
+    sample: ((config: WorkerSampleConfig) => sampleImpl(config)) as WorkerToolContext['sample'],
+
+    *sampleTools(config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages): Operation<SampleToolsResult> {
+      const retries = config.retries ?? 2
+      let lastResult: SampleResultBase | SampleResultWithToolCalls | undefined
+
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        // Build sample config with tools
+        const sampleConfig: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages = 'prompt' in config
+          ? {
+              prompt: config.prompt,
+              tools: config.tools,
+              toolChoice: config.toolChoice ?? 'required',
+              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
+            }
+          : {
+              messages: config.messages,
+              tools: config.tools,
+              toolChoice: config.toolChoice ?? 'required',
+              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
+            }
+
+        const result = yield* sampleImpl(sampleConfig)
+        lastResult = result as SampleResultBase | SampleResultWithToolCalls
+
+        // Check if we got tool calls
+        if ('toolCalls' in result && result.toolCalls && result.toolCalls.length > 0) {
+          return {
+            ...result,
+            toolCalls: result.toolCalls as [typeof result.toolCalls[0], ...typeof result.toolCalls],
+            stopReason: 'toolUse',
+          } as SampleToolsResult
         }
 
-        // Extract prompt text from last user message for exchange
-        const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')
-        const promptText = typeof lastUserMsg?.content === 'string' 
-          ? lastUserMsg.content 
-          : ''
+        // If this wasn't the last attempt, we could add a retry hint
+        // For now, just retry with the same config
+      }
 
-        // Construct exchange from raw result
-        const rawResult = result.value
-        const exchange = createRawSampleExchange(promptText, rawResult.text)
+      throw new SampleValidationError(
+        'sampleTools',
+        retries + 1,
+        lastResult!,
+        `Model did not return tool calls after ${retries + 1} attempts`
+      )
+    },
 
-        return { ...rawResult, exchange }
-      },
+    *sampleSchema<T>(config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
+      const retries = config.retries ?? 2
+      let lastResult: SampleResultWithParsed<T> | undefined
 
-      *elicit<T>(
-        key: string,
-        options: { message: string; schema: Record<string, unknown> }
-      ): Operation<ElicitResult<unknown, T>> {
-        const elicitId = `${sessionId}:elicit:${nextLsn()}`
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        // Build sample config with schema
+        const sampleConfig: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T> = 'prompt' in config
+          ? {
+              prompt: config.prompt,
+              schema: config.schema,
+              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
+            }
+          : {
+              messages: config.messages,
+              schema: config.schema,
+              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
+            }
 
-        // Create signal for response (receives RawElicitResult from transport)
-        const responseSignal = createSignal<RawElicitResult<unknown>, void>()
-        elicitSignals.set(elicitId, responseSignal)
+        const result = (yield* sampleImpl(sampleConfig)) as SampleResultWithParsed<T>
+        lastResult = result
 
-        // Send request
-        transport.send({
-          type: 'elicit_request',
-          elicitId,
-          key,
-          message: options.message,
-          schema: options.schema,
-          lsn: lsn,
-        })
-
-        // Wait for response
-        const subscription = yield* responseSignal
-        const rawResult = yield* subscription.next()
-
-        if (rawResult.done) {
-          throw new Error('Elicit signal closed without response')
+        // Check if we got valid parsed output
+        if (result.parsed !== null) {
+          return {
+            text: result.text,
+            ...(result.model !== undefined && { model: result.model }),
+            ...(result.stopReason !== undefined && { stopReason: result.stopReason }),
+            parsed: result.parsed,
+            exchange: result.exchange as SampleSchemaResult<T>['exchange'],
+          }
         }
 
-        const response = rawResult.value
+        // If this wasn't the last attempt, we could add a retry hint
+      }
 
-        // If accepted, construct the exchange using MCP content blocks
-        if (response.action === 'accept') {
-          const toolUseId = `elicit_worker_${elicitId}`
-          const parsedContent = response.content as T
+      throw new SampleValidationError(
+        'sampleSchema',
+        retries + 1,
+        lastResult!,
+        `Schema parsing failed after ${retries + 1} attempts: ${lastResult?.parseError?.message ?? 'unknown error'}`
+      )
+    },
 
-          // Build minimal exchange for worker context using MCP format
-          // Note: Worker doesn't have access to original context, so we use empty object
-          const request: McpMessage & { role: 'assistant' } = {
-            role: 'assistant' as const,
-            content: [{
-              type: 'tool_use' as const,
-              id: toolUseId,
-              name: key,
-              input: {},
-            }],
-          }
-          const responseMsg: McpMessage & { role: 'user' } = {
-            role: 'user' as const,
-            content: [{
-              type: 'tool_result' as const,
-              toolUseId: toolUseId,
-              content: [{ type: 'text' as const, text: JSON.stringify(parsedContent) }],
-            }],
-          }
-          const exchange = {
+    *elicit<T>(
+      key: string,
+      options: { message: string; schema: Record<string, unknown> }
+    ): Operation<ElicitResult<unknown, T>> {
+      const response: WorkerElicitResponse = yield* coreCtx.elicit(key, options)
+
+      // Map core response to MCP elicit result
+      if (response.status === 'accepted') {
+        const content = response.content as T
+        const toolUseId = `elicit_${sessionId}_${key}_${Date.now()}`
+
+        // Build exchange
+        const request = {
+          role: 'assistant' as const,
+          content: [{
+            type: 'tool_use' as const,
+            id: toolUseId,
+            name: key,
+            input: {},
+          }],
+        }
+        const responseMsg = {
+          role: 'user' as const,
+          content: [{
+            type: 'tool_result' as const,
+            toolUseId,
+            content: [{ type: 'text' as const, text: JSON.stringify(content) }],
+          }],
+        }
+
+        return {
+          action: 'accept',
+          content,
+          exchange: {
             context: {} as unknown,
             request,
             response: responseMsg,
-            messages: [request, responseMsg] as [McpMessage, McpMessage],
-            withArguments(fn: (ctx: unknown) => Record<string, unknown>): [McpMessage, McpMessage] {
+            messages: [request, responseMsg] as [typeof request, typeof responseMsg],
+            withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
               const args = fn({})
-              const requestWithArgs: McpMessage & { role: 'assistant' } = {
+              const requestWithArgs = {
                 role: 'assistant' as const,
                 content: [{
                   type: 'tool_use' as const,
@@ -265,37 +422,21 @@ async function executeToolInWorker(
                   input: args,
                 }],
               }
-              return [requestWithArgs, responseMsg]
+              return [requestWithArgs, responseMsg] as [typeof requestWithArgs, typeof responseMsg]
             },
-          }
-
-          return { action: 'accept' as const, content: parsedContent, exchange } as ElicitResult<unknown, T>
+          },
         }
+      }
 
-        return response as ElicitResult<unknown, T>
-      },
-    }
+      if (response.status === 'declined') {
+        return { action: 'decline' }
+      }
 
-    // Execute the tool
-    try {
-      const result = yield* tool.handler(params, ctx) as Operation<unknown>
+      return { action: 'cancel' }
+    },
+  }
 
-      transport.send({
-        type: 'result',
-        result,
-        lsn: nextLsn(),
-      })
-    } catch (error) {
-      const err = error as Error
-      transport.send({
-        type: 'error',
-        name: err.name,
-        message: err.message,
-        ...(err.stack !== undefined && { stack: err.stack }),
-        lsn: nextLsn(),
-      })
-    }
-  })
+  return ctx
 }
 
 // =============================================================================

@@ -73,9 +73,30 @@ import {
   createStructuredSampleExchange,
   SampleValidationError,
 } from '../mcp-tool-types.ts'
-import {
-  mapStatusToElicitAction,
-} from './postmessage-transport.ts'
+
+// =============================================================================
+// HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Map elicit response status to action.
+ */
+function mapStatusToElicitAction(
+  status: 'accepted' | 'declined' | 'cancelled' | 'denied' | 'other'
+): 'accept' | 'decline' | 'cancel' | 'other' {
+  switch (status) {
+    case 'accepted':
+      return 'accept'
+    case 'declined':
+      return 'decline'
+    case 'cancelled':
+      return 'cancel'
+    case 'denied':
+      return 'other'
+    default:
+      return 'other'
+  }
+}
 
 // =============================================================================
 // ID GENERATION
@@ -195,20 +216,20 @@ export function createContextFromTransport(
     // Add schema if present (structured output)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const configAny = config as any
-    if (configAny.schema) {
-      payload.schema = zodToJsonSchema(configAny.schema)
+    if (configAny['schema']) {
+      payload['schema'] = zodToJsonSchema(configAny['schema'])
     }
 
     // Add tools if present
-    if (configAny.tools) {
-      payload.tools = configAny.tools.map((tool: { name: string; description?: string; inputSchema: unknown }) => ({
+    if (configAny['tools']) {
+      payload['tools'] = configAny['tools'].map((tool: { name: string; description?: string; inputSchema: unknown }) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema instanceof Object && 'parse' in tool.inputSchema
           ? zodToJsonSchema(tool.inputSchema as never)
           : tool.inputSchema,
       }))
-      payload.toolChoice = configAny.toolChoice ?? 'auto'
+      payload['toolChoice'] = configAny['toolChoice'] ?? 'auto'
     }
 
     // Send request through transport
