@@ -1,125 +1,86 @@
+// @vitest-environment node
 /**
- * Worker Tool Session Tests
- *
- * Tests the WorkerToolSession adapter that bridges worker transport
- * to the ToolSession interface.
+ * Worker Tool Session Tests (Worker Transport)
  */
 
 import { describe, it, expect } from 'vitest'
-import { run, call, sleep } from 'effection'
-import { createInProcessTransportPair } from '../worker-thread-transport.ts'
-import { runWorker, createWorkerToolRegistry } from '../worker-runner.ts'
-import { createWorkerToolSession } from '../worker-tool-session.ts'
-import type { WorkerToolContext } from '../worker-types.ts'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { resolve } from 'node:path'
+import { existsSync } from 'node:fs'
 
+const execFileAsync = promisify(execFile)
+
+const harnessCandidates = [
+  resolve(
+    process.cwd(),
+    'src/lib/chat/mcp-tools/session/__tests__/fixtures/worker-tool-session-harness.ts'
+  ),
+  resolve(
+    process.cwd(),
+    'packages/framework/src/lib/chat/mcp-tools/session/__tests__/fixtures/worker-tool-session-harness.ts'
+  ),
+]
+
+const harnessPath = (() => {
+  const candidate = harnessCandidates.find((path) => existsSync(path))
+  if (!candidate) {
+    throw new Error('Failed to resolve worker-tool-session-harness.ts fixture path')
+  }
+  return candidate
+})()
+
+async function runScenario(scenario: string) {
+  const { stdout } = await execFileAsync(
+    process.execPath,
+    ['--conditions=production', '--import', 'tsx', harnessPath, scenario],
+    { cwd: process.cwd() }
+  )
+
+  return JSON.parse(stdout.trim())
+}
 
 describe('WorkerToolSession', () => {
   describe('simple tool', () => {
-    it('creates a session and can check status', async () => {
-      await run(function* () {
-        const [hostTransport, workerTransport] = createInProcessTransportPair()
+    it('executes a tool and returns result', async () => {
+      const result = await runScenario('echo')
 
-        // Create registry with simple echo tool
-        const registry = createWorkerToolRegistry([
-          {
-            name: 'echo',
-            *handler(params: unknown, ctx: WorkerToolContext) {
-              ctx.log('info', 'Echoing message')
-              const { message } = params as { message: string }
-              return { echoed: message }
-            },
-          },
-        ])
+      expect(result.status).toBe('completed')
+      expect(result.result).toEqual({ echoed: 'hello' })
+    })
+  })
 
-        // Start worker
-        runWorker(workerTransport, registry)
+  describe('unknown tool', () => {
+    it('returns error when tool does not exist', async () => {
+      const result = await runScenario('missing')
 
-        // Wait for worker to be ready
-        yield* call(() => new Promise<void>((resolve) => setTimeout(resolve, 50)))
-
-        // Create session
-        const session = yield* createWorkerToolSession(hostTransport, {
-          sessionId: 'test-session',
-          toolName: 'echo',
-          params: { message: 'hello' },
-        })
-
-        expect(session.id).toBe('test-session')
-        expect(session.toolName).toBe('echo')
-
-        // Wait for tool to complete
-        yield* sleep(200)
-
-        // Status should be completed
-        const status = yield* session.status()
-        expect(status).toBe('completed')
-
-        hostTransport.close()
-      })
+      expect(result.status).toBe('failed')
+      expect(result.error).toContain('Unknown tool')
     })
   })
 
   describe('sampling backchannel', () => {
-    it('handles sample request and response through session interface', async () => {
-      await run(function* () {
-        const [hostTransport, workerTransport] = createInProcessTransportPair()
+    it('pauses for sampling and resumes with response', async () => {
+      const result = await runScenario('sample')
 
-        // Create registry with sampling tool
-        const registry = createWorkerToolRegistry([
-          {
-            name: 'greeter',
-            *handler(params: unknown, ctx: WorkerToolContext) {
-              const { name } = params as { name: string }
-              ctx.log('info', `Generating greeting for ${name}`)
+      expect(result.statusBefore).toBe('awaiting_sample')
+      expect(result.statusAfter).toBe('completed')
+      expect(result.result).toEqual({
+        greeting: 'Hello, Alice!',
+        model: 'test-model',
+      })
+    })
+  })
 
-              const response = yield* ctx.sample(
-                [{ role: 'user', content: `Say hello to ${name}` }],
-                { maxTokens: 50 }
-              )
+  describe('elicitation backchannel', () => {
+    it('pauses for elicitation and resumes with response', async () => {
+      const result = await runScenario('elicit')
 
-              return { greeting: response.text }
-            },
-          },
-        ])
-
-        // Start worker
-        runWorker(workerTransport, registry)
-        yield* call(() => new Promise<void>((resolve) => setTimeout(resolve, 50)))
-
-        // Create session
-        const session = yield* createWorkerToolSession(hostTransport, {
-          sessionId: 'test-session',
-          toolName: 'greeter',
-          params: { name: 'Alice' },
-        })
-
-        // Wait a bit for sample_request to arrive
-        yield* sleep(100)
-
-        // Status should be awaiting_sample
-        let status = yield* session.status()
-        expect(status).toBe('awaiting_sample')
-
-        // Get the pending sample ID from the transport (hack for testing)
-        // We need a way to get the sampleId - let's check the event buffer
-        // For now, construct it based on the pattern
-        const sampleId = 'test-session:sample:2' // lsn was 2 when sample was sent
-
-        // Respond to sampling
-        yield* session.respondToSample(sampleId, {
-          text: 'Hello, Alice! Nice to meet you.',
-          model: 'test-model',
-          stopReason: 'endTurn',
-        })
-
-        // Wait for completion
-        yield* sleep(200)
-
-        // Status should be completed
-        status = yield* session.status()
-        expect(status).toBe('completed')
-
-        hostTransport.close()
+      expect(result.statusBefore).toBe('awaiting_elicit')
+      expect(result.statusAfter).toBe('completed')
+      expect(result.result).toEqual({
+        action: 'delete files',
+        confirmed: true,
       })
     })
   })

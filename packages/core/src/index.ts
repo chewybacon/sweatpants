@@ -88,3 +88,50 @@ export {
   type Handle,
   type Inspector,
 } from "./protocol/index.ts";
+
+// Re-export worker transport utilities and types
+export {
+  // Host-side
+  createWorkerPrincipal,
+  generateRequestId,
+  createSampleResponse,
+  createElicitResponse,
+  type WorkerPrincipalOptions,
+  type WorkerPrincipalResult,
+  type WorkerRequestHandler,
+  type ForEachContext,
+  // Worker-side
+  runToolWorker,
+  runRequestHandler,
+  type ToolWorkerHandler,
+  // Types
+  type WorkerRequest,
+  type WorkerSampleRequest,
+  type WorkerElicitRequest,
+  type WorkerResponse,
+  type WorkerSampleResponse,
+  type WorkerElicitResponse,
+  type WorkerProgressMessage,
+  type WorkerLogMessage,
+  type WorkerOutOfBandMessage,
+  type WorkerInitData,
+  type WorkerResult,
+  type WorkerSuccessResult,
+  type WorkerErrorResult,
+  type WorkerCancelledResult,
+  type WorkerMessage,
+  type WorkerMessageRole,
+  type WorkerContentBlock,
+  type WorkerTextContent,
+  type WorkerToolUseContent,
+  type WorkerToolResultContent,
+  type WorkerModelPreferences,
+  type WorkerToolDefinition,
+  type WorkerToolChoice,
+  type WorkerToolCall,
+  type WorkerToolContext,
+  // Type guards
+  isProgressMessage,
+  isLogMessage,
+  isOutOfBandMessage,
+} from "./transport/worker/index.ts";

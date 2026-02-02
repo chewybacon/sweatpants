@@ -24,6 +24,9 @@ catalogs:
     '@effectionx/websocket':
       specifier: ^2.3.0
       version: 2.3.0
+    '@effectionx/worker':
+      specifier: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138
+      version: 0.4.1
     '@t3-oss/env-core':
       specifier: ^0.13.8
       version: 0.13.10
@@ -141,6 +144,10 @@ catalogs:
     zod:
       specifier: 4.1.13
       version: 4.1.13
+
+overrides:
+  '@effectionx/signals': ^0.5.0
+  '@effectionx/timebox': ^0.4.0
 
 importers:
 
@@ -529,21 +536,24 @@ importers:
   packages/core:
     dependencies:
       effection:
-        specifier: https://pkg.pr.new/thefrontside/effection@6a01504
-        version: https://pkg.pr.new/thefrontside/effection@6a01504
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/thefrontside/effection@1074
     devDependencies:
       '@effectionx/node':
         specifier: 'catalog:'
-        version: 0.2.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
+        version: 0.2.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
       '@effectionx/stream-helpers':
         specifier: 'catalog:'
-        version: 0.7.1(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
+        version: 0.7.1(effection@https://pkg.pr.new/thefrontside/effection@1074)
       '@effectionx/vitest':
         specifier: 'catalog:'
-        version: 0.1.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.1.0(effection@https://pkg.pr.new/thefrontside/effection@1074)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effectionx/websocket':
         specifier: 'catalog:'
-        version: 2.3.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
+        version: 2.3.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
+      '@effectionx/worker':
+        specifier: 'catalog:'
+        version: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138(effection@https://pkg.pr.new/thefrontside/effection@1074)
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -992,6 +1002,13 @@ packages:
   '@effectionx/websocket@2.3.0':
     resolution: {integrity: sha512-FpAptS5zvmw5jJVQp69BqPzAfgstaYKP/D+EThjaAsT/zxlfwqYnKeZNvgePxM3y8q/zmMrBi5QGud8CRkV5Yg==}
     version: 2.3.0
+    engines: {node: '>= 22'}
+    peerDependencies:
+      effection: ^3 || ^4
+
+  '@effectionx/worker@https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138':
+    resolution: {tarball: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138}
+    version: 0.4.1
     engines: {node: '>= 22'}
     peerDependencies:
       effection: ^3 || ^4
@@ -4084,11 +4101,6 @@ packages:
     version: 4.0.1-pr
     engines: {node: '>= 16'}
 
-  effection@https://pkg.pr.new/thefrontside/effection@6a01504:
-    resolution: {tarball: https://pkg.pr.new/thefrontside/effection@6a01504}
-    version: 4.0.2-pr
-    engines: {node: '>= 16'}
-
   electron-to-chromium@1.5.267:
     resolution: {integrity: sha512-0Drusm6MVRXSOJpGbaSVgcQsuB4hEkMpHXaVstcPmhu5LIedxs1xNK/nIxmQIU/RPC0+1/o0AVZfBTkTNJOdUw==}
 
@@ -6715,6 +6727,9 @@ packages:
   web-vitals@5.1.0:
     resolution: {integrity: sha512-ArI3kx5jI0atlTtmV0fWU3fjpLmq/nD3Zr1iFFlJLaqa5wLBkUSzINwBPySCX/8jRyjlmy1Volw1kz1g9XE4Jg==}
 
+  web-worker@1.5.0:
+    resolution: {integrity: sha512-RiMReJrTAiA+mBjGONMnjVDP2u3p9R1vkcGz6gDIrOMT3oGuYwX2WRMYI9ipkphSuE5XKEhydbhNEJh4NY9mlw==}
+
   webidl-conversions@8.0.1:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
@@ -7140,9 +7155,9 @@ snapshots:
     dependencies:
       effection: 4.0.0
 
-  '@effectionx/node@0.2.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+  '@effectionx/node@0.2.0(effection@https://pkg.pr.new/thefrontside/effection@1074)':
     dependencies:
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      effection: https://pkg.pr.new/thefrontside/effection@1074
 
   '@effectionx/process@0.6.2':
     dependencies:
@@ -7156,41 +7171,48 @@ snapshots:
     dependencies:
       effection: 4.0.2
 
-  '@effectionx/signals@0.5.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+  '@effectionx/signals@0.5.0(effection@https://pkg.pr.new/thefrontside/effection@1074)':
     dependencies:
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      effection: https://pkg.pr.new/thefrontside/effection@1074
       immutable: 5.1.4
 
-  '@effectionx/stream-helpers@0.7.1(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+  '@effectionx/stream-helpers@0.7.1(effection@https://pkg.pr.new/thefrontside/effection@1074)':
     dependencies:
-      '@effectionx/signals': 0.5.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
-      '@effectionx/timebox': 0.4.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      '@effectionx/signals': 0.5.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
+      '@effectionx/timebox': 0.4.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
+      effection: https://pkg.pr.new/thefrontside/effection@1074
       immutable: 5.1.4
       remeda: 2.33.4
 
-  '@effectionx/test-adapter@0.7.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+  '@effectionx/test-adapter@0.7.0(effection@https://pkg.pr.new/thefrontside/effection@1074)':
     dependencies:
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      effection: https://pkg.pr.new/thefrontside/effection@1074
 
-  '@effectionx/timebox@0.4.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+  '@effectionx/timebox@0.4.0(effection@https://pkg.pr.new/thefrontside/effection@1074)':
     dependencies:
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      effection: https://pkg.pr.new/thefrontside/effection@1074
 
   '@effectionx/tinyexec@0.3.1':
     dependencies:
       effection: 4.0.0
       tinyexec: 0.3.2
 
-  '@effectionx/vitest@0.1.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
+  '@effectionx/vitest@0.1.0(effection@https://pkg.pr.new/thefrontside/effection@1074)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
-      '@effectionx/test-adapter': 0.7.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      '@effectionx/test-adapter': 0.7.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
+      effection: https://pkg.pr.new/thefrontside/effection@1074
       vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
-  '@effectionx/websocket@2.3.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)':
+  '@effectionx/websocket@2.3.0(effection@https://pkg.pr.new/thefrontside/effection@1074)':
     dependencies:
-      effection: https://pkg.pr.new/thefrontside/effection@6a01504
+      effection: https://pkg.pr.new/thefrontside/effection@1074
+
+  '@effectionx/worker@https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138(effection@https://pkg.pr.new/thefrontside/effection@1074)':
+    dependencies:
+      '@effectionx/signals': 0.5.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
+      '@effectionx/timebox': 0.4.0(effection@https://pkg.pr.new/thefrontside/effection@1074)
+      effection: https://pkg.pr.new/thefrontside/effection@1074
+      web-worker: 1.5.0
 
   '@emnapi/core@1.8.1':
     dependencies:
@@ -10359,8 +10381,6 @@ snapshots:
 
   effection@https://pkg.pr.new/thefrontside/effection@1074: {}
 
-  effection@https://pkg.pr.new/thefrontside/effection@6a01504: {}
-
   electron-to-chromium@1.5.267: {}
 
   element-is-visible@1.0.0: {}
@@ -13362,6 +13382,8 @@ snapshots:
       xml-name-validator: 5.0.0
 
   web-vitals@5.1.0: {}
+
+  web-worker@1.5.0: {}
 
   webidl-conversions@8.0.1: {}
 
