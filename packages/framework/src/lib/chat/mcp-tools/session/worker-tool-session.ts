@@ -147,7 +147,9 @@ export function createWorkerToolSession(
     // Helper to emit events
     // Using a more permissive input type to avoid TypeScript's excess property checking issues
     // with discriminated unions - the 'type' field discriminates at runtime
-    function emitEvent(event: { type: ToolSessionEvent['type'] } & Record<string, unknown>) {
+    function* emitEvent(
+      event: { type: ToolSessionEvent['type'] } & Record<string, unknown>
+    ): Operation<void> {
       const fullEvent: ToolSessionEvent = {
         ...event,
         lsn: ++lsn,
@@ -182,9 +184,7 @@ export function createWorkerToolSession(
       }
 
       // Send to channel (for subscribers)
-      spawn(function* () {
-        yield* eventChannel.send(fullEvent)
-      })
+      yield* eventChannel.send(fullEvent)
     }
 
     // Build init data for the worker
@@ -207,7 +207,7 @@ export function createWorkerToolSession(
           const sampleId = requestId
 
           // Emit sample request event
-          emitEvent({
+          yield* emitEvent({
             type: 'sample_request',
             sampleId,
             messages: request.messages.map(m => ({
@@ -261,7 +261,7 @@ export function createWorkerToolSession(
           const elicitId = requestId
 
           // Emit elicit request event
-          emitEvent({
+          yield* emitEvent({
             type: 'elicit_request',
             elicitId,
             key: request.key,
@@ -311,33 +311,33 @@ export function createWorkerToolSession(
       try {
         const result: WorkerResult<unknown> = yield* workerResult
 
-        if (result.type === 'success') {
-          emitEvent({
-            type: 'result',
-            result: result.value,
-          })
-        } else if (result.type === 'error') {
-          emitEvent({
+          if (result.type === 'success') {
+            yield* emitEvent({
+              type: 'result',
+              result: result.value,
+            })
+          } else if (result.type === 'error') {
+            yield* emitEvent({
+              type: 'error',
+              name: result.error.name,
+              message: result.error.message,
+              ...(result.error.stack !== undefined && { stack: result.error.stack }),
+            })
+          } else if (result.type === 'cancelled') {
+            yield* emitEvent({
+              type: 'cancelled',
+              ...(result.reason !== undefined && { reason: result.reason }),
+            })
+          }
+        } catch (error) {
+          const err = error as Error
+          yield* emitEvent({
             type: 'error',
-            name: result.error.name,
-            message: result.error.message,
-            ...(result.error.stack !== undefined && { stack: result.error.stack }),
+            name: err.name,
+            message: err.message,
+            ...(err.stack !== undefined && { stack: err.stack }),
           })
-        } else if (result.type === 'cancelled') {
-          emitEvent({
-            type: 'cancelled',
-            ...(result.reason !== undefined && { reason: result.reason }),
-          })
-        }
-      } catch (error) {
-        const err = error as Error
-        emitEvent({
-          type: 'error',
-          name: err.name,
-          message: err.message,
-          ...(err.stack !== undefined && { stack: err.stack }),
-        })
-      } finally {
+        } finally {
         yield* eventChannel.close()
       }
     })
@@ -398,7 +398,7 @@ export function createWorkerToolSession(
 
       *cancel(reason?: string): Operation<void> {
         // Closing the resource will trigger worker shutdown
-        emitEvent({
+        yield* emitEvent({
           type: 'cancelled',
           ...(reason !== undefined && { reason }),
         })
