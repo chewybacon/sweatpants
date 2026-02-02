@@ -24,17 +24,17 @@ test.describe('chat page basics', () => {
   })
 
   test('send button enables when text is entered', async ({ page }) => {
-    await page.goto('/chat/cards/')
+    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
     await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
 
     // Initially button should be disabled (no text)
     const sendButton = page.getByRole('button', { name: 'Send' })
     await expect(sendButton).toBeDisabled()
 
-    // Type text using pressSequentially to trigger React onChange properly
+    // Type text using fill() which works well with React controlled inputs
     const input = page.getByPlaceholder('Type a message...')
     await input.click()
-    await input.pressSequentially('Hello', { delay: 50 })
+    await input.fill('Hello')
 
     // Button should now be enabled (wait for React state update)
     await expect(sendButton).toBeEnabled({ timeout: 5000 })
