@@ -51,9 +51,10 @@ describe("Built-in API", () => {
         const result = yield* sub.next();
         if (!result.done) {
           const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"elicit"> = {
             type: "response",
             id: request.id,
+            kind: "elicit",
             response: { status: "declined" },
           };
           yield* operative.send(response);
@@ -81,10 +82,11 @@ describe("Built-in API", () => {
         const result = yield* sub.next();
         if (!result.done) {
           const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"elicit"> = {
             type: "response",
             id: request.id,
-            response: { status: "cancelled" },
+            kind: "elicit",
+            response: { status: "declined" },
           };
           yield* operative.send(response);
         }
@@ -114,9 +116,10 @@ describe("Built-in API", () => {
         if (!result.done) {
           const request = result.value as TransportRequest;
           receivedPayload = request.payload;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"elicit"> = {
             type: "response",
             id: request.id,
+            kind: "elicit",
             response: { status: "accepted", content: { name: "John" } },
           };
           yield* operative.send(response);
@@ -152,9 +155,10 @@ describe("Built-in API", () => {
         const result = yield* sub.next();
         if (!result.done) {
           receivedRequest = result.value as TransportRequest;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"notify"> = {
             type: "response",
             id: receivedRequest.id,
+            kind: "notify",
             response: { ok: true },
           };
           yield* operative.send(response);
@@ -188,10 +192,11 @@ describe("Built-in API", () => {
         const result = yield* sub.next();
         if (!result.done) {
           const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"notify"> = {
             type: "response",
             id: request.id,
-            response: { ok: false, error: new Error("Network error") },
+            kind: "notify",
+            response: { ok: false, error: { code: "NETWORK_ERROR", message: "Network error" } },
           };
           yield* operative.send(response);
         }
@@ -250,9 +255,10 @@ describe("Built-in API", () => {
         if (!result.done) {
           const request = result.value as TransportRequest;
           receivedPayload = request.payload;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"sample"> = {
             type: "response",
             id: request.id,
+            kind: "sample",
             response: {
               status: "accepted",
               content: { text: "Response", finishReason: "stop" },
@@ -287,10 +293,11 @@ describe("Built-in API", () => {
         const result = yield* sub.next();
         if (!result.done) {
           const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"sample"> = {
             type: "response",
             id: request.id,
-            response: { status: "declined" },
+            kind: "sample",
+            response: { status: "cancelled" }, // sample doesn't have "declined", use "cancelled"
           };
           yield* operative.send(response);
         }
@@ -373,9 +380,10 @@ describe("Built-in API", () => {
         if (!result.done) {
           const request = result.value as TransportRequest;
           receivedPayload = request.payload;
-          const response: ResponseMessage = {
+          const response: ResponseMessage<"sample"> = {
             type: "response",
             id: request.id,
+            kind: "sample",
             response: { status: "accepted", content: { text: "OK" } },
           };
           yield* operative.send(response);
@@ -443,37 +451,41 @@ function* handleOperativeRequests(
 
     try {
       const content = handler(request);
-      let response: ResponseMessage;
       if (request.kind === "notify") {
-        response = {
+        const response: ResponseMessage<"notify"> = {
           type: "response",
           id: request.id,
+          kind: "notify",
           response: { ok: true } as const,
         };
+        yield* operative.send(response);
       } else {
-        response = {
+        const response: ResponseMessage<"elicit"> = {
           type: "response",
           id: request.id,
+          kind: "elicit",
           response: { status: "accepted" as const, content },
         };
+        yield* operative.send(response);
       }
-      yield* operative.send(response);
     } catch (e) {
-      let response: ResponseMessage;
       if (request.kind === "notify") {
-        response = {
+        const response: ResponseMessage<"notify"> = {
           type: "response",
           id: request.id,
-          response: { ok: false as const, error: e as Error },
+          kind: "notify",
+          response: { ok: false as const, error: { code: "ERROR", message: (e as Error).message } },
         };
+        yield* operative.send(response);
       } else {
-        response = {
+        const response: ResponseMessage<"elicit"> = {
           type: "response",
           id: request.id,
+          kind: "elicit",
           response: { status: "other" as const, content: (e as Error).message },
         };
+        yield* operative.send(response);
       }
-      yield* operative.send(response);
     }
   }
 }

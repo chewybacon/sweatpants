@@ -13,6 +13,19 @@ export type {
   InterruptMessage,
   ElicitResponse,
   NotifyResponse,
+  SampleResponse,
+  RequestKind,
+  ResponseByKind,
+} from "../types/transport.ts";
+
+// Type guards and helpers
+export {
+  isProgressMessage,
+  isResponseMessage,
+  isElicitResponse,
+  isNotifyResponse,
+  isSampleResponse,
+  createResponseMessage,
 } from "../types/transport.ts";
 
 // Core utilities

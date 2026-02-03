@@ -42,7 +42,7 @@ describe("createCorrelation", () => {
     const [principal, operative] = yield* createTransportPair();
     const correlated: CorrelatedTransport = yield* createCorrelation(principal);
 
-    const request: TransportRequest = {
+    const request: TransportRequest<"elicit"> = {
       id: "req-1",
       kind: "elicit",
       type: "location",
@@ -53,7 +53,7 @@ describe("createCorrelation", () => {
     let finalResponse: ElicitResponse | undefined;
     yield* spawn(function* () {
       finalResponse = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>(request)
+        correlated.request<"elicit", unknown>(request)
       );
     });
 
@@ -69,9 +69,10 @@ describe("createCorrelation", () => {
     }
 
     // Operative sends response
-    const response: ResponseMessage = {
+    const response: ResponseMessage<"elicit"> = {
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "accepted", content: { lat: 40.7128, lng: -74.006 } },
     };
     yield* operative.send(response);
@@ -87,7 +88,7 @@ describe("createCorrelation", () => {
     const [principal, operative] = yield* createTransportPair();
     const correlated: CorrelatedTransport = yield* createCorrelation(principal);
 
-    const request: TransportRequest = {
+    const request: TransportRequest<"elicit"> = {
       id: "req-1",
       kind: "elicit",
       type: "location",
@@ -99,7 +100,7 @@ describe("createCorrelation", () => {
 
     yield* spawn(function* () {
       finalResponse = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>(request),
+        correlated.request<"elicit", unknown>(request),
         (progress) => {
           progressReceived.push(progress);
         }
@@ -137,9 +138,10 @@ describe("createCorrelation", () => {
     expect(progressReceived[1]).toEqual({ status: "acquiring" });
 
     // Operative sends final response
-    const response: ResponseMessage = {
+    const response: ResponseMessage<"elicit"> = {
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "accepted", content: { lat: 40.7128, lng: -74.006 } },
     };
     yield* operative.send(response);
@@ -160,7 +162,7 @@ describe("createCorrelation", () => {
     // Start two concurrent requests
     yield* spawn(function* () {
       responses["req-1"] = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>({
+        correlated.request<"elicit", unknown>({
           id: "req-1",
           kind: "elicit",
           type: "location",
@@ -171,7 +173,7 @@ describe("createCorrelation", () => {
 
     yield* spawn(function* () {
       responses["req-2"] = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>({
+        correlated.request<"elicit", unknown>({
           id: "req-2",
           kind: "elicit",
           type: "clipboard",
@@ -191,14 +193,16 @@ describe("createCorrelation", () => {
     yield* operative.send({
       type: "response",
       id: "req-2",
+      kind: "elicit",
       response: { status: "accepted", content: { text: "clipboard" } },
-    });
+    } as ResponseMessage<"elicit">);
 
     yield* operative.send({
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "denied" },
-    });
+    } as ResponseMessage<"elicit">);
 
     yield* sleep(0);
 
@@ -217,7 +221,7 @@ describe("createCorrelation", () => {
 
     yield* spawn(function* () {
       response = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>({
+        correlated.request<"elicit", unknown>({
           id: "req-1",
           kind: "elicit",
           type: "confirmation",
@@ -234,8 +238,9 @@ describe("createCorrelation", () => {
     yield* operative.send({
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "declined" },
-    });
+    } as ResponseMessage<"elicit">);
 
     yield* sleep(0);
 
@@ -250,7 +255,7 @@ describe("createCorrelation", () => {
 
     yield* spawn(function* () {
       response = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>({
+        correlated.request<"elicit", unknown>({
           id: "req-1",
           kind: "elicit",
           type: "flight-selection",
@@ -267,11 +272,12 @@ describe("createCorrelation", () => {
     yield* operative.send({
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: {
         status: "other",
         content: "What's the weather in Tokyo?",
       },
-    });
+    } as ResponseMessage<"elicit">);
 
     yield* sleep(0);
 
@@ -289,7 +295,7 @@ describe("createCorrelation", () => {
 
     yield* spawn(function* () {
       response = yield* consumeStream(
-        correlated.request<unknown, ElicitResponse>({
+        correlated.request<"elicit", unknown>({
           id: "req-1",
           kind: "elicit",
           type: "form",
@@ -306,11 +312,46 @@ describe("createCorrelation", () => {
     yield* operative.send({
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "cancelled" },
-    });
+    } as ResponseMessage<"elicit">);
 
     yield* sleep(0);
 
     expect(response).toEqual({ status: "cancelled" });
+  });
+
+  it("should handle denied response", function* () {
+    const [principal, operative] = yield* createTransportPair();
+    const correlated: CorrelatedTransport = yield* createCorrelation(principal);
+
+    let response: ElicitResponse | undefined;
+
+    yield* spawn(function* () {
+      response = yield* consumeStream(
+        correlated.request<"elicit", unknown>({
+          id: "req-1",
+          kind: "elicit",
+          type: "location",
+          payload: { accuracy: "high" },
+        })
+      );
+    });
+
+    yield* sleep(0);
+
+    const operativeSub = yield* operative;
+    yield* operativeSub.next();
+
+    yield* operative.send({
+      type: "response",
+      id: "req-1",
+      kind: "elicit",
+      response: { status: "denied" },
+    } as ResponseMessage<"elicit">);
+
+    yield* sleep(0);
+
+    expect(response).toEqual({ status: "denied" });
   });
 });

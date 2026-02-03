@@ -8,7 +8,14 @@
  * converted to framework patches and streamed to the client.
  */
 import { resource, createContext, type Operation, type Stream, type Subscription } from 'effection'
-import { TransportContext, type CorrelatedTransport, type TransportRequest, type NotifyResponse } from '@sweatpants/core'
+import {
+  TransportContext,
+  type CorrelatedTransport,
+  type TransportRequest,
+  type NotifyResponse,
+  type RequestKind,
+  type ResponseByKind,
+} from '@sweatpants/core'
 import type { ServerToolContext } from '../isomorphic-tools/types.ts'
 import type { ClientToolProgressPatch } from '../patches/tool.ts'
 import type { ChatPatch } from '../patches/index.ts'

@@ -342,6 +342,30 @@ describe("WebSocket Transport", () => {
         response: { status: "cancelled" },
       });
     });
+
+    it("should handle denied response", function* () {
+      const { correlated, operative } = yield* useWebSocketTestServer();
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+          id: "msg-1",
+          kind: "elicit",
+          type: "location",
+          payload: { accuracy: "high" },
+        });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({ status: "denied" });
+      });
+
+      yield* sleep(10);
+
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: { status: "denied" },
+      });
+    });
   });
 
   describe("Raw Transport (without correlation)", () => {

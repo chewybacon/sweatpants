@@ -34,7 +34,7 @@ catalog:
   acorn: ^8.14.0
   citty: ^0.1.6
   compression: ^1.8.1
-  effection: https://pkg.pr.new/thefrontside/effection@1074
+  effection: https://pkg.pr.new/thefrontside/effection@6a01504
   express: ^5.2.1
   jsdom: ^27.0.0
   lucide-react: 0.544.0

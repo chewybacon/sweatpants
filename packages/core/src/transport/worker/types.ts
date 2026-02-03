@@ -358,9 +358,9 @@ export interface WorkerToolContext {
 // =============================================================================
 
 /**
- * Check if a message is a progress message.
+ * Check if a message is a worker progress message.
  */
-export function isProgressMessage(msg: unknown): msg is WorkerProgressMessage {
+export function isWorkerProgressMessage(msg: unknown): msg is WorkerProgressMessage {
   return (
     typeof msg === "object" &&
     msg !== null &&
@@ -370,9 +370,9 @@ export function isProgressMessage(msg: unknown): msg is WorkerProgressMessage {
 }
 
 /**
- * Check if a message is a log message.
+ * Check if a message is a worker log message.
  */
-export function isLogMessage(msg: unknown): msg is WorkerLogMessage {
+export function isWorkerLogMessage(msg: unknown): msg is WorkerLogMessage {
   return (
     typeof msg === "object" &&
     msg !== null &&
@@ -382,8 +382,8 @@ export function isLogMessage(msg: unknown): msg is WorkerLogMessage {
 }
 
 /**
- * Check if a message is an out-of-band message.
+ * Check if a message is a worker out-of-band message.
  */
-export function isOutOfBandMessage(msg: unknown): msg is WorkerOutOfBandMessage {
-  return isProgressMessage(msg) || isLogMessage(msg);
+export function isWorkerOutOfBandMessage(msg: unknown): msg is WorkerOutOfBandMessage {
+  return isWorkerProgressMessage(msg) || isWorkerLogMessage(msg);
 }
