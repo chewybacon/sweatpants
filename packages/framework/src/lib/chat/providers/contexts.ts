@@ -6,13 +6,20 @@ import type { PersonaResolver } from '../../../handler/types.ts'
 import type { PluginRegistry } from '../mcp-tools/plugin-registry.ts'
 import type { McpToolRegistry } from '../../../handler/durable/types.ts'
 import type { ToolSessionStore } from '../mcp-tools/session/types.ts'
+import type { AnyTool } from '../tools/types.ts'
+
+/**
+ * Union type for tools that can be registered.
+ * Supports both legacy isomorphic tools and unified tools.
+ */
+export type RegisterableTool = IsomorphicTool | AnyTool
 
 export const ChatStreamConfigContext = createContext<ChatStreamOptions>('ChatStreamOptions')
 export const ChatApiKeyContext = createContext<string>('ChatApiKeyContext')
 
 // DI contexts for hook-based configuration
 export const ProviderContext = createContext<ChatProvider>('Provider')
-export const ToolRegistryContext = createContext<IsomorphicTool[]>('ToolRegistry')
+export const ToolRegistryContext = createContext<RegisterableTool[]>('ToolRegistry')
 export const PersonaResolverContext = createContext<PersonaResolver>('PersonaResolver')
 export const MaxIterationsContext = createContext<number>('MaxIterations')
 

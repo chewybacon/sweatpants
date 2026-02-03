@@ -130,6 +130,20 @@
         "default": "./dist/chat/core-tools.cjs"
       }
     },
+    "./chat/tools": {
+      "development": {
+        "import": "./src/lib/chat/tools/index.ts",
+        "types": "./src/lib/chat/tools/index.ts"
+      },
+      "import": {
+        "types": "./dist/chat/tools.d.ts",
+        "default": "./dist/chat/tools.js"
+      },
+      "require": {
+        "types": "./dist/chat/tools.d.cts",
+        "default": "./dist/chat/tools.cjs"
+      }
+    },
     "./react/chat": {
       "development": {
         "import": "./src/react/chat/index.ts",

@@ -888,8 +888,16 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               const plugin = getPluginForTool(toolName, pluginRegistry)
               const mcpTool = mcpToolRegistry?.get(toolName)
 
-              if (plugin && mcpTool && isPluginTool(mcpTool)) {
-                // Execute as plugin tool
+              // Check if this is an MCP tool (with or without plugin)
+              const isMcpToolWithPlugin = plugin && mcpTool && isPluginTool(mcpTool)
+              const isMcpToolWithoutPlugin = !plugin && mcpTool && isPluginTool(mcpTool)
+              
+              if (isMcpToolWithPlugin || isMcpToolWithoutPlugin) {
+                // Execute as MCP tool via session manager
+                // Note: Tools without plugins (like unified tools) will emit elicit_request
+                // events but won't have plugin UI handlers. The client must handle these
+                // by rendering appropriate UI based on the elicit key/schema.
+                
                 if (pluginSessionManager) {
                   // Use session manager for durable execution
                   const session = yield* pluginSessionManager.create({
@@ -987,12 +995,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     })
                     state.pendingPluginSessions.delete(tc.id)
                   }
-                } else {
-                  // No session manager - use direct execution (legacy path)
+                } else if (isMcpToolWithPlugin) {
+                  // No session manager but has plugin - use direct execution (legacy path)
                   const pluginResult = yield* executePluginTool({
                     toolCall: tc,
                     tool: mcpTool,
-                    plugin,
+                    plugin: plugin!,
                     provider,
                     emissionChannel: pluginEmissionChannel,
                     signal,
@@ -1000,6 +1008,23 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   const result = pluginResultToToolResult(pluginResult)
                   results.push(result)
                   state.pendingEvents.push(pluginResultToStreamEvent(pluginResult))
+                } else {
+                  // MCP tool without plugin AND without session manager
+                  // This shouldn't happen in normal usage, but handle gracefully
+                  results.push({
+                    ok: false,
+                    error: {
+                      callId: tc.id,
+                      toolName,
+                      message: `MCP tool "${toolName}" requires PluginSessionManager for execution. Ensure PluginSessionManagerContext is configured.`,
+                    },
+                  })
+                  state.pendingEvents.push({
+                    type: 'tool_error',
+                    id: tc.id,
+                    name: toolName,
+                    message: `MCP tool "${toolName}" requires PluginSessionManager for execution.`,
+                  })
                 }
               } else {
                 // Execute as regular isomorphic tool

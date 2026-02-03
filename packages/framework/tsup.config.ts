@@ -10,6 +10,7 @@ export default defineConfig({
     'chat/isomorphic-tools': 'src/lib/chat/isomorphic-tools/index.ts',
     'chat/mcp-tools': 'src/lib/chat/mcp-tools/index.ts',
     'chat/mcp-tools/worker': 'src/lib/chat/mcp-tools/session/worker-exports.ts',
+    'chat/tools': 'src/lib/chat/tools/index.ts',
     'react/chat': 'src/react/chat/index.ts',
     'react/chat/pipeline': 'src/react/chat/pipeline/index.ts',
   },

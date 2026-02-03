@@ -6,6 +6,7 @@
  * a React component and returns the user's selection.
  */
 import { makePlugin, getElicitContext, stripMessageContext } from '@sweatpants/framework/chat'
+import { toMcpTool } from '@sweatpants/framework/chat/tools'
 import { bookFlightTool, type Flight, type SeatMap } from './tool'
 import { FlightList } from './components/FlightList'
 import { SeatPicker } from './components/SeatPicker'
@@ -30,7 +31,7 @@ type PickSeatContext = {
 // PLUGIN DEFINITION
 // =============================================================================
 
-export const bookFlightPlugin = makePlugin(bookFlightTool)
+export const bookFlightPlugin = makePlugin(toMcpTool(bookFlightTool))
   .onElicit({
     /**
      * Handler for pickFlight elicitation.

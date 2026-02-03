@@ -32,7 +32,12 @@ import {
   PluginSessionRegistryContext,
   ProviderContext,
   ToolRegistryContext,
+  type RegisterableTool,
 } from "../../lib/chat/providers/contexts.ts";
+import { isUnifiedTool, needsMcpRuntime, toMcpTool } from "../../lib/chat/tools/adapters/mcp.ts";
+import type { AnyTool, FinalizedTool, ElicitsMap } from "../../lib/chat/tools/types.ts";
+import type { FinalizedMcpToolWithElicits } from "../../lib/chat/mcp-tools/mcp-tool-builder.ts";
+import type { ElicitsMap as McpElicitsMap } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
 import { useLogger } from "../../lib/logger/index.ts";
 import {
   bindModel,
@@ -69,12 +74,113 @@ const durableParamsBinder = bindModel({
 // =============================================================================
 
 /**
- * Create a tool registry from an array of tools.
+ * Normalize a tool to IsomorphicTool format.
+ * Unified tools are converted to isomorphic format for runtime compatibility.
+ *
+ * Note: Unified tools with elicits or handoff mode are routed to the MCP runtime
+ * and not executed through the isomorphic path.
  */
-function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
+function normalizeToIsomorphicTool(tool: RegisterableTool): IsomorphicTool {
+  if (isUnifiedTool(tool)) {
+    const unifiedTool = tool as AnyTool;
+    
+    // Check if this tool needs MCP runtime (has elicits or is handoff mode)
+    if (needsMcpRuntime(unifiedTool)) {
+      // Tools that need MCP runtime are routed there, not through isomorphic path.
+      // Create a stub isomorphic tool that will be skipped in executeToolCall.
+      // The actual execution happens via the MCP tool registry.
+      return {
+        name: unifiedTool.name,
+        description: unifiedTool.description,
+        parameters: unifiedTool.parameters,
+        authority: 'server',
+        // No server function - execution handled by MCP runtime
+      };
+    }
+    
+    // Simple execute-only tool - convert to isomorphic format
+    if (unifiedTool.mode === 'execute' && unifiedTool.execute) {
+      return {
+        name: unifiedTool.name,
+        description: unifiedTool.description,
+        parameters: unifiedTool.parameters,
+        authority: 'server',
+        server: unifiedTool.execute as any,
+      };
+    }
+    
+    throw new Error(`Unified tool "${unifiedTool.name}" has invalid mode: ${(unifiedTool as any).mode}`);
+  }
+  // Already in isomorphic format
+  return tool as IsomorphicTool;
+}
+
+/**
+ * Extract unified tools that need MCP runtime and convert them.
+ * Returns a map of tool name to MCP tool format.
+ */
+function extractMcpUnifiedTools(tools: RegisterableTool[]): Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, McpElicitsMap>> {
+  const mcpTools = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, McpElicitsMap>>();
+  
+  for (const tool of tools) {
+    if (isUnifiedTool(tool)) {
+      const unifiedTool = tool as FinalizedTool<string, any, any, any, any, ElicitsMap>;
+      if (needsMcpRuntime(unifiedTool)) {
+        const mcpTool = toMcpTool(unifiedTool);
+        mcpTools.set(unifiedTool.name, mcpTool);
+      }
+    }
+  }
+  
+  return mcpTools;
+}
+
+/**
+ * Merge user-provided MCP tool registry with auto-extracted unified tools.
+ */
+function createMergedMcpToolRegistry(
+  existingRegistry: { get(name: string): unknown | undefined; has(name: string): boolean; names(): string[] } | undefined,
+  unifiedMcpTools: Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, McpElicitsMap>>
+): { get(name: string): unknown | undefined; has(name: string): boolean; names(): string[] } | undefined {
+  // If no unified tools need MCP runtime and no existing registry, return undefined
+  if (unifiedMcpTools.size === 0 && !existingRegistry) {
+    return undefined;
+  }
+  
+  // If no unified tools need MCP runtime, return existing registry as-is
+  if (unifiedMcpTools.size === 0) {
+    return existingRegistry;
+  }
+  
+  // Merge both
+  return {
+    get(name: string): unknown | undefined {
+      // Prefer existing registry (user-defined)
+      const existing = existingRegistry?.get(name);
+      if (existing !== undefined) return existing;
+      return unifiedMcpTools.get(name);
+    },
+    has(name: string): boolean {
+      return (existingRegistry?.has(name) ?? false) || unifiedMcpTools.has(name);
+    },
+    names(): string[] {
+      const existingNames = existingRegistry?.names() ?? [];
+      const unifiedNames = Array.from(unifiedMcpTools.keys());
+      // Dedupe
+      return Array.from(new Set([...existingNames, ...unifiedNames]));
+    },
+  };
+}
+
+/**
+ * Create a tool registry from an array of tools.
+ * Accepts both isomorphic tools and unified tools.
+ */
+function createToolRegistry(tools: RegisterableTool[]): ToolRegistry {
   const map = new Map<string, IsomorphicTool>();
   for (const tool of tools) {
-    map.set(tool.name, tool);
+    const isomorphicTool = normalizeToIsomorphicTool(tool);
+    map.set(isomorphicTool.name, isomorphicTool);
   }
   return {
     get(name: string): IsomorphicTool | undefined {
@@ -293,12 +399,20 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Get optional plugin contexts for MCP plugin tools
       const pluginRegistry = yield* PluginRegistryContext.get();
-      const mcpToolRegistry = yield* McpToolRegistryContext.get();
+      const userMcpToolRegistry = yield* McpToolRegistryContext.get();
+      
+      // Extract unified tools that need MCP runtime and merge with user-provided registry
+      const unifiedMcpTools = extractMcpUnifiedTools(tools);
+      const mcpToolRegistry = createMergedMcpToolRegistry(userMcpToolRegistry, unifiedMcpTools);
+      
       if (pluginRegistry) {
         log.debug("plugin registry configured");
       }
       if (mcpToolRegistry) {
-        log.debug("mcp tool registry configured");
+        log.debug({ 
+          userMcpTools: userMcpToolRegistry?.names().length ?? 0,
+          unifiedMcpTools: unifiedMcpTools.size,
+        }, "mcp tool registry configured");
       }
 
       // Get or create plugin session manager if we have plugin support

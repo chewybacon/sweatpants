@@ -3,7 +3,7 @@
  *
  * Shows the working tree status. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { z } from 'zod'
 import { call } from 'effection'
 import { exec } from 'node:child_process'
@@ -11,7 +11,7 @@ import { promisify } from 'node:util'
 
 const execAsync = promisify(exec)
 
-export const gitStatus = createIsomorphicTool('git_status')
+export const gitStatus = createTool('git_status')
   .description('Show the working tree status (modified, staged, untracked files)')
   .parameters(
     z.object({
@@ -22,9 +22,7 @@ export const gitStatus = createIsomorphicTool('git_status')
         .describe('Show short-format output'),
     })
   )
-  .context('headless')
-  .authority('server')
-  .server(function* (params) {
+  .execute(function* (params) {
     try {
       const args = params.short ? '--short' : '--porcelain=v1'
       const { stdout }: { stdout: string } = yield* call(() =>
@@ -66,4 +64,3 @@ export const gitStatus = createIsomorphicTool('git_status')
       return { error: `Git status failed: ${error}` }
     }
   })
-  .build()

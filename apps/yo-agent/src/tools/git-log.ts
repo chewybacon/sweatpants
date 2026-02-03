@@ -3,7 +3,7 @@
  *
  * Shows commit history. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { z } from 'zod'
 import { call } from 'effection'
 import { exec } from 'node:child_process'
@@ -18,7 +18,7 @@ export interface Commit {
   message: string
 }
 
-export const gitLog = createIsomorphicTool('git_log')
+export const gitLog = createTool('git_log')
   .description('Show commit history')
   .parameters(
     z.object({
@@ -38,9 +38,7 @@ export const gitLog = createIsomorphicTool('git_log')
         .describe('Show abbreviated commit info'),
     })
   )
-  .context('headless')
-  .authority('server')
-  .server(function* (params) {
+  .execute(function* (params) {
     try {
       const fileArg = params.file ? ` -- "${params.file}"` : ''
       
@@ -76,4 +74,3 @@ export const gitLog = createIsomorphicTool('git_log')
       return { error: `Git log failed: ${error}` }
     }
   })
-  .build()

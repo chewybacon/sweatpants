@@ -4,19 +4,17 @@
  * A simple server-only tool that evaluates mathematical expressions.
  * Demonstrates the basic tool pattern with file-based discovery.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { z } from 'zod'
 
-export const calculator = createIsomorphicTool('calculator')
+export const calculator = createTool('calculator')
   .description('Evaluate a mathematical expression')
   .parameters(
     z.object({
       expression: z.string().describe('The mathematical expression to evaluate'),
     })
   )
-  .context('headless')
-  .authority('server')
-  .server(function*(params) {
+  .execute(function* (params) {
     // Simple expression evaluator (in production, use a proper math parser)
     try {
       // Only allow safe math operations
@@ -44,4 +42,3 @@ export const calculator = createIsomorphicTool('calculator')
       }
     }
   })
-  .build()

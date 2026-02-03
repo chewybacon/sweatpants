@@ -67,10 +67,10 @@ export function toolDiscoveryPlugin(
           CallExpression(path) {
             const { node } = path
 
-            // Check if this is createIsomorphicTool call
+            // Check if this is a tool creation call (createTool or createIsomorphicTool)
             if (
               t.isIdentifier(node.callee) &&
-              node.callee.name === 'createIsomorphicTool' &&
+              options.exportFunctionNames.includes(node.callee.name) &&
               node.arguments.length > 0 &&
               t.isStringLiteral(node.arguments[0])
             ) {
@@ -243,18 +243,20 @@ export function discoverToolsInContent(
 ): DiscoveredTool[] {
   const tools: DiscoveredTool[] = []
 
-  // Look for createIsomorphicTool calls
-  // Pattern 1: export const foo = createIsomorphicTool('tool_name')
-  // Pattern 2: export default createIsomorphicTool('tool_name')
-  // Pattern 3: const foo = createIsomorphicTool('tool_name') ... export { foo }
-  // Pattern 4: const foo = createIsomorphicTool('tool_name') ... export default foo
+  // Look for tool creation calls (createTool or createIsomorphicTool)
+  // Pattern 1: export const foo = createTool('tool_name')
+  // Pattern 2: export default createTool('tool_name')
+  // Pattern 3: const foo = createTool('tool_name') ... export { foo }
+  // Pattern 4: const foo = createTool('tool_name') ... export default foo
 
-  const fnName = options.exportFunctionName
+  // Build regex pattern that matches any of the function names
+  const fnNames = options.exportFunctionNames
+  const fnNamePattern = fnNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
 
   // Named export with inline definition
-  // export const guessCard = createIsomorphicTool('guess_card')
+  // export const guessCard = createTool('guess_card')
   const namedExportRegex = new RegExp(
-    `export\\s+const\\s+(\\w+)\\s*=\\s*${fnName}\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
+    `export\\s+const\\s+(\\w+)\\s*=\\s*(?:${fnNamePattern})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
     'g'
   )
 
@@ -273,9 +275,9 @@ export function discoverToolsInContent(
   }
 
   // Default export with inline definition
-  // export default createIsomorphicTool('guess_card')
+  // export default createTool('guess_card')
   const defaultExportRegex = new RegExp(
-    `export\\s+default\\s+${fnName}\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
+    `export\\s+default\\s+(?:${fnNamePattern})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
     'g'
   )
 
@@ -292,11 +294,11 @@ export function discoverToolsInContent(
   }
 
   // Variable definition followed by default export
-  // const guessCard = createIsomorphicTool('guess_card')
+  // const guessCard = createTool('guess_card')
   // ... later ...
   // export default guessCard
   const varDefRegex = new RegExp(
-    `const\\s+(\\w+)\\s*=\\s*${fnName}\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
+    `const\\s+(\\w+)\\s*=\\s*(?:${fnNamePattern})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
     'g'
   )
 

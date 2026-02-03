@@ -5,7 +5,6 @@
  * Regenerate by modifying files in src/tools/
  */
 
-import { calculator } from '../tools/calculator'
 import { startTttGame } from '../tools/games/tic-tac-toe'
 import { tttMove } from '../tools/games/tic-tac-toe'
 import { tttWinner } from '../tools/games/tic-tac-toe'
@@ -17,7 +16,6 @@ import { pickCard } from '../tools/pick-card'
  * Use this for type-safe tool access.
  */
 export const tools = {
-  calculator,
   startTttGame,
   tttMove,
   tttWinner,
@@ -34,7 +32,6 @@ export const toolList = Object.values(tools)
  * Union type of all tool names.
  */
 export type ToolName =
-  | 'calculator'
   | 'games_start_ttt_game'
   | 'games_ttt_move'
   | 'games_ttt_winner'

@@ -356,7 +356,7 @@ describe('discoverToolsInContent', () => {
         content,
         '/project/src/tools/my-tool.ts',
         '/project/src/tools',
-        resolveToolDiscoveryOptions({ exportFunctionName: 'defineTool' })
+        resolveToolDiscoveryOptions({ exportFunctionNames: ['defineTool'] })
       )
 
       expect(tools).toHaveLength(1)
@@ -608,7 +608,7 @@ describe('resolveToolDiscoveryOptions', () => {
     expect(options.dir).toBe('src/tools')
     expect(options.outFile).toBe('src/__generated__/tool-registry.gen.ts')
     expect(options.pattern).toBe('**/*.ts')
-    expect(options.exportFunctionName).toBe('createIsomorphicTool')
+    expect(options.exportFunctionNames).toEqual(['createTool', 'createIsomorphicTool'])
     expect(options.logLevel).toBe('normal')
   })
 
@@ -617,14 +617,14 @@ describe('resolveToolDiscoveryOptions', () => {
       dir: 'lib/tools',
       outFile: 'generated/registry.ts',
       pattern: '*.tool.ts',
-      exportFunctionName: 'defineTool',
+      exportFunctionNames: ['defineTool'],
       logLevel: 'verbose',
     })
 
     expect(options.dir).toBe('lib/tools')
     expect(options.outFile).toBe('generated/registry.ts')
     expect(options.pattern).toBe('*.tool.ts')
-    expect(options.exportFunctionName).toBe('defineTool')
+    expect(options.exportFunctionNames).toEqual(['defineTool'])
     expect(options.logLevel).toBe('verbose')
   })
 

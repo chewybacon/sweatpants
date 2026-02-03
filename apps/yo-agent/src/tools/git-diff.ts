@@ -3,7 +3,7 @@
  *
  * Shows changes between commits, working tree, etc. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { z } from 'zod'
 import { call } from 'effection'
 import { exec } from 'node:child_process'
@@ -11,7 +11,7 @@ import { promisify } from 'node:util'
 
 const execAsync = promisify(exec)
 
-export const gitDiff = createIsomorphicTool('git_diff')
+export const gitDiff = createTool('git_diff')
   .description('Show changes between commits, working tree, etc.')
   .parameters(
     z.object({
@@ -35,9 +35,7 @@ export const gitDiff = createIsomorphicTool('git_diff')
         .describe('Show diffstat instead of full diff'),
     })
   )
-  .context('headless')
-  .authority('server')
-  .server(function* (params) {
+  .execute(function* (params) {
     try {
       const args: string[] = ['git', 'diff']
 
@@ -91,4 +89,3 @@ export const gitDiff = createIsomorphicTool('git_diff')
       return { error: `Git diff failed: ${error}` }
     }
   })
-  .build()

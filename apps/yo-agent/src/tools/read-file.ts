@@ -3,13 +3,13 @@
  *
  * Reads the contents of a file. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { z } from 'zod'
 import { call } from 'effection'
 import * as fs from 'node:fs/promises'
 import * as path from 'node:path'
 
-export const readFile = createIsomorphicTool('read_file')
+export const readFile = createTool('read_file')
   .description('Read the contents of a file')
   .parameters(
     z.object({
@@ -21,9 +21,7 @@ export const readFile = createIsomorphicTool('read_file')
         .describe('Maximum number of lines to read'),
     })
   )
-  .context('headless')
-  .authority('server')
-  .server(function* (params) {
+  .execute(function* (params) {
     const filePath = path.resolve(process.cwd(), params.path)
 
     // Security: ensure path is within cwd
@@ -53,4 +51,3 @@ export const readFile = createIsomorphicTool('read_file')
       return { error: `Failed to read file: ${error}` }
     }
   })
-  .build()

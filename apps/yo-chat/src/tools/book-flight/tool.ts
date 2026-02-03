@@ -1,14 +1,14 @@
 /**
- * Book Flight Tool (MCP Plugin Pattern)
+ * Book Flight Tool (Unified Tool Pattern)
  *
- * Demonstrates the new MCP plugin tool pattern with:
+ * Demonstrates the unified tool pattern with:
  * - Server-side tool execution
  * - Client-side elicitation handlers with React UI
  * - Multi-step user interaction (flight selection, seat selection)
  * - LLM sampling for travel tips
  */
 import { z } from 'zod'
-import { createMcpTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { sleep } from 'effection'
 
 // =============================================================================
@@ -109,7 +109,7 @@ const SeatMapSchema = z.object({
 // TOOL DEFINITION
 // =============================================================================
 
-export const bookFlightTool = createMcpTool('book_flight')
+export const bookFlightTool = createTool('book_flight')
   .description('Book a flight for the user with interactive flight and seat selection')
   .parameters(
     z.object({
@@ -117,29 +117,13 @@ export const bookFlightTool = createMcpTool('book_flight')
       destination: z.string().describe('Destination city or airport code'),
     })
   )
-  .elicits({
-    pickFlight: {
-      response: z.object({
-        flightId: z.string().describe('Selected flight ID'),
-      }),
-      context: z.object({
-        flights: z.array(FlightSchema),
-      }),
-    },
-    pickSeat: {
-      response: z.object({
-        row: z.number().describe('Selected row number'),
-        seat: z.string().describe('Selected seat letter (A-F)'),
-      }),
-      context: z.object({
-        seatMap: SeatMapSchema,
-        flightInfo: z.object({
-          airline: z.string(),
-          flightNumber: z.string(),
-        }).optional(),
-      }),
-    },
-  })
+  .elicit('pickFlight', z.object({
+    flightId: z.string().describe('Selected flight ID'),
+  }))
+  .elicit('pickSeat', z.object({
+    row: z.number().describe('Selected row number'),
+    seat: z.string().describe('Selected seat letter (A-F)'),
+  }))
   .execute(function*(params, ctx) {
     // 1. Search for flights
     yield* ctx.notify('Searching for flights...', 0.1)

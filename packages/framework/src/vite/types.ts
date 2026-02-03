@@ -28,10 +28,10 @@ export interface ToolDiscoveryOptions {
   ignore?: string[]
 
   /**
-   * Function name to look for in exports.
-   * @default 'createIsomorphicTool'
+   * Function name(s) to look for in exports.
+   * @default ['createTool', 'createIsomorphicTool']
    */
-  exportFunctionName?: string
+  exportFunctionNames?: string | string[]
 
   /**
    * Log level for the plugin.
@@ -45,19 +45,25 @@ export interface ResolvedToolDiscoveryOptions {
   outFile: string
   pattern: string
   ignore: string[]
-  exportFunctionName: string
+  exportFunctionNames: string[]
   logLevel: 'silent' | 'normal' | 'verbose'
 }
 
 export function resolveToolDiscoveryOptions(
   options: ToolDiscoveryOptions = {}
 ): ResolvedToolDiscoveryOptions {
+  const defaultFunctionNames = ['createTool', 'createIsomorphicTool']
+  const userFunctionNames = options.exportFunctionNames
+  const exportFunctionNames = userFunctionNames
+    ? (Array.isArray(userFunctionNames) ? userFunctionNames : [userFunctionNames])
+    : defaultFunctionNames
+
   return {
     dir: options.dir ?? 'src/tools',
     outFile: options.outFile ?? 'src/__generated__/tool-registry.gen.ts',
     pattern: options.pattern ?? '**/*.ts',
     ignore: options.ignore ?? ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**'],
-    exportFunctionName: options.exportFunctionName ?? 'createIsomorphicTool',
+    exportFunctionNames,
     logLevel: options.logLevel ?? 'normal',
   }
 }

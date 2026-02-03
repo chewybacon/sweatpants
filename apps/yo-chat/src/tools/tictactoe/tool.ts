@@ -1,5 +1,5 @@
 /**
- * TicTacToe Tool (MCP Standard Sampling)
+ * TicTacToe Tool (Unified Tool Pattern)
  *
  * A single tool call that plays an entire tic-tac-toe game.
  * Uses ONLY standard MCP sampling (no structured output, no tool forcing).
@@ -16,7 +16,8 @@
  * progression through accumulated conversation history (elicit exchanges + samples).
  */
 import { z } from 'zod'
-import { createMcpTool, type ExtendedMessage } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/framework/chat/tools'
+import type { Message } from '@sweatpants/framework/chat/tools'
 import {
   type Board,
   type Player,
@@ -54,7 +55,7 @@ type GameMove = z.infer<typeof GameMoveSchema>
 // TOOL DEFINITION
 // =============================================================================
 
-export const tictactoeTool = createMcpTool('tictactoe')
+export const tictactoeTool = createTool('tictactoe')
   .description(
     `Play a complete game of tic-tac-toe against the user.
 
@@ -73,23 +74,9 @@ Board positions:
 6 | 7 | 8`
   )
   .parameters(z.object({}))
-  .elicits({
-    pickMove: {
-      response: z.object({
-        position: z.number().min(0).max(8).describe('Cell position user clicked'),
-      }),
-      context: z.object({
-        board: BoardSchema,
-        moveHistory: z.array(GameMoveSchema).describe('History of all moves'),
-        lastMove: LastMoveSchema.optional(),
-        winningLine: z.array(z.number()).optional(),
-        gameOver: z.boolean().optional(),
-        resultMessage: z.string().optional(),
-        modelSymbol: z.enum(['X', 'O']),
-        userSymbol: z.enum(['X', 'O']),
-      }),
-    },
-  })
+  .elicit('pickMove', z.object({
+    position: z.number().min(0).max(8).describe('Cell position user clicked'),
+  }))
   .handoff({
     /**
      * Phase 1: before()
@@ -129,9 +116,9 @@ Board positions:
 
       // Accumulate conversation history for model context
       // This enables the model to see the full game progression
-      const conversationHistory: ExtendedMessage[] = []
+      const conversationHistory: Message[] = []
 
-      yield* ctx.log('info', `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`)
+      ctx.log('info', `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`)
 
       // Game loop
       while (true) {
@@ -174,7 +161,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
             { role: 'assistant', content: response.text }
           )
 
-          yield* ctx.log('info', `Model response: "${response.text}"`)
+          ctx.log('info', `Model response: "${response.text}"`)
 
           // Parse the response - best effort regex for a digit
           const match = response.text.match(/\b([0-8])\b/)
@@ -184,20 +171,20 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
             const parsed = parseInt(match[1]!, 10)
             if (emptyPositions.includes(parsed)) {
               playedCell = parsed
-              yield* ctx.log('info', `Parsed valid move: ${playedCell}`)
+              ctx.log('info', `Parsed valid move: ${playedCell}`)
             } else {
               // Model picked an occupied cell - fallback to random
-              yield* ctx.log('warning', `Model chose occupied cell ${parsed}, falling back to random`)
+              ctx.log('warning', `Model chose occupied cell ${parsed}, falling back to random`)
               playedCell = emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!
             }
           } else {
             // Couldn't parse a number - fallback to random
-            yield* ctx.log('warning', `Could not parse move from "${response.text}", falling back to random`)
+            ctx.log('warning', `Could not parse move from "${response.text}", falling back to random`)
             playedCell = emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!
           }
 
           board = applyMove(board, playedCell, modelSymbol)
-          yield* ctx.log('info', `Model plays cell ${playedCell}`)
+          ctx.log('info', `Model plays cell ${playedCell}`)
 
           // Add model's move to history (no strategy - that's the point!)
           moveHistory.push({
@@ -234,22 +221,13 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
             }
           }
 
-          // Capture the elicit exchange with enriched arguments
-          // This adds the user's move to conversation history so the model
-          // can see the progression of user moves
-          const exchangeMsgs = result.exchange.withArguments((context) => ({
-            // Include human-readable board state for model context
-            // Cast context.board since Zod arrays don't infer as tuples
-            boardState: formatBoard(context.board as Board),
-            userSymbol: context.userSymbol,
-            userMove: result.content.position,
-            moveNumber: context.moveHistory.length + 1,
-          }))
-          conversationHistory.push(...exchangeMsgs)
+          // TODO: Exchange accumulation not yet supported in unified tools
+          // In the future, we can add conversation history tracking here
+          // to give the model context of the full game progression
 
           const userPosition = result.content.position
           board = applyMove(board, userPosition, userSymbol)
-          yield* ctx.log('info', `User plays cell ${userPosition}`)
+          ctx.log('info', `User plays cell ${userPosition}`)
 
           // Add user's move to history
           moveHistory.push({

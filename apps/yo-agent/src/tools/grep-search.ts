@@ -3,7 +3,7 @@
  *
  * Search file contents using regex patterns. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/framework/chat/tools'
 import { z } from 'zod'
 import { call } from 'effection'
 import fg from 'fast-glob'
@@ -16,7 +16,7 @@ export interface Match {
   content: string
 }
 
-export const grepSearch = createIsomorphicTool('grep_search')
+export const grepSearch = createTool('grep_search')
   .description('Search file contents for a pattern')
   .parameters(
     z.object({
@@ -42,9 +42,7 @@ export const grepSearch = createIsomorphicTool('grep_search')
         .describe('Whether the search should be case sensitive'),
     })
   )
-  .context('headless')
-  .authority('server')
-  .server(function* (params) {
+  .execute(function* (params) {
     const searchDir = params.cwd
       ? path.resolve(process.cwd(), params.cwd)
       : process.cwd()
@@ -117,4 +115,3 @@ export const grepSearch = createIsomorphicTool('grep_search')
       return { error: `Search failed: ${error}` }
     }
   })
-  .build()
