@@ -3,6 +3,19 @@ export * from "./types/index.ts";
 
 // Re-export transport utilities and types
 export {
+  // Unified factory
+  createTransport,
+  type TransportRole,
+  type TransportType,
+  type TransportConfig,
+  type WebSocketPrincipalConfig,
+  type WebSocketOperativeConfig,
+  type SSEPrincipalConfig,
+  type SSEOperativeConfig,
+  type WorkerPrincipalConfig,
+  type WorkerOperativeConfig,
+  type MemoryPairConfig,
+  // Individual constructors
   createTransportPair,
   createCorrelation,
   // Type guards and helpers
@@ -104,16 +117,27 @@ export {
 
 // Re-export worker transport utilities and types
 export {
-  // Host-side
+  // Host-side: Operative (handles requests from worker - most common)
+  createWorkerOperative,
+  type WorkerOperativeOptions,
+  type WorkerOperativeResult,
+  type WorkerRequestHandler,
+  type ForEachContext,
+  // Host-side: Principal (sends requests to worker)
   createWorkerPrincipal,
+  type WorkerPrincipalOptions,
+  type WorkerPrincipalResult,
+  type WorkerPrincipalTransport,
+  // Worker-side runners
+  runWorkerPrincipal,
+  runWorkerOperative,
+  type WorkerPrincipalHandler,
+  type WorkerOperativeHandler,
+  // Utilities
   generateRequestId,
   createSampleResponse,
   createElicitResponse,
-  type WorkerPrincipalOptions,
-  type WorkerPrincipalResult,
-  type WorkerRequestHandler,
-  type ForEachContext,
-  // Worker-side
+  // Deprecated (kept for backward compatibility)
   runToolWorker,
   runRequestHandler,
   type ToolWorkerHandler,

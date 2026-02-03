@@ -1,19 +1,23 @@
 /**
  * Worker-Side Runner Utilities
  *
- * Provides utilities for running tool handlers inside a web worker.
- * This module bridges the worker's message-based API to the tool context interface.
+ * Provides utilities for running handlers inside a web worker, supporting
+ * both principal and operative roles.
  *
- * ## Architecture
+ * ## Principal Role (runWorkerPrincipal)
  *
- * Uses @effectionx/worker's bidirectional communication:
- * - Worker SENDS requests via send.stream() and receives progress + response
- * - Host RECEIVES requests via worker.forEach() and sends progress via ctx.progress()
- *
- * This enables the tool session pattern where:
- * - Tool (in worker) sends sample/elicit requests to host
- * - Host processes requests and streams progress back
+ * Worker acts as principal - sends requests (sample/elicit) to host:
+ * - Worker sends requests via send.stream()
+ * - Host receives requests via worker.forEach()
+ * - Host sends progress via ctx.progress()
  * - Worker receives progress updates and final response
+ *
+ * ## Operative Role (runWorkerOperative)
+ *
+ * Worker acts as operative - handles requests from host:
+ * - Host sends requests via worker.send()
+ * - Worker receives requests via messages.forEach()
+ * - Worker processes and returns responses
  *
  * @packageDocumentation
  */
@@ -39,36 +43,54 @@ import type {
 // =============================================================================
 
 /**
- * Handler function that receives init data and context, returns tool result.
+ * Handler function for worker-as-principal mode.
+ * Receives init data and context, returns tool result.
  */
-export type ToolWorkerHandler<T = unknown> = (
+export type WorkerPrincipalHandler<T = unknown> = (
   initData: WorkerInitData,
   ctx: WorkerToolContext
 ) => Operation<T>;
 
+/**
+ * Handler function for worker-as-operative mode.
+ * Receives a request and returns a response.
+ */
+export type WorkerOperativeHandler = (
+  request: WorkerRequest
+) => Operation<WorkerResponse>;
+
+/**
+ * @deprecated Use `WorkerPrincipalHandler` instead.
+ */
+export type ToolWorkerHandler<T = unknown> = WorkerPrincipalHandler<T>;
+
 // =============================================================================
-// WORKER RUNNER
+// WORKER AS PRINCIPAL
 // =============================================================================
 
 /**
- * Run a tool handler inside a web worker.
+ * Run a worker as principal (sends requests to host).
+ *
+ * In this configuration:
+ * - Worker acts as principal (sends sample/elicit requests)
+ * - Host acts as operative (handles requests, returns responses)
+ *
+ * The handler receives:
+ * - initData: The initialization data passed from the host
+ * - ctx: A WorkerToolContext for sampling, eliciting, logging, and progress
  *
  * This function sets up bidirectional communication using @effectionx/worker:
  * - Tool sends requests (sample/elicit) via send.stream()
  * - Host sends progress via ctx.progress() (received as subscription values)
  * - Host returns response (received as subscription return value)
  *
- * The handler receives:
- * - initData: The initialization data passed from the host
- * - ctx: A WorkerToolContext for sampling, eliciting, logging, and progress
- *
  * @param handler - Function that executes the tool and returns its result
  */
-export async function runToolWorker<T = unknown>(
-  handler: ToolWorkerHandler<T>
+export async function runWorkerPrincipal<T = unknown>(
+  handler: WorkerPrincipalHandler<T>
 ): Promise<void> {
   // Type parameters for workerMain:
-  // TSend = never (host doesn't send requests to worker in our model)
+  // TSend = never (host doesn't send requests to worker in this model)
   // TRecv = never (worker doesn't respond to host requests)
   // TReturn = WorkerResult<T> (final result from worker)
   // TData = WorkerInitData (init data)
@@ -193,22 +215,22 @@ export async function runToolWorker<T = unknown>(
 }
 
 // =============================================================================
-// SIMPLE REQUEST HANDLER RUNNER
+// WORKER AS OPERATIVE
 // =============================================================================
 
 /**
- * Simpler runner for when the host drives the interaction.
+ * Run a worker as operative (handles requests from host).
  *
- * In this model:
- * - Host sends requests (like "execute tool step") via worker.send()
- * - Worker processes and returns responses
+ * In this configuration:
+ * - Host acts as principal (sends requests)
+ * - Worker acts as operative (handles requests, returns responses)
  *
- * This is useful for stateless tool execution where each request is independent.
+ * This is useful for stateless request handling where each request is independent.
  *
- * @param requestHandler - Function that handles incoming requests
+ * @param requestHandler - Function that handles incoming requests from the host
  */
-export async function runRequestHandler(
-  requestHandler: (request: WorkerRequest) => Operation<WorkerResponse>
+export async function runWorkerOperative(
+  requestHandler: WorkerOperativeHandler
 ): Promise<void> {
   await workerMain<WorkerRequest, WorkerResponse, WorkerResult<void>, WorkerInitData>(
     function* ({ messages }) {
@@ -232,3 +254,18 @@ export async function runRequestHandler(
     }
   );
 }
+
+// =============================================================================
+// DEPRECATED ALIASES
+// =============================================================================
+
+/**
+ * @deprecated Use `runWorkerPrincipal` instead. The worker sends requests
+ * to the host, making it the principal (not just a "tool worker").
+ */
+export const runToolWorker = runWorkerPrincipal;
+
+/**
+ * @deprecated Use `runWorkerOperative` instead.
+ */
+export const runRequestHandler = runWorkerOperative;
