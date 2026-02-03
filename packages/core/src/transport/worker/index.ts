@@ -5,6 +5,9 @@
  * Uses @effectionx/worker for lifecycle management and cross-environment
  * compatibility (browser and Node.js).
  *
+ * Returns standard `PrincipalTransport` / `OperativeTransport` interfaces
+ * that can be composed with `createCorrelation()` like other transports.
+ *
  * ## Architecture
  *
  * Supports two configurations based on which side acts as principal vs operative:
@@ -12,33 +15,14 @@
  * ### Worker as Principal (most common)
  *
  * Worker sends requests (sample/elicit), host handles them:
- * - Host: `createWorkerOperative()` - spawns worker, handles requests
+ * - Host: `createWorkerOperative()` - spawns worker, returns OperativeTransport
  * - Worker: `runWorkerPrincipal()` - sends requests, receives responses
- *
- * ```
- * Host (Operative)                    Worker (Principal)
- * ─────────────────────────────────────────────────────────
- *   │                                      │
- *   │ ◄──── send.stream(request) ──────── │ (worker initiates)
- *   │                                      │
- *   │ ───── ctx.progress(update) ───────► │ (with backpressure)
- *   │ ───── return response ────────────► │ (final value)
- * ```
  *
  * ### Host as Principal
  *
  * Host sends requests, worker handles them:
- * - Host: `createWorkerPrincipal()` - spawns worker, sends requests
+ * - Host: `createWorkerPrincipal()` - spawns worker, returns PrincipalTransport
  * - Worker: `runWorkerOperative()` - handles requests, returns responses
- *
- * ```
- * Host (Principal)                    Worker (Operative)
- * ─────────────────────────────────────────────────────────
- *   │                                      │
- *   │ ───── worker.send(request) ───────► │ (host initiates)
- *   │                                      │
- *   │ ◄──── return response ───────────── │ (final value)
- * ```
  *
  * Note: Progress streaming is only available when worker is principal.
  *
@@ -47,20 +31,27 @@
  * ```typescript
  * // Host side
  * import { createWorkerOperative } from "@sweatpants/core/transport/worker";
+ * import { each } from "effection";
  *
- * const { result } = yield* createWorkerOperative({
+ * const workerOp = yield* createWorkerOperative({
  *   workerUrl: "./tool-worker.js",
  *   initData: { toolName: "greet", params: { name: "Alice" }, sessionId: "123" },
- *   requestHandler: function* (request, ctx) {
- *     yield* ctx.progress({ type: "progress", message: "Processing..." });
- *     if (request.type === "sample") {
- *       return yield* callLLM(request);
- *     }
- *     // ...
+ * });
+ *
+ * // Access transport (standard OperativeTransport interface)
+ * const transport = workerOp.transport;
+ *
+ * // Handle requests via transport
+ * yield* spawn(function* () {
+ *   for (const request of yield* each(transport)) {
+ *     // Handle request, send response
+ *     yield* transport.send({ type: 'response', id: request.id, ... });
+ *     yield* each.next();
  *   }
  * });
  *
- * const toolResult = yield* result;
+ * // Await final result
+ * const toolResult = yield* workerOp;
  * ```
  *
  * ```typescript
@@ -129,8 +120,6 @@ export {
   createSampleResponse,
   createElicitResponse,
   type WorkerOperativeOptions,
-  type WorkerOperativeResult,
-  type WorkerRequestHandler,
   type ForEachContext,
 } from "./operative.ts";
 
@@ -138,9 +127,15 @@ export {
 export {
   createWorkerPrincipal,
   type WorkerPrincipalOptions,
-  type WorkerPrincipalResult,
   type WorkerPrincipalTransport,
 } from "./principal.ts";
+
+// Transport result types (from types.ts)
+export type {
+  WorkerOperativeResult,
+  WorkerPrincipalResult,
+  WorkerProgressData,
+} from "./types.ts";
 
 // Worker-side runners
 export {

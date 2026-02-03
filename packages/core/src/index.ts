@@ -121,13 +121,13 @@ export {
   createWorkerOperative,
   type WorkerOperativeOptions,
   type WorkerOperativeResult,
-  type WorkerRequestHandler,
   type ForEachContext,
   // Host-side: Principal (sends requests to worker)
   createWorkerPrincipal,
   type WorkerPrincipalOptions,
   type WorkerPrincipalResult,
   type WorkerPrincipalTransport,
+  type WorkerProgressData,
   // Worker-side runners
   runWorkerPrincipal,
   runWorkerOperative,
