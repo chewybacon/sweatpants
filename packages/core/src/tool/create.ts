@@ -127,7 +127,7 @@ export function createTool<
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               
               // Send request through transport and get response stream
-              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
+              const stream = transport.request<"elicit", ZodInfer<TProgress>>({
                 id: requestId,
                 kind: "elicit",
                 type: config.name,
@@ -270,7 +270,7 @@ function createToolWithBindings<
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               
               // Send request through transport and get response stream
-              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
+              const stream = transport.request<"elicit", ZodInfer<TProgress>>({
                 id: requestId,
                 kind: "elicit",
                 type: config.name,

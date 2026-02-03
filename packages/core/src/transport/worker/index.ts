@@ -92,9 +92,9 @@ export type {
 
 // Type guards
 export {
-  isProgressMessage,
-  isLogMessage,
-  isOutOfBandMessage,
+  isWorkerProgressMessage,
+  isWorkerLogMessage,
+  isWorkerOutOfBandMessage,
 } from "./types.ts";
 
 // Host-side transport

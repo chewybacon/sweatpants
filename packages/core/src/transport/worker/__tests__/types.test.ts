@@ -1,8 +1,8 @@
 import { describe, it, expect } from "@effectionx/vitest";
 import {
-  isProgressMessage,
-  isLogMessage,
-  isOutOfBandMessage,
+  isWorkerProgressMessage,
+  isWorkerLogMessage,
+  isWorkerOutOfBandMessage,
   type WorkerSampleRequest,
   type WorkerSampleResponse,
   type WorkerProgressMessage,
@@ -10,14 +10,14 @@ import {
 } from "../types.ts";
 
 describe("Worker Transport Type Guards", () => {
-  describe("isProgressMessage", () => {
+  describe("isWorkerProgressMessage", () => {
     it("should return true for progress messages", function* () {
       const msg: WorkerProgressMessage = {
         type: "progress",
         message: "Loading...",
         progress: 0.5,
       };
-      expect(isProgressMessage(msg)).toBe(true);
+      expect(isWorkerProgressMessage(msg)).toBe(true);
     });
 
     it("should return true for progress message without progress value", function* () {
@@ -25,7 +25,7 @@ describe("Worker Transport Type Guards", () => {
         type: "progress",
         message: "Processing",
       };
-      expect(isProgressMessage(msg)).toBe(true);
+      expect(isWorkerProgressMessage(msg)).toBe(true);
     });
 
     it("should return false for log messages", function* () {
@@ -34,32 +34,32 @@ describe("Worker Transport Type Guards", () => {
         level: "info",
         message: "Hello",
       };
-      expect(isProgressMessage(msg)).toBe(false);
+      expect(isWorkerProgressMessage(msg)).toBe(false);
     });
 
     it("should return false for null/undefined", function* () {
-      expect(isProgressMessage(null)).toBe(false);
-      expect(isProgressMessage(undefined)).toBe(false);
+      expect(isWorkerProgressMessage(null)).toBe(false);
+      expect(isWorkerProgressMessage(undefined)).toBe(false);
     });
 
     it("should return false for non-objects", function* () {
-      expect(isProgressMessage("progress")).toBe(false);
-      expect(isProgressMessage(123)).toBe(false);
+      expect(isWorkerProgressMessage("progress")).toBe(false);
+      expect(isWorkerProgressMessage(123)).toBe(false);
     });
 
     it("should return false for objects without type field", function* () {
-      expect(isProgressMessage({ message: "test" })).toBe(false);
+      expect(isWorkerProgressMessage({ message: "test" })).toBe(false);
     });
   });
 
-  describe("isLogMessage", () => {
+  describe("isWorkerLogMessage", () => {
     it("should return true for log messages", function* () {
       const msg: WorkerLogMessage = {
         type: "log",
         level: "info",
         message: "Test log",
       };
-      expect(isLogMessage(msg)).toBe(true);
+      expect(isWorkerLogMessage(msg)).toBe(true);
     });
 
     it("should return true for all log levels", function* () {
@@ -70,7 +70,7 @@ describe("Worker Transport Type Guards", () => {
           level,
           message: `${level} message`,
         };
-        expect(isLogMessage(msg)).toBe(true);
+        expect(isWorkerLogMessage(msg)).toBe(true);
       }
     });
 
@@ -79,22 +79,22 @@ describe("Worker Transport Type Guards", () => {
         type: "progress",
         message: "Loading...",
       };
-      expect(isLogMessage(msg)).toBe(false);
+      expect(isWorkerLogMessage(msg)).toBe(false);
     });
 
     it("should return false for null/undefined", function* () {
-      expect(isLogMessage(null)).toBe(false);
-      expect(isLogMessage(undefined)).toBe(false);
+      expect(isWorkerLogMessage(null)).toBe(false);
+      expect(isWorkerLogMessage(undefined)).toBe(false);
     });
   });
 
-  describe("isOutOfBandMessage", () => {
+  describe("isWorkerOutOfBandMessage", () => {
     it("should return true for progress messages", function* () {
       const msg: WorkerProgressMessage = {
         type: "progress",
         message: "Loading...",
       };
-      expect(isOutOfBandMessage(msg)).toBe(true);
+      expect(isWorkerOutOfBandMessage(msg)).toBe(true);
     });
 
     it("should return true for log messages", function* () {
@@ -103,7 +103,7 @@ describe("Worker Transport Type Guards", () => {
         level: "info",
         message: "Test",
       };
-      expect(isOutOfBandMessage(msg)).toBe(true);
+      expect(isWorkerOutOfBandMessage(msg)).toBe(true);
     });
 
     it("should return false for request messages", function* () {
@@ -112,7 +112,7 @@ describe("Worker Transport Type Guards", () => {
         type: "sample",
         messages: [{ role: "user", content: "Hello" }],
       };
-      expect(isOutOfBandMessage(request)).toBe(false);
+      expect(isWorkerOutOfBandMessage(request)).toBe(false);
     });
 
     it("should return false for response messages", function* () {
@@ -122,7 +122,7 @@ describe("Worker Transport Type Guards", () => {
         status: "accepted",
         text: "Hello back!",
       };
-      expect(isOutOfBandMessage(response)).toBe(false);
+      expect(isWorkerOutOfBandMessage(response)).toBe(false);
     });
   });
 });

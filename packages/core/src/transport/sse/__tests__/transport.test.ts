@@ -148,14 +148,15 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "accepted", content: {} },
-      });
+      } as const);
     });
 
     it("should receive progress events via stream", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -165,7 +166,7 @@ describe("SSE+POST Transport", () => {
       let result: IteratorResult<unknown, ElicitResponse>;
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
 
         // First progress
         result = yield* subscription.next();
@@ -385,6 +386,46 @@ describe("SSE+POST Transport", () => {
         id: "msg-1",
         response: { status: "cancelled" },
       });
+    });
+
+    it("should handle denied response", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+          id: "msg-1",
+          kind: "elicit",
+          type: "location",
+          payload: { accuracy: "high" },
+        });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({ status: "denied" });
+      });
+
+      yield* sleep(20);
+
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        response: { status: "denied" },
+      });
+    });
+  });
+
+  describe("Raw Transport (without correlation)", () => {
+    it("should send and receive raw messages", function* () {
+      const { principal } = yield* useSSETestServer();
+
+      const request: TransportRequest = {
+        id: "req-1",
+        kind: "elicit",
+        type: "test",
+        payload: {},
+      };
+
+      yield* principal.send(request);
+      // The message was sent successfully if no error is thrown
     });
   });
 });

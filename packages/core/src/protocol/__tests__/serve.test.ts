@@ -157,7 +157,7 @@ describe("serveProtocol", () => {
 
     yield* sleep(0);
 
-    const stream = correlated.request<{ step: number }, { status: "accepted"; content: { total: number } }>({
+    const stream = correlated.request<"elicit", { step: number }>({
       id: "req-1",
       kind: "elicit",
       type: "process",

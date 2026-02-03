@@ -77,9 +77,10 @@ describe("createTransportPair", () => {
   it("should send responses from operative to principal", function* () {
     const [principal, operative] = yield* createTransportPair();
 
-    const response: ResponseMessage = {
+    const response: ResponseMessage<"elicit"> = {
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "accepted", content: { lat: 40.7128, lng: -74.006 } },
     };
 
@@ -156,9 +157,10 @@ describe("createTransportPair", () => {
       data: { status: "user-viewing" },
     };
 
-    const response: ResponseMessage = {
+    const response: ResponseMessage<"elicit"> = {
       type: "response",
       id: "req-1",
+      kind: "elicit",
       response: { status: "accepted", content: true },
     };
 
@@ -207,5 +209,117 @@ describe("createTransportPair", () => {
 
     expect(principalReceived).toHaveLength(2);
     expect(principalReceived[1]).toEqual(response);
+  });
+
+  it("should send declined response from operative to principal", function* () {
+    const [principal, operative] = yield* createTransportPair();
+
+    const response: ResponseMessage<"elicit"> = {
+      type: "response",
+      id: "req-1",
+      kind: "elicit",
+      response: { status: "declined" },
+    };
+
+    const receivedMessages: PrincipalIncoming[] = [];
+
+    yield* spawn(function* () {
+      const sub = yield* principal;
+      const result = yield* sub.next();
+      if (!result.done) {
+        receivedMessages.push(result.value);
+      }
+    });
+
+    yield* sleep(0);
+    yield* operative.send(response);
+    yield* sleep(0);
+
+    expect(receivedMessages).toHaveLength(1);
+    expect(receivedMessages[0]).toEqual(response);
+  });
+
+  it("should send cancelled response from operative to principal", function* () {
+    const [principal, operative] = yield* createTransportPair();
+
+    const response: ResponseMessage<"elicit"> = {
+      type: "response",
+      id: "req-1",
+      kind: "elicit",
+      response: { status: "cancelled" },
+    };
+
+    const receivedMessages: PrincipalIncoming[] = [];
+
+    yield* spawn(function* () {
+      const sub = yield* principal;
+      const result = yield* sub.next();
+      if (!result.done) {
+        receivedMessages.push(result.value);
+      }
+    });
+
+    yield* sleep(0);
+    yield* operative.send(response);
+    yield* sleep(0);
+
+    expect(receivedMessages).toHaveLength(1);
+    expect(receivedMessages[0]).toEqual(response);
+  });
+
+  it("should send denied response from operative to principal", function* () {
+    const [principal, operative] = yield* createTransportPair();
+
+    const response: ResponseMessage<"elicit"> = {
+      type: "response",
+      id: "req-1",
+      kind: "elicit",
+      response: { status: "denied" },
+    };
+
+    const receivedMessages: PrincipalIncoming[] = [];
+
+    yield* spawn(function* () {
+      const sub = yield* principal;
+      const result = yield* sub.next();
+      if (!result.done) {
+        receivedMessages.push(result.value);
+      }
+    });
+
+    yield* sleep(0);
+    yield* operative.send(response);
+    yield* sleep(0);
+
+    expect(receivedMessages).toHaveLength(1);
+    expect(receivedMessages[0]).toEqual(response);
+  });
+
+  it("should send 'other' response from operative to principal", function* () {
+    const [principal, operative] = yield* createTransportPair();
+
+    const response: ResponseMessage<"elicit"> = {
+      type: "response",
+      id: "req-1",
+      kind: "elicit",
+      response: { status: "other", content: "What's the weather in Tokyo?" },
+    };
+
+    const receivedMessages: PrincipalIncoming[] = [];
+
+    yield* spawn(function* () {
+      const sub = yield* principal;
+      const result = yield* sub.next();
+      if (!result.done) {
+        receivedMessages.push(result.value);
+      }
+    });
+
+    yield* sleep(0);
+    yield* operative.send(response);
+    yield* sleep(0);
+
+    expect(receivedMessages).toHaveLength(1);
+    expect(receivedMessages[0]).toEqual(response);
   });
 });

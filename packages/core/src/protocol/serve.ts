@@ -5,6 +5,7 @@ import type {
   TransportRequest,
   ProgressMessage,
   ResponseMessage,
+  RequestKind,
 } from "../types/transport.ts";
 
 /**
@@ -52,20 +53,22 @@ export function* serveProtocol<M extends Methods>(
 function* handleRequest<M extends Methods>(
   handle: Handle<M>,
   transport: OperativeTransport,
-  request: TransportRequest,
+  request: TransportRequest<RequestKind>,
 ): Operation<void> {
-  const { id, type, payload } = request;
+  const { id, kind, type, payload } = request;
 
   try {
     // Check if method exists on the protocol
     if (!(type in handle.protocol.methods)) {
-      const response: ResponseMessage = {
+      const response: ResponseMessage<typeof kind> = {
         type: "response",
         id,
+        kind,
         response: {
           status: "other",
           content: `Unknown method: ${type}`,
-        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any, // Response shape depends on kind, but error is consistent
       };
       yield* transport.send(response);
       return;
@@ -99,24 +102,28 @@ function* handleRequest<M extends Methods>(
     }
 
     // Send final response
-    const response: ResponseMessage = {
+    const response: ResponseMessage<typeof kind> = {
       type: "response",
       id,
+      kind,
       response: {
         status: "accepted",
         content: streamResult.value,
-      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any, // Response shape depends on kind
     };
     yield* transport.send(response);
   } catch (error) {
     // Send error response
-    const response: ResponseMessage = {
+    const response: ResponseMessage<typeof kind> = {
       type: "response",
       id,
+      kind,
       response: {
         status: "other",
         content: error instanceof Error ? error.message : String(error),
-      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any, // Response shape depends on kind, but error is consistent
     };
     yield* transport.send(response);
   }

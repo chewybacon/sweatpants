@@ -2,7 +2,7 @@ import { createApi } from "effection/experimental";
 import type { Operation, Subscription } from "effection";
 import type { ZodSchema } from "zod";
 import { TransportContext } from "../context/transport.ts";
-import type { ElicitResponse, NotifyResponse } from "../types/transport.ts";
+import type { ElicitResponse, NotifyResponse, SampleResponse } from "../types/transport.ts";
 import type {
   ElicitOptions,
   ElicitResult,
@@ -64,7 +64,7 @@ export const SweatpantsApi = createApi("sweatpants", {
     const transport = yield* TransportContext.expect();
     const requestId = generateId("elicit");
 
-    const stream = transport.request<unknown, ElicitResponse>({
+    const stream = transport.request<"elicit">({
       id: requestId,
       kind: "elicit",
       type: options.type,
@@ -115,7 +115,7 @@ export const SweatpantsApi = createApi("sweatpants", {
     const transport = yield* TransportContext.expect();
     const requestId = generateId("notify");
 
-    const stream = transport.request<unknown, NotifyResponse>({
+    const stream = transport.request<"notify">({
       id: requestId,
       kind: "notify",
       type: "notification",
@@ -156,10 +156,10 @@ export const SweatpantsApi = createApi("sweatpants", {
     const transport = yield* TransportContext.expect();
     const requestId = generateId("sample");
 
-    const stream = transport.request<unknown, ElicitResponse>({
+    const stream = transport.request<"sample">({
       id: requestId,
-      kind: "elicit",
-      type: "sample",
+      kind: "sample",
+      type: "llm",
       payload: {
         prompt: options.prompt,
         maxTokens: options.maxTokens,
@@ -170,7 +170,7 @@ export const SweatpantsApi = createApi("sweatpants", {
       },
     });
 
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream;
+    const subscription: Subscription<unknown, SampleResponse> = yield* stream;
 
     // Consume until done
     let result = yield* subscription.next();
@@ -182,14 +182,10 @@ export const SweatpantsApi = createApi("sweatpants", {
 
     if (response.status === "accepted") {
       return response.content as SampleResult;
-    } else if (response.status === "declined") {
-      throw new Error("Sample request was declined");
     } else if (response.status === "cancelled") {
       throw new Error("Sample request was cancelled");
-    } else if (response.status === "denied") {
-      throw new Error("Sample request was denied");
-    } else if (response.status === "other") {
-      throw new Error(`Sample request failed: ${response.content}`);
+    } else if (response.status === "error") {
+      throw new Error(`Sample request failed: ${response.error}`);
     }
 
     throw new Error("Unexpected sample response status");

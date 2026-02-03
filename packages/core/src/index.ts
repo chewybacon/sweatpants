@@ -5,6 +5,14 @@ export * from "./types/index.ts";
 export {
   createTransportPair,
   createCorrelation,
+  // Type guards and helpers
+  isProgressMessage,
+  isResponseMessage,
+  isElicitResponse,
+  isNotifyResponse,
+  isSampleResponse,
+  createResponseMessage,
+  // Types
   type Transport,
   type PrincipalTransport,
   type OperativeTransport,
@@ -17,6 +25,11 @@ export {
   type OperativeOutgoing,
   type InterruptMessage,
   type CorrelatedTransport,
+  type RequestKind,
+  type ResponseByKind,
+  type SampleResponse,
+  type ElicitResponse,
+  type NotifyResponse,
 } from "./transport/index.ts";
 
 // Re-export tool utilities and types
@@ -131,7 +144,7 @@ export {
   type WorkerToolCall,
   type WorkerToolContext,
   // Type guards
-  isProgressMessage,
-  isLogMessage,
-  isOutOfBandMessage,
+  isWorkerProgressMessage,
+  isWorkerLogMessage,
+  isWorkerOutOfBandMessage,
 } from "./transport/worker/index.ts";
