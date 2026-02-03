@@ -190,7 +190,7 @@ export function createTransport(
  * This unified factory delegates to the appropriate transport-specific
  * constructor based on the `type` and `role` fields.
  */
-export function* createTransport<T = unknown>(
+export function createTransport<T = unknown>(
   config: TransportConfig
 ): Operation<
   | PrincipalTransport
@@ -202,9 +202,9 @@ export function* createTransport<T = unknown>(
   switch (config.type) {
     case "websocket":
       if (config.role === "principal") {
-        return yield* createWebSocketPrincipal(config.url);
+        return createWebSocketPrincipal(config.url);
       } else {
-        return yield* createWebSocketOperative(config.url);
+        return createWebSocketOperative(config.url);
       }
 
     case "sse":
@@ -216,7 +216,7 @@ export function* createTransport<T = unknown>(
         if (config.fetch !== undefined) {
           sseOptions.fetch = config.fetch;
         }
-        return yield* createSSEPrincipal(sseOptions);
+        return createSSEPrincipal(sseOptions);
       } else {
         const sseOptions: SSEOperativeOptions = {
           sseUrl: config.sseUrl,
@@ -225,19 +225,19 @@ export function* createTransport<T = unknown>(
         if (config.fetch !== undefined) {
           sseOptions.fetch = config.fetch;
         }
-        return yield* createSSEOperative(sseOptions);
+        return createSSEOperative(sseOptions);
       }
 
     case "worker":
       if (config.role === "principal") {
         const { type: _type, role: _role, ...workerOptions } = config;
-        return yield* createWorkerPrincipal<T>(workerOptions);
+        return createWorkerPrincipal<T>(workerOptions);
       } else {
         const { type: _type, role: _role, ...workerOptions } = config;
-        return yield* createWorkerOperative<T>(workerOptions);
+        return createWorkerOperative<T>(workerOptions);
       }
 
     case "memory":
-      return yield* createTransportPair();
+      return createTransportPair();
   }
 }
