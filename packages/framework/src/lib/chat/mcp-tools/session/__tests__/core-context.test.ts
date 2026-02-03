@@ -6,7 +6,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { run, spawn, sleep, createChannel, type Channel } from 'effection'
 import { TransportContext } from '@sweatpants/core'
-import type { CorrelatedTransport, ElicitResponse, NotifyResponse } from '@sweatpants/core'
+import type { CorrelatedTransport, ElicitResponse, NotifyResponse, SampleResponse } from '@sweatpants/core'
 import { z } from 'zod'
 import {
   createContextFromTransport,
@@ -14,6 +14,9 @@ import {
 } from '../core-context.ts'
 
 describe('Core-Based MCP Tool Context', () => {
+  /** Union of all possible responses */
+  type AnyResponse = ElicitResponse | NotifyResponse | SampleResponse
+
   /**
    * Create a mock CorrelatedTransport for testing.
    * Returns the transport and a way to respond to requests.
@@ -24,11 +27,11 @@ describe('Core-Based MCP Tool Context', () => {
       kind: string
       type: string
       payload: unknown
-      respond: (response: ElicitResponse | NotifyResponse) => void
+      respond: (response: AnyResponse) => void
     }> = []
 
     const transport: CorrelatedTransport = {
-      request<TProgress, TResponse extends ElicitResponse | NotifyResponse>(message: {
+      request<TProgress, TResponse extends AnyResponse>(message: {
         id: string
         kind: string
         type: string
@@ -94,7 +97,7 @@ describe('Core-Based MCP Tool Context', () => {
       // Wait for request to be made
       await sleep(10)
       expect(requests.length).toBe(1)
-      expect(requests[0].kind).toBe('elicit')
+      expect(requests[0].kind).toBe('sample')
       expect(requests[0].type).toBe('sample')
       expect((requests[0].payload as { messages: unknown[] }).messages).toEqual([
         { role: 'user', content: 'Tell me a joke' },

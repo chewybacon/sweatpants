@@ -21,7 +21,7 @@
  *
  * ## Communication Model
  *
- * Uses @sweatpants/core's createWorkerPrincipal which handles:
+ * Uses @sweatpants/core's createWorkerOperative which handles:
  * - Worker lifecycle (spawn, cleanup on scope exit)
  * - Bidirectional communication (worker sends requests, host responds)
  * - Final result collection
@@ -38,7 +38,7 @@ import {
   spawn,
 } from 'effection'
 import {
-  createWorkerPrincipal,
+  createWorkerOperative,
   type WorkerRequest,
   type WorkerResponse,
   type WorkerResult,
@@ -196,10 +196,11 @@ export function createWorkerToolSession(
       ...(parentMessages !== undefined && { parentMessages }),
     }
 
-    // Create the worker using core's createWorkerPrincipal
-    const { result: workerResult } = yield* createWorkerPrincipal<unknown>({
+    // Create the worker using core's createWorkerOperative
+    // (host acts as operative, handling requests from the worker which acts as principal)
+    const { result: workerResult } = yield* createWorkerOperative<unknown>({
       workerUrl,
-      initData: initData as unknown as Parameters<typeof createWorkerPrincipal>[0]['initData'],
+      initData: initData as unknown as Parameters<typeof createWorkerOperative>[0]['initData'],
       requestHandler: function* (request: WorkerRequest, ctx: ForEachContext<WorkerProgressMessage>): Operation<WorkerResponse> {
         const requestId = request.id
 

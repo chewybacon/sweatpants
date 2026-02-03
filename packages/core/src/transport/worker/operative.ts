@@ -1,22 +1,22 @@
 /**
- * Host-Side Worker Transport
+ * Worker Transport - Operative Side (Host)
  *
- * Implements the host (main thread) side of the web worker transport using
- * @effectionx/worker. This creates a CorrelatedTransport that tools can use
- * unchanged.
+ * When the host acts as the operative, it handles requests from the worker.
+ * The worker (principal) sends sample/elicit requests, and the host (operative)
+ * processes them and returns responses.
  *
  * ## Architecture
  *
  * Uses @effectionx/worker's bidirectional communication:
- * - Worker sends requests via send.stream() (sample/elicit)
- * - Host receives requests via worker.forEach() 
- * - Host sends progress via ctx.progress()
- * - Host returns response from the forEach handler
+ * - Worker (principal) sends requests via send.stream()
+ * - Host (operative) receives requests via worker.forEach()
+ * - Host (operative) sends progress via ctx.progress()
+ * - Host (operative) returns response from the forEach handler
  *
  * ## Usage
  *
  * ```typescript
- * const { transport, result } = yield* createWorkerPrincipal({
+ * const { result } = yield* createWorkerOperative({
  *   workerUrl: "./tool-worker.js",
  *   initData: { toolName: "greet", params: { name: "Alice" }, sessionId: "123" },
  *   requestHandler: function* (request, ctx) {
@@ -32,7 +32,7 @@
  *   }
  * });
  *
- * // Wait for final result
+ * // Wait for final result from worker
  * const toolResult = yield* result;
  * ```
  *
@@ -73,9 +73,9 @@ export type WorkerRequestHandler = (
 ) => Operation<WorkerResponse>;
 
 /**
- * Options for creating a worker principal transport.
+ * Options for creating a worker operative (host handles requests from worker).
  */
-export interface WorkerPrincipalOptions {
+export interface WorkerOperativeOptions {
   /**
    * URL or path to the worker script.
    * Must be a module worker (type: "module").
@@ -89,15 +89,15 @@ export interface WorkerPrincipalOptions {
 
   /**
    * Handler for processing requests from the worker.
-   * This is called for each sample/elicit request.
+   * This is called for each sample/elicit request the worker sends.
    */
   requestHandler: WorkerRequestHandler;
 }
 
 /**
- * Result of creating a worker principal.
+ * Result of creating a worker operative.
  */
-export interface WorkerPrincipalResult<T = unknown> {
+export interface WorkerOperativeResult<T = unknown> {
   /**
    * Operation that yields the final result from the worker.
    * Await this to get the tool's return value.
@@ -110,7 +110,11 @@ export interface WorkerPrincipalResult<T = unknown> {
 // =============================================================================
 
 /**
- * Create a worker principal transport using @effectionx/worker.
+ * Create a worker operative transport (host handles requests from worker).
+ *
+ * In this configuration:
+ * - Worker acts as principal (sends sample/elicit requests)
+ * - Host acts as operative (handles requests, returns responses)
  *
  * This function:
  * 1. Spawns a web worker with the given URL and init data
@@ -119,14 +123,14 @@ export interface WorkerPrincipalResult<T = unknown> {
  * 4. Returns an operation for the final result
  *
  * @param options - Worker configuration including request handler
- * @returns WorkerPrincipalResult with result operation
+ * @returns WorkerOperativeResult with result operation
  */
-export function* createWorkerPrincipal<T = unknown>(
-  options: WorkerPrincipalOptions
-): Operation<WorkerPrincipalResult<T>> {
+export function* createWorkerOperative<T = unknown>(
+  options: WorkerOperativeOptions
+): Operation<WorkerOperativeResult<T>> {
   const { workerUrl, initData, requestHandler } = options;
 
-  return yield* resource<WorkerPrincipalResult<T>>(function* (provide) {
+  return yield* resource<WorkerOperativeResult<T>>(function* (provide) {
     // Create the worker using @effectionx/worker
     // Type parameters:
     // TSend = never (host doesn't send requests via worker.send() in our model)
@@ -254,3 +258,12 @@ export function createElicitResponse(
     status: options.status,
   };
 }
+
+// =============================================================================
+// DEPRECATED ALIASES
+// =============================================================================
+// Note: The old `createWorkerPrincipal` that was in host.ts is now `createWorkerOperative`.
+// The new `createWorkerPrincipal` in principal.ts is for host-sends-requests mode.
+// For backward compatibility, consumers using the old API should update to:
+//   createWorkerPrincipal (old host.ts) -> createWorkerOperative
+//   runToolWorker -> runWorkerPrincipal

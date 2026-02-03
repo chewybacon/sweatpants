@@ -31,3 +31,18 @@ export {
 // Core utilities
 export { createTransportPair } from "./pair.ts";
 export { createCorrelation, type CorrelatedTransport } from "./correlation.ts";
+
+// Unified factory
+export {
+  createTransport,
+  type TransportRole,
+  type TransportType,
+  type TransportConfig,
+  type WebSocketPrincipalConfig,
+  type WebSocketOperativeConfig,
+  type SSEPrincipalConfig,
+  type SSEOperativeConfig,
+  type WorkerPrincipalConfig,
+  type WorkerOperativeConfig,
+  type MemoryPairConfig,
+} from "./factory.ts";
