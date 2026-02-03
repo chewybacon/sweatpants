@@ -86,7 +86,7 @@ describe("WebSocket Transport", () => {
     it("should send messages via WebSocket", function* () {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -95,7 +95,7 @@ describe("WebSocket Transport", () => {
 
       // Start consuming the stream (this triggers the send)
       yield* spawn(function* () {
-        const subscription = yield* correlated.request(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
       });
@@ -106,6 +106,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "accepted", content: {} },
       });
     });
@@ -113,7 +114,7 @@ describe("WebSocket Transport", () => {
     it("should receive progress events via stream", function* () {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -123,7 +124,7 @@ describe("WebSocket Transport", () => {
       let result: IteratorResult<unknown, ElicitResponse>;
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
 
         // First progress
         result = yield* subscription.next();
@@ -167,6 +168,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: {
           status: "accepted",
           content: { lat: 40.7128, lng: -74.006 },
@@ -177,7 +179,7 @@ describe("WebSocket Transport", () => {
     it("should close stream with final response", function* () {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -185,7 +187,7 @@ describe("WebSocket Transport", () => {
       };
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
 
         // Final response (no progress)
         const result = yield* subscription.next();
@@ -201,6 +203,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: {
           status: "accepted",
           content: { lat: 40.7128, lng: -74.006 },
@@ -214,7 +217,7 @@ describe("WebSocket Transport", () => {
       const responses: Record<string, ElicitResponse | undefined> = {};
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "location",
@@ -228,7 +231,7 @@ describe("WebSocket Transport", () => {
       });
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-2",
           kind: "elicit",
           type: "clipboard-read",
@@ -247,12 +250,14 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-2",
+        kind: "elicit",
         response: { status: "accepted", content: { text: "Hello clipboard" } },
       });
 
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "denied" },
       });
 
@@ -269,7 +274,7 @@ describe("WebSocket Transport", () => {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "confirmation",
@@ -285,6 +290,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "declined" },
       });
     });
@@ -293,7 +299,7 @@ describe("WebSocket Transport", () => {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "flight-selection",
@@ -312,6 +318,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: {
           status: "other",
           content: "Actually, what's the weather like in Tokyo?",
@@ -323,7 +330,7 @@ describe("WebSocket Transport", () => {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "form",
@@ -339,6 +346,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "cancelled" },
       });
     });
@@ -347,7 +355,7 @@ describe("WebSocket Transport", () => {
       const { correlated, operative } = yield* useWebSocketTestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "location",
@@ -363,6 +371,7 @@ describe("WebSocket Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "denied" },
       });
     });
@@ -372,7 +381,7 @@ describe("WebSocket Transport", () => {
     it("should send and receive raw messages", function* () {
       const { principal } = yield* useWebSocketTestServer();
 
-      const request: TransportRequest = {
+      const request: TransportRequest<"elicit"> = {
         id: "req-1",
         kind: "elicit",
         type: "test",
