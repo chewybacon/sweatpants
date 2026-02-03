@@ -7,33 +7,40 @@
  *
  * ## Architecture
  *
- * Uses @effectionx/worker's bidirectional communication:
- * - Worker (principal) sends requests via send.stream()
- * - Host (operative) receives requests via worker.forEach()
- * - Host (operative) sends progress via ctx.progress()
- * - Host (operative) returns response from the forEach handler
+ * Returns a standard `OperativeTransport` that bridges @effectionx/worker's
+ * callback pattern to the channel-based Transport interface:
+ * - Iterator yields incoming `TransportRequest` from the worker
+ * - `send()` routes `ProgressMessage` to `ctx.progress()` and `ResponseMessage` to forEach return
  *
  * ## Usage
  *
  * ```typescript
- * const { result } = yield* createWorkerOperative({
+ * const workerOp = yield* createWorkerOperative({
  *   workerUrl: "./tool-worker.js",
  *   initData: { toolName: "greet", params: { name: "Alice" }, sessionId: "123" },
- *   requestHandler: function* (request, ctx) {
- *     // Send progress updates
- *     yield* ctx.progress({ type: "progress", message: "Processing..." });
- *     
- *     // Handle the request and return response
- *     if (request.type === "sample") {
- *       const response = yield* callLLM(request);
- *       return response;
+ * });
+ *
+ * // Access transport for messaging (standard interface)
+ * const transport = workerOp.transport;
+ *
+ * // Handle requests
+ * yield* spawn(function* () {
+ *   for (const request of yield* each(transport)) {
+ *     if (request.kind === 'sample') {
+ *       const response = yield* handleSample(request);
+ *       yield* transport.send({
+ *         type: 'response',
+ *         id: request.id,
+ *         kind: 'sample',
+ *         response: { status: 'accepted', content: result },
+ *       });
  *     }
- *     // ... handle other request types
+ *     yield* each.next();
  *   }
  * });
  *
- * // Wait for final result from worker
- * const toolResult = yield* result;
+ * // Await final result from worker
+ * const toolResult = yield* workerOp;
  * ```
  *
  * @packageDocumentation
@@ -42,15 +49,28 @@
 import {
   resource,
   spawn,
+  createChannel,
   type Operation,
+  type Channel,
+  type Subscription,
 } from "effection";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
+import type {
+  OperativeTransport,
+  OperativeIncoming,
+  OperativeOutgoing,
+  TransportRequest,
+  ResponseMessage,
+  RequestKind,
+} from "../../types/transport.ts";
+import { isProgressMessage, isResponseMessage } from "../../types/transport.ts";
 import type {
   WorkerRequest,
   WorkerResponse,
   WorkerResult,
   WorkerInitData,
   WorkerProgressMessage,
+  WorkerOperativeResult,
 } from "./types.ts";
 
 // Re-define ForEachContext locally since TypeScript has trouble resolving it
@@ -62,15 +82,6 @@ export interface ForEachContext<TProgress> {
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
-
-/**
- * Handler function for processing worker requests.
- * Receives the request and a context for sending progress updates.
- */
-export type WorkerRequestHandler = (
-  request: WorkerRequest,
-  ctx: ForEachContext<WorkerProgressMessage>
-) => Operation<WorkerResponse>;
 
 /**
  * Options for creating a worker operative (host handles requests from worker).
@@ -86,23 +97,6 @@ export interface WorkerOperativeOptions {
    * Initialization data passed to the worker.
    */
   initData: WorkerInitData;
-
-  /**
-   * Handler for processing requests from the worker.
-   * This is called for each sample/elicit request the worker sends.
-   */
-  requestHandler: WorkerRequestHandler;
-}
-
-/**
- * Result of creating a worker operative.
- */
-export interface WorkerOperativeResult<T = unknown> {
-  /**
-   * Operation that yields the final result from the worker.
-   * Await this to get the tool's return value.
-   */
-  result: Operation<WorkerResult<T>>;
 }
 
 // =============================================================================
@@ -114,29 +108,22 @@ export interface WorkerOperativeResult<T = unknown> {
  *
  * In this configuration:
  * - Worker acts as principal (sends sample/elicit requests)
- * - Host acts as operative (handles requests, returns responses)
+ * - Host acts as operative (handles requests via transport interface)
  *
- * This function:
- * 1. Spawns a web worker with the given URL and init data
- * 2. Uses worker.forEach() to handle requests from the worker
- * 3. Calls the requestHandler for each request, allowing progress updates
- * 4. Returns an operation for the final result
+ * Returns an object that is both:
+ * - Has a `transport` property (standard OperativeTransport interface)
+ * - Is an Operation that yields the final WorkerResult<T> when awaited
  *
- * @param options - Worker configuration including request handler
- * @returns WorkerOperativeResult with result operation
+ * @param options - Worker configuration
+ * @returns WorkerOperativeResult with transport and result via [Symbol.iterator]
  */
 export function* createWorkerOperative<T = unknown>(
   options: WorkerOperativeOptions
 ): Operation<WorkerOperativeResult<T>> {
-  const { workerUrl, initData, requestHandler } = options;
+  const { workerUrl, initData } = options;
 
   return yield* resource<WorkerOperativeResult<T>>(function* (provide) {
     // Create the worker using @effectionx/worker
-    // Type parameters:
-    // TSend = never (host doesn't send requests via worker.send() in our model)
-    // TRecv = never (host doesn't receive responses to its sends)
-    // TReturn = WorkerResult<T> (final return value from worker)
-    // TData = WorkerInitData (init data)
     const worker: WorkerResource<never, never, WorkerResult<T>> =
       yield* useWorker<never, never, WorkerResult<T>, WorkerInitData>(
         workerUrl,
@@ -146,34 +133,161 @@ export function* createWorkerOperative<T = unknown>(
         }
       );
 
-    // Spawn the forEach handler to process worker requests
-    // This runs in the background and handles all requests from the worker
+    // Channel for incoming requests (from worker to host)
+    const incomingChannel: Channel<OperativeIncoming, void> =
+      createChannel<OperativeIncoming, void>();
+
+    // Map request ID -> { ctx, responseChannel }
+    // Used to bridge send() calls back to the forEach callback
+    const pendingRequests = new Map<
+      string,
+      {
+        ctx: ForEachContext<WorkerProgressMessage>;
+        responseChannel: Channel<ResponseMessage<RequestKind>, void>;
+      }
+    >();
+
+    // Spawn the forEach handler to bridge callback pattern to channel pattern
     yield* spawn(function* () {
-      // Use worker.forEach with the progress-enabled signature
-      // WRequest = WorkerRequest (what worker sends)
-      // WResponse = WorkerResponse (what we send back)
-      // WProgress = WorkerProgressMessage (progress updates)
-      yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
-        function* (request, ctx) {
-          // Call the user-provided request handler
-          return yield* requestHandler(request, ctx);
-        }
-      );
+      try {
+        yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
+          function* (workerRequest, ctx) {
+            // Create response channel for this request
+            const responseChannel = createChannel<ResponseMessage<RequestKind>, void>();
+            pendingRequests.set(workerRequest.id, { ctx, responseChannel });
+
+            // Convert WorkerRequest to TransportRequest and put in incoming channel
+            const transportRequest: TransportRequest<RequestKind> = {
+              id: workerRequest.id,
+              kind: workerRequest.type as RequestKind, // "sample" | "elicit"
+              type: workerRequest.type,
+              payload: workerRequest,
+            };
+            yield* incomingChannel.send(transportRequest);
+
+            // Wait for response via send()
+            const responseSub: Subscription<ResponseMessage<RequestKind>, void> =
+              yield* responseChannel;
+            const result = yield* responseSub.next();
+
+            // Clean up
+            pendingRequests.delete(workerRequest.id);
+
+            if (result.done) {
+              // Channel closed without response - shouldn't happen
+              throw new Error(`No response received for request ${workerRequest.id}`);
+            }
+
+            // Convert ResponseMessage back to WorkerResponse
+            const responseMessage = result.value;
+            return toWorkerResponse(workerRequest.id, responseMessage);
+          }
+        );
+      } finally {
+        // Worker forEach completed, close incoming channel
+        yield* incomingChannel.close();
+      }
     });
 
-    // Create result operation wrapper
-    const resultOperation: Operation<WorkerResult<T>> = {
+    // Get subscription from incoming channel
+    const subscription: Subscription<OperativeIncoming, void> =
+      yield* incomingChannel;
+
+    // Build the transport
+    const transport: OperativeTransport = {
       *[Symbol.iterator]() {
-        // Yield the worker's final result
+        return subscription;
+      },
+
+      *send(message: OperativeOutgoing): Operation<void> {
+        if (isProgressMessage(message)) {
+          // Route progress to ctx.progress()
+          const pending = pendingRequests.get(message.id);
+          if (pending) {
+            const messageStr = typeof message.data === "string" 
+              ? message.data 
+              : (message.data as { message?: string })?.message ?? "";
+            const progressValue = (message.data as { progress?: number })?.progress;
+            
+            const progressData: WorkerProgressMessage = {
+              type: "progress",
+              message: messageStr,
+            };
+            
+            // Only add progress if defined (exactOptionalPropertyTypes)
+            if (progressValue !== undefined) {
+              progressData.progress = progressValue;
+            }
+            
+            yield* pending.ctx.progress(progressData);
+          }
+        } else if (isResponseMessage(message)) {
+          // Route response to responseChannel to unblock forEach callback
+          const pending = pendingRequests.get(message.id);
+          if (pending) {
+            yield* pending.responseChannel.send(message);
+          }
+        }
+      },
+    };
+
+    // Create result object that is also an Operation
+    const result: WorkerOperativeResult<T> = {
+      transport,
+      *[Symbol.iterator]() {
         return yield* worker;
       },
     };
 
-    // Provide the result operation
-    yield* provide({
-      result: resultOperation,
-    });
+    yield* provide(result);
   });
+}
+
+// =============================================================================
+// HELPERS
+// =============================================================================
+
+/**
+ * Convert ResponseMessage to WorkerResponse.
+ */
+function toWorkerResponse(id: string, message: ResponseMessage<RequestKind>): WorkerResponse {
+  if (message.kind === "sample") {
+    const response = message.response as { status: string; content?: unknown };
+    if (response.status === "accepted") {
+      const content = response.content as {
+        text?: string;
+        model?: string;
+        stopReason?: string;
+        parsed?: unknown;
+        parseError?: { message: string; rawText: string };
+        toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+      };
+      return {
+        id,
+        type: "sample",
+        status: "accepted",
+        text: content?.text ?? "",
+        ...(content?.model !== undefined && { model: content.model }),
+        ...(content?.stopReason !== undefined && { stopReason: content.stopReason }),
+        ...(content?.parsed !== undefined && { parsed: content.parsed }),
+        ...(content?.parseError !== undefined && { parseError: content.parseError }),
+        ...(content?.toolCalls !== undefined && { toolCalls: content.toolCalls }),
+      };
+    }
+  }
+  
+  if (message.kind === "elicit") {
+    const response = message.response as { status: string; content?: unknown };
+    return {
+      id,
+      type: "elicit",
+      status: response.status as "accepted" | "declined" | "cancelled",
+      ...(response.status === "accepted" && { content: response.content }),
+    };
+  }
+
+  // Fallback - shouldn't happen with proper typing
+  throw new Error(`Unknown response kind: ${message.kind}`);
 }
 
 // =============================================================================
@@ -214,7 +328,6 @@ export function createSampleResponse(
     text: options.text,
   };
   
-  // Only add optional properties if they are defined (for exactOptionalPropertyTypes)
   if (options.model !== undefined) {
     (response as { model?: string }).model = options.model;
   }
@@ -258,12 +371,3 @@ export function createElicitResponse(
     status: options.status,
   };
 }
-
-// =============================================================================
-// DEPRECATED ALIASES
-// =============================================================================
-// Note: The old `createWorkerPrincipal` that was in host.ts is now `createWorkerOperative`.
-// The new `createWorkerPrincipal` in principal.ts is for host-sends-requests mode.
-// For backward compatibility, consumers using the old API should update to:
-//   createWorkerPrincipal (old host.ts) -> createWorkerOperative
-//   runToolWorker -> runWorkerPrincipal

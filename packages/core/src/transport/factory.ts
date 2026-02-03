@@ -53,13 +53,15 @@ import { createSSEOperative, type SSEOperativeOptions } from "./sse/operative.ts
 import {
   createWorkerPrincipal,
   type WorkerPrincipalOptions,
-  type WorkerPrincipalResult,
 } from "./worker/principal.ts";
 import {
   createWorkerOperative,
   type WorkerOperativeOptions,
-  type WorkerOperativeResult,
 } from "./worker/operative.ts";
+import type {
+  WorkerPrincipalResult,
+  WorkerOperativeResult,
+} from "./worker/types.ts";
 import { createTransportPair } from "./pair.ts";
 
 // =============================================================================

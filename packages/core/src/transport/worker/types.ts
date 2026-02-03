@@ -32,6 +32,10 @@
  */
 
 import type { Operation } from "effection";
+import type { 
+  PrincipalTransport, 
+  OperativeTransport,
+} from "../../types/transport.ts";
 
 // =============================================================================
 // REQUEST/RESPONSE MESSAGES (via worker.send())
@@ -387,3 +391,64 @@ export function isWorkerLogMessage(msg: unknown): msg is WorkerLogMessage {
 export function isWorkerOutOfBandMessage(msg: unknown): msg is WorkerOutOfBandMessage {
   return isWorkerProgressMessage(msg) || isWorkerLogMessage(msg);
 }
+
+// =============================================================================
+// TRANSPORT RESULT TYPES
+// =============================================================================
+
+/**
+ * Progress data sent via the transport.
+ * Used with core ProgressMessage<WorkerProgressData>.
+ */
+export interface WorkerProgressData {
+  /** Human-readable progress message */
+  message: string;
+  /** Optional progress value 0-1 */
+  progress?: number;
+}
+
+/**
+ * Result of creating a worker operative transport.
+ * 
+ * This is both:
+ * - An object with a `transport` property (standard OperativeTransport interface)
+ * - An Operation that yields the final WorkerResult<T> when awaited
+ * 
+ * @example
+ * ```typescript
+ * const workerOp = yield* createWorkerOperative({ ... });
+ * 
+ * // Access transport for messaging
+ * const transport = workerOp.transport;
+ * 
+ * // Await final result
+ * const result = yield* workerOp;
+ * ```
+ */
+export type WorkerOperativeResult<T = unknown> = Operation<WorkerResult<T>> & {
+  /** Standard operative transport interface */
+  transport: OperativeTransport;
+};
+
+/**
+ * Result of creating a worker principal transport.
+ * 
+ * This is both:
+ * - An object with a `transport` property (standard PrincipalTransport interface)
+ * - An Operation that yields the final WorkerResult<T> when awaited
+ * 
+ * @example
+ * ```typescript
+ * const workerOp = yield* createWorkerPrincipal({ ... });
+ * 
+ * // Access transport for messaging
+ * const transport = workerOp.transport;
+ * 
+ * // Await final result
+ * const result = yield* workerOp;
+ * ```
+ */
+export type WorkerPrincipalResult<T = unknown> = Operation<WorkerResult<T>> & {
+  /** Standard principal transport interface */
+  transport: PrincipalTransport;
+};

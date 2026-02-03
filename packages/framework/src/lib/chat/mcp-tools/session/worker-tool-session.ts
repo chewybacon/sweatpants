@@ -21,7 +21,8 @@
  *
  * ## Communication Model
  *
- * Uses @sweatpants/core's createWorkerOperative which handles:
+ * Uses @sweatpants/core's createWorkerOperative which provides:
+ * - Standard OperativeTransport interface for message passing
  * - Worker lifecycle (spawn, cleanup on scope exit)
  * - Bidirectional communication (worker sends requests, host responds)
  * - Final result collection
@@ -36,15 +37,20 @@ import {
   resource,
   createChannel,
   spawn,
+  each,
 } from 'effection'
 import {
   createWorkerOperative,
   type WorkerRequest,
   type WorkerResponse,
   type WorkerResult,
-  type WorkerProgressMessage,
-  type ForEachContext,
+  type WorkerOperativeResult,
 } from '@sweatpants/core/transport/worker'
+import type {
+  OperativeTransport,
+  TransportRequest,
+  RequestKind,
+} from '@sweatpants/core'
 import type {
   ToolSession,
   ToolSessionStatus,
@@ -80,39 +86,33 @@ export interface WorkerToolSessionOptions {
  * Handler for sample requests from the worker.
  * Called when the worker tool calls ctx.sample().
  */
-export type SampleRequestHandler = (
-  request: {
-    sampleId: string
-    messages: Message[]
-    systemPrompt?: string
-    maxTokens?: number
-    tools?: Array<{ name: string; description?: string; inputSchema: Record<string, unknown> }>
-    toolChoice?: 'auto' | 'none' | 'required' | { type: 'tool'; name: string }
-    schema?: Record<string, unknown>
-  },
-  ctx: ForEachContext<WorkerProgressMessage>
-) => Operation<RawSampleResult>
+export type SampleRequestHandler = (request: {
+  sampleId: string
+  messages: Message[]
+  systemPrompt?: string
+  maxTokens?: number
+  tools?: Array<{ name: string; description?: string; inputSchema: Record<string, unknown> }>
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'tool'; name: string }
+  schema?: Record<string, unknown>
+}) => Operation<RawSampleResult>
 
 /**
  * Handler for elicit requests from the worker.
  * Called when the worker tool calls ctx.elicit().
  */
-export type ElicitRequestHandler = (
-  request: {
-    elicitId: string
-    key: string
-    message: string
-    schema: Record<string, unknown>
-  },
-  ctx: ForEachContext<WorkerProgressMessage>
-) => Operation<RawElicitResult<unknown>>
+export type ElicitRequestHandler = (request: {
+  elicitId: string
+  key: string
+  message: string
+  schema: Record<string, unknown>
+}) => Operation<RawElicitResult<unknown>>
 
 /**
  * Create a ToolSession backed by a web worker.
  *
  * This resource:
  * 1. Spawns a worker with the tool to execute
- * 2. Handles requests from the worker (sample/elicit) via callbacks
+ * 2. Handles requests from the worker (sample/elicit) via the transport interface
  * 3. Exposes the ToolSession interface for the host to interact
  *
  * @param options - Session configuration
@@ -136,13 +136,19 @@ export function createWorkerToolSession(
     // Channel for streaming events to subscribers
     const eventChannel = createChannel<ToolSessionEvent, void>()
 
-    // Pending requests (for respondToSample/respondToElicit)
-    const pendingSamples = new Map<string, {
-      resolve: (response: RawSampleResult) => void
-    }>()
-    const pendingElicits = new Map<string, {
-      resolve: (response: RawElicitResult<unknown>) => void
-    }>()
+    // Pending requests (for respondToSample/respondToElicit - backward compat)
+    const pendingSamples = new Map<
+      string,
+      {
+        resolve: (response: RawSampleResult) => void
+      }
+    >()
+    const pendingElicits = new Map<
+      string,
+      {
+        resolve: (response: RawElicitResult<unknown>) => void
+      }
+    >()
 
     // Helper to emit events
     // Using a more permissive input type to avoid TypeScript's excess property checking issues
@@ -197,148 +203,205 @@ export function createWorkerToolSession(
     }
 
     // Create the worker using core's createWorkerOperative
-    // (host acts as operative, handling requests from the worker which acts as principal)
-    const { result: workerResult } = yield* createWorkerOperative<unknown>({
+    // Returns an object with transport (OperativeTransport) and [Symbol.iterator] for result
+    const workerOp: WorkerOperativeResult<unknown> = yield* createWorkerOperative<unknown>({
       workerUrl,
       initData: initData as unknown as Parameters<typeof createWorkerOperative>[0]['initData'],
-      requestHandler: function* (request: WorkerRequest, ctx: ForEachContext<WorkerProgressMessage>): Operation<WorkerResponse> {
-        const requestId = request.id
-
-        if (request.type === 'sample') {
-          const sampleId = requestId
-
-          // Emit sample request event
-          yield* emitEvent({
-            type: 'sample_request',
-            sampleId,
-            messages: request.messages.map(m => ({
-              role: m.role,
-              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-            })),
-            ...(request.systemPrompt !== undefined && { systemPrompt: request.systemPrompt }),
-            ...(request.maxTokens !== undefined && { maxTokens: request.maxTokens }),
-            ...(request.tools !== undefined && { tools: request.tools }),
-            ...(request.toolChoice !== undefined && { toolChoice: request.toolChoice }),
-            ...(request.schema !== undefined && { schema: request.schema }),
-          })
-
-          // Call the sample handler (this may call respondToSample later)
-          const rawResult = yield* onSampleRequest(
-            {
-              sampleId,
-              messages: request.messages.map(m => ({
-                role: m.role,
-                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-              })),
-              ...(request.systemPrompt !== undefined && { systemPrompt: request.systemPrompt }),
-              ...(request.maxTokens !== undefined && { maxTokens: request.maxTokens }),
-              ...(request.tools !== undefined && { tools: request.tools }),
-              ...(request.toolChoice !== undefined && { toolChoice: request.toolChoice }),
-              ...(request.schema !== undefined && { schema: request.schema }),
-            },
-            ctx
-          )
-
-          // Mark as running again
-          status = 'running'
-
-          // Build response
-          const response: WorkerResponse = {
-            id: requestId,
-            type: 'sample',
-            status: 'accepted',
-            text: rawResult.text,
-            ...(rawResult.model !== undefined && { model: rawResult.model }),
-            ...(rawResult.stopReason !== undefined && { stopReason: rawResult.stopReason }),
-            ...('parsed' in rawResult && rawResult.parsed !== undefined && { parsed: rawResult.parsed }),
-            ...('parseError' in rawResult && rawResult.parseError !== undefined && { parseError: rawResult.parseError }),
-            ...('toolCalls' in rawResult && rawResult.toolCalls !== undefined && { toolCalls: rawResult.toolCalls }),
-          }
-
-          return response
-        }
-
-        if (request.type === 'elicit') {
-          const elicitId = requestId
-
-          // Emit elicit request event
-          yield* emitEvent({
-            type: 'elicit_request',
-            elicitId,
-            key: request.key,
-            message: request.message,
-            schema: request.schema,
-          })
-
-          // Call the elicit handler
-          const rawResult = yield* onElicitRequest(
-            {
-              elicitId,
-              key: request.key,
-              message: request.message,
-              schema: request.schema,
-            },
-            ctx
-          )
-
-          // Mark as running again
-          status = 'running'
-
-          // Map action to status
-          const responseStatus = rawResult.action === 'accept' ? 'accepted'
-            : rawResult.action === 'decline' ? 'declined'
-            : 'cancelled'
-
-          // Build response
-          const response: WorkerResponse = {
-            id: requestId,
-            type: 'elicit',
-            status: responseStatus,
-            ...(rawResult.action === 'accept' && { content: rawResult.content }),
-          }
-
-          return response
-        }
-
-        throw new Error(`Unknown request type: ${(request as WorkerRequest).type}`)
-      },
     })
+
+    // Get the transport interface
+    const transport: OperativeTransport = workerOp.transport
 
     // Mark as running
     status = 'running'
 
+    // Spawn a task to handle requests from the worker via the transport
+    yield* spawn(function* () {
+      for (const request of yield* each(transport)) {
+        // Extract the actual worker request from the transport request payload
+        const transportRequest = request as TransportRequest<RequestKind>
+        const workerRequest = transportRequest.payload as WorkerRequest
+        const requestId = transportRequest.id
+
+        try {
+          if (workerRequest.type === 'sample') {
+            const sampleId = requestId
+
+            // Emit sample request event
+            yield* emitEvent({
+              type: 'sample_request',
+              sampleId,
+              messages: workerRequest.messages.map((m) => ({
+                role: m.role,
+                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+              })),
+              ...(workerRequest.systemPrompt !== undefined && {
+                systemPrompt: workerRequest.systemPrompt,
+              }),
+              ...(workerRequest.maxTokens !== undefined && { maxTokens: workerRequest.maxTokens }),
+              ...(workerRequest.tools !== undefined && { tools: workerRequest.tools }),
+              ...(workerRequest.toolChoice !== undefined && { toolChoice: workerRequest.toolChoice }),
+              ...(workerRequest.schema !== undefined && { schema: workerRequest.schema }),
+            })
+
+            // Call the sample handler
+            const rawResult = yield* onSampleRequest({
+              sampleId,
+              messages: workerRequest.messages.map((m) => ({
+                role: m.role,
+                content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+              })),
+              ...(workerRequest.systemPrompt !== undefined && {
+                systemPrompt: workerRequest.systemPrompt,
+              }),
+              ...(workerRequest.maxTokens !== undefined && { maxTokens: workerRequest.maxTokens }),
+              ...(workerRequest.tools !== undefined && { tools: workerRequest.tools }),
+              ...(workerRequest.toolChoice !== undefined && { toolChoice: workerRequest.toolChoice }),
+              ...(workerRequest.schema !== undefined && { schema: workerRequest.schema }),
+            })
+
+            // Mark as running again
+            status = 'running'
+
+            // Build response
+            const response: WorkerResponse = {
+              id: requestId,
+              type: 'sample',
+              status: 'accepted',
+              text: rawResult.text,
+              ...(rawResult.model !== undefined && { model: rawResult.model }),
+              ...(rawResult.stopReason !== undefined && { stopReason: rawResult.stopReason }),
+              ...('parsed' in rawResult &&
+                rawResult.parsed !== undefined && { parsed: rawResult.parsed }),
+              ...('parseError' in rawResult &&
+                rawResult.parseError !== undefined && { parseError: rawResult.parseError }),
+              ...('toolCalls' in rawResult &&
+                rawResult.toolCalls !== undefined && { toolCalls: rawResult.toolCalls }),
+            }
+
+            // Send response back via transport
+            yield* transport.send({
+              type: 'response',
+              id: requestId,
+              kind: 'sample',
+              response: {
+                status: 'accepted',
+                content: {
+                  text: response.text,
+                  model: response.model,
+                  stopReason: response.stopReason,
+                  parsed: (response as { parsed?: unknown }).parsed,
+                  parseError: (response as { parseError?: { message: string; rawText: string } })
+                    .parseError,
+                  toolCalls: (
+                    response as {
+                      toolCalls?: Array<{
+                        id: string
+                        name: string
+                        arguments: Record<string, unknown>
+                      }>
+                    }
+                  ).toolCalls,
+                },
+              },
+            })
+          } else if (workerRequest.type === 'elicit') {
+            const elicitId = requestId
+
+            // Emit elicit request event
+            yield* emitEvent({
+              type: 'elicit_request',
+              elicitId,
+              key: workerRequest.key,
+              message: workerRequest.message,
+              schema: workerRequest.schema,
+            })
+
+            // Call the elicit handler
+            const rawResult = yield* onElicitRequest({
+              elicitId,
+              key: workerRequest.key,
+              message: workerRequest.message,
+              schema: workerRequest.schema,
+            })
+
+            // Mark as running again
+            status = 'running'
+
+            // Send response back via transport (use rawResult.action for type narrowing)
+            if (rawResult.action === 'accept') {
+              yield* transport.send({
+                type: 'response',
+                id: requestId,
+                kind: 'elicit',
+                response: {
+                  status: 'accepted',
+                  content: rawResult.content,
+                },
+              })
+            } else if (rawResult.action === 'decline') {
+              yield* transport.send({
+                type: 'response',
+                id: requestId,
+                kind: 'elicit',
+                response: {
+                  status: 'declined',
+                },
+              })
+            } else {
+              yield* transport.send({
+                type: 'response',
+                id: requestId,
+                kind: 'elicit',
+                response: {
+                  status: 'cancelled',
+                },
+              })
+            }
+          } else {
+            throw new Error(`Unknown request type: ${(workerRequest as WorkerRequest).type}`)
+          }
+        } catch (error) {
+          // Log error but continue processing other requests
+          console.error('Error handling worker request:', error)
+        }
+
+        yield* each.next()
+      }
+    })
+
     // Spawn a task to wait for the worker result
     yield* spawn(function* () {
       try {
-        const result: WorkerResult<unknown> = yield* workerResult
+        const result: WorkerResult<unknown> = yield* workerOp
 
-          if (result.type === 'success') {
-            yield* emitEvent({
-              type: 'result',
-              result: result.value,
-            })
-          } else if (result.type === 'error') {
-            yield* emitEvent({
-              type: 'error',
-              name: result.error.name,
-              message: result.error.message,
-              ...(result.error.stack !== undefined && { stack: result.error.stack }),
-            })
-          } else if (result.type === 'cancelled') {
-            yield* emitEvent({
-              type: 'cancelled',
-              ...(result.reason !== undefined && { reason: result.reason }),
-            })
-          }
-        } catch (error) {
-          const err = error as Error
+        if (result.type === 'success') {
+          yield* emitEvent({
+            type: 'result',
+            result: result.value,
+          })
+        } else if (result.type === 'error') {
           yield* emitEvent({
             type: 'error',
-            name: err.name,
-            message: err.message,
-            ...(err.stack !== undefined && { stack: err.stack }),
+            name: result.error.name,
+            message: result.error.message,
+            ...(result.error.stack !== undefined && { stack: result.error.stack }),
           })
-        } finally {
+        } else if (result.type === 'cancelled') {
+          yield* emitEvent({
+            type: 'cancelled',
+            ...(result.reason !== undefined && { reason: result.reason }),
+          })
+        }
+      } catch (error) {
+        const err = error as Error
+        yield* emitEvent({
+          type: 'error',
+          name: err.name,
+          message: err.message,
+          ...(err.stack !== undefined && { stack: err.stack }),
+        })
+      } finally {
         yield* eventChannel.close()
       }
     })
