@@ -13,8 +13,6 @@ import {
   type CorrelatedTransport,
   type TransportRequest,
   type NotifyResponse,
-  type RequestKind,
-  type ResponseByKind,
 } from '@sweatpants/core'
 import type { ServerToolContext } from '../isomorphic-tools/types.ts'
 import type { ClientToolProgressPatch } from '../patches/tool.ts'
@@ -87,6 +85,16 @@ function createFrameworkTransport(config: FrameworkBridgeConfig): CorrelatedTran
           throw new Error(
             `Core tool elicit() not yet supported in framework bridge. ` +
             `Tool: ${message.type}, Request ID: ${message.id}`
+          )
+        }
+
+        if (message.kind === 'sample') {
+          // Sample requires LLM integration - will be implemented when framework
+          // provides a unified LLM sampling API that core tools can use
+          throw new Error(
+            `Core tool sample() not yet supported in framework bridge. ` +
+            `Use the framework's native sampling API instead. ` +
+            `Request ID: ${message.id}`
           )
         }
 
