@@ -2,7 +2,7 @@
  * Core Tool Adapter
  *
  * Adapts @sweatpants/core tools to work with the framework's isomorphic tool system.
- * Core tools are wrapped to appear as server-authority isomorphic tools.
+ * Core tools are wrapped to appear as server-first isomorphic tools.
  */
 import type { Operation } from 'effection'
 import type { ZodSchema } from 'zod'
@@ -21,7 +21,7 @@ import { withFrameworkTransport } from './framework-transport.ts'
  */
 export type CoreToolFactory = {
   (...args: unknown[]): Operation<unknown>
-  decorate: (...args: unknown[]) => Operation<void>
+  decorate: (middleware: unknown) => Operation<void>
   withContext: <T>(context: unknown, value: T) => CoreToolFactory
   readonly name: string
   readonly description: string
@@ -65,7 +65,7 @@ export function isCoreToolFactory(value: unknown): value is CoreToolFactory {
  * This adapter:
  * - Maps core tool's `input` schema to isomorphic tool's `parameters`
  * - Sets up FrameworkTransport so core's `notify()` calls emit patches
- * - Produces a server-authority isomorphic tool (core tools run on server)
+ * - Produces a server-first isomorphic tool (core tools run on server)
  * - Sets contextMode to 'headless' since core tools don't need browser APIs
  *
  * @param coreToolFactory - A core tool factory from `createTool()`
@@ -76,7 +76,6 @@ export function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTo
     name: coreToolFactory.name,
     description: coreToolFactory.description,
     parameters: coreToolFactory.schemas.input,
-    authority: 'server',
     contextMode: 'headless',
 
     /**

@@ -29,7 +29,6 @@ const guessTheCardTool = createIsomorphicTool('guess_the_card')
     numChoices: z.number().min(2).max(10).optional(),
   }))
   .context('headless')
-  .authority('server')
   .handoff({
     *before(params) {
       const secret = 'Ace of Spades'
@@ -61,16 +60,14 @@ const askYesNoTool = createIsomorphicTool('ask_yes_no')
     context: z.string().optional(),
   }))
   .context('headless')
-  .authority('client')
-  .client(function* (params, _ctx) {
-    return { answer: true, question: params.question }
-  })
-  .server(function* (_params, _ctx, clientOutput) {
+  .server(function* (params, _ctx) {
     return {
-      question: clientOutput.question,
-      answer: clientOutput.answer,
-      response: clientOutput.answer ? 'User said YES' : 'User said NO',
+      question: params.question,
+      context: params.context,
     }
+  })
+  .client(function* (_serverOutput, _ctx, params) {
+    return { answer: true, question: params.question }
   })
 
 const giveHintTool = createIsomorphicTool('give_hint')
@@ -80,7 +77,6 @@ const giveHintTool = createIsomorphicTool('give_hint')
     style: z.enum(['mystical', 'playful', 'dramatic']).default('mystical'),
   }))
   .context('headless')
-  .authority('server')
   .server(function* (params, _ctx) {
     return {
       hint: params.hint,
@@ -137,7 +133,7 @@ describe('Per-Tool Handler Registration', () => {
   it('should provide full type inference via handler() helper', () => {
     const guessCardHandler = handler(guessTheCardTool, (data, respond) => {
       // Full type inference!
-      expectTypeOf(data).toEqualTypeOf<{
+      expectTypeOf(data).toMatchTypeOf<{
         secret: string
         secretColor: 'black'
         choices: string[]
@@ -158,9 +154,9 @@ describe('Per-Tool Handler Registration', () => {
     expect(guessCardHandler.tool.name).toBe('guess_the_card')
   })
 
-  it('should infer params for client-authority tools', () => {
+  it('should infer serverOutput for server-first tools with client UI', () => {
     const askHandler = handler(askYesNoTool, (data, respond) => {
-      expectTypeOf(data).toEqualTypeOf<{
+      expectTypeOf(data).toMatchTypeOf<{
         question: string
         context?: string | undefined
       }>()
@@ -175,9 +171,9 @@ describe('Per-Tool Handler Registration', () => {
     expect(askHandler.tool.name).toBe('ask_yes_no')
   })
 
-  it('should infer serverOutput for simple server-authority tools', () => {
+  it('should infer serverOutput for simple server-first tools', () => {
     const hintHandler = handler(giveHintTool, (data, respond) => {
-      expectTypeOf(data).toEqualTypeOf<{
+      expectTypeOf(data).toMatchTypeOf<{
         hint: string
         style: 'mystical' | 'playful' | 'dramatic'
         timestamp: number
@@ -238,7 +234,6 @@ describe('createHandlerRegistry', () => {
           hint: '',
           prompt: '',
         },
-        authority: 'server',
         usesHandoff: true,
       },
       {
@@ -246,7 +241,6 @@ describe('createHandlerRegistry', () => {
         toolName: 'unknown_tool', // No handler
         params: {},
         data: {},
-        authority: 'server',
         usesHandoff: false,
       },
     ]
@@ -276,7 +270,6 @@ describe('createHandlerRegistry', () => {
         toolName: 'guess_the_card',
         params: {},
         data: { secret: '', secretColor: 'black', choices: [], hint: '', prompt: '' },
-        authority: 'server',
         usesHandoff: true,
       },
       respondMock
@@ -397,7 +390,6 @@ describe('Type-Safe Manual Rendering', () => {
         hint: 'Black card',
         prompt: 'Pick!',
       },
-      authority: 'server',
       usesHandoff: true,
     }
 

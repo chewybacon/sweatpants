@@ -39,7 +39,6 @@ export const gitLog = createIsomorphicTool('git_log')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* (params) {
     try {
       const fileArg = params.file ? ` -- "${params.file}"` : ''

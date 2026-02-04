@@ -359,7 +359,6 @@ export function createPluginSessionManager(
                       description: tool.description ?? '',
                       parameters: tool.inputSchema as Record<string, unknown>,
                       isIsomorphic: true as const,
-                      authority: 'server' as const, // Sampling tools run server-side
                     }))
                     
                     // Pass through toolChoice if specified

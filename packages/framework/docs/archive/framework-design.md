@@ -234,7 +234,6 @@ export const pickCard = createIsomorphicTool('pick_card')
     count: z.number().min(2).max(10).default(5),
   }))
   .context('browser')      // Requires UI interaction
-  .authority('server')     // Server executes first
   .handoff({
     // Phase 1: Server draws cards (runs once)
     *before(params) {
@@ -287,12 +286,12 @@ See: `apps/yo-chat/src/__generated__/tool-registry.gen.ts`
 
 ### Tool Categories
 
-| Type | Authority | Context | Example |
+| Type | Execution | Context | Example |
 |------|-----------|---------|---------|
-| Server-only | server | headless | calculator, search |
-| Server with handoff | server | browser | pick_card, tic-tac-toe |
-| Agent tool | server | agent | sentiment analyzer |
-| Client-authority | client | browser | file_picker |
+| Server-only | server-first | headless | calculator, search |
+| Server with handoff | server-first | browser | pick_card, tic-tac-toe |
+| Agent tool | server-first | agent | sentiment analyzer |
+| Client-first (deprecated) | client-first | browser | file_picker |
 
 See [isomorphic-tools.md](./isomorphic-tools.md) for detailed patterns.
 

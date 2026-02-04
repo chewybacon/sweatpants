@@ -32,7 +32,7 @@ const myTool = createIsomorphicTool('my_tool')
   .description('...')
   .parameters(z.object({ ... }))
   .context('browser')
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) {
       return { /* handoff data */ }

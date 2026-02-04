@@ -62,7 +62,6 @@ export interface ToolSchema {
   description: string
   parameters: Record<string, unknown>
   isIsomorphic?: boolean
-  authority?: 'server' | 'client'
 }
 
 /**
@@ -72,7 +71,6 @@ export interface IsomorphicTool {
   name: string
   description: string
   parameters: ZodType<unknown>
-  authority?: 'server' | 'client'
   server?: (params: unknown, ctx: unknown) => Operation<unknown>
   client?: (input: unknown, ctx: unknown, params: unknown) => Operation<unknown>
 }

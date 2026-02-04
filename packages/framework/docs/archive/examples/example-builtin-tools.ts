@@ -20,18 +20,19 @@ import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tool
 /**
  * Calculator tool - performs basic arithmetic calculations.
  * 
- * This is a server-only tool (headless context, server authority).
+ * This is a server-only tool (headless context, server-first).
  */
-export const calculatorTool = createIsomorphicTool('calculator')
-  .description('Perform basic arithmetic calculations')
-  .parameters(
-    z.object({
-      expression: z.string().describe('A mathematical expression, e.g. "2 + 2"'),
-    })
-  )
-  .context('headless')
-  .authority('server')
-  .server(function* ({ expression }: { expression: string }) {
+export const calculatorTool = (
+  createIsomorphicTool('calculator')
+    .description('Perform basic arithmetic calculations')
+    .parameters(
+      z.object({
+        expression: z.string().describe('A mathematical expression, e.g. "2 + 2"'),
+      })
+    )
+    .context('headless') as any
+)
+  .server(function* ({ expression }: { expression: string }, _ctx) {
     try {
       // Only allow safe characters
       if (!/^[\d\s+\-*/().]+$/.test(expression)) {
@@ -52,16 +53,17 @@ export const calculatorTool = createIsomorphicTool('calculator')
  * 
  * This is a server-only tool that simulates async work.
  */
-export const searchTool = createIsomorphicTool('search')
-  .description('Search for information on a topic')
-  .parameters(
-    z.object({
-      query: z.string().describe('The search query'),
-    })
-  )
-  .context('headless')
-  .authority('server')
-  .server(function* ({ query }: { query: string }) {
+export const searchTool = (
+  createIsomorphicTool('search')
+    .description('Search for information on a topic')
+    .parameters(
+      z.object({
+        query: z.string().describe('The search query'),
+      })
+    )
+    .context('headless') as any
+)
+  .server(function* ({ query }: { query: string }, _ctx) {
     // Simulate API latency
     yield* sleep(300)
     return {
@@ -85,20 +87,24 @@ export const searchTool = createIsomorphicTool('search')
  * 
  * This is a server-only tool with optional parameters.
  */
-export const getWeatherTool = createIsomorphicTool('get_weather')
-  .description('Get the current weather for a location')
-  .parameters(
-    z.object({
-      location: z.string().describe('The city name, e.g. "San Francisco"'),
-      unit: z
-        .enum(['celsius', 'fahrenheit'])
-        .optional()
-        .describe('Temperature unit'),
-    })
-  )
-  .context('headless')
-  .authority('server')
-  .server(function* ({ location, unit }: { location: string; unit?: 'celsius' | 'fahrenheit' | undefined }) {
+export const getWeatherTool = (
+  createIsomorphicTool('get_weather')
+    .description('Get the current weather for a location')
+    .parameters(
+      z.object({
+        location: z.string().describe('The city name, e.g. "San Francisco"'),
+        unit: z
+          .enum(['celsius', 'fahrenheit'])
+          .optional()
+          .describe('Temperature unit'),
+      })
+    )
+    .context('headless') as any
+)
+  .server(function* (
+    { location, unit }: { location: string; unit?: 'celsius' | 'fahrenheit' | undefined },
+    _ctx
+  ) {
     // Simulate API latency
     yield* sleep(500)
     

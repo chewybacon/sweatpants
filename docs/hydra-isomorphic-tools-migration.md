@@ -168,14 +168,9 @@ for (const tc of result.toolCalls) {
     // Handoff: execute client part
     const clientOutput = yield* executeClientPart(tool, tc.function.arguments, serverResult.output)
     
-    if (tool.authority === 'client') {
-      // Client-authority: run server phase 2
-      const finalResult = yield* executeServerPart(tool, tc.function.arguments, clientOutput)
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(finalResult.output) })
-    } else {
-      // Server-authority: client output is informational
-      messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(serverResult.output) })
-    }
+    // Server-first: run server phase 2 with client output
+    const finalResult = yield* executeServerPart(tool, tc.function.arguments, clientOutput)
+    messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(finalResult.output) })
   }
 }
 ```
@@ -187,15 +182,15 @@ for (const tc of result.toolCalls) {
 | `get_weather` | `defineServerOnlyTool` - no client interaction needed |
 | `calculator` | `defineServerOnlyTool` - pure computation |
 | `search` | `defineServerOnlyTool` - server fetches, returns result |
-| (future) `confirm_delete` | `defineClientAuthorityTool` - needs user confirmation |
-| (future) `select_option` | `defineClientAuthorityTool` - user picks from list |
-| (future) `display_chart` | `defineServerAuthorityTool` - server computes, client renders |
+| (future) `confirm_delete` | `createIsomorphicTool` + `.server().client()` - needs user confirmation |
+| (future) `select_option` | `createIsomorphicTool` + `.server().client()` - user picks from list |
+| (future) `display_chart` | `createIsomorphicTool` + `.handoff()` - server computes, client renders |
 
 ## Terminal Client Considerations
 
 ### Readline Integration
 
-For client-authority tools that need user input:
+For tools that need user input:
 
 ```ts
 import * as readline from 'node:readline/promises'
@@ -223,7 +218,7 @@ For richer terminal UIs, consider:
 
 ### Async Display
 
-Server-authority tools with client side effects might update a status line:
+Server-first tools with client side effects might update a status line:
 
 ```ts
 *client(serverOutput) {
@@ -239,7 +234,7 @@ Server-authority tools with client side effects might update a status line:
 2. **Testability** - Server parts can be tested without terminal
 3. **Future flexibility** - Easy to add web UI to hydra tools later
 4. **Two-phase validation** - Server can validate after client gathers input
-5. **Clear authority model** - Explicit about who owns the result
+5. **Clear execution model** - Server always owns the result
 
 ## Files to Update
 

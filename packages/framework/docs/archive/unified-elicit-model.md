@@ -168,7 +168,7 @@ elicit_complete - tool finished
 ## Key Decisions
 
 1. **Keep both APIs** - `createTool` becomes sugar over MCP internally
-2. **Drop client authority** - unused in apps, just "don't define before()" achieves same thing
+2. **Drop client-first execution** - unused in apps, just "don't define before()" achieves same thing
 3. **Breaking change** - power through, no deprecation period
 4. **Unified patches** - rename `plugin_elicit_*` -> `elicit_*`, use for both tool types
 5. **Auto-plugin** - isomorphic tools with `client()` auto-generate `.plugin`

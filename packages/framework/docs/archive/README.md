@@ -16,7 +16,7 @@ const myTool = createIsomorphicTool('my_tool')
   .description('What the LLM sees')
   .parameters(z.object({ input: z.string() }))
   .context('browser')      // or 'agent' or 'headless'
-  .authority('server')     // server executes first
+  .context('headless')     // server executes first
   .handoff({
     *before(params) { /* compute state */ },
     *client(handoff, ctx) { /* UI or LLM interaction */ },
@@ -125,7 +125,7 @@ export const picker = createIsomorphicTool('picker')
   .description('Let user pick an option')
   .parameters(z.object({ options: z.array(z.string()) }))
   .context('browser')
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) {
       return { options: params.options }
@@ -149,7 +149,7 @@ export const analyzer = createIsomorphicTool('analyzer')
   .description('Analyze text sentiment')
   .parameters(z.object({ text: z.string() }))
   .context('agent')
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) {
       return { text: params.text }

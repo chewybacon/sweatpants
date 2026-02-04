@@ -12,9 +12,9 @@ Remove unused/parallel concepts to reduce noise before the main refactor.
 | Remove ExecutionTrail types from `patches/handoff.ts` | ✅ done | Lines 56-134 removed |
 | Remove ExecutionTrail exports from `patches/index.ts` | ✅ done | |
 | Delete `isomorphic-tools/step-context.ts` | ✅ done | Entire file deleted |
-| Remove `.authority('client')` path from builder | deferred | Phase 7 |
-| Remove client-authority handling from executor | deferred | Phase 7 |
-| Simplify types - remove client authority types | deferred | Phase 7 |
+| Remove client-first builder path | done | Phase 7 |
+| Remove client-first handling from executor | done | Phase 7 |
+| Simplify types - remove client-first types | done | Phase 7 |
 
 ### Phase 2: Unify Patch Types ✅
 Rename and consolidate patch types.

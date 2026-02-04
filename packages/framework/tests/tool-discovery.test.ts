@@ -116,7 +116,6 @@ describe('discoverToolsInContent', () => {
         export const calculator = createIsomorphicTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
-          .authority('server')
           .server(function*() { return { result: 42 } })
           .build()
       `
@@ -137,7 +136,6 @@ describe('discoverToolsInContent', () => {
         export const calculator = createIsomorphicTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
-          .authority('server')
           .server(function*() { return { result: 42 } })
           .build()
       `
@@ -372,7 +370,6 @@ describe('discoverToolsInContent', () => {
         export const askQuestion = createIsomorphicTool('ask_question')
           .description('Ask a question to the user')
           .parameters(z.object({ question: z.string() }))
-          .authority('server')
           .build()
       `
       const tools = discoverToolsInContent(

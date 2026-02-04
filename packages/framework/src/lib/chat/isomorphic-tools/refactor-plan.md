@@ -5,8 +5,8 @@ We are consolidating three distinct tool systems (Server-only, Client-only, and 
 ## 1. Goal
 
 Eliminate the legacy "Client Tools" and "Server Tools" distinct implementation paths.
-- **Server Tools** become Isomorphic Tools with `authority: 'server'` and no client logic.
-- **Client Tools** become Isomorphic Tools with `authority: 'client'` (client execution first, server validation second).
+- **Server Tools** become server-first Isomorphic Tools with no client logic.
+- **Client Tools** become server-first Isomorphic Tools with client UI and server validation.
 
 ## 2. Architecture Changes
 
@@ -45,10 +45,10 @@ We want the builder API to be the "one true" tool definition system.
 ### 5.1 API Surface
 
 Keep the builder API limited to:
-- `.authority('server' | 'client')`
+- `.context('headless' | 'browser' | 'agent')`
 - `.server(...)`
 - `.client(...)`
-- `.handoff(...)` (server authority only)
+- `.handoff(...)` (server-first)
 
 We intentionally do **not** expose `parallel` in the builder API.
 
@@ -60,16 +60,15 @@ Secure-by-default execution semantics:
 
 ### 5.3 Semantics by Authority
 
-- `authority('server')`:
+- Server-first:
   - `.handoff({ before, client, after })` finalizes immediately.
   - `.server(fn).build()` produces a server-only tool.
   - `.server(fn).client(fn)` produces a server-first tool where server output is the LLM result.
 
-- `authority('client')`:
-  - `.client(fn).server(fn)` produces a client-first tool.
-  - `.client(fn).build()` produces a client-first tool with a default server passthrough:
-    `server(_params, _ctx, clientOutput) => clientOutput`.
-  - `.handoff(...)` is not available.
+- Client-response flow (server-first with client UI):
+- `.server(fn).client(fn)` produces a server-first tool with client UI.
+- `.server(fn).build()` produces a server-only tool.
+- `.handoff(...)` is available for server-first tools.
 
 ### 5.4 State of Implementation
 
@@ -80,7 +79,7 @@ Completed in:
 
 Specifically:
 - Removed builder/runtime support for `parallel`.
-- Added `.build()` support for client-authority tools (default server passthrough).
+- Removed client-first authority modes in favor of server-first execution.
 - Added tests for the new semantics.
 
 ## 6. Next Steps (Runtime Unification)

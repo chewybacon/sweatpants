@@ -6,7 +6,7 @@ Isomorphic tools are the core primitive for building AI-powered interactions. Th
 
 **The server's return value is ALWAYS the final result sent to the LLM.**
 
-There is no "merge" function. The server has authority over what the LLM receives.
+There is no "merge" function. The server is the final source of truth for the LLM result.
 
 ## Builder API
 
@@ -20,7 +20,7 @@ const myTool = createIsomorphicTool('tool_name')
   .description('Description for the LLM')
   .parameters(z.object({ ... }))
   .context('browser')     // execution context
-  .authority('server')    // who runs first
+  .context('headless')    // server executes first
   .handoff({ ... })       // execution phases
 ```
 
@@ -39,7 +39,7 @@ const calculator = createIsomorphicTool('calculate')
   .description('Perform calculations')
   .parameters(z.object({ expression: z.string() }))
   .context('headless')
-  .authority('server')
+  .context('headless')
   .server(function*(params) {
     return { result: eval(params.expression) }
   })
@@ -57,7 +57,7 @@ const picker = createIsomorphicTool('pick')
   .description('Let user pick an option')
   .parameters(z.object({ options: z.array(z.string()) }))
   .context('browser')
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) { return { options: params.options } },
     *client(handoff, ctx) {
@@ -80,7 +80,7 @@ const analyzer = createIsomorphicTool('analyze')
   .description('Analyze sentiment')
   .parameters(z.object({ text: z.string() }))
   .context('agent')
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) { return { text: params.text } },
     *client(handoff, ctx) {
@@ -142,13 +142,11 @@ const userInput = createIsomorphicTool('ask')
   .description('Ask user a question')
   .parameters(z.object({ question: z.string() }))
   .context('browser')
-  .authority('client')
-  .client(function*(params, ctx) {
-    return yield* ctx.render(QuestionForm, { question: params.question })
+  .server(function* (params) {
+    return { question: params.question }
   })
-  .server(function*(params, ctx, clientOutput) {
-    // Validate/process user's answer
-    return { question: params.question, answer: clientOutput.answer }
+  .client(function*(serverOutput, ctx, _params) {
+    return yield* ctx.render(QuestionForm, { question: serverOutput.question })
   })
 ```
 
@@ -299,7 +297,7 @@ const dangerousTool = createIsomorphicTool('delete_file')
   .description('Delete a file')
   .parameters(z.object({ path: z.string() }))
   .context('browser')
-  .authority('server')
+  .context('headless')
   .approval({
     server: 'none',      // No server-side approval
     client: 'confirm',   // Require user confirmation
@@ -318,7 +316,7 @@ const tool = createIsomorphicTool('typed_example')
   .description('...')
   .parameters(z.object({ input: z.string() }))
   .context('browser')
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) {
       // params is { input: string }

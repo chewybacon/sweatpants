@@ -30,7 +30,7 @@ See [sampling-tools-design.md](./sampling-tools-design.md) for full design.
 - [x] `handler/durable/plugin-session-manager.ts` - Complete handler for sample_request with tool/schema support
 
 ### Phase 4: Provider Integration - COMPLETE
-- [x] Provider layer - Tools passed as isomorphicToolSchemas with server authority
+- [x] Provider layer - Tools passed as isomorphicToolSchemas with server-first execution
 - [x] Schema passed in streamOptions for structured output
 - [x] Response parsing for JSON structured output
 
@@ -98,7 +98,7 @@ See [sampling-tools-design.md](./sampling-tools-design.md) for full design.
 2. **Type safety**: Full generic typing at `ctx.sample<T>()` level via overloads
 3. **Error handling**: Parse errors returned in result (not thrown) - `parseError?: { message, rawText }`
 4. **Schema format**: Accept Zod at API, convert to JSON Schema internally using `zod-to-json-schema`
-5. **Provider mapping**: Tools passed as `isomorphicToolSchemas` with `authority: 'server'`
+5. **Provider mapping**: Tools passed as `isomorphicToolSchemas` with server-first execution
 6. **Runtime signatures**: Use type assertions (`as McpToolContext['sample']`) to satisfy overloaded interface
 7. **Tool calling use case**: LLM-driven flow control / decision trees, not external tool execution
 8. **Validation approach**: `play_ttt` agentic tool as integration test vehicle

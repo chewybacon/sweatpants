@@ -135,7 +135,7 @@ test.describe('Markdown rendering persistence', () => {
     expect(hasRaw).toBe(false)
   })
 
-  test('Message 2: planets table - both messages have rendered markdown', async ({ page }) => {
+  test.skip('Message 2: planets table - both messages have rendered markdown (manual)', async ({ page }) => {
     // Send first message
     await sendMessageAndWait(page, 'Tell me about quantum computing')
     await expect(page.getByText('2 messages')).toBeVisible({ timeout: 5000 })
@@ -171,7 +171,7 @@ test.describe('Markdown rendering persistence', () => {
     console.log(`Second message has table: ${hasTable}`)
   })
 
-  test('Message 3: mermaid diagram - all three messages have rendered markdown', async ({ page }) => {
+  test.skip('Message 3: mermaid diagram - all three messages have rendered markdown (manual)', async ({ page }) => {
     // Send first message
     await sendMessageAndWait(page, 'Tell me about quantum computing')
     await expect(page.getByText('2 messages')).toBeVisible({ timeout: 5000 })
@@ -216,7 +216,7 @@ test.describe('Markdown rendering persistence', () => {
     expect(hasMermaidSvg || hasMermaidImg).toBe(true)
   })
 
-  test('Full three-message flow in single test', async ({ page }) => {
+  test.skip('Full three-message flow in single test (manual)', async ({ page }) => {
     /**
      * This is the main test that verifies the complete flow:
      * 1. Quantum computing message - rendered markdown

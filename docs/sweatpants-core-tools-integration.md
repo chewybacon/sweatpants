@@ -242,14 +242,13 @@ export function isCoreToolFactory(value: unknown): value is CoreToolFactory {
  * 
  * - Maps `input` schema to `parameters`
  * - Sets up FrameworkTransport so core notify()/elicit() calls work
- * - Produces a server-authority isomorphic tool
+ * - Produces a server-first isomorphic tool
  */
 export function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTool {
   return {
     name: coreToolFactory.name,
     description: coreToolFactory.description,
     parameters: coreToolFactory.schemas.input,
-    authority: 'server',
     contextMode: 'headless',
     
     *server(params: unknown, ctx: ServerToolContext): Operation<unknown> {

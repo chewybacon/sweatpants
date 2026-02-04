@@ -184,7 +184,6 @@ function createPluginSamplingProvider(): ToolSessionSamplingProvider {
           ? tool.inputSchema as Record<string, unknown>
           : { type: 'object', properties: {}, required: [] }, // Fallback for Zod schemas (should be pre-converted)
         isIsomorphic: true as const,
-        authority: 'server' as const,
       }))
 
       // Build provider options - only include isomorphicToolSchemas if tools were provided

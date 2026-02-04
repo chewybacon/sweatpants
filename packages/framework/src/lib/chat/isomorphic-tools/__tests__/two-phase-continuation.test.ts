@@ -33,7 +33,7 @@
  *
  * ## Original Description
  *
- * Exploring a two-phase explicit API for server-authority tools.
+ * Exploring a two-phase explicit API for server-first tools.
  *
  * The idea: Instead of one block with a magic `send()` point, we have
  * two explicit operations: `beforeClient` and `afterClient`.
