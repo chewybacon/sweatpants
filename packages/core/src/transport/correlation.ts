@@ -10,23 +10,27 @@ import {
 import type {
   PrincipalTransport,
   TransportRequest,
-  ProgressMessage,
-  ResponseMessage,
   PrincipalIncoming,
-  ElicitResponse,
-  NotifyResponse,
+  RequestKind,
+  ResponseByKind,
+} from "../types/transport.ts";
+import {
+  isProgressMessage,
+  isResponseMessage,
 } from "../types/transport.ts";
 
 /**
  * A correlated transport that maps requests to response streams.
+ * Response type is determined by the request kind via ResponseByKind mapping.
  */
 export interface CorrelatedTransport {
   /**
    * Send a request and get a stream of progress updates that closes with the final response.
+   * The response type is automatically determined by the request's kind.
    */
-  request<TProgress = unknown, TResponse extends ElicitResponse | NotifyResponse = ElicitResponse | NotifyResponse>(
-    message: TransportRequest
-  ): Stream<TProgress, TResponse>;
+  request<K extends RequestKind, TProgress = unknown>(
+    message: TransportRequest<K>
+  ): Stream<TProgress, ResponseByKind[K]>;
 }
 
 interface PendingRequest {
@@ -75,15 +79,15 @@ export function* createCorrelation(
   });
 
   const correlated: CorrelatedTransport = {
-    request<TProgress, TResponse extends ElicitResponse | NotifyResponse>(
-      message: TransportRequest
-    ): Stream<TProgress, TResponse> {
+    request<K extends RequestKind, TProgress = unknown>(
+      message: TransportRequest<K>
+    ): Stream<TProgress, ResponseByKind[K]> {
       return resource(function* (provide) {
-        const channel = createChannel<TProgress, TResponse>();
+        const channel = createChannel<TProgress, ResponseByKind[K]>();
 
         try {
           // Provide the subscription to progress updates
-          const subscription: Subscription<TProgress, TResponse> =
+          const subscription: Subscription<TProgress, ResponseByKind[K]> =
             yield* channel;
           pending.set(message.id, {
             id: message.id,
@@ -101,12 +105,4 @@ export function* createCorrelation(
   };
 
   return correlated;
-}
-
-function isProgressMessage(message: PrincipalIncoming): message is ProgressMessage {
-  return message.type === "progress";
-}
-
-function isResponseMessage(message: PrincipalIncoming): message is ResponseMessage {
-  return message.type === "response";
 }

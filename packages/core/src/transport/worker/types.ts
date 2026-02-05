@@ -32,6 +32,10 @@
  */
 
 import type { Operation } from "effection";
+import type { 
+  PrincipalTransport, 
+  OperativeTransport,
+} from "../../types/transport.ts";
 
 // =============================================================================
 // REQUEST/RESPONSE MESSAGES (via worker.send())
@@ -358,9 +362,9 @@ export interface WorkerToolContext {
 // =============================================================================
 
 /**
- * Check if a message is a progress message.
+ * Check if a message is a worker progress message.
  */
-export function isProgressMessage(msg: unknown): msg is WorkerProgressMessage {
+export function isWorkerProgressMessage(msg: unknown): msg is WorkerProgressMessage {
   return (
     typeof msg === "object" &&
     msg !== null &&
@@ -370,9 +374,9 @@ export function isProgressMessage(msg: unknown): msg is WorkerProgressMessage {
 }
 
 /**
- * Check if a message is a log message.
+ * Check if a message is a worker log message.
  */
-export function isLogMessage(msg: unknown): msg is WorkerLogMessage {
+export function isWorkerLogMessage(msg: unknown): msg is WorkerLogMessage {
   return (
     typeof msg === "object" &&
     msg !== null &&
@@ -382,8 +386,69 @@ export function isLogMessage(msg: unknown): msg is WorkerLogMessage {
 }
 
 /**
- * Check if a message is an out-of-band message.
+ * Check if a message is a worker out-of-band message.
  */
-export function isOutOfBandMessage(msg: unknown): msg is WorkerOutOfBandMessage {
-  return isProgressMessage(msg) || isLogMessage(msg);
+export function isWorkerOutOfBandMessage(msg: unknown): msg is WorkerOutOfBandMessage {
+  return isWorkerProgressMessage(msg) || isWorkerLogMessage(msg);
 }
+
+// =============================================================================
+// TRANSPORT RESULT TYPES
+// =============================================================================
+
+/**
+ * Progress data sent via the transport.
+ * Used with core ProgressMessage<WorkerProgressData>.
+ */
+export interface WorkerProgressData {
+  /** Human-readable progress message */
+  message: string;
+  /** Optional progress value 0-1 */
+  progress?: number;
+}
+
+/**
+ * Result of creating a worker operative transport.
+ * 
+ * This is both:
+ * - An object with a `transport` property (standard OperativeTransport interface)
+ * - An Operation that yields the final WorkerResult<T> when awaited
+ * 
+ * @example
+ * ```typescript
+ * const workerOp = yield* createWorkerOperative({ ... });
+ * 
+ * // Access transport for messaging
+ * const transport = workerOp.transport;
+ * 
+ * // Await final result
+ * const result = yield* workerOp;
+ * ```
+ */
+export type WorkerOperativeResult<T = unknown> = Operation<WorkerResult<T>> & {
+  /** Standard operative transport interface */
+  transport: OperativeTransport;
+};
+
+/**
+ * Result of creating a worker principal transport.
+ * 
+ * This is both:
+ * - An object with a `transport` property (standard PrincipalTransport interface)
+ * - An Operation that yields the final WorkerResult<T> when awaited
+ * 
+ * @example
+ * ```typescript
+ * const workerOp = yield* createWorkerPrincipal({ ... });
+ * 
+ * // Access transport for messaging
+ * const transport = workerOp.transport;
+ * 
+ * // Await final result
+ * const result = yield* workerOp;
+ * ```
+ */
+export type WorkerPrincipalResult<T = unknown> = Operation<WorkerResult<T>> & {
+  /** Standard principal transport interface */
+  transport: PrincipalTransport;
+};

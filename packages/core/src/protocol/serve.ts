@@ -5,6 +5,7 @@ import type {
   TransportRequest,
   ProgressMessage,
   ResponseMessage,
+  RequestKind,
 } from "../types/transport.ts";
 
 /**
@@ -52,20 +53,26 @@ export function* serveProtocol<M extends Methods>(
 function* handleRequest<M extends Methods>(
   handle: Handle<M>,
   transport: OperativeTransport,
-  request: TransportRequest,
+  request: TransportRequest<RequestKind>,
 ): Operation<void> {
-  const { id, type, payload } = request;
+  const { id, kind, type, payload } = request;
+
+  // For built-in protocol, dispatch based on kind (elicit/notify/sample)
+  // For custom protocols, dispatch based on type (the method name)
+  const methodName = (kind in handle.protocol.methods ? kind : type) as keyof M;
 
   try {
     // Check if method exists on the protocol
-    if (!(type in handle.protocol.methods)) {
-      const response: ResponseMessage = {
+    if (!(methodName in handle.protocol.methods)) {
+      const response: ResponseMessage<typeof kind> = {
         type: "response",
         id,
+        kind,
         response: {
           status: "other",
-          content: `Unknown method: ${type}`,
-        },
+          content: `Unknown method: ${String(methodName)}`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any, // Response shape depends on kind, but error is consistent
       };
       yield* transport.send(response);
       return;
@@ -74,7 +81,6 @@ function* handleRequest<M extends Methods>(
     // Invoke the method
     // Type assertion needed since payload comes from transport as unknown
     // The protocol could validate against schemas if needed
-    const methodName = type as keyof M;
     const stream = handle.invoke({
       name: methodName,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,24 +105,46 @@ function* handleRequest<M extends Methods>(
     }
 
     // Send final response
-    const response: ResponseMessage = {
+    // For built-in protocol (SweatpantsProtocol), the result includes status
+    // and uses 'value' instead of 'content'. Map appropriately.
+    const resultValue = streamResult.value as { status?: string; value?: unknown; ok?: boolean; text?: string };
+    
+    // Determine the response based on the result structure
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let responsePayload: any;
+    
+    if (kind === "notify") {
+      // Notify responses use { ok: boolean }
+      responsePayload = resultValue;
+    } else if (resultValue && typeof resultValue === "object" && "status" in resultValue) {
+      // Elicit/sample responses that have status - map 'value' to 'content'
+      const { status, value, ...rest } = resultValue;
+      responsePayload = value !== undefined 
+        ? { status, content: value, ...rest }
+        : { status, ...rest };
+    } else {
+      // Fallback: wrap as accepted with content
+      responsePayload = { status: "accepted", content: resultValue };
+    }
+    
+    const response: ResponseMessage<typeof kind> = {
       type: "response",
       id,
-      response: {
-        status: "accepted",
-        content: streamResult.value,
-      },
+      kind,
+      response: responsePayload,
     };
     yield* transport.send(response);
   } catch (error) {
     // Send error response
-    const response: ResponseMessage = {
+    const response: ResponseMessage<typeof kind> = {
       type: "response",
       id,
+      kind,
       response: {
         status: "other",
         content: error instanceof Error ? error.message : String(error),
-      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any, // Response shape depends on kind, but error is consistent
     };
     yield* transport.send(response);
   }

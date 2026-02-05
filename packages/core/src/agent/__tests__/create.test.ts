@@ -564,16 +564,18 @@ function* handleOperativeRequests(
 
     try {
       const content = handler(request);
-      const response: ResponseMessage = {
+      const response: ResponseMessage<"elicit"> = {
         type: "response",
         id: request.id,
+        kind: "elicit",
         response: { status: "accepted", content },
       };
       yield* operative.send(response);
     } catch (e) {
-      const response: ResponseMessage = {
+      const response: ResponseMessage<"elicit"> = {
         type: "response",
         id: request.id,
+        kind: "elicit",
         response: { status: "other", content: (e as Error).message },
       };
       yield* operative.send(response);

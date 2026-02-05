@@ -1,5 +1,4 @@
 import { describe, it, expect } from "@effectionx/vitest";
-import { createContext } from "effection";
 import { z } from "zod";
 import { createTool } from "../create.ts";
 
@@ -59,29 +58,6 @@ describe("createTool", () => {
       expect(NoProgress.schemas.progress).toBeUndefined();
     });
 
-    it("should preserve schemas through withContext", function* () {
-      const inputSchema = z.object({ query: z.string() });
-      const outputSchema = z.object({ results: z.array(z.string()) });
-
-      const Search = createTool({
-        name: "search",
-        description: "Search tool",
-        input: inputSchema,
-        output: outputSchema,
-        progress: z.object({}),
-        impl: function* () {
-          return { results: [] };
-        },
-      });
-
-      // Create context-bound version
-      const TestContext = createContext<string>("test");
-      const BoundSearch = Search.withContext(TestContext, "test-value");
-
-      expect(BoundSearch.schemas).toBeDefined();
-      expect(BoundSearch.schemas.input).toBe(inputSchema);
-      expect(BoundSearch.schemas.output).toBe(outputSchema);
-    });
   });
 
   describe("with impl in config", () => {
@@ -197,7 +173,7 @@ describe("createTool", () => {
 
       expect(error).toBeDefined();
       expect(error?.message).toContain("no-impl");
-      expect(error?.message).toContain("transport routing is not yet implemented");
+      expect(error?.message).toContain("has no implementation");
     });
   });
 
@@ -315,17 +291,18 @@ describe("createTool", () => {
       const chain = yield* Chain();
       const result = yield* chain({});
 
-      // Middleware wraps: second(first(impl))
-      // second-before -> first-before -> impl -> first-after -> second-after
-      // Value: impl=1, first adds 10 = 11, second doubles = 22
+      // Middleware wraps: first(second(impl))
+      // Earlier decorations are outer (run first), later decorations are inner
+      // first-before -> second-before -> impl -> second-after -> first-after
+      // Value: impl=1, second doubles = 2, first adds 10 = 12
       expect(callOrder).toEqual([
-        "second-before",
         "first-before",
+        "second-before",
         "impl",
-        "first-after",
         "second-after",
+        "first-after",
       ]);
-      expect(result).toEqual({ value: 22 });
+      expect(result).toEqual({ value: 12 });
     });
   });
 

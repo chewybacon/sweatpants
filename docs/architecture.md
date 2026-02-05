@@ -636,7 +636,7 @@ type OperativeTransport = Transport<ProgressMessage | ResponseMessage, Transport
 /** A request message sent from Principal to Operative */
 interface TransportRequest<TPayload = unknown> {
   id: string;
-  kind: "elicit" | "notify";
+  kind: "elicit" | "notify" | "sample";
   type: string;
   payload: TPayload;
 }
@@ -652,7 +652,8 @@ interface ProgressMessage<TData = unknown> {
 interface ResponseMessage {
   type: "response";
   id: string;
-  response: ElicitResponse | NotifyResponse;
+  kind: "elicit" | "notify" | "sample";
+  response: ElicitResponse | NotifyResponse | SampleResponse;
 }
 ```
 
@@ -1231,7 +1232,13 @@ type ElicitResponse =
 // Notify returns acknowledgment — Operative finished rendering
 type NotifyResponse = 
   | { ok: true }
-  | { ok: false; error: Error };
+  | { ok: false; error: { code: string; message: string; details?: Record<string, unknown> } };
+
+// Sample returns LLM completion result
+type SampleResponse =
+  | { status: 'accepted'; content: unknown }
+  | { status: 'error'; error: string }
+  | { status: 'cancelled' };
 ```
 
 ### Conversation

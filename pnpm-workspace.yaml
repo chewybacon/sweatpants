@@ -9,7 +9,8 @@ catalog:
   '@effectionx/signals': ^0.5.0
   '@effectionx/stream-helpers': ^0.7.1
   '@effectionx/timebox': ^0.4.0
-  '@effectionx/vitest': ^0.1.0
+  '@effectionx/test-adapter': https://pkg.pr.new/thefrontside/effectionx/@effectionx/test-adapter@144
+  '@effectionx/vitest': https://pkg.pr.new/thefrontside/effectionx/@effectionx/vitest@144
   '@effectionx/websocket': ^2.3.0
   '@effectionx/worker': https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138
   '@t3-oss/env-core': ^0.13.8
@@ -34,7 +35,7 @@ catalog:
   acorn: ^8.14.0
   citty: ^0.1.6
   compression: ^1.8.1
-  effection: https://pkg.pr.new/thefrontside/effection@1074
+  effection: https://pkg.pr.new/thefrontside/effection@6a01504
   express: ^5.2.1
   jsdom: ^27.0.0
   lucide-react: 0.544.0

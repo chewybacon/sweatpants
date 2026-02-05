@@ -9,6 +9,7 @@ import type {
   ElicitResponse,
   ProgressMessage,
   ResponseMessage,
+  RequestKind,
 } from "../../../types/transport.ts";
 
 // ============================================================================
@@ -19,7 +20,7 @@ interface SSETestServer {
   principal: PrincipalTransport;
   correlated: CorrelatedTransport;
   operative: {
-    send: (msg: ProgressMessage | ResponseMessage) => Operation<void>;
+    send: (msg: ProgressMessage | ResponseMessage<RequestKind>) => Operation<void>;
     received: TransportRequest[];
   };
 }
@@ -86,7 +87,7 @@ function useSSETestServer(): Operation<SSETestServer> {
         principal,
         correlated,
         operative: {
-          send: (msg: ProgressMessage | ResponseMessage): Operation<void> => ({
+          send: (msg: ProgressMessage | ResponseMessage<RequestKind>): Operation<void> => ({
             *[Symbol.iterator]() {
               const res = sseResponses[0];
               if (!res) {
@@ -126,7 +127,7 @@ describe("SSE+POST Transport", () => {
     it("should send messages via POST", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -134,12 +135,12 @@ describe("SSE+POST Transport", () => {
       };
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
       });
 
-      yield* sleep(20);
+      yield* sleep(100);
 
       expect(operative.received).toHaveLength(1);
       expect(operative.received[0]).toEqual(message);
@@ -148,6 +149,7 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "accepted", content: {} },
       });
     });
@@ -155,7 +157,7 @@ describe("SSE+POST Transport", () => {
     it("should receive progress events via stream", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -165,7 +167,7 @@ describe("SSE+POST Transport", () => {
       let result: IteratorResult<unknown, ElicitResponse>;
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
 
         // First progress
         result = yield* subscription.next();
@@ -209,6 +211,7 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: {
           status: "accepted",
           content: { lat: 40.7128, lng: -74.006 },
@@ -219,7 +222,7 @@ describe("SSE+POST Transport", () => {
     it("should close stream with final response", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const message: TransportRequest = {
+      const message: TransportRequest<"elicit"> = {
         id: "msg-1",
         kind: "elicit",
         type: "location",
@@ -227,7 +230,7 @@ describe("SSE+POST Transport", () => {
       };
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
+        const subscription = yield* correlated.request<"elicit", unknown>(message);
 
         // Final response (no progress)
         const result = yield* subscription.next();
@@ -243,6 +246,7 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: {
           status: "accepted",
           content: { lat: 40.7128, lng: -74.006 },
@@ -253,10 +257,10 @@ describe("SSE+POST Transport", () => {
     it("should handle multiple concurrent requests", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const responses: Record<string, ElicitResponse | undefined> = {};
-
+      // Start two concurrent requests with assertions inside the spawned tasks
+      // This matches the pattern of other working tests
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "location",
@@ -264,13 +268,12 @@ describe("SSE+POST Transport", () => {
         });
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
-        if (result.done) {
-          responses["msg-1"] = result.value;
-        }
+        // msg-1 is responded to second but with "denied"
+        expect(result.value).toEqual({ status: "denied" });
       });
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-2",
           kind: "elicit",
           type: "clipboard-read",
@@ -278,34 +281,31 @@ describe("SSE+POST Transport", () => {
         });
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
-        if (result.done) {
-          responses["msg-2"] = result.value;
-        }
+        // msg-2 is responded to first with "accepted"
+        expect(result.value).toEqual({
+          status: "accepted",
+          content: { text: "Hello clipboard" },
+        });
       });
 
-      yield* sleep(20);
+      // Let tasks start and send their HTTP requests (SSE uses POST for requests)
+      yield* sleep(100);
 
       expect(operative.received).toHaveLength(2);
 
-      // Respond out of order
+      // Respond out of order - send response for msg-2 first
       yield* operative.send({
         type: "response",
         id: "msg-2",
+        kind: "elicit",
         response: { status: "accepted", content: { text: "Hello clipboard" } },
       });
 
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "denied" },
-      });
-
-      yield* sleep(20);
-
-      expect(responses["msg-1"]).toEqual({ status: "denied" });
-      expect(responses["msg-2"]).toEqual({
-        status: "accepted",
-        content: { text: "Hello clipboard" },
       });
     });
 
@@ -313,7 +313,7 @@ describe("SSE+POST Transport", () => {
       const { correlated, operative } = yield* useSSETestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "confirmation",
@@ -329,6 +329,7 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "declined" },
       });
     });
@@ -337,7 +338,7 @@ describe("SSE+POST Transport", () => {
       const { correlated, operative } = yield* useSSETestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "flight-selection",
@@ -356,6 +357,7 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: {
           status: "other",
           content: "Actually, what's the weather like in Tokyo?",
@@ -367,7 +369,7 @@ describe("SSE+POST Transport", () => {
       const { correlated, operative } = yield* useSSETestServer();
 
       yield* spawn(function* () {
-        const subscription = yield* correlated.request<unknown, ElicitResponse>({
+        const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
           kind: "elicit",
           type: "form",
@@ -383,8 +385,50 @@ describe("SSE+POST Transport", () => {
       yield* operative.send({
         type: "response",
         id: "msg-1",
+        kind: "elicit",
         response: { status: "cancelled" },
       });
+    });
+
+    it("should handle denied response", function* () {
+      const { correlated, operative } = yield* useSSETestServer();
+
+      yield* spawn(function* () {
+        const subscription = yield* correlated.request<"elicit", unknown>({
+          id: "msg-1",
+          kind: "elicit",
+          type: "location",
+          payload: { accuracy: "high" },
+        });
+        const result = yield* subscription.next();
+        expect(result.done).toBe(true);
+        expect(result.value).toEqual({ status: "denied" });
+      });
+
+      yield* sleep(20);
+
+      yield* operative.send({
+        type: "response",
+        id: "msg-1",
+        kind: "elicit",
+        response: { status: "denied" },
+      });
+    });
+  });
+
+  describe("Raw Transport (without correlation)", () => {
+    it("should send and receive raw messages", function* () {
+      const { principal } = yield* useSSETestServer();
+
+      const request: TransportRequest<"elicit"> = {
+        id: "req-1",
+        kind: "elicit",
+        type: "test",
+        payload: {},
+      };
+
+      yield* principal.send(request);
+      // The message was sent successfully if no error is thrown
     });
   });
 });

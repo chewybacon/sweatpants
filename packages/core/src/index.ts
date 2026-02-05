@@ -3,8 +3,29 @@ export * from "./types/index.ts";
 
 // Re-export transport utilities and types
 export {
+  // Unified factory
+  createTransport,
+  type TransportRole,
+  type TransportType,
+  type TransportConfig,
+  type WebSocketPrincipalConfig,
+  type WebSocketOperativeConfig,
+  type SSEPrincipalConfig,
+  type SSEOperativeConfig,
+  type WorkerPrincipalConfig,
+  type WorkerOperativeConfig,
+  type MemoryPairConfig,
+  // Individual constructors
   createTransportPair,
   createCorrelation,
+  // Type guards and helpers
+  isProgressMessage,
+  isResponseMessage,
+  isElicitResponse,
+  isNotifyResponse,
+  isSampleResponse,
+  createResponseMessage,
+  // Types
   type Transport,
   type PrincipalTransport,
   type OperativeTransport,
@@ -17,6 +38,11 @@ export {
   type OperativeOutgoing,
   type InterruptMessage,
   type CorrelatedTransport,
+  type RequestKind,
+  type ResponseByKind,
+  type SampleResponse,
+  type ElicitResponse,
+  type NotifyResponse,
 } from "./transport/index.ts";
 
 // Re-export tool utilities and types
@@ -28,7 +54,6 @@ export {
   type ToolMiddleware,
   type ToolFactoryWithImpl,
   type ToolFactoryWithoutImpl,
-  type ContextBinding,
 } from "./tool/index.ts";
 
 // Re-export context utilities
@@ -91,16 +116,27 @@ export {
 
 // Re-export worker transport utilities and types
 export {
-  // Host-side
+  // Host-side: Operative (handles requests from worker - most common)
+  createWorkerOperative,
+  type WorkerOperativeOptions,
+  type WorkerOperativeResult,
+  type ForEachContext,
+  // Host-side: Principal (sends requests to worker)
   createWorkerPrincipal,
+  type WorkerPrincipalOptions,
+  type WorkerPrincipalResult,
+  type WorkerPrincipalTransport,
+  type WorkerProgressData,
+  // Worker-side runners
+  runWorkerPrincipal,
+  runWorkerOperative,
+  type WorkerPrincipalHandler,
+  type WorkerOperativeHandler,
+  // Utilities
   generateRequestId,
   createSampleResponse,
   createElicitResponse,
-  type WorkerPrincipalOptions,
-  type WorkerPrincipalResult,
-  type WorkerRequestHandler,
-  type ForEachContext,
-  // Worker-side
+  // Deprecated (kept for backward compatibility)
   runToolWorker,
   runRequestHandler,
   type ToolWorkerHandler,
@@ -131,7 +167,7 @@ export {
   type WorkerToolCall,
   type WorkerToolContext,
   // Type guards
-  isProgressMessage,
-  isLogMessage,
-  isOutOfBandMessage,
+  isWorkerProgressMessage,
+  isWorkerLogMessage,
+  isWorkerOutOfBandMessage,
 } from "./transport/worker/index.ts";

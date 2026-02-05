@@ -118,6 +118,41 @@ export {
   isHandoffPatch,
 } from './patches/index.ts'
 
+// Re-export sample types for LLM operations
+export type {
+  MessageRole,
+  TextContent,
+  ToolUseContent,
+  ToolResultContent,
+  ContentBlock,
+  SampleMessage,
+  ModelPreferences,
+  ToolDefinition,
+  ToolChoice,
+  ToolCall as SampleToolCall,
+  SamplePayload,
+  SampleContent,
+} from './types/sample.ts'
+
+export {
+  MessageRoleSchema,
+  TextContentSchema,
+  ToolUseContentSchema,
+  ToolResultContentSchema,
+  ContentBlockSchema,
+  SampleMessageSchema,
+  ModelPreferencesSchema,
+  ToolDefinitionSchema,
+  ToolChoiceSchema,
+  ToolCallSchema,
+  SamplePayloadSchema,
+  SampleContentSchema,
+  parseSamplePayload,
+  parseSampleContent,
+  safeParseSamplePayload,
+  safeParseSampleContent,
+} from './types/sample.ts'
+
 // =============================================================================
 // MESSAGE TYPES (defined here - core to the chat protocol)
 // =============================================================================

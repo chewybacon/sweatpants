@@ -1,4 +1,4 @@
-import { createContext, scoped } from "effection";
+import { createContext } from "effection";
 import type { Operation } from "effection";
 import type { ZodSchema, infer as ZodInfer, input as ZodInput } from "zod";
 import type {
@@ -83,27 +83,29 @@ export function createAgent<
    * Creates a scoped context where config is set and tools are activated.
    */
   function factory(inputConfig?: ZodInput<NonNullable<TConfig>>): Operation<Agent<TTools>> {
-    return scoped(function* () {
-      // Validate and set config if schema exists
-      if (agentConfig.config) {
-        const validated = agentConfig.config.parse(inputConfig) as ZodInfer<
-          NonNullable<TConfig>
-        >;
-        yield* configContext.set(validated);
-      }
+    return {
+      *[Symbol.iterator]() {
+        // Validate and set config if schema exists
+        if (agentConfig.config) {
+          const validated = agentConfig.config.parse(inputConfig) as ZodInfer<
+            NonNullable<TConfig>
+          >;
+          yield* configContext.set(validated);
+        }
 
-      // Activate all tools within this scope
-      const agent = {} as Agent<TTools>;
+        // Activate all tools within this scope
+        const agent = {} as Agent<TTools>;
 
-      for (const toolName of Object.keys(agentConfig.tools) as Array<keyof TTools>) {
-        const toolFactory = agentConfig.tools[toolName];
-        // Activate tool (call factory with no args to use default impl or transport routing)
-        const activatedTool = yield* (toolFactory as () => Operation<unknown>)();
-        agent[toolName] = activatedTool as Agent<TTools>[typeof toolName];
-      }
+        for (const toolName of Object.keys(agentConfig.tools) as Array<keyof TTools>) {
+          const toolFactory = agentConfig.tools[toolName];
+          // Activate tool (call factory with no args to use default impl or transport routing)
+          const activatedTool = yield* (toolFactory as () => Operation<unknown>)();
+          agent[toolName] = activatedTool as Agent<TTools>[typeof toolName];
+        }
 
-      return agent;
-    });
+        return agent;
+      },
+    };
   }
 
   /**

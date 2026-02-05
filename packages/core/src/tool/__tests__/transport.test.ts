@@ -119,9 +119,10 @@ describe("createTool with transport", () => {
       const result = yield* sub.next();
       if (!result.done) {
         const request = result.value as TransportRequest;
-        const response: ResponseMessage = {
+        const response: ResponseMessage<"elicit"> = {
           type: "response",
           id: request.id,
+          kind: "elicit",
           response: { status: "declined" },
         };
         yield* operative.send(response);
@@ -161,9 +162,10 @@ describe("createTool with transport", () => {
       const result = yield* sub.next();
       if (!result.done) {
         const request = result.value as TransportRequest;
-        const response: ResponseMessage = {
+        const response: ResponseMessage<"elicit"> = {
           type: "response",
           id: request.id,
+          kind: "elicit",
           response: { status: "cancelled" },
         };
         yield* operative.send(response);
@@ -203,7 +205,7 @@ describe("createTool with transport", () => {
     }
 
     expect(error).toBeDefined();
-    expect(error?.message).toContain("sweatpants.transport");
+    expect(error?.message).toContain("has no implementation");
   });
 
   it("should receive progress updates from operative", function* () {
@@ -241,9 +243,10 @@ describe("createTool with transport", () => {
         }
 
         // Send final response
-        const response: ResponseMessage = {
+        const response: ResponseMessage<"elicit"> = {
           type: "response",
           id: request.id,
+          kind: "elicit",
           response: { status: "accepted", content: { completed: true } },
         };
         yield* operative.send(response);
@@ -276,16 +279,18 @@ function* handleOperativeRequests(
 
     try {
       const content = handler(request);
-      const response: ResponseMessage = {
+      const response: ResponseMessage<"elicit"> = {
         type: "response",
         id: request.id,
+        kind: "elicit",
         response: { status: "accepted", content },
       };
       yield* operative.send(response);
     } catch (e) {
-      const response: ResponseMessage = {
+      const response: ResponseMessage<"elicit"> = {
         type: "response",
         id: request.id,
+        kind: "elicit",
         response: { status: "other", content: (e as Error).message },
       };
       yield* operative.send(response);

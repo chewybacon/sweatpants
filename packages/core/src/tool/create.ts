@@ -1,5 +1,5 @@
 import { createApi } from "effection/experimental";
-import type { Context, Operation, Subscription } from "effection";
+import type { Operation, Subscription } from "effection";
 import type { ZodSchema, infer as ZodInfer } from "zod";
 import type {
   ToolConfig,
@@ -8,7 +8,6 @@ import type {
   ToolMiddleware,
   ToolFactoryWithImpl,
   ToolFactoryWithoutImpl,
-  ContextBinding,
 } from "./types.ts";
 import { TransportContext } from "../context/transport.ts";
 import type { ElicitResponse } from "../types/transport.ts";
@@ -109,25 +108,36 @@ export function createTool<
             // For now, just a no-op
           };
 
-          // Install the impl as middleware that replaces the default
+          // Install the impl as middleware that runs closest to core (at: "min")
+          // This allows user middleware (at: "max") to wrap the impl
           yield* api.decorate({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // @ts-expect-error - send typing is complex, will refine later
               return yield* actualImpl(args, send);
             },
-          });
+          }, { at: "min" });
         } else {
           // No impl - route to transport
+          // Use { at: "min" } so user middleware can wrap the transport routing
           yield* api.decorate({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // Get transport from context
-              const transport = yield* TransportContext.expect();
+              let transport;
+              try {
+                transport = yield* TransportContext.expect();
+              } catch {
+                throw new Error(
+                  `Tool "${config.name}" has no implementation. ` +
+                  `Either provide an impl at activation (yield* ${config.name}(implFn)) ` +
+                  `or configure a transport context for remote routing.`
+                );
+              }
               
               // Generate unique request ID
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               
               // Send request through transport and get response stream
-              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
+              const stream = transport.request<"elicit", ZodInfer<TProgress>>({
                 id: requestId,
                 kind: "elicit",
                 type: config.name,
@@ -164,7 +174,7 @@ export function createTool<
               // TypeScript exhaustiveness check
               throw new Error(`Tool "${config.name}" received unexpected response status`);
             },
-          });
+          }, { at: "min" });
         }
 
         // Return the activated tool function
@@ -178,6 +188,8 @@ export function createTool<
   }
 
   // Attach decorate method
+  // Default { at: "max" } means later decorations wrap earlier ones (second wraps first)
+  // because max decorations are prepended (unshift) to the stack
   factory.decorate = function (
     middleware: ToolMiddleware<TInput, TOutput>,
   ): Operation<void> {
@@ -186,168 +198,6 @@ export function createTool<
         return yield* middleware(args, (...a) => next(...a));
       },
     });
-  };
-
-  // Attach withContext method
-  factory.withContext = function <T>(
-    context: Context<T>,
-    value: T,
-  ): typeof factory {
-    // Create a new factory that wraps this one with context binding
-    return createToolWithBindings(config, api, [
-      { context: context as Context<unknown>, value },
-    ]) as typeof factory;
-  };
-
-  // Attach metadata
-  Object.defineProperty(factory, "name", {
-    value: config.name,
-    writable: false,
-  });
-  Object.defineProperty(factory, "description", {
-    value: config.description,
-    writable: false,
-  });
-  Object.defineProperty(factory, "schemas", {
-    value: {
-      input: config.input,
-      output: config.output,
-      progress: config.progress,
-    },
-    writable: false,
-  });
-
-  return factory as ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput>;
-}
-
-/**
- * Internal: Create a tool factory with pre-configured context bindings.
- * Used by withContext() to build up the chain of bindings.
- */
-function createToolWithBindings<
-  TInput extends ZodSchema,
-  TProgress extends ZodSchema | undefined,
-  TOutput extends ZodSchema,
->(
-  config: ToolConfig<TInput, TProgress, TOutput>,
-  api: ReturnType<typeof createApi<{ invoke: (args: ZodInfer<TInput>) => Operation<ZodInfer<TOutput>> }>>,
-  bindings: ContextBinding[],
-): ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput> {
-  type Input = ZodInfer<TInput>;
-  type Output = ZodInfer<TOutput>;
-
-  // Factory function that activates the tool with context bindings
-  function factory(
-    impl?: ToolImplFn<TInput, TProgress, TOutput>,
-  ): Operation<Tool<TInput, TOutput>> {
-    return {
-      *[Symbol.iterator]() {
-        // Determine which impl to use
-        const actualImpl = impl ?? config.impl;
-
-        if (actualImpl) {
-          // Create a send function for progress (placeholder for now)
-          const send = function* (_progress: unknown): Operation<void> {
-            // TODO: Route progress through transport
-            // For now, just a no-op
-          };
-
-          // Install the impl as middleware that replaces the default
-          yield* api.decorate({
-            *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
-              // @ts-expect-error - send typing is complex, will refine later
-              return yield* actualImpl(args, send);
-            },
-          });
-        } else {
-          // No impl - route to transport
-          yield* api.decorate({
-            *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
-              // Get transport from context
-              const transport = yield* TransportContext.expect();
-              
-              // Generate unique request ID
-              const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-              
-              // Send request through transport and get response stream
-              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
-                id: requestId,
-                kind: "elicit",
-                type: config.name,
-                payload: args,
-              });
-              
-              // Subscribe to the stream
-              const subscription: Subscription<ZodInfer<TProgress>, ElicitResponse> = yield* stream;
-              
-              // Consume the stream until we get the final response
-              let result = yield* subscription.next();
-              while (!result.done) {
-                result = yield* subscription.next();
-              }
-              
-              // result.value is the final response (ElicitResponse)
-              const response = result.value;
-              
-              if (response.status === "accepted") {
-                return response.content as Output;
-              } else if (response.status === "declined") {
-                throw new Error(`Tool "${config.name}" request was declined`);
-              } else if (response.status === "cancelled") {
-                throw new Error(`Tool "${config.name}" request was cancelled`);
-              } else if (response.status === "denied") {
-                throw new Error(`Tool "${config.name}" request was denied`);
-              } else if (response.status === "other") {
-                throw new Error(`Tool "${config.name}" request failed: ${response.content}`);
-              }
-              
-              throw new Error(`Tool "${config.name}" received unexpected response status`);
-            },
-          });
-        }
-
-        // Apply context bindings as middleware
-        // First binding is outermost, so we iterate in reverse to build the onion
-        for (const binding of [...bindings].reverse()) {
-          yield* api.decorate({
-            *invoke([args]: [Input], next: (...args: [Input]) => Operation<Output>) {
-              return yield* binding.context.with(binding.value, function* () {
-                return yield* next(args);
-              });
-            },
-          });
-        }
-
-        // Return the activated tool function
-        const tool: Tool<TInput, TOutput> = (args: Input): Operation<Output> => {
-          return api.operations.invoke(args);
-        };
-
-        return tool;
-      },
-    };
-  }
-
-  // Attach decorate method
-  factory.decorate = function (
-    middleware: ToolMiddleware<TInput, TOutput>,
-  ): Operation<void> {
-    return api.decorate({
-      *invoke([args]: [Input], next: (...args: [Input]) => Operation<Output>) {
-        return yield* middleware(args, (...a) => next(...a));
-      },
-    });
-  };
-
-  // Attach withContext method - prepends to existing bindings
-  factory.withContext = function <T>(
-    context: Context<T>,
-    value: T,
-  ): typeof factory {
-    return createToolWithBindings(config, api, [
-      { context: context as Context<unknown>, value },
-      ...bindings,
-    ]) as typeof factory;
   };
 
   // Attach metadata

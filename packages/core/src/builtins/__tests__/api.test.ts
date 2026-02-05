@@ -1,30 +1,38 @@
 import { describe, it, expect } from "@effectionx/vitest";
-import { spawn, sleep } from "effection";
+import { spawn, sleep, each } from "effection";
 import { z } from "zod";
 import { SweatpantsApi, elicit, notify, sample } from "../api.ts";
-import { createTransportPair } from "../../transport/pair.ts";
-import { createCorrelation } from "../../transport/correlation.ts";
-import { TransportContext } from "../../context/transport.ts";
-import type {
-  TransportRequest,
-  OperativeTransport,
-  ResponseMessage,
-} from "../../types/transport.ts";
+import { MemoryPair } from "../../transport/middleware/memory.ts";
+import { TransportApi } from "../../transport/api.ts";
+import type { TransportRequest } from "../../types/transport.ts";
 
 describe("Built-in API", () => {
   describe("elicit", () => {
     it("should send elicit request through transport", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
-      // Set up operative handler
+      // Decorate principal in main scope
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      // Get operative middleware and respond to requests
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
       yield* spawn(function* () {
-        yield* handleOperativeRequests(operative, (request) => {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
           expect(request.kind).toBe("elicit");
           expect(request.type).toBe("confirmation");
-          return true; // User confirmed
-        });
+          yield* operativeMiddleware.send!([{
+            type: "response",
+            id: request.id,
+            kind: "elicit",
+            response: { status: "accepted", content: true },
+          }], function* () { /* no next */ });
+          yield* each.next();
+        }
       });
 
       yield* sleep(0);
@@ -42,21 +50,25 @@ describe("Built-in API", () => {
     });
 
     it("should handle declined elicit response", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: request.id,
+            kind: "elicit",
             response: { status: "declined" },
-          };
-          yield* operative.send(response);
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -72,21 +84,25 @@ describe("Built-in API", () => {
     });
 
     it("should handle cancelled elicit response", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: request.id,
+            kind: "elicit",
             response: { status: "cancelled" },
-          };
-          yield* operative.send(response);
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -102,24 +118,28 @@ describe("Built-in API", () => {
     });
 
     it("should pass payload correctly", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       let receivedPayload: unknown;
 
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
           receivedPayload = request.payload;
-          const response: ResponseMessage = {
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: request.id,
+            kind: "elicit",
             response: { status: "accepted", content: { name: "John" } },
-          };
-          yield* operative.send(response);
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -141,23 +161,27 @@ describe("Built-in API", () => {
 
   describe("notify", () => {
     it("should send notification through transport", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       let receivedRequest: TransportRequest | undefined;
 
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          receivedRequest = result.value as TransportRequest;
-          const response: ResponseMessage = {
+        for (const req of yield* each(operativeStream)) {
+          receivedRequest = req as TransportRequest;
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: receivedRequest.id,
+            kind: "notify",
             response: { ok: true },
-          };
-          yield* operative.send(response);
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -179,21 +203,25 @@ describe("Built-in API", () => {
     });
 
     it("should handle failed notification", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: request.id,
-            response: { ok: false, error: new Error("Network error") },
-          };
-          yield* operative.send(response);
+            kind: "notify",
+            response: { ok: false, error: { code: "NETWORK_ERROR", message: "Network error" } },
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -207,21 +235,36 @@ describe("Built-in API", () => {
 
   describe("sample", () => {
     it("should send sample request through transport", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        yield* handleOperativeRequests(operative, (request) => {
-          expect(request.kind).toBe("elicit");
-          expect(request.type).toBe("sample");
-          return {
-            text: "Quantum computing uses qubits...",
-            usage: { promptTokens: 10, completionTokens: 50, totalTokens: 60 },
-            model: "gpt-4",
-            finishReason: "stop",
-          };
-        });
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          expect(request.kind).toBe("sample");
+          expect(request.type).toBe("llm");
+          yield* operativeMiddleware.send!([{
+            type: "response",
+            id: request.id,
+            kind: "sample",
+            response: {
+              status: "accepted",
+              content: {
+                text: "Quantum computing uses qubits...",
+                usage: { promptTokens: 10, completionTokens: 50, totalTokens: 60 },
+                model: "gpt-4",
+                finishReason: "stop",
+              },
+            },
+          }], function* () { /* no next */ });
+          yield* each.next();
+        }
       });
 
       yield* sleep(0);
@@ -238,27 +281,31 @@ describe("Built-in API", () => {
     });
 
     it("should handle sample with message array", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       let receivedPayload: unknown;
 
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
           receivedPayload = request.payload;
-          const response: ResponseMessage = {
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: request.id,
+            kind: "sample",
             response: {
               status: "accepted",
               content: { text: "Response", finishReason: "stop" },
             },
-          };
-          yield* operative.send(response);
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -277,22 +324,26 @@ describe("Built-in API", () => {
       ]);
     });
 
-    it("should throw on declined sample", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+    it("should throw on cancelled sample", function* () {
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
-          const response: ResponseMessage = {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: request.id,
-            response: { status: "declined" },
-          };
-          yield* operative.send(response);
+            kind: "sample",
+            response: { status: "cancelled" },
+          }], function* () { /* no next */ });
+          yield* each.next();
         }
       });
 
@@ -306,17 +357,38 @@ describe("Built-in API", () => {
       }
 
       expect(error).toBeDefined();
-      expect(error?.message).toContain("declined");
+      expect(error?.message).toContain("cancelled");
     });
   });
 
   describe("decorate", () => {
     it("should allow middleware to intercept elicit", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       const callOrder: string[] = [];
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
+      yield* spawn(function* () {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          callOrder.push("transport");
+          yield* operativeMiddleware.send!([{
+            type: "response",
+            id: request.id,
+            kind: "elicit",
+            response: { status: "accepted", content: { confirmed: true } },
+          }], function* () { /* no next */ });
+          yield* each.next();
+        }
+      });
+
+      yield* sleep(0);
 
       yield* SweatpantsApi.decorate({
         *elicit([options], next) {
@@ -326,15 +398,6 @@ describe("Built-in API", () => {
           return result;
         },
       });
-
-      yield* spawn(function* () {
-        yield* handleOperativeRequests(operative, () => {
-          callOrder.push("transport");
-          return { confirmed: true };
-        });
-      });
-
-      yield* sleep(0);
 
       yield* elicit({
         type: "confirmation",
@@ -350,11 +413,32 @@ describe("Built-in API", () => {
     });
 
     it("should allow middleware to modify sample options", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       let receivedPayload: unknown;
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
+      yield* spawn(function* () {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          receivedPayload = request.payload;
+          yield* operativeMiddleware.send!([{
+            type: "response",
+            id: request.id,
+            kind: "sample",
+            response: { status: "accepted", content: { text: "OK" } },
+          }], function* () { /* no next */ });
+          yield* each.next();
+        }
+      });
+
+      yield* sleep(0);
 
       yield* SweatpantsApi.decorate({
         *sample([options], next) {
@@ -367,23 +451,6 @@ describe("Built-in API", () => {
         },
       });
 
-      yield* spawn(function* () {
-        const sub = yield* operative;
-        const result = yield* sub.next();
-        if (!result.done) {
-          const request = result.value as TransportRequest;
-          receivedPayload = request.payload;
-          const response: ResponseMessage = {
-            type: "response",
-            id: request.id,
-            response: { status: "accepted", content: { text: "OK" } },
-          };
-          yield* operative.send(response);
-        }
-      });
-
-      yield* sleep(0);
-
       yield* sample({ prompt: "Test" });
 
       expect((receivedPayload as { maxTokens: number }).maxTokens).toBe(100);
@@ -391,11 +458,31 @@ describe("Built-in API", () => {
     });
 
     it("should allow middleware to intercept notify", function* () {
-      const [principal, operative] = yield* createTransportPair();
-      const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
+      const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       const notifications: string[] = [];
+
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
+      yield* spawn(function* () {
+        for (const req of yield* each(operativeStream)) {
+          const request = req as TransportRequest;
+          yield* operativeMiddleware.send!([{
+            type: "response",
+            id: request.id,
+            kind: "notify",
+            response: { ok: true },
+          }], function* () { /* no next */ });
+          yield* each.next();
+        }
+      });
+
+      yield* sleep(0);
 
       yield* SweatpantsApi.decorate({
         *notify([options], next) {
@@ -403,12 +490,6 @@ describe("Built-in API", () => {
           return yield* next(options);
         },
       });
-
-      yield* spawn(function* () {
-        yield* handleOperativeRequests(operative, () => ({ ok: true }), "notify");
-      });
-
-      yield* sleep(0);
 
       yield* notify({ message: "Processing started" });
       yield* notify({ message: "Processing complete" });
@@ -420,60 +501,3 @@ describe("Built-in API", () => {
     });
   });
 });
-
-/**
- * Helper function to handle operative requests.
- */
-function* handleOperativeRequests(
-  operative: OperativeTransport,
-  handler: (request: TransportRequest) => unknown,
-  expectedKind?: "elicit" | "notify",
-) {
-  const sub = yield* operative;
-
-  for (;;) {
-    const result = yield* sub.next();
-    if (result.done) break;
-
-    const request = result.value as TransportRequest;
-
-    if (expectedKind && request.kind !== expectedKind) {
-      continue;
-    }
-
-    try {
-      const content = handler(request);
-      let response: ResponseMessage;
-      if (request.kind === "notify") {
-        response = {
-          type: "response",
-          id: request.id,
-          response: { ok: true } as const,
-        };
-      } else {
-        response = {
-          type: "response",
-          id: request.id,
-          response: { status: "accepted" as const, content },
-        };
-      }
-      yield* operative.send(response);
-    } catch (e) {
-      let response: ResponseMessage;
-      if (request.kind === "notify") {
-        response = {
-          type: "response",
-          id: request.id,
-          response: { ok: false as const, error: e as Error },
-        };
-      } else {
-        response = {
-          type: "response",
-          id: request.id,
-          response: { status: "other" as const, content: (e as Error).message },
-        };
-      }
-      yield* operative.send(response);
-    }
-  }
-}

@@ -5,7 +5,22 @@ export type ElicitResponse =
   | { status: "denied" }
   | { status: "other"; content: string };
 
-export type NotifyResponse = { ok: true } | { ok: false; error: Error };
+/**
+ * Response for notify requests - acknowledgment that notification was received.
+ * Error is serializable (not Error object) for transport safety.
+ */
+export type NotifyResponse =
+  | { ok: true }
+  | { ok: false; error: { code: string; message: string; details?: Record<string, unknown> } };
+
+/**
+ * Response for sample requests - LLM completion results.
+ * Content is opaque at transport level; framework interprets it.
+ */
+export type SampleResponse =
+  | { status: "accepted"; content: unknown }
+  | { status: "error"; error: string }
+  | { status: "cancelled" };
 
 export type Invocation = ElicitInvocation | NotifyInvocation;
 

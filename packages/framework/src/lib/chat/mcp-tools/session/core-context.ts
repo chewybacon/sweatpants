@@ -35,7 +35,7 @@
 
 import { type Operation, type Subscription } from 'effection'
 import { TransportContext } from '@sweatpants/core'
-import type { CorrelatedTransport, ElicitResponse, NotifyResponse } from '@sweatpants/core'
+import type { CorrelatedTransport, ElicitResponse, NotifyResponse, SampleResponse } from '@sweatpants/core'
 import { zodToJsonSchema } from 'zod-to-json-schema'
 import type {
   Message,
@@ -233,14 +233,14 @@ export function createContextFromTransport(
     }
 
     // Send request through transport
-    const stream = transport.request<unknown, ElicitResponse>({
+    const stream = transport.request<"sample", unknown>({
       id: sampleId,
-      kind: 'elicit',
+      kind: 'sample',
       type: 'sample',
       payload,
     })
 
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream
+    const subscription: Subscription<unknown, SampleResponse> = yield* stream
 
     // Consume progress updates (if any)
     let result = yield* subscription.next()
@@ -398,7 +398,7 @@ export function createContextFromTransport(
     const jsonSchema = zodToJsonSchema(config.schema as any)
 
     // Send request through transport
-    const stream = transport.request<unknown, ElicitResponse>({
+    const stream = transport.request<"elicit", unknown>({
       id: elicitId,
       kind: 'elicit',
       type: 'elicit',
@@ -470,7 +470,7 @@ export function createContextFromTransport(
   function* logImpl(level: LogLevel, message: string): Operation<void> {
     const notifyId = generateId(`${callId}:log`)
 
-    const stream = transport.request<unknown, NotifyResponse>({
+    const stream = transport.request<"notify", unknown>({
       id: notifyId,
       kind: 'notify',
       type: 'log',
@@ -489,7 +489,7 @@ export function createContextFromTransport(
   function* notifyImpl(message: string, progress?: number): Operation<void> {
     const notifyId = generateId(`${callId}:notify`)
 
-    const stream = transport.request<unknown, NotifyResponse>({
+    const stream = transport.request<"notify", unknown>({
       id: notifyId,
       kind: 'notify',
       type: 'progress',
@@ -586,7 +586,7 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
     const contextJsonSchema = contextSchema ? zodToJsonSchema(contextSchema) : undefined
 
     // Send request through transport
-    const stream = transport.request<unknown, ElicitResponse>({
+    const stream = transport.request<"elicit", unknown>({
       id: elicitId,
       kind: 'elicit',
       type: 'elicit',

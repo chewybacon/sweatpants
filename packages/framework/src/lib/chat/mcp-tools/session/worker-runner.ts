@@ -23,7 +23,7 @@
  */
 
 import {
-  runToolWorker as coreRunToolWorker,
+  runWorkerPrincipal as coreRunWorkerPrincipal,
   type WorkerToolContext as CoreWorkerToolContext,
   type WorkerInitData as CoreWorkerInitData,
   type WorkerMessage,
@@ -109,13 +109,15 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
  * Run a tool session worker.
  *
  * This is the entry point for the worker thread. It uses @sweatpants/core's
- * runToolWorker to handle the communication protocol, and wraps the core
+ * runWorkerPrincipal to handle the communication protocol, and wraps the core
  * context with MCP-specific functionality (exchanges, retry helpers).
+ *
+ * The worker acts as principal (sends requests to host).
  *
  * @param registry - Registry of available tools
  */
 export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
-  await coreRunToolWorker(function* (initData: CoreWorkerInitData, coreCtx: CoreWorkerToolContext) {
+  await coreRunWorkerPrincipal(function* (initData: CoreWorkerInitData, coreCtx: CoreWorkerToolContext) {
     const { toolName, params, sessionId } = initData
 
     // Look up tool

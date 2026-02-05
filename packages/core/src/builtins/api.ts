@@ -1,8 +1,7 @@
 import { createApi } from "effection/experimental";
-import type { Operation, Subscription } from "effection";
+import type { Operation } from "effection";
 import type { ZodSchema } from "zod";
-import { TransportContext } from "../context/transport.ts";
-import type { ElicitResponse, NotifyResponse } from "../types/transport.ts";
+import { TransportApi } from "../transport/api.ts";
 import type {
   ElicitOptions,
   ElicitResult,
@@ -11,13 +10,6 @@ import type {
   SampleOptions,
   SampleResult,
 } from "./types.ts";
-
-/**
- * Generate a unique request ID.
- */
-function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
 
 /**
  * The Sweatpants API for framework operations.
@@ -61,11 +53,7 @@ export const SweatpantsApi = createApi("sweatpants", {
   *elicit<TSchema extends ZodSchema>(
     options: ElicitOptions<TSchema>,
   ): Operation<ElicitResult<TSchema>> {
-    const transport = yield* TransportContext.expect();
-    const requestId = generateId("elicit");
-
-    const stream = transport.request<unknown, ElicitResponse>({
-      id: requestId,
+    const response = yield* TransportApi.operations.request({
       kind: "elicit",
       type: options.type,
       payload: {
@@ -74,16 +62,6 @@ export const SweatpantsApi = createApi("sweatpants", {
         meta: options.meta,
       },
     });
-
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream;
-
-    // Consume progress updates (if any)
-    let result = yield* subscription.next();
-    while (!result.done) {
-      result = yield* subscription.next();
-    }
-
-    const response = result.value;
 
     if (response.status === "accepted") {
       // Validate and return the content
@@ -112,11 +90,7 @@ export const SweatpantsApi = createApi("sweatpants", {
    * ```
    */
   *notify(options: NotifyOptions): Operation<NotifyResult> {
-    const transport = yield* TransportContext.expect();
-    const requestId = generateId("notify");
-
-    const stream = transport.request<unknown, NotifyResponse>({
-      id: requestId,
+    const response = yield* TransportApi.operations.request({
       kind: "notify",
       type: "notification",
       payload: {
@@ -127,15 +101,6 @@ export const SweatpantsApi = createApi("sweatpants", {
       },
     });
 
-    const subscription: Subscription<unknown, NotifyResponse> = yield* stream;
-
-    // Consume until done
-    let result = yield* subscription.next();
-    while (!result.done) {
-      result = yield* subscription.next();
-    }
-
-    const response = result.value;
     return { ok: response.ok };
   },
 
@@ -153,13 +118,9 @@ export const SweatpantsApi = createApi("sweatpants", {
    * ```
    */
   *sample(options: SampleOptions): Operation<SampleResult> {
-    const transport = yield* TransportContext.expect();
-    const requestId = generateId("sample");
-
-    const stream = transport.request<unknown, ElicitResponse>({
-      id: requestId,
-      kind: "elicit",
-      type: "sample",
+    const response = yield* TransportApi.operations.request({
+      kind: "sample",
+      type: "llm",
       payload: {
         prompt: options.prompt,
         maxTokens: options.maxTokens,
@@ -170,26 +131,12 @@ export const SweatpantsApi = createApi("sweatpants", {
       },
     });
 
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream;
-
-    // Consume until done
-    let result = yield* subscription.next();
-    while (!result.done) {
-      result = yield* subscription.next();
-    }
-
-    const response = result.value;
-
     if (response.status === "accepted") {
       return response.content as SampleResult;
-    } else if (response.status === "declined") {
-      throw new Error("Sample request was declined");
     } else if (response.status === "cancelled") {
       throw new Error("Sample request was cancelled");
-    } else if (response.status === "denied") {
-      throw new Error("Sample request was denied");
-    } else if (response.status === "other") {
-      throw new Error(`Sample request failed: ${response.content}`);
+    } else if (response.status === "error") {
+      throw new Error(`Sample request failed: ${response.error}`);
     }
 
     throw new Error("Unexpected sample response status");
