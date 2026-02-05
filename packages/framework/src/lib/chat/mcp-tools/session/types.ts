@@ -114,6 +114,8 @@ export interface ElicitRequestEvent extends ToolSessionEventBase {
   message: string
   /** JSON Schema for the expected response */
   schema: Record<string, unknown>
+  /** Context data for the UI to render (e.g., flight options, seat map) */
+  context?: Record<string, unknown>
 }
 
 /**

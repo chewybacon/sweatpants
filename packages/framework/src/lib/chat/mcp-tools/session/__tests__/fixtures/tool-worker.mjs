@@ -28,6 +28,10 @@ const tools = {
       },
     });
 
+    if (response.status === "cancelled") {
+      return { action, wasCancelled: true };
+    }
+    
     if (response.status !== "accepted") {
       return { cancelled: true };
     }
@@ -84,6 +88,181 @@ const tools = {
     }
     
     return { greeting: generatedGreeting, wasEdited: false };
+  },
+
+  /**
+   * Elicit with context - tests context data passing through elicit calls
+   */
+  elicit_with_context: function* (params, ctx) {
+    const { flights } = params;
+    
+    // Elicit with context data (the new feature we added)
+    const result = yield* ctx.elicit("pickFlight", {
+      message: "Select a flight",
+      schema: {
+        type: "object",
+        properties: { flightId: { type: "string" } },
+        required: ["flightId"],
+      },
+      context: { flights, totalOptions: flights.length },
+    });
+    
+    if (result.status !== "accepted") {
+      return { cancelled: true };
+    }
+    
+    return { selectedFlightId: result.content.flightId };
+  },
+
+  /**
+   * Sample with all optional fields - tests systemPrompt, maxTokens, modelPreferences
+   */
+  sample_with_options: function* (params, ctx) {
+    const response = yield* ctx.sample({
+      messages: [{ role: "user", content: "Hello" }],
+      systemPrompt: "You are a helpful assistant",
+      maxTokens: 100,
+      modelPreferences: {
+        hints: [{ name: "claude-3-5-sonnet" }],
+        intelligencePriority: 0.8,
+        speedPriority: 0.2,
+      },
+    });
+    
+    return {
+      text: response.text,
+      model: response.model,
+    };
+  },
+
+  /**
+   * Sample with parsed response - tests the parsed field in sample results
+   */
+  sample_with_parsed: function* (params, ctx) {
+    const response = yield* ctx.sample({
+      messages: [{ role: "user", content: "Generate a person object" }],
+      schema: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          age: { type: "number" },
+        },
+        required: ["name", "age"],
+      },
+    });
+    
+    return {
+      text: response.text,
+      // The parsed field should be available when schema is provided
+      parsed: response.parsed,
+    };
+  },
+
+  /**
+   * Sample with tool calls - tests the toolCalls field in sample results
+   */
+  sample_with_tools: function* (params, ctx) {
+    const response = yield* ctx.sample({
+      messages: [{ role: "user", content: "What's the weather?" }],
+      tools: [
+        {
+          name: "get_weather",
+          description: "Get the current weather",
+          inputSchema: {
+            type: "object",
+            properties: {
+              location: { type: "string" },
+            },
+            required: ["location"],
+          },
+        },
+      ],
+      toolChoice: { type: "auto" },
+    });
+    
+    return {
+      text: response.text,
+      toolCalls: response.toolCalls ?? [],
+    };
+  },
+
+  /**
+   * Book Flight Tool - mimics the book_flight e2e flow
+   * 
+   * Flow:
+   * 1. elicit(pickFlight) → user selects a flight
+   * 2. elicit(pickSeat) → user selects a seat
+   * 3. sample() → get travel tip
+   * 4. return booking confirmation
+   */
+  book_flight: function* (params, ctx) {
+    const { from, destination } = params;
+    
+    // Mock flight data
+    const flights = [
+      { id: "FL001", airline: "SkyHigh", price: 299 },
+      { id: "FL002", airline: "CloudAir", price: 349 },
+    ];
+    
+    // Step 1: Elicit flight selection
+    const flightResult = yield* ctx.elicit("pickFlight", {
+      message: `Select a flight from ${from} to ${destination}`,
+      schema: {
+        type: "object",
+        properties: {
+          flightId: { type: "string" },
+        },
+        required: ["flightId"],
+      },
+    });
+    
+    if (flightResult.status !== "accepted") {
+      return { success: false, reason: "flight_not_selected" };
+    }
+    
+    const selectedFlight = flights.find(f => f.id === flightResult.content.flightId);
+    if (!selectedFlight) {
+      return { success: false, reason: "invalid_flight" };
+    }
+    
+    // Step 2: Elicit seat selection
+    const seatResult = yield* ctx.elicit("pickSeat", {
+      message: `Select your seat on ${selectedFlight.airline}`,
+      schema: {
+        type: "object",
+        properties: {
+          row: { type: "number" },
+          seat: { type: "string" },
+        },
+        required: ["row", "seat"],
+      },
+    });
+    
+    if (seatResult.status !== "accepted") {
+      return { success: false, reason: "seat_not_selected" };
+    }
+    
+    const seatCode = `${seatResult.content.row}${seatResult.content.seat}`;
+    
+    // Step 3: Sample for travel tip
+    const tipResponse = yield* ctx.sample({
+      messages: [{ role: "user", content: `Give a travel tip for ${destination}` }],
+      maxTokens: 50,
+    });
+    
+    // Step 4: Return booking confirmation
+    return {
+      success: true,
+      ticketNumber: "TKT-TEST123",
+      flight: {
+        id: selectedFlight.id,
+        airline: selectedFlight.airline,
+      },
+      seat: seatCode,
+      price: selectedFlight.price,
+      route: { from, to: destination },
+      travelTip: tipResponse.text,
+    };
   },
 };
 

@@ -148,6 +148,8 @@ export interface McpElicitRequest extends McpRequestBase {
   message: string
   /** JSON Schema for expected response */
   schema: Record<string, unknown>
+  /** Context data for the UI to render (e.g., flight options, seat map) */
+  context?: Record<string, unknown>
 }
 
 /**
@@ -539,7 +541,7 @@ export interface WorkerToolContext {
    */
   elicit<T>(
     key: string,
-    options: { message: string; schema: Record<string, unknown> }
+    options: { message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
   ): Operation<ElicitResult<unknown, T>>
 }
 

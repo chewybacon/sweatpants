@@ -32,6 +32,7 @@ export const WorkerSessionApi = createApi('worker-session', {
       key: request.key,
       message: request.message,
       schema: request.schema,
+      ...(request.context !== undefined && { context: request.context }),
     })
 
     const channel = createChannel<RawElicitResult<unknown>, void>()

@@ -375,7 +375,7 @@ function createMcpWorkerContext(
 
     *elicit<T>(
       key: string,
-      options: { message: string; schema: Record<string, unknown> }
+      options: { message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
     ): Operation<ElicitResult<unknown, T>> {
       const response: WorkerElicitResponse = yield* coreCtx.elicit(key, options)
 

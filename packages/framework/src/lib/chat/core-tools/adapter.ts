@@ -18,11 +18,16 @@ import { withFrameworkTransport } from './framework-transport.ts'
  * - `withContext()` for context binding
  * - `name` and `description` metadata
  * - `schemas` with input/output/progress schemas
+ * 
+ * Note: We use `any` for middleware and context types to allow any core tool factory
+ * regardless of its specific generic parameters. The runtime behavior is correct.
  */
 export type CoreToolFactory = {
   (...args: unknown[]): Operation<unknown>
-  decorate: (middleware: unknown) => Operation<void>
-  withContext: <T>(context: unknown, value: T) => CoreToolFactory
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  decorate: (middleware: any) => Operation<void>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withContext: <T>(context: any, value: T) => CoreToolFactory
   readonly name: string
   readonly description: string
   readonly schemas: {

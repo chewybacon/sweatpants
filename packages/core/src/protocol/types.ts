@@ -1,5 +1,5 @@
 import type { Operation, Stream } from "effection";
-import type { ZodSchema, infer as ZodInfer } from "zod";
+import type { z, ZodSchema } from "zod";
 
 // ============================================================================
 // Method Definition
@@ -51,7 +51,7 @@ export interface InvocationArgs<M extends Methods, N extends keyof M = keyof M> 
   /** The method name to invoke */
   name: N;
   /** The arguments to pass to the method */
-  args: ZodInfer<M[N]["input"]>;
+  args: z.infer<M[N]["input"]>;
 }
 
 /**
@@ -59,8 +59,8 @@ export interface InvocationArgs<M extends Methods, N extends keyof M = keyof M> 
  * that closes with the final result.
  */
 export type InvocationResult<M extends Methods, N extends keyof M = keyof M> = Stream<
-  ZodInfer<M[N]["progress"]>,
-  ZodInfer<M[N]["output"]>
+  z.infer<M[N]["progress"]>,
+  z.infer<M[N]["output"]>
 >;
 
 // ============================================================================
@@ -72,15 +72,15 @@ export type InvocationResult<M extends Methods, N extends keyof M = keyof M> = S
  * Takes input args and returns a stream of progress/result.
  */
 export type MethodHandler<M extends Methods, N extends keyof M> = 
-  (args: ZodInfer<M[N]["input"]>) => Stream<ZodInfer<M[N]["progress"]>, ZodInfer<M[N]["output"]>>;
+  (args: z.infer<M[N]["input"]>) => Stream<z.infer<M[N]["progress"]>, z.infer<M[N]["output"]>>;
 
 /**
  * A record of method handlers matching a protocol's methods.
  */
 export type MethodHandlers<M extends Methods> = {
-  [N in keyof M]: (args: ZodInfer<M[N]["input"]>) => Stream<
-    ZodInfer<M[N]["progress"]>,
-    ZodInfer<M[N]["output"]>
+  [N in keyof M]: (args: z.infer<M[N]["input"]>) => Stream<
+    z.infer<M[N]["progress"]>,
+    z.infer<M[N]["output"]>
   >;
 };
 
