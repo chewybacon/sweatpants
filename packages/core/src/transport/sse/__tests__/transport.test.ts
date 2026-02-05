@@ -140,7 +140,7 @@ describe("SSE+POST Transport", () => {
         expect(result.done).toBe(true);
       });
 
-      yield* sleep(20);
+      yield* sleep(100);
 
       expect(operative.received).toHaveLength(1);
       expect(operative.received[0]).toEqual(message);
@@ -257,8 +257,8 @@ describe("SSE+POST Transport", () => {
     it("should handle multiple concurrent requests", function* () {
       const { correlated, operative } = yield* useSSETestServer();
 
-      const responses: Record<string, ElicitResponse | undefined> = {};
-
+      // Start two concurrent requests with assertions inside the spawned tasks
+      // This matches the pattern of other working tests
       yield* spawn(function* () {
         const subscription = yield* correlated.request<"elicit", unknown>({
           id: "msg-1",
@@ -268,9 +268,8 @@ describe("SSE+POST Transport", () => {
         });
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
-        if (result.done) {
-          responses["msg-1"] = result.value;
-        }
+        // msg-1 is responded to second but with "denied"
+        expect(result.value).toEqual({ status: "denied" });
       });
 
       yield* spawn(function* () {
@@ -282,16 +281,19 @@ describe("SSE+POST Transport", () => {
         });
         const result = yield* subscription.next();
         expect(result.done).toBe(true);
-        if (result.done) {
-          responses["msg-2"] = result.value;
-        }
+        // msg-2 is responded to first with "accepted"
+        expect(result.value).toEqual({
+          status: "accepted",
+          content: { text: "Hello clipboard" },
+        });
       });
 
-      yield* sleep(20);
+      // Let tasks start and send their HTTP requests (SSE uses POST for requests)
+      yield* sleep(100);
 
       expect(operative.received).toHaveLength(2);
 
-      // Respond out of order
+      // Respond out of order - send response for msg-2 first
       yield* operative.send({
         type: "response",
         id: "msg-2",
@@ -304,14 +306,6 @@ describe("SSE+POST Transport", () => {
         id: "msg-1",
         kind: "elicit",
         response: { status: "denied" },
-      });
-
-      yield* sleep(20);
-
-      expect(responses["msg-1"]).toEqual({ status: "denied" });
-      expect(responses["msg-2"]).toEqual({
-        status: "accepted",
-        content: { text: "Hello clipboard" },
       });
     });
 

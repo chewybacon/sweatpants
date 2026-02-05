@@ -1,21 +1,23 @@
 /**
  * Transport API
  *
- * A unified transport API with type-inferred initialization.
+ * A unified transport API using Effection's decoration pattern.
  *
  * ## Usage
  *
  * ```typescript
  * const [MemoryPrincipal, MemoryOperative] = MemoryPair();
  *
- * // Principal side - returns { send, request, stream }
- * const principal = yield* initTransport(MemoryPrincipal());
- * const response = yield* principal.request({ kind: "elicit", ... });
+ * // Principal side - decorate and use operations
+ * yield* TransportApi.decorate(yield* MemoryPrincipal());
+ * const { send, request, stream } = yield* usePrincipal();
+ * const response = yield* request({ kind: "elicit", ... });
  *
- * // Operative side - returns { send, stream }
- * const operative = yield* initTransport(MemoryOperative());
- * for (const req of yield* each(yield* operative.stream())) {
- *   yield* operative.send({ type: "response", ... });
+ * // Operative side - decorate and use operations
+ * yield* TransportApi.decorate(yield* MemoryOperative());
+ * const { send, stream } = yield* useOperative();
+ * for (const req of yield* each(yield* stream())) {
+ *   yield* send({ type: "response", ... });
  *   yield* each.next();
  * }
  * ```
@@ -91,26 +93,18 @@ type SendMessage = PrincipalOutgoing | OperativeOutgoing;
 type StreamReturn = Stream<PrincipalIncoming | OperativeIncoming, void>;
 
 /**
- * Principal middleware - includes send, request, and stream.
+ * Transport middleware decoration object.
+ * 
+ * Middleware can implement any subset of these operations.
+ * - send: Send a message through the transport
+ * - request: Send a request and wait for correlated response (principal only)
+ * - stream: Get the incoming message stream
  */
-export interface PrincipalMiddleware {
-  send: MiddlewareFn<[SendMessage], void>;
-  request: MiddlewareFn<[TransportRequestWithoutId], ResponseByKind[RequestKind]>;
-  stream: MiddlewareFn<[], StreamReturn>;
+export interface TransportMiddleware {
+  send?: MiddlewareFn<[SendMessage], void>;
+  request?: MiddlewareFn<[TransportRequestWithoutId], ResponseByKind[RequestKind]>;
+  stream?: MiddlewareFn<[], StreamReturn>;
 }
-
-/**
- * Operative middleware - includes send and stream (no request).
- */
-export interface OperativeMiddleware {
-  send: MiddlewareFn<[SendMessage], void>;
-  stream: MiddlewareFn<[], StreamReturn>;
-}
-
-/**
- * Union of middleware types.
- */
-export type TransportMiddleware = PrincipalMiddleware | OperativeMiddleware;
 
 // =============================================================================
 // TYPED TRANSPORT INTERFACES
@@ -141,7 +135,18 @@ export interface OperativeTransportApi {
 
 /**
  * The unified Transport API.
- * Decorated by middleware via initTransport().
+ * 
+ * Decorate this API with transport middleware to provide implementations.
+ * 
+ * @example
+ * ```typescript
+ * // Decorate with middleware
+ * yield* TransportApi.decorate(yield* MemoryPrincipal());
+ * 
+ * // Use operations
+ * yield* TransportApi.operations.send(message);
+ * const response = yield* TransportApi.operations.request({ kind: "elicit", ... });
+ * ```
  */
 export const TransportApi = createApi("transport", {
   send(_message: PrincipalOutgoing | OperativeOutgoing): Operation<void> {
@@ -160,68 +165,18 @@ export const TransportApi = createApi("transport", {
 });
 
 // =============================================================================
-// INIT TRANSPORT
-// =============================================================================
-
-/**
- * Initialize the transport with middleware and return a typed interface.
- * 
- * The return type is inferred from the middleware:
- * - PrincipalMiddleware → PrincipalTransportApi (send, request, stream)
- * - OperativeMiddleware → OperativeTransportApi (send, stream)
- *
- * @example
- * ```typescript
- * const [MemoryPrincipal, MemoryOperative] = MemoryPair();
- *
- * // Principal - has request()
- * const principal = yield* initTransport(MemoryPrincipal());
- * const response = yield* principal.request({ kind: "elicit", ... });
- *
- * // Operative - no request()
- * const operative = yield* initTransport(MemoryOperative());
- * ```
- */
-export function initTransport(
-  middleware: Operation<PrincipalMiddleware>
-): Operation<PrincipalTransportApi>;
-export function initTransport(
-  middleware: Operation<OperativeMiddleware>
-): Operation<OperativeTransportApi>;
-export function* initTransport(
-  middleware: Operation<TransportMiddleware>
-): Operation<PrincipalTransportApi | OperativeTransportApi> {
-  const decorations = yield* middleware;
-  yield* TransportApi.decorate(decorations);
-
-  const { send, request, stream } = TransportApi.operations;
-
-  if ("request" in decorations) {
-    return {
-      send: send as PrincipalTransportApi["send"],
-      request: request as PrincipalTransportApi["request"],
-      stream: stream as PrincipalTransportApi["stream"],
-    };
-  } else {
-    return {
-      send: send as OperativeTransportApi["send"],
-      stream: stream as OperativeTransportApi["stream"],
-    };
-  }
-}
-
-// =============================================================================
 // CONVENIENCE ACCESSORS
 // =============================================================================
 
 /**
  * Get the principal transport interface.
- * Use this when transport is already initialized elsewhere.
+ * Use this when transport is already decorated in the current scope.
  *
  * @example
  * ```typescript
- * // In agent code, after transport is initialized
+ * yield* TransportApi.decorate(yield* MemoryPrincipal());
  * const { send, request, stream } = yield* usePrincipal();
+ * const response = yield* request({ kind: "elicit", ... });
  * ```
  */
 export function* usePrincipal(): Operation<PrincipalTransportApi> {
@@ -235,11 +190,11 @@ export function* usePrincipal(): Operation<PrincipalTransportApi> {
 
 /**
  * Get the operative transport interface.
- * Use this when transport is already initialized elsewhere.
+ * Use this when transport is already decorated in the current scope.
  *
  * @example
  * ```typescript
- * // In UI code, after transport is initialized
+ * yield* TransportApi.decorate(yield* MemoryOperative());
  * const { send, stream } = yield* useOperative();
  * ```
  */

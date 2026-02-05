@@ -10,15 +10,12 @@
  * const [MemoryPrincipal, MemoryOperative] = MemoryPair();
  *
  * // Principal side
- * const principal = yield* initTransport(MemoryPrincipal());
- * const response = yield* principal.request({ kind: "sample", ... });
+ * yield* TransportApi.decorate(yield* MemoryPrincipal());
+ * const { send, request, stream } = yield* usePrincipal();
  *
  * // Operative side
- * const operative = yield* initTransport(MemoryOperative());
- * for (const req of yield* each(yield* operative.stream())) {
- *   yield* operative.send({ type: "response", id: req.id, ... });
- *   yield* each.next();
- * }
+ * yield* TransportApi.decorate(yield* MemoryOperative());
+ * const { send, stream } = yield* useOperative();
  * ```
  *
  * @packageDocumentation
@@ -44,8 +41,7 @@ import type {
 import { isResponseMessage } from "../../types/transport.ts";
 import {
   generateRequestId,
-  type PrincipalMiddleware,
-  type OperativeMiddleware,
+  type TransportMiddleware,
   type TransportRequestWithoutId,
 } from "../api.ts";
 
@@ -75,15 +71,17 @@ interface PendingRequest {
  * const [MemoryPrincipal, MemoryOperative] = MemoryPair();
  *
  * // Principal side
- * const principal = yield* initTransport(MemoryPrincipal());
+ * yield* TransportApi.decorate(yield* MemoryPrincipal());
+ * const { send, request, stream } = yield* usePrincipal();
  *
  * // Operative side
- * const operative = yield* initTransport(MemoryOperative());
+ * yield* TransportApi.decorate(yield* MemoryOperative());
+ * const { send, stream } = yield* useOperative();
  * ```
  */
 export function MemoryPair(): [
-  () => Operation<PrincipalMiddleware>,
-  () => Operation<OperativeMiddleware>
+  () => Operation<TransportMiddleware>,
+  () => Operation<TransportMiddleware>
 ] {
   // Shared channels between principal and operative
   const principalToOperative: Channel<PrincipalOutgoing, void> =
@@ -95,7 +93,7 @@ export function MemoryPair(): [
    * Memory principal middleware.
    * Sets up correlation and returns the middleware decoration object.
    */
-  function* MemoryPrincipal(): Operation<PrincipalMiddleware> {
+  function* MemoryPrincipal(): Operation<TransportMiddleware> {
     // Correlation state
     const pendingRequests = new Map<string, PendingRequest>();
 
@@ -116,14 +114,13 @@ export function MemoryPair(): [
 
     // Return the middleware decoration object
     return {
-      *send([message]) {
+      *send([message]: [PrincipalOutgoing | OperativeOutgoing], _next) {
         yield* principalToOperative.send(message as PrincipalOutgoing);
       },
 
-      *request([req]) {
-        const typedReq = req as TransportRequestWithoutId;
+      *request([req]: [TransportRequestWithoutId], _next) {
         const id = generateRequestId();
-        const fullReq: PrincipalOutgoing = { ...typedReq, id } as PrincipalOutgoing;
+        const fullReq: PrincipalOutgoing = { ...req, id } as PrincipalOutgoing;
 
         const responseChannel = createChannel<never, ResponseByKind[RequestKind]>();
         pendingRequests.set(id, { channel: responseChannel });
@@ -142,7 +139,7 @@ export function MemoryPair(): [
         }
       },
 
-      *stream() {
+      *stream(_args, _next) {
         return operativeToPrincipal as Stream<PrincipalIncoming | OperativeIncoming, void>;
       },
     };
@@ -152,14 +149,14 @@ export function MemoryPair(): [
    * Memory operative middleware.
    * Returns the middleware decoration object (no correlation needed).
    */
-  function* MemoryOperative(): Operation<OperativeMiddleware> {
+  function* MemoryOperative(): Operation<TransportMiddleware> {
     // Return the middleware decoration object
     return {
-      *send([message]) {
+      *send([message]: [PrincipalOutgoing | OperativeOutgoing], _next) {
         yield* operativeToPrincipal.send(message as OperativeOutgoing);
       },
 
-      *stream() {
+      *stream(_args, _next) {
         return principalToOperative as Stream<PrincipalIncoming | OperativeIncoming, void>;
       },
     };
