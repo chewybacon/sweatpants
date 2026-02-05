@@ -2,18 +2,21 @@
  * Transport Middleware
  *
  * Transport middleware factories for different transport types.
- * Each middleware is a resource that:
- * 1. Connects automatically when yielded
- * 2. Decorates TransportApi with implementations
- * 3. Returns the transport role ("principal" | "operative")
- * 4. Disconnects automatically when scope exits
+ * Each middleware is an Operation that:
+ * 1. Sets up the connection and any required state
+ * 2. Returns a decoration object for TransportApi
+ *
+ * Use with initTransport() to initialize and get typed interface.
  *
  * @packageDocumentation
  */
 
 export { MemoryPair } from "./memory.ts";
-
-// TODO: Add these as they're implemented
-// export { WebSocketPrincipal, WebSocketOperative } from "./websocket.ts";
-// export { SSEPrincipal, SSEOperative } from "./sse.ts";
-// export { WorkerPrincipal, WorkerOperative } from "./worker.ts";
+export { WebSocketPrincipal, WebSocketOperative, type WebSocketOptions } from "./websocket.ts";
+export { SSEPrincipal, SSEOperative, type SSEPrincipalOptions, type SSEOperativeOptions } from "./sse.ts";
+export {
+  WorkerPrincipal,
+  WorkerOperative,
+  type WorkerOptions,
+  type WorkerTransportResource,
+} from "./worker.ts";

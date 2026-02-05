@@ -1,7 +1,7 @@
 import { describe, it, expect } from "@effectionx/vitest";
 import { spawn, sleep, each } from "effection";
 import { MemoryPair } from "../middleware/memory.ts";
-import { initTransport, TransportError } from "../api.ts";
+import { TransportApi, TransportError, usePrincipal, useOperative } from "../api.ts";
 import type {
   TransportRequest,
   ResponseMessage,
@@ -9,30 +9,31 @@ import type {
 } from "../../types/transport.ts";
 
 describe("TransportApi with MemoryPair", () => {
-  describe("initTransport", () => {
-    it("should return principal interface with send, request, and stream", function* () {
+  describe("TransportApi.decorate", () => {
+    it("should decorate and provide principal interface with send, request, and stream", function* () {
       const [MemoryPrincipal] = MemoryPair();
 
-      const principal = yield* initTransport(MemoryPrincipal());
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
 
       expect(principal.send).toBeDefined();
       expect(principal.request).toBeDefined();
       expect(principal.stream).toBeDefined();
     });
 
-    it("should return operative interface with send and stream (no request)", function* () {
+    it("should decorate and provide operative interface with send and stream", function* () {
       const [, MemoryOperative] = MemoryPair();
 
-      const operative = yield* initTransport(MemoryOperative());
+      yield* TransportApi.decorate(yield* MemoryOperative());
+      const operative = yield* useOperative();
 
       expect(operative.send).toBeDefined();
       expect(operative.stream).toBeDefined();
-      expect("request" in operative).toBe(false);
     });
   });
 
   describe("send/stream", () => {
-    it("should send requests from principal to operative", function* () {
+    it("should send requests from principal to operative via channels", function* () {
       const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       const typedRequest: TransportRequest = {
@@ -44,11 +45,19 @@ describe("TransportApi with MemoryPair", () => {
 
       const receivedRequests: TransportRequest[] = [];
 
-      // Set up operative
-      const operative = yield* initTransport(MemoryOperative());
+      // Decorate both in same scope - they share channels via MemoryPair
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
 
+      // Get operative stream directly from middleware
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
+
+      // Listen on operative stream in background
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream)) {
           receivedRequests.push(req as TransportRequest);
           yield* each.next();
         }
@@ -56,8 +65,7 @@ describe("TransportApi with MemoryPair", () => {
 
       yield* sleep(0);
 
-      // Set up principal and send
-      const principal = yield* initTransport(MemoryPrincipal());
+      // Send from principal
       yield* principal.send(typedRequest);
 
       yield* sleep(0);
@@ -66,7 +74,7 @@ describe("TransportApi with MemoryPair", () => {
       expect(receivedRequests[0]).toEqual(typedRequest);
     });
 
-    it("should send responses from operative to principal", function* () {
+    it("should send responses from operative to principal via channels", function* () {
       const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
       const response: ResponseMessage<"elicit"> = {
@@ -78,9 +86,11 @@ describe("TransportApi with MemoryPair", () => {
 
       const receivedMessages: ResponseMessage<"elicit">[] = [];
 
-      // Set up principal
-      const principal = yield* initTransport(MemoryPrincipal());
+      // Decorate principal
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
 
+      // Listen on principal stream in background
       yield* spawn(function* () {
         for (const msg of yield* each(yield* principal.stream())) {
           receivedMessages.push(msg as ResponseMessage<"elicit">);
@@ -90,9 +100,9 @@ describe("TransportApi with MemoryPair", () => {
 
       yield* sleep(0);
 
-      // Set up operative and send response
-      const operative = yield* initTransport(MemoryOperative());
-      yield* operative.send(response);
+      // Send from operative via direct middleware call
+      const operativeMiddleware = yield* MemoryOperative();
+      yield* operativeMiddleware.send!([response], function* () { /* no next */ });
 
       yield* sleep(0);
 
@@ -111,7 +121,9 @@ describe("TransportApi with MemoryPair", () => {
 
       const receivedMessages: ProgressMessage[] = [];
 
-      const principal = yield* initTransport(MemoryPrincipal());
+      // Decorate principal
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
 
       yield* spawn(function* () {
         for (const msg of yield* each(yield* principal.stream())) {
@@ -122,8 +134,9 @@ describe("TransportApi with MemoryPair", () => {
 
       yield* sleep(0);
 
-      const operative = yield* initTransport(MemoryOperative());
-      yield* operative.send(progress);
+      // Send from operative
+      const operativeMiddleware = yield* MemoryOperative();
+      yield* operativeMiddleware.send!([progress], function* () { /* no next */ });
 
       yield* sleep(0);
 
@@ -136,27 +149,30 @@ describe("TransportApi with MemoryPair", () => {
     it("should correlate request with response via request()", function* () {
       const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
-      // Set up operative to respond
-      const operative = yield* initTransport(MemoryOperative());
+      // Decorate principal
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
+
+      // Set up operative stream to respond
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream )) {
           const typedReq = req as TransportRequest<"elicit">;
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: typedReq.id,
             kind: "elicit",
             response: { status: "accepted", content: "user response" },
-          });
+          }], function* () { /* no next */ });
           yield* each.next();
         }
       });
 
       yield* sleep(0);
-
-      // Principal makes a request
-      const principal = yield* initTransport(MemoryPrincipal());
-      yield* sleep(0); // Let principal's router start
 
       const receivedResponse = yield* principal.request({
         kind: "elicit",
@@ -173,13 +189,20 @@ describe("TransportApi with MemoryPair", () => {
     it("should correlate multiple concurrent requests", function* () {
       const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
-      // Set up operative to respond to each request with unique response
-      const operative = yield* initTransport(MemoryOperative());
+      // Decorate principal
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
+
+      // Set up operative to respond
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream )) {
           const typedReq = req as TransportRequest<"elicit">;
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: typedReq.id,
             kind: "elicit",
@@ -187,15 +210,12 @@ describe("TransportApi with MemoryPair", () => {
               status: "accepted",
               content: `response for ${typedReq.payload}`,
             },
-          });
+          }], function* () { /* no next */ });
           yield* each.next();
         }
       });
 
       yield* sleep(0);
-
-      const principal = yield* initTransport(MemoryPrincipal());
-      yield* sleep(0); // Let principal's router start
 
       // Launch two concurrent requests
       const task1 = yield* spawn(function* () {
@@ -230,25 +250,28 @@ describe("TransportApi with MemoryPair", () => {
     it("should handle sample request kind", function* () {
       const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
-      const operative = yield* initTransport(MemoryOperative());
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream )) {
           const typedReq = req as TransportRequest<"sample">;
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: typedReq.id,
             kind: "sample",
             response: { status: "accepted", content: "Generated text from LLM" },
-          });
+          }], function* () { /* no next */ });
           yield* each.next();
         }
       });
 
       yield* sleep(0);
-
-      const principal = yield* initTransport(MemoryPrincipal());
-      yield* sleep(0); // Let principal's router start
 
       const receivedResponse = yield* principal.request({
         kind: "sample",
@@ -265,25 +288,28 @@ describe("TransportApi with MemoryPair", () => {
     it("should handle notify request kind", function* () {
       const [MemoryPrincipal, MemoryOperative] = MemoryPair();
 
-      const operative = yield* initTransport(MemoryOperative());
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream )) {
           const typedReq = req as TransportRequest<"notify">;
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: typedReq.id,
             kind: "notify",
             response: { ok: true },
-          });
+          }], function* () { /* no next */ });
           yield* each.next();
         }
       });
 
       yield* sleep(0);
-
-      const principal = yield* initTransport(MemoryPrincipal());
-      yield* sleep(0); // Let principal's router start
 
       const receivedResponse = yield* principal.request({
         kind: "notify",
@@ -303,37 +329,39 @@ describe("TransportApi with MemoryPair", () => {
 
       const progressReceived: ProgressMessage[] = [];
 
-      const operative = yield* initTransport(MemoryOperative());
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       // Operative handles requests with progress updates
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream )) {
           const typedReq = req as TransportRequest<"elicit">;
 
           // Send progress
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "progress",
             id: typedReq.id,
             data: { status: "processing" },
-          });
+          }], function* () { /* no next */ });
 
           yield* sleep(5);
 
           // Send final response
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: typedReq.id,
             kind: "elicit",
             response: { status: "accepted", content: "done" },
-          });
+          }], function* () { /* no next */ });
 
           yield* each.next();
         }
       });
-
-      yield* sleep(0);
-
-      const principal = yield* initTransport(MemoryPrincipal());
 
       // Listen for progress in background
       yield* spawn(function* () {
@@ -366,26 +394,29 @@ describe("TransportApi with MemoryPair", () => {
 
       const receivedIds: string[] = [];
 
-      const operative = yield* initTransport(MemoryOperative());
+      yield* TransportApi.decorate(yield* MemoryPrincipal());
+      const principal = yield* usePrincipal();
+
+      const operativeMiddleware = yield* MemoryOperative();
+      const operativeStream = yield* operativeMiddleware.stream!([], function* () {
+        throw new Error("No next");
+      });
 
       yield* spawn(function* () {
-        for (const req of yield* each(yield* operative.stream())) {
+        for (const req of yield* each(operativeStream )) {
           const typedReq = req as TransportRequest;
           receivedIds.push(typedReq.id);
-          yield* operative.send({
+          yield* operativeMiddleware.send!([{
             type: "response",
             id: typedReq.id,
             kind: typedReq.kind,
             response: { status: "accepted", content: null },
-          });
+          }], function* () { /* no next */ });
           yield* each.next();
         }
       });
 
       yield* sleep(0);
-
-      const principal = yield* initTransport(MemoryPrincipal());
-      yield* sleep(0); // Let principal's router start
 
       yield* principal.request({
         kind: "elicit",

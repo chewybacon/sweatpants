@@ -1,22 +1,54 @@
 import { describe, it, expect } from "@effectionx/vitest";
-import { spawn, sleep, resource } from "effection";
+import { spawn, sleep, resource, type Operation, type Stream as EffStream } from "effection";
 import { z } from "zod";
 import { elicit, notify, sample } from "../api.ts";
 import { SweatpantsProtocol } from "../protocol.ts";
 import { createTransportPair } from "../../transport/pair.ts";
-import { createCorrelation } from "../../transport/correlation.ts";
-import { TransportContext } from "../../context/transport.ts";
+import { createCorrelation, type CorrelatedTransport } from "../../transport/correlation.ts";
 import { createImplementation } from "../../protocol/create.ts";
 import { serveProtocol } from "../../protocol/serve.ts";
+import { TransportApi, generateRequestId, type TransportMiddleware } from "../../transport/api.ts";
 import type { Stream } from "effection";
 import type { z as zod } from "zod";
+import type { PrincipalTransport, PrincipalIncoming, RequestKind, ResponseByKind, PrincipalOutgoing, OperativeOutgoing } from "../../types/transport.ts";
+
+/**
+ * Create middleware that wraps a CorrelatedTransport for use with TransportApi.
+ * This bridges the old createTransportPair()/createCorrelation() pattern with the new TransportApi.decorate() API.
+ */
+function createCorrelatedMiddleware(
+  transport: PrincipalTransport,
+  correlated: CorrelatedTransport
+): Operation<TransportMiddleware> {
+  return (function* () {
+    return {
+      *send([message]: [PrincipalOutgoing | OperativeOutgoing], _next: (args_0: PrincipalOutgoing | OperativeOutgoing) => Operation<void>) {
+        // Principal side only sends PrincipalOutgoing (requests)
+        yield* transport.send(message as Parameters<PrincipalTransport["send"]>[0]);
+      },
+      *request([req]: [{ kind: RequestKind; type: string; payload: unknown }], _next: (args_0: { kind: RequestKind; type: string; payload: unknown }) => Operation<ResponseByKind[RequestKind]>) {
+        const id = generateRequestId();
+        const fullReq = { ...req, id };
+        const stream: EffStream<unknown, ResponseByKind[RequestKind]> = correlated.request(fullReq);
+        const sub = yield* stream;
+        let result = yield* sub.next();
+        while (!result.done) {
+          result = yield* sub.next();
+        }
+        return result.value;
+      },
+      *stream(_args: [], _next: () => Operation<EffStream<PrincipalIncoming, void>>) {
+        return transport as unknown as EffStream<PrincipalIncoming, void>;
+      },
+    } as TransportMiddleware;
+  })();
+}
 
 describe("SweatpantsProtocol", () => {
   describe("with serveProtocol", () => {
     it("should handle elicit requests via protocol", function* () {
       const [principal, operative] = yield* createTransportPair();
       const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
 
       // Create protocol implementation
       const inspector = createImplementation(SweatpantsProtocol, function* () {
@@ -61,11 +93,16 @@ describe("SweatpantsProtocol", () => {
         };
       });
 
-      // Attach and serve the protocol
+      // Attach and serve the protocol on operative side
       const handle = yield* inspector.attach();
       yield* spawn(function* () {
         yield* serveProtocol(handle, operative);
       });
+
+      yield* sleep(0);
+
+      // Initialize transport on principal side using the correlated middleware
+      yield* TransportApi.decorate(yield* createCorrelatedMiddleware(principal, correlated));
 
       yield* sleep(0);
 
@@ -85,7 +122,6 @@ describe("SweatpantsProtocol", () => {
     it("should handle notify requests via protocol", function* () {
       const [principal, operative] = yield* createTransportPair();
       const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
 
       const notifications: string[] = [];
 
@@ -129,6 +165,10 @@ describe("SweatpantsProtocol", () => {
 
       yield* sleep(0);
 
+      yield* TransportApi.decorate(yield* createCorrelatedMiddleware(principal, correlated));
+
+      yield* sleep(0);
+
       const result = yield* notify({
         message: "Processing...",
         progress: 0.5,
@@ -141,7 +181,6 @@ describe("SweatpantsProtocol", () => {
     it("should handle sample requests via protocol", function* () {
       const [principal, operative] = yield* createTransportPair();
       const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
 
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
@@ -189,6 +228,10 @@ describe("SweatpantsProtocol", () => {
 
       yield* sleep(0);
 
+      yield* TransportApi.decorate(yield* createCorrelatedMiddleware(principal, correlated));
+
+      yield* sleep(0);
+
       const result = yield* sample({
         prompt: "Tell me a joke",
         maxTokens: 100,
@@ -202,7 +245,6 @@ describe("SweatpantsProtocol", () => {
     it("should handle declined elicit via protocol", function* () {
       const [principal, operative] = yield* createTransportPair();
       const correlated = yield* createCorrelation(principal);
-      yield* TransportContext.set(correlated);
 
       const inspector = createImplementation(SweatpantsProtocol, function* () {
         return {
@@ -232,6 +274,10 @@ describe("SweatpantsProtocol", () => {
       yield* spawn(function* () {
         yield* serveProtocol(handle, operative);
       });
+
+      yield* sleep(0);
+
+      yield* TransportApi.decorate(yield* createCorrelatedMiddleware(principal, correlated));
 
       yield* sleep(0);
 

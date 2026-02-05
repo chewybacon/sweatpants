@@ -19,7 +19,7 @@ catalogs:
       specifier: ^0.7.1
       version: 0.7.1
     '@effectionx/vitest':
-      specifier: ^0.1.0
+      specifier: https://pkg.pr.new/thefrontside/effectionx/@effectionx/vitest@144
       version: 0.1.0
     '@effectionx/websocket':
       specifier: ^2.3.0
@@ -148,6 +148,7 @@ catalogs:
 overrides:
   '@effectionx/signals': ^0.5.0
   '@effectionx/timebox': ^0.4.0
+  '@effectionx/test-adapter': ^0.7.0
 
 importers:
 
@@ -547,7 +548,7 @@ importers:
         version: 0.7.1(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
       '@effectionx/vitest':
         specifier: 'catalog:'
-        version: 0.1.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: https://pkg.pr.new/thefrontside/effectionx/@effectionx/vitest@144(effection@https://pkg.pr.new/thefrontside/effection@6a01504)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effectionx/websocket':
         specifier: 'catalog:'
         version: 2.3.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
@@ -991,8 +992,8 @@ packages:
     resolution: {integrity: sha512-FV4XRhsq1jHFgRqQUU/YgUsfNqjlq0+wg8YqvDS2wmwWPsUzBfjiijsmkrowVU5AVtrxda7b+8WE2BWPcoPz0w==}
     engines: {node: '>= 16'}
 
-  '@effectionx/vitest@0.1.0':
-    resolution: {integrity: sha512-iNglMahG3dXW3QmnJpPpjflyGcnAtxevWYily5okIWEu9+vLYdVPJ+3AqS7MSuEWwuGy2Yt6qdfnVT+lKrL3fQ==}
+  '@effectionx/vitest@https://pkg.pr.new/thefrontside/effectionx/@effectionx/vitest@144':
+    resolution: {tarball: https://pkg.pr.new/thefrontside/effectionx/@effectionx/vitest@144}
     version: 0.1.0
     engines: {node: '>= 22'}
     peerDependencies:
@@ -7197,7 +7198,7 @@ snapshots:
       effection: 4.0.2
       tinyexec: 0.3.2
 
-  '@effectionx/vitest@0.1.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
+  '@effectionx/vitest@https://pkg.pr.new/thefrontside/effectionx/@effectionx/vitest@144(effection@https://pkg.pr.new/thefrontside/effection@6a01504)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@effectionx/test-adapter': 0.7.0(effection@https://pkg.pr.new/thefrontside/effection@6a01504)
       effection: https://pkg.pr.new/thefrontside/effection@6a01504

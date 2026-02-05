@@ -205,7 +205,7 @@ describe("createTool with transport", () => {
     }
 
     expect(error).toBeDefined();
-    expect(error?.message).toContain("sweatpants.transport");
+    expect(error?.message).toContain("has no implementation");
   });
 
   it("should receive progress updates from operative", function* () {

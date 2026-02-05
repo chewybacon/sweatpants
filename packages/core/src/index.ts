@@ -54,7 +54,6 @@ export {
   type ToolMiddleware,
   type ToolFactoryWithImpl,
   type ToolFactoryWithoutImpl,
-  type ContextBinding,
 } from "./tool/index.ts";
 
 // Re-export context utilities

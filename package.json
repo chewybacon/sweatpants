@@ -7,7 +7,8 @@
   "pnpm": {
     "overrides": {
       "@effectionx/signals": "^0.5.0",
-      "@effectionx/timebox": "^0.4.0"
+      "@effectionx/timebox": "^0.4.0",
+      "@effectionx/test-adapter": "^0.7.0"
     }
   },
   "scripts": {
