@@ -74,6 +74,8 @@ export interface ToolSessionRegistryOptions {
   worker?: {
     workerUrl: string | URL
     isDev?: boolean
+    /** Extra execArgv for worker threads (e.g., ['--import', 'tsx'] for TypeScript support in dev) */
+    execArgv?: string[]
   }
 }
 
@@ -142,6 +144,7 @@ export function createToolSessionRegistry(
                 workerUrl: resolvedWorkerUrl ?? worker.workerUrl,
                 ...(mergedOptions.systemPrompt !== undefined && { systemPrompt: mergedOptions.systemPrompt }),
                 ...(mergedOptions.parentMessages !== undefined && { parentMessages: mergedOptions.parentMessages }),
+                ...(worker.execArgv && worker.execArgv.length > 0 ? { execArgv: worker.execArgv } : {}),
               })
             : yield* createToolSession(
                 tool,

@@ -460,16 +460,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       }))
     }
 
-    // Emit a startup debug event
-    state.pendingEvents.push({
-      type: 'debug_marker',
-      phase: 'engine_startup',
-      hasElicitResponses: !!(elicitResponses && elicitResponses.length > 0),
-      elicitResponseCount: elicitResponses?.length ?? 0,
-      hasPluginSessionManager: !!pluginSessionManager,
-      hasMcpToolRegistry: !!mcpToolRegistry,
-    } as any)
-    
     // The subscription we provide to consumers
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
@@ -561,26 +551,11 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           case 'process_plugin_responses': {
             // Resume suspended plugin sessions with elicit responses
             if (elicitResponses && pluginSessionManager) {
-              // Debug: emit a marker event so we know this phase is running
-              state.pendingEvents.push({
-                type: 'debug_marker',
-                phase: 'process_plugin_responses',
-                responseCount: elicitResponses.length,
-              } as any)
-              
               for (const response of elicitResponses) {
                 const { sessionId, callId, elicitId, result } = response
                 
                 // Look up the session (pass provider for session recovery)
                 const session = yield* pluginSessionManager.get(sessionId, provider)
-                
-                // Debug marker for session lookup result
-                state.pendingEvents.push({
-                  type: 'debug_marker',
-                  phase: 'session_lookup',
-                  sessionId,
-                  found: !!session,
-                } as any)
                 
                 if (!session) {
                   // Session not found - emit error

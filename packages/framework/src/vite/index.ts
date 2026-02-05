@@ -22,6 +22,7 @@ export {
   generateRegistryContent,
   generateWorkerContent,
   calculateImportPath,
+  calculateWorkerImportPath,
   toCamelCase,
 } from './tool-discovery.ts'
 

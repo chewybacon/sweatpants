@@ -14,6 +14,7 @@ import type {
   WorkerSampleResponse,
 } from '@sweatpants/core/transport/worker'
 import type { RawElicitResult, Message } from '../mcp-tool-types.ts'
+import { MODEL_CONTEXT_SCHEMA_KEY } from '../model-context.ts'
 import type { RawSampleResult } from './types.ts'
 import { WorkerSessionStateContext } from './worker-session-context.ts'
 
@@ -26,12 +27,16 @@ export const WorkerSessionApi = createApi('worker-session', {
     const state = yield* WorkerSessionStateContext.expect()
     const elicitId = request.id
 
+    const schemaWithContext = request.context
+      ? { ...request.schema, [MODEL_CONTEXT_SCHEMA_KEY]: request.context }
+      : request.schema
+
     yield* state.emitEvent({
       type: 'elicit_request',
       elicitId,
       key: request.key,
       message: request.message,
-      schema: request.schema,
+      schema: schemaWithContext,
       ...(request.context !== undefined && { context: request.context }),
     })
 

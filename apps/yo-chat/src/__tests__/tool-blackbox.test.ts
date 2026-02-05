@@ -125,7 +125,7 @@ describe('yo-chat tool blackbox', () => {
                 toolCalls: [
                   {
                     id: 'call-1',
-                    name: 'book_flight',
+                    name: bookFlightTool.name,
                     arguments: { from: 'NYC', destination: 'LAX' },
                   },
                 ],
@@ -182,7 +182,7 @@ describe('yo-chat tool blackbox', () => {
             'initial request (expect pickFlight)',
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
-              enabledPlugins: ['book_flight'],
+              enabledPlugins: [bookFlightTool.name],
             })
           )
 
@@ -207,7 +207,7 @@ describe('yo-chat tool blackbox', () => {
             'second request (respond pickFlight, expect pickSeat)',
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
-              enabledPlugins: ['book_flight'],
+              enabledPlugins: [bookFlightTool.name],
               elicitResponses: [pickFlightResponse],
             })
           )
@@ -232,7 +232,7 @@ describe('yo-chat tool blackbox', () => {
             'third request (respond pickSeat, expect complete)',
             streamChatOnce(messages, patches, {
               baseUrl: 'http://localhost/chat',
-              enabledPlugins: ['book_flight'],
+              enabledPlugins: [bookFlightTool.name],
               elicitResponses: [pickSeatResponse],
             })
           )

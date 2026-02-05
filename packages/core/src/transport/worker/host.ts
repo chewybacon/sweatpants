@@ -88,6 +88,13 @@ export interface WorkerPrincipalOptions {
   initData: WorkerInitData;
 
   /**
+   * Additional exec arguments for the worker thread.
+   * Use this to pass flags like '--import tsx' or '--experimental-strip-types'
+   * to enable TypeScript support in worker threads during development.
+   */
+  execArgv?: string[];
+
+  /**
    * Handler for processing requests from the worker.
    * This is called for each sample/elicit request.
    */
@@ -124,7 +131,7 @@ export interface WorkerPrincipalResult<T = unknown> {
 export function* createWorkerPrincipal<T = unknown>(
   options: WorkerPrincipalOptions
 ): Operation<WorkerPrincipalResult<T>> {
-  const { workerUrl, initData, requestHandler } = options;
+  const { workerUrl, initData, requestHandler, execArgv } = options;
 
   return yield* resource<WorkerPrincipalResult<T>>(function* (provide) {
     let outcome: WorkerResult<T> | null = null;
@@ -141,7 +148,10 @@ export function* createWorkerPrincipal<T = unknown>(
         {
           type: "module",
           data: initData,
-        }
+          // Pass execArgv to enable TypeScript loaders in worker threads.
+          // This flows through: useWorker -> web-worker -> node:worker_threads
+          ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
+        } as any
       );
 
     // Spawn the forEach handler to process worker requests

@@ -75,6 +75,8 @@ export interface WorkerToolSessionOptions {
   systemPrompt?: string
   /** Optional parent messages */
   parentMessages?: Message[]
+  /** Extra execArgv for the worker thread (e.g., ['--import', 'tsx'] for TypeScript support) */
+  execArgv?: string[]
 }
 
 /**
@@ -92,7 +94,7 @@ export function createWorkerToolSession(
   options: WorkerToolSessionOptions
 ): Operation<ToolSession> {
   return resource<ToolSession>(function* (provide) {
-    const { sessionId, toolName, params, workerUrl, systemPrompt, parentMessages } = options
+    const { sessionId, toolName, params, workerUrl, systemPrompt, parentMessages, execArgv } = options
 
     // State
     let status: ToolSessionStatus = 'initializing'
@@ -180,6 +182,7 @@ export function createWorkerToolSession(
     const { result: workerResult } = yield* createWorkerPrincipal<unknown>({
       workerUrl,
       initData: initData as unknown as Parameters<typeof createWorkerPrincipal>[0]['initData'],
+      ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
       requestHandler: function* (request: WorkerRequest): Operation<WorkerResponse> {
         // Re-establish context for this handler scope
         return yield* WorkerSessionStateContext.with(sessionState, function* () {

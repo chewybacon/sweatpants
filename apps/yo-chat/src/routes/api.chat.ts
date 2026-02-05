@@ -44,7 +44,6 @@ import {
 import { createPluginSessionManager, type PluginSessionManager } from '@sweatpants/framework/handler/durable'
 import type { McpToolRegistry } from '@sweatpants/framework/handler/durable'
 import type { 
-  ToolCall, 
   ChatResult,
   SampleResultBase,
   SampleResultWithToolCalls,
@@ -52,7 +51,7 @@ import type {
   SamplingToolDefinition,
 } from '@sweatpants/framework/chat'
 import type { Operation } from 'effection'
-import { run, each } from 'effection'
+import { run } from 'effection'
 import { env } from '@/env'
 import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
@@ -236,7 +235,7 @@ function createPluginSamplingProvider(): ToolSessionSamplingProvider {
 
       // Check if the result has tool calls
       if (finalResult.toolCalls && finalResult.toolCalls.length > 0) {
-        // Convert ToolCall[] to SamplingToolCall[]
+        // Convert provider tool calls to SamplingToolCall format
         const samplingToolCalls: SamplingToolCall[] = finalResult.toolCalls.map(tc => ({
           id: tc.id,
           name: tc.function.name,
@@ -287,7 +286,9 @@ let sharedPluginSessionManager: PluginSessionManager | null = null
 const registryPromise = run(function* () {
   const store = createInMemoryToolSessionStore()
   const samplingProvider = createPluginSamplingProvider()
-  const workerPath = resolve('src/__generated__/tool-worker.gen.ts')
+  // Use the bundled .mjs worker - esbuild compiles the .ts entry to .mjs
+  // so worker threads can run it as plain Node.js ESM without TypeScript loaders
+  const workerPath = resolve('src/__generated__/tool-worker.gen.mjs')
   const registry = yield* createToolSessionRegistry(store, {
     samplingProvider,
     worker: {

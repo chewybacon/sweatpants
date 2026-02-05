@@ -342,8 +342,7 @@ export function createPluginSessionManager(
                       role: msg.role as 'user' | 'assistant' | 'system',
                       content: msg.content,
                     }
-                    // Capture extra properties that might be on the message object (passed as any)
-                    // This is a temporary debug step to see what's actually in sampleEvent.messages
+                    // Preserve tool_calls and tool_call_id for proper provider conversation history
                     if ((msg as any).tool_calls) mapped.tool_calls = (msg as any).tool_calls
                     if ((msg as any).tool_call_id) mapped.tool_call_id = (msg as any).tool_call_id
                     return mapped

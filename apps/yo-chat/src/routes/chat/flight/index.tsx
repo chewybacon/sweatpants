@@ -8,6 +8,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
 import { bookFlightPlugin } from '@/tools/book-flight/plugin'
+import { bookFlightTool } from '@/tools/book-flight/tool'
 
 export const Route = createFileRoute('/chat/flight/')({
   component: FlightChatDemo,
@@ -136,7 +137,7 @@ function FlightChatDemo() {
     // Only bookFlight plugin - focused demo
     plugins: [bookFlightPlugin.client],
     // Tell server to only enable bookFlight plugin
-    enabledPlugins: ['book_flight'],
+    enabledPlugins: [bookFlightTool.name],
   })
 
   const [input, setInput] = useState('')

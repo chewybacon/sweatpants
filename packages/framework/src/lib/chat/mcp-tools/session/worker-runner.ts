@@ -278,6 +278,11 @@ function createMcpWorkerContext(
       }
     },
 
+    // Alias for progress() - MCP tools call ctx.notify() instead of ctx.progress()
+    notify(message: string, progressValue?: number): Operation<void> {
+      return ctx.progress(message, progressValue)
+    },
+
     // Sample - delegates to sampleImpl (overloads are defined in the interface)
     sample: ((config: WorkerSampleConfig) => sampleImpl(config)) as WorkerToolContext['sample'],
 

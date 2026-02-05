@@ -360,6 +360,19 @@ describe('discoverToolsInContent', () => {
       expect(tools).toHaveLength(1)
       expect(tools[0].toolName).toBe('my_tool')
     })
+
+    it('supports multiple export function names', () => {
+      const content = `export const foo = createMcpTool('my_tool')`
+      const tools = discoverToolsInContent(
+        content,
+        '/project/src/tools/my-tool.ts',
+        '/project/src/tools',
+        resolveToolDiscoveryOptions({ exportFunctionName: ['createMcpTool', 'createIsomorphicTool'] })
+      )
+
+      expect(tools).toHaveLength(1)
+      expect(tools[0].toolName).toBe('my_tool')
+    })
   })
 
   describe('.tsx file support', () => {
@@ -605,7 +618,7 @@ describe('resolveToolDiscoveryOptions', () => {
     expect(options.dir).toBe('src/tools')
     expect(options.outFile).toBe('src/__generated__/tool-registry.gen.ts')
     expect(options.pattern).toBe('**/*.ts')
-    expect(options.exportFunctionName).toBe('createIsomorphicTool')
+    expect(options.exportFunctionName).toEqual(['createIsomorphicTool', 'createMcpTool'])
     expect(options.logLevel).toBe('normal')
     expect(options.generateWorker).toBe(false)
     expect(options.workerOutFile).toBe('src/__generated__/tool-worker.gen.ts')
@@ -625,7 +638,7 @@ describe('resolveToolDiscoveryOptions', () => {
     expect(options.dir).toBe('lib/tools')
     expect(options.outFile).toBe('generated/registry.ts')
     expect(options.pattern).toBe('*.tool.ts')
-    expect(options.exportFunctionName).toBe('defineTool')
+    expect(options.exportFunctionName).toEqual(['defineTool'])
     expect(options.logLevel).toBe('verbose')
     expect(options.generateWorker).toBe(true)
     expect(options.workerOutFile).toBe('generated/worker.ts')
@@ -744,8 +757,9 @@ describe('integration: toolDiscoveryPlugin', () => {
 
       const worker = await readWorker()
       expect(worker).toContain("import { calculator } from '../tools/calculator'")
-      expect(worker).toContain("'calculator': () => calculator")
-      expect(worker).toContain('runToolWorker')
+      expect(worker).toContain("{ name: 'calculator', handler: calculator")
+      expect(worker).toContain('createWorkerToolRegistry')
+      expect(worker).toContain('runWorker')
     } finally {
       await cleanup()
     }
