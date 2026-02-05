@@ -1,4 +1,4 @@
-import { runToolWorker } from "../../../../../../../../core/dist/transport/worker.js";
+import { runWorker, createWorkerToolRegistry } from "@sweatpants/framework/chat/mcp-tools/worker";
 
 const tools = {
   echo: function* (params) {
@@ -28,11 +28,11 @@ const tools = {
       },
     });
 
-    if (response.status === "cancelled") {
+    if (response.action === "cancel") {
       return { action, wasCancelled: true };
     }
     
-    if (response.status !== "accepted") {
+    if (response.action !== "accept") {
       return { cancelled: true };
     }
 
@@ -78,7 +78,7 @@ const tools = {
       },
     });
     
-    if (elicitResult.status !== "accepted") {
+    if (elicitResult.action !== "accept") {
       return { greeting: null, cancelled: true };
     }
     
@@ -107,10 +107,34 @@ const tools = {
       context: { flights, totalOptions: flights.length },
     });
     
-    if (result.status !== "accepted") {
+    if (result.action !== "accept") {
       return { cancelled: true };
     }
     
+    return { selectedFlightId: result.content.flightId };
+  },
+
+  /**
+   * Elicit with SPREAD context - tests MCP-style spread context format
+   */
+  elicit_spread_context: function* (params, ctx) {
+    const { flights } = params;
+
+    const result = yield* ctx.elicit("pickFlight", {
+      message: "Select a flight",
+      schema: {
+        type: "object",
+        properties: { flightId: { type: "string" } },
+        required: ["flightId"],
+      },
+      flights,
+      totalOptions: flights.length,
+    });
+
+    if (result.action !== "accept") {
+      return { cancelled: true };
+    }
+
     return { selectedFlightId: result.content.flightId };
   },
 
@@ -216,7 +240,7 @@ const tools = {
       },
     });
     
-    if (flightResult.status !== "accepted") {
+    if (flightResult.action !== "accept") {
       return { success: false, reason: "flight_not_selected" };
     }
     
@@ -238,7 +262,7 @@ const tools = {
       },
     });
     
-    if (seatResult.status !== "accepted") {
+    if (seatResult.action !== "accept") {
       return { success: false, reason: "seat_not_selected" };
     }
     
@@ -266,12 +290,10 @@ const tools = {
   },
 };
 
-runToolWorker(function* (initData, ctx) {
-  const tool = tools[initData.toolName];
-  if (!tool) {
-    throw new Error(`Unknown tool: ${initData.toolName}`);
-  }
-  return yield* tool(initData.params ?? {}, ctx);
-}).catch((error) => {
+const registry = createWorkerToolRegistry(
+  Object.entries(tools).map(([name, handler]) => ({ name, handler }))
+);
+
+runWorker(registry).catch((error) => {
   console.error(error);
 });

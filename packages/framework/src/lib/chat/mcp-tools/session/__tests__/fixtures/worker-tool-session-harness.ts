@@ -531,6 +531,46 @@ async function main() {
     }
 
     // =========================================================================
+    // elicit_spread_context - tests MCP-style spread context format
+    // =========================================================================
+    if (scenario === 'elicit_spread_context') {
+      const session = yield* createWorkerToolSession({
+        sessionId: 'test-session',
+        toolName: 'elicit_spread_context',
+        params: {
+          flights: [
+            { id: 'FL001', airline: 'SkyHigh', price: 299 },
+            { id: 'FL002', airline: 'CloudAir', price: 349 },
+          ],
+        },
+        workerUrl,
+      })
+
+      let capturedContext: Record<string, unknown> | undefined
+
+      yield* collectEvents(session, events, function* (event) {
+        if (event.type === 'elicit_request') {
+          capturedContext = event.context
+          yield* sleep(25)
+          yield* session.respondToElicit(event.elicitId, {
+            action: 'accept',
+            content: { flightId: 'FL001' },
+          })
+        }
+      })
+
+      const resultEvent = yield* waitForEvent(events, 'result', 2000)
+      const status = yield* session.status()
+
+      return {
+        status,
+        result: resultEvent?.type === 'result' ? resultEvent.result : null,
+        capturedContext,
+        eventTypes: events.map((event) => event.type),
+      }
+    }
+
+    // =========================================================================
     // sample_with_options - tests sample with systemPrompt, maxTokens, etc.
     // =========================================================================
     if (scenario === 'sample_with_options') {

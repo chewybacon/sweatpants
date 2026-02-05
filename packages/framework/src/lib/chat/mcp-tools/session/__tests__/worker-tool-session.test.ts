@@ -55,7 +55,7 @@ describe('WorkerToolSession', () => {
       const result = await runScenario('missing')
 
       expect(result.status).toBe('failed')
-      expect(result.error).toContain('Unknown tool')
+      expect(result.error).toContain('Tool not found')
     })
   })
 
@@ -203,6 +203,26 @@ describe('WorkerToolSession', () => {
       expect(result.result).toEqual({ selectedFlightId: 'FL001' })
 
       // Verify context was passed through the elicit event
+      expect(result.capturedContext).toEqual({
+        flights: [
+          { id: 'FL001', airline: 'SkyHigh', price: 299 },
+          { id: 'FL002', airline: 'CloudAir', price: 349 },
+        ],
+        totalOptions: 2,
+      })
+    })
+  })
+
+  // ===========================================================================
+  // elicit with spread context - MCP-style format users write
+  // ===========================================================================
+  describe('elicit with spread context (MCP style)', () => {
+    it('extracts spread fields as context', async () => {
+      const result = await runScenario('elicit_spread_context')
+
+      expect(result.status).toBe('completed')
+      expect(result.result).toEqual({ selectedFlightId: 'FL001' })
+
       expect(result.capturedContext).toEqual({
         flights: [
           { id: 'FL001', airline: 'SkyHigh', price: 299 },
