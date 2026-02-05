@@ -33,6 +33,7 @@ import type {
   RawSampleResultWithToolCalls,
   SamplingToolDefinition,
   SamplingToolChoice,
+  ModelPreferences,
   Message,
   LogLevel,
   ElicitsMap,
@@ -129,6 +130,8 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   systemPrompt?: string
   /** Maximum tokens to generate */
   maxTokens?: number
+  /** Model preferences for the client */
+  modelPreferences?: ModelPreferences
   /** Tool definitions for tool calling */
   tools?: SamplingToolDefinition[]
   /** How the model should choose tools */

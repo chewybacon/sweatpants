@@ -20,6 +20,7 @@ export { toolDiscoveryPlugin }
 export {
   discoverToolsInContent,
   generateRegistryContent,
+  generateWorkerContent,
   calculateImportPath,
   toCamelCase,
 } from './tool-discovery.ts'

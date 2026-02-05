@@ -68,6 +68,4 @@ export {
   // Worker tool session adapter
   createWorkerToolSession,
   type WorkerToolSessionOptions,
-  type SampleRequestHandler,
-  type ElicitRequestHandler,
 } from './worker-tool-session.ts'

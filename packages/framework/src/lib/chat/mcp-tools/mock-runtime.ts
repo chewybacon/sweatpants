@@ -36,8 +36,8 @@ import type {
   McpMessage,
 } from './types.ts'
 import {
-  MCPCapabilityError,
-} from './types.ts'
+  McpCapabilityError as MCPCapabilityError,
+} from './mcp-tool-types.ts'
 import type { FinalizedMCPTool } from './builder.ts'
 
 // =============================================================================

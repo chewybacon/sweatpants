@@ -38,6 +38,18 @@ export interface ToolDiscoveryOptions {
    * @default 'normal'
    */
   logLevel?: 'silent' | 'normal' | 'verbose'
+
+  /**
+   * Generate a worker entry file for tool execution.
+   * @default false
+   */
+  generateWorker?: boolean
+
+  /**
+   * Output file for the generated worker entry, relative to project root.
+   * @default 'src/__generated__/tool-worker.gen.ts'
+   */
+  workerOutFile?: string
 }
 
 export interface ResolvedToolDiscoveryOptions {
@@ -47,6 +59,8 @@ export interface ResolvedToolDiscoveryOptions {
   ignore: string[]
   exportFunctionName: string
   logLevel: 'silent' | 'normal' | 'verbose'
+  generateWorker: boolean
+  workerOutFile: string
 }
 
 export function resolveToolDiscoveryOptions(
@@ -59,6 +73,8 @@ export function resolveToolDiscoveryOptions(
     ignore: options.ignore ?? ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**'],
     exportFunctionName: options.exportFunctionName ?? 'createIsomorphicTool',
     logLevel: options.logLevel ?? 'normal',
+    generateWorker: options.generateWorker ?? false,
+    workerOutFile: options.workerOutFile ?? 'src/__generated__/tool-worker.gen.ts',
   }
 }
 

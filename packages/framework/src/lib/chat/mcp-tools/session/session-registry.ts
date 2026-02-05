@@ -27,6 +27,26 @@ import type {
 import type { ElicitsMap } from '../mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
 import { createToolSession } from './tool-session.ts'
+import { createWorkerToolSession } from './worker-tool-session.ts'
+
+function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | URL {
+  if (!isDev) return workerUrl
+
+  if (workerUrl instanceof URL) {
+    if (workerUrl.protocol === 'file:') return workerUrl
+    const cacheBusted = new URL(workerUrl.toString())
+    cacheBusted.searchParams.set('t', Date.now().toString())
+    return cacheBusted
+  }
+
+  if (/^https?:\/\//.test(workerUrl)) {
+    const cacheBusted = new URL(workerUrl)
+    cacheBusted.searchParams.set('t', Date.now().toString())
+    return cacheBusted
+  }
+
+  return workerUrl
+}
 
 // =============================================================================
 // SESSION REGISTRY IMPLEMENTATION
@@ -46,6 +66,15 @@ export interface ToolSessionRegistryOptions {
    * @default undefined (no timeout)
    */
   defaultTimeout?: number
+
+  /**
+   * Worker mode configuration (optional).
+   * When set, tool sessions run in worker threads via createWorkerToolSession.
+   */
+  worker?: {
+    workerUrl: string | URL
+    isDev?: boolean
+  }
 }
 
 /**
@@ -68,7 +97,7 @@ export function createToolSessionRegistry(
   options: ToolSessionRegistryOptions
 ): Operation<ToolSessionRegistry> {
   return resource<ToolSessionRegistry>(function* (provide) {
-    const { samplingProvider, defaultTimeout } = options
+    const { samplingProvider, defaultTimeout, worker } = options
 
     // Track active session resources
     const activeSessions = new Map<string, ToolSession>()
@@ -102,15 +131,27 @@ export function createToolSessionRegistry(
         // that request scope, it would be cancelled and could not be resumed on
         // the next HTTP request.
         yield* useBackgroundTask(function* () {
-          const session = yield* createToolSession(
-            tool,
-            params,
-            samplingProvider,
-            mergedOptions
-          )
+          const resolvedWorkerUrl = worker
+            ? resolveWorkerUrl(worker.workerUrl, worker.isDev)
+            : undefined
+          const session = (worker
+            ? yield* createWorkerToolSession({
+                sessionId: mergedOptions.sessionId ?? tool.name,
+                toolName: tool.name,
+                params,
+                workerUrl: resolvedWorkerUrl ?? worker.workerUrl,
+                ...(mergedOptions.systemPrompt !== undefined && { systemPrompt: mergedOptions.systemPrompt }),
+                ...(mergedOptions.parentMessages !== undefined && { parentMessages: mergedOptions.parentMessages }),
+              })
+            : yield* createToolSession(
+                tool,
+                params,
+                samplingProvider,
+                mergedOptions
+              )) as ToolSession<TResult>
 
-          // Send session back to caller
-          yield* sessionChannel.send(session)
+        // Send session back to caller
+        yield* sessionChannel.send(session)
 
           // Keep this task alive until the session completes
           // This ensures the session's spawned tasks continue running

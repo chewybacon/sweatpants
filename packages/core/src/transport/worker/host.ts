@@ -127,6 +127,8 @@ export function* createWorkerPrincipal<T = unknown>(
   const { workerUrl, initData, requestHandler } = options;
 
   return yield* resource<WorkerPrincipalResult<T>>(function* (provide) {
+    let outcome: WorkerResult<T> | null = null;
+    let resultSettled = false;
     // Create the worker using @effectionx/worker
     // Type parameters:
     // TSend = never (host doesn't send requests via worker.send() in our model)
@@ -145,23 +147,63 @@ export function* createWorkerPrincipal<T = unknown>(
     // Spawn the forEach handler to process worker requests
     // This runs in the background and handles all requests from the worker
     yield* spawn(function* () {
-      // Use worker.forEach with the progress-enabled signature
-      // WRequest = WorkerRequest (what worker sends)
-      // WResponse = WorkerResponse (what we send back)
-      // WProgress = WorkerProgressMessage (progress updates)
-      yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
-        function* (request, ctx) {
-          // Call the user-provided request handler
-          return yield* requestHandler(request, ctx);
+      try {
+        // Use worker.forEach with the progress-enabled signature
+        // WRequest = WorkerRequest (what worker sends)
+        // WResponse = WorkerResponse (what we send back)
+        // WProgress = WorkerProgressMessage (progress updates)
+        yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
+          function* (request, ctx) {
+            // Call the user-provided request handler
+            return yield* requestHandler(request, ctx);
+          }
+        );
+      } catch (error) {
+        if (!resultSettled) {
+          const err = error as Error;
+          outcome = {
+            type: "error",
+            error: {
+              name: err.name,
+              message: err.message,
+              stack: err.stack,
+            },
+          };
+          resultSettled = true;
         }
-      );
+      }
     });
 
     // Create result operation wrapper
     const resultOperation: Operation<WorkerResult<T>> = {
       *[Symbol.iterator]() {
-        // Yield the worker's final result
-        return yield* worker;
+        if (resultSettled && outcome) {
+          return outcome;
+        }
+
+        try {
+          // Yield the worker's final result
+          const result = yield* worker;
+          if (!resultSettled) {
+            outcome = result;
+            resultSettled = true;
+          }
+          return result;
+        } catch (error) {
+          if (!resultSettled) {
+            const err = error as Error;
+            outcome = {
+              type: "error",
+              error: {
+                name: err.name,
+                message: err.message,
+                stack: err.stack,
+              },
+            };
+            resultSettled = true;
+          }
+          return outcome as WorkerResult<T>;
+        }
       },
     };
 
