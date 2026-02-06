@@ -50,7 +50,7 @@ export interface ToolCall {
   type: 'function'
   function: {
     name: string
-    arguments: unknown
+    arguments: Record<string, unknown>
   }
 }
 
@@ -96,19 +96,6 @@ export interface McpToolRegistry {
 
 /**
  * Elicitation request from server to client.
- */
-export interface ElicitRequestData {
-  sessionId: string
-  callId: string
-  toolName: string
-  elicitId: string
-  key: string
-  message: string
-  schema: Record<string, unknown>
-}
-
-/**
- * Result of tool execution.
  */
 export interface ElicitRequestData {
   sessionId: string

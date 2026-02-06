@@ -514,7 +514,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 
                 // Emit abort confirmation event
                 state.pendingEvents.push({
-                  type: 'plugin_session_status',
+                  type: 'tool_session_status',
                   sessionId,
                   callId: sessionId, // sessionId is the callId
                   toolName: '', // We don't have this info readily available
@@ -800,13 +800,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             const completeEvent: StreamEvent = {
               type: 'complete',
               text: result.text,
-              ...(result.usage && {
-                usage: {
-                  prompt_tokens: result.usage.promptTokens,
-                  completion_tokens: result.usage.completionTokens,
-                  total_tokens: result.usage.totalTokens,
-                },
-              }),
+              ...(result.usage && { usage: result.usage }),
             }
             state.pendingEvents.push(completeEvent)
             return { done: false, value: state.pendingEvents.shift()! }
@@ -978,7 +972,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   type: 'function' as const,
                   function: {
                     name: tc.function.name,
-                    arguments: tc.function.arguments as Record<string, unknown>,
+                    arguments: tc.function.arguments,
                   },
                 })),
               })
@@ -1023,7 +1017,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   toolCalls: toolCalls.map((tc) => ({
                     id: tc.id,
                     name: tc.function.name,
-                    arguments: tc.function.arguments as Record<string, unknown>,
+                    arguments: tc.function.arguments,
                   })),
                   serverToolResults: results.map((r) => {
                     if (r.ok) {
@@ -1067,7 +1061,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 type: 'function' as const,
                 function: {
                   name: tc.function.name,
-                  arguments: tc.function.arguments as Record<string, unknown>,
+                  arguments: tc.function.arguments,
                 },
               })),
             })
@@ -1139,7 +1133,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 toolCalls: toolCalls.map((tc) => ({
                   id: tc.id,
                   name: tc.function.name,
-                  arguments: tc.function.arguments as Record<string, unknown>,
+                  arguments: tc.function.arguments,
                 })),
                 serverToolResults: results.map((r) => {
                   if (r.ok) {

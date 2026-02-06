@@ -129,14 +129,7 @@ export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
   partial?: boolean
-  tool_calls?: Array<{
-    id: string
-    type: 'function'
-    function: {
-      name: string
-      arguments: Record<string, unknown>
-    }
-  }>
+  tool_calls?: ToolCall[]
   tool_call_id?: string
 }
 
@@ -146,14 +139,14 @@ export interface Message {
 export type OllamaMessage = Message
 
 /**
- * Tool call structure.
- * Note: The 'type' field is optional for backward compatibility with providers
- * that don't include it, but when sending to OpenAI/Anthropic APIs, the
- * 'type: function' field must be added.
+ * Tool call structure — canonical nested (OpenAI-compatible) format.
+ *
+ * Used by Message.tool_calls, ChatEvent, ChatResult, and the durable engine.
+ * All providers normalise into this shape before it enters the framework.
  */
 export interface ToolCall {
   id: string
-  type?: 'function'
+  type: 'function'
   function: {
     name: string
     arguments: Record<string, unknown>
