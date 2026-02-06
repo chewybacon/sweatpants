@@ -36,7 +36,7 @@
 import { type Operation, type Subscription } from 'effection'
 import { TransportContext } from '@sweatpants/core'
 import type { CorrelatedTransport, ElicitResponse, NotifyResponse } from '@sweatpants/core'
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import { z } from 'zod'
 import type {
   Message,
   LogLevel,
@@ -217,7 +217,7 @@ export function createContextFromTransport(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const configAny = config as any
     if (configAny['schema']) {
-      payload['schema'] = zodToJsonSchema(configAny['schema'])
+      payload['schema'] = z.toJSONSchema(configAny['schema'] as z.ZodType)
     }
 
     // Add tools if present
@@ -226,7 +226,7 @@ export function createContextFromTransport(
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema instanceof Object && 'parse' in tool.inputSchema
-          ? zodToJsonSchema(tool.inputSchema as never)
+          ? z.toJSONSchema(tool.inputSchema as z.ZodType)
           : tool.inputSchema,
       }))
       payload['toolChoice'] = configAny['toolChoice'] ?? 'auto'
@@ -395,7 +395,7 @@ export function createContextFromTransport(
 
     // Convert Zod schema to JSON Schema
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const jsonSchema = zodToJsonSchema(config.schema as any)
+    const jsonSchema = z.toJSONSchema(config.schema as any)
 
     // Send request through transport
     const stream = transport.request<unknown, ElicitResponse>({
@@ -579,11 +579,11 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
 
     // Get the response schema from the definition
     const responseSchema = elicitDef.response
-    const jsonSchema = zodToJsonSchema(responseSchema)
+    const jsonSchema = z.toJSONSchema(responseSchema as z.ZodType)
 
     // If there's a context schema, include context in the payload
     const contextSchema = 'context' in elicitDef ? elicitDef.context : undefined
-    const contextJsonSchema = contextSchema ? zodToJsonSchema(contextSchema) : undefined
+    const contextJsonSchema = contextSchema ? z.toJSONSchema(contextSchema as z.ZodType) : undefined
 
     // Send request through transport
     const stream = transport.request<unknown, ElicitResponse>({
