@@ -236,7 +236,6 @@ export const startTttGame = createIsomorphicTool('start_ttt_game')
     })
   )
   .context('browser')
-  .authority('server')
   .approval({ client: 'none' })
   .handoff({
     *before(params) {
@@ -313,7 +312,6 @@ export const tttMove = createIsomorphicTool('ttt_move')
     })
   )
   .context('browser')
-  .authority('server')
   .approval({ client: 'none' })
   .handoff({
     *before(params) {
@@ -418,7 +416,6 @@ export const tttWinner = createIsomorphicTool('ttt_winner')
     })
   )
   .context('browser')
-  .authority('server')
   .approval({ client: 'none' })
   .handoff({
     *before(params) {

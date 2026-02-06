@@ -343,10 +343,8 @@ test.describe('Durable Chat - Session Features', () => {
       expect(parsed.lsn).toBeGreaterThan(0)
     }
     
-    // First non-debug event should be session_info
-    const sessionInfoEvent = lines
-      .map(line => JSON.parse(line))
-      .find((parsed: { event: { type: string } }) => parsed.event.type !== 'debug_marker')
+    // First event should be session_info
+    const sessionInfoEvent = JSON.parse(lines[0])
     expect(sessionInfoEvent?.event.type).toBe('session_info')
     
     console.log('First 3 events:', lines.slice(0, 3).join('\n'))

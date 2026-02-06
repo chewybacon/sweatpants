@@ -36,7 +36,6 @@ export const gitDiff = createIsomorphicTool('git_diff')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* (params) {
     try {
       const args: string[] = ['git', 'diff']

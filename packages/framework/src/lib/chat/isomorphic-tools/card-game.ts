@@ -53,7 +53,6 @@ export const drawCardIsomorphicTool = createIsomorphicTool('draw_card')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* ({ count = 1 }: { count?: number | undefined }) {
     if (serverDeck.length === 0) {
       serverDeck = shuffleDeck(createFreshDeck())
@@ -79,7 +78,6 @@ export const shuffleDeckIsomorphicTool = createIsomorphicTool('shuffle_deck')
   .description('Shuffle and reset the deck to a fresh 52 cards. Use this to start a new game.')
   .parameters(z.object({}))
   .context('headless')
-  .authority('server')
   .server(function* () {
     serverDeck = shuffleDeck(createFreshDeck())
     serverDiscardPile = []
@@ -94,7 +92,6 @@ export const deckStatusIsomorphicTool = createIsomorphicTool('deck_status')
   .description('Check how many cards remain in the deck.')
   .parameters(z.object({}))
   .context('headless')
-  .authority('server')
   .server(function* () {
     return {
       remainingInDeck: serverDeck.length,
