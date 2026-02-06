@@ -26,7 +26,7 @@ import {
 } from '../../../lib/chat/providers/contexts.ts'
 
 import { streamChatOnce, type ElicitResponseData } from '../../../lib/chat/session/stream-chat.ts'
-import type { ApiMessage } from '../../../lib/chat/session/streaming.ts'
+import type { Message } from '../../../lib/chat/types.ts'
 import type { ChatPatch } from '../../../lib/chat/patches/index.ts'
 import { initialChatState } from '../../../lib/chat/state/chat-state.ts'
 import { chatReducer } from '../../../lib/chat/state/reducer.ts'
@@ -236,7 +236,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             }
           })
 
-          const messages: ApiMessage[] = [{ role: 'user', content: 'Book a flight' }]
+          const messages: Message[] = [{ role: 'user', content: 'Book a flight' }]
 
           // Request 1: expect pickFlight elicitation
           const r1 = yield* withTimeout(

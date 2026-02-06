@@ -63,7 +63,7 @@
  */
 import type { Operation, Task, Channel, Signal, Stream } from 'effection'
 import { spawn, each, createChannel, createSignal, resource, useScope, call } from 'effection'
-import { streamChatOnce, toApiMessages, type ElicitResponseData } from './stream-chat.ts'
+import { streamChatOnce, type ElicitResponseData } from './stream-chat.ts'
 import { useTransformPipeline } from './transforms.ts'
 import { chatReducer, initialChatState } from '../state/reducer.ts'
 import type { ChatState } from '../state/chat-state.ts'
@@ -71,7 +71,7 @@ import { StreamerContext, ToolRegistryContext, BaseUrlContext } from './contexts
 import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
 import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
-import type { StreamResult, ApiMessage } from './streaming.ts'
+import type { StreamResult } from './streaming.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
 import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools/index.ts'
 import type { PendingEmission } from '../isomorphic-tools/runtime/emissions.ts'
@@ -335,7 +335,7 @@ export function* runChatSession(
             
             // Run the chat loop - may loop if client tools need execution
             let result: StreamResult
-            let currentMessages: ApiMessage[] = toApiMessages(history)
+            let currentMessages: Message[] = [...history]
             
             // Track original history length to know what messages need syncing after the loop
             const originalHistoryLength = history.length
@@ -369,10 +369,10 @@ export function* runChatSession(
                 streamPatches,
                 {
                   ...options,
-                  isomorphicToolSchemas,
-                  isomorphicClientOutputs: isomorphicClientOutputs.length > 0 ? isomorphicClientOutputs : undefined,
-                  elicitResponses: elicitResponsesToSend.length > 0 ? elicitResponsesToSend : undefined,
-                } as any // Type cast needed for extended options
+                  ...(isomorphicToolSchemas != null && { isomorphicToolSchemas }),
+                  ...(isomorphicClientOutputs.length > 0 && { isomorphicClientOutputs }),
+                  ...(elicitResponsesToSend.length > 0 && { elicitResponses: elicitResponsesToSend }),
+                }
               )
               
               // Clear client outputs and plugin responses after sending (they've been processed)
@@ -396,28 +396,11 @@ export function* runChatSession(
                 
                 // Add any new messages from conversationState
                 for (let i = originalHistoryLength; i < conversationMessages.length; i++) {
-                  const apiMsg = conversationMessages[i]!
-                  const msg: Message = {
-                    id: crypto.randomUUID(),
-                    role: apiMsg.role,
-                    content: apiMsg.content,
-                  }
-                  
-                  // Preserve tool_calls with proper type field
-                  if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
-                    msg.tool_calls = apiMsg.tool_calls.map(tc => ({
-                      id: tc.id,
-                      type: 'function' as const,
-                      function: 'function' in tc ? tc.function : { name: (tc as any).name, arguments: (tc as any).arguments },
-                    }))
-                  }
-                  
-                  // Preserve tool_call_id
-                  if (apiMsg.tool_call_id) {
-                    msg.tool_call_id = apiMsg.tool_call_id
-                  }
-                  
-                  history.push(msg)
+                  const convMsg = conversationMessages[i]!
+                  history.push({
+                    ...convMsg,
+                    id: convMsg.id ?? crypto.randomUUID(),
+                  })
                 }
                 
                 // Add the assistant message with tool_calls if not already in conversationMessages
@@ -545,12 +528,7 @@ export function* runChatSession(
                     )
                 
                 // Build messages for re-initiation
-                const conversationMessages: ApiMessage[] = result.conversationState.messages.map(msg => ({
-                  role: msg.role,
-                  content: msg.content,
-                  ...(msg.tool_calls !== undefined && { tool_calls: msg.tool_calls }),
-                  ...(msg.tool_call_id !== undefined && { tool_call_id: msg.tool_call_id }),
-                }))
+                const conversationMessages: Message[] = [...result.conversationState.messages]
                 
                 // Add assistant message with tool_calls
                 const allToolCalls = result.conversationState.toolCalls.map(tc => ({
@@ -838,7 +816,7 @@ export function* runChatSession(
             const streamer = contextStreamer ?? options.streamer ?? defaultStreamer
             
             // Convert history to API messages
-            let currentMessages: ApiMessage[] = toApiMessages(history)
+            let currentMessages: Message[] = [...history]
             
             // Capture plugin elicit responses for this continuation
             let elicitResponsesToSend: ElicitResponseData[] = []
@@ -859,9 +837,9 @@ export function* runChatSession(
                 streamPatches,
                 {
                   ...options,
-                  isomorphicToolSchemas,
-                  elicitResponses: elicitResponsesToSend.length > 0 ? elicitResponsesToSend : undefined,
-                } as any
+                  ...(isomorphicToolSchemas != null && { isomorphicToolSchemas }),
+                  ...(elicitResponsesToSend.length > 0 && { elicitResponses: elicitResponsesToSend }),
+                }
               )
               
               // Clear plugin responses after sending (they've been processed)
@@ -884,28 +862,11 @@ export function* runChatSession(
                 
                 // Add any new messages from conversationState
                 for (let i = originalHistoryLength; i < conversationMessages.length; i++) {
-                  const apiMsg = conversationMessages[i]!
-                  const msg: Message = {
-                    id: crypto.randomUUID(),
-                    role: apiMsg.role,
-                    content: apiMsg.content,
-                  }
-                  
-                  // Preserve tool_calls with proper type field
-                  if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
-                    msg.tool_calls = apiMsg.tool_calls.map(tc => ({
-                      id: tc.id,
-                      type: 'function' as const,
-                      function: 'function' in tc ? tc.function : { name: (tc as any).name, arguments: (tc as any).arguments },
-                    }))
-                  }
-                  
-                  // Preserve tool_call_id
-                  if (apiMsg.tool_call_id) {
-                    msg.tool_call_id = apiMsg.tool_call_id
-                  }
-                  
-                  history.push(msg)
+                  const convMsg = conversationMessages[i]!
+                  history.push({
+                    ...convMsg,
+                    id: convMsg.id ?? crypto.randomUUID(),
+                  })
                 }
                 
                 // Add the assistant message with tool_calls if not already in conversationMessages
