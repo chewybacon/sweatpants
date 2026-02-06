@@ -13,6 +13,36 @@ import type {
 import type { ChatProvider, ChatStreamOptions } from './types.ts'
 import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config.ts'
 
+/**
+ * Minimal interface for a Node.js-style readable stream body.
+ * In Node.js, `fetch().body` may be a Node.js `Readable` rather than a Web
+ * `ReadableStream`. We only need the `on()` method to bridge it.
+ */
+interface NodeReadableBody {
+  on(event: 'data', cb: (chunk: Buffer) => void): void
+  on(event: 'end', cb: () => void): void
+  on(event: 'error', cb: (err: Error) => void): void
+}
+
+/**
+ * Bridge a Node.js-style readable body to a Web ReadableStream.
+ */
+function toWebReadableStream(nodeBody: NodeReadableBody): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      nodeBody.on('data', (chunk: Buffer) => {
+        controller.enqueue(new Uint8Array(chunk))
+      })
+      nodeBody.on('end', () => {
+        controller.close()
+      })
+      nodeBody.on('error', (err: Error) => {
+        controller.error(err)
+      })
+    }
+  })
+}
+
 type OllamaTool = NonNullable<OllamaChatRequest['tools']>[number]
 
 /**
@@ -82,26 +112,9 @@ export const ollamaProvider: ChatProvider = {
       }
 
       // In Node.js, response.body might be a Node.js Readable, not a Web ReadableStream
-      let readableStream: ReadableStream<Uint8Array>
-      if (response.body instanceof ReadableStream) {
-        readableStream = response.body
-      } else {
-        // Convert Node.js Readable to Web ReadableStream
-        const nodeStream = response.body as any
-        readableStream = new ReadableStream({
-          start(controller) {
-            nodeStream.on('data', (chunk: Buffer) => {
-              controller.enqueue(new Uint8Array(chunk))
-            })
-            nodeStream.on('end', () => {
-              controller.close()
-            })
-            nodeStream.on('error', (err: Error) => {
-              controller.error(err)
-            })
-          }
-        })
-      }
+      const readableStream = response.body instanceof ReadableStream
+        ? response.body
+        : toWebReadableStream(response.body as NodeReadableBody)
 
       const chunkStream = parseNDJSON<OllamaChatChunk>(readableStream)
       const subscription: Subscription<OllamaChatChunk, void> =
