@@ -12,6 +12,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
 import { playTttPlugin } from '@/tools/play-ttt/plugin'
+import { playTttTool } from '@/tools/play-ttt/tool'
 
 export const Route = createFileRoute('/chat/play-ttt/')({
   component: PlayTttDemo,
@@ -137,7 +138,7 @@ function PlayTttDemo() {
     pipeline: 'markdown',
     tools: [],
     plugins: [playTttPlugin.client],
-    enabledPlugins: ['play_ttt'],
+    enabledPlugins: [playTttTool.name],
     systemPrompt: `You can play tic-tac-toe with the user using the play_ttt tool.
 
 When the user wants to play tic-tac-toe, call play_ttt() - it handles the entire game automatically!

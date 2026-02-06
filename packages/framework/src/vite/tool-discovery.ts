@@ -67,10 +67,12 @@ export function toolDiscoveryPlugin(
           CallExpression(path) {
             const { node } = path
 
-            // Check if this is createIsomorphicTool call
+            const exportFunctionNames = options.exportFunctionName
+
+            // Check if this is a recognized tool builder call
             if (
               t.isIdentifier(node.callee) &&
-              node.callee.name === 'createIsomorphicTool' &&
+              exportFunctionNames.includes(node.callee.name) &&
               node.arguments.length > 0 &&
               t.isStringLiteral(node.arguments[0])
             ) {
@@ -181,6 +183,7 @@ async function generateRegistry(
 ): Promise<void> {
   const toolsDir = join(root, options.dir)
   const outFile = join(root, options.outFile)
+  const workerOutFile = join(root, options.workerOutFile)
 
   // Check if tools directory exists
   try {
@@ -189,6 +192,9 @@ async function generateRegistry(
     log(options, 'verbose', `[tool-discovery] Tools directory not found: ${options.dir}`)
     // Generate empty registry
     await writeRegistryFile(outFile, [], options)
+    if (options.generateWorker) {
+      await writeWorkerFile(workerOutFile, [], options)
+    }
     return
   }
 
@@ -203,6 +209,9 @@ async function generateRegistry(
   if (files.length === 0) {
     log(options, 'normal', `[tool-discovery] No tool files found in ${options.dir}`)
     await writeRegistryFile(outFile, [], options)
+    if (options.generateWorker) {
+      await writeWorkerFile(workerOutFile, [], options)
+    }
     return
   }
 
@@ -218,8 +227,15 @@ async function generateRegistry(
 
   // Generate registry
   await writeRegistryFile(outFile, tools, options)
-
   log(options, 'normal', `[tool-discovery] Generated ${relative(root, outFile)}`)
+  
+  if (options.generateWorker) {
+    await writeWorkerFile(workerOutFile, tools, options)
+    log(options, 'normal', `[tool-discovery] Generated ${relative(root, workerOutFile)}`)
+  }
+  if (options.generateWorker) {
+    log(options, 'normal', `[tool-discovery] Generated ${relative(root, workerOutFile)}`)
+  }
 }
 
 async function discoverToolsInFile(
@@ -243,18 +259,21 @@ export function discoverToolsInContent(
 ): DiscoveredTool[] {
   const tools: DiscoveredTool[] = []
 
-  // Look for createIsomorphicTool calls
+  // Look for tool creation calls
   // Pattern 1: export const foo = createIsomorphicTool('tool_name')
   // Pattern 2: export default createIsomorphicTool('tool_name')
   // Pattern 3: const foo = createIsomorphicTool('tool_name') ... export { foo }
   // Pattern 4: const foo = createIsomorphicTool('tool_name') ... export default foo
 
-  const fnName = options.exportFunctionName
+  const fnNames = options.exportFunctionName
+  const fnPattern = fnNames
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('|')
 
   // Named export with inline definition
   // export const guessCard = createIsomorphicTool('guess_card')
   const namedExportRegex = new RegExp(
-    `export\\s+const\\s+(\\w+)\\s*=\\s*${fnName}\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
+    `export\\s+const\\s+(\\w+)\\s*=\\s*(?:${fnPattern})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
     'g'
   )
 
@@ -275,7 +294,7 @@ export function discoverToolsInContent(
   // Default export with inline definition
   // export default createIsomorphicTool('guess_card')
   const defaultExportRegex = new RegExp(
-    `export\\s+default\\s+${fnName}\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
+    `export\\s+default\\s+(?:${fnPattern})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
     'g'
   )
 
@@ -296,7 +315,7 @@ export function discoverToolsInContent(
   // ... later ...
   // export default guessCard
   const varDefRegex = new RegExp(
-    `const\\s+(\\w+)\\s*=\\s*${fnName}\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
+    `const\\s+(\\w+)\\s*=\\s*(?:${fnPattern})\\s*\\(\\s*['"\`]([^'"\`]+)['"\`]`,
     'g'
   )
 
@@ -377,6 +396,55 @@ async function writeRegistryFile(
   await writeFile(outFile, content)
 }
 
+async function writeWorkerFile(
+  outFile: string,
+  tools: DiscoveredTool[],
+  options: ResolvedToolDiscoveryOptions
+): Promise<void> {
+  const outDir = dirname(outFile)
+  await mkdir(outDir, { recursive: true })
+
+  const content = generateWorkerContent(tools, outFile, options)
+  await writeFile(outFile, content)
+
+  // Bundle the worker to a .mjs file using esbuild.
+  // Worker threads run as raw Node.js (not through Vite), so they need
+  // a pre-bundled JS file that resolves all TypeScript imports.
+  try {
+    // Resolve esbuild from the project root (available in any Vite project)
+    const { createRequire } = await import('node:module')
+    const projectRequire = createRequire(outFile)
+    const esbuildPath = projectRequire.resolve('esbuild')
+    const esbuild: any = await import(esbuildPath)
+    const mjsOutFile = outFile.replace(/\.ts$/, '.mjs')
+    await esbuild.build({
+      entryPoints: [outFile],
+      bundle: true,
+      format: 'esm',
+      platform: 'node',
+      outfile: mjsOutFile,
+      // Mark workspace packages as external - they have proper package.json exports
+      // that Node.js can resolve. Only bundle local .ts/.tsx source files.
+      external: [
+        '@sweatpants/*',
+        'effection',
+        'zod',
+      ],
+      // Use the 'development' condition so workspace packages resolve to .ts sources
+      // (which @sweatpants packages export via their package.json "development" condition)
+      conditions: ['development', 'import'],
+      sourcemap: false,
+      logLevel: 'warning',
+    })
+  } catch (err) {
+    // esbuild not available or build failed - fall back to .ts only
+    // This is non-fatal; the .ts file still works if tsx loader is available
+    if (options.logLevel !== 'silent') {
+      console.warn('[tool-discovery] Failed to bundle worker to .mjs:', (err as Error).message)
+    }
+  }
+}
+
 /**
  * Generate registry file content.
  * Exported for testing - allows testing output format without file I/O.
@@ -450,6 +518,73 @@ export type ToolByName<T extends ToolName> = (typeof tools)[keyof typeof tools] 
 `
 }
 
+/**
+ * Generate worker entry file content.
+ */
+export function generateWorkerContent(
+  tools: DiscoveredTool[],
+  outFile: string,
+  _options: ResolvedToolDiscoveryOptions
+): string {
+  const imports: string[] = []
+  const registryEntries: string[] = []
+
+  // Worker files run as raw Node.js ESM with --experimental-strip-types,
+  // which supports .ts but NOT .tsx (JSX requires transformation).
+  // Skip .tsx files - they typically contain React components (isomorphic tools)
+  // that can't meaningfully run in a worker thread anyway.
+  const workerCompatibleTools = tools.filter(t => !t.absolutePath.endsWith('.tsx'))
+  const sortedTools = [...workerCompatibleTools].sort((a, b) => a.toolName.localeCompare(b.toolName))
+
+  for (const tool of sortedTools) {
+    // Worker files run as raw Node.js ESM (not through Vite), so they need
+    // explicit .ts extensions for module resolution
+    const importPath = calculateWorkerImportPath(outFile, tool.absolutePath)
+    const variableName = tool.exportName ?? tool.variableName
+    const importStatement = tool.exportName
+      ? `import { ${tool.exportName} } from '${importPath}'`
+      : `import ${tool.variableName} from '${importPath}'`
+
+    imports.push(importStatement)
+    registryEntries.push(
+      `  { name: '${tool.toolName}', handler: function* (params, ctx) {
+    const tool = ${variableName}
+    if (tool && typeof tool === 'object') {
+      if ('execute' in (tool as Record<string, unknown>)) {
+        return yield* (tool as any).execute(params, ctx)
+      }
+      if ('handoffConfig' in (tool as Record<string, unknown>)) {
+        const config = (tool as any).handoffConfig
+        const handoff = yield* config.before(params, ctx)
+        const clientResult = yield* config.client(handoff, ctx)
+        return yield* config.after(handoff, clientResult, ctx, params)
+      }
+      if ('server' in (tool as Record<string, unknown>)) {
+        return yield* (tool as any).server(params, ctx)
+      }
+    }
+    return yield* (tool as any)(params, ctx)
+  } }`
+    )
+  }
+
+  return `/**
+ * Tool Worker Entry (auto-generated)
+ *
+ * DO NOT EDIT - This file is generated by @sweatpants/framework
+ */
+ import { runWorker, createWorkerToolRegistry } from '@sweatpants/framework/chat/mcp-tools/worker'
+
+${imports.join('\n')}
+
+const registry = createWorkerToolRegistry([
+${registryEntries.length > 0 ? registryEntries.join(',\n') : ''}
+])
+
+runWorker(registry)
+`
+}
+
 // Exported for testing
 export function calculateImportPath(from: string, to: string): string {
   let rel = relative(dirname(from), to)
@@ -461,6 +596,26 @@ export function calculateImportPath(from: string, to: string): string {
 
   // Remove .ts extension for import
   rel = rel.replace(/\.tsx?$/, '')
+
+  // Normalize to posix paths
+  rel = rel.split('\\').join('/')
+
+  return rel
+}
+
+/**
+ * Calculate import path for worker files.
+ * Unlike calculateImportPath, this PRESERVES .ts extensions because
+ * worker threads run as raw Node.js ESM (not through Vite) and require
+ * explicit file extensions for module resolution.
+ */
+export function calculateWorkerImportPath(from: string, to: string): string {
+  let rel = relative(dirname(from), to)
+
+  // Ensure it starts with ./ or ../
+  if (!rel.startsWith('.') && !rel.startsWith('/')) {
+    rel = './' + rel
+  }
 
   // Normalize to posix paths
   rel = rel.split('\\').join('/')

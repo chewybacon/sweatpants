@@ -28,16 +28,28 @@ export interface ToolDiscoveryOptions {
   ignore?: string[]
 
   /**
-   * Function name to look for in exports.
-   * @default 'createIsomorphicTool'
+   * Function name(s) to look for in exports.
+   * @default ['createIsomorphicTool', 'createMcpTool']
    */
-  exportFunctionName?: string
+  exportFunctionName?: string | string[]
 
   /**
    * Log level for the plugin.
    * @default 'normal'
    */
   logLevel?: 'silent' | 'normal' | 'verbose'
+
+  /**
+   * Generate a worker entry file for tool execution.
+   * @default false
+   */
+  generateWorker?: boolean
+
+  /**
+   * Output file for the generated worker entry, relative to project root.
+   * @default 'src/__generated__/tool-worker.gen.ts'
+   */
+  workerOutFile?: string
 }
 
 export interface ResolvedToolDiscoveryOptions {
@@ -45,20 +57,31 @@ export interface ResolvedToolDiscoveryOptions {
   outFile: string
   pattern: string
   ignore: string[]
-  exportFunctionName: string
+  exportFunctionName: string[]
   logLevel: 'silent' | 'normal' | 'verbose'
+  generateWorker: boolean
+  workerOutFile: string
 }
 
 export function resolveToolDiscoveryOptions(
   options: ToolDiscoveryOptions = {}
 ): ResolvedToolDiscoveryOptions {
+  const exportFunctionName = options.exportFunctionName ?? [
+    'createIsomorphicTool',
+    'createMcpTool',
+  ]
+
   return {
     dir: options.dir ?? 'src/tools',
     outFile: options.outFile ?? 'src/__generated__/tool-registry.gen.ts',
     pattern: options.pattern ?? '**/*.ts',
     ignore: options.ignore ?? ['**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts', '**/*.spec.tsx', '**/__tests__/**'],
-    exportFunctionName: options.exportFunctionName ?? 'createIsomorphicTool',
+    exportFunctionName: Array.isArray(exportFunctionName)
+      ? exportFunctionName
+      : [exportFunctionName],
     logLevel: options.logLevel ?? 'normal',
+    generateWorker: options.generateWorker ?? false,
+    workerOutFile: options.workerOutFile ?? 'src/__generated__/tool-worker.gen.ts',
   }
 }
 

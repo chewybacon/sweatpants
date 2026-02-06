@@ -1008,7 +1008,7 @@ function isCoreToolFactory(value: unknown): value is CoreToolFactory {
 
 #### Adaptation
 
-Core tools become server-authority isomorphic tools:
+Core tools become server-first isomorphic tools:
 
 ```typescript
 // From: src/lib/chat/core-tools/adapter.ts#L74-L101
@@ -1017,7 +1017,6 @@ function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTool {
     name: coreToolFactory.name,
     description: coreToolFactory.description,
     parameters: coreToolFactory.schemas.input,  // Maps input → parameters
-    authority: 'server',
     contextMode: 'headless',  // Core tools don't need browser APIs
 
     *server(params, ctx) {

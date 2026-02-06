@@ -26,7 +26,6 @@ export const globFiles = createIsomorphicTool('glob_files')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* (params) {
     const searchDir = params.cwd
       ? path.resolve(process.cwd(), params.cwd)

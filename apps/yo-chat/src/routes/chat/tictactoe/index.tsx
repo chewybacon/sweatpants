@@ -13,6 +13,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
 import { tictactoePlugin } from '@/tools/tictactoe/plugin.ts'
+import { tictactoeTool } from '@/tools/tictactoe/tool'
 
 export const Route = createFileRoute('/chat/tictactoe/')({
   component: TicTacToeDemo,
@@ -141,7 +142,7 @@ function TicTacToeDemo() {
     // TicTacToe plugin
     plugins: [tictactoePlugin.client],
     // Tell server to only enable tictactoe plugin
-    enabledPlugins: ['tictactoe'],
+    enabledPlugins: [tictactoeTool.name],
     // System prompt for the game
     systemPrompt: `You are playing tic-tac-toe against the user.
 

@@ -133,7 +133,6 @@ export const pickCard = createIsomorphicTool('pick_card')
     })
   )
   .context('browser')
-  .authority('server')
   .approval({ client: 'none' }) // Skip approval for demo - the card picker IS the user interaction
   .handoff({
     /**
@@ -168,4 +167,3 @@ export const pickCard = createIsomorphicTool('pick_card')
       return `The user selected the ${client.rank} of ${client.suit}. Please acknowledge their choice.`
     },
   })
-
