@@ -56,7 +56,7 @@ export interface StreamChatOptions extends SessionOptions {
 
   /**
    * Client outputs from isomorphic tool execution that need server validation.
-   * Sent when re-initiating after executing client-authority isomorphic tools.
+   * Sent when re-initiating after executing isomorphic tools that need phase 2.
    */
   isomorphicClientOutputs?: Array<{
     callId: string
@@ -239,7 +239,6 @@ export function* streamChatOnce(
           type: 'isomorphic_tool_state',
           id: event.callId,
           state: 'awaiting_client_approval',
-          authority: event.authority,
           serverOutput: event.serverOutput,
         })
         break

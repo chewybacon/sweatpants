@@ -46,6 +46,14 @@ export interface SetupToolSessionsOptions {
    * @default undefined (no timeout)
    */
   defaultTimeout?: number
+
+  /**
+   * Worker mode configuration (optional).
+   */
+  worker?: {
+    workerUrl: string | URL
+    isDev?: boolean
+  }
 }
 
 // =============================================================================
@@ -96,7 +104,7 @@ export interface SetupToolSessionsOptions {
 export function* setupToolSessions(
   options: SetupToolSessionsOptions
 ): Operation<ToolSessionRegistry> {
-  const { store, samplingProvider, defaultTimeout } = options
+  const { store, samplingProvider, defaultTimeout, worker } = options
 
   // Set store context
   yield* ToolSessionStoreContext.set(store)
@@ -108,6 +116,7 @@ export function* setupToolSessions(
   const registryOptions: ToolSessionRegistryOptions = {
     samplingProvider,
     ...(defaultTimeout !== undefined && { defaultTimeout }),
+    ...(worker !== undefined && { worker }),
   }
   const registry = yield* createToolSessionRegistry(store, registryOptions)
 

@@ -18,7 +18,6 @@ import type { ZodType } from 'zod'
 export type {
   Capabilities,
   TokenUsage,
-  AuthorityMode,
 } from '../lib/chat/core-types.ts'
 
 // Message types - re-export for convenience
@@ -62,7 +61,6 @@ export interface IsomorphicTool {
   description: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   parameters: ZodType<any>
-  authority?: 'server' | 'client'
   approval?: {
     client?: 'none' | 'confirm' | 'permission'
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -162,7 +160,6 @@ export type StreamEvent =
       toolName: string
       params: unknown
       serverOutput: unknown
-      authority: 'server' | 'client'
       usesHandoff: boolean
     }
   | {

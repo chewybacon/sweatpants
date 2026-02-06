@@ -4,8 +4,6 @@
  * Handoff patches for tool handoff pattern.
  */
 
-import type { AuthorityMode } from '../core-types.ts'
-
 // =============================================================================
 // HANDOFF PATCHES
 // =============================================================================
@@ -22,8 +20,6 @@ export interface PendingHandoffState {
   params: unknown
   /** The handoff data (from before() or server output) */
   data: unknown
-  /** The authority mode of the tool */
-  authority: AuthorityMode
   /** Whether this tool uses the V7 handoff pattern */
   usesHandoff: boolean
 }

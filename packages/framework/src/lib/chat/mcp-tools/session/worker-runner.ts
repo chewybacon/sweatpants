@@ -29,8 +29,9 @@ import {
   type WorkerMessage,
   type WorkerSampleResponse,
   type WorkerElicitResponse,
-} from '@sweatpants/core'
+} from '@sweatpants/core/transport/worker'
 import type { Operation } from 'effection'
+import { zodToJsonSchema } from 'zod-to-json-schema'
 import type {
   WorkerToolRegistry,
   WorkerToolContext,
@@ -86,18 +87,25 @@ function toWorkerMessage(msg: Message | ExtendedMessage): WorkerMessage {
 /**
  * Convert tool definition to core format.
  * Handles both Zod schemas and raw JSON schemas.
+ * Zod schemas are converted to JSON Schema since they contain functions
+ * that can't be cloned for postMessage to the host thread.
  */
 function toWorkerToolDefinition(tool: SamplingToolDefinition): {
   name: string
   description?: string
   inputSchema: Record<string, unknown>
 } {
-  // The inputSchema should already be a JSON Schema object (not a Zod type)
-  // since it comes from the sampling tool definition
+  // Check if inputSchema is a Zod type (has safeParse) and convert to JSON Schema
+  const schema = tool.inputSchema as unknown
+  const isZodSchema = schema && typeof (schema as { safeParse?: unknown }).safeParse === 'function'
+  const inputSchema = isZodSchema
+    ? zodToJsonSchema(schema as any, { $refStrategy: 'none', target: 'jsonSchema7' }) as Record<string, unknown>
+    : tool.inputSchema as Record<string, unknown>
+
   return {
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
-    inputSchema: tool.inputSchema as Record<string, unknown>,
+    inputSchema,
   }
 }
 
@@ -193,9 +201,11 @@ function createMcpWorkerContext(
 
     // Handle schema (convert Zod to JSON schema marker)
     if ('schema' in config && config.schema) {
-      // The schema will be handled by the sampling provider
-      // For now, we pass a marker that indicates structured output is expected
-      coreOptions.schema = { $zodSchema: true }
+      const schema = config.schema as unknown
+      const isZodSchema = typeof (schema as { safeParse?: unknown }).safeParse === 'function'
+      coreOptions.schema = isZodSchema
+        ? zodToJsonSchema(schema as any, { $refStrategy: 'none', target: 'jsonSchema7' }) as Record<string, unknown>
+        : schema as Record<string, unknown>
     }
 
     // Handle tools
@@ -260,8 +270,14 @@ function createMcpWorkerContext(
 
   // The context object
   const ctx: WorkerToolContext = {
-    log(level: LogLevel, message: string): void {
+    log(level: LogLevel, message: string): Operation<void> {
       coreCtx.log(level, message)
+      // Return a no-op operation so callers can yield* ctx.log(...)
+      return {
+        *[Symbol.iterator]() {
+          // No-op - logging is fire-and-forget
+        },
+      }
     },
 
     progress(message: string, progressValue?: number): Operation<void> {
@@ -273,6 +289,11 @@ function createMcpWorkerContext(
           // No-op - progress is fire-and-forget in the new model
         },
       }
+    },
+
+    // Alias for progress() - MCP tools call ctx.notify() instead of ctx.progress()
+    notify(message: string, progressValue?: number): Operation<void> {
+      return ctx.progress(message, progressValue)
     },
 
     // Sample - delegates to sampleImpl (overloads are defined in the interface)
@@ -375,9 +396,23 @@ function createMcpWorkerContext(
 
     *elicit<T>(
       key: string,
-      options: { message: string; schema: Record<string, unknown> }
+      options: {
+        message: string
+        schema?: Record<string, unknown>
+        context?: Record<string, unknown>
+        [key: string]: unknown
+      }
     ): Operation<ElicitResult<unknown, T>> {
-      const response: WorkerElicitResponse = yield* coreCtx.elicit(key, options)
+      const { message, schema, context, ...spreadContext } = options
+      const resolvedContext = context !== undefined
+        ? context
+        : (Object.keys(spreadContext).length > 0 ? spreadContext : undefined)
+
+      const response: WorkerElicitResponse = yield* coreCtx.elicit(key, {
+        message,
+        schema: schema ?? { type: 'object' },
+        ...(resolvedContext !== undefined && { context: resolvedContext }),
+      })
 
       // Map core response to MCP elicit result
       if (response.status === 'accepted') {
@@ -407,12 +442,12 @@ function createMcpWorkerContext(
           action: 'accept',
           content,
           exchange: {
-            context: {} as unknown,
+            context: (resolvedContext ?? {}) as unknown,
             request,
             response: responseMsg,
             messages: [request, responseMsg] as [typeof request, typeof responseMsg],
             withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
-              const args = fn({})
+              const args = fn(resolvedContext ?? {})
               const requestWithArgs = {
                 role: 'assistant' as const,
                 content: [{

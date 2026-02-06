@@ -1,4 +1,4 @@
-import type { ZodSchema, infer as ZodInfer } from "zod";
+import type { z, ZodSchema } from "zod";
 
 // ============================================================================
 // Elicit Types
@@ -22,7 +22,7 @@ export interface ElicitOptions<TSchema extends ZodSchema> {
  * Result of an elicit operation.
  */
 export type ElicitResult<TSchema extends ZodSchema> =
-  | { status: "accepted"; value: ZodInfer<TSchema> }
+  | { status: "accepted"; value: z.infer<TSchema> }
   | { status: "declined" }
   | { status: "cancelled" };
 

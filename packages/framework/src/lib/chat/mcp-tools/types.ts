@@ -40,19 +40,19 @@ import type { z } from 'zod'
 
 // Import from the canonical location
 import type {
-  ElicitExchange as _ElicitExchange,
-  ElicitResult as _ElicitResult,
-  RawElicitResult as _RawElicitResult,
-  ExtendedMessage as _ExtendedMessage,
-  SampleExchange as _SampleExchange,
-  McpMessage as _McpMessage,
-  McpContentBlock as _McpContentBlock,
-  McpToolUseContent as _McpToolUseContent,
-  McpToolResultContent as _McpToolResultContent,
-  RawSampleResultBase as _RawSampleResultBase,
-  RawSampleResultWithParsed as _RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls as _RawSampleResultWithToolCalls,
-  RawSampleResult as _RawSampleResult,
+  ElicitExchange,
+  ElicitResult,
+  RawElicitResult,
+  ExtendedMessage,
+  SampleExchange,
+  McpMessage,
+  McpContentBlock,
+  McpToolUseContent,
+  McpToolResultContent,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
+  RawSampleResult,
 } from './mcp-tool-types.ts'
 
 // Re-export helper functions
@@ -63,23 +63,13 @@ export {
 } from './mcp-tool-types.ts'
 
 // Re-export for consumers
-export type ElicitExchange<T> = _ElicitExchange<T>
-export type ElicitResult<TContext, TResponse> = _ElicitResult<TContext, TResponse>
-export type RawElicitResult<TResponse> = _RawElicitResult<TResponse>
-export type ExtendedMessage = _ExtendedMessage
-export type SampleExchange<T = undefined> = _SampleExchange<T>
+export type { ElicitExchange, ElicitResult, RawElicitResult, ExtendedMessage, SampleExchange }
 
 // MCP content block types
-export type McpMessage = _McpMessage
-export type McpContentBlock = _McpContentBlock
-export type McpToolUseContent = _McpToolUseContent
-export type McpToolResultContent = _McpToolResultContent
+export type { McpMessage, McpContentBlock, McpToolUseContent, McpToolResultContent }
 
 // Raw sample result types (without exchange - for decoder/handler layers)
-export type RawSampleResultBase = _RawSampleResultBase
-export type RawSampleResultWithParsed<T> = _RawSampleResultWithParsed<T>
-export type RawSampleResultWithToolCalls = _RawSampleResultWithToolCalls
-export type RawSampleResult = _RawSampleResult
+export type { RawSampleResultBase, RawSampleResultWithParsed, RawSampleResultWithToolCalls, RawSampleResult }
 
 /**
  * Configuration for an elicitation request.
@@ -426,19 +416,6 @@ export type InferMCPToolClient<T> = T extends MCPToolDef<any, any, any, infer C,
 // =============================================================================
 
 /**
- * Error thrown when MCP client doesn't support a required capability.
- */
-export class MCPCapabilityError extends Error {
-  constructor(
-    public readonly capability: 'elicitation' | 'sampling',
-    message: string
-  ) {
-    super(message)
-    this.name = 'MCPCapabilityError'
-  }
-}
-
-/**
  * Error thrown when user declines an elicitation.
  */
 export class ElicitationDeclinedError extends Error {
@@ -455,25 +432,5 @@ export class ElicitationCancelledError extends Error {
   constructor(message = 'User cancelled the elicitation request') {
     super(message)
     this.name = 'ElicitationCancelledError'
-  }
-}
-
-/**
- * Error thrown on MCP timeout.
- */
-export class MCPTimeoutError extends Error {
-  constructor(operation: string, timeoutMs: number) {
-    super(`MCP operation '${operation}' timed out after ${timeoutMs}ms`)
-    this.name = 'MCPTimeoutError'
-  }
-}
-
-/**
- * Error thrown on MCP disconnect.
- */
-export class MCPDisconnectError extends Error {
-  constructor(message = 'MCP client disconnected') {
-    super(message)
-    this.name = 'MCPDisconnectError'
   }
 }

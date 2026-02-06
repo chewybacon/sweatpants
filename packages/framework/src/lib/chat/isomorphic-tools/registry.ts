@@ -104,7 +104,6 @@ export function createIsomorphicToolRegistry(
           name: tool.name,
           description: tool.description,
           parameters: tool.parameters,
-          authority: tool.authority ?? 'server',
           execute: tool.server,
         }
       })
@@ -116,7 +115,6 @@ export function createIsomorphicToolRegistry(
         description: tool.description,
         parameters: zodToJsonSchema(tool.parameters),
         isIsomorphic: true,
-        authority: tool.authority ?? 'server',
       }))
     },
   }
@@ -138,7 +136,6 @@ export function mergeWithServerTools(
   parameters: Record<string, unknown>
   strict: boolean
   _isomorphic?: boolean
-  _authority?: string
 }> {
   const isomorphicSchemas = isomorphicRegistry.toToolSchemas()
 
@@ -153,7 +150,6 @@ export function mergeWithServerTools(
     },
     strict: false,
     _isomorphic: true,
-    _authority: schema.authority,
   }))
 
   // Regular server tools

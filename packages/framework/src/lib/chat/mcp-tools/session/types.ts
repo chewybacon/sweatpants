@@ -33,6 +33,7 @@ import type {
   RawSampleResultWithToolCalls,
   SamplingToolDefinition,
   SamplingToolChoice,
+  ModelPreferences,
   Message,
   LogLevel,
   ElicitsMap,
@@ -113,6 +114,8 @@ export interface ElicitRequestEvent extends ToolSessionEventBase {
   message: string
   /** JSON Schema for the expected response */
   schema: Record<string, unknown>
+  /** Context data for the UI to render (e.g., flight options, seat map) */
+  context?: Record<string, unknown>
 }
 
 /**
@@ -129,6 +132,8 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   systemPrompt?: string
   /** Maximum tokens to generate */
   maxTokens?: number
+  /** Model preferences for the client */
+  modelPreferences?: ModelPreferences
   /** Tool definitions for tool calling */
   tools?: SamplingToolDefinition[]
   /** How the model should choose tools */

@@ -13,7 +13,6 @@
  *   .description('Pick and guess a card')
  *   .parameters(z.object({ prompt: z.string() }))
  *   .context('browser')  // declares what context APIs the tool needs
- *   .authority('server')
  *   .handoff({
  *     *before(params) { return { secret: pickCard() } },
  *     *client(handoff) { return { guess: yield* showUI(handoff) } },
@@ -106,9 +105,6 @@ export type {
   // Core definitions
   IsomorphicToolDef,
   AnyIsomorphicTool,
-
-  // Authority
-  AuthorityMode,
 
   // Context
   ServerToolContext,

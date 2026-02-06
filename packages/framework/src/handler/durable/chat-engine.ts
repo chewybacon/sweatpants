@@ -44,7 +44,7 @@ import {
 // =============================================================================
 
 /**
- * Create a Phase 1 context for server-authority tools.
+ * Create a Phase 1 context for server-first tools.
  * 
  * When the tool calls ctx.handoff(), we throw HandoffReadyError
  * to capture the handoff data and return it as a handoff result.
@@ -60,7 +60,7 @@ function createPhase1Context(baseContext: ServerToolContext): ServerAuthorityCon
 }
 
 /**
- * Create a Phase 2 context for server-authority tools.
+ * Create a Phase 2 context for server-first tools.
  * 
  * After client execution, we resume the server's handoff with
  * the cached handoff data and client output.
@@ -192,7 +192,6 @@ function toIsomorphicSchema(schema: ToolSchema): IsomorphicToolSchema {
     description: schema.description,
     parameters: schema.parameters,
     isIsomorphic: true,
-    authority: schema.authority ?? 'server',
   }
 }
 
@@ -206,33 +205,13 @@ function toIsomorphicSchema(schema: ToolSchema): IsomorphicToolSchema {
 function* executeToolCall(
   toolCall: ToolCall,
   registry: ToolRegistry,
-  schemaByName: Map<string, ToolSchema>,
   signal: AbortSignal
 ): Operation<ToolExecutionResult> {
   const toolName = toolCall.function.name
   const tool = registry.get(toolName)
 
-  // Check for client-only tool
+  // Check for missing tool
   if (!tool) {
-    const schema = schemaByName.get(toolName)
-    if (schema?.authority === 'client') {
-      return {
-        ok: true,
-        kind: 'handoff',
-        callId: toolCall.id,
-        toolName,
-        handoff: {
-          type: 'isomorphic_handoff',
-          callId: toolCall.id,
-          toolName,
-          params: toolCall.function.arguments,
-          serverOutput: undefined,
-          authority: 'client',
-          usesHandoff: false,
-        },
-      }
-    }
-
     return {
       ok: false,
       error: {
@@ -278,7 +257,6 @@ function* executeToolCall(
           toolName,
           params: validatedParams,
           serverOutput,
-          authority: tool.authority ?? 'server',
           usesHandoff: true,
         },
         serverOutput,
@@ -307,7 +285,6 @@ function* executeToolCall(
           toolName,
           params: validatedParams,
           serverOutput: error.handoffData,
-          authority: tool.authority ?? 'server',
           usesHandoff: true,
         },
         serverOutput: error.handoffData,
@@ -331,27 +308,11 @@ function* executeToolCall(
 function* processClientOutput(
   output: IsomorphicClientOutput,
   registry: ToolRegistry,
-  schemaByName: Map<string, ToolSchema>,
   _signal: AbortSignal
 ): Operation<StreamEvent> {
   const tool = registry.get(output.toolName)
 
-  // Client-only tool - just return the result
   if (!tool) {
-    const schema = schemaByName.get(output.toolName)
-    if (schema?.authority === 'client') {
-      const content =
-        typeof output.clientOutput === 'string'
-          ? output.clientOutput
-          : JSON.stringify(output.clientOutput)
-      return {
-        type: 'tool_result',
-        id: output.callId,
-        name: output.toolName,
-        content,
-      }
-    }
-
     return {
       type: 'tool_error',
       id: output.callId,
@@ -499,16 +460,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       }))
     }
 
-    // Emit a startup debug event
-    state.pendingEvents.push({
-      type: 'debug_marker',
-      phase: 'engine_startup',
-      hasElicitResponses: !!(elicitResponses && elicitResponses.length > 0),
-      elicitResponseCount: elicitResponses?.length ?? 0,
-      hasPluginSessionManager: !!pluginSessionManager,
-      hasMcpToolRegistry: !!mcpToolRegistry,
-    } as any)
-    
     // The subscription we provide to consumers
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
@@ -600,26 +551,11 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           case 'process_plugin_responses': {
             // Resume suspended plugin sessions with elicit responses
             if (elicitResponses && pluginSessionManager) {
-              // Debug: emit a marker event so we know this phase is running
-              state.pendingEvents.push({
-                type: 'debug_marker',
-                phase: 'process_plugin_responses',
-                responseCount: elicitResponses.length,
-              } as any)
-              
               for (const response of elicitResponses) {
                 const { sessionId, callId, elicitId, result } = response
                 
                 // Look up the session (pass provider for session recovery)
                 const session = yield* pluginSessionManager.get(sessionId, provider)
-                
-                // Debug marker for session lookup result
-                state.pendingEvents.push({
-                  type: 'debug_marker',
-                  phase: 'session_lookup',
-                  sessionId,
-                  found: !!session,
-                } as any)
                 
                 if (!session) {
                   // Session not found - emit error
@@ -767,7 +703,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           case 'process_client_outputs': {
             // Process all client outputs and buffer the events
             for (const output of isomorphicClientOutputs) {
-              const event = yield* processClientOutput(output, toolRegistry, schemaByName, signal)
+              const event = yield* processClientOutput(output, toolRegistry, signal)
               state.pendingEvents.push(event)
 
               // Also add to conversation messages if it's a result
@@ -1003,7 +939,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 }
               } else {
                 // Execute as regular isomorphic tool
-                const result = yield* executeToolCall(tc, toolRegistry, schemaByName, signal)
+                const result = yield* executeToolCall(tc, toolRegistry, signal)
                 results.push(result)
                 state.pendingEvents.push(toolResultToStreamEvent(result))
               }

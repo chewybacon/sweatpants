@@ -12,7 +12,6 @@
 
 // Re-export shared primitives from core-types
 export type {
-  AuthorityMode,
   IsomorphicToolState,
   Capabilities,
   BaseContentMetadata,

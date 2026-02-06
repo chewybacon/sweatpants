@@ -13,7 +13,6 @@
 
 // Core types
 export type {
-  AuthorityMode,
   IsomorphicToolState,
   Capabilities,
   BaseContentMetadata,

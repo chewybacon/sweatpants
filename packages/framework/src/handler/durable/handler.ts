@@ -98,7 +98,6 @@ function toToolSchema(tool: IsomorphicTool): ToolSchema {
     description: tool.description,
     parameters: z.toJSONSchema(tool.parameters) as Record<string, unknown>,
     isIsomorphic: true,
-    authority: tool.authority ?? "server",
   };
 }
 
@@ -136,7 +135,6 @@ function mcpToolToSchema(tool: {
     description: tool.description,
     parameters: z.toJSONSchema(tool.parameters) as Record<string, unknown>,
     isIsomorphic: false,
-    authority: "server",
   };
 }
 

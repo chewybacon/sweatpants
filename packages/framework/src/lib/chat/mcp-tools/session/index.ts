@@ -130,45 +130,15 @@ export {
 } from './setup.ts'
 
 // =============================================================================
-// WORKER-BASED SESSIONS (using @sweatpants/core worker transport)
+// WORKER-BASED SESSIONS
 // =============================================================================
-
-export type {
-  // MCP-specific worker types
-  McpWorkerInitData,
-  McpWorkerRequest,
-  McpWorkerResponse,
-  McpWorkerResult,
-  McpProgressRequest,
-  McpLogRequest,
-  McpSampleRequest,
-  McpElicitRequest,
-  McpHostProgress,
-  
-  // Tool registry for workers
-  WorkerToolRegistry,
-  WorkerTool,
-  WorkerToolContext,
-  
-  // Sample config types
-  WorkerSampleConfig,
-  WorkerSampleToolsConfig,
-  WorkerSampleSchemaConfig,
-} from './worker-types.ts'
-
-export {
-  // Worker runner (runs inside worker)
-  runWorker,
-  createWorkerToolRegistry,
-} from './worker-runner.ts'
-
-export {
-  // Worker tool session adapter
-  createWorkerToolSession,
-  type WorkerToolSessionOptions,
-  type SampleRequestHandler,
-  type ElicitRequestHandler,
-} from './worker-tool-session.ts'
+//
+// Worker-specific exports have been moved to a separate entry point to avoid
+// pulling Node.js worker_threads dependencies into browser bundles.
+//
+// Import worker code from: '@sweatpants/framework/chat/mcp-tools/worker'
+//
+// =============================================================================
 
 // =============================================================================
 // CORE-BASED IMPLEMENTATIONS

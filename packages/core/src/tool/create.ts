@@ -1,6 +1,6 @@
 import { createApi } from "effection/experimental";
 import type { Context, Operation, Subscription } from "effection";
-import type { ZodSchema, infer as ZodInfer } from "zod";
+import type { z, ZodSchema } from "zod";
 import type {
   ToolConfig,
   ToolImplFn,
@@ -78,8 +78,8 @@ export function createTool<
 >(
   config: ToolConfig<TInput, TProgress, TOutput>,
 ): ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput> {
-  type Input = ZodInfer<TInput>;
-  type Output = ZodInfer<TOutput>;
+  type Input = z.infer<TInput>;
+  type Output = z.infer<TOutput>;
 
   // Create the API for this tool
   // The handler is the default impl or a placeholder that routes to transport
@@ -127,7 +127,7 @@ export function createTool<
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               
               // Send request through transport and get response stream
-              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
+              const stream = transport.request<z.infer<TProgress>, ElicitResponse>({
                 id: requestId,
                 kind: "elicit",
                 type: config.name,
@@ -135,7 +135,7 @@ export function createTool<
               });
               
               // Subscribe to the stream
-              const subscription: Subscription<ZodInfer<TProgress>, ElicitResponse> = yield* stream;
+              const subscription: Subscription<z.infer<TProgress>, ElicitResponse> = yield* stream;
               
               // Consume the stream until we get the final response
               // Progress updates are currently ignored (TODO: expose via callback or context)
@@ -230,11 +230,11 @@ function createToolWithBindings<
   TOutput extends ZodSchema,
 >(
   config: ToolConfig<TInput, TProgress, TOutput>,
-  api: ReturnType<typeof createApi<{ invoke: (args: ZodInfer<TInput>) => Operation<ZodInfer<TOutput>> }>>,
+  api: ReturnType<typeof createApi<{ invoke: (args: z.infer<TInput>) => Operation<z.infer<TOutput>> }>>,
   bindings: ContextBinding[],
 ): ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput> {
-  type Input = ZodInfer<TInput>;
-  type Output = ZodInfer<TOutput>;
+  type Input = z.infer<TInput>;
+  type Output = z.infer<TOutput>;
 
   // Factory function that activates the tool with context bindings
   function factory(
@@ -270,7 +270,7 @@ function createToolWithBindings<
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
               
               // Send request through transport and get response stream
-              const stream = transport.request<ZodInfer<TProgress>, ElicitResponse>({
+              const stream = transport.request<z.infer<TProgress>, ElicitResponse>({
                 id: requestId,
                 kind: "elicit",
                 type: config.name,
@@ -278,7 +278,7 @@ function createToolWithBindings<
               });
               
               // Subscribe to the stream
-              const subscription: Subscription<ZodInfer<TProgress>, ElicitResponse> = yield* stream;
+              const subscription: Subscription<z.infer<TProgress>, ElicitResponse> = yield* stream;
               
               // Consume the stream until we get the final response
               let result = yield* subscription.next();

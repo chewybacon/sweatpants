@@ -11,13 +11,12 @@
  *
  * ## Usage
  *
- * @example Server-authority tool with V7 handoff (agent context)
+ * @example Server-first tool with V7 handoff (agent context)
  * ```typescript
  * const analyzerTool = createIsomorphicTool('analyzer')
  *   .description('Analyze text using AI')
  *   .parameters(z.object({ text: z.string() }))
  *   .context('agent')
- *   .authority('server')
  *   .handoff({
  *     *before(params) {
  *       return { text: params.text }
@@ -38,7 +37,6 @@
  *   .description('Let user pick an option')
  *   .parameters(z.object({ options: z.array(z.string()) }))
  *   .context('browser')
- *   .authority('server')
  *   .handoff({
  *     *before(params) {
  *       return { options: params.options }
@@ -59,13 +57,7 @@ import type {
   ContextMode,
   ContextForMode,
 } from './contexts.ts'
-import type {
-  IsomorphicApprovalConfig,
-  ServerToolContext,
-  ServerAuthorityContext,
-} from './types.ts'
-
-type BuilderAuthorityMode = 'server' | 'client'
+import type { IsomorphicApprovalConfig, ServerToolContext, ServerAuthorityContext } from './types.ts'
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -78,14 +70,12 @@ type BuilderAuthorityMode = 'server' | 'client'
 export interface IsomorphicToolTypes<
   in out TParams,
   in out TContext extends ContextMode | undefined,
-  in out TAuthority extends BuilderAuthorityMode | undefined,
   in out THandoff,
   in out TClient,
   in out TResult,
 > {
   params: TParams
   context: TContext
-  authority: TAuthority
   handoff: THandoff
   client: TClient
   result: TResult
@@ -96,7 +86,7 @@ export interface IsomorphicToolTypes<
 // =============================================================================
 
 /**
- * Configuration for server-authority handoff.
+ * Configuration for server-first handoff.
  *
  * Type flow:
  * ```
@@ -153,7 +143,7 @@ export interface TypedHandoffConfig<
  * Base builder - has name, needs everything else.
  */
 export interface IsomorphicToolBuilderBase<TName extends string> {
-  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined, undefined>
+  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined>
   _name: TName
 
   /**
@@ -166,7 +156,7 @@ export interface IsomorphicToolBuilderBase<TName extends string> {
  * Has name + description, needs parameters.
  */
 export interface IsomorphicToolBuilderWithDescription<TName extends string> {
-  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined, undefined>
+  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined>
   _name: TName
   _description: string
 
@@ -182,7 +172,7 @@ export interface IsomorphicToolBuilderWithDescription<TName extends string> {
  * Has name + description + params, needs context.
  */
 export interface IsomorphicToolBuilderWithParams<TName extends string, TParams> {
-  _types: IsomorphicToolTypes<TParams, undefined, undefined, undefined, undefined, undefined>
+  _types: IsomorphicToolTypes<TParams, undefined, undefined, undefined, undefined>
   _name: TName
   _description: string
   _parameters: z.ZodType<TParams>
@@ -200,47 +190,18 @@ export interface IsomorphicToolBuilderWithParams<TName extends string, TParams> 
 }
 
 /**
- * Has name + description + params + context, needs authority.
+ * Has name + description + params + context.
  */
 export interface IsomorphicToolBuilderWithContext<
   TName extends string,
   TParams,
   TContext extends ContextMode,
 > {
-  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, undefined, undefined>
+  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, undefined>
   _name: TName
   _description: string
   _parameters: z.ZodType<TParams>
   _context: TContext
-
-  /**
-   * Set the authority mode.
-   */
-  authority<TAuth extends 'server' | 'client'>(
-    mode: TAuth
-  ): TAuth extends 'server'
-    ? IsomorphicToolBuilderServerAuthority<TName, TParams, TContext>
-    : IsomorphicToolBuilderClientAuthority<TName, TParams, TContext>
-}
-
-// =============================================================================
-// AUTHORITY-SPECIFIC BUILDERS
-// =============================================================================
-
-/**
- * Server authority builder - can use handoff pattern or simple server/client.
- */
-export interface IsomorphicToolBuilderServerAuthority<
-  TName extends string,
-  TParams,
-  TContext extends ContextMode,
-> {
-  _types: IsomorphicToolTypes<TParams, TContext, 'server', undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
-  _context: TContext
-  _authority: 'server'
 
   /**
    * V7 handoff pattern - server picks state, client interacts, server validates.
@@ -253,7 +214,7 @@ export interface IsomorphicToolBuilderServerAuthority<
    */
   handoff<THandoff, TClient, TResult>(
     config: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, 'server', THandoff, TClient, TResult>
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, THandoff, TClient, TResult>
 
   /**
    * Simple server-only execution (no handoff).
@@ -278,12 +239,11 @@ export interface IsomorphicToolBuilderServerOnly<
   TContext extends ContextMode,
   TServerOutput,
 > {
-  _types: IsomorphicToolTypes<TParams, TContext, 'server', undefined, undefined, TServerOutput>
+  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, TServerOutput>
   _name: TName
   _description: string
   _parameters: z.ZodType<TParams>
   _context: TContext
-  _authority: 'server'
 
   /**
    * Add client-side presentation (receives server output).
@@ -294,79 +254,13 @@ export interface IsomorphicToolBuilderServerOnly<
       ctx: ContextForMode<TContext>,
       params: TParams
     ) => Operation<TClientOutput>
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, 'server', undefined, TClientOutput, TServerOutput>
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput>
 
   /**
    * Finalize without client (server-only tool).
    */
-  build(): FinalizedIsomorphicTool<TName, TParams, TContext, 'server', undefined, undefined, TServerOutput>
+  build(): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, undefined, TServerOutput>
 }
-
-/**
- * Client authority builder - client runs first, then server.
- */
-export interface IsomorphicToolBuilderClientAuthority<
-  TName extends string,
-  TParams,
-  TContext extends ContextMode,
-> {
-  _types: IsomorphicToolTypes<TParams, TContext, 'client', undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
-  _context: TContext
-  _authority: 'client'
-
-  /**
-   * Client-side execution (runs first).
-   */
-  client<TClientOutput>(
-    fn: (params: TParams, ctx: ContextForMode<TContext>) => Operation<TClientOutput>
-  ): IsomorphicToolBuilderClientFirst<TName, TParams, TContext, TClientOutput>
-
-  /**
-   * Set approval configuration.
-   */
-  approval(config: IsomorphicApprovalConfig): this
-}
-
-/**
- * After client() is set, you can either:
- * - add an explicit server() validator/processor, or
- * - build() to use a default server passthrough.
- */
-export interface IsomorphicToolBuilderClientFirst<
-  TName extends string,
-  TParams,
-  TContext extends ContextMode,
-  TClientOutput,
-> {
-  _types: IsomorphicToolTypes<TParams, TContext, 'client', undefined, TClientOutput, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
-  _context: TContext
-  _authority: 'client'
-
-  /**
-   * Server-side validation (receives client output).
-   */
-  server<TServerOutput>(
-    fn: (
-      params: TParams,
-      ctx: ServerToolContext,
-      clientOutput: TClientOutput
-    ) => Operation<TServerOutput>
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, 'client', undefined, TClientOutput, TServerOutput>
-
-  /**
-   * Finalize with a default server passthrough.
-   *
-   * This ensures the server phase always exists, even for client-only tools.
-   */
-  build(): FinalizedIsomorphicTool<TName, TParams, TContext, 'client', undefined, TClientOutput, TClientOutput>
-}
-
 
 // =============================================================================
 // FINALIZED TOOL
@@ -384,7 +278,6 @@ export interface FinalizedIsomorphicTool<
   TName extends string,
   TParams,
   TContext extends ContextMode,
-  TAuthority extends BuilderAuthorityMode,
   THandoff,
   TClient,
   TResult,
@@ -393,7 +286,7 @@ export interface FinalizedIsomorphicTool<
    * Phantom type carrier - no runtime cost.
    * Access with `tool._types.result` etc. for type-level operations.
    */
-  _types: IsomorphicToolTypes<TParams, TContext, TAuthority, THandoff, TClient, TResult>
+  _types: IsomorphicToolTypes<TParams, TContext, THandoff, TClient, TResult>
 
   /** Tool name (used by LLM) */
   name: TName
@@ -406,9 +299,6 @@ export interface FinalizedIsomorphicTool<
 
   /** Execution context mode */
   contextMode: TContext
-
-  /** Authority mode */
-  authority: TAuthority
 
   /** Approval configuration */
   approval?: IsomorphicApprovalConfig
@@ -432,7 +322,7 @@ export interface FinalizedIsomorphicTool<
    * Client-side execution (for non-handoff tools).
    */
   client?: (
-    input: TResult | TParams | THandoff,
+    input: TResult | THandoff,
     ctx: ContextForMode<TContext>,
     params: TParams
   ) => Operation<TClient>
@@ -446,7 +336,6 @@ export interface FinalizedIsomorphicTool<
  * Extract the result type from a finalized tool.
  */
 export type InferToolResult<T> = T extends FinalizedIsomorphicTool<
-  any,
   any,
   any,
   any,
@@ -466,7 +355,6 @@ export type InferToolParams<T> = T extends FinalizedIsomorphicTool<
   any,
   any,
   any,
-  any,
   any
 >
   ? TParams
@@ -481,7 +369,6 @@ export type InferToolContext<T> = T extends FinalizedIsomorphicTool<
   infer TContext,
   any,
   any,
-  any,
   any
 >
   ? TContext
@@ -491,7 +378,6 @@ export type InferToolContext<T> = T extends FinalizedIsomorphicTool<
  * Extract the handoff type from a finalized tool.
  */
 export type InferToolHandoff<T> = T extends FinalizedIsomorphicTool<
-  any,
   any,
   any,
   any,
@@ -506,7 +392,6 @@ export type InferToolHandoff<T> = T extends FinalizedIsomorphicTool<
  * Extract the client output type from a finalized tool.
  */
 export type InferToolClientOutput<T> = T extends FinalizedIsomorphicTool<
-  any,
   any,
   any,
   any,
@@ -526,7 +411,6 @@ interface BuilderState {
   description?: string
   parameters?: z.ZodType
   contextMode?: ContextMode
-  authority?: BuilderAuthorityMode
   approval?: IsomorphicApprovalConfig
   handoffConfig?: TypedHandoffConfig<any, any, any, any, any>
   serverFn?: (params: any, ctx: any, clientOutput?: any) => Operation<any>
@@ -540,7 +424,6 @@ function createBuilder(state: BuilderState): any {
     _description: state.description,
     _parameters: state.parameters,
     _context: state.contextMode,
-    _authority: state.authority,
 
     description(desc: string) {
       return createBuilder({ ...state, description: desc })
@@ -552,10 +435,6 @@ function createBuilder(state: BuilderState): any {
 
     context(mode: ContextMode) {
       return createBuilder({ ...state, contextMode: mode })
-    },
-
-    authority(mode: BuilderAuthorityMode) {
-      return createBuilder({ ...state, authority: mode })
     },
 
     approval(config: IsomorphicApprovalConfig) {
@@ -575,7 +454,6 @@ function createBuilder(state: BuilderState): any {
         description: state.description!,
         parameters: state.parameters!,
         contextMode: state.contextMode,
-        authority: 'server' as const,
         approval: state.approval,
         handoffConfig: config,
         // For compatibility, also set server/client that use the handoff
@@ -589,119 +467,48 @@ function createBuilder(state: BuilderState): any {
           })
         },
         client: config.client,
-      } as FinalizedIsomorphicTool<any, any, any, any, any, any, any>
+      } as FinalizedIsomorphicTool<any, any, any, any, any, any>
     },
 
     server(fn: (params: any, ctx: any, clientOutput?: any) => Operation<any>) {
       const newState = { ...state, serverFn: fn }
 
-      // For server authority without handoff, return builder that can add client
-      if (state.authority === 'server') {
-        return {
-          ...createBuilder(newState),
-          client(clientFn: (input: any, ctx: any, params: any) => Operation<any>) {
-            if (!state.contextMode) {
-              throw new Error(`Tool "${state.name}": .context() must be called before .client()`)
-            }
-            return {
-              _types: undefined as any,
-              name: state.name,
-              description: state.description!,
-              parameters: state.parameters!,
-              contextMode: state.contextMode,
-              authority: 'server' as const,
-              approval: state.approval,
-              server: fn,
-              client: clientFn,
-            } as FinalizedIsomorphicTool<any, any, any, 'server', any, any, any>
-          },
-          build() {
-            if (!state.contextMode) {
-              throw new Error(`Tool "${state.name}": .context() must be called before .build()`)
-            }
-            return {
-              _types: undefined as any,
-              name: state.name,
-              description: state.description!,
-              parameters: state.parameters!,
-              contextMode: state.contextMode,
-              authority: 'server' as const,
-              approval: state.approval,
-              server: fn,
-            } as FinalizedIsomorphicTool<any, any, any, 'server', any, any, any>
-          },
-        }
+      return {
+        ...createBuilder(newState),
+        client(clientFn: (input: any, ctx: any, params: any) => Operation<any>) {
+          if (!state.contextMode) {
+            throw new Error(`Tool "${state.name}": .context() must be called before .client()`)
+          }
+          return {
+            _types: undefined as any,
+            name: state.name,
+            description: state.description!,
+            parameters: state.parameters!,
+            contextMode: state.contextMode,
+            approval: state.approval,
+            server: fn,
+            client: clientFn,
+          } as FinalizedIsomorphicTool<any, any, any, any, any, any>
+        },
+        build() {
+          if (!state.contextMode) {
+            throw new Error(`Tool "${state.name}": .context() must be called before .build()`)
+          }
+          return {
+            _types: undefined as any,
+            name: state.name,
+            description: state.description!,
+            parameters: state.parameters!,
+            contextMode: state.contextMode,
+            approval: state.approval,
+            server: fn,
+          } as FinalizedIsomorphicTool<any, any, any, any, any, any>
+        },
       }
-
-      // For client authority, server comes after client
-      if (state.authority === 'client' && state.clientFn) {
-        if (!state.contextMode) {
-          throw new Error(`Tool "${state.name}": .context() must be called before .server()`)
-        }
-        return {
-          _types: undefined as any,
-          name: state.name,
-          description: state.description!,
-          parameters: state.parameters!,
-          contextMode: state.contextMode,
-          authority: 'client' as const,
-          approval: state.approval,
-          server: fn,
-          client: state.clientFn,
-        } as FinalizedIsomorphicTool<any, any, any, 'client', any, any, any>
-      }
-
-      return createBuilder(newState)
     },
 
     client(fn: (input: any, ctx: any, params?: any) => Operation<any>) {
       const newState = { ...state, clientFn: fn }
-
-      // For client authority, client comes first
-      if (state.authority === 'client') {
-        return {
-          ...createBuilder(newState),
-          server(serverFn: (params: any, ctx: any, clientOutput: any) => Operation<any>) {
-            if (!state.contextMode) {
-              throw new Error(`Tool "${state.name}": .context() must be called before .server()`)
-            }
-            return {
-              _types: undefined as any,
-              name: state.name,
-              description: state.description!,
-              parameters: state.parameters!,
-              contextMode: state.contextMode,
-              authority: 'client' as const,
-              approval: state.approval,
-              server: serverFn,
-              client: fn,
-            } as FinalizedIsomorphicTool<any, any, any, 'client', any, any, any>
-          },
-          build() {
-            if (!state.contextMode) {
-              throw new Error(`Tool "${state.name}": .context() must be called before .build()`)
-            }
-            // Default server passthrough for client-only tools.
-            // Keeps server phase present for middleware/plugins, even if it simply returns client output.
-            const passthroughServer = function*(_params: any, _ctx: any, clientOutput: any) {
-              return clientOutput
-            }
-
-            return {
-              _types: undefined as any,
-              name: state.name,
-              description: state.description!,
-              parameters: state.parameters!,
-              contextMode: state.contextMode,
-              authority: 'client' as const,
-              approval: state.approval,
-              server: passthroughServer,
-              client: fn,
-            } as FinalizedIsomorphicTool<any, any, any, 'client', any, any, any>
-          },
-        }
-      }
-
       return createBuilder(newState)
     },
   }
@@ -721,7 +528,6 @@ function createBuilder(state: BuilderState): any {
  *   .description('Does something')
  *   .parameters(z.object({ input: z.string() }))
  *   .context('agent')  // or 'browser' or 'headless'
- *   .authority('server')
  *   .handoff({
  *     *before(params) { return { computed: params.input.toUpperCase() } },
  *     *client(handoff, ctx) {

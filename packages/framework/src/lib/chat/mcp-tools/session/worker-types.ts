@@ -148,6 +148,8 @@ export interface McpElicitRequest extends McpRequestBase {
   message: string
   /** JSON Schema for expected response */
   schema: Record<string, unknown>
+  /** Context data for the UI to render (e.g., flight options, seat map) */
+  context?: Record<string, unknown>
 }
 
 /**
@@ -476,14 +478,22 @@ export interface WorkerToolContext {
   /**
    * Log a message.
    * Fire-and-forget (no backpressure).
+   * Returns Operation<void> so callers can use yield* ctx.log(...).
    */
-  log(level: LogLevel, message: string): void
+  log(level: LogLevel, message: string): Operation<void>
 
   /**
    * Send a progress notification.
    * Blocks until the host acknowledges (backpressure).
    */
   progress(message: string, progress?: number): Operation<void>
+
+  /**
+   * Alias for progress() - matches the MCP tool context API (ctx.notify()).
+   * MCP tools created with createMcpTool() call ctx.notify(), so this alias
+   * allows them to run in worker mode without modification.
+   */
+  notify(message: string, progress?: number): Operation<void>
 
   // ---------------------------------------------------------------------------
   // Sample overloads - match McpToolContext signature
@@ -539,7 +549,7 @@ export interface WorkerToolContext {
    */
   elicit<T>(
     key: string,
-    options: { message: string; schema: Record<string, unknown> }
+    options: { message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
   ): Operation<ElicitResult<unknown, T>>
 }
 

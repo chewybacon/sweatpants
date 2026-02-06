@@ -65,12 +65,7 @@
  */
 import type { ReactNode } from 'react'
 import type { FinalizedIsomorphicTool } from './builder.ts'
-import type { z } from 'zod'
-import type {
-  ServerAuthorityToolDef,
-  ClientAuthorityToolDef,
-  AnyIsomorphicTool,
-} from './types.ts'
+import type { AnyIsomorphicTool } from './types.ts'
 
 // =============================================================================
 // TYPE HELPERS
@@ -81,7 +76,7 @@ import type {
  * This allows the handler API to accept tools from either defineIsomorphicTool()
  * or createIsomorphicTool().build()
  */
-export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, any, any, any, any, any>
+export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, any, any, any, any>
 
 /**
  * Extract the client output type from any tool definition.
@@ -91,22 +86,15 @@ export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, a
  */
 type ExtractClientOutput<T> = 
   // FinalizedIsomorphicTool path
-  T extends FinalizedIsomorphicTool<any, any, any, any, any, infer TClient, any>
-    ? TClient
-  // ClientAuthorityToolDef path
-  : T extends ClientAuthorityToolDef<any, any, infer TClient>
-    ? TClient
-  // ServerAuthorityToolDef path  
-  : T extends ServerAuthorityToolDef<any, any, infer TClient>
+  T extends FinalizedIsomorphicTool<any, any, any, any, infer TClient, any>
     ? TClient
   : unknown
 
 /**
  * What data does a tool provide to its handler?
  *
- * - Client-authority tools: receive params
- * - Server-authority with handoff: receive handoff data from before()
- * - Server-authority without handoff: receive server output
+ * - Server-first with handoff: receive handoff data from before()
+ * - Server-first without handoff: receive server output
  * 
  * Works with both FinalizedIsomorphicTool and raw definitions.
  */
@@ -114,24 +102,15 @@ export type HandoffData<T> =
   // FinalizedIsomorphicTool path (builder-created)
   T extends FinalizedIsomorphicTool<
     any,
-    infer TParams,
-    any,  // TContext
-    infer TAuthority,
+    any,
+    any,
     infer THandoff,
-    any,  // TClient
+    any,
     infer TResult
   >
-    ? TAuthority extends 'client'
-      ? TParams // Client-authority: receives params
-      : THandoff extends undefined
-        ? TResult // Server-authority without handoff: receives serverOutput
-        : THandoff // Server-authority with handoff: receives handoff data
-  // ClientAuthorityToolDef path (raw definition)
-  : T extends ClientAuthorityToolDef<infer TParams, any, any>
-    ? z.infer<TParams> // Client-authority: receives params
-  // ServerAuthorityToolDef path (raw definition)
-  : T extends ServerAuthorityToolDef<any, infer TServerOutput, any>
-    ? TServerOutput // Server-authority: receives server output (or handoff data)
+    ? THandoff extends undefined
+      ? TResult // Server-first without handoff: receives serverOutput
+      : THandoff // Server-first with handoff: receives handoff data
   : never
 
 // =============================================================================
@@ -156,9 +135,6 @@ export interface PendingHandoff {
 
   /** The handoff data (from before() or server output) */
   data: unknown
-
-  /** The authority mode of the tool */
-  authority: 'server' | 'client'
 
   /** Whether this tool uses the V7 handoff pattern */
   usesHandoff: boolean

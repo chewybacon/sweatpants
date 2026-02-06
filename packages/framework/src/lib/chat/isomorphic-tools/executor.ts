@@ -1,19 +1,11 @@
 /**
  * Isomorphic Tool Executor
  *
- * Handles execution of isomorphic tools based on their authority mode.
+ * Handles execution of isomorphic tools with server-first flow.
  *
  * KEY PRINCIPLE: Server's return value is ALWAYS the final result to the LLM.
  *
- * ## CLIENT AUTHORITY (e.g., ask_question)
- * 1. LLM calls tool → Server receives call
- * 2. Server immediately sends handoff to client (no server code yet)
- * 3. Client executes tool.client(params) → returns clientOutput
- * 4. Client RE-INITIATES chat with clientOutput
- * 5. Server receives re-initiation → calls tool.server(params, ctx, clientOutput)
- * 6. Server's return value goes to LLM
- *
- * ## SERVER AUTHORITY - Simple (e.g., celebrate)
+ * ## SERVER-FIRST - Simple (e.g., celebrate)
  * 1. LLM calls tool → Server receives call
  * 2. Server executes tool.server(params) → returns serverOutput
  * 3. Server sends handoff to client with serverOutput
@@ -21,7 +13,7 @@
  * 5. Client RE-INITIATES chat (server result is already determined)
  * 6. Server's original return value goes to LLM
  *
- * ## SERVER AUTHORITY - With Handoff (V7 Pattern)
+ * ## SERVER-FIRST - With Handoff (V7 Pattern)
  * 1. LLM calls tool → Server receives call
  * 2. Server executes tool.server(params, ctx) in PHASE 1
  *    - ctx.handoff({ before, after }) runs before(), halts at handoff point
@@ -32,10 +24,6 @@
  *    - ctx.handoff() skips before(), runs after(handoff, clientOutput)
  * 6. Server's after() return value goes to LLM
  *
- * ## PARALLEL
- * 1. Server and client execute concurrently
- * 2. Server's return value goes to LLM
- * 3. Client execution is for side effects only
  */
 import type { Operation, Channel, Signal } from 'effection'
 import { useAbortSignal, each, all } from 'effection'
@@ -49,10 +37,7 @@ import type {
 } from './types.ts'
 import { HandoffReadyError } from './types.ts'
 import { validateToolParams } from '../utils.ts'
-import type {
-  ChatPatch,
-  AuthorityMode,
-} from './runtime/types.ts'
+import type { ChatPatch } from './runtime/types.ts'
 import type { ApprovalSignalValue } from './runtime/tool-runtime.ts'
 import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from './contexts.ts'
 import {
@@ -69,9 +54,6 @@ import {
   createBrowserContext,
   type BrowserRenderContext,
 } from './runtime/browser-context.ts'
-
-// Re-export AuthorityMode for internal use
-export type { AuthorityMode }
 
 // --- Phase 1 Server Executor (for handoff tools) ---
 
@@ -122,8 +104,7 @@ function createPhase2Context(
 /**
  * Execute the server portion of an isomorphic tool (PHASE 1).
  *
- * For `client` authority: Returns immediate handoff (no server code yet).
- * For `server` authority: Executes server code, may halt at handoff point.
+ * Executes server code and may halt at handoff point.
 
  *
  * @returns The handoff event to send to client, plus serverOutput if available
@@ -151,32 +132,11 @@ export function* executeServerPart(
     signal,
   }
 
-  const authority = tool.authority ?? 'server'
-
   const validatedParams = validateToolParams(tool, params)
 
-  // For client authority, we don't execute server code yet
-  // Client runs first, then server validates after re-initiation
-  if (authority === 'client') {
-    return {
-      kind: 'handoff',
-      handoff: {
-        type: 'isomorphic_handoff',
-        callId,
-        toolName: tool.name,
-        params: validatedParams,
-        serverOutput: undefined,
-        authority,
-        usesHandoff: false,
-      },
-      serverOutput: undefined,
-      usesHandoff: false,
-    }
-  }
-
-  // For server authority, execute server code now
+  // Execute server code now
   if (!tool.server) {
-    throw new Error(`Isomorphic tool "${tool.name}" has ${authority} authority but no server function`)
+    throw new Error(`Isomorphic tool "${tool.name}" has no server function`)
   }
 
   // Create phase 1 context with handoff capability
@@ -199,18 +159,17 @@ export function* executeServerPart(
 
     return {
       kind: 'handoff',
-      handoff: {
-        type: 'isomorphic_handoff',
-        callId,
-        toolName: tool.name,
-        params: validatedParams,
+        handoff: {
+          type: 'isomorphic_handoff',
+          callId,
+          toolName: tool.name,
+          params: validatedParams,
+          serverOutput,
+          usesHandoff: false,
+        },
         serverOutput,
-        authority,
         usesHandoff: false,
-      },
-      serverOutput,
-      usesHandoff: false,
-    }
+      }
 
   } catch (e) {
     if (e instanceof HandoffReadyError) {
@@ -223,7 +182,6 @@ export function* executeServerPart(
           toolName: tool.name,
           params: validatedParams,
           serverOutput: e.handoffData,
-          authority,
           usesHandoff: true,
         },
         serverOutput: e.handoffData,
@@ -241,9 +199,8 @@ export function* executeServerPart(
  *
  * Called when the client re-initiates after executing its part.
  *
- * For client authority: Runs the server function with clientOutput.
- * For server authority with handoff: Re-runs server function in phase 2 mode.
- * For server authority without handoff: Just returns the cached serverOutput.
+ * For handoff: Re-runs server function in phase 2 mode.
+ * For non-handoff: Just returns the cached serverOutput.
  *
  * The return value of this function is what the LLM sees as the tool result.
  */
@@ -256,32 +213,16 @@ export function* executeServerPhase2(
   signal: AbortSignal,
   usesHandoff: boolean
 ): Operation<unknown> {
-  const authority = tool.authority ?? 'server'
-
   const validatedParams = validateToolParams(tool, params)
 
-  // For client authority, run the server function with clientOutput
-  if (authority === 'client') {
-    if (!tool.server) {
-      throw new Error(`Isomorphic tool "${tool.name}" has client authority but no server function`)
-    }
-
-    const context: ServerToolContext = {
-      callId,
-      signal,
-    }
-
-    return yield* tool.server(validatedParams, context, clientOutput)
-  }
-
-  // For server authority without handoff, just return cached output
+  // For server-first without handoff, just return cached output
   if (!usesHandoff) {
     return cachedHandoff
   }
 
-  // For server authority with handoff, run phase 2
+  // For server-first with handoff, run phase 2
   if (!tool.server) {
-    throw new Error(`Isomorphic tool "${tool.name}" has server authority but no server function`)
+    throw new Error(`Isomorphic tool "${tool.name}" has no server function`)
   }
 
   const baseContext: ServerToolContext = {
@@ -295,28 +236,6 @@ export function* executeServerPhase2(
 }
 
 /**
- * Complete the server portion after client returns (for client authority).
- *
- * @deprecated Use executeServerPhase2 instead.
- */
-export function* executeServerValidation(
-  tool: AnyIsomorphicTool,
-  callId: string,
-  params: unknown,
-  clientOutput: unknown,
-  signal: AbortSignal
-): Operation<unknown> {
-  return yield* executeServerPhase2(
-    tool,
-    callId,
-    params,
-    clientOutput,
-    undefined, // No cached handoff for client authority
-    signal,
-    false // Client authority doesn't use handoff pattern
-  )
-}
-
 // --- Client-Side Executor ---
 
 /**
@@ -324,11 +243,8 @@ export function* executeServerValidation(
  *
  * Called after receiving a handoff event from the server.
  *
- * For client authority: Returns clientOutput (to be sent back to server)
- * For server authority: Client execution is for side effects, serverOutput already determined
- *
- * The result.content for server authority IS the serverOutput (already determined).
- * The result.content for client authority is a placeholder until server validates.
+ * Client execution is for side effects; serverOutput already determined.
+ * The result.content is the serverOutput.
  *
  * @param tool - The isomorphic tool to execute
  * @param handoff - The handoff event from the server
@@ -346,14 +262,13 @@ export function* executeClientPart(
   emissionChannel?: Channel<PendingEmission, void>
 ): Operation<IsomorphicToolResult> {
   const abortSignal = yield* useAbortSignal()
-  const { callId, params, serverOutput, authority } = handoff
+  const { callId, params, serverOutput } = handoff
 
   // Emit initial state
   yield* patches.send({
     type: 'isomorphic_tool_state',
     id: callId,
     state: 'awaiting_client_approval',
-    authority,
     serverOutput,
   } as ChatPatch)
 
@@ -395,7 +310,6 @@ export function* executeClientPart(
     type: 'isomorphic_tool_state',
     id: callId,
     state: 'client_executing',
-    authority,
     serverOutput,
   } as ChatPatch)
 
@@ -448,34 +362,16 @@ export function* executeClientPart(
   }
 
   try {
-    // Determine what to pass to client based on authority
-    const clientInput = authority === 'server' ? serverOutput : params
-    const clientOutput = yield* tool.client(clientInput, executionContext, params)
-
-    // Determine the result based on authority
-    let content: string
-
-    if (authority === 'server') {
-      // Server already ran - serverOutput is the final result
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      content = typeof serverOutput === 'string'
-        ? serverOutput
-        : JSON.stringify(serverOutput)
-    } else {
-      // Client authority - we need to return clientOutput for the session
-      // to re-initiate with. The actual LLM result comes from server validation.
-      // For now, we serialize clientOutput as a placeholder.
-      content = typeof clientOutput === 'string'
-        ? clientOutput
-        : JSON.stringify(clientOutput)
-    }
+    const clientOutput = yield* tool.client(serverOutput, executionContext, params)
+    const content = typeof serverOutput === 'string'
+      ? serverOutput
+      : JSON.stringify(serverOutput)
 
     // Emit completion
     yield* patches.send({
       type: 'isomorphic_tool_state',
       id: callId,
-      state: authority === 'client' ? 'server_validating' : 'complete',
-      authority,
+      state: 'complete',
       serverOutput,
       clientOutput,
     } as ChatPatch)
@@ -486,16 +382,11 @@ export function* executeClientPart(
       result: content,
     })
 
-    // For client authority, the session will use clientOutput to re-initiate
-    // and get the real result from server validation.
-    // For server authority, this is the final result.
-    if (authority === 'server') {
-      yield* patches.send({
-        type: 'tool_call_result',
-        id: callId,
-        result: content,
-      })
-    }
+    yield* patches.send({
+      type: 'tool_call_result',
+      id: callId,
+      result: content,
+    })
 
     return {
       callId,
@@ -512,7 +403,6 @@ export function* executeClientPart(
       type: 'isomorphic_tool_state',
       id: callId,
       state: 'error',
-      authority,
       error: errorMessage,
     } as ChatPatch)
 
@@ -725,11 +615,7 @@ function* executeViaReactHandler(
   patches: Channel<ChatPatch, void>,
   handoffResponseSignal: Signal<{ callId: string; output: unknown }, void>
 ): Operation<IsomorphicToolResult> {
-  const { callId, params, serverOutput, authority } = handoff
-
-  // Determine what data the React handler receives
-  // Same logic as in executeClientPart
-  const handoffData = authority === 'server' ? serverOutput : params
+  const { callId, params, serverOutput } = handoff
 
   // Emit pending_handoff patch for React to render UI
   yield* patches.send({
@@ -738,8 +624,7 @@ function* executeViaReactHandler(
       callId,
       toolName: tool.name,
       params,
-      data: handoffData,
-      authority,
+      data: serverOutput,
       usesHandoff: handoff.usesHandoff ?? false,
     },
   } as ChatPatch)
@@ -760,19 +645,15 @@ function* executeViaReactHandler(
     callId,
   } as ChatPatch)
 
-  // Build the result
-  // For server authority, serverOutput is already the final result
-  // For client authority, clientOutput will be validated by server
-  const content = authority === 'server'
-    ? (typeof serverOutput === 'string' ? serverOutput : JSON.stringify(serverOutput))
-    : (typeof clientOutput === 'string' ? clientOutput : JSON.stringify(clientOutput))
+  const content = typeof serverOutput === 'string'
+    ? serverOutput
+    : JSON.stringify(serverOutput)
 
   // Emit completion patches
   yield* patches.send({
     type: 'isomorphic_tool_state',
     id: callId,
-    state: authority === 'client' ? 'server_validating' : 'complete',
-    authority,
+    state: 'complete',
     serverOutput,
     clientOutput,
   } as ChatPatch)
@@ -783,13 +664,11 @@ function* executeViaReactHandler(
     result: content,
   })
 
-  if (authority === 'server') {
-    yield* patches.send({
-      type: 'tool_call_result',
-      id: callId,
-      result: content,
-    })
-  }
+  yield* patches.send({
+    type: 'tool_call_result',
+    id: callId,
+    result: content,
+  })
 
   return {
     callId,

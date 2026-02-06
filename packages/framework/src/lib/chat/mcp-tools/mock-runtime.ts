@@ -36,8 +36,8 @@ import type {
   McpMessage,
 } from './types.ts'
 import {
-  MCPCapabilityError,
-} from './types.ts'
+  McpCapabilityError as MCPCapabilityError,
+} from './mcp-tool-types.ts'
 import type { FinalizedMCPTool } from './builder.ts'
 
 // =============================================================================
@@ -358,23 +358,4 @@ export function runMCPTool<
       return result
     }
   }
-}
-
-/**
- * Execute an MCP tool and expect it to succeed.
- * Throws if the tool execution fails.
- */
-export function runMCPToolOrThrow<
-  TName extends string,
-  TParams,
-  THandoff,
-  TClient,
-  TResult,
->(
-  tool: FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult>,
-  params: TParams,
-  client: MockMCPClient,
-  options: RunMCPToolOptions = {}
-): Operation<TResult> {
-  return runMCPTool(tool, params, client, options)
 }
