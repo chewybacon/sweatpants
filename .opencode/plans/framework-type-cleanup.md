@@ -98,7 +98,7 @@ Three different things named `ChatMessage`:
 
 ## Tasks
 
-### Task A: ToolSessionEvent narrowing — delete `as any` casts ⬜
+### Task A: ToolSessionEvent narrowing — delete `as any` casts ✅ COMPLETE
 
 **Risk:** Zero — TypeScript already narrows the discriminated union correctly.
 **Files:** `packages/framework/src/handler/durable/plugin-session-manager.ts`
@@ -112,7 +112,7 @@ Changes:
 - [x] `case 'error'`: remove `(event as any).name`, `(event as any).message` → use `event.name`, `event.message`
 - [x] `case 'cancelled'`: remove `(event as any).reason` → use `event.reason`
 
-### Task B: Fix Streamer type ⬜
+### Task B: Fix Streamer type ✅ COMPLETE
 
 **Risk:** Zero — widens a type parameter.
 **Files:** `packages/framework/src/lib/chat/session/options.ts`
@@ -124,7 +124,7 @@ Changes:
 - [ ] Add `StreamChatOptions` import
 - [ ] Delete 2 `as any` casts in `create-session.ts`
 
-### Task C: Eliminate `ApiMessage` — unify into `Message` ⬜
+### Task C: Eliminate `ApiMessage` — unify into `Message` ✅ COMPLETE
 
 **Risk:** Medium — touches 6+ production files. Must verify all `ApiMessage` consumers accept the superset fields.
 **Files:** `streaming.ts`, `stream-chat.ts`, `create-session.ts`, `options.ts`, `types.ts`, `react/chat/types/index.ts`, `isomorphic-tools/runtime/types.ts`, test files
@@ -145,7 +145,7 @@ Changes:
 - [ ] Replace all `ApiMessage` references with `Message`
 - [ ] Update re-exports
 
-### Task D: Canonicalize ToolCall types ⬜
+### Task D: Canonicalize ToolCall types ✅ COMPLETE
 
 **Risk:** Low — mostly naming/aliasing.
 **Depends on:** Task C (eliminating `ApiMessage` removes its anonymous `tool_calls` shape)
@@ -186,24 +186,27 @@ Changes:
 - [x] Delete duplicate, add re-export — deleted ~100 lines of inline `StreamEvent` from `handler/types.ts`, replaced with re-export from `session/streaming.ts` (also re-exports named sub-interfaces: `ConversationState`, `ConversationStateStreamEvent`, `IsomorphicHandoffStreamEvent`, `ElicitRequestStreamEvent`, `ToolSessionStatusStreamEvent`, `ToolSessionErrorStreamEvent`)
 - [x] Zero import changes needed — all consumers already imported from `handler/types.ts` which now re-exports
 
-### Task F: Zod/JSON Schema boundary cleanup ⬜
+### Task F: Zod/JSON Schema boundary cleanup ✅ COMPLETE
 
-**Risk:** Low — mostly utility extraction.
-**Files:** `bridge-runtime.ts`, `registry.ts`, `worker-runner.ts`, `core-context.ts`, `handler.ts`, `mcp-handler.ts`, `mcp-tool-types.ts`, `useElicitExecutor.ts`
+**Risk:** Low — mostly cast deletion and helper extraction.
+**Files:** `handler.ts`, `mcp-handler.ts`, `bridge-runtime.ts`, `registry.ts`, `worker-runner.ts`
 
-Steps:
-1. Create `JsonSchema` branded type: `type JsonSchema = Record<string, unknown> & { readonly __brand: 'JsonSchema' }`
-2. Create shared `toJsonSchema(schema: z.ZodType): JsonSchema` utility (consolidate 2 duplicate wrappers)
-3. Replace all `z.toJSONSchema() as Record<string, unknown>` with `toJsonSchema(schema)`
-4. Replace all `zodToJsonSchema() as any` calls with the shared utility
-5. Split `ElicitRequest` into server (`schema: { zod: TSchema; json: JsonSchema }`) and client (`schema: { json: JsonSchema }`) variants — eliminates `{} as any` stub
+What was done:
+- [x] Removed 2 `as Record<string, unknown>` casts on `z.toJSONSchema()` in `handler/durable/handler.ts` — Zod v4's `JSONSchema.BaseSchema` already assignable to `Record<string, unknown>`
+- [x] Removed 4 `as Record<string, unknown>` casts on `z.toJSONSchema()` in `mcp-tools/handler/mcp-handler.ts` — same rationale
+- [x] Removed `as Record<string, unknown>` from `zodToJsonSchema()` wrapper in `bridge-runtime.ts` — wrapper now returns directly
+- [x] Removed `as Record<string, unknown>` from `zodToJsonSchema()` wrapper in `registry.ts` — same
+- [x] Created `toJsonSchemaRecord()` helper in `worker-runner.ts` — encapsulates duck-type-check-and-convert pattern (detects Zod via `safeParse`, converts with `zod-to-json-schema` library, else passes through)
+- [x] Refactored `toWorkerToolDefinition()` to use `toJsonSchemaRecord()` — eliminated inline cast
+- [x] Replaced second inline duck-type+cast pattern in `sampleImpl()` (~line 271) with `toJsonSchemaRecord(config.schema)` — eliminated `as any` + `as Record<string, unknown>` casts
 
-Changes:
-- [ ] Create `JsonSchema` branded type
-- [ ] Create shared `toJsonSchema()` utility
-- [ ] Eliminate duplicate wrappers in `bridge-runtime.ts` and `registry.ts`
-- [ ] Replace all cast sites
-- [ ] Split `ElicitRequest` server/client variants
+What was deliberately NOT done (over-engineering for minimal gain):
+- Branded `JsonSchema` type — doesn't eliminate any casts (problem is on input side, not output)
+- Consolidating two `zodToJsonSchema` wrappers into shared utility — trivial one-liners in different modules
+- Splitting `ElicitRequest` server/client variants — out of scope, requires changing `@sweatpants/elicit-context` package
+- `as z.ZodType` narrowing casts in `bridge-runtime.ts` — correct and necessary after runtime duck-type checks
+- `responseSchema as any` in `bridge-runtime.ts` — generic type erasure, needs ElicitsMap generics threaded through
+- `core-context.ts` casts — third-party `zod-to-json-schema` library type expectations
 
 ### Task G: Provider layer + misc casts ⬜
 
@@ -239,5 +242,5 @@ Changes:
 | **C** | `streaming.ts`, `stream-chat.ts`, `create-session.ts`, `options.ts`, `types.ts`, `react/chat/types/index.ts`, `isomorphic-tools/runtime/types.ts`, tests | Eliminated `ApiMessage`, deleted `toApiMessages()`, deleted 3 conversion blocks |
 | **D** | `types.ts`, `durable/types.ts`, `chat-engine.ts`, `mcp-tool-types.ts` | Canonical `ToolCall` types |
 | **E** | `handler/types.ts`, `handler/durable/chat-engine.ts` | Deleted ~100-line duplicate `StreamEvent`, re-export from `session/streaming.ts`; fixed 3 drift bugs (usage camelCase, tool_session_status discriminant, usesHandoff optionality) |
-| **F** | `bridge-runtime.ts`, `registry.ts`, `worker-runner.ts`, `core-context.ts`, `handler.ts`, `mcp-handler.ts`, `mcp-tool-types.ts`, `useElicitExecutor.ts` | `JsonSchema` branded type, shared utility |
+| **F** | `handler.ts`, `mcp-handler.ts`, `bridge-runtime.ts`, `registry.ts`, `worker-runner.ts` | Removed 8 `as Record<string, unknown>` casts on `z.toJSONSchema()` / `zodToJsonSchema()`; created `toJsonSchemaRecord()` helper; eliminated `as any` in `sampleImpl()` |
 | **G** | `openai.ts`, `ollama.ts`, `session-registry.ts` | `toWebReadableStream()`, SSE types, `ContextEntry` fix |

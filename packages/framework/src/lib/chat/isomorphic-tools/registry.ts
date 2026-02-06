@@ -191,5 +191,5 @@ export function filterIsomorphicRegistry(
  */
 function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
   // Use Zod's built-in JSON schema conversion
-  return z.toJSONSchema(schema) as Record<string, unknown>
+  return z.toJSONSchema(schema)
 }

@@ -141,6 +141,25 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
 }
 
 /**
+ * Convert a schema that may be a Zod type or already a JSON Schema object
+ * into a plain JSON Schema record suitable for postMessage/wire serialization.
+ *
+ * Duck-types on `safeParse` to detect Zod schemas at runtime, since the generic
+ * parameter is erased to `unknown` by the time it reaches the worker runner.
+ */
+function toJsonSchemaRecord(schema: unknown): Record<string, unknown> {
+  if (schema && typeof (schema as { safeParse?: unknown }).safeParse === 'function') {
+    // Zod schema — convert to JSON Schema (functions can't be cloned for postMessage)
+    return zodToJsonSchema(schema as Parameters<typeof zodToJsonSchema>[0], {
+      $refStrategy: 'none',
+      target: 'jsonSchema7',
+    }) as Record<string, unknown>
+  }
+  // Already a JSON Schema object
+  return schema as Record<string, unknown>
+}
+
+/**
  * Convert tool definition to core format.
  * Handles both Zod schemas and raw JSON schemas.
  * Zod schemas are converted to JSON Schema since they contain functions
@@ -151,17 +170,10 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
   description?: string
   inputSchema: Record<string, unknown>
 } {
-  // Check if inputSchema is a Zod type (has safeParse) and convert to JSON Schema
-  const schema = tool.inputSchema as unknown
-  const isZodSchema = schema && typeof (schema as { safeParse?: unknown }).safeParse === 'function'
-  const inputSchema = isZodSchema
-    ? zodToJsonSchema(schema as any, { $refStrategy: 'none', target: 'jsonSchema7' }) as Record<string, unknown>
-    : tool.inputSchema as Record<string, unknown>
-
   return {
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
-    inputSchema,
+    inputSchema: toJsonSchemaRecord(tool.inputSchema),
   }
 }
 
@@ -257,11 +269,7 @@ function createMcpWorkerContext(
 
     // Handle schema (convert Zod to JSON schema marker)
     if ('schema' in config && config.schema) {
-      const schema = config.schema as unknown
-      const isZodSchema = typeof (schema as { safeParse?: unknown }).safeParse === 'function'
-      coreOptions.schema = isZodSchema
-        ? zodToJsonSchema(schema as any, { $refStrategy: 'none', target: 'jsonSchema7' }) as Record<string, unknown>
-        : schema as Record<string, unknown>
+      coreOptions.schema = toJsonSchemaRecord(config.schema)
     }
 
     // Handle tools
