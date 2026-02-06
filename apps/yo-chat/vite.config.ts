@@ -39,6 +39,8 @@ const config = defineConfig({
         dir: 'src/tools',
         outFile: 'src/__generated__/tool-registry.gen.ts',
         pattern: '**/*.{ts,tsx}',
+        generateWorker: true,
+        workerOutFile: 'src/__generated__/tool-worker.gen.ts',
       },
     }),
   ],
