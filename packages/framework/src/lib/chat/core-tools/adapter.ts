@@ -2,7 +2,7 @@
  * Core Tool Adapter
  *
  * Adapts @sweatpants/core tools to work with the framework's isomorphic tool system.
- * Core tools are wrapped to appear as server-authority isomorphic tools.
+ * Core tools are wrapped to appear as server-first isomorphic tools.
  */
 import type { Operation } from 'effection'
 import type { ZodSchema } from 'zod'
@@ -18,11 +18,16 @@ import { withFrameworkTransport } from './framework-transport.ts'
  * - `withContext()` for context binding
  * - `name` and `description` metadata
  * - `schemas` with input/output/progress schemas
+ * 
+ * Note: We use `any` for middleware and context types to allow any core tool factory
+ * regardless of its specific generic parameters. The runtime behavior is correct.
  */
 export type CoreToolFactory = {
   (...args: unknown[]): Operation<unknown>
-  decorate: (...args: unknown[]) => Operation<void>
-  withContext: <T>(context: unknown, value: T) => CoreToolFactory
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  decorate: (middleware: any) => Operation<void>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  withContext: <T>(context: any, value: T) => CoreToolFactory
   readonly name: string
   readonly description: string
   readonly schemas: {
@@ -65,7 +70,7 @@ export function isCoreToolFactory(value: unknown): value is CoreToolFactory {
  * This adapter:
  * - Maps core tool's `input` schema to isomorphic tool's `parameters`
  * - Sets up FrameworkTransport so core's `notify()` calls emit patches
- * - Produces a server-authority isomorphic tool (core tools run on server)
+ * - Produces a server-first isomorphic tool (core tools run on server)
  * - Sets contextMode to 'headless' since core tools don't need browser APIs
  *
  * @param coreToolFactory - A core tool factory from `createTool()`
@@ -76,7 +81,6 @@ export function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTo
     name: coreToolFactory.name,
     description: coreToolFactory.description,
     parameters: coreToolFactory.schemas.input,
-    authority: 'server',
     contextMode: 'headless',
 
     /**

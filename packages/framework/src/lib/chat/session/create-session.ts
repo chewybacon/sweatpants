@@ -54,7 +54,7 @@
  *
  * ## Client Tool Orchestration
  *
- * Client-only tools are exposed to the LLM as client-authority isomorphic tools.
+ * Client-only tools are exposed to the LLM as isomorphic tools.
  * When the LLM requests them, the server emits `isomorphic_handoff` events.
  * The session then:
  * 1. Executes the tool client parts (with approval flow)
@@ -337,10 +337,11 @@ export function* runChatSession(
             let result: StreamResult
             let currentMessages: ApiMessage[] = toApiMessages(history)
             
+            // Track original history length to know what messages need syncing after the loop
+            const originalHistoryLength = history.length
+            
             // Client outputs from isomorphic tools that need server phase 2
-            // Populated for:
-            // - Client-authority tools: server validates client output
-            // - V7 handoff tools: server runs after() with cached handoff + client output
+            // Populated for V7 handoff tools: server runs after() with cached handoff + client output
             let isomorphicClientOutputs: Array<{
               callId: string
               toolName: string
@@ -578,14 +579,13 @@ export function* runChatSession(
                 
                 // Add isomorphic tool results (merged server + client outputs)
                 // Collect outputs for server phase 2 when needed:
-                // - Client-authority tools: server validates client output
                 // - V7 handoff tools: server runs after() with cached handoff + client output
                  for (let i = 0; i < isomorphicResults.length; i++) {
                    const isoResult = isomorphicResults[i]!
                    const handoff = result.handoffs[i]!
                   
                    // Determine if we need server phase 2
-                  const needsPhase2 = handoff.authority === 'client' || handoff.usesHandoff === true
+                   const needsPhase2 = handoff.usesHandoff === true
                   
                   if (needsPhase2) {
                     // For phase 2 tools, DON'T add the tool message here.
@@ -603,7 +603,7 @@ export function* runChatSession(
                       })
                     }
                   } else {
-                    // For non-phase-2 tools (server authority without handoff),
+                    // For non-phase-2 tools (server-first without handoff),
                     // the result is already final - add the tool message
                     conversationMessages.push(formatIsomorphicToolResult(isoResult))
                   }
@@ -636,10 +636,9 @@ export function* runChatSession(
               }
             }
             
-            // Find new messages that need to be added to history
-            const originalHistoryLength = history.length
-            
-            // Add any new messages from currentMessages
+            // Sync new messages from currentMessages to history
+            // This is critical for multi-turn tool calling - without this,
+            // subsequent requests won't include tool_calls in history
             for (let i = originalHistoryLength; i < currentMessages.length; i++) {
               const apiMsg = currentMessages[i]!
               

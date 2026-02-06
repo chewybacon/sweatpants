@@ -1,6 +1,6 @@
 import { createContext, scoped } from "effection";
 import type { Operation } from "effection";
-import type { ZodSchema, infer as ZodInfer, input as ZodInput } from "zod";
+import type { z, ZodSchema, input as ZodInput } from "zod";
 import type {
   AgentConfig,
   Agent,
@@ -74,7 +74,7 @@ export function createAgent<
 ): AgentFactory<TConfig, TTools> {
   // Create config context unique to this agent
   // This will be used by useConfig() to retrieve the config
-  const configContext = createContext<ZodInfer<NonNullable<TConfig>>>(
+  const configContext = createContext<z.infer<NonNullable<TConfig>>>(
     `agent.${agentConfig.name}.config`,
   );
 
@@ -86,7 +86,7 @@ export function createAgent<
     return scoped(function* () {
       // Validate and set config if schema exists
       if (agentConfig.config) {
-        const validated = agentConfig.config.parse(inputConfig) as ZodInfer<
+        const validated = agentConfig.config.parse(inputConfig) as z.infer<
           NonNullable<TConfig>
         >;
         yield* configContext.set(validated);
@@ -111,7 +111,7 @@ export function createAgent<
    * Must be called within the agent's scope (i.e., after activation).
    * Throws if called outside agent scope or if agent has no config schema.
    */
-  function useConfig(): Operation<ZodInfer<NonNullable<TConfig>>> {
+  function useConfig(): Operation<z.infer<NonNullable<TConfig>>> {
     return {
       *[Symbol.iterator]() {
         if (!agentConfig.config) {

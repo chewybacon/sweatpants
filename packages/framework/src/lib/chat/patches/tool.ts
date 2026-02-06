@@ -4,7 +4,7 @@
  * Tool-related patches for client tools and isomorphic tools.
  */
 
-import type { AuthorityMode, IsomorphicToolState } from '../core-types.ts'
+import type { IsomorphicToolState } from '../core-types.ts'
 
 // =============================================================================
 // CLIENT TOOL PATCHES
@@ -114,8 +114,6 @@ export interface IsomorphicToolStatePatch {
   id: string
   /** Current state */
   state: IsomorphicToolState
-  /** Authority mode */
-  authority: AuthorityMode
   /** Server output (if available) */
   serverOutput?: unknown
   /** Client output (if available) */

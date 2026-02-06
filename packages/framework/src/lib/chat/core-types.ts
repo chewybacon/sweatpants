@@ -13,18 +13,6 @@
  * - react/chat (React hooks and components)
  */
 
-// =============================================================================
-// AUTHORITY & EXECUTION
-// =============================================================================
-
-/**
- * Determines execution order and data flow for isomorphic tools.
- *
- * - `server`: Server executes first, may yield to client, server returns final result
- * - `client`: Client executes first, server validates/processes, server returns final result
- */
-export type AuthorityMode = 'server' | 'client'
-
 /**
  * State of an isomorphic tool during execution.
  */
@@ -33,7 +21,6 @@ export type IsomorphicToolState =
   | 'server_executing'
   | 'awaiting_client_approval'
   | 'client_executing'
-  | 'server_validating'
   | 'complete'
   | 'error'
   | 'denied'
