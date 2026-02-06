@@ -164,7 +164,7 @@ export const WorkerSessionApi = createApi('worker-session', {
     const rawResult = result.value
     state.setStatus('running')
 
-    return {
+    const workerResponse: WorkerSampleResponse = {
       id: sampleId,
       type: 'sample',
       status: 'accepted',
@@ -175,6 +175,8 @@ export const WorkerSessionApi = createApi('worker-session', {
       ...('parseError' in rawResult && rawResult.parseError !== undefined && { parseError: rawResult.parseError }),
       ...('toolCalls' in rawResult && rawResult.toolCalls !== undefined && { toolCalls: rawResult.toolCalls }),
     }
+
+    return workerResponse
   },
 
   // ==========================================

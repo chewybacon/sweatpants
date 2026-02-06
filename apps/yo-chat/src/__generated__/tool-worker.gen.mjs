@@ -410,7 +410,6 @@ Pick your move.`
               tool_call_id: chosenStrategy.id
             }
           ],
-          // Using any because Message type doesn't include tool_calls
           schema: MoveSchema,
           retries: 3
         });
