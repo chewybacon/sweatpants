@@ -100,7 +100,6 @@ export { groupTimelineByToolCall, initialChatState } from '../../state/index.ts'
 
 // Session types
 export type {
-  ApiMessage,
   ConversationState,
   StreamResult,
   StreamCompleteResult,

@@ -144,7 +144,6 @@ export { groupTimelineByToolCall, initialChatState } from '../../../lib/chat/sta
 
 // Session types
 export type {
-  ApiMessage,
   ConversationState,
   StreamResult,
   StreamCompleteResult,

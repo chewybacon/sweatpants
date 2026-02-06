@@ -11,15 +11,17 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { Message } from '../../types.ts'
-import type { ApiMessage } from '../streaming.ts'
 
 /**
  * Simulate the history sync logic from create-session.ts
  * This mirrors the actual implementation to test the core algorithm.
+ * 
+ * After ApiMessage elimination, conversationState.messages is Message[],
+ * so sync is simpler — just ensure each message has an id.
  */
 function syncHistoryWithCurrentMessages(
   history: Message[],
-  currentMessages: ApiMessage[],
+  currentMessages: Message[],
   toolResultsMap: Map<string, string>
 ): Message[] {
   const result = [...history]
@@ -27,38 +29,22 @@ function syncHistoryWithCurrentMessages(
   
   // Add any new messages from currentMessages
   for (let i = originalHistoryLength; i < currentMessages.length; i++) {
-    const apiMsg = currentMessages[i]!
+    const convMsg = currentMessages[i]!
     
     // For tool results, check if we have updated content from phase 2
-    let content = apiMsg.content
-    if (apiMsg.role === 'tool' && apiMsg.tool_call_id) {
-      const updatedContent = toolResultsMap.get(apiMsg.tool_call_id)
+    let content = convMsg.content
+    if (convMsg.role === 'tool' && convMsg.tool_call_id) {
+      const updatedContent = toolResultsMap.get(convMsg.tool_call_id)
       if (updatedContent) {
         content = updatedContent
       }
     }
     
-    const msg: Message = {
-      id: `msg-${i}`,
-      role: apiMsg.role,
-      content: content,
-    }
-    
-    // Preserve tool_calls with proper type field
-    if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
-      msg.tool_calls = apiMsg.tool_calls.map(tc => ({
-        id: tc.id,
-        type: 'function' as const,
-        function: 'function' in tc ? tc.function : { name: (tc as any).name, arguments: (tc as any).arguments },
-      }))
-    }
-    
-    // Preserve tool_call_id
-    if (apiMsg.tool_call_id) {
-      msg.tool_call_id = apiMsg.tool_call_id
-    }
-    
-    result.push(msg)
+    result.push({
+      ...convMsg,
+      id: convMsg.id ?? `msg-${i}`,
+      content,
+    })
   }
   
   return result
@@ -71,7 +57,7 @@ describe('History sync after tool calls', () => {
         { id: 'msg-0', role: 'user', content: 'draw 3 cards' },
       ]
       
-      const currentMessages: ApiMessage[] = [
+      const currentMessages: Message[] = [
         { role: 'user', content: 'draw 3 cards' },
         {
           role: 'assistant',
@@ -79,6 +65,7 @@ describe('History sync after tool calls', () => {
           tool_calls: [
             {
               id: 'call_abc123',
+              type: 'function' as const,
               function: {
                 name: 'pick_card',
                 arguments: { count: 3 },
@@ -125,13 +112,13 @@ describe('History sync after tool calls', () => {
         { id: 'msg-0', role: 'user', content: 'test' },
       ]
       
-      const currentMessages: ApiMessage[] = [
+      const currentMessages: Message[] = [
         { role: 'user', content: 'test' },
         {
           role: 'assistant',
           content: '',
           tool_calls: [
-            { id: 'call_1', function: { name: 'tool_a', arguments: {} } },
+            { id: 'call_1', type: 'function' as const, function: { name: 'tool_a', arguments: {} } },
           ],
         },
         {
@@ -157,13 +144,13 @@ describe('History sync after tool calls', () => {
         { id: 'msg-0', role: 'user', content: 'test' },
       ]
       
-      const currentMessages: ApiMessage[] = [
+      const currentMessages: Message[] = [
         { role: 'user', content: 'test' },
         {
           role: 'assistant',
           content: '',
           tool_calls: [
-            { id: 'call_1', function: { name: 'tool_a', arguments: {} } },
+            { id: 'call_1', type: 'function' as const, function: { name: 'tool_a', arguments: {} } },
           ],
         },
         {
@@ -187,14 +174,14 @@ describe('History sync after tool calls', () => {
         { id: 'msg-0', role: 'user', content: 'draw 3 cards and calculate 2+2' },
       ]
       
-      const currentMessages: ApiMessage[] = [
+      const currentMessages: Message[] = [
         { role: 'user', content: 'draw 3 cards and calculate 2+2' },
         {
           role: 'assistant',
           content: '',
           tool_calls: [
-            { id: 'call_card', function: { name: 'pick_card', arguments: { count: 3 } } },
-            { id: 'call_calc', function: { name: 'calculator', arguments: { expr: '2+2' } } },
+            { id: 'call_card', type: 'function' as const, function: { name: 'pick_card', arguments: { count: 3 } } },
+            { id: 'call_calc', type: 'function' as const, function: { name: 'calculator', arguments: { expr: '2+2' } } },
           ],
         },
         { role: 'tool', content: '', tool_call_id: 'call_card' },
@@ -227,7 +214,7 @@ describe('History sync after tool calls', () => {
       ]
       
       // Current messages include the same messages
-      const currentMessages: ApiMessage[] = [
+      const currentMessages: Message[] = [
         { role: 'user', content: 'hello' },
         { role: 'assistant', content: 'hi there' },
       ]
@@ -238,13 +225,12 @@ describe('History sync after tool calls', () => {
       expect(synced).toHaveLength(2)
     })
 
-    it('should add type: function to tool_calls even if missing', () => {
+    it('should preserve type: function on tool_calls through sync', () => {
       const history: Message[] = [
         { id: 'msg-0', role: 'user', content: 'test' },
       ]
       
-      // Simulate tool_calls without type field (legacy format)
-      const currentMessages: ApiMessage[] = [
+      const currentMessages: Message[] = [
         { role: 'user', content: 'test' },
         {
           role: 'assistant',
@@ -252,15 +238,15 @@ describe('History sync after tool calls', () => {
           tool_calls: [
             {
               id: 'call_1',
+              type: 'function' as const,
               function: { name: 'my_tool', arguments: { x: 1 } },
-            } as any, // Cast to bypass type check - simulating legacy format
+            },
           ],
         },
       ]
       
       const synced = syncHistoryWithCurrentMessages(history, currentMessages, new Map())
       
-      // Should add type: 'function'
       expect(synced[1]!.tool_calls![0]!.type).toBe('function')
     })
   })
@@ -273,7 +259,7 @@ describe('Tool call format for OpenAI API', () => {
       { id: 'msg-0', role: 'user', content: 'draw a card' },
     ]
     
-    const currentMessages: ApiMessage[] = [
+    const currentMessages: Message[] = [
       { role: 'user', content: 'draw a card' },
       {
         role: 'assistant',
@@ -281,6 +267,7 @@ describe('Tool call format for OpenAI API', () => {
         tool_calls: [
           {
             id: 'call_xyz',
+            type: 'function' as const,
             function: { name: 'pick_card', arguments: { count: 1 } },
           },
         ],

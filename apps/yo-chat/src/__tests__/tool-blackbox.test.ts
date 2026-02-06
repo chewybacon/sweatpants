@@ -33,7 +33,8 @@ import {
   streamChatOnce,
   type ElicitResponseData,
 } from '../../../../packages/framework/src/lib/chat/session/stream-chat.ts'
-import type { ApiMessage, StreamResult } from '../../../../packages/framework/src/lib/chat/session/streaming.ts'
+import type { Message } from '../../../../packages/framework/src/lib/chat/types.ts'
+import type { StreamResult } from '../../../../packages/framework/src/lib/chat/session/streaming.ts'
 import type { ChatPatch } from '../../../../packages/framework/src/lib/chat/patches/index.ts'
 
 import { initialChatState, chatReducer } from '../../../../packages/framework/src/lib/chat/state/index.ts'
@@ -176,7 +177,7 @@ describe('yo-chat tool blackbox', () => {
             }
           })
 
-          const messages: ApiMessage[] = [{ role: 'user', content: 'Book a flight' }]
+          const messages: Message[] = [{ role: 'user', content: 'Book a flight' }]
 
           const r1 = yield* withTimeout(
             'initial request (expect pickFlight)',

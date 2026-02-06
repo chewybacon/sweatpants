@@ -51,7 +51,6 @@ import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/t
 import type {
   ToolSession,
   ToolSessionStatus,
-  SampleRequestEvent,
   ToolSessionRegistry,
   RawSampleResultBase,
   RawSampleResultWithParsed,
@@ -328,15 +327,15 @@ export function createPluginSessionManager(
                 // Pass through to caller
                 return {
                   type: 'elicit_request',
-                  elicitId: (event as any).elicitId,
-                  key: (event as any).key,
-                  message: (event as any).message,
-                  schema: (event as any).schema,
+                  elicitId: event.elicitId,
+                  key: event.key,
+                  message: event.message,
+                  schema: event.schema,
                 }
 
               case 'sample_request': {
                 // Handle sampling server-side using the provider
-                const sampleEvent = event as SampleRequestEvent
+                const sampleEvent = event
                 try {
                   // Convert ExtendedMessage[] to chat provider Message[]
                   const chatMessages = sampleEvent.messages.map(extendedMessageToProviderMessage)
@@ -446,7 +445,7 @@ export function createPluginSessionManager(
                 if (onTerminal) onTerminal()
                 return {
                   type: 'result',
-                  result: (event as any).result,
+                  result: event.result,
                 }
 
               case 'error':
@@ -454,8 +453,8 @@ export function createPluginSessionManager(
                 if (onTerminal) onTerminal()
                 return {
                   type: 'error',
-                  name: (event as any).name,
-                  message: (event as any).message,
+                  name: event.name,
+                  message: event.message,
                 }
 
               case 'cancelled':
@@ -463,7 +462,7 @@ export function createPluginSessionManager(
                 if (onTerminal) onTerminal()
                 return {
                   type: 'cancelled',
-                  reason: (event as any).reason,
+                  reason: event.reason,
                 }
 
               case 'progress':

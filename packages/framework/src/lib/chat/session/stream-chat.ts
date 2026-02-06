@@ -17,62 +17,18 @@ import { parseNDJSON } from '../ndjson.ts'
 import { BaseUrlContext } from './contexts.ts'
 import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
-import type { SessionOptions } from './options.ts'
+import type { StreamChatOptions } from './options.ts'
 import type { 
   StreamEvent, 
-  ApiMessage,
   StreamResult,
   IsomorphicHandoffStreamEvent,
   ElicitRequestStreamEvent,
 } from './streaming.ts'
-import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
 
 /**
- * Elicit response from the client.
+ * Re-export ElicitResponseData from options for backward compatibility.
  */
-export interface ElicitResponseData {
-  /** Session ID (same as callId from the original tool call) */
-  sessionId: string
-  /** Original tool call ID for conversation correlation */
-  callId: string
-  /** Specific elicit request ID */
-  elicitId: string
-  /** The user's response */
-  result: {
-    action: 'accept' | 'decline' | 'cancel'
-    content?: unknown
-  }
-}
-
-/**
- * Options for streamChatOnce, extending SessionOptions with isomorphic tool schemas.
- */
-export interface StreamChatOptions extends SessionOptions {
-  /**
-   * Isomorphic tool schemas to send to the server.
-   * Server will execute server parts and hand off for client-side execution.
-   */
-  isomorphicToolSchemas?: IsomorphicToolSchema[]
-
-  /**
-   * Client outputs from isomorphic tool execution that need server validation.
-   * Sent when re-initiating after executing isomorphic tools that need phase 2.
-   */
-  isomorphicClientOutputs?: Array<{
-    callId: string
-    toolName: string
-    params: unknown
-    clientOutput: unknown
-    cachedHandoff?: unknown
-    usesHandoff?: boolean
-  }>
-
-  /**
-   * Responses to pending elicitation requests.
-   * Sent when resuming a conversation with tool elicitations.
-   */
-  elicitResponses?: ElicitResponseData[]
-}
+export type { ElicitResponseData, StreamChatOptions } from './options.ts'
 
 /**
  * Perform a single streaming chat request.
@@ -84,7 +40,7 @@ export interface StreamChatOptions extends SessionOptions {
  * @returns StreamResult - either complete or isomorphic_handoff
  */
 export function* streamChatOnce(
-  messages: ApiMessage[],
+  messages: Message[],
   patches: Channel<ChatPatch, void>,
   options: StreamChatOptions = {}
 ): Operation<StreamResult> {
@@ -348,33 +304,4 @@ export function* streamChatOnce(
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(toolResults.length > 0 ? { toolResults } : {}),
   }
-}
-
-/**
- * Helper to convert ChatMessage[] to API format.
- * 
- * IMPORTANT: This must preserve tool_calls and tool_call_id fields
- * so that multi-turn tool conversations work correctly with all providers.
- * Without these fields, providers (especially OpenAI) can't see the tool
- * call history and can't continue tool-based conversations properly.
- */
-export function toApiMessages(messages: Message[]): ApiMessage[] {
-  return messages.map((m) => {
-    const apiMsg: ApiMessage = {
-      role: m.role,
-      content: m.content,
-    }
-    
-    // Preserve tool_calls on assistant messages
-    if (m.tool_calls && m.tool_calls.length > 0) {
-      apiMsg.tool_calls = m.tool_calls
-    }
-    
-    // Preserve tool_call_id on tool result messages
-    if (m.tool_call_id) {
-      apiMsg.tool_call_id = m.tool_call_id
-    }
-    
-    return apiMsg
-  })
 }
