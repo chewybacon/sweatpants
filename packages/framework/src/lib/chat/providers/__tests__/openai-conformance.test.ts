@@ -524,7 +524,6 @@ describe('OpenAI Provider Conformance', () => {
                 description: 'A test tool',
                 parameters: { type: 'object', properties: { x: { type: 'number' } } },
                 isIsomorphic: true as const,
-                authority: 'server' as const,
               },
             ],
           }

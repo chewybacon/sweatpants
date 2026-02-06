@@ -23,7 +23,7 @@
  *
  * ## Original Description
  *
- * Exploring the `doClient` continuation pattern for server-authority tools.
+ * Exploring the `doClient` continuation pattern for server-first tools.
  *
  * The idea:
  * - Server operation receives a `doClient` function in context
