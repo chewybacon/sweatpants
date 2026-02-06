@@ -416,7 +416,7 @@ export class BranchElicitNotAllowedError extends Error {
  * Uses Zod's built-in toJSONSchema() method.
  */
 function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
-  return z.toJSONSchema(schema) as Record<string, unknown>
+  return z.toJSONSchema(schema)
 }
 
 // =============================================================================
