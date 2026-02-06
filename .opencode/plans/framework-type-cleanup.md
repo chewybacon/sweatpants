@@ -165,10 +165,10 @@ Changes:
 - [ ] `Message.tool_calls` references `ToolCall[]`
 - [ ] Reconcile `ToolCallMessageToolCall` with `ToolCall`
 
-### Task E: Unify duplicate `StreamEvent` types ⬜
+### Task E: Unify duplicate `StreamEvent` types ✅ COMPLETE
 
 **Risk:** Medium — must reconcile 3 semantic drift bugs.
-**Files:** `handler/types.ts`, `session/streaming.ts`
+**Files:** `handler/types.ts`, `handler/durable/chat-engine.ts`, `session/streaming.ts`
 
 Steps:
 1. Audit both `StreamEvent` union definitions side by side
@@ -180,11 +180,11 @@ Steps:
 4. Update all imports
 
 Changes:
-- [ ] Reconcile usage field naming
-- [ ] Reconcile usesHandoff optionality
-- [ ] Reconcile session status discriminant
-- [ ] Delete duplicate, add re-export
-- [ ] Update imports
+- [x] Reconcile usage field naming — changed `chat-engine.ts` to emit camelCase `TokenUsage` directly (was converting to snake_case for no reason; session layer already uses `TokenUsage`)
+- [x] Reconcile usesHandoff optionality — session layer already has `usesHandoff?: boolean` (optional), which is the correct superset
+- [x] Reconcile session status discriminant — changed `chat-engine.ts` to emit `'tool_session_status'` (was `'plugin_session_status'`, which silently dropped by client's switch; consistent with `'tool_session_error'`)
+- [x] Delete duplicate, add re-export — deleted ~100 lines of inline `StreamEvent` from `handler/types.ts`, replaced with re-export from `session/streaming.ts` (also re-exports named sub-interfaces: `ConversationState`, `ConversationStateStreamEvent`, `IsomorphicHandoffStreamEvent`, `ElicitRequestStreamEvent`, `ToolSessionStatusStreamEvent`, `ToolSessionErrorStreamEvent`)
+- [x] Zero import changes needed — all consumers already imported from `handler/types.ts` which now re-exports
 
 ### Task F: Zod/JSON Schema boundary cleanup ⬜
 
@@ -238,6 +238,6 @@ Changes:
 | **B** | `options.ts`, `create-session.ts` | Widened `Streamer` type, deleted 2 casts |
 | **C** | `streaming.ts`, `stream-chat.ts`, `create-session.ts`, `options.ts`, `types.ts`, `react/chat/types/index.ts`, `isomorphic-tools/runtime/types.ts`, tests | Eliminated `ApiMessage`, deleted `toApiMessages()`, deleted 3 conversion blocks |
 | **D** | `types.ts`, `durable/types.ts`, `chat-engine.ts`, `mcp-tool-types.ts` | Canonical `ToolCall` types |
-| **E** | `handler/types.ts`, `session/streaming.ts` | Single `StreamEvent` source of truth |
+| **E** | `handler/types.ts`, `handler/durable/chat-engine.ts` | Deleted ~100-line duplicate `StreamEvent`, re-export from `session/streaming.ts`; fixed 3 drift bugs (usage camelCase, tool_session_status discriminant, usesHandoff optionality) |
 | **F** | `bridge-runtime.ts`, `registry.ts`, `worker-runner.ts`, `core-context.ts`, `handler.ts`, `mcp-handler.ts`, `mcp-tool-types.ts`, `useElicitExecutor.ts` | `JsonSchema` branded type, shared utility |
 | **G** | `openai.ts`, `ollama.ts`, `session-registry.ts` | `toWebReadableStream()`, SSE types, `ContextEntry` fix |
