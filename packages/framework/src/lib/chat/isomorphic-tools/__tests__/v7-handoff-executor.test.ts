@@ -60,7 +60,6 @@ const guessTheCardTool = createIsomorphicTool('guess_the_card')
     numChoices: z.number().min(2).max(10).optional(),
   }))
   .context('headless')
-  .authority('server')
   .handoff({
     *before(params) {
       yield* sleep(50) // Short pause
@@ -113,7 +112,7 @@ const guessTheCardTool = createIsomorphicTool('guess_the_card')
 // =============================================================================
 
 describe('V7 Handoff Executor Integration', () => {
-  describe('server-authority tool WITH handoff', () => {
+  describe('server-first tool WITH handoff', () => {
     it('should halt at handoff in phase 1 and resume in phase 2', async () => {
       const beforeFn = vi.fn()
       const afterFn = vi.fn()
@@ -122,7 +121,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Test tool with handoff')
         .parameters(z.object({ name: z.string() }))
         .context('headless')
-        .authority('server')
         .handoff({
           *before(params) {
             beforeFn()
@@ -190,7 +188,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Tool with expensive computation')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() {
             computeCount++
@@ -236,7 +233,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Guessing game')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() {
             return { secret: 'apple' }
@@ -285,7 +281,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Tool that errors in before')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before(): Generator<never, { x: number }> {
             throw new Error('before() failed')
@@ -313,7 +308,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Tool that errors in after')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() {
             return { x: 1 }
@@ -354,13 +348,12 @@ describe('V7 Handoff Executor Integration', () => {
     })
   })
 
-  describe('server-authority tool WITHOUT handoff (simple)', () => {
+  describe('server-first tool WITHOUT handoff (simple)', () => {
     it('should complete in phase 1 with usesHandoff=false', async () => {
       const tool = createIsomorphicTool('simple_server')
         .description('Simple server tool without handoff')
         .parameters(z.object({ message: z.string() }))
         .context('headless')
-        .authority('server')
         .server(function* (params) {
           return { celebrated: true, message: params.message }
         })
@@ -390,7 +383,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Simple server tool')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .server(function* () {
           serverFn()
           return { result: 'computed' }
@@ -429,63 +421,48 @@ describe('V7 Handoff Executor Integration', () => {
     })
   })
 
-  describe('client-authority tool', () => {
-    it('should skip phase 1 server execution and run in phase 2', async () => {
+  describe('server-first tool with client response', () => {
+    it('should execute server in phase 1 and use client output in phase 2', async () => {
       const serverFn = vi.fn()
 
-      const tool = createIsomorphicTool('client_first')
-        .description('Client authority tool')
+      const tool = createIsomorphicTool('server_then_client')
+        .description('Server then client')
         .parameters(z.object({ question: z.string() }))
         .context('headless')
-        .authority('client')
-        .client(function* (params, _ctx) {
-          return { answer: `Response to: ${params.question}` }
-        })
-        .server(function* (params, _ctx, clientOutput) {
+        .server(function* (params) {
           serverFn()
-          return {
-            question: params.question,
-            answer: clientOutput.answer,
-            validated: true,
-          }
+          return { question: params.question }
+        })
+        .client(function* (serverOutput) {
+          return { answer: `Response to: ${serverOutput.question}` }
         })
 
       const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      // Phase 1 - no server code runs for client authority
       const phase1 = await run(function* () {
         return yield* executeServerPart(anyTool, 'call-1', { question: 'What is 2+2?' }, signal)
       })
 
-      expect(serverFn).not.toHaveBeenCalled()
-
+      expect(serverFn).toHaveBeenCalledTimes(1)
       expect(phase1.kind).toBe('handoff')
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
-
       expect(phase1.usesHandoff).toBe(false)
-      expect(phase1.serverOutput).toBeUndefined()
-      expect(phase1.handoff.authority).toBe('client')
+      expect(phase1.serverOutput).toEqual({ question: 'What is 2+2?' })
 
-      // Phase 2 - server validates client output
       const result = await run(function* () {
         return yield* executeServerPhase2(
           anyTool,
           'call-1',
           { question: 'What is 2+2?' },
-          { answer: '4' }, // client output
-          undefined,
+          { answer: '4' },
+          phase1.serverOutput,
           signal,
           false
         )
       })
 
-      expect(serverFn).toHaveBeenCalledTimes(1)
-      expect(result).toEqual({
-        question: 'What is 2+2?',
-        answer: '4',
-        validated: true,
-      })
+      expect(result).toEqual({ question: 'What is 2+2?' })
     })
   })
 
@@ -497,7 +474,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Tool with async before')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() {
             // Simulate async fetch
@@ -547,7 +523,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Card game tool')
         .parameters(z.object({ difficulty: z.string() }))
         .context('headless')
-        .authority('server')
         .handoff({
           *before(params) {
             const cards: CardType[] = [
@@ -618,7 +593,6 @@ describe('V7 Handoff Executor Integration', () => {
         .description('Tool with code after handoff')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() {
             return { x: 1 }
@@ -683,7 +657,6 @@ describe('V7 Handoff Executor Integration', () => {
 
       expect(phase1.usesHandoff).toBe(true)
       expect(phase1.handoff.usesHandoff).toBe(true)
-      expect(phase1.handoff.authority).toBe('server')
 
       // Verify handoff data structure
       const handoffData = phase1.serverOutput as {

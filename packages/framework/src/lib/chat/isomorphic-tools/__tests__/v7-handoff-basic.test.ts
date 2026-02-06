@@ -28,7 +28,6 @@ const counterTool = createIsomorphicTool('counter')
     start: z.number().default(0),
   }))
   .context('headless')
-  .authority('server')
   .handoff({
     *before(params) {
       // This runs exactly once in phase 1
@@ -60,7 +59,6 @@ const secretKeeperTool = createIsomorphicTool('secret_keeper')
   .description('Keeps a randomly generated secret')
   .parameters(z.object({}))
   .context('headless')
-  .authority('server')
   .handoff({
     *before() {
       // Random secret - should only be generated once!
@@ -180,7 +178,6 @@ describe('V7 Handoff - Basic', () => {
 
       expect(phase1.usesHandoff).toBe(true)
       expect(phase1.handoff.usesHandoff).toBe(true)
-      expect(phase1.handoff.authority).toBe('server')
     })
 
     it('includes tool name and call ID in handoff event', function* () {
@@ -200,7 +197,6 @@ describe('V7 Handoff - Basic', () => {
         .description('Errors in before()')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before(): Generator<never, { x: number }> {
             throw new Error('before() exploded')
@@ -231,7 +227,6 @@ describe('V7 Handoff - Basic', () => {
         .description('Errors in after()')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() {
             return { x: 1 }
@@ -272,7 +267,7 @@ describe('V7 Handoff - Basic', () => {
   })
 })
 
-describe('Server-authority without handoff', () => {
+describe('Server-first without handoff', () => {
   const signal = new AbortController().signal
 
   it('completes in phase 1 with usesHandoff: false', function* () {
@@ -280,7 +275,6 @@ describe('Server-authority without handoff', () => {
       .description('Simple tool without handoff')
       .parameters(z.object({ message: z.string() }))
       .context('headless')
-      .authority('server')
       .server(function* (params) {
         // No ctx.handoff() - just return directly
         return { echoed: params.message }
@@ -307,7 +301,6 @@ describe('Server-authority without handoff', () => {
       .description('Counts server calls')
       .parameters(z.object({}))
       .context('headless')
-      .authority('server')
       .server(function* () {
         callCount++
         return { callNumber: callCount }
@@ -335,59 +328,5 @@ describe('Server-authority without handoff', () => {
 
     expect(callCount).toBe(1) // Still 1!
     expect(result).toEqual({ callNumber: 1 })
-  })
-})
-
-describe('Client-authority tools', () => {
-  const signal = new AbortController().signal
-
-  it('skips server execution in phase 1', function* () {
-    let serverCalled = false
-
-    const clientFirstTool = createIsomorphicTool('client_first')
-      .description('Client runs first')
-      .parameters(z.object({ question: z.string() }))
-      .context('headless')
-      .authority('client')
-      .client(function* (params, _ctx) {
-        return { answer: `Yes to: ${params.question}` }
-      })
-      .server(function* (params, _ctx, clientOutput) {
-        serverCalled = true
-        return {
-          question: params.question,
-          answer: clientOutput.answer,
-          validated: true,
-        }
-      })
-
-    const tool = clientFirstTool as unknown as AnyIsomorphicTool
-
-    // Phase 1 - no server execution
-    const phase1 = yield* executeServerPart(tool, 'call-1', { question: 'test?' }, signal)
-
-    expect(serverCalled).toBe(false)
-    expect(phase1.kind).toBe('handoff')
-    if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
-    expect(phase1.handoff.authority).toBe('client')
-    expect(phase1.serverOutput).toBeUndefined()
-
-    // Phase 2 - server validates
-    const result = yield* executeServerPhase2(
-      tool,
-      'call-1',
-      { question: 'test?' },
-      { answer: 'Yes to: test?' },
-      undefined,
-      signal,
-      false
-    )
-
-    expect(serverCalled).toBe(true)
-    expect(result).toMatchObject({
-      question: 'test?',
-      answer: 'Yes to: test?',
-      validated: true,
-    })
   })
 })
