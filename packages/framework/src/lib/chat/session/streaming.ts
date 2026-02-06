@@ -116,10 +116,8 @@ export interface IsomorphicHandoffStreamEvent {
   toolName: string
   /** Original params from LLM */
   params: unknown
-  /** Output from server execution (undefined for client-authority) */
+  /** Output from server execution */
   serverOutput: unknown
-  /** Authority mode determines data flow */
-  authority: 'server' | 'client'
   /** True if this handoff uses the V7 two-phase pattern */
   usesHandoff?: boolean
 }

@@ -102,6 +102,20 @@
         "default": "./dist/chat/mcp-tools.cjs"
       }
     },
+    "./chat/mcp-tools/worker": {
+      "development": {
+        "import": "./src/lib/chat/mcp-tools/session/worker-exports.ts",
+        "types": "./src/lib/chat/mcp-tools/session/worker-exports.ts"
+      },
+      "import": {
+        "types": "./dist/chat/mcp-tools/worker.d.ts",
+        "default": "./dist/chat/mcp-tools/worker.js"
+      },
+      "require": {
+        "types": "./dist/chat/mcp-tools/worker.d.cts",
+        "default": "./dist/chat/mcp-tools/worker.cjs"
+      }
+    },
     "./chat/core-tools": {
       "development": {
         "import": "./src/lib/chat/core-tools/index.ts",

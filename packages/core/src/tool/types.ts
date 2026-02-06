@@ -1,5 +1,5 @@
 import type { Context, Operation } from "effection";
-import type { ZodSchema, infer as ZodInfer } from "zod";
+import type { z, ZodSchema } from "zod";
 
 /**
  * A binding of a context to a value, used for Tool.withContext().
@@ -40,18 +40,18 @@ export type ToolImplFn<
   TProgress extends ZodSchema | undefined,
   TOutput extends ZodSchema,
 > = (
-  args: ZodInfer<TInput>,
+  args: z.infer<TInput>,
   send: TProgress extends ZodSchema
-    ? (progress: ZodInfer<TProgress>) => Operation<void>
+    ? (progress: z.infer<TProgress>) => Operation<void>
     : never,
-) => Operation<ZodInfer<TOutput>>;
+) => Operation<z.infer<TOutput>>;
 
 /**
  * An activated tool that can be invoked with input.
  */
 export type Tool<TInput extends ZodSchema, TOutput extends ZodSchema> = (
-  args: ZodInfer<TInput>,
-) => Operation<ZodInfer<TOutput>>;
+  args: z.infer<TInput>,
+) => Operation<z.infer<TOutput>>;
 
 /**
  * Middleware function for decorating tool invocations.
@@ -60,9 +60,9 @@ export type ToolMiddleware<
   TInput extends ZodSchema,
   TOutput extends ZodSchema,
 > = (
-  args: ZodInfer<TInput>,
-  next: (...args: [ZodInfer<TInput>]) => Operation<ZodInfer<TOutput>>,
-) => Operation<ZodInfer<TOutput>>;
+  args: z.infer<TInput>,
+  next: (...args: [z.infer<TInput>]) => Operation<z.infer<TOutput>>,
+) => Operation<z.infer<TOutput>>;
 
 /**
  * Tool factory returned when impl is provided in config.

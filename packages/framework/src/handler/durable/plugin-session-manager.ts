@@ -46,11 +46,10 @@
  *
  * @packageDocumentation
  */
-import { type Operation, type Channel, type Subscription, resource } from 'effection'
+import { type Operation, type Channel, resource } from 'effection'
 import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types.ts'
 import type {
   ToolSession,
-  ToolSessionEvent,
   ToolSessionStatus,
   SampleRequestEvent,
   ToolSessionRegistry,
@@ -277,8 +276,6 @@ export function createPluginSessionManager(
       initialLastLSN: number = 0,
       onTerminal?: () => void
     ): PluginSession {
-      // Event subscription state - initialized lazily
-      let eventSubscription: Subscription<ToolSessionEvent, void> | null = null
       let aborted = false
       let abortReason: string | undefined
       // Track the last LSN we've processed to avoid replaying old events
@@ -299,14 +296,18 @@ export function createPluginSessionManager(
             return { type: 'cancelled', reason: abortReason }
           }
 
-          // Initialize subscription if needed
-          // IMPORTANT: Start from lastProcessedLSN to avoid replaying old events
-          // This is critical for multi-step elicitation across request boundaries
-          if (!eventSubscription) {
-            const stream = toolSession.events(lastProcessedLSN)
-            // Subscribe to the stream to get a Subscription object
-            eventSubscription = yield* stream
-          }
+          // IMPORTANT: Create a fresh subscription each call.
+          // We must NOT cache the subscription across calls because each call to
+          // nextEvent() may run in a different Effection scope (different HTTP
+          // request). Subscriptions are Effection resources scoped to the calling
+          // scope — when that scope ends (request completes), the subscription is
+          // torn down. If we cached it, the next call would try to use a dead
+          // subscription and hang forever.
+          //
+          // Instead, we use lastProcessedLSN to resume from where we left off,
+          // so events are never replayed.
+          const stream = toolSession.events(lastProcessedLSN)
+          const eventSubscription = yield* stream
 
           // Get next event
           while (true) {
@@ -342,8 +343,7 @@ export function createPluginSessionManager(
                       role: msg.role as 'user' | 'assistant' | 'system',
                       content: msg.content,
                     }
-                    // Capture extra properties that might be on the message object (passed as any)
-                    // This is a temporary debug step to see what's actually in sampleEvent.messages
+                    // Preserve tool_calls and tool_call_id for proper provider conversation history
                     if ((msg as any).tool_calls) mapped.tool_calls = (msg as any).tool_calls
                     if ((msg as any).tool_call_id) mapped.tool_call_id = (msg as any).tool_call_id
                     return mapped
@@ -359,7 +359,6 @@ export function createPluginSessionManager(
                       description: tool.description ?? '',
                       parameters: tool.inputSchema as Record<string, unknown>,
                       isIsomorphic: true as const,
-                      authority: 'server' as const, // Sampling tools run server-side
                     }))
                     
                     // Pass through toolChoice if specified

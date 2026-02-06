@@ -1,5 +1,5 @@
 import type { Operation } from "effection";
-import type { ZodSchema, infer as ZodInfer, input as ZodInput } from "zod";
+import type { z, ZodSchema, input as ZodInput } from "zod";
 import type {
   Tool,
   ToolMiddleware,
@@ -124,7 +124,7 @@ export interface AgentFactoryWithConfig<
   /** Activate the agent with configuration (uses z.input to allow defaults) */
   (config: ZodInput<TConfig>): Operation<Agent<TTools>>;
   /** Access agent config from within a tool (must be in agent's scope) */
-  useConfig(): Operation<ZodInfer<TConfig>>;
+  useConfig(): Operation<z.infer<TConfig>>;
 }
 
 /**

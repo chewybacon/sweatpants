@@ -7,33 +7,8 @@
  *
  * There is no "merge" function. The server has the final say.
  *
- * ## Authority Modes
+ * ## Server-First Execution
  *
- * ### Client Authority
- * Client executes first, then server validates/processes. Common for user input.
- *
- * ```
- * LLM calls: ask_question({ question: "Is it alive?" })
- *     │
- *     ▼
- * Server: Immediately hands off to client (no server code yet)
- *     │
- *     ▼
- * Client: tool.client(params, ctx) runs
- *     ├── Shows modal with "Is it alive?"
- *     ├── User clicks "Yes"
- *     └── Returns: { question: "Is it alive?", answer: true }
- *     │
- *     ▼
- * Server: tool.server(params, ctx, clientOutput) runs
- *     ├── Updates game state
- *     └── Returns: { success: true, answer: true, questionCount: 1, remaining: 19 }
- *     │
- *     ▼
- * LLM receives server's return value as tool result
- * ```
- *
- * ### Server Authority
  * Server executes first, yields to client, then continues. Common for server-side
  * state that needs client-side presentation.
  *
@@ -61,23 +36,13 @@
  * ## Key Design Goals
  * 1. Type safety: Proper typing for data flowing between server and client
  * 2. Effection generators: Both sides use `function*`
- * 3. Server authority over LLM results: Server always returns the final value
+ * 3. Server control over LLM results: Server always returns the final value
  * 4. Ergonomic single-file definition (like TanStack Start's isomorphic fns)
  */
 import type { Operation } from 'effection'
 import type { z } from 'zod'
 import type { ApprovalType, DenialBehavior } from './runtime/tool-runtime.ts'
 import type { ContextMode, BaseToolContext } from './contexts.ts'
-
-// --- Authority Modes ---
-
-/**
- * Determines execution order and data flow.
- *
- * - `client`: Client executes first → output flows to server → server returns final result
- * - `server`: Server executes → can yield to client → server returns final result
- */
-export type AuthorityMode = 'server' | 'client'
 
 // --- Approval Configuration ---
 
@@ -113,9 +78,9 @@ export interface IsomorphicApprovalConfig {
 // --- Handoff Configuration (V7 API) ---
 
 /**
- * Configuration for a server-authority handoff.
+ * Configuration for a server-first handoff.
  *
- * The V7 handoff pattern allows server-authority tools to:
+ * The V7 handoff pattern allows server-first tools to:
  * 1. Execute expensive/non-idempotent code in `before()` (phase 1 only)
  * 2. Halt and send data to client
  * 3. Resume with client response in `after()` (phase 2 only)
@@ -184,9 +149,9 @@ export interface ServerToolContext {
 }
 
 /**
- * Extended server context for server-authority tools with handoff capability.
+ * Extended server context for server-first tools with handoff capability.
  *
- * This context is passed to server-authority tools and includes the `handoff()`
+ * This context is passed to server-first tools and includes the `handoff()`
  * method for yielding to the client mid-execution.
  */
 export interface ServerAuthorityContext extends ServerToolContext {
@@ -204,10 +169,7 @@ export interface ServerAuthorityContext extends ServerToolContext {
  * @template TServerOutput - Return type of server execution (this goes to LLM!)
  * @template TClientOutput - Return type of client execution
  *
- * The type relationships depend on authority:
- * - `client` authority: Client receives params, server receives clientOutput
- * - `server` authority: Server can yield to client via handoff
-
+ * Server executes first and may yield to client via handoff.
  *
  * **Important**: TServerOutput is always what the LLM receives as the tool result.
  */
@@ -226,12 +188,6 @@ export interface IsomorphicToolDef<
   parameters: TParams
 
   /**
-   * Which side has authority (executes first).
-   * @default 'server'
-   */
-  authority?: AuthorityMode
-
-  /**
    * Approval configuration.
    */
   approval?: IsomorphicApprovalConfig
@@ -239,39 +195,27 @@ export interface IsomorphicToolDef<
   /**
    * Server-side execution.
    *
-   * For `client` authority: Receives params + clientOutput for processing.
-   * For `server` authority: Executes first, may yield to client via ctx.handoff().
+   * Executes first and may yield to client via ctx.handoff().
    *
    * **The return value of this function is sent to the LLM as the tool result.**
    *
-   * Note: For server-authority tools, the context will be ServerAuthorityContext
+   * Note: For server-first tools, the context will be ServerAuthorityContext
    * which includes the handoff() method. The generic type uses the base
-   * ServerToolContext for compatibility across all authority modes.
+   * ServerToolContext for compatibility across all contexts.
    */
   server?: (
     params: z.infer<TParams>,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    context: any, // ServerToolContext or ServerAuthorityContext depending on authority
-    /**
-     * For `client` authority: Output from client execution.
-     * For other modes: undefined.
-     */
+    context: ServerToolContext | ServerAuthorityContext,
     clientOutput?: TClientOutput
   ) => Operation<TServerOutput>
 
   /**
    * Client-side execution.
    *
-   * For `client` authority: Receives params from LLM, returns output for server.
-   * For `server` authority: Receives handoff data from server.
+   * Receives handoff data from server.
    */
   client?: (
-    /**
-     * For `client` authority: Original params from LLM.
-     * For `server` authority: Handoff data from server.
-
-     */
-    input: TServerOutput | z.infer<TParams>,
+    input: TServerOutput,
     context: BaseToolContext,
     /**
      * Original params from LLM (always available).
@@ -279,97 +223,6 @@ export interface IsomorphicToolDef<
     params: z.infer<TParams>
   ) => Operation<TClientOutput>
 }
-
-// --- Strongly Typed Variants ---
-
-/**
- * Base properties shared by all isomorphic tools.
- */
-interface IsomorphicToolBase<TParams extends z.ZodType> {
-  name: string
-  description: string
-  parameters: TParams
-  approval?: IsomorphicApprovalConfig
-}
-
-/**
- * Client-authority tool: Client executes first, server validates/processes.
- *
- * Flow:
- * 1. Client receives params, returns clientOutput
- * 2. Server receives params + clientOutput, returns serverOutput
- * 3. LLM receives serverOutput
- */
-export type ClientAuthorityToolDef<
-  TParams extends z.ZodType,
-  TServerOutput,
-  TClientOutput,
-> = IsomorphicToolBase<TParams> & {
-  authority: 'client'
-
-  /** Client executes first with params */
-  client: (
-    params: z.infer<TParams>,
-    context: BaseToolContext,
-    originalParams: z.infer<TParams>
-  ) => Operation<TClientOutput>
-
-  /** Server receives client output, returns final result for LLM */
-  server: (
-    params: z.infer<TParams>,
-    context: ServerToolContext,
-    clientOutput: TClientOutput
-  ) => Operation<TServerOutput>
-}
-
-/**
- * Server-authority tool: Server executes, optionally yields to client via handoff.
- *
- * Flow (simple - no handoff):
- * 1. Server receives params, returns serverOutput immediately
- * 2. Client receives serverOutput for side effects
- * 3. LLM receives serverOutput
- *
- * Flow (with handoff):
- * 1. Server receives params, calls ctx.handoff({ before, after })
- * 2. before() runs, returns handoff data, server halts (phase 1)
- * 3. Client receives handoff data, returns clientOutput
- * 4. Server resumes, after() runs with cached handoff + clientOutput (phase 2)
- * 5. LLM receives after()'s return value
- */
-export type ServerAuthorityToolDef<
-  TParams extends z.ZodType,
-  TServerOutput,
-  TClientOutput,
-> = IsomorphicToolBase<TParams> & {
-  authority: 'server'
-
-  /**
-   * Server executes first with params.
-   *
-   * For simple tools: Just return the result directly.
-   * For handoff tools: Use ctx.handoff({ before, after }) to yield to client.
-   */
-  server: (
-    params: z.infer<TParams>,
-    context: ServerAuthorityContext
-  ) => Operation<TServerOutput>
-
-  /** Client receives server handoff data (or full serverOutput if no handoff) */
-  client: (
-    serverOutput: TServerOutput,
-    context: BaseToolContext,
-    params: z.infer<TParams>
-  ) => Operation<TClientOutput>
-}
-
-/**
- * Parallel tool: Both execute concurrently with same params.
- *
- * Flow:
- * 1. Server and client both execute with params concurrently
- * 2. LLM receives serverOutput (client output is for side effects only)
- */
 
 // --- Helper Types ---
 
@@ -387,7 +240,6 @@ export interface AnyIsomorphicTool {
   name: string
   description: string
   parameters: z.ZodTypeAny
-  authority?: AuthorityMode
   approval?: IsomorphicApprovalConfig
 
   server?(params: any, context: any, clientOutput?: any): Operation<any>
@@ -441,11 +293,10 @@ export interface IsomorphicHandoffEvent {
   toolName: string
   params: unknown
   /**
-   * For simple server-authority: The full serverOutput.
+    * For simple server-first: The full serverOutput.
    * For handoff tools: The data from before() (handoff data).
    */
   serverOutput: unknown
-  authority: AuthorityMode
   /**
    * Indicates this handoff uses the V7 two-phase pattern.
    * If true, the server needs to be re-run in phase 2 with clientOutput.
@@ -454,17 +305,6 @@ export interface IsomorphicHandoffEvent {
 }
 
 /**
- * Event emitted when client completes.
- *
- * For `client` authority: Sent back to server for processing.
- */
-export interface IsomorphicClientCompleteEvent {
-  type: 'isomorphic_client_complete'
-  callId: string
-  toolName: string
-  clientOutput: unknown
-}
-
 /**
  * Result of isomorphic tool execution.
  *
@@ -520,7 +360,6 @@ export interface ServerOnlyToolDef {
   name: string
   description: string
   parameters: z.ZodType
-  authority: AuthorityMode
   execute: (
     params: unknown,
     context: ServerToolContext,
@@ -536,7 +375,6 @@ export interface IsomorphicToolSchema {
   description: string
   parameters: Record<string, unknown> // JSON Schema
   isIsomorphic: true
-  authority: AuthorityMode
 }
 
 // --- Execution State ---
@@ -549,7 +387,6 @@ export type IsomorphicToolState =
   | 'server_executing'
   | 'awaiting_client_approval'
   | 'client_executing'
-  | 'server_validating' // For client-authority mode
   | 'complete'
   | 'error'
   | 'denied'
@@ -569,9 +406,6 @@ export interface PendingIsomorphicTool {
 
   /** Current state */
   state: IsomorphicToolState
-
-  /** Authority mode */
-  authority: AuthorityMode
 
   /** Server output (if available) */
   serverOutput?: unknown
