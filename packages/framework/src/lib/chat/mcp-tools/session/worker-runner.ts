@@ -87,18 +87,25 @@ function toWorkerMessage(msg: Message | ExtendedMessage): WorkerMessage {
 /**
  * Convert tool definition to core format.
  * Handles both Zod schemas and raw JSON schemas.
+ * Zod schemas are converted to JSON Schema since they contain functions
+ * that can't be cloned for postMessage to the host thread.
  */
 function toWorkerToolDefinition(tool: SamplingToolDefinition): {
   name: string
   description?: string
   inputSchema: Record<string, unknown>
 } {
-  // The inputSchema should already be a JSON Schema object (not a Zod type)
-  // since it comes from the sampling tool definition
+  // Check if inputSchema is a Zod type (has safeParse) and convert to JSON Schema
+  const schema = tool.inputSchema as unknown
+  const isZodSchema = schema && typeof (schema as { safeParse?: unknown }).safeParse === 'function'
+  const inputSchema = isZodSchema
+    ? zodToJsonSchema(schema as any, { $refStrategy: 'none', target: 'jsonSchema7' }) as Record<string, unknown>
+    : tool.inputSchema as Record<string, unknown>
+
   return {
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
-    inputSchema: tool.inputSchema as Record<string, unknown>,
+    inputSchema,
   }
 }
 
@@ -263,8 +270,14 @@ function createMcpWorkerContext(
 
   // The context object
   const ctx: WorkerToolContext = {
-    log(level: LogLevel, message: string): void {
+    log(level: LogLevel, message: string): Operation<void> {
       coreCtx.log(level, message)
+      // Return a no-op operation so callers can yield* ctx.log(...)
+      return {
+        *[Symbol.iterator]() {
+          // No-op - logging is fire-and-forget
+        },
+      }
     },
 
     progress(message: string, progressValue?: number): Operation<void> {

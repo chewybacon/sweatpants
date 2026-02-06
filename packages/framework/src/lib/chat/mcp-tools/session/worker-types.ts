@@ -478,8 +478,9 @@ export interface WorkerToolContext {
   /**
    * Log a message.
    * Fire-and-forget (no backpressure).
+   * Returns Operation<void> so callers can use yield* ctx.log(...).
    */
-  log(level: LogLevel, message: string): void
+  log(level: LogLevel, message: string): Operation<void>
 
   /**
    * Send a progress notification.

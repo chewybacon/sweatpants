@@ -746,6 +746,12 @@ var registry = createWorkerToolRegistry([
       if ("execute" in tool) {
         return yield* tool.execute(params2, ctx);
       }
+      if ("handoffConfig" in tool) {
+        const config = tool.handoffConfig;
+        const handoff = yield* config.before(params2, ctx);
+        const clientResult = yield* config.client(handoff, ctx);
+        return yield* config.after(handoff, clientResult, ctx, params2);
+      }
       if ("server" in tool) {
         return yield* tool.server(params2, ctx);
       }
@@ -757,6 +763,12 @@ var registry = createWorkerToolRegistry([
     if (tool && typeof tool === "object") {
       if ("execute" in tool) {
         return yield* tool.execute(params2, ctx);
+      }
+      if ("handoffConfig" in tool) {
+        const config = tool.handoffConfig;
+        const handoff = yield* config.before(params2, ctx);
+        const clientResult = yield* config.client(handoff, ctx);
+        return yield* config.after(handoff, clientResult, ctx, params2);
       }
       if ("server" in tool) {
         return yield* tool.server(params2, ctx);
@@ -770,6 +782,12 @@ var registry = createWorkerToolRegistry([
       if ("execute" in tool) {
         return yield* tool.execute(params2, ctx);
       }
+      if ("handoffConfig" in tool) {
+        const config = tool.handoffConfig;
+        const handoff = yield* config.before(params2, ctx);
+        const clientResult = yield* config.client(handoff, ctx);
+        return yield* config.after(handoff, clientResult, ctx, params2);
+      }
       if ("server" in tool) {
         return yield* tool.server(params2, ctx);
       }
@@ -781,6 +799,12 @@ var registry = createWorkerToolRegistry([
     if (tool && typeof tool === "object") {
       if ("execute" in tool) {
         return yield* tool.execute(params2, ctx);
+      }
+      if ("handoffConfig" in tool) {
+        const config = tool.handoffConfig;
+        const handoff = yield* config.before(params2, ctx);
+        const clientResult = yield* config.client(handoff, ctx);
+        return yield* config.after(handoff, clientResult, ctx, params2);
       }
       if ("server" in tool) {
         return yield* tool.server(params2, ctx);
