@@ -5,24 +5,30 @@
  * Regenerate by modifying files in src/tools/
  */
 
+import { bookFlightTool } from '../tools/book-flight/tool'
 import { calculator } from '../tools/calculator'
 import { startTttGame } from '../tools/games/tic-tac-toe'
 import { tttMove } from '../tools/games/tic-tac-toe'
 import { tttWinner } from '../tools/games/tic-tac-toe'
 import { askQuestion } from '../tools/general/ask_question'
 import { pickCard } from '../tools/pick-card'
+import { playTttTool } from '../tools/play-ttt/tool'
+import { tictactoeTool } from '../tools/tictactoe/tool'
 
 /**
  * All discovered tools as a const object.
  * Use this for type-safe tool access.
  */
 export const tools = {
+  bookFlightTool,
   calculator,
   startTttGame,
   tttMove,
   tttWinner,
   askQuestion,
   pickCard,
+  playTttTool,
+  tictactoeTool,
 } as const
 
 /**
@@ -34,12 +40,15 @@ export const toolList = Object.values(tools)
  * Union type of all tool names.
  */
 export type ToolName =
+  | 'book-flight_book_flight'
   | 'calculator'
   | 'games_start_ttt_game'
   | 'games_ttt_move'
   | 'games_ttt_winner'
   | 'general_ask_question'
   | 'pick_card'
+  | 'play-ttt_play_ttt'
+  | 'tictactoe_tictactoe'
 
 /**
  * Get a tool by name (type-safe).
