@@ -18,7 +18,7 @@ export type {
 } from './create-session.ts'
 
 // Streaming
-export { streamChatOnce, toApiMessages } from './stream-chat.ts'
+export { streamChatOnce } from './stream-chat.ts'
 export type { StreamChatOptions, ElicitResponseData } from './stream-chat.ts'
 
 // Transforms
@@ -37,7 +37,6 @@ export {
 
 // Streaming types
 export type {
-  ApiMessage,
   ConversationState,
   StreamResult,
   StreamCompleteResult,

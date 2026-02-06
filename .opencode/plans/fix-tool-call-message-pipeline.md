@@ -1,8 +1,8 @@
 # Fix Tool Call Message Pipeline
 
 **Branch:** `integration/new-workers`
-**Last Updated:** 2025-01-XX
-**Overall Status:** IN PROGRESS
+**Last Updated:** 2025-07-14
+**Overall Status:** ✅ COMPLETE
 **Skill:** Use the `typescript-expert` skill before writing any code.
 
 ---
@@ -81,9 +81,9 @@ packages/framework/src/lib/chat/mcp-tools/__tests__/sampling-structured.test.ts:
 
 ## Tasks
 
-### Task 1: Add types in `mcp-tool-types.ts`
+### Task 1: Add types in `mcp-tool-types.ts` ✅
 
-Add after `ExtendedMessage` definition (~line 510):
+Added after `ExtendedMessage` definition (~line 510):
 
 ```typescript
 export interface ToolCallMessageToolCall {
@@ -103,50 +103,50 @@ export interface ToolResultMessage {
 }
 ```
 
-Then widen `ExtendedMessage`:
+Widened `ExtendedMessage`:
 ```typescript
 export type ExtendedMessage = Message | McpMessage | ToolCallMessage | ToolResultMessage
 ```
 
-- [ ] Add `ToolCallMessageToolCall` interface
-- [ ] Add `ToolCallMessage` interface
-- [ ] Add `ToolResultMessage` interface
-- [ ] Widen `ExtendedMessage` union
+- [x] Add `ToolCallMessageToolCall` interface
+- [x] Add `ToolCallMessage` interface
+- [x] Add `ToolResultMessage` interface
+- [x] Widen `ExtendedMessage` union
 
-### Task 2: Widen helper config messages in `mcp-tool-types.ts`
+### Task 2: Widen helper config messages in `mcp-tool-types.ts` ✅
 
-- [ ] `SampleToolsConfigMessages.messages` (line ~907): `Message[]` -> `ExtendedMessage[]`
-- [ ] `SampleSchemaConfigMessages.messages` (line ~931): `Message[]` -> `ExtendedMessage[]`
+- [x] `SampleToolsConfigMessages.messages` (line ~961): `Message[]` -> `ExtendedMessage[]`
+- [x] `SampleSchemaConfigMessages.messages` (line ~987): `Message[]` -> `ExtendedMessage[]`
 
-### Task 3: Fix GAP 1 — `toWorkerMessage()` in `worker-runner.ts`
+### Task 3: Fix GAP 1 — `toWorkerMessage()` in `worker-runner.ts` ✅
 
-Lines 73-85. Add conversion for:
-- `ToolCallMessage` -> `WorkerMessage` with `tool_use` content blocks
-- `ToolResultMessage` -> `WorkerMessage` with `tool_result` content block (role `'tool'` -> `'user'`)
+Added type guards (`isToolCallMessage`, `isToolResultMessage`) and conversion logic:
+- `ToolCallMessage` → `WorkerMessage` with `tool_use` content blocks
+- `ToolResultMessage` → `WorkerMessage` with `tool_result` content block (role `'tool'` → `'user'`)
 
-- [ ] Detect `ToolCallMessage` (has `tool_calls` array)
-- [ ] Convert to `WorkerMessage` with `WorkerToolUseContent` blocks
-- [ ] Detect `ToolResultMessage` (has `tool_call_id`)
-- [ ] Convert to `WorkerMessage` with `WorkerToolResultContent` block
-- [ ] Preserve text content alongside tool_calls
+- [x] Detect `ToolCallMessage` (has `tool_calls` array)
+- [x] Convert to `WorkerMessage` with `WorkerToolUseContent` blocks
+- [x] Detect `ToolResultMessage` (has `tool_call_id`)
+- [x] Convert to `WorkerMessage` with `WorkerToolResultContent` block
+- [x] Preserve text content alongside tool_calls
 
-### Task 4: Fix GAP 2 — `handleSampleRequest()` in `worker-session-api.ts`
+### Task 4: Fix GAP 2 — `handleSampleRequest()` in `worker-session-api.ts` ✅
 
-Lines 74-79. Stop flattening content blocks. Preserve structure, output `ExtendedMessage[]` instead of `Message[]`.
+Added `workerMessageToExtended()` function that reconstructs typed messages from `WorkerMessage` content blocks.
 
-- [ ] Detect `WorkerMessage` with `tool_use` content blocks -> `ToolCallMessage`
-- [ ] Detect `WorkerMessage` with `tool_result` content blocks -> `ToolResultMessage`
-- [ ] Handle text-only `WorkerMessage` -> `Message` (existing path)
-- [ ] Handle `McpMessage` passthrough
+- [x] Detect `WorkerMessage` with `tool_use` content blocks -> `ToolCallMessage`
+- [x] Detect `WorkerMessage` with `tool_result` content blocks -> `ToolResultMessage`
+- [x] Handle text-only `WorkerMessage` -> `Message` (existing path)
+- [x] Handle `McpMessage` passthrough
 
-### Task 5: Fix GAP 3 — `SampleRequestEvent.messages` in `session/types.ts`
+### Task 5: Fix GAP 3 — `SampleRequestEvent.messages` in `session/types.ts` ✅
 
-Line ~130. Widen from `Message[]` to `ExtendedMessage[]`.
+- [x] `SampleRequestEvent.messages`: `Message[]` -> `ExtendedMessage[]`
+- [x] `ToolSessionOptions.parentMessages`: `Message[]` -> `ExtendedMessage[]`
+- [x] `ToolSessionSamplingProvider.sample()`: takes `ExtendedMessage[]`
+- [x] Add `ExtendedMessage` to imports
 
-- [ ] Change type annotation
-- [ ] Add `ExtendedMessage` to imports
-
-### Task 6: Create shared utility
+### Task 6: Create shared utility ✅
 
 New file: `packages/framework/src/lib/chat/mcp-tools/message-conversion.ts`
 
@@ -158,63 +158,104 @@ New file: `packages/framework/src/lib/chat/mcp-tools/message-conversion.ts`
 - `ToolCallMessage` -> passthrough (already provider format)
 - `ToolResultMessage` -> passthrough (already provider format)
 
-- [ ] Create file
-- [ ] Implement converter function
-- [ ] Export from appropriate index
+Also exports type guards: `isToolCallMessage()`, `isToolResultMessage()`
 
-### Task 7: Fix GAP 4 — `plugin-session-manager.ts`
+- [x] Create file
+- [x] Implement converter function
+- [x] Implement type guards
 
-Lines 341-349. Replace `(msg as any).tool_calls` checks with `sampleEvent.messages.map(extendedMessageToProviderMessage)`.
+### Task 7: Fix GAP 4 — `plugin-session-manager.ts` ✅
 
-- [ ] Import `extendedMessageToProviderMessage`
-- [ ] Replace manual `as any` casting with utility call
-- [ ] Remove `as any` casts on lines 347-348
+Replaced manual `as any` casting with `sampleEvent.messages.map(extendedMessageToProviderMessage)`.
 
-### Task 8: Fix `play-ttt/tool.ts`
+- [x] Import `extendedMessageToProviderMessage`
+- [x] Replace manual `as any` casting with utility call
+- [x] Remove `as any` casts on lines 347-348
 
-Remove `as any` cast on line ~202. The messages array should now type-check as `ExtendedMessage[]` since `ToolCallMessage` and `ToolResultMessage` are in the union.
+### Task 8: Fix `play-ttt/tool.ts` ✅
 
-- [ ] Remove `as any` cast
-- [ ] Verify types compile
+Removed `as any` cast. Messages array now type-checks directly as `ExtendedMessage[]` since `ToolCallMessage` and `ToolResultMessage` are in the union.
 
-### Task 9: Fix `create-session.ts`
+- [x] Remove `as any` cast
+- [x] Verify types compile
 
-Lines 551-552. Remove `(msg as any).tool_calls` / `(msg as any).tool_call_id` casts.
+### Task 9: Fix `create-session.ts` ✅
 
-- [ ] Import `extendedMessageToProviderMessage` or use proper type narrowing
-- [ ] Remove `as any` casts
+Removed `as any` casts for tool_calls/tool_call_id in the MCP pipeline path. Used conditional spread for `exactOptionalPropertyTypes` compatibility.
 
-### Task 10: Fix `sampling-structured.test.ts`
+- [x] Remove `as any` casts related to ExtendedMessage/tool_calls/tool_call_id
 
-Lines ~457, ~475, ~557, ~575. Remove `as any` casts on messages arrays.
+**Note:** 5 `as any` casts remain in `create-session.ts` but are **unrelated** to this plan:
+- 2 casts for extended streamer options (intentional type widening, documented)
+- 3 casts for `ApiMessage` → `Message` tool_calls mapping fallback (`tc.name`/`tc.arguments` vs `tc.function`). These are in the chat session runtime's message syncing logic, not the MCP pipeline. Separate cleanup task.
 
-- [ ] Remove `as any` casts
-- [ ] Use properly typed `ToolCallMessage` / `ToolResultMessage` literals
+### Task 10: Fix `sampling-structured.test.ts` ✅
 
-### Task 11: Fix `bridge-runtime.ts`
+Removed both `as any` casts. Tests now use properly typed `ToolCallMessage`/`ToolResultMessage` literals.
 
-Replace lossy `getMessageTextContent()` with shared utility where tool call data is being lost.
+- [x] Remove `as any` casts
+- [x] Use properly typed `ToolCallMessage` / `ToolResultMessage` literals
 
-- [ ] Identify lossy conversion points
-- [ ] Replace with `extendedMessageToProviderMessage`
+### Task 11: Fix `bridge-runtime.ts` ✅
 
-### Task 12: Fix `plugin-tool-executor.ts`
+Widened `messages` from `Message[]` to `ExtendedMessage[]` in both `sampleTools` (~line 623) and `sampleSchema` (~line 760) sections. Added `typeof lastMsg.content === 'string'` guards in retry logic — non-string content messages get a new user message appended instead of string concatenation.
 
-Replace lossy `getMessageTextContent()` with shared utility where tool call data is being lost.
+Also widened cascading types:
+- `WorkerToolSessionOptions.parentMessages` in `worker-tool-session.ts`: `Message[]` -> `ExtendedMessage[]`
+- `McpWorkerInitData.parentMessages` in `worker-types.ts`: `Message[]` -> `ExtendedMessage[]`
 
-- [ ] Identify lossy conversion points
-- [ ] Replace with `extendedMessageToProviderMessage`
+`getMessageTextContent()` remains in `bridge-runtime.ts` for token estimation only (text-only usage is correct there).
 
-### Task 13: Run tests
+- [x] Widen `sampleTools` messages to `ExtendedMessage[]`
+- [x] Widen `sampleSchema` messages to `ExtendedMessage[]`
+- [x] Add content type guards in retry logic
+- [x] Widen `WorkerToolSessionOptions.parentMessages`
+- [x] Widen `McpWorkerInitData.parentMessages`
 
-- [ ] `pnpm test` in `packages/framework` (expect 719 passing)
-- [ ] `pnpm test` in `packages/core` (expect 104 pass, 9 pre-existing failures from `@effectionx/worker` TS stripping)
-- [ ] Fix any type errors or test failures
+### Task 12: Fix `plugin-tool-executor.ts` ✅
+
+Replaced lossy `getMessageTextContent()` flattening (which stripped `tool_calls` and `tool_call_id`) with `extendedMessageToProviderMessage()`. Removed the now-unused `getMessageTextContent` function.
+
+- [x] Replace `getMessageTextContent` with `extendedMessageToProviderMessage`
+- [x] Remove unused `getMessageTextContent` function
+- [x] Update imports
+
+### Task 13: Run tests ✅
+
+- [x] `pnpm test` in `packages/framework` — **712 passing**, 18 failing (all pre-existing)
+  - 1 failure in `tool-discovery.test.ts` — worker entry format assertion mismatch (pre-existing)
+  - 17 failures in `worker-tool-session.test.ts` — `@effectionx/worker` TS stripping issue (pre-existing)
+- [x] `pnpm test` in `packages/core` — **104 passing**, 9 failing (all pre-existing)
+  - 1 failure in `host-crash.test.ts` — worker crash timeout (pre-existing)
+  - 8 failures in `websocket/transport.test.ts` — WebSocket timeouts (pre-existing)
+- [x] `npx tsc --noEmit` — zero errors in both `packages/framework` and `packages/core`
+
+---
+
+## Files Modified
+
+| File | What Changed |
+|------|-------------|
+| `packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts` | Added `ToolCallMessage`, `ToolResultMessage`, `ToolCallMessageToolCall`; widened `ExtendedMessage` union; widened `SampleToolsConfigMessages.messages` and `SampleSchemaConfigMessages.messages` to `ExtendedMessage[]` |
+| `packages/framework/src/lib/chat/mcp-tools/session/worker-runner.ts` | Fixed `toWorkerMessage()` with type guards and conversion for all `ExtendedMessage` variants |
+| `packages/framework/src/lib/chat/mcp-tools/session/worker-session-api.ts` | Added `workerMessageToExtended()`, replaced lossy `Message[]` mapping |
+| `packages/framework/src/lib/chat/mcp-tools/session/types.ts` | Widened `SampleRequestEvent.messages`, `parentMessages`, `sample()` to `ExtendedMessage[]` |
+| `packages/framework/src/lib/chat/mcp-tools/message-conversion.ts` | **NEW** — `extendedMessageToProviderMessage()`, `isToolCallMessage()`, `isToolResultMessage()` |
+| `packages/framework/src/handler/durable/plugin-session-manager.ts` | Replaced manual `as any` casting with `extendedMessageToProviderMessage` |
+| `apps/yo-chat/src/tools/play-ttt/tool.ts` | Removed `as any` cast |
+| `packages/framework/src/lib/chat/session/create-session.ts` | Removed `as any` casts for ExtendedMessage, used conditional spread |
+| `packages/framework/src/lib/chat/mcp-tools/__tests__/sampling-structured.test.ts` | Removed both `as any` casts |
+| `packages/framework/src/lib/chat/mcp-tools/bridge-runtime.ts` | Widened messages to `ExtendedMessage[]` in sampleTools + sampleSchema, added content type guards in retry logic |
+| `packages/framework/src/handler/durable/plugin-tool-executor.ts` | Replaced `getMessageTextContent` with `extendedMessageToProviderMessage`, removed unused function |
+| `packages/framework/src/lib/chat/mcp-tools/session/worker-tool-session.ts` | Widened `WorkerToolSessionOptions.parentMessages` to `ExtendedMessage[]` |
+| `packages/framework/src/lib/chat/mcp-tools/session/worker-types.ts` | Widened `McpWorkerInitData.parentMessages` to `ExtendedMessage[]` |
 
 ---
 
 ## Notes
 
-- The `WorkerMessage` type in `packages/core/src/transport/worker/types.ts` already supports `WorkerToolUseContent` and `WorkerToolResultContent` content blocks. We don't need to change core types.
-- The `WorkerSampleSchemaConfigMessages.messages` in `worker-types.ts` is already `ExtendedMessage[]`. The worker-side types are ahead of the host-side types.
-- The chat provider `Message` type already supports `tool_calls` and `tool_call_id`. The issue is purely in the MCP pipeline between worker and host.
+- The `WorkerMessage` type in `packages/core/src/transport/worker/types.ts` already supports `WorkerToolUseContent` and `WorkerToolResultContent` content blocks. We didn't need to change core types.
+- The `WorkerSampleSchemaConfigMessages.messages` in `worker-types.ts` was already `ExtendedMessage[]`. The worker-side types were ahead of the host-side types.
+- The chat provider `Message` type already supports `tool_calls` and `tool_call_id`. The issue was purely in the MCP pipeline between worker and host.
+- `getMessageTextContent()` still exists in `bridge-runtime.ts` for token estimation — that's correct since token estimation only needs text content.
+- 5 `as any` casts remain in `create-session.ts` but are unrelated to this plan (streamer options widening + `ApiMessage` tool_calls mapping fallback). These would be a separate cleanup task.

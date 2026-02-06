@@ -6,28 +6,7 @@
 
 import type { Capabilities, TokenUsage, ToolCallInfo, ServerToolResult } from '../core-types.ts'
 import type { IsomorphicHandoffEvent } from '../isomorphic-tools/types.ts'
-
-// =============================================================================
-// API MESSAGE
-// =============================================================================
-
-/**
- * Message format for API requests.
- */
-export interface ApiMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool'
-  content: string
-  /** Tool calls made by the assistant */
-  tool_calls?: Array<{
-    id: string
-    function: {
-      name: string
-      arguments: Record<string, unknown>
-    }
-  }>
-  /** For tool role: the ID of the tool call this is responding to */
-  tool_call_id?: string
-}
+import type { Message } from '../types.ts'
 
 // =============================================================================
 // CONVERSATION STATE
@@ -38,7 +17,7 @@ export interface ApiMessage {
  */
 export interface ConversationState {
   /** Full message history up to this point */
-  messages: ApiMessage[]
+  messages: Message[]
   /** Text content the assistant generated before requesting tools */
   assistantContent: string
   /** Tool calls the assistant requested (both server and client) */

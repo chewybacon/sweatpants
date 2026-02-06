@@ -6,7 +6,30 @@
 
 import type { Operation, Channel } from 'effection'
 import type { ChatPatch } from '../patches/index.ts'
-import type { ApiMessage, StreamResult } from './streaming.ts'
+import type { Message } from '../types.ts'
+import type { StreamResult } from './streaming.ts'
+import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
+
+// =============================================================================
+// ELICIT RESPONSE DATA
+// =============================================================================
+
+/**
+ * Elicit response from the client.
+ */
+export interface ElicitResponseData {
+  /** Session ID (same as callId from the original tool call) */
+  sessionId: string
+  /** Original tool call ID for conversation correlation */
+  callId: string
+  /** Specific elicit request ID */
+  elicitId: string
+  /** The user's response */
+  result: {
+    action: 'accept' | 'decline' | 'cancel'
+    content?: unknown
+  }
+}
 
 // =============================================================================
 // STREAMER
@@ -19,9 +42,9 @@ import type { ApiMessage, StreamResult } from './streaming.ts'
  * for a test streamer that we can control step-by-step.
  */
 export type Streamer = (
-  messages: ApiMessage[],
+  messages: Message[],
   patches: Channel<ChatPatch, void>,
-  options: Omit<SessionOptions, 'streamer'>
+  options: Omit<StreamChatOptions, 'streamer'>
 ) => Operation<StreamResult>
 
 // =============================================================================
@@ -161,6 +184,40 @@ export interface SessionOptions {
    * @default ''
    */
   abortSuffix?: string
+}
+
+// =============================================================================
+// STREAM CHAT OPTIONS
+// =============================================================================
+
+/**
+ * Options for streamChatOnce, extending SessionOptions with isomorphic tool schemas.
+ */
+export interface StreamChatOptions extends SessionOptions {
+  /**
+   * Isomorphic tool schemas to send to the server.
+   * Server will execute server parts and hand off for client-side execution.
+   */
+  isomorphicToolSchemas?: IsomorphicToolSchema[]
+
+  /**
+   * Client outputs from isomorphic tool execution that need server validation.
+   * Sent when re-initiating after executing isomorphic tools that need phase 2.
+   */
+  isomorphicClientOutputs?: Array<{
+    callId: string
+    toolName: string
+    params: unknown
+    clientOutput: unknown
+    cachedHandoff?: unknown
+    usesHandoff?: boolean
+  }>
+
+  /**
+   * Responses to pending elicitation requests.
+   * Sent when resuming a conversation with tool elicitations.
+   */
+  elicitResponses?: ElicitResponseData[]
 }
 
 // =============================================================================

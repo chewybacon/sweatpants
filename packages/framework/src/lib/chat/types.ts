@@ -32,7 +32,6 @@ export type {
 
 // Re-export from session
 export type {
-  ApiMessage,
   ConversationState,
   StreamResult,
   StreamCompleteResult,
