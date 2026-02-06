@@ -30,7 +30,6 @@ const guessCardTool = createIsomorphicTool('guess_card')
     difficulty: z.enum(['easy', 'hard']).optional(),
   }))
   .context('headless')
-  .authority('server')
   .handoff({
     *before(params) {
       return { 
@@ -54,7 +53,6 @@ const pickNumberTool = createIsomorphicTool('pick_number')
   .description('Pick a number')
   .parameters(z.object({ max: z.number() }))
   .context('headless')
-  .authority('server')
   .handoff({
     *before(params) {
       return { 
@@ -132,7 +130,6 @@ describe('createHandoffHandler', () => {
       toolName: 'other_tool',
       params: {},
       serverOutput: {},
-      authority: 'server',
     }
     
     const result = handler(event, vi.fn())
@@ -149,7 +146,6 @@ describe('createHandoffHandler', () => {
       toolName: 'guess_card',
       params: { prompt: 'Pick a card!' },
       serverOutput: { secret: 'Ace', choices: ['Ace', 'King'], hint: 'Pick a card!' },
-      authority: 'server',
     }
     
     const respond = vi.fn()
@@ -178,7 +174,6 @@ describe('createHandoffHandler', () => {
       toolName: 'guess_card',
       params: { prompt: 'test' },
       serverOutput: { secret: 'Ace', choices: ['Ace'], hint: 'test' },
-      authority: 'server',
     }
     
     handler(event, respondMock)
@@ -209,7 +204,6 @@ describe('createHandoffRegistry', () => {
       toolName: 'guess_card',
       params: { prompt: 'test' },
       serverOutput: { secret: 'Ace', choices: [], hint: '' },
-      authority: 'server',
     }
     
     registry.handle(cardEvent, vi.fn())
@@ -229,7 +223,6 @@ describe('createHandoffRegistry', () => {
       toolName: 'unknown_tool',
       params: {},
       serverOutput: {},
-      authority: 'server',
     }
     
     const result = registry.handle(event, vi.fn())
@@ -267,7 +260,6 @@ describe('createTypedPendingHandoff', () => {
       toolName: 'guess_card',
       params: { prompt: 'Pick!' },
       serverOutput: { secret: 'Ace', choices: ['Ace', 'King'], hint: 'Pick!' },
-      authority: 'server',
     }
     
     const respond = vi.fn()
@@ -298,7 +290,6 @@ describe('createTypedPendingHandoff', () => {
       toolName: 'other_tool',
       params: {},
       serverOutput: {},
-      authority: 'server',
     }
     
     const pending = createTypedPendingHandoff(guessCardTool, event, vi.fn())
@@ -318,7 +309,6 @@ describe('narrowHandoff', () => {
       toolName: 'guess_card',
       params: { prompt: 'test' },
       serverOutput: { secret: 'Ace', choices: ['Ace'], hint: 'test' },
-      authority: 'server',
     }
     
     const respond = vi.fn()
@@ -341,7 +331,6 @@ describe('narrowHandoff', () => {
       toolName: 'other_tool',
       params: {},
       serverOutput: {},
-      authority: 'server',
     }
     
     const narrowed = narrowHandoff(guessCardTool, event, vi.fn())

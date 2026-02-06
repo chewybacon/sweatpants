@@ -105,7 +105,6 @@ const browserChoiceTool = createIsomorphicTool('browser_choice')
     criteria: z.string(),
   }))
   .context('browser')
-  .authority('server')
   .handoff({
     *before(params) {
       return {
@@ -144,7 +143,6 @@ const agentChoiceTool = createIsomorphicTool('agent_choice')
     criteria: z.string(),
   }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return {
@@ -183,7 +181,6 @@ const researchAgentTool = createIsomorphicTool('research_agent')
     depth: z.enum(['shallow', 'deep']).default('shallow'),
   }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return { topic: params.topic, depth: params.depth }
@@ -237,7 +234,6 @@ const parallelAnalysisTool = createIsomorphicTool('parallel_analysis')
     topic: z.string(),
   }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return { topic: params.topic }
@@ -293,7 +289,6 @@ const progressTool = createIsomorphicTool('progress_tool')
   .description('Tool that emits progress')
   .parameters(z.object({ steps: z.number() }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return { steps: params.steps }
@@ -553,7 +548,6 @@ describe('Nested Agents (agent calling agent)', () => {
       .description('Does specific work')
       .parameters(z.object({ task: z.string() }))
       .context('agent')
-      .authority('server')
       .handoff({
         *before(params) {
           return { task: params.task }
@@ -575,7 +569,6 @@ describe('Nested Agents (agent calling agent)', () => {
       .description('Orchestrates multiple tasks')
       .parameters(z.object({ tasks: z.array(z.string()) }))
       .context('agent')
-      .authority('server')
       .handoff({
         *before(params) {
           return { tasks: params.tasks }

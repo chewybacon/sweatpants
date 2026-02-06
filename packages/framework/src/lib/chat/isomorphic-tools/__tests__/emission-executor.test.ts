@@ -45,7 +45,6 @@ describe('Emission Executor Integration', () => {
       .description('Test tool')
       .parameters(z.object({}))
       .context('browser')
-      .authority('server')
       .handoff({
         *before() {
           return { options: ['A', 'B', 'C'] }
@@ -66,7 +65,6 @@ describe('Emission Executor Integration', () => {
       toolName: 'test_tool',
       params: {},
       serverOutput: { options: ['A', 'B', 'C'] },
-      authority: 'server',
       usesHandoff: false,
     }
 
@@ -117,7 +115,6 @@ describe('Emission Executor Integration', () => {
       .description('Picker tool')
       .parameters(z.object({}))
       .context('browser')
-      .authority('server')
       .handoff({
         *before() {
           return { options: ['X', 'Y', 'Z'] }
@@ -140,7 +137,6 @@ describe('Emission Executor Integration', () => {
       toolName: 'picker_tool',
       params: {},
       serverOutput: { options: ['X', 'Y', 'Z'] },
-      authority: 'server',
       usesHandoff: false,
     }
 
@@ -212,7 +208,6 @@ describe('Emission Executor Integration', () => {
       .description('Multi-step tool')
       .parameters(z.object({}))
       .context('browser')
-      .authority('server')
       .handoff({
         *before() {
           return {}
@@ -233,7 +228,6 @@ describe('Emission Executor Integration', () => {
       toolName: 'multi_step',
       params: {},
       serverOutput: {},
-      authority: 'server',
       usesHandoff: false,
     }
 

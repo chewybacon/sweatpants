@@ -33,7 +33,6 @@ const textAnalyzerTool = createIsomorphicTool('text_analyzer')
     extractTypes: z.array(z.enum(['people', 'places', 'dates'])),
   }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return {
@@ -76,7 +75,6 @@ const researcherTool = createIsomorphicTool('researcher')
     depth: z.enum(['shallow', 'medium', 'deep']),
   }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return { topic: params.topic, depth: params.depth }
@@ -126,7 +124,6 @@ const parallelAnalyzerTool = createIsomorphicTool('parallel_analyzer')
     subject: z.string(),
   }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return { subject: params.subject }
@@ -170,7 +167,6 @@ const progressTool = createIsomorphicTool('progress_tool')
   .description('Emits progress events')
   .parameters(z.object({ steps: z.number() }))
   .context('agent')
-  .authority('server')
   .handoff({
     *before(params) {
       return { steps: params.steps }
@@ -397,7 +393,6 @@ describe('Agent Runtime', () => {
         .description('Server only tool')
         .parameters(z.object({}))
         .context('headless')
-        .authority('server')
         .server(function* () {
           return { result: 'done' }
         })

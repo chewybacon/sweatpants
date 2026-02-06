@@ -45,7 +45,6 @@ describe('Core Tool Adapter', () => {
         name: 'iso_tool',
         description: 'An isomorphic tool',
         parameters: z.object({ value: z.string() }),
-        authority: 'server' as const,
         *server(params: { value: string }) {
           return { result: params.value }
         },
@@ -71,7 +70,6 @@ describe('Core Tool Adapter', () => {
 
       expect(adapted.name).toBe('adapt_test')
       expect(adapted.description).toBe('Test adaptation')
-      expect(adapted.authority).toBe('server')
       expect(adapted.contextMode).toBe('headless')
       expect(adapted.parameters).toBe(coreTool.schemas.input)
       expect(adapted.server).toBeDefined()
@@ -95,7 +93,6 @@ describe('Core Tool Adapter', () => {
         name: 'iso_in_registry',
         description: 'Isomorphic tool in registry',
         parameters: z.object({ value: z.number() }),
-        authority: 'server' as const,
         *server(params: { value: number }) {
           return { doubled: params.value * 2 }
         },
@@ -133,7 +130,6 @@ describe('Core Tool Adapter', () => {
       expect(schemas[0].name).toBe('schema_test')
       expect(schemas[0].description).toBe('Schema test tool')
       expect(schemas[0].isIsomorphic).toBe(true)
-      expect(schemas[0].authority).toBe('server')
       expect(schemas[0].parameters).toBeDefined()
     })
 
@@ -153,7 +149,6 @@ describe('Core Tool Adapter', () => {
 
       expect(serverTools).toHaveLength(1)
       expect(serverTools[0].name).toBe('server_extract')
-      expect(serverTools[0].authority).toBe('server')
       expect(serverTools[0].execute).toBeDefined()
     })
 
@@ -172,7 +167,6 @@ describe('Core Tool Adapter', () => {
         name: 'duplicate',
         description: 'Second tool',
         parameters: z.object({}),
-        authority: 'server' as const,
         *server() {
           return {}
         },

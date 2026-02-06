@@ -13,7 +13,7 @@ import { createIsomorphicToolRegistry } from '../registry.ts'
 import type { AnyIsomorphicTool } from '../types.ts'
 
 describe('Isomorphic Tool Builder Runtime', () => {
-  describe('Server Authority with Handoff', () => {
+  describe('Server-First with Handoff', () => {
     const guessNumberTool = createIsomorphicTool('guess_number')
       .description('Guess a number game')
       .parameters(z.object({ 
@@ -21,7 +21,6 @@ describe('Isomorphic Tool Builder Runtime', () => {
         prompt: z.string().optional() 
       }))
       .context('headless')
-      .authority('server')
       .handoff({
         *before(params) {
           // Pick a random number (runs ONCE in phase 1)
@@ -141,13 +140,11 @@ describe('Isomorphic Tool Builder Runtime', () => {
         .description('A test tool')
         .parameters(z.object({ x: z.number() }))
         .context('headless')
-        .authority('server')
         .server(function*(params) { return { doubled: params.x * 2 } })
         .build()
 
       expect(tool.name).toBe('my_tool')
       expect(tool.description).toBe('A test tool')
-      expect(tool.authority).toBe('server')
     })
 
     it('should store handoffConfig for handoff tools', function* () {
@@ -155,7 +152,6 @@ describe('Isomorphic Tool Builder Runtime', () => {
         .description('Has handoff')
         .parameters(z.object({ input: z.string() }))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() { return { data: 'test' } },
           *client() { return { ack: true } },
@@ -169,39 +165,36 @@ describe('Isomorphic Tool Builder Runtime', () => {
     })
   })
 
-  describe('Client Authority (client-only build)', () => {
-    it('should passthrough client output if server is omitted', function* () {
-      const tool = createIsomorphicTool('client_only_passthrough')
-        .description('Client only')
+  describe('Client Phase with Server Output', () => {
+    it('should pass server output to client', function* () {
+      const tool = createIsomorphicTool('server_then_client')
+        .description('Server then client')
         .parameters(z.object({ prompt: z.string() }))
         .context('headless')
-        .authority('client')
-        .client(function*(params) {
+        .server(function* (params) {
           return { echoed: params.prompt }
         })
-        .build()
+        .client(function* (serverOutput) {
+          return { echoed: serverOutput.echoed }
+        })
 
-      // Cast to AnyIsomorphicTool for executor compatibility
       const anyTool = tool as unknown as AnyIsomorphicTool
       const signal = new AbortController().signal
 
-      // Phase 1: server should immediately handoff (client authority)
-      const phase1 = yield* executeServerPart(anyTool, 'call-client-only', { prompt: 'hi' }, signal)
+      const phase1 = yield* executeServerPart(anyTool, 'call-server-then-client', { prompt: 'hi' }, signal)
 
       expect(phase1.kind).toBe('handoff')
       if (phase1.kind !== 'handoff') throw new Error('Expected handoff')
 
       expect(phase1.usesHandoff).toBe(false)
-      expect(phase1.handoff.authority).toBe('client')
-      expect(phase1.handoff.serverOutput).toBeUndefined()
+      expect(phase1.serverOutput).toEqual({ echoed: 'hi' })
 
-      // Phase 2: server passthrough should return client output
       const phase2 = yield* executeServerPhase2(
         anyTool,
-        'call-client-only',
+        'call-server-then-client',
         { prompt: 'hi' },
         { echoed: 'hi' },
-        undefined,
+        phase1.serverOutput,
         signal,
         false
       )
@@ -216,7 +209,6 @@ describe('Isomorphic Tool Builder Runtime', () => {
         .description('Tool A')
         .parameters(z.object({ a: z.string() }))
         .context('headless')
-        .authority('server')
         .server(function*() { return { result: 'a' } })
         .build()
 
@@ -224,9 +216,8 @@ describe('Isomorphic Tool Builder Runtime', () => {
         .description('Tool B')
         .parameters(z.object({ b: z.number() }))
         .context('headless')
-        .authority('client')
-        .client(function*() { return { choice: 'x' } })
-        .server(function*(_params, _ctx, client) { return { validated: true, choice: client.choice } })
+        .server(function*(_params) { return { choice: 'x' } })
+        .client(function* (serverOutput) { return { choice: serverOutput.choice } })
 
       // Cast to AnyIsomorphicTool for registry
       const registry = createIsomorphicToolRegistry([

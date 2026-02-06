@@ -185,7 +185,6 @@ export function createMockIsomorphicTool(name: string): IsomorphicTool {
     name,
     description: 'An isomorphic mock tool',
     parameters: z.object({ query: z.string() }),
-    authority: 'server',
     server: function* (params: unknown) {
       const { query } = params as { query: string }
       return { serverData: `Server processed: ${query}` }
@@ -258,7 +257,6 @@ export interface HandoffEvent {
   toolName: string
   params: unknown
   serverOutput: unknown
-  authority: 'server' | 'client'
   usesHandoff: boolean
 }
 

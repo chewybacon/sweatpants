@@ -21,7 +21,6 @@ describe('Isomorphic Tool Builder Types', () => {
         .description('Test tool')
         .parameters(z.object({ prompt: z.string() }))
         .context('headless')
-        .authority('server')
         .handoff({
           *before(params) {
             // params should be { prompt: string }
@@ -58,7 +57,6 @@ describe('Isomorphic Tool Builder Types', () => {
         .description('Card game')
         .parameters(paramsSchema)
         .context('headless')
-        .authority('server')
         .handoff({
           *before(params) {
             // params should have both fields
@@ -84,81 +82,12 @@ describe('Isomorphic Tool Builder Types', () => {
     })
   })
 
-  describe('Client Authority', () => {
-    it('should flow client output to server', () => {
-      const tool = createIsomorphicTool('user_input')
-        .description('Get user input')
-        .parameters(z.object({ options: z.array(z.string()) }))
-        .context('headless')
-        .authority('client')
-        .client(function*(params, _ctx) {
-          expectTypeOf(params.options).toEqualTypeOf<string[]>()
-          return { choice: 'option1', confidence: 0.9 }
-        })
-        .server(function*(_params, _ctx, clientOutput) {
-          // clientOutput should be { choice: string, confidence: number }
-          expectTypeOf(clientOutput.choice).toBeString()
-          expectTypeOf(clientOutput.confidence).toBeNumber()
-          return { validated: true, selected: clientOutput.choice }
-        })
-
-      type Result = InferToolResult<typeof tool>
-      expectTypeOf<Result>().toEqualTypeOf<{ validated: boolean; selected: string }>()
-
-      type ClientOutput = InferToolClientOutput<typeof tool>
-      expectTypeOf<ClientOutput>().toEqualTypeOf<{ choice: string; confidence: number }>()
-    })
-
-    it('should allow client-only tools (server defaults to passthrough)', () => {
-      const tool = createIsomorphicTool('client_only')
-        .description('Client only (passthrough)')
-        .parameters(z.object({ prompt: z.string() }))
-        .context('headless')
-        .authority('client')
-        .client(function*(params) {
-          return { echoed: params.prompt }
-        })
-        .build()
-
-      type Result = InferToolResult<typeof tool>
-      expectTypeOf<Result>().toEqualTypeOf<{ echoed: string }>()
-
-      type ClientOutput = InferToolClientOutput<typeof tool>
-      expectTypeOf<ClientOutput>().toEqualTypeOf<{ echoed: string }>()
-
-      // Authority remains explicitly client
-      expectTypeOf(tool.authority).toEqualTypeOf<'client'>()
-    })
-
-    it('should forbid handoff in client authority mode', () => {
-      const builder = createIsomorphicTool('bad_client_handoff')
-        .description('Bad')
-        .parameters(z.object({ x: z.string() }))
-        .context('headless')
-        .authority('client')
-
-      // @ts-expect-error handoff is server mode only
-      builder.handoff({
-        *before() {
-          return { a: 1 }
-        },
-        *client() {
-          return { b: 2 }
-        },
-        *after() {
-          return { c: 3 }
-        },
-      })
-    })
-  })
-
   describe('Server Authority without Handoff', () => {
     it('should type server output flowing to client', () => {
       const tool = createIsomorphicTool('celebrate')
         .description('Celebrate')
         .parameters(z.object({ message: z.string() }))
         .context('headless')
-        .authority('server')
         .server(function*(params, _ctx) {
           return { celebrated: true, message: params.message }
         })
@@ -178,7 +107,6 @@ describe('Isomorphic Tool Builder Types', () => {
         .description('Server only')
         .parameters(z.object({ data: z.number() }))
         .context('headless')
-        .authority('server')
         .server(function*(params) {
           return { processed: params.data * 2 }
         })
@@ -196,7 +124,6 @@ describe('Isomorphic Tool Builder Types', () => {
         .description('Test')
         .parameters(z.object({ x: z.number(), y: z.string() }))
         .context('headless')
-        .authority('server')
         .server(function*(_params) { return { done: true } })
         .build()
 
@@ -209,7 +136,6 @@ describe('Isomorphic Tool Builder Types', () => {
         .description('Test')
         .parameters(z.object({ input: z.string() }))
         .context('headless')
-        .authority('server')
         .handoff({
           *before() { return { secret: 123, hint: 'test' } },
           *client(_handoff) { return { saw: true } },
@@ -227,7 +153,6 @@ describe('Isomorphic Tool Builder Types', () => {
         .description('A structured tool')
         .parameters(z.object({ id: z.number() }))
         .context('headless')
-        .authority('server')
         .handoff({
           *before(params) { return { computed: params.id * 2 } },
           *client(_handoff) { return { acknowledged: true } },
@@ -237,7 +162,6 @@ describe('Isomorphic Tool Builder Types', () => {
       // Check structure
       expectTypeOf(tool.name).toEqualTypeOf<'structured'>()
       expectTypeOf(tool.description).toBeString()
-      expectTypeOf(tool.authority).toEqualTypeOf<'server'>()
       expectTypeOf(tool.parameters).toMatchTypeOf<z.ZodType<{ id: number }>>()
     })
   })
