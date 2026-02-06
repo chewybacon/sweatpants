@@ -365,6 +365,7 @@ export function createPluginSessionManager(
 
                   // Call the provider
                   const stream = provider.stream(chatMessages, streamOptions)
+
                   const subscription = yield* stream
 
                   // Collect response

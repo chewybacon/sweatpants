@@ -31,7 +31,7 @@ import {
   type WorkerElicitResponse,
 } from '@sweatpants/core/transport/worker'
 import type { Operation } from 'effection'
-import { zodToJsonSchema } from 'zod-to-json-schema'
+import { z } from 'zod'
 import type {
   WorkerToolRegistry,
   WorkerToolContext,
@@ -149,11 +149,11 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
  */
 function toJsonSchemaRecord(schema: unknown): Record<string, unknown> {
   if (schema && typeof (schema as { safeParse?: unknown }).safeParse === 'function') {
-    // Zod schema — convert to JSON Schema (functions can't be cloned for postMessage)
-    return zodToJsonSchema(schema as Parameters<typeof zodToJsonSchema>[0], {
-      $refStrategy: 'none',
-      target: 'jsonSchema7',
-    }) as Record<string, unknown>
+    // Zod schema — convert to JSON Schema using Zod v4's built-in converter.
+    // Functions can't be cloned for postMessage, so we must serialize to plain JSON.
+    // Strip $schema meta-field — it's unnecessary for wire protocol and some providers reject it.
+    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema as z.ZodType)
+    return jsonSchema as Record<string, unknown>
   }
   // Already a JSON Schema object
   return schema as Record<string, unknown>

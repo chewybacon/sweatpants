@@ -310,18 +310,27 @@ test.describe('play_ttt Agentic Tool', () => {
   // =============================================================================
 
   test('model uses strategy before making moves', async ({ page }) => {
-    // This test verifies the L1/L2 pattern is working by checking
-    // that the model makes reasonable moves (not random)
+    // This test verifies the L1/L2 sampling pattern is working by checking
+    // that model move cards display strategy badges (offensive/defensive).
+    // The strategy comes from the L1 sampleTools() call in the game loop.
     
     await page.getByRole('button', { name: 'Start Game' }).click()
 
     const emptyCell = page.locator('button').filter({ hasText: /^[0-8]$/ }).first()
     await expect(emptyCell).toBeVisible({ timeout: 90000 })
 
-    // Play through a few moves and verify game progresses
+    // Play through a few moves so the model has at least 2 turns
     const thinkingLocator = page.getByText('thinking...', { exact: true })
     let moves = 0
-    while (moves < 4 && await emptyCell.isVisible()) {
+    const gameOver = page.locator('text=/wins!|draw!|Good game!|Well played!/i')
+
+    while (moves < 4) {
+      // Check if game ended
+      if (await gameOver.isVisible()) break
+
+      // Check if there's an empty cell to click
+      if (!(await emptyCell.isVisible())) break
+
       await emptyCell.click()
       moves++
       
@@ -329,7 +338,7 @@ test.describe('play_ttt Agentic Tool', () => {
         await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
         await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
       } catch {
-        break // Game might have ended
+        break // Game might have ended or model responded instantly
       }
     }
 
@@ -340,6 +349,23 @@ test.describe('play_ttt Agentic Tool', () => {
     
     expect(totalMarks).toBeGreaterThanOrEqual(2) // At least 2 moves made
     console.log(`L1/L2 pattern working - ${totalMarks} moves made`)
+
+    // Verify strategy badges appear on model move cards.
+    // The GameMoveCard renders strategy as a badge:
+    //   offensive: <span class="bg-amber-900/30 text-amber-400">offensive</span>
+    //   defensive: <span class="bg-blue-900/30 text-blue-400">defensive</span>
+    const offensiveBadge = page.locator('.text-amber-400').filter({ hasText: 'offensive' })
+    const defensiveBadge = page.locator('.text-blue-400').filter({ hasText: 'defensive' })
+    
+    const offensiveCount = await offensiveBadge.count()
+    const defensiveCount = await defensiveBadge.count()
+    const totalBadges = offensiveCount + defensiveCount
+    
+    console.log(`Strategy badges: ${offensiveCount} offensive, ${defensiveCount} defensive`)
+    
+    // Every model move should have a strategy badge. At minimum we expect 1.
+    expect(totalBadges).toBeGreaterThanOrEqual(1)
+    console.log(`L1/L2 strategy pattern verified - ${totalBadges} strategy badges found`)
   })
 
   // =============================================================================

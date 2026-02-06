@@ -37,7 +37,12 @@ async function runScenario(scenario: string) {
     { cwd: process.cwd() }
   )
 
-  return JSON.parse(stdout.trim())
+  // Extract the last non-empty line from stdout.
+  // Worker threads (via web-worker) may write debug output to stdout
+  // before the harness writes its JSON result on the final line.
+  const lines = stdout.trim().split('\n')
+  const jsonLine = lines[lines.length - 1]!
+  return JSON.parse(jsonLine)
 }
 
 describe('WorkerToolSession', () => {
