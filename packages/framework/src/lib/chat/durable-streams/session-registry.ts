@@ -154,9 +154,8 @@ export function* createSessionRegistry<T>(
         {
           name: `writer:${sessionId}`,
           // Pass logger factory context so useLogger works in background task
-          // Cast needed due to contravariance in ContextEntry generics
           contexts: loggerFactory
-            ? [{ context: LoggerFactoryContext, value: loggerFactory } as any]
+            ? [{ context: LoggerFactoryContext, value: loggerFactory }]
             : [],
         }
       )

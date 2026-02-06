@@ -2,7 +2,7 @@
 
 **Branch:** `integration/new-workers`
 **Last Updated:** 2025-07-15
-**Overall Status:** 🔄 IN PROGRESS
+**Overall Status:** ✅ COMPLETE
 **Prerequisite:** Phase 1 plan (`fix-tool-call-message-pipeline.md`) ✅ COMPLETE
 **Skill:** Use the `typescript-expert` skill before writing any code.
 
@@ -208,20 +208,22 @@ What was deliberately NOT done (over-engineering for minimal gain):
 - `responseSchema as any` in `bridge-runtime.ts` — generic type erasure, needs ElicitsMap generics threaded through
 - `core-context.ts` casts — third-party `zod-to-json-schema` library type expectations
 
-### Task G: Provider layer + misc casts ⬜
+### Task G: Provider layer + misc casts ✅ COMPLETE
 
 **Risk:** Low.
-**Files:** `openai.ts`, `ollama.ts`, `session-registry.ts`
+**Files:** `openai.ts`, `ollama.ts`, `session-registry.ts`, `use-background-task.ts`, `openai-conformance.test.ts`
 
-Steps:
-1. Extract `toWebReadableStream()` utility for `response.body as any` in provider files
-2. Define SSE event types for OpenAI streaming (eliminate `(delta as any)?.text`)
-3. Fix `session-registry.ts:159` — accept `ContextEntry<any>[]` in `useBackgroundTask`
-
-Changes:
-- [ ] `toWebReadableStream()` utility
-- [ ] SSE event discriminated union
-- [ ] `ContextEntry<any>[]` parameter
+What was done:
+- [x] Defined `NodeReadableBody` interface in both `openai.ts` and `ollama.ts` — types the `.on('data'|'end'|'error')` methods used when bridging Node.js Readable to Web ReadableStream
+- [x] Extracted `toWebReadableStream(nodeBody: NodeReadableBody)` utility in both provider files — replaces `response.body as any` with `response.body as NodeReadableBody` (proper narrow cast, not `any`)
+- [x] Changed `OpenAIStreamEvent` index signature from `[key: string]: any` to `[key: string]: unknown` — eliminates the eslint-disable comment
+- [x] Created `extractDeltaText(delta: unknown): string` helper in `openai.ts` — properly narrows the delta value (string or `{ text: string }` object) without `as any`
+- [x] Replaced 3 `(delta as any)?.text` patterns with `extractDeltaText()` calls
+- [x] Changed `BackgroundTaskOptions.contexts` from `ContextEntry[]` (defaults to `ContextEntry<unknown>[]`) to `ContextEntry<any>[]` — standard heterogeneous collection pattern, type safety enforced at construction
+- [x] Removed `as any` cast from `session-registry.ts` context entry construction
+- [x] Fixed missing `type: 'function'` on `ToolCall` construction in `openai.ts` (pre-existing error from Task D making `type` required)
+- [x] Fixed `event['response']?.usage` access in `openai.ts` — properly narrows `unknown` index value before accessing nested `.usage`
+- [x] Updated `openai-conformance.test.ts` expectation to include `type: 'function'` in ToolCall
 
 ### Won't Fix (Intentional Patterns)
 
@@ -243,4 +245,4 @@ Changes:
 | **D** | `types.ts`, `durable/types.ts`, `chat-engine.ts`, `mcp-tool-types.ts` | Canonical `ToolCall` types |
 | **E** | `handler/types.ts`, `handler/durable/chat-engine.ts` | Deleted ~100-line duplicate `StreamEvent`, re-export from `session/streaming.ts`; fixed 3 drift bugs (usage camelCase, tool_session_status discriminant, usesHandoff optionality) |
 | **F** | `handler.ts`, `mcp-handler.ts`, `bridge-runtime.ts`, `registry.ts`, `worker-runner.ts` | Removed 8 `as Record<string, unknown>` casts on `z.toJSONSchema()` / `zodToJsonSchema()`; created `toJsonSchemaRecord()` helper; eliminated `as any` in `sampleImpl()` |
-| **G** | `openai.ts`, `ollama.ts`, `session-registry.ts` | `toWebReadableStream()`, SSE types, `ContextEntry` fix |
+| **G** | `openai.ts`, `ollama.ts`, `session-registry.ts`, `use-background-task.ts`, `openai-conformance.test.ts` | `NodeReadableBody` + `toWebReadableStream()` (eliminated 2 `as any`); `extractDeltaText()` (eliminated 3 `as any`); `OpenAIStreamEvent` index `any`→`unknown`; `ContextEntry<any>[]` (eliminated 1 `as any`); fixed ToolCall `type` + usage narrowing |
