@@ -14,7 +14,7 @@ import { spawn, each, type Operation, type Channel } from 'effection'
 import type { ChatProvider } from '../../lib/chat/providers/types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
-import type { ElicitsMap, ExtendedMessage } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
+import type { ElicitsMap } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import {
   createBridgeHost,
@@ -26,6 +26,7 @@ import {
   createPluginClientContext,
   executeElicitHandlerFromRequest,
 } from '../../lib/chat/mcp-tools/plugin-executor.ts'
+import { extendedMessageToProviderMessage } from '../../lib/chat/mcp-tools/message-conversion.ts'
 import type {
   ComponentEmissionPayload,
   PendingEmission,
@@ -70,32 +71,6 @@ export type PluginToolResult =
 // =============================================================================
 // PLUGIN TOOL DETECTION
 // =============================================================================
-
-/**
- * Extract text content from a message for passing to chat provider.
- * Handles both simple string content and MCP content blocks.
- */
-function getMessageTextContent(msg: ExtendedMessage): string {
-  if (typeof msg.content === 'string') {
-    return msg.content
-  }
-  if (msg.content === null || msg.content === undefined) {
-    return ''
-  }
-  // MCP content blocks
-  const blocks = Array.isArray(msg.content) ? msg.content : [msg.content]
-  return blocks
-    .map(block => {
-      if (block.type === 'text') return block.text
-      if (block.type === 'tool_use') return JSON.stringify(block.input)
-      if (block.type === 'tool_result') {
-        const innerBlocks = Array.isArray(block.content) ? block.content : [block.content]
-        return innerBlocks.map(b => b.type === 'text' ? b.text : '').join('')
-      }
-      return ''
-    })
-    .join('')
-}
 
 /**
  * Check if a tool is a plugin tool (has .elicits property).
@@ -236,12 +211,9 @@ function* handleBridgeEvent(
     case 'sample': {
       // Use the chat provider to sample
       try {
-        // Convert MCP messages to chat messages
-        // Extract text content from messages (handles both string and MCP content blocks)
-        const chatMessages = event.messages.map((msg: ExtendedMessage) => ({
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: getMessageTextContent(msg),
-        }))
+        // Convert ExtendedMessage variants to chat provider format
+        // Preserves tool_calls, tool_call_id, and MCP content blocks
+        const chatMessages = event.messages.map(extendedMessageToProviderMessage)
 
         // Get the stream from provider
         const stream = provider.stream(chatMessages, undefined)

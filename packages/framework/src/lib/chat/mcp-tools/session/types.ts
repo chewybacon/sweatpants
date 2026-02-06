@@ -34,7 +34,7 @@ import type {
   SamplingToolDefinition,
   SamplingToolChoice,
   ModelPreferences,
-  Message,
+  ExtendedMessage,
   LogLevel,
   ElicitsMap,
 } from '../mcp-tool-types.ts'
@@ -126,8 +126,8 @@ export interface SampleRequestEvent extends ToolSessionEventBase {
   type: 'sample_request'
   /** Unique ID for this sample request (for correlation) */
   sampleId: string
-  /** Messages to send to LLM */
-  messages: Message[]
+  /** Messages to send to LLM (supports tool call/result messages) */
+  messages: ExtendedMessage[]
   /** Optional system prompt */
   systemPrompt?: string
   /** Maximum tokens to generate */
@@ -272,7 +272,7 @@ export interface ToolSessionOptions {
   timeout?: number
 
   /** Initial messages (parent context) */
-  parentMessages?: Message[]
+  parentMessages?: ExtendedMessage[]
 
   /** System prompt */
   systemPrompt?: string
@@ -416,7 +416,7 @@ export interface ToolSessionSamplingProvider {
    * @returns The LLM response (raw result without exchange)
    */
   sample(
-    messages: Message[],
+    messages: ExtendedMessage[],
     options?: ToolSessionSamplingOptions
   ): Operation<RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls>
 }
