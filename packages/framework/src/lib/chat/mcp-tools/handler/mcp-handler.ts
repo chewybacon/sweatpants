@@ -152,14 +152,14 @@ function serializeElicitsMap(
     if (!def.response) continue
 
     try {
-      const responseSchema = z.toJSONSchema(def.response) as Record<string, unknown>
+      const responseSchema = z.toJSONSchema(def.response)
       const entry: { response: Record<string, unknown>; context?: Record<string, unknown> } = {
         response: responseSchema,
       }
 
       if (def.context) {
         try {
-          entry.context = z.toJSONSchema(def.context) as Record<string, unknown>
+          entry.context = z.toJSONSchema(def.context)
         } catch {
           // Skip context if conversion fails
         }
@@ -197,7 +197,7 @@ function createToolsListResponse(
     let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
     if (t.parameters) {
       try {
-        inputSchema = z.toJSONSchema(t.parameters) as Record<string, unknown>
+        inputSchema = z.toJSONSchema(t.parameters)
       } catch {
         // Fallback if conversion fails
       }
@@ -797,7 +797,7 @@ export function generateMcpManifest(
     let inputSchema: Record<string, unknown> = { type: 'object', properties: {} }
     if (t.parameters) {
       try {
-        inputSchema = z.toJSONSchema(t.parameters) as Record<string, unknown>
+        inputSchema = z.toJSONSchema(t.parameters)
       } catch {
         // Fallback if conversion fails
       }
