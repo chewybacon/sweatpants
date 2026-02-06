@@ -115,107 +115,13 @@ export type PersonaResolver = (
   effort?: any
 ) => ResolvedPersona
 
-// =============================================================================
-// STREAM EVENT TYPES
-// =============================================================================
-
-/**
- * Events emitted by the chat handler stream.
- */
-export type StreamEvent =
-  | {
-      type: 'session_info'
-      capabilities: {
-        thinking: boolean
-        streaming: boolean
-        tools: string[]
-      }
-      persona: string | null
-    }
-  | { type: 'text'; content: string }
-  | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_calls'
-      calls: Array<{
-        id: string
-        name: string
-        arguments: unknown
-      }>
-    }
-  | {
-      type: 'tool_result'
-      id: string
-      name: string
-      content: string
-    }
-  | {
-      type: 'tool_error'
-      id: string
-      name: string
-      message: string
-    }
-  | {
-      type: 'isomorphic_handoff'
-      callId: string
-      toolName: string
-      params: unknown
-      serverOutput: unknown
-      usesHandoff: boolean
-    }
-  | {
-      type: 'conversation_state'
-      conversationState: {
-        messages: ChatMessage[]
-        assistantContent: string
-        toolCalls: Array<{
-          id: string
-          name: string
-          arguments: unknown
-        }>
-        serverToolResults: Array<{
-          id: string
-          name: string
-          content: string
-          isError: boolean
-        }>
-      }
-    }
-  | {
-      type: 'complete'
-      text: string
-      usage?: {
-        prompt_tokens?: number
-        completion_tokens?: number
-        total_tokens?: number
-      }
-    }
-  | {
-      type: 'error'
-      message: string
-      recoverable: boolean
-    }
-  // Tool elicit events
-  | {
-      type: 'elicit_request'
-      sessionId: string
-      callId: string
-      toolName: string
-      elicitId: string
-      key: string
-      message: string
-      schema: Record<string, unknown>
-    }
-  | {
-      type: 'tool_session_error'
-      sessionId: string
-      callId: string
-      error: 'SESSION_NOT_FOUND' | 'SESSION_ABORTED' | 'INTERNAL_ERROR'
-      message: string
-    }
-  | {
-      type: 'plugin_session_status'
-      sessionId: string
-      callId: string
-      toolName: string
-      status: 'running' | 'awaiting_elicit' | 'completed' | 'failed' | 'aborted'
-    }
+// Streaming types - re-export from session layer (single source of truth)
+export type {
+  StreamEvent,
+  ConversationState,
+  ConversationStateStreamEvent,
+  IsomorphicHandoffStreamEvent,
+  ElicitRequestStreamEvent,
+  ToolSessionStatusStreamEvent,
+  ToolSessionErrorStreamEvent,
+} from '../lib/chat/session/streaming.ts'

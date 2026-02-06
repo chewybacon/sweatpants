@@ -640,7 +640,7 @@ export function* runChatSession(
                 msg.tool_calls = apiMsg.tool_calls.map(tc => ({
                   id: tc.id,
                   type: 'function' as const,
-                  function: 'function' in tc ? tc.function : { name: (tc as any).name, arguments: (tc as any).arguments },
+                  function: tc.function,
                 }))
               }
               
