@@ -198,7 +198,7 @@ function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTool
 
 The adapted tool:
 - Maps `input` schema → `parameters`
-- Runs as `authority: 'server'`
+- Runs as a server-first isomorphic tool
 - Uses `contextMode: 'headless'` (no browser APIs)
 
 ---

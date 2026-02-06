@@ -43,7 +43,6 @@ export const grepSearch = createIsomorphicTool('grep_search')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* (params) {
     const searchDir = params.cwd
       ? path.resolve(process.cwd(), params.cwd)

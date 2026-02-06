@@ -13,7 +13,7 @@ import { z } from 'zod'
 const guessCard = createIsomorphicTool('guess_card')
   .description('A card guessing game')
   .parameters(z.object({ prompt: z.string().optional() }))
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) {
       // Phase 1: Server picks secret (runs ONCE)
@@ -47,11 +47,11 @@ const guessCard = createIsomorphicTool('guess_card')
 createIsomorphicTool(name)
   .description(desc)
   .parameters(zodSchema)
-  .authority('server' | 'client')
-  // Then configure based on authority...
+  .context('headless' | 'browser' | 'agent')
+  // Then configure based on server-first execution...
 ```
 
-### Server Authority with Handoff (V7 Pattern)
+### Server-First with Handoff (V7 Pattern)
 
 For tools where the server picks state, client interacts, and server validates:
 
@@ -59,7 +59,7 @@ For tools where the server picks state, client interacts, and server validates:
 const tool = createIsomorphicTool('my_tool')
   .description('...')
   .parameters(z.object({ ... }))
-  .authority('server')
+  .context('browser')
   .handoff({
     *before(params, ctx) {
       // Runs ONCE - return data for client and phase 2
@@ -76,7 +76,7 @@ const tool = createIsomorphicTool('my_tool')
   })
 ```
 
-### Server Authority (Simple)
+### Server-First (Simple)
 
 For tools where server computes and client optionally presents:
 
@@ -84,7 +84,7 @@ For tools where server computes and client optionally presents:
 const tool = createIsomorphicTool('compute')
   .description('...')
   .parameters(z.object({ input: z.string() }))
-  .authority('server')
+  .context('headless')
   .server(function*(params, ctx) {
     return { result: compute(params.input) }
   })
@@ -95,21 +95,20 @@ const tool = createIsomorphicTool('compute')
   })
 ```
 
-### Client Authority
+### Client UI with Server Validation
 
-For tools where client collects input and server validates:
+For tools where server produces a prompt and the client collects input:
 
 ```typescript
 const tool = createIsomorphicTool('get_input')
   .description('...')
   .parameters(z.object({ prompt: z.string() }))
-  .authority('client')
-  .client(function*(params, ctx) {
-    return { input: yield* showPrompt(params.prompt) }
+  .context('browser')
+  .server(function*(params) {
+    return { prompt: params.prompt }
   })
-  .server(function*(params, ctx, clientOutput) {
-    // clientOutput is typed from client() return
-    return { valid: validate(clientOutput.input) }
+  .client(function*(serverOutput, ctx, _params) {
+    return { input: yield* showPrompt(serverOutput.prompt) }
   })
 ```
 
@@ -232,7 +231,7 @@ const tool = defineIsomorphicTool({
   name: 'guess_card',
   description: '...',
   parameters: z.object({ prompt: z.string() }),
-  authority: 'server',
+  contextMode: 'headless',
   *server(params, ctx) {
     return yield* ctx.handoff({
       *before() {
@@ -259,7 +258,7 @@ const tool = defineIsomorphicTool({
 const tool = createIsomorphicTool('guess_card')
   .description('...')
   .parameters(z.object({ prompt: z.string() }))
-  .authority('server')
+  .context('headless')
   .handoff({
     *before(params) {
       return { secret: 'Ace', choices: ['Ace', 'King'] }
@@ -308,13 +307,13 @@ The builder uses TypeScript's phantom type pattern (from TanStack Start) to carr
 ```typescript
 interface IsomorphicToolTypes<
   in out TParams,
-  in out TAuthority,
+  in out TContext,
   in out THandoff,
   in out TClient,
   in out TResult,
 > {
   params: TParams
-  authority: TAuthority
+  context: TContext
   handoff: THandoff
   client: TClient
   result: TResult

@@ -10,7 +10,6 @@ const isCI = process.env['CI']
  * - greet (sampling)
  * - pick_card (elicitation)
  * - confirm (elicitation)
- * - pick_card_branch (complex branching)
  */
 export default defineConfig({
   testDir: './e2e',

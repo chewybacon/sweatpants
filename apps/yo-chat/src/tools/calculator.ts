@@ -15,7 +15,6 @@ export const calculator = createIsomorphicTool('calculator')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function*(params) {
     // Simple expression evaluator (in production, use a proper math parser)
     try {

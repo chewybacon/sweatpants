@@ -22,7 +22,6 @@ export const readFile = createIsomorphicTool('read_file')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* (params) {
     const filePath = path.resolve(process.cwd(), params.path)
 

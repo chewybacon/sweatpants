@@ -23,7 +23,6 @@ export const gitStatus = createIsomorphicTool('git_status')
     })
   )
   .context('headless')
-  .authority('server')
   .server(function* (params) {
     try {
       const args = params.short ? '--short' : '--porcelain=v1'

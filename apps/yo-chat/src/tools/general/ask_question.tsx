@@ -9,7 +9,6 @@ export const askQuestion = createIsomorphicTool('ask_question')
     })
   )
   .context('browser')
-  .authority('server')
   .handoff({
     *before(params) {
       return params
@@ -21,4 +20,3 @@ export const askQuestion = createIsomorphicTool('ask_question')
       return { question: handoff.question, answer: client.question }
     },
   })
-

@@ -11,14 +11,12 @@ import { echoTool } from './echo'
 import { pickCardTool } from './pick-card'
 import { greetTool } from './greet'
 import { confirmTool } from './confirm'
-import { pickCardBranchTool } from './pick-card-branch'
 
 // Export individual tools
 export { echoTool } from './echo'
 export { pickCardTool } from './pick-card'
 export { greetTool } from './greet'
 export { confirmTool } from './confirm'
-export { pickCardBranchTool } from './pick-card-branch'
 
 /**
  * All available tools
@@ -28,7 +26,6 @@ export const allTools: FinalizedMcpToolWithElicits<string, unknown, unknown, unk
   pickCardTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
   greetTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
   confirmTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
-  pickCardBranchTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
 ]
 
 /**

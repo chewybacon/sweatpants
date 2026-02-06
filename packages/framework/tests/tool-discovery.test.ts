@@ -116,7 +116,6 @@ describe('discoverToolsInContent', () => {
         export const calculator = createIsomorphicTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
-          .authority('server')
           .server(function*() { return { result: 42 } })
           .build()
       `
@@ -137,7 +136,6 @@ describe('discoverToolsInContent', () => {
         export const calculator = createIsomorphicTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
-          .authority('server')
           .server(function*() { return { result: 42 } })
           .build()
       `
@@ -362,6 +360,19 @@ describe('discoverToolsInContent', () => {
       expect(tools).toHaveLength(1)
       expect(tools[0].toolName).toBe('my_tool')
     })
+
+    it('supports multiple export function names', () => {
+      const content = `export const foo = createMcpTool('my_tool')`
+      const tools = discoverToolsInContent(
+        content,
+        '/project/src/tools/my-tool.ts',
+        '/project/src/tools',
+        resolveToolDiscoveryOptions({ exportFunctionName: ['createMcpTool', 'createIsomorphicTool'] })
+      )
+
+      expect(tools).toHaveLength(1)
+      expect(tools[0].toolName).toBe('my_tool')
+    })
   })
 
   describe('.tsx file support', () => {
@@ -372,7 +383,6 @@ describe('discoverToolsInContent', () => {
         export const askQuestion = createIsomorphicTool('ask_question')
           .description('Ask a question to the user')
           .parameters(z.object({ question: z.string() }))
-          .authority('server')
           .build()
       `
       const tools = discoverToolsInContent(
@@ -608,8 +618,10 @@ describe('resolveToolDiscoveryOptions', () => {
     expect(options.dir).toBe('src/tools')
     expect(options.outFile).toBe('src/__generated__/tool-registry.gen.ts')
     expect(options.pattern).toBe('**/*.ts')
-    expect(options.exportFunctionName).toBe('createIsomorphicTool')
+    expect(options.exportFunctionName).toEqual(['createIsomorphicTool', 'createMcpTool'])
     expect(options.logLevel).toBe('normal')
+    expect(options.generateWorker).toBe(false)
+    expect(options.workerOutFile).toBe('src/__generated__/tool-worker.gen.ts')
   })
 
   it('respects user overrides', () => {
@@ -619,13 +631,17 @@ describe('resolveToolDiscoveryOptions', () => {
       pattern: '*.tool.ts',
       exportFunctionName: 'defineTool',
       logLevel: 'verbose',
+      generateWorker: true,
+      workerOutFile: 'generated/worker.ts',
     })
 
     expect(options.dir).toBe('lib/tools')
     expect(options.outFile).toBe('generated/registry.ts')
     expect(options.pattern).toBe('*.tool.ts')
-    expect(options.exportFunctionName).toBe('defineTool')
+    expect(options.exportFunctionName).toEqual(['defineTool'])
     expect(options.logLevel).toBe('verbose')
+    expect(options.generateWorker).toBe(true)
+    expect(options.workerOutFile).toBe('generated/worker.ts')
   })
 
   it('includes default ignore patterns', () => {
@@ -644,7 +660,7 @@ describe('resolveToolDiscoveryOptions', () => {
 import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { toolDiscoveryPlugin } from '../src/vite/index.ts'
+import { toolDiscoveryPlugin, generateWorkerContent } from '../src/vite/index.ts'
 
 describe('integration: toolDiscoveryPlugin', () => {
   let tempDir: string
@@ -688,6 +704,11 @@ describe('integration: toolDiscoveryPlugin', () => {
     return readFile(join(tempDir, 'src/__generated__/tool-registry.gen.ts'), 'utf-8')
   }
 
+  async function readWorker(): Promise<string> {
+    const { readFile } = await import('fs/promises')
+    return readFile(join(tempDir, 'src/__generated__/tool-worker.gen.ts'), 'utf-8')
+  }
+
   it('discovers tools and generates registry', async () => {
     await setupTempProject()
 
@@ -704,6 +725,41 @@ describe('integration: toolDiscoveryPlugin', () => {
       expect(registry).toContain('export const tools = {')
       expect(registry).toContain('calculator,')
       expect(registry).toContain("| 'calculator'")
+    } finally {
+      await cleanup()
+    }
+  })
+
+  it('generates worker entry when enabled', async () => {
+    await setupTempProject()
+
+    try {
+      await writeToolFile(
+        'calculator.ts',
+        `export const calculator = createIsomorphicTool('calculator').build()`
+      )
+
+      const plugin = toolDiscoveryPlugin({
+        dir: 'src/tools',
+        outFile: 'src/__generated__/tool-registry.gen.ts',
+        workerOutFile: 'src/__generated__/tool-worker.gen.ts',
+        generateWorker: true,
+        pattern: '**/*.{ts,tsx}',
+        logLevel: 'silent',
+      })
+
+      if (plugin.configResolved) {
+        ; (plugin.configResolved as (config: { root: string }) => void)({ root: tempDir })
+      }
+      if (plugin.buildStart) {
+        await (plugin.buildStart as () => Promise<void>)()
+      }
+
+      const worker = await readWorker()
+      expect(worker).toContain("import { calculator } from '../tools/calculator'")
+      expect(worker).toContain("{ name: 'calculator', handler: calculator")
+      expect(worker).toContain('createWorkerToolRegistry')
+      expect(worker).toContain('runWorker')
     } finally {
       await cleanup()
     }
