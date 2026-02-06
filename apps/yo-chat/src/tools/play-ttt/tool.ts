@@ -199,7 +199,7 @@ Analyze the board and choose your strategy.`,
                 content: `Strategy chosen: ${chosenStrategy.name}. Now pick a cell (0-8) from empty positions.`,
                 tool_call_id: chosenStrategy.id,
               },
-            ] as any, // Using any because Message type doesn't include tool_calls
+            ],
             schema: MoveSchema,
             retries: 3,
           })

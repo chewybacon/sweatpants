@@ -79,7 +79,7 @@ export interface McpWorkerInitData {
   /** Optional system prompt */
   systemPrompt?: string
   /** Optional parent messages */
-  parentMessages?: Message[]
+  parentMessages?: ExtendedMessage[]
 }
 
 // =============================================================================

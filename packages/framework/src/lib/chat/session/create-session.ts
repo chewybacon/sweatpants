@@ -548,8 +548,8 @@ export function* runChatSession(
                 const conversationMessages: ApiMessage[] = result.conversationState.messages.map(msg => ({
                   role: msg.role,
                   content: msg.content,
-                  tool_calls: (msg as any).tool_calls,
-                  tool_call_id: (msg as any).tool_call_id,
+                  ...(msg.tool_calls !== undefined && { tool_calls: msg.tool_calls }),
+                  ...(msg.tool_call_id !== undefined && { tool_call_id: msg.tool_call_id }),
                 }))
                 
                 // Add assistant message with tool_calls

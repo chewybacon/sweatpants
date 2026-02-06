@@ -61,6 +61,7 @@ import type {
 // import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry.ts'
 import type { ElicitsMap, RawElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
+import { extendedMessageToProviderMessage } from '../../lib/chat/mcp-tools/message-conversion.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 
 // =============================================================================
@@ -337,17 +338,8 @@ export function createPluginSessionManager(
                 // Handle sampling server-side using the provider
                 const sampleEvent = event as SampleRequestEvent
                 try {
-                  // Convert messages to chat format
-                  const chatMessages = sampleEvent.messages.map(msg => {
-                    const mapped: any = {
-                      role: msg.role as 'user' | 'assistant' | 'system',
-                      content: msg.content,
-                    }
-                    // Preserve tool_calls and tool_call_id for proper provider conversation history
-                    if ((msg as any).tool_calls) mapped.tool_calls = (msg as any).tool_calls
-                    if ((msg as any).tool_call_id) mapped.tool_call_id = (msg as any).tool_call_id
-                    return mapped
-                  })
+                  // Convert ExtendedMessage[] to chat provider Message[]
+                  const chatMessages = sampleEvent.messages.map(extendedMessageToProviderMessage)
 
                   // Build provider options
                   const streamOptions: ChatStreamOptions = {}

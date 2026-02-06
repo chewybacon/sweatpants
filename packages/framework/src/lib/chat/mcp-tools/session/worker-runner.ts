@@ -46,8 +46,9 @@ import type {
   WorkerSampleSchemaConfigMessages,
 } from './worker-types.js'
 import type {
-  Message,
   ExtendedMessage,
+  ToolCallMessage,
+  ToolResultMessage,
   LogLevel,
   SampleResultBase,
   SampleResultWithParsed,
@@ -68,10 +69,65 @@ import {
 // =============================================================================
 
 /**
- * Convert framework Message/ExtendedMessage to core WorkerMessage.
+ * Type guard for ToolCallMessage (assistant message with tool_calls).
  */
-function toWorkerMessage(msg: Message | ExtendedMessage): WorkerMessage {
-  // If it's a basic Message with string content
+function isToolCallMessage(msg: ExtendedMessage): msg is ToolCallMessage {
+  return 'tool_calls' in msg && Array.isArray((msg as ToolCallMessage).tool_calls)
+}
+
+/**
+ * Type guard for ToolResultMessage (tool result with tool_call_id).
+ */
+function isToolResultMessage(msg: ExtendedMessage): msg is ToolResultMessage {
+  return 'tool_call_id' in msg && (msg as ToolResultMessage).role === 'tool'
+}
+
+/**
+ * Convert framework Message/ExtendedMessage to core WorkerMessage.
+ *
+ * Handles all ExtendedMessage variants:
+ * - Message (string content) → WorkerMessage with string content
+ * - McpMessage (content blocks) → passthrough as WorkerMessage
+ * - ToolCallMessage (OpenAI tool_calls) → WorkerMessage with tool_use content blocks
+ * - ToolResultMessage (OpenAI tool result) → WorkerMessage with tool_result content block (role: 'user')
+ */
+function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
+  // ToolCallMessage → assistant message with tool_use content blocks
+  if (isToolCallMessage(msg)) {
+    const contentBlocks: WorkerMessage['content'] = []
+    
+    // Preserve any text content alongside the tool calls
+    if (msg.content) {
+      contentBlocks.push({ type: 'text' as const, text: msg.content })
+    }
+    
+    // Convert each tool call to a tool_use content block
+    for (const tc of msg.tool_calls) {
+      contentBlocks.push({
+        type: 'tool_use' as const,
+        id: tc.id,
+        name: tc.function.name,
+        input: tc.function.arguments,
+      })
+    }
+    
+    return { role: 'assistant', content: contentBlocks }
+  }
+  
+  // ToolResultMessage → user message with tool_result content block
+  // MCP convention: tool results are sent as role 'user' with tool_result content blocks
+  if (isToolResultMessage(msg)) {
+    return {
+      role: 'user',
+      content: [{
+        type: 'tool_result' as const,
+        toolUseId: msg.tool_call_id,
+        content: [{ type: 'text' as const, text: msg.content }],
+      }],
+    }
+  }
+  
+  // Basic Message with string content
   if (typeof msg.content === 'string') {
     return {
       role: msg.role as 'user' | 'assistant',
@@ -79,7 +135,7 @@ function toWorkerMessage(msg: Message | ExtendedMessage): WorkerMessage {
     }
   }
   
-  // It's an McpMessage with content blocks - pass through
+  // McpMessage with content blocks - pass through
   // The core transport supports the same content block structure
   return msg as WorkerMessage
 }

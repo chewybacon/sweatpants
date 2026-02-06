@@ -454,8 +454,7 @@ describe('ctx.sample() with tools', () => {
         const strategyCall = strategyResult.toolCalls[0]!
 
         // L2: Move with tool result context
-        // Note: Using 'as any' because Message type doesn't include tool_calls/tool role
-        // The actual sampling provider handles these extended message types
+        // The ExtendedMessage type now supports tool_calls and tool role natively
         const move = yield* ctx.sample({
           messages: [
             { role: 'user', content: 'Current board: empty' },
@@ -473,7 +472,7 @@ describe('ctx.sample() with tools', () => {
               content: `Playing ${strategyCall.name}. Pick a cell.`,
               tool_call_id: strategyCall.id,
             },
-          ] as any,
+          ],
           schema: z.object({ cell: z.number() }),
         })
 
@@ -554,7 +553,7 @@ describe('Decision tree pattern (L1 tools -> L2 schema)', () => {
         const chosen = strategyResult.toolCalls[0]!
 
         // Level 2: Move (schema)
-        // Note: Using 'as any' because Message type doesn't include tool_calls/tool role
+        // The ExtendedMessage type now supports tool_calls and tool role natively
         const move = yield* ctx.sample({
           messages: [
             { role: 'user', content: `Board: ${params.board}` },
@@ -572,7 +571,7 @@ describe('Decision tree pattern (L1 tools -> L2 schema)', () => {
               content: `Strategy: ${chosen.name}. Pick cell.`,
               tool_call_id: chosen.id,
             },
-          ] as any,
+          ],
           schema: MoveSchema,
         })
 

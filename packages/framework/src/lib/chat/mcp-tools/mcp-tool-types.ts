@@ -507,7 +507,61 @@ export interface Message {
  * }
  * ```
  */
-export type ExtendedMessage = Message | McpMessage
+/**
+ * A single tool call within a ToolCallMessage.
+ * Vendor-neutral representation of a function-calling tool invocation.
+ */
+export interface ToolCallMessageToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: Record<string, unknown> }
+}
+
+/**
+ * An assistant message that includes tool calls (function-calling style).
+ *
+ * This is the OpenAI-compatible representation. Use this when tool authors
+ * pass conversation history that includes tool calls. The framework converts
+ * to/from MCP content blocks internally.
+ *
+ * @example
+ * ```typescript
+ * const msg: ToolCallMessage = {
+ *   role: 'assistant',
+ *   content: 'I will check the weather',
+ *   tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: { city: 'NYC' } } }]
+ * }
+ * ```
+ */
+export interface ToolCallMessage {
+  role: 'assistant'
+  content: string
+  tool_calls: [ToolCallMessageToolCall, ...ToolCallMessageToolCall[]]
+}
+
+/**
+ * A tool result message (function-calling style).
+ *
+ * This is the OpenAI-compatible representation. Use this when tool authors
+ * pass conversation history that includes tool results. The framework converts
+ * to/from MCP content blocks internally.
+ *
+ * @example
+ * ```typescript
+ * const msg: ToolResultMessage = {
+ *   role: 'tool',
+ *   content: 'The weather in NYC is 72F',
+ *   tool_call_id: 'call_1'
+ * }
+ * ```
+ */
+export interface ToolResultMessage {
+  role: 'tool'
+  content: string
+  tool_call_id: string
+}
+
+export type ExtendedMessage = Message | McpMessage | ToolCallMessage | ToolResultMessage
 
 // =============================================================================
 // SAMPLING TYPES
@@ -903,8 +957,8 @@ export interface SampleToolsConfig extends SampleHelperConfigBase {
  * Config for sampleTools helper with explicit messages.
  */
 export interface SampleToolsConfigMessages extends SampleHelperConfigBase {
-  /** Explicit messages array */
-  messages: Message[]
+  /** Explicit messages array (supports tool call/result messages) */
+  messages: ExtendedMessage[]
   /** Tools available for the model to call */
   tools: SamplingToolDefinition[]
   /**
@@ -929,8 +983,8 @@ export interface SampleSchemaConfig<T> extends SampleHelperConfigBase {
  * Config for sampleSchema helper with explicit messages.
  */
 export interface SampleSchemaConfigMessages<T> extends SampleHelperConfigBase {
-  /** Explicit messages array */
-  messages: Message[]
+  /** Explicit messages array (supports tool call/result messages) */
+  messages: ExtendedMessage[]
   /** Zod schema for structured output */
   schema: z.ZodType<T>
 }

@@ -50,7 +50,7 @@ import type {
   ToolSessionEvent,
   RawSampleResult,
 } from './types.ts'
-import type { RawElicitResult, Message } from '../mcp-tool-types.ts'
+import type { RawElicitResult, ExtendedMessage } from '../mcp-tool-types.ts'
 import type { McpWorkerInitData } from './worker-types.ts'
 import { WorkerSessionStateContext, type WorkerSessionState } from './worker-session-context.ts'
 import { WorkerSessionApi } from './worker-session-api.ts'
@@ -74,7 +74,7 @@ export interface WorkerToolSessionOptions {
   /** Optional system prompt */
   systemPrompt?: string
   /** Optional parent messages */
-  parentMessages?: Message[]
+  parentMessages?: ExtendedMessage[]
   /** Extra execArgv for the worker thread (e.g., ['--import', 'tsx'] for TypeScript support) */
   execArgv?: string[]
 }

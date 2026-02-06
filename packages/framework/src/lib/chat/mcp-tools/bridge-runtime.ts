@@ -620,7 +620,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             // Build messages for this attempt
-            let messages: Message[]
+            let messages: ExtendedMessage[]
             
             if ('prompt' in config && config.prompt) {
               const retryHint = attempt > 0 
@@ -632,10 +632,18 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               // Messages mode - add retry hint to last message if retrying
               if (attempt > 0 && config.messages.length > 0) {
                 const lastMsg = config.messages[config.messages.length - 1]!
-                messages = [
-                  ...config.messages.slice(0, -1),
-                  { ...lastMsg, content: lastMsg.content + '\n\n[IMPORTANT: You must call one of the available tools.]' }
-                ]
+                if (typeof lastMsg.content === 'string') {
+                  messages = [
+                    ...config.messages.slice(0, -1),
+                    { ...lastMsg, content: lastMsg.content + '\n\n[IMPORTANT: You must call one of the available tools.]' } as ExtendedMessage,
+                  ]
+                } else {
+                  // Non-string content (MCP/tool call messages) — append retry as new user message
+                  messages = [
+                    ...config.messages,
+                    { role: 'user', content: '[IMPORTANT: You must call one of the available tools.]' },
+                  ]
+                }
               } else {
                 messages = config.messages
               }
@@ -749,7 +757,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           
           for (let attempt = 0; attempt <= maxRetries; attempt++) {
             // Build messages for this attempt
-            let messages: Message[]
+            let messages: ExtendedMessage[]
             
             if ('prompt' in config && config.prompt) {
               const retryHint = attempt > 0 && lastError
@@ -761,10 +769,18 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               // Messages mode - add retry hint to last message if retrying
               if (attempt > 0 && config.messages.length > 0 && lastError) {
                 const lastMsg = config.messages[config.messages.length - 1]!
-                messages = [
-                  ...config.messages.slice(0, -1),
-                  { ...lastMsg, content: lastMsg.content + `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]` }
-                ]
+                if (typeof lastMsg.content === 'string') {
+                  messages = [
+                    ...config.messages.slice(0, -1),
+                    { ...lastMsg, content: lastMsg.content + `\n\n[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]` } as ExtendedMessage,
+                  ]
+                } else {
+                  // Non-string content (MCP/tool call messages) — append retry as new user message
+                  messages = [
+                    ...config.messages,
+                    { role: 'user', content: `[IMPORTANT: Your previous response was invalid: ${lastError}. Please respond with valid JSON.]` },
+                  ]
+                }
               } else {
                 messages = config.messages
               }
