@@ -148,7 +148,8 @@ export interface BackgroundTaskOptions {
    * })
    * ```
    */
-  contexts?: ContextEntry[]
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous collection; type safety enforced at ContextEntry construction
+  contexts?: ContextEntry<any>[]
   
   /**
    * Name for logging/debugging purposes.

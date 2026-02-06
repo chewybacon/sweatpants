@@ -215,6 +215,7 @@ describe('OpenAI Provider Conformance', () => {
         toolCalls: [
           {
             id: 'call_123',
+            type: 'function',
             function: {
               name: 'get_weather',
               arguments: { location: 'NYC' },

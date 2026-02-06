@@ -68,11 +68,54 @@ interface OpenAIResponsesRequest {
   }
 }
 
+/**
+ * Minimal interface for a Node.js-style readable stream body.
+ * In Node.js, `fetch().body` may be a Node.js `Readable` rather than a Web
+ * `ReadableStream`. We only need the `on()` method to bridge it.
+ */
+interface NodeReadableBody {
+  on(event: 'data', cb: (chunk: Buffer) => void): void
+  on(event: 'end', cb: () => void): void
+  on(event: 'error', cb: (err: Error) => void): void
+}
+
+/**
+ * Bridge a Node.js-style readable body to a Web ReadableStream.
+ * Used when `response.body` from `fetch()` is not a Web ReadableStream
+ * (common in Node.js runtimes).
+ */
+function toWebReadableStream(nodeBody: NodeReadableBody): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      nodeBody.on('data', (chunk: Buffer) => {
+        controller.enqueue(new Uint8Array(chunk))
+      })
+      nodeBody.on('end', () => {
+        controller.close()
+      })
+      nodeBody.on('error', (err: Error) => {
+        controller.error(err)
+      })
+    }
+  })
+}
+
 // Streaming event types we care about
 interface OpenAIStreamEvent {
   type: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  [key: string]: any
+  [key: string]: unknown
+}
+
+/**
+ * Extract text from an OpenAI SSE delta field.
+ * The delta can be a plain string or an object with a `text` property.
+ */
+function extractDeltaText(delta: unknown): string {
+  if (typeof delta === 'string') return delta
+  if (delta && typeof delta === 'object' && 'text' in delta && typeof (delta as { text: unknown }).text === 'string') {
+    return (delta as { text: string }).text
+  }
+  return ''
 }
 
 // Tracking state for function calls being built up
@@ -228,26 +271,9 @@ export const openaiProvider: ChatProvider = {
       }
 
       // In Node.js, response.body might be a Node.js Readable, not a Web ReadableStream
-      let readableStream: ReadableStream<Uint8Array>
-      if (response.body instanceof ReadableStream) {
-        readableStream = response.body
-      } else {
-        // Convert Node.js Readable to Web ReadableStream
-        const nodeStream = response.body as any
-        readableStream = new ReadableStream({
-          start(controller) {
-            nodeStream.on('data', (chunk: Buffer) => {
-              controller.enqueue(new Uint8Array(chunk))
-            })
-            nodeStream.on('end', () => {
-              controller.close()
-            })
-            nodeStream.on('error', (err: Error) => {
-              controller.error(err)
-            })
-          }
-        })
-      }
+      const readableStream = response.body instanceof ReadableStream
+        ? response.body
+        : toWebReadableStream(response.body as NodeReadableBody)
 
       const sseStream = parseSSE(readableStream)
       const subscription: Subscription<
@@ -309,8 +335,7 @@ export const openaiProvider: ChatProvider = {
           switch (event.type) {
             // Text output deltas
             case 'response.output_text.delta': {
-              const delta = event['delta']
-              const textDelta = typeof delta === 'string' ? delta : (delta as any)?.text || ''
+              const textDelta = extractDeltaText(event['delta'])
               if (textDelta) {
                 textBuffer += textDelta
                 pendingEvents.push({ type: 'text', content: textDelta })
@@ -320,8 +345,7 @@ export const openaiProvider: ChatProvider = {
 
             // Reasoning summary text (for "thinking" UI)
             case 'response.reasoning_summary_text.delta': {
-              const delta = event['delta']
-              const textDelta = typeof delta === 'string' ? delta : (delta as any)?.text || ''
+              const textDelta = extractDeltaText(event['delta'])
               if (textDelta) {
                 thinkingBuffer += textDelta
                 pendingEvents.push({ type: 'thinking', content: textDelta })
@@ -351,8 +375,7 @@ export const openaiProvider: ChatProvider = {
             // Function call arguments delta
             case 'response.function_call_arguments.delta': {
               const itemId = event['item_id'] as string
-              const delta = event['delta']
-              const textDelta = typeof delta === 'string' ? delta : (delta as any)?.text || ''
+              const textDelta = extractDeltaText(event['delta'])
               const pending = pendingFunctionCalls.get(itemId)
               if (pending && textDelta) {
                 pending.arguments += textDelta
@@ -375,6 +398,7 @@ export const openaiProvider: ChatProvider = {
 
                 const toolCall: ToolCall = {
                   id: pending.callId,
+                  type: 'function',
                   function: {
                     name: pending.name,
                     arguments: args,
@@ -394,11 +418,8 @@ export const openaiProvider: ChatProvider = {
 
             // Response completed - extract usage
             case 'response.completed': {
-              const respUsage = event['response']?.usage as {
-                input_tokens?: number
-                output_tokens?: number
-                total_tokens?: number
-              }
+              const resp = event['response'] as { usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } } | undefined
+              const respUsage = resp?.usage
               if (respUsage) {
                 usage = {
                   promptTokens: respUsage.input_tokens ?? 0,
