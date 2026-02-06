@@ -135,7 +135,7 @@ export async function runToolWorker<T = unknown>(
 
         *elicit<TContent>(
           key: string,
-          options: { message: string; schema: Record<string, unknown> }
+          options: { message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
         ): Operation<WorkerElicitResponse & { content?: TContent }> {
           const id = generateRequestId();
           const request: WorkerElicitRequest = {
@@ -144,6 +144,7 @@ export async function runToolWorker<T = unknown>(
             key,
             message: options.message,
             schema: options.schema,
+            ...(options.context !== undefined && { context: options.context }),
           };
 
           return yield* sendRequestToHost<WorkerElicitRequest, WorkerElicitResponse>(request) as Operation<

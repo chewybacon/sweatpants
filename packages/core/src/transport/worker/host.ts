@@ -88,6 +88,13 @@ export interface WorkerPrincipalOptions {
   initData: WorkerInitData;
 
   /**
+   * Additional exec arguments for the worker thread.
+   * Use this to pass flags like '--import tsx' or '--experimental-strip-types'
+   * to enable TypeScript support in worker threads during development.
+   */
+  execArgv?: string[];
+
+  /**
    * Handler for processing requests from the worker.
    * This is called for each sample/elicit request.
    */
@@ -124,9 +131,11 @@ export interface WorkerPrincipalResult<T = unknown> {
 export function* createWorkerPrincipal<T = unknown>(
   options: WorkerPrincipalOptions
 ): Operation<WorkerPrincipalResult<T>> {
-  const { workerUrl, initData, requestHandler } = options;
+  const { workerUrl, initData, requestHandler, execArgv } = options;
 
   return yield* resource<WorkerPrincipalResult<T>>(function* (provide) {
+    let outcome: WorkerResult<T> | null = null;
+    let resultSettled = false;
     // Create the worker using @effectionx/worker
     // Type parameters:
     // TSend = never (host doesn't send requests via worker.send() in our model)
@@ -139,29 +148,72 @@ export function* createWorkerPrincipal<T = unknown>(
         {
           type: "module",
           data: initData,
-        }
+          // Pass execArgv to enable TypeScript loaders in worker threads.
+          // This flows through: useWorker -> web-worker -> node:worker_threads
+          ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
+        } as any
       );
 
     // Spawn the forEach handler to process worker requests
     // This runs in the background and handles all requests from the worker
     yield* spawn(function* () {
-      // Use worker.forEach with the progress-enabled signature
-      // WRequest = WorkerRequest (what worker sends)
-      // WResponse = WorkerResponse (what we send back)
-      // WProgress = WorkerProgressMessage (progress updates)
-      yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
-        function* (request, ctx) {
-          // Call the user-provided request handler
-          return yield* requestHandler(request, ctx);
+      try {
+        // Use worker.forEach with the progress-enabled signature
+        // WRequest = WorkerRequest (what worker sends)
+        // WResponse = WorkerResponse (what we send back)
+        // WProgress = WorkerProgressMessage (progress updates)
+        yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
+          function* (request, ctx) {
+            // Call the user-provided request handler
+            return yield* requestHandler(request, ctx);
+          }
+        );
+      } catch (error) {
+        if (!resultSettled) {
+          const err = error as Error;
+          outcome = {
+            type: "error",
+            error: {
+              name: err.name,
+              message: err.message,
+              stack: err.stack,
+            },
+          };
+          resultSettled = true;
         }
-      );
+      }
     });
 
     // Create result operation wrapper
     const resultOperation: Operation<WorkerResult<T>> = {
       *[Symbol.iterator]() {
-        // Yield the worker's final result
-        return yield* worker;
+        if (resultSettled && outcome) {
+          return outcome;
+        }
+
+        try {
+          // Yield the worker's final result
+          const result = yield* worker;
+          if (!resultSettled) {
+            outcome = result;
+            resultSettled = true;
+          }
+          return result;
+        } catch (error) {
+          if (!resultSettled) {
+            const err = error as Error;
+            outcome = {
+              type: "error",
+              error: {
+                name: err.name,
+                message: err.message,
+                stack: err.stack,
+              },
+            };
+            resultSettled = true;
+          }
+          return outcome as WorkerResult<T>;
+        }
       },
     };
 
