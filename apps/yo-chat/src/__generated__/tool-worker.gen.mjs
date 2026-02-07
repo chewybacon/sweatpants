@@ -430,7 +430,8 @@ Pick your move.`
           reasoning
         });
       } else {
-        const lastMove = moveHistory.length > 0 ? { position: moveHistory[moveHistory.length - 1].position, player: moveHistory[moveHistory.length - 1].player } : void 0;
+        const lastEntry = moveHistory[moveHistory.length - 1];
+        const lastMove = lastEntry ? { position: lastEntry.position, player: lastEntry.player } : void 0;
         const result2 = yield* ctx.elicit("pickMove", {
           message: modelGoesFirst && board.filter((c) => c !== null).length === 1 ? `I'm ${modelSymbol}! I made the first move. Your turn as ${userSymbol}!` : `Your turn! You're playing as ${userSymbol}.`,
           board,
@@ -647,7 +648,8 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
           moveNumber: moveHistory.length + 1
         });
       } else {
-        const lastMove = moveHistory.length > 0 ? { position: moveHistory[moveHistory.length - 1].position, player: moveHistory[moveHistory.length - 1].player } : void 0;
+        const lastEntry = moveHistory[moveHistory.length - 1];
+        const lastMove = lastEntry ? { position: lastEntry.position, player: lastEntry.player } : void 0;
         const result2 = yield* ctx.elicit("pickMove", {
           message: modelGoesFirst && board.filter((c) => c !== null).length === 1 ? `I'm ${modelSymbol}! I made the first move. Your turn as ${userSymbol}!` : `Your turn! You're playing as ${userSymbol}.`,
           board,
