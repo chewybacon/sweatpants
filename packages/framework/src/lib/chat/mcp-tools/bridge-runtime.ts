@@ -283,7 +283,7 @@ export interface BridgeHostConfig<
   limits?: McpToolLimits
 
   /** Initial messages (parent context) */
-  parentMessages?: Message[]
+  parentMessages?: ExtendedMessage[]
 
   /** Initial system prompt */
   systemPrompt?: string
@@ -375,7 +375,7 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
 interface BranchState<TElicits extends ElicitsMap> {
   messages: Message[]
   systemPrompt?: string
-  parentMessages: readonly Message[]
+  parentMessages: readonly ExtendedMessage[]
   parentSystemPrompt?: string
   depth: number
   limits: McpToolLimits
@@ -1114,7 +1114,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           const newState: BranchState<TElicits> = {
             messages: newMessages,
-            parentMessages: state.messages as readonly Message[],
+            parentMessages: state.messages as readonly ExtendedMessage[],
             depth: newDepth,
             limits: newLimits,
             tokenTracker: subTokenTracker,
@@ -1361,7 +1361,7 @@ export function runBridgeTool<
   signal?: AbortSignal
   callId?: string
   limits?: McpToolLimits
-  parentMessages?: Message[]
+  parentMessages?: ExtendedMessage[]
   systemPrompt?: string
   onLog?: (level: LogLevel, message: string) => void
   onNotify?: (message: string, progress?: number) => void

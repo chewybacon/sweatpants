@@ -102,6 +102,9 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
     throw new Error('Either runtime or emissionChannel must be provided')
   }
 
+  // Capture as const after the guard so TS can narrow in closures below
+  const resolvedRuntime = runtime
+
   const ctx: PluginClientContext<TElicitRequest> = {
     callId,
     signal,
@@ -121,7 +124,7 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
       }
 
       // Emit and wait for response
-      return yield* runtime!.emit<ComponentEmissionPayload, TResponse>(
+      return yield* resolvedRuntime.emit<ComponentEmissionPayload, TResponse>(
         COMPONENT_EMISSION_TYPE,
         payload
       )
