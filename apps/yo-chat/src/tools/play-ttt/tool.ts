@@ -230,8 +230,9 @@ Analyze the board and choose your strategy.`,
           // =================================================================
           // USER'S TURN: Elicitation
           // =================================================================
-          const lastMove = moveHistory.length > 0 
-            ? { position: moveHistory[moveHistory.length - 1]!.position, player: moveHistory[moveHistory.length - 1]!.player }
+          const lastEntry = moveHistory[moveHistory.length - 1]
+          const lastMove = lastEntry
+            ? { position: lastEntry.position, player: lastEntry.player }
             : undefined
 
           const result = yield* ctx.elicit('pickMove', {

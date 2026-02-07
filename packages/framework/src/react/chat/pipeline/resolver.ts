@@ -140,8 +140,8 @@ function topologicalSort(
 
   for (const processor of allProcessors) {
     for (const dep of processor.dependencies ?? []) {
-      dependents.get(dep)!.add(processor.name)
-      inDegree.set(processor.name, inDegree.get(processor.name)! + 1)
+      dependents.get(dep)?.add(processor.name)
+      inDegree.set(processor.name, (inDegree.get(processor.name) ?? 0) + 1)
     }
   }
 
@@ -156,12 +156,15 @@ function topologicalSort(
   // Process the queue
   const result: Processor[] = []
   while (queue.length > 0) {
-    const name = queue.shift()!
-    result.push(byName.get(name)!)
+    const name = queue.shift()
+    if (!name) break
+
+    const proc = byName.get(name)
+    if (proc) result.push(proc)
 
     // "Remove" this node by decrementing in-degree of dependents
-    for (const dependent of dependents.get(name)!) {
-      const newDegree = inDegree.get(dependent)! - 1
+    for (const dependent of dependents.get(name) ?? []) {
+      const newDegree = (inDegree.get(dependent) ?? 0) - 1
       inDegree.set(dependent, newDegree)
       if (newDegree === 0) {
         queue.push(dependent)

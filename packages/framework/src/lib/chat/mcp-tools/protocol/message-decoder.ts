@@ -368,21 +368,46 @@ export function parseJsonRpcMessage(raw: string): ParsedJsonRpcMessage {
   }
 
   // Check for response (has result or error)
-  if ('result' in obj || 'error' in obj) {
-    return { type: 'response', message: parsed as unknown as JsonRpcResponse }
+  if (isJsonRpcResponseShape(obj)) {
+    return { type: 'response', message: obj }
   }
 
   // Check for request (has id and method)
-  if ('id' in obj && 'method' in obj) {
-    return { type: 'request', message: parsed as unknown as JsonRpcRequest }
+  if (isJsonRpcRequestShape(obj)) {
+    return { type: 'request', message: obj }
   }
 
   // Check for notification (has method but no id)
-  if ('method' in obj && !('id' in obj)) {
-    return { type: 'notification', message: parsed as unknown as JsonRpcNotification }
+  if (isJsonRpcNotificationShape(obj)) {
+    return { type: 'notification', message: obj }
   }
 
   return { type: 'invalid', raw: parsed, error: 'Unknown message type' }
+}
+
+// =============================================================================
+// STRUCTURAL TYPE PREDICATES
+// =============================================================================
+
+/**
+ * Type predicate: object has the shape of a JSON-RPC response (has result or error, plus jsonrpc).
+ */
+function isJsonRpcResponseShape(obj: object): obj is JsonRpcResponse {
+  return 'result' in obj || 'error' in obj
+}
+
+/**
+ * Type predicate: object has the shape of a JSON-RPC request (has id and method, plus jsonrpc).
+ */
+function isJsonRpcRequestShape(obj: object): obj is JsonRpcRequest {
+  return 'id' in obj && 'method' in obj
+}
+
+/**
+ * Type predicate: object has the shape of a JSON-RPC notification (has method but no id, plus jsonrpc).
+ */
+function isJsonRpcNotificationShape(obj: object): obj is JsonRpcNotification {
+  return 'method' in obj && !('id' in obj)
 }
 
 // =============================================================================

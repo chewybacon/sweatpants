@@ -62,8 +62,10 @@ export function createWebStreamFromBuffer(
 
       try {
         // Run the Effection operation in the captured scope
+        // Extract to local const so TS can narrow after the guard above
+        const sub = subscription
         const result = await scope.run(function* () {
-          return yield* subscription!.next()
+          return yield* sub.next()
         })
 
         if (result.done) {

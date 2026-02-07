@@ -211,8 +211,9 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
           // =================================================================
           // USER'S TURN: Elicitation with exchange accumulation
           // =================================================================
-          const lastMove = moveHistory.length > 0
-            ? { position: moveHistory[moveHistory.length - 1]!.position, player: moveHistory[moveHistory.length - 1]!.player }
+          const lastEntry = moveHistory[moveHistory.length - 1]
+          const lastMove = lastEntry
+            ? { position: lastEntry.position, player: lastEntry.player }
             : undefined
 
           const result = yield* ctx.elicit('pickMove', {

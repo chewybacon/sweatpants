@@ -39,6 +39,7 @@ import type { CorrelatedTransport, ElicitResponse, NotifyResponse } from '@sweat
 import { z } from 'zod'
 import type {
   Message,
+  ExtendedMessage,
   LogLevel,
   McpToolContext,
   McpToolContextWithElicits,
@@ -124,7 +125,7 @@ export interface CoreContextOptions {
   /** Tool call ID */
   callId: string
   /** Parent messages (readonly) */
-  parentMessages?: readonly Message[]
+  parentMessages?: readonly ExtendedMessage[]
   /** Parent system prompt */
   parentSystemPrompt?: string
   /** Current branch depth */
@@ -214,22 +215,20 @@ export function createContextFromTransport(
     }
 
     // Add schema if present (structured output)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const configAny = config as any
-    if (configAny['schema']) {
-      payload['schema'] = z.toJSONSchema(configAny['schema'] as z.ZodType)
+    if ('schema' in config && config.schema) {
+      payload['schema'] = z.toJSONSchema(config.schema as z.ZodType)
     }
 
     // Add tools if present
-    if (configAny['tools']) {
-      payload['tools'] = configAny['tools'].map((tool: { name: string; description?: string; inputSchema: unknown }) => ({
+    if ('tools' in config && config.tools) {
+      payload['tools'] = config.tools.map((tool: { name: string; description?: string; inputSchema: unknown }) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema instanceof Object && 'parse' in tool.inputSchema
           ? z.toJSONSchema(tool.inputSchema as z.ZodType)
           : tool.inputSchema,
       }))
-      payload['toolChoice'] = configAny['toolChoice'] ?? 'auto'
+      payload['toolChoice'] = ('toolChoice' in config ? config.toolChoice : undefined) ?? 'auto'
     }
 
     // Send request through transport
@@ -271,13 +270,13 @@ export function createContextFromTransport(
     }
 
     // Build result based on what was requested
-    if ('schema' in config && configAny.schema) {
+    if ('schema' in config && config.schema) {
       // Structured output result
       const toolCallId = generateId(`${callId}:schema`)
       const parsed = rawResult.parsed ?? null
       const exchange = parsed !== null
         ? createStructuredSampleExchange(promptText, parsed, toolCallId)
-        : (createRawSampleExchange(promptText, rawResult.text) as unknown as SampleExchange<null>)
+        : { ...createRawSampleExchange(promptText, rawResult.text), parsed: null as null }
 
       return {
         text: rawResult.text,

@@ -1145,16 +1145,16 @@ export interface McpToolContext {
 
   /**
    * Messages from the parent context.
-   * This is the conversation history up to when this branch was created.
-   * Read-only - modifications don't affect parent.
-   */
-  readonly parentMessages: readonly Message[]
+    * This is the conversation history up to when this branch was created.
+    * Read-only - modifications don't affect parent.
+    */
+   readonly parentMessages: readonly ExtendedMessage[]
 
   /**
-   * System prompt from the parent context.
-   * Undefined if no system prompt was set.
-   */
-  readonly parentSystemPrompt: string | undefined
+    * System prompt from the parent context.
+    * Undefined if no system prompt was set.
+    */
+   readonly parentSystemPrompt: string | undefined
 
   // ---------------------------------------------------------------------------
   // Current branch state
@@ -1414,7 +1414,7 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   // Parent context (read-only) - same as McpToolContext
   // ---------------------------------------------------------------------------
 
-  readonly parentMessages: readonly Message[]
+  readonly parentMessages: readonly ExtendedMessage[]
   readonly parentSystemPrompt: string | undefined
 
   // ---------------------------------------------------------------------------
