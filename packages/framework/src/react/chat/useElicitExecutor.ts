@@ -130,7 +130,11 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
   useEffect(() => {
     return () => {
       for (const task of tasksRef.current.values()) {
-        task.halt().catch(() => {})
+        task.halt().catch((e) => {
+          if (e instanceof Error && e.message !== 'halted') {
+            console.error('[useElicitExecutor] halt error:', e)
+          }
+        })
       }
       tasksRef.current.clear()
       executingRef.current.clear()
