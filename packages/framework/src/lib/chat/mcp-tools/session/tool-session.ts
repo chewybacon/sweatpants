@@ -23,7 +23,6 @@ import {
   resource,
   each,
   createQueue,
-  sleep,
 } from 'effection'
 import type {
   ToolSession,
@@ -246,8 +245,8 @@ export function createToolSession<
       }
     })
 
-    // Give spawned tasks a chance to start and produce initial events
-    yield* sleep(0)
+    // Spawned tasks are now active. Events are buffered by createQueue()
+    // and will be available when the consumer calls eventQueue.next().
 
     // Create the session interface
     const session: ToolSession<TResult> = {
@@ -284,11 +283,6 @@ export function createToolSession<
         state.pendingElicit = null
         state.status = 'running'
         pending.signal.send({ id: pending.elicitRequestId, result: response })
-        // Yield multiple times to let the tool execution process the response
-        // This is a workaround for cross-scope signal delivery
-        yield* sleep(0)
-        yield* sleep(0)
-        yield* sleep(0)
       },
 
       *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
@@ -304,8 +298,6 @@ export function createToolSession<
         state.pendingSample = null
         state.status = 'running'
         pending.signal.send({ result: response })
-        // Yield to let the tool execution process the response and add next event
-        yield* sleep(0)
       },
 
       *emitWakeUp(): Operation<void> {
