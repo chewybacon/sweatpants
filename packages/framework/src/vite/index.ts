@@ -15,6 +15,7 @@ import type { ToolDiscoveryOptions } from './types.ts'
 
 export type { ToolDiscoveryOptions }
 export { toolDiscoveryPlugin }
+export { nodeWorkerPlugin } from './node-worker-plugin.ts'
 
 // Test utilities - exported for testing discovery logic without file I/O
 export {
