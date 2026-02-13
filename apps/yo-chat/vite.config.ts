@@ -4,7 +4,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
-import { frameworkPlugin } from '@sweatpants/framework/vite'
+import { frameworkPlugin, nodeWorkerPlugin } from '@sweatpants/framework/vite'
 import { imagetools } from "vite-imagetools";
 const isProd = process.env['NODE_ENV'] === 'production'
 
@@ -25,6 +25,8 @@ const config = defineConfig({
   },
 
   plugins: [
+    // Node.js worker_threads support with ?nodeWorker and ?modulePath imports
+    nodeWorkerPlugin(),
     devtools(),
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],
@@ -49,6 +51,11 @@ const config = defineConfig({
     rollupOptions: {
       external: ['marked', 'shiki', 'katex', 'mermaid']
     }
+  },
+
+  // Enable nodeWorkerPlugin in dev mode for worker HMR
+  worker: {
+    plugins: () => [nodeWorkerPlugin()],
   },
 
   test: {
