@@ -406,43 +406,10 @@ async function writeWorkerFile(
 
   const content = generateWorkerContent(tools, outFile, options)
   await writeFile(outFile, content)
-
-  // Bundle the worker to a .mjs file using esbuild.
-  // Worker threads run as raw Node.js (not through Vite), so they need
-  // a pre-bundled JS file that resolves all TypeScript imports.
-  try {
-    // Resolve esbuild from the project root (available in any Vite project)
-    const { createRequire } = await import('node:module')
-    const projectRequire = createRequire(outFile)
-    const esbuildPath = projectRequire.resolve('esbuild')
-    const esbuild: any = await import(esbuildPath)
-    const mjsOutFile = outFile.replace(/\.ts$/, '.mjs')
-    await esbuild.build({
-      entryPoints: [outFile],
-      bundle: true,
-      format: 'esm',
-      platform: 'node',
-      outfile: mjsOutFile,
-      // Mark workspace packages as external - they have proper package.json exports
-      // that Node.js can resolve. Only bundle local .ts/.tsx source files.
-      external: [
-        '@sweatpants/*',
-        'effection',
-        'zod',
-      ],
-      // Use the 'development' condition so workspace packages resolve to .ts sources
-      // (which @sweatpants packages export via their package.json "development" condition)
-      conditions: ['development', 'import'],
-      sourcemap: false,
-      logLevel: 'warning',
-    })
-  } catch (err) {
-    // esbuild not available or build failed - fall back to .ts only
-    // This is non-fatal; the .ts file still works if tsx loader is available
-    if (options.logLevel !== 'silent') {
-      console.warn('[tool-discovery] Failed to bundle worker to .mjs:', (err as Error).message)
-    }
-  }
+  
+  // Note: Worker bundling is now handled by vite-plugin-node-worker.
+  // Import the generated file with ?modulePath suffix to get a bundled worker URL.
+  // Example: import workerUrl from './tool-worker.gen.ts?modulePath'
 }
 
 /**
