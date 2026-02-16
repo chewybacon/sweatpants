@@ -155,7 +155,7 @@ describe('Multi-turn tool calling message format', () => {
       const result: ChatResult = {
         text: '',
         toolCalls: [
-          { id: 'call_test', function: { name: 'test_tool', arguments: { x: 1 } } },
+          { id: 'call_test', type: 'function', function: { name: 'test_tool', arguments: { x: 1 } } },
         ],
         usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
       }
@@ -182,6 +182,7 @@ describe('Multi-turn tool calling message format', () => {
           toolCalls: [
             {
               id: 'call_first',
+              type: 'function',
               function: { name: 'step_one', arguments: { input: 'start' } },
             },
           ],
@@ -243,6 +244,7 @@ describe('Multi-turn tool calling message format', () => {
           toolCalls: [
             {
               id: 'call_xyz',
+              type: 'function',
               function: { name: 'my_tool', arguments: { a: 1 } },
             },
           ],
@@ -288,14 +290,14 @@ describe('Multi-turn tool calling message format', () => {
         {
           text: '',
           toolCalls: [
-            { id: 'call_step1', function: { name: 'step_one', arguments: { x: 1 } } },
+            { id: 'call_step1', type: 'function', function: { name: 'step_one', arguments: { x: 1 } } },
           ],
         },
         // Turn 2: Call step_two
         {
           text: '',
           toolCalls: [
-            { id: 'call_step2', function: { name: 'step_two', arguments: { y: 2 } } },
+            { id: 'call_step2', type: 'function', function: { name: 'step_two', arguments: { y: 2 } } },
           ],
         },
         // Turn 3: Final response
