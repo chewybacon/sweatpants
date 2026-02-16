@@ -567,6 +567,9 @@ describe('Status Tracking and Cleanup', () => {
       provider,
     })
 
+    // Yield to let spawned tool runner complete (cooperative scheduling)
+    yield* sleep(0)
+
     // Check status via listActive BEFORE consuming the event
     // The tool has completed but the terminal event hasn't been consumed yet
     const activeSessions = yield* sessionManager.listActive()
