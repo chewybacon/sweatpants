@@ -3,6 +3,8 @@
  *
  * Tests for the tool discovery Vite plugin that scans directories
  * for isomorphic tool definitions and generates a type-safe registry.
+ *
+ * @vitest-environment node
  */
 import { describe, it, expect } from 'vitest'
 import {
