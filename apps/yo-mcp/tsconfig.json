@@ -1,5 +1,8 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.app.json",
+  "compilerOptions": {
+    "customConditions": ["development"]
+  },
   "include": ["src/**/*"],
   "references": [
     { "path": "../../packages/framework/tsconfig.lib.json" }

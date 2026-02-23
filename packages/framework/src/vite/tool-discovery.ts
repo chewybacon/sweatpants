@@ -517,16 +517,16 @@ export function generateWorkerContent(
       `  { name: '${tool.toolName}', handler: function* (params, ctx) {
     const tool = ${variableName}
     if (tool && typeof tool === 'object') {
-      if ('execute' in (tool as Record<string, unknown>)) {
+      if ('execute' in (tool as unknown as Record<string, unknown>)) {
         return yield* (tool as any).execute(params, ctx)
       }
-      if ('handoffConfig' in (tool as Record<string, unknown>)) {
+      if ('handoffConfig' in (tool as unknown as Record<string, unknown>)) {
         const config = (tool as any).handoffConfig
         const handoff = yield* config.before(params, ctx)
         const clientResult = yield* config.client(handoff, ctx)
         return yield* config.after(handoff, clientResult, ctx, params)
       }
-      if ('server' in (tool as Record<string, unknown>)) {
+      if ('server' in (tool as unknown as Record<string, unknown>)) {
         return yield* (tool as any).server(params, ctx)
       }
     }

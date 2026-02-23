@@ -49,7 +49,10 @@ import type {
   SampleResultWithToolCalls,
   SamplingToolCall,
   SamplingToolDefinition,
+  ExtendedMessage,
+  Message,
 } from '@sweatpants/framework/chat'
+import { extendedMessageToProviderMessage } from '@sweatpants/framework/chat/mcp-tools'
 import type { Operation } from 'effection'
 import { run } from 'effection'
 import { env } from '@/env'
@@ -207,10 +210,13 @@ function createPluginSamplingProvider(): ToolSessionSamplingProvider {
         streamOptions.schema = options.schema
       }
 
+      // Convert ExtendedMessage[] to provider Message[] format
+      const providerMessages: Message[] = messages.map(extendedMessageToProviderMessage)
+
       // Prepend system prompt as a system message if provided
       const messagesWithSystem = options?.systemPrompt
-        ? [{ role: 'system' as const, content: options.systemPrompt }, ...messages]
-        : messages
+        ? [{ role: 'system' as const, content: options.systemPrompt }, ...providerMessages]
+        : providerMessages
 
       // Call the provider's stream method and collect the result
       const stream = provider.stream(messagesWithSystem, streamOptions)

@@ -4,9 +4,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      // Note: "ink" path mapping required for Ink CLI types to work correctly
       "ink": ["./node_modules/ink"]
-    }
+    },
+    "customConditions": ["development"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"],
