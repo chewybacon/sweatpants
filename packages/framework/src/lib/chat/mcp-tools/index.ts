@@ -344,6 +344,12 @@ export {
   MCP_ERROR_CODES,
 } from './protocol/index.ts'
 
+export {
+  extendedMessageToProviderMessage,
+  isToolCallMessage,
+  isToolResultMessage,
+} from './message-conversion.ts'
+
 export type {
   // JSON-RPC types
   JsonRpcId,
