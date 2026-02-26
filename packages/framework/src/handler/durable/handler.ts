@@ -7,12 +7,12 @@
  * - Full session replay
  *
  * Protocol:
- * - Request params: X-Session-Id (header/query), X-Last-LSN (header/query)
+ * - Request params: sessionId (query/path), offset (query)
  * - Response: NDJSON with LSN in each event, X-Session-Id header
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
-import { call, resource, type Operation, type Stream } from "effection";
+import { call, race, resource, sleep, type Operation, type Stream } from "effection";
 import { z } from "zod";
 import type {
   SessionHandle,
@@ -37,13 +37,22 @@ import { useLogger } from "../../lib/logger/index.ts";
 import {
   bindModel,
   createBindingSource,
-  intParam,
   stringParam,
 } from "../model-binder.ts";
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
+import {
+  applySnapshotHeaders,
+  createStreamETag,
+  createStreamCursor,
+  parseLiveMode,
+  parseOffsetParam,
+  parseSessionIdFromPath,
+  parseTimeoutMs,
+} from "./protocol-headers.ts";
+import { createSSEEventStream } from "./sse-formatter.ts";
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
@@ -60,9 +69,26 @@ import type {
  * Binder for durable stream protocol parameters.
  */
 const durableParamsBinder = bindModel({
-  sessionId: stringParam("x-session-id", "sessionId"),
-  lastLSN: intParam("x-last-lsn", "lastLsn"),
+  sessionId: stringParam("x-unused-session-id", "sessionId"),
 });
+
+function createEmptyStream(): Stream<string, void> {
+  return resource(function* (provide) {
+    yield* provide({
+      *next(): Operation<IteratorResult<string, void>> {
+        return { done: true, value: undefined };
+      },
+    });
+  });
+}
+
+function* readStreamMetadata(
+  session: SessionHandle<string>,
+): Operation<{ tailOffset: number; closed: boolean }> {
+  const { lsn } = yield* session.buffer.read(Number.MAX_SAFE_INTEGER);
+  const closed = yield* session.buffer.isComplete();
+  return { tailOffset: lsn, closed };
+}
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -219,7 +245,7 @@ function createDurableEventStream(
  * Create a durable chat handler.
  *
  * The handler:
- * 1. Binds protocol params from request (sessionId, lastLSN)
+ * 1. Binds protocol params from request (sessionId, offset)
  * 2. Runs initializer hooks to set up DI contexts
  * 3. Either reconnects to existing session or creates new one
  * 4. Streams events from buffer to response with LSN
@@ -234,22 +260,30 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
     function* () {
       const ctx = yield* useHandlerContext();
       const request = ctx.request;
-
-      // Parse request body
-      const body = (yield* call(() => request.json())) as ChatRequestBody;
       const bindingSource = createBindingSource(request);
-      const { sessionId: requestedSessionId, lastLSN } =
-        durableParamsBinder(bindingSource);
+      const pathSessionId = parseSessionIdFromPath(new URL(request.url).pathname);
+      const { sessionId: requestedSessionId } = durableParamsBinder(bindingSource);
+      const parsedOffset = parseOffsetParam(
+        bindingSource.searchParams.get("offset"),
+      );
+      const liveMode = parseLiveMode(bindingSource.searchParams.get("live"));
+      const timeoutMs = parseTimeoutMs(bindingSource.searchParams.get("timeout"));
+
+      // Parse request body for mutating requests only.
+      const body = request.method === "POST"
+        ? ((yield* call(() => request.json())) as ChatRequestBody)
+        : ({ messages: [] } as ChatRequestBody);
 
       // Determine session ID
-      const sessionId = requestedSessionId ?? crypto.randomUUID();
+      const sessionId = pathSessionId ?? requestedSessionId ?? crypto.randomUUID();
       const isReconnect =
-        requestedSessionId !== undefined && lastLSN !== undefined;
-      const startLSN = lastLSN ?? 0;
+        (pathSessionId !== undefined || requestedSessionId !== undefined) &&
+        (parsedOffset.value !== null || parsedOffset.isNow);
+      const startLSN = parsedOffset.value ?? 0;
 
       // Set response headers
       ctx.headers.set("X-Session-Id", sessionId);
-      ctx.headers.set("Cache-Control", "no-cache");
+      ctx.headers.set("Cache-Control", "no-store");
 
       // Run initializer hooks
       for (const hook of initializerHooks) {
@@ -473,6 +507,37 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         "determining path",
       );
 
+      const method = request.method.toUpperCase();
+
+      if (method === "HEAD") {
+        log.debug({ sessionId }, "head request: acquiring existing session");
+        try {
+          session = yield* registry.acquire(sessionId);
+        } catch {
+          ctx.status = 404;
+          return yield* createEmptyStream();
+        }
+
+        try {
+          const metadata = yield* readStreamMetadata(session);
+          const etag = createStreamETag(sessionId, startLSN, metadata);
+
+          ctx.headers.set("ETag", etag);
+          applySnapshotHeaders(ctx.headers, startLSN, metadata);
+          ctx.status = 200;
+
+          return {
+            subscription: yield* createEmptyStream(),
+            cleanup: function* () {
+              yield* registry.release(sessionId);
+            },
+          };
+        } catch (error) {
+          yield* registry.release(sessionId);
+          throw error;
+        }
+      }
+
       if (isReconnect) {
         // RECONNECT PATH: Acquire existing session, stream from buffer at offset
         log.debug(
@@ -535,11 +600,127 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       // Transform to durable event format and return with cleanup
-      const effectiveStartLSN = isReconnect ? startLSN : 0;
+      let effectiveStartLSN = isReconnect ? startLSN : 0;
       log.debug(
         { sessionId, effectiveStartLSN },
         "creating durable event stream",
       );
+
+      const metadata = yield* readStreamMetadata(session);
+      if (parsedOffset.isNow) {
+        effectiveStartLSN = metadata.tailOffset;
+      }
+
+      const etag = createStreamETag(sessionId, effectiveStartLSN, metadata);
+      ctx.headers.set("ETag", etag);
+      applySnapshotHeaders(ctx.headers, effectiveStartLSN, metadata);
+
+      if (parsedOffset.isNow && liveMode === undefined) {
+        return {
+          subscription: yield* createEmptyStream(),
+          cleanup: function* () {
+            yield* registry.release(sessionId);
+          },
+        };
+      }
+
+      if (liveMode === "long-poll") {
+        const ensureCursor = () => {
+          if (!metadata.closed) {
+            ctx.headers.set("Stream-Cursor", createStreamCursor());
+          }
+        };
+
+        if (effectiveStartLSN >= metadata.tailOffset) {
+          if (metadata.closed) {
+            ctx.status = 204;
+            ctx.headers.set("Stream-Closed", "true");
+            ctx.headers.set("Stream-Up-To-Date", "true");
+            ctx.headers.set("Stream-Next-Offset", String(metadata.tailOffset));
+            return {
+              subscription: yield* createEmptyStream(),
+              cleanup: function* () {
+                yield* registry.release(sessionId);
+              },
+            };
+          }
+
+          const waitResult = yield* race([
+            (function* (): Operation<{ type: "changed" }> {
+              yield* session.buffer.waitForChange(effectiveStartLSN);
+              return { type: "changed" };
+            })(),
+            (function* (): Operation<{ type: "timeout" }> {
+              yield* sleep(timeoutMs);
+              return { type: "timeout" };
+            })(),
+          ]);
+
+          const afterWaitMetadata = yield* readStreamMetadata(session);
+          ctx.headers.set(
+            "Stream-Next-Offset",
+            String(afterWaitMetadata.tailOffset),
+          );
+
+          if (afterWaitMetadata.closed &&
+              effectiveStartLSN >= afterWaitMetadata.tailOffset) {
+            ctx.status = 204;
+            ctx.headers.set("Stream-Closed", "true");
+            ctx.headers.set("Stream-Up-To-Date", "true");
+            return {
+              subscription: yield* createEmptyStream(),
+              cleanup: function* () {
+                yield* registry.release(sessionId);
+              },
+            };
+          }
+
+          if (
+            waitResult.type === "timeout" &&
+            effectiveStartLSN >= afterWaitMetadata.tailOffset
+          ) {
+            ctx.status = 204;
+            ctx.headers.set("Stream-Up-To-Date", "true");
+            if (!afterWaitMetadata.closed) {
+              ctx.headers.set("Stream-Cursor", createStreamCursor());
+            }
+            return {
+              subscription: yield* createEmptyStream(),
+              cleanup: function* () {
+                yield* registry.release(sessionId);
+              },
+            };
+          }
+        }
+
+        ensureCursor();
+      }
+
+      const ifNoneMatch = request.headers.get("if-none-match");
+      if (ifNoneMatch === etag && effectiveStartLSN >= metadata.tailOffset) {
+        ctx.status = 304;
+        return {
+          subscription: yield* createEmptyStream(),
+          cleanup: function* () {
+            log.debug({ sessionId }, "releasing session after 304");
+            yield* registry.release(sessionId);
+          },
+        };
+      }
+
+      if (liveMode === "sse") {
+        ctx.headers.set("Content-Type", "text/event-stream");
+        const sseStream = createSSEEventStream(session.buffer, effectiveStartLSN);
+        const sseSubscription = yield* sseStream;
+        return {
+          subscription: sseSubscription,
+          cleanup: function* () {
+            log.debug({ sessionId }, "releasing session after SSE");
+            yield* registry.release(sessionId);
+          },
+        };
+      }
+
       const durableStream = createDurableEventStream(
         session.buffer,
         effectiveStartLSN,

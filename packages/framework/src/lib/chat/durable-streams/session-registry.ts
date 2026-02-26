@@ -14,6 +14,7 @@
 import type { Operation } from 'effection'
 import type {
   TokenBufferStore,
+  TokenBuffer,
   SessionRegistry,
   SessionRegistryStore,
   SessionEntry,
@@ -67,7 +68,7 @@ const TASK_KEYS = {
  */
 export function* createSessionRegistry<T>(
   bufferStore: TokenBufferStore<T>,
-  registryStore: SessionRegistryStore<T>
+  registryStore: SessionRegistryStore
 ): Operation<SessionRegistry<T>> {
   const log = yield* useLogger('durable-streams:registry')
   
@@ -77,6 +78,20 @@ export function* createSessionRegistry<T>(
   // Internal task tracking - NOT in SessionEntry to keep it serializable
   // Map<sessionId, Map<taskKey, BackgroundTaskHandle>>
   const sessionTasks = new Map<string, Map<string, BackgroundTaskHandle<void>>>()
+
+  function createHandle(
+    sessionId: string,
+    buffer: TokenBuffer<T>,
+  ): SessionHandle<T> {
+    const state = sessionStates.get(sessionId)
+    return {
+      id: sessionId,
+      buffer,
+      *status(): Operation<SessionStatus> {
+        return state?.status ?? 'orphaned'
+      },
+    }
+  }
 
   /**
    * Internal cleanup helper - removes session from all stores and maps.
@@ -102,8 +117,14 @@ export function* createSessionRegistry<T>(
       if (existing) {
         // Increment refCount and return existing handle
         yield* registryStore.updateRefCount(sessionId, 1)
+
+        const buffer = yield* bufferStore.get(sessionId)
+        if (!buffer) {
+          throw new Error(`Session ${sessionId} metadata exists but buffer missing`)
+        }
+
         log.debug({ sessionId }, 'returning existing session')
-        return existing.handle
+        return createHandle(sessionId, buffer)
       }
 
       // Create new session - requires source stream
@@ -122,13 +143,7 @@ export function* createSessionRegistry<T>(
       sessionStates.set(sessionId, state)
 
       // Create handle that reads status from mutable state
-      const handle: SessionHandle<T> = {
-        id: sessionId,
-        buffer,
-        *status(): Operation<SessionStatus> {
-          return state.status
-        },
-      }
+      const handle = createHandle(sessionId, buffer)
 
       // Get logger factory for context handoff to background task
       const loggerFactory = yield* LoggerFactoryContext.get()
@@ -168,8 +183,7 @@ export function* createSessionRegistry<T>(
       log.debug({ sessionId }, 'writer task started')
 
       // Store session entry with initial refCount of 1
-      const entry: SessionEntry<T> = {
-        handle,
+      const entry: SessionEntry = {
         refCount: 1,
         createdAt: Date.now(),
       }

@@ -203,6 +203,15 @@ export function createStreamingHandler(
       })
     }
 
+    // These statuses must not include a response body.
+    if (ctx.status === 204 || ctx.status === 205 || ctx.status === 304) {
+      await runCleanup()
+      return new Response(null, {
+        status: ctx.status,
+        headers: ctx.headers,
+      })
+    }
+
     // Create pull-based stream
     const stream = new ReadableStream<Uint8Array>({
       async pull(controller) {

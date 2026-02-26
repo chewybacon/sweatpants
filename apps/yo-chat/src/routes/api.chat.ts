@@ -7,7 +7,7 @@
  * - Full session replay
  *
  * Protocol:
- * - Request headers: X-Session-Id (optional), X-Last-LSN (optional)
+ * - Request query/path: sessionId + offset (or /sessions/{sessionId}?offset=...)
  * - Response: NDJSON with {lsn, event} per line
  * - Response headers: X-Session-Id
  */

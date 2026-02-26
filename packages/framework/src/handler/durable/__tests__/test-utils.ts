@@ -398,6 +398,11 @@ export function createChatRequest(
   options: {
     sessionId?: string
     lastLSN?: number
+    offset?: number
+    useSessionPath?: boolean
+    method?: 'POST' | 'HEAD' | 'GET'
+    live?: 'long-poll' | 'sse'
+    timeout?: number
     persona?: string
     enabledTools?: boolean | string[]
     enabledPlugins?: string[]
@@ -405,22 +410,56 @@ export function createChatRequest(
     isomorphicTools?: ToolSchema[]
   } = {}
 ): { request: Request; body: Record<string, unknown> } {
-  const { sessionId, lastLSN, ...bodyOptions } = options
+  const {
+    sessionId,
+    lastLSN,
+    offset,
+    useSessionPath,
+    method = 'POST',
+    live,
+    timeout,
+    ...bodyOptions
+  } = options
   const body = { messages, ...bodyOptions }
 
   const headers = new Headers({
     'Content-Type': 'application/json',
   })
 
-  if (sessionId) {
-    headers.set('X-Session-Id', sessionId)
-  }
-  if (lastLSN !== undefined) {
-    headers.set('X-Last-LSN', String(lastLSN))
+  const basePath = useSessionPath && sessionId
+    ? `http://localhost/sessions/${encodeURIComponent(sessionId)}`
+    : 'http://localhost/chat'
+  const url = new URL(basePath)
+
+  if (sessionId && !useSessionPath) {
+    url.searchParams.set('sessionId', sessionId)
   }
 
-  const request = new Request('http://localhost/chat', {
-    method: 'POST',
+  if (offset !== undefined) {
+    url.searchParams.set('offset', String(offset))
+  } else if (lastLSN !== undefined) {
+    url.searchParams.set('offset', String(lastLSN))
+  }
+
+  if (live) {
+    url.searchParams.set('live', live)
+  }
+
+  if (timeout !== undefined) {
+    url.searchParams.set('timeout', String(timeout))
+  }
+
+  if (method === 'HEAD' || method === 'GET') {
+    const request = new Request(url.toString(), {
+      method,
+      headers,
+    })
+
+    return { request, body }
+  }
+
+  const request = new Request(url.toString(), {
+    method,
     headers,
     body: JSON.stringify(body),
   })

@@ -116,3 +116,19 @@ export {
   type SharedBufferState,
   type SharedDurableStreamsConfig,
 } from './shared-memory-store.ts'
+
+// Redis-backed stores
+export {
+  createRedisBufferStore,
+  createRedisRegistryStore,
+  type RedisStoreAdapter,
+  type RedisStoreConfig,
+} from './redis-store.ts'
+
+// Postgres-backed stores
+export {
+  createPostgresBufferStore,
+  createPostgresRegistryStore,
+  type PostgresStoreAdapter,
+  type PostgresStoreConfig,
+} from './postgres-store.ts'

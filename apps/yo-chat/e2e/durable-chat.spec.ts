@@ -438,12 +438,9 @@ test.describe('Durable Chat - Reconnection', () => {
     
     console.log(`First request: ${lines1.length} events, resuming from LSN ${resumeLsn}`)
     
-    // Second request - reconnect from middle
-    const response2 = await request.post('/api/chat', {
-      headers: {
-        'X-Session-Id': sessionId!,
-        'X-Last-LSN': String(resumeLsn),
-      },
+    // Second request - reconnect from middle using protocol query params
+    const reconnectUrl = `/api/chat?sessionId=${encodeURIComponent(sessionId!)}&offset=${resumeLsn}`
+    const response2 = await request.post(reconnectUrl, {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
         provider: 'ollama',

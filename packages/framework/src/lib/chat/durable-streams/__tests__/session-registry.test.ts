@@ -51,7 +51,7 @@ function* useTestRegistryViaContext() {
   // Access via context - this is the recommended pattern for production code
   const registry = yield* useSessionRegistry<string>()
   const bufferStore = yield* useTokenBufferStore<string>()
-  const registryStore = yield* useSessionRegistryStore<string>()
+  const registryStore = yield* useSessionRegistryStore()
 
   return { registry, bufferStore, registryStore }
 }

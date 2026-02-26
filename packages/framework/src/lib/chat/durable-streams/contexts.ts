@@ -73,8 +73,8 @@ export const TokenBufferStoreContext: Context<TokenBufferStore<unknown> | undefi
  * yield* setupInMemoryDurableStreams()
  * ```
  */
-export const SessionRegistryStoreContext: Context<SessionRegistryStore<unknown> | undefined> =
-  createContext<SessionRegistryStore<unknown> | undefined>(
+export const SessionRegistryStoreContext: Context<SessionRegistryStore | undefined> =
+  createContext<SessionRegistryStore | undefined>(
     'durable-streams:registryStore',
     undefined
   )

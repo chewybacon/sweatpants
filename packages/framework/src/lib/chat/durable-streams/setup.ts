@@ -41,7 +41,7 @@ export interface DurableStreamsConfig<T> {
   /** Store for creating and managing TokenBuffers */
   bufferStore: TokenBufferStore<T>
   /** Store for tracking session entries with refCount */
-  registryStore: SessionRegistryStore<T>
+  registryStore: SessionRegistryStore
 }
 
 /**
@@ -53,7 +53,7 @@ export interface DurableStreamsSetup<T> {
   /** The buffer store (also available via useTokenBufferStore) */
   bufferStore: TokenBufferStore<T>
   /** The registry store (also available via useSessionRegistryStore) */
-  registryStore: SessionRegistryStore<T>
+  registryStore: SessionRegistryStore
 }
 
 // =============================================================================
@@ -91,7 +91,7 @@ export function* setupDurableStreams<T>(
 
   // Set all contexts for DI
   yield* TokenBufferStoreContext.set(bufferStore as TokenBufferStore<unknown>)
-  yield* SessionRegistryStoreContext.set(registryStore as SessionRegistryStore<unknown>)
+  yield* SessionRegistryStoreContext.set(registryStore)
   yield* SessionRegistryContext.set(registry as SessionRegistry<unknown>)
 
   return { registry, bufferStore, registryStore }
@@ -132,7 +132,7 @@ export function* setupDurableStreams<T>(
  */
 export function* setupInMemoryDurableStreams<T>(): Operation<DurableStreamsSetup<T>> {
   const bufferStore = createInMemoryBufferStore<T>()
-  const registryStore = createInMemoryRegistryStore<T>()
+  const registryStore = createInMemoryRegistryStore()
 
   return yield* setupDurableStreams({ bufferStore, registryStore })
 }

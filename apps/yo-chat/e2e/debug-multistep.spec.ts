@@ -24,11 +24,12 @@ test('debug multi-step elicitation', async ({ page }) => {
     if (req.url().includes('/api/chat') && req.method() === 'POST') {
       requestCount++
       console.log(`REQUEST #${requestCount}`)
-      // Check headers
-      const sessionId = req.headers()['x-session-id']
-      const lastLsn = req.headers()['x-last-lsn']
-      if (sessionId || lastLsn) {
-        console.log(`  RECONNECT: sessionId=${sessionId}, lastLsn=${lastLsn}`)
+      // Check protocol query params
+      const url = new URL(req.url())
+      const sessionId = url.searchParams.get('sessionId')
+      const offset = url.searchParams.get('offset')
+      if (sessionId || offset) {
+        console.log(`  RECONNECT: sessionId=${sessionId}, offset=${offset}`)
       }
       const body = req.postData()
       if (body) {

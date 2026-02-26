@@ -188,10 +188,9 @@ export interface SessionHandle<T> {
 }
 
 /**
- * Entry stored in the registry store.
+ * Serializable record stored in the registry store.
  */
-export interface SessionEntry<T> {
-  handle: SessionHandle<T>
+export interface SessionEntry {
   refCount: number
   createdAt: number
 }
@@ -200,9 +199,9 @@ export interface SessionEntry<T> {
  * Pluggable storage backend for session entries.
  * In-memory for single server, Redis/etc for multi-server.
  */
-export interface SessionRegistryStore<T> {
-  get(sessionId: string): Operation<SessionEntry<T> | null>
-  set(sessionId: string, entry: SessionEntry<T>): Operation<void>
+export interface SessionRegistryStore {
+  get(sessionId: string): Operation<SessionEntry | null>
+  set(sessionId: string, entry: SessionEntry): Operation<void>
   delete(sessionId: string): Operation<void>
   updateRefCount(sessionId: string, delta: number): Operation<number> // returns new count
 }

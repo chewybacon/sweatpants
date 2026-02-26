@@ -125,15 +125,15 @@ export function createInMemoryBufferStore<T>(): TokenBufferStore<T> {
  *
  * Tracks session entries with refCount for lifecycle management.
  */
-export function createInMemoryRegistryStore<T>(): SessionRegistryStore<T> {
-  const entries = new Map<string, SessionEntry<T>>()
+export function createInMemoryRegistryStore(): SessionRegistryStore {
+  const entries = new Map<string, SessionEntry>()
 
   return {
-    *get(sessionId: string): Operation<SessionEntry<T> | null> {
+    *get(sessionId: string): Operation<SessionEntry | null> {
       return entries.get(sessionId) ?? null
     },
 
-    *set(sessionId: string, entry: SessionEntry<T>): Operation<void> {
+    *set(sessionId: string, entry: SessionEntry): Operation<void> {
       entries.set(sessionId, entry)
     },
 
