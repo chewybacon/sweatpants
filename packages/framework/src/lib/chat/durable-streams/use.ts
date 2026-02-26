@@ -59,11 +59,11 @@ export function* useTokenBufferStore<T>(): Operation<TokenBufferStore<T>> {
  *
  * @example
  * ```typescript
- * const registryStore = yield* useSessionRegistryStore<string>()
+ * const registryStore = yield* useSessionRegistryStore()
  * const entry = yield* registryStore.get('session-123')
  * ```
  */
-export function* useSessionRegistryStore<T>(): Operation<SessionRegistryStore<T>> {
+export function* useSessionRegistryStore(): Operation<SessionRegistryStore> {
   const store = yield* SessionRegistryStoreContext.get()
   if (!store) {
     throw new Error(
@@ -71,7 +71,7 @@ export function* useSessionRegistryStore<T>(): Operation<SessionRegistryStore<T>
         'Call setupDurableStreams() or set SessionRegistryStoreContext before use.'
     )
   }
-  return store as SessionRegistryStore<T>
+  return store
 }
 
 // =============================================================================
