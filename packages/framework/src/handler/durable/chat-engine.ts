@@ -227,12 +227,30 @@ function* executeToolCall(
     const validatedParams = validateToolParams(tool, toolCall.function.arguments)
 
     if (!tool.server) {
+      if (tool.client) {
+        return {
+          ok: true,
+          kind: 'handoff',
+          callId: toolCall.id,
+          toolName,
+          handoff: {
+            type: 'isomorphic_handoff',
+            callId: toolCall.id,
+            toolName,
+            params: validatedParams,
+            serverOutput: undefined,
+            usesHandoff: false,
+          },
+          serverOutput: undefined,
+        }
+      }
+
       return {
         ok: false,
         error: {
           callId: toolCall.id,
           toolName,
-          message: `Tool "${toolName}" has no server function`,
+          message: `Tool "${toolName}" has no server or client function`,
         },
       }
     }
