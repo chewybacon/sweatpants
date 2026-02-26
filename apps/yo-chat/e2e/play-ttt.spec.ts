@@ -326,7 +326,7 @@ test.describe('play_ttt Agentic Tool', () => {
 
     while (moves < 4) {
       // Check if game ended
-      if (await gameOver.isVisible()) break
+      if ((await gameOver.count()) > 0) break
 
       // Check if there's an empty cell to click
       if (!(await emptyCell.isVisible())) break

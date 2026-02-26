@@ -16,7 +16,11 @@
  */
 import { describe, it, expect } from './vitest-effection.ts'
 import { call } from 'effection'
-import { setupInMemoryDurableStreams } from '../../../lib/chat/durable-streams/index.ts'
+import {
+  createInMemoryBufferStore,
+  createInMemoryRegistryStore,
+  setupDurableStreams,
+} from '../../../lib/chat/durable-streams/index.ts'
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
 import type { InitializerHook, IsomorphicTool } from '../types.ts'
@@ -38,10 +42,13 @@ function createTestHooks(
   provider: ReturnType<typeof createMockProvider>,
   tools: IsomorphicTool[] = []
 ): InitializerHook[] {
+  const bufferStore = createInMemoryBufferStore<string>()
+  const registryStore = createInMemoryRegistryStore()
+
   return [
     // Set up durable streams infrastructure
-    function* setupDurableStreams() {
-      yield* setupInMemoryDurableStreams<string>()
+    function* setupDurable() {
+      yield* setupDurableStreams({ bufferStore, registryStore })
     },
     // Set up provider
     function* setupProvider() {
@@ -184,7 +191,9 @@ describe('Durable Chat Handler', () => {
         initializerHooks: [
           // Only setup durable streams, no provider
           function* () {
-            yield* setupInMemoryDurableStreams<string>()
+            const bufferStore = createInMemoryBufferStore<string>()
+            const registryStore = createInMemoryRegistryStore()
+            yield* setupDurableStreams({ bufferStore, registryStore })
           },
           function* () {
             yield* ToolRegistryContext.set([])
@@ -227,7 +236,340 @@ describe('Durable Chat Handler', () => {
       const response = yield* call(() => handler(request))
 
       expect(response.headers.get('Content-Type')).toBe('application/x-ndjson')
-      expect(response.headers.get('Cache-Control')).toBe('no-cache')
+      expect(response.headers.get('Cache-Control')).toBe('no-store')
+      expect(response.headers.get('Stream-Next-Offset')).toBeDefined()
+      expect(response.headers.get('ETag')).toBeDefined()
+    })
+  })
+
+  describe('Protocol Alignment', () => {
+    it('should support reconnect via /sessions/{id}?offset=N', function* () {
+      const provider = createMockProvider({ responses: 'one two three' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { sessionId, result: initial } = yield* call(() =>
+        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+      )
+
+      const { request } = createChatRequest([], {
+        sessionId: sessionId!,
+        offset: Math.max(0, initial.lastLSN - 1),
+        useSessionPath: true,
+      })
+      const response = yield* call(() => handler(request))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('X-Session-Id')).toBe(sessionId)
+      expect(response.headers.get('ETag')).toBeDefined()
+      expect(response.headers.get('Stream-Next-Offset')).toBeDefined()
+    })
+
+    it('should return metadata for HEAD /sessions/{id}', function* () {
+      const provider = createMockProvider({ responses: 'head metadata' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const { request } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'HEAD',
+      })
+
+      const response = yield* call(() => handler(request))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('ETag')).toBeDefined()
+      expect(response.headers.get('Stream-Next-Offset')).toBeDefined()
+      expect(response.headers.get('Cache-Control')).toBe('no-store')
+
+      // Ensure streaming response is cleaned up
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
+    })
+
+    it('should return 304 for If-None-Match when up-to-date', function* () {
+      const provider = createMockProvider({ responses: 'etag check' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const { request: headRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'HEAD',
+      })
+      const headResponse = yield* call(() => handler(headRequest))
+      const offset = Number.parseInt(
+        headResponse.headers.get('Stream-Next-Offset') ?? '0',
+        10,
+      )
+
+      const { request: firstReconnect } = createChatRequest([], {
+        sessionId: sessionId!,
+        offset,
+        useSessionPath: true,
+      })
+      const firstResponse = yield* call(() => handler(firstReconnect))
+      const etag = firstResponse.headers.get('ETag')
+      expect(etag).toBeDefined()
+
+      const { request: secondReconnect } = createChatRequest([], {
+        sessionId: sessionId!,
+        offset,
+        useSessionPath: true,
+      })
+      secondReconnect.headers.set('If-None-Match', etag!)
+
+      const secondResponse = yield* call(() => handler(secondReconnect))
+      expect(secondResponse.status).toBe(304)
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
+    })
+
+    it('should return 204 for long-poll timeout when up-to-date', function* () {
+      const provider = createMockProvider({
+        responses: 'slow response',
+        tokenDelayMs: 1_000,
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const { request: longPollRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'HEAD',
+      })
+      const headResponse = yield* call(() => handler(longPollRequest))
+      const tailOffset = Number.parseInt(
+        headResponse.headers.get('Stream-Next-Offset') ?? '0',
+        10,
+      )
+
+      const { request: pollRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        live: 'long-poll',
+        offset: tailOffset,
+        timeout: 0,
+      })
+
+      const longPollResponse = yield* call(() => handler(pollRequest))
+      expect(longPollResponse.status).toBe(204)
+      expect(longPollResponse.headers.get('Stream-Up-To-Date')).toBe('true')
+      expect(longPollResponse.headers.get('Stream-Cursor')).toBeDefined()
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
+    })
+
+    it('should return 200 for long-poll when backlog data exists', function* () {
+      const provider = createMockProvider({ responses: 'long poll backlog' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { sessionId } = yield* call(() =>
+        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+      )
+
+      const { request: longPollRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        live: 'long-poll',
+        offset: 0,
+        timeout: 1,
+      })
+
+      const longPollResponse = yield* call(() => handler(longPollRequest))
+      expect(longPollResponse.status).toBe(200)
+      expect(longPollResponse.headers.get('Stream-Cursor')).toBeDefined()
+      expect(longPollResponse.headers.get('Stream-Next-Offset')).toBeDefined()
+    })
+
+    it('should stream SSE data and control events', function* () {
+      const provider = createMockProvider({ responses: 'sse stream payload' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const { request } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        live: 'sse',
+        offset: 0,
+      })
+      const response = yield* call(() => handler(request))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('text/event-stream')
+
+      const body = yield* call(() => response.text())
+      expect(body).toContain('event: data')
+      expect(body).toContain('event: control')
+      expect(body).toContain('streamNextOffset')
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
+    })
+
+    it('should emit streamClosed control event for SSE at closed tail', function* () {
+      const provider = createMockProvider({ responses: 'closed stream' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      // Keep one reconnect handle alive so completed session isn't cleaned up.
+      const { request: holderRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        offset: 0,
+      })
+      const holderResponse = yield* call(() => handler(holderRequest))
+
+      // Drain initial response so writer reaches closed state.
+      yield* call(() => initialResponse.text())
+
+      const { request: headRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'HEAD',
+      })
+      const headResponse = yield* call(() => handler(headRequest))
+      const tailOffset = Number.parseInt(
+        headResponse.headers.get('Stream-Next-Offset') ?? '0',
+        10,
+      )
+
+      const { request } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        live: 'sse',
+        offset: tailOffset,
+      })
+
+      const response = yield* call(() => handler(request))
+      const body = yield* call(() => response.text())
+      expect(body).toContain('"streamClosed":true')
+      expect(body).toContain('"upToDate":true')
+
+      yield* call(async () => {
+        await holderResponse.body?.cancel()
+      })
+    })
+
+    it('should treat offset=-1 as stream beginning', function* () {
+      const provider = createMockProvider({ responses: 'offset beginning' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const { request } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        offset: -1,
+      })
+      const response = yield* call(() => handler(request))
+      expect(response.status).toBe(200)
+
+      const body = yield* call(() => response.text())
+      expect(body).toContain('"lsn":1')
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
+    })
+
+    it('should treat offset=now as current tail for catch-up reads', function* () {
+      const provider = createMockProvider({
+        responses: 'offset now',
+        tokenDelayMs: 1_000,
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const nowUrl = new URL(`http://localhost/sessions/${encodeURIComponent(sessionId!)}`)
+      nowUrl.searchParams.set('offset', 'now')
+      const nowRequest = new Request(nowUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const response = yield* call(() => handler(nowRequest))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Stream-Up-To-Date')).toBe('true')
+
+      const body = yield* call(() => response.text())
+      expect(body).toBe('')
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
     })
   })
 

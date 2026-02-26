@@ -110,8 +110,10 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       // Check headers
       expect(response.status).toBe(200)
       expect(response.headers.get('Content-Type')).toBe('application/x-ndjson')
-      expect(response.headers.get('Cache-Control')).toBe('no-cache')
+      expect(response.headers.get('Cache-Control')).toBe('no-store')
       expect(response.headers.get('X-Session-Id')).toBeTruthy()
+      expect(response.headers.get('Stream-Next-Offset')).toBeTruthy()
+      expect(response.headers.get('ETag')).toBeTruthy()
 
       // Consume and verify response
       const result = await consumeDurableResponse(response)
@@ -236,16 +238,16 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       expect(sessionId).toBeTruthy()
       await consumeDurableResponse(response1)
 
-      // Second request with reconnection headers
+      // Second request with protocol query reconnection
       // Note: This creates a NEW session since registries aren't shared,
       // but it verifies the protocol is handled correctly
-      const response2 = await fetch(server.url, {
+      const reconnectUrl = new URL(server.url)
+      reconnectUrl.searchParams.set('sessionId', sessionId!)
+      reconnectUrl.searchParams.set('offset', '5')
+
+      const response2 = await fetch(reconnectUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': sessionId!,
-          'X-Last-LSN': '5',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [{ role: 'user', content: 'Hi' }],
         }),
@@ -314,14 +316,14 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       expect(sharedStorage.sessions.has(sessionId!)).toBe(true)
       expect(sharedStorage.buffers.has(sessionId!)).toBe(true)
 
-      // Second request - reconnect from last known LSN
-      const response2 = await fetch(server.url, {
+      // Second request - reconnect from last known LSN via query
+      const reconnectUrl = new URL(server.url)
+      reconnectUrl.searchParams.set('sessionId', sessionId!)
+      reconnectUrl.searchParams.set('offset', String(lastLSN))
+
+      const response2 = await fetch(reconnectUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Session-Id': sessionId!,
-          'X-Last-LSN': String(lastLSN),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [{ role: 'user', content: 'Hi' }],
         }),
@@ -342,6 +344,176 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
 
       // Should have the complete event
       expect(result2.complete).not.toBeNull()
+    })
+
+    it('should support URL-based reconnect with offset query', async () => {
+      const sharedStorage = createSharedStorage<string>()
+      const handler = createTestHandlerWithSharedStorage(
+        'url reconnect stream test payload',
+        sharedStorage,
+        { tokenDelayMs: 5 }
+      )
+      server = await createHttpTestServer(handler)
+
+      const response1 = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hi' }],
+        }),
+      })
+
+      const sessionId = response1.headers.get('X-Session-Id')!
+      expect(sessionId).toBeTruthy()
+
+      const reader = response1.body!.getReader()
+      const decoder = new TextDecoder()
+      let lastLSN = 0
+
+      for (let i = 0; i < 2; i++) {
+        const { value, done } = await reader.read()
+        if (done || !value) break
+        const text = decoder.decode(value, { stream: true })
+        for (const line of text.trim().split('\n').filter(Boolean)) {
+          try {
+            const parsed = JSON.parse(line) as { lsn: number }
+            lastLSN = Math.max(lastLSN, parsed.lsn)
+          } catch {
+            // Ignore incomplete chunks
+          }
+        }
+      }
+      await reader.cancel()
+
+      const reconnectUrl = new URL(server.url)
+      reconnectUrl.pathname = `/sessions/${encodeURIComponent(sessionId)}`
+      reconnectUrl.searchParams.set('offset', String(lastLSN))
+
+      const response2 = await fetch(reconnectUrl.toString(), {
+        method: 'GET',
+      })
+
+      expect(response2.status).toBe(200)
+      expect(response2.headers.get('X-Session-Id')).toBe(sessionId)
+      expect(response2.headers.get('Stream-Next-Offset')).toBeTruthy()
+
+      const result2 = await consumeDurableResponse(response2)
+      for (const event of result2.events) {
+        expect(event.lsn).toBeGreaterThan(lastLSN)
+      }
+    })
+  })
+
+  describe('Protocol Live Modes', () => {
+    it('should return 204 for long-poll timeout when up to date', async () => {
+      const sharedStorage = createSharedStorage<string>()
+      const handler = createTestHandlerWithSharedStorage(
+        'long poll timeout validation',
+        sharedStorage,
+        { tokenDelayMs: 20 }
+      )
+      server = await createHttpTestServer(handler)
+
+      const response1 = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hi' }],
+        }),
+      })
+
+      const sessionId = response1.headers.get('X-Session-Id')!
+      expect(sessionId).toBeTruthy()
+
+      const headUrl = new URL(server.url)
+      headUrl.pathname = `/sessions/${encodeURIComponent(sessionId)}`
+      const headResponse = await fetch(headUrl.toString(), { method: 'HEAD' })
+      const tailOffset = Number.parseInt(
+        headResponse.headers.get('Stream-Next-Offset') ?? '0',
+        10,
+      )
+
+      const pollUrl = new URL(server.url)
+      pollUrl.pathname = `/sessions/${encodeURIComponent(sessionId)}`
+      pollUrl.searchParams.set('live', 'long-poll')
+      pollUrl.searchParams.set('offset', String(tailOffset))
+      pollUrl.searchParams.set('timeout', '0')
+
+      const pollResponse = await fetch(pollUrl.toString(), { method: 'GET' })
+      expect(pollResponse.status).toBe(204)
+      expect(pollResponse.headers.get('Stream-Up-To-Date')).toBe('true')
+      expect(pollResponse.headers.get('Stream-Cursor')).toBeTruthy()
+
+      await response1.body?.cancel()
+    })
+
+    it('should stream SSE control/data events', async () => {
+      const sharedStorage = createSharedStorage<string>()
+      const handler = createTestHandlerWithSharedStorage(
+        'sse mode validation payload with enough tokens to stay active',
+        sharedStorage,
+        { tokenDelayMs: 20 },
+      )
+      server = await createHttpTestServer(handler)
+
+      const response1 = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hi' }],
+        }),
+      })
+
+      const sessionId = response1.headers.get('X-Session-Id')!
+      expect(sessionId).toBeTruthy()
+
+      const sseUrl = new URL(server.url)
+      sseUrl.pathname = `/sessions/${encodeURIComponent(sessionId)}`
+      sseUrl.searchParams.set('live', 'sse')
+      sseUrl.searchParams.set('offset', '0')
+
+      const sseResponse = await fetch(sseUrl.toString(), { method: 'GET' })
+      expect(sseResponse.status).toBe(200)
+      expect(sseResponse.headers.get('Content-Type')).toBe('text/event-stream')
+
+      const text = await sseResponse.text()
+      expect(text).toContain('event: data')
+      expect(text).toContain('event: control')
+      expect(text).toContain('streamNextOffset')
+
+      await response1.body?.cancel()
+    })
+
+    it('should treat offset=now as current tail for catch-up reads', async () => {
+      const sharedStorage = createSharedStorage<string>()
+      const handler = createTestHandlerWithSharedStorage(
+        'offset now test payload',
+        sharedStorage,
+        { tokenDelayMs: 20 },
+      )
+      server = await createHttpTestServer(handler)
+
+      const response1 = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'Hi' }],
+        }),
+      })
+
+      const sessionId = response1.headers.get('X-Session-Id')!
+      expect(sessionId).toBeTruthy()
+
+      const nowUrl = new URL(server.url)
+      nowUrl.pathname = `/sessions/${encodeURIComponent(sessionId)}`
+      nowUrl.searchParams.set('offset', 'now')
+
+      const nowResponse = await fetch(nowUrl.toString(), { method: 'GET' })
+      expect(nowResponse.status).toBe(200)
+      expect(nowResponse.headers.get('Stream-Up-To-Date')).toBe('true')
+      expect(await nowResponse.text()).toBe('')
+
+      await response1.body?.cancel()
     })
   })
 
@@ -729,14 +901,14 @@ describe('Durable Chat Handler - Ollama Integration', () => {
       const sessionStillActive = sharedStorage.sessions.has(sessionId!)
 
       if (sessionStillActive) {
-        // Session still streaming - test reconnection
-        const response2 = await fetch(server.url, {
+        // Session still streaming - test reconnection via query
+        const reconnectUrl = new URL(server.url)
+        reconnectUrl.searchParams.set('sessionId', sessionId!)
+        reconnectUrl.searchParams.set('offset', String(lastLSN))
+
+        const response2 = await fetch(reconnectUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Session-Id': sessionId!,
-            'X-Last-LSN': String(lastLSN),
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             messages: [{
               role: 'user',

@@ -79,7 +79,7 @@ export interface SharedStorage<T> {
   /** Buffer states keyed by buffer ID */
   buffers: Map<string, SharedBufferState<T>>
   /** Session entries keyed by session ID */
-  sessions: Map<string, SessionEntry<T>>
+  sessions: Map<string, SessionEntry>
   /** Session status keyed by session ID (mutable, updated by writer tasks) */
   sessionStatus: Map<string, SessionStatus>
 }
@@ -259,13 +259,13 @@ export function createSharedBufferStore<T>(
  */
 export function createSharedRegistryStore<T>(
   storage: SharedStorage<T>
-): SessionRegistryStore<T> {
+): SessionRegistryStore {
   return {
-    *get(sessionId: string): Operation<SessionEntry<T> | null> {
+    *get(sessionId: string): Operation<SessionEntry | null> {
       return storage.sessions.get(sessionId) ?? null
     },
 
-    *set(sessionId: string, entry: SessionEntry<T>): Operation<void> {
+    *set(sessionId: string, entry: SessionEntry): Operation<void> {
       storage.sessions.set(sessionId, entry)
     },
 
@@ -316,7 +316,7 @@ export interface SharedDurableStreamsConfig<T> {
  */
 export function getSharedStores<T>(storage: SharedStorage<T>): {
   bufferStore: TokenBufferStore<T>
-  registryStore: SessionRegistryStore<T>
+  registryStore: SessionRegistryStore
 } {
   return {
     bufferStore: createSharedBufferStore(storage),
