@@ -72,6 +72,7 @@ import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
 import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
 import type { StreamResult } from './streaming.ts'
+import { syncConversationStateForElicit, syncMessagesFromIndex } from './turn-manager.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
 import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools/index.ts'
 import type { PendingEmission } from '../isomorphic-tools/runtime/emissions.ts'
@@ -391,46 +392,10 @@ export function* runChatSession(
                 // the next request will send tool results to OpenAI without the
                 // corresponding tool_calls, causing "No tool call found" errors.
                 
-                const conversationMessages = result.conversationState.messages
-                const originalHistoryLength = history.length
-                
-                // Add any new messages from conversationState
-                for (let i = originalHistoryLength; i < conversationMessages.length; i++) {
-                  const convMsg = conversationMessages[i]!
-                  history.push({
-                    ...convMsg,
-                    id: convMsg.id ?? crypto.randomUUID(),
-                  })
-                }
-                
-                // Add the assistant message with tool_calls if not already in conversationMessages
-                const hasAssistantWithTools = conversationMessages.some(
-                  msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
+                pendingToolCalls = syncConversationStateForElicit(
+                  history,
+                  result.conversationState
                 )
-                
-                if (!hasAssistantWithTools && result.conversationState.toolCalls.length > 0) {
-                  // Build assistant message with tool_calls from conversationState.toolCalls
-                  const assistantMsg: Message = {
-                    id: crypto.randomUUID(),
-                    role: 'assistant',
-                    content: result.conversationState.assistantContent || '',
-                    tool_calls: result.conversationState.toolCalls.map(tc => ({
-                      id: tc.id,
-                      type: 'function' as const,
-                      function: {
-                        name: tc.name,
-                        arguments: tc.arguments,
-                      },
-                    })),
-                  }
-                  history.push(assistantMsg)
-                }
-                
-                // Track pending tool_calls so we can add cancelled results if user sends new message
-                pendingToolCalls = result.conversationState.toolCalls.map(tc => ({
-                  id: tc.id,
-                  name: tc.name,
-                }))
                 
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
@@ -614,43 +579,12 @@ export function* runChatSession(
               }
             }
             
-            // Sync new messages from currentMessages to history
-            // This is critical for multi-turn tool calling - without this,
-            // subsequent requests won't include tool_calls in history
-            for (let i = originalHistoryLength; i < currentMessages.length; i++) {
-              const apiMsg = currentMessages[i]!
-              
-              // For tool results, check if we have updated content from phase 2
-              let content = apiMsg.content
-              if (apiMsg.role === 'tool' && apiMsg.tool_call_id) {
-                const updatedContent = toolResultsMap.get(apiMsg.tool_call_id)
-                if (updatedContent) {
-                  content = updatedContent
-                }
-              }
-              
-              const msg: Message = {
-                id: crypto.randomUUID(),
-                role: apiMsg.role,
-                content: content,
-              }
-              
-              // Preserve tool_calls with proper type field
-              if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {
-                msg.tool_calls = apiMsg.tool_calls.map(tc => ({
-                  id: tc.id,
-                  type: 'function' as const,
-                  function: tc.function,
-                }))
-              }
-              
-              // Preserve tool_call_id
-              if (apiMsg.tool_call_id) {
-                msg.tool_call_id = apiMsg.tool_call_id
-              }
-              
-              history.push(msg)
-            }
+            syncMessagesFromIndex(
+              history,
+              currentMessages,
+              originalHistoryLength,
+              toolResultsMap
+            )
 
             // Create final assistant message with the response text
             const finalContent = completeResult.text || ''
@@ -857,46 +791,10 @@ export function* runChatSession(
                 // the next request will send tool results to OpenAI without the
                 // corresponding tool_calls, causing "No tool call found" errors.
                 
-                const conversationMessages = result.conversationState.messages
-                const originalHistoryLength = history.length
-                
-                // Add any new messages from conversationState
-                for (let i = originalHistoryLength; i < conversationMessages.length; i++) {
-                  const convMsg = conversationMessages[i]!
-                  history.push({
-                    ...convMsg,
-                    id: convMsg.id ?? crypto.randomUUID(),
-                  })
-                }
-                
-                // Add the assistant message with tool_calls if not already in conversationMessages
-                const hasAssistantWithTools = conversationMessages.some(
-                  msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
+                pendingToolCalls = syncConversationStateForElicit(
+                  history,
+                  result.conversationState
                 )
-                
-                if (!hasAssistantWithTools && result.conversationState.toolCalls.length > 0) {
-                  // Build assistant message with tool_calls from conversationState.toolCalls
-                  const assistantMsg: Message = {
-                    id: crypto.randomUUID(),
-                    role: 'assistant',
-                    content: result.conversationState.assistantContent || '',
-                    tool_calls: result.conversationState.toolCalls.map(tc => ({
-                      id: tc.id,
-                      type: 'function' as const,
-                      function: {
-                        name: tc.name,
-                        arguments: tc.arguments,
-                      },
-                    })),
-                  }
-                  history.push(assistantMsg)
-                }
-                
-                // Track pending tool_calls so we can add cancelled results if user sends new message
-                pendingToolCalls = result.conversationState.toolCalls.map(tc => ({
-                  id: tc.id,
-                  name: tc.name,
-                }))
                 
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
