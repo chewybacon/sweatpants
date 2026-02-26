@@ -225,6 +225,18 @@ export interface IsomorphicToolBuilderWithContext<
   ): IsomorphicToolBuilderServerOnly<TName, TParams, TContext, TServerOutput>
 
   /**
+   * Client-only execution.
+   * Client runs and its output is sent directly to the LLM.
+   */
+  client<TClientOutput>(
+    fn: (
+      input: undefined,
+      ctx: ContextForMode<TContext>,
+      params: TParams
+    ) => Operation<TClientOutput>
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput>
+
+  /**
    * Set approval configuration.
    */
   approval(config: IsomorphicApprovalConfig): this
@@ -508,8 +520,18 @@ function createBuilder(state: BuilderState): any {
     },
 
     client(fn: (input: any, ctx: any, params?: any) => Operation<any>) {
-      const newState = { ...state, clientFn: fn }
-      return createBuilder(newState)
+      if (!state.contextMode) {
+        throw new Error(`Tool "${state.name}": .context() must be called before .client()`)
+      }
+      return {
+        _types: undefined as any,
+        name: state.name,
+        description: state.description!,
+        parameters: state.parameters!,
+        contextMode: state.contextMode,
+        approval: state.approval,
+        client: fn,
+      } as FinalizedIsomorphicTool<any, any, any, any, any, any>
     },
   }
 
