@@ -571,6 +571,135 @@ describe('Durable Chat Handler', () => {
         await initialResponse.body?.cancel()
       })
     })
+
+    it('should return [] for offset=now with JSON accept header', function* () {
+      const provider = createMockProvider({
+        responses: 'offset now json',
+        tokenDelayMs: 1_000,
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request: initialRequest } = createChatRequest([
+        { role: 'user', content: 'Hi' },
+      ])
+      const initialResponse = yield* call(() => handler(initialRequest))
+      const sessionId = initialResponse.headers.get('X-Session-Id')
+      expect(sessionId).toBeDefined()
+
+      const nowUrl = new URL(`http://localhost/sessions/${encodeURIComponent(sessionId!)}`)
+      nowUrl.searchParams.set('offset', 'now')
+      const nowRequest = new Request(nowUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      })
+
+      const response = yield* call(() => handler(nowRequest))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('application/json')
+
+      const body = yield* call(() => response.text())
+      expect(body.trim()).toBe('[]')
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel()
+      })
+    })
+
+    it('should return [] when caught up with JSON accept header', function* () {
+      const provider = createMockProvider({ responses: 'already caught up' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { sessionId } = yield* call(() =>
+        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+      )
+
+      const { request: headRequest } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'HEAD',
+      })
+      const headResponse = yield* call(() => handler(headRequest))
+      const tailOffset = headResponse.headers.get('Stream-Next-Offset')
+      expect(tailOffset).toBeDefined()
+
+      const { request } = createChatRequest([], {
+        sessionId: sessionId!,
+        useSessionPath: true,
+        method: 'GET',
+        offset: Number.parseInt(tailOffset ?? '0', 10),
+        requestHeaders: {
+          'Accept': 'application/json',
+        },
+      })
+
+      const response = yield* call(() => handler(request))
+      expect(response.status).toBe(200)
+      expect(response.headers.get('Content-Type')).toBe('application/json')
+      const body = yield* call(() => response.text())
+      expect(body.trim()).toBe('[]')
+    })
+
+    it('should support protocol-native PUT/POST/DELETE lifecycle on /sessions/{id}', function* () {
+      const provider = createMockProvider({ responses: 'unused' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const sessionId = 'protocol-native-1'
+      const sessionUrl = `http://localhost/sessions/${sessionId}`
+
+      const putResponse = yield* call(() => handler(new Request(sessionUrl, {
+        method: 'PUT',
+      })))
+      expect(putResponse.status).toBe(201)
+      expect(putResponse.headers.get('Stream-Next-Offset')).toBe('0000000000000000')
+
+      const appendResponse = yield* call(() => handler(new Request(sessionUrl, {
+        method: 'POST',
+        body: JSON.stringify({ type: 'text', content: 'hello protocol' }),
+      })))
+      expect(appendResponse.status).toBe(204)
+      expect(appendResponse.headers.get('Stream-Next-Offset')).toBe('0000000000000001')
+
+      const closeResponse = yield* call(() => handler(new Request(sessionUrl, {
+        method: 'POST',
+        headers: {
+          'Stream-Closed': 'true',
+        },
+      })))
+      expect(closeResponse.status).toBe(204)
+      expect(closeResponse.headers.get('Stream-Closed')).toBe('true')
+
+      const { request: readRequest } = createChatRequest([], {
+        sessionId,
+        useSessionPath: true,
+        method: 'GET',
+        offset: 0,
+      })
+      const readResponse = yield* call(() => handler(readRequest))
+      expect(readResponse.status).toBe(200)
+      const readBody = yield* call(() => readResponse.text())
+      expect(readBody).toContain('hello protocol')
+
+      const deleteResponse = yield* call(() => handler(new Request(sessionUrl, {
+        method: 'DELETE',
+      })))
+      expect(deleteResponse.status).toBe(204)
+
+      const { request: headRequest } = createChatRequest([], {
+        sessionId,
+        useSessionPath: true,
+        method: 'HEAD',
+      })
+      const headResponse = yield* call(() => handler(headRequest))
+      expect(headResponse.status).toBe(404)
+    })
   })
 
   describe('Response Format', () => {

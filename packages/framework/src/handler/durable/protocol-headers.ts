@@ -16,6 +16,8 @@ export interface ParsedOffset {
 
 export type LiveMode = 'long-poll' | 'sse'
 
+const OFFSET_WIDTH = 16
+
 /**
  * Extracts `/sessions/{sessionId}` from a URL pathname.
  */
@@ -74,7 +76,7 @@ export function parseTimeoutMs(value: string | null, fallbackMs = 30_000): numbe
 }
 
 export function toOffsetString(offset: number): string {
-  return String(offset)
+  return String(offset).padStart(OFFSET_WIDTH, '0')
 }
 
 export function createStreamCursor(now = Date.now(), intervalMs = 20_000): string {

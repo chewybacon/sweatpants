@@ -1,7 +1,7 @@
 import { resource, type Operation, type Stream } from 'effection'
 
 import { createPullStream, type TokenBuffer } from '../../lib/chat/durable-streams/index.ts'
-import { createStreamCursor } from './protocol-headers.ts'
+import { createStreamCursor, toOffsetString } from './protocol-headers.ts'
 
 function formatSSEData(payload: string): string {
   return `event: data\ndata: ${payload}\n\n`
@@ -30,7 +30,7 @@ export function createSSEEventStream(
         if (result.done) {
           emittedClosed = true
           const control = formatSSEControl({
-            streamNextOffset: String(cursor),
+            streamNextOffset: toOffsetString(cursor),
             streamClosed: true,
             upToDate: true,
           })
@@ -43,7 +43,7 @@ export function createSSEEventStream(
         const chunk =
           formatSSEData(frame.token) +
           formatSSEControl({
-            streamNextOffset: String(cursor),
+            streamNextOffset: toOffsetString(cursor),
             streamCursor: createStreamCursor(),
           })
 
