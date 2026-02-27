@@ -405,9 +405,7 @@ export function* useBackgroundTask<T = void>(
  * ```
  */
 export function* fireAndForget(operation: () => Operation<void>): Operation<void> {
-  const [scope] = createScope()
-  scope.run(operation)
-  // Don't wait for it
+  yield* useBackgroundTask(operation)
 }
 
 /**
