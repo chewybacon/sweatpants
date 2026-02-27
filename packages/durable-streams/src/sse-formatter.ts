@@ -1,7 +1,8 @@
 import { resource, type Operation, type Stream } from 'effection'
 
-import { createPullStream, type TokenBuffer } from '../../lib/chat/durable-streams/index.ts'
+import { createPullStream } from './pull-stream.ts'
 import { createStreamCursor, toOffsetString } from './protocol-headers.ts'
+import type { TokenBuffer } from './types.ts'
 
 function formatSSEData(payload: string): string {
   return `event: data\ndata: ${payload}\n\n`

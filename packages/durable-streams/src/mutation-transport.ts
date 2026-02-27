@@ -1,19 +1,16 @@
 import { call, type Operation } from 'effection'
 
-import type {
-  SessionRegistryStore,
-  TokenBufferStore,
-} from '../../lib/chat/durable-streams/index.ts'
-import type { HandlerContext, SetupResult } from '../streaming.ts'
+import type { ProtocolHandlerContext, ProtocolSetupResult } from './http-types.ts'
 import { toOffsetString } from './protocol-headers.ts'
 import { createEmptyStream } from './read-transport.ts'
+import type { SessionRegistryStore, TokenBufferStore } from './types.ts'
 
 interface LoggerLike {
   debug(data: unknown, message?: string): void
 }
 
 interface MutationParams {
-  ctx: HandlerContext
+  ctx: ProtocolHandlerContext
   sessionId: string
   method: 'PUT' | 'POST' | 'DELETE'
   bufferStore: TokenBufferStore<string>
@@ -39,7 +36,7 @@ function applyMutationHeaders(
 
 export function* createProtocolMutationResponse(
   params: MutationParams,
-): Operation<SetupResult> {
+): Operation<ProtocolSetupResult> {
   const { ctx, sessionId, method, bufferStore, registryStore, log } = params
 
   if (method === 'PUT') {
@@ -70,6 +67,14 @@ export function* createProtocolMutationResponse(
   }
 
   if (method === 'DELETE') {
+    const existingBuffer = yield* bufferStore.get(sessionId)
+    if (existingBuffer) {
+      const complete = yield* existingBuffer.isComplete()
+      if (!complete) {
+        yield* existingBuffer.complete()
+      }
+    }
+
     yield* registryStore.delete(sessionId)
     yield* bufferStore.delete(sessionId)
     ctx.status = 204
@@ -99,6 +104,7 @@ export function* createProtocolMutationResponse(
   if (body.length > 0) {
     yield* buffer.append([body])
   }
+
   if (close) {
     yield* buffer.complete()
   }

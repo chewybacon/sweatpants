@@ -16,6 +16,7 @@ import {
   type SharedStorage,
 } from '../../../lib/chat/durable-streams/index.ts'
 import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup.ts'
+import type { RetentionPolicy } from '../../../lib/chat/durable-streams/types.ts'
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { ollamaProvider } from '../../../lib/chat/providers/index.ts'
 import { createDurableChatHandler } from '../handler.ts'
@@ -56,7 +57,7 @@ function createTestHandler(mockResponse: string) {
 function createTestHandlerWithSharedStorage(
   mockResponse: string,
   sharedStorage: SharedStorage<string>,
-  options?: { tokenDelayMs?: number }
+  options?: { tokenDelayMs?: number; retentionPolicy?: RetentionPolicy }
 ) {
   const provider = createMockProvider({
     responses: mockResponse,
@@ -66,7 +67,11 @@ function createTestHandlerWithSharedStorage(
   const initializerHooks: InitializerHook[] = [
     function* setupSharedStreams() {
       const { bufferStore, registryStore } = getSharedStores(sharedStorage)
-      yield* setupDurableStreams({ bufferStore, registryStore })
+      yield* setupDurableStreams({
+        bufferStore,
+        registryStore,
+        ...(options?.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
+      })
     },
     function* setupProvider() {
       yield* ProviderContext.set(provider)
@@ -518,7 +523,9 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
 
     it('should support protocol interoperability lifecycle for external clients', async () => {
       const sharedStorage = createSharedStorage<string>()
-      const handler = createTestHandlerWithSharedStorage('interop lifecycle', sharedStorage)
+      const handler = createTestHandlerWithSharedStorage('interop lifecycle', sharedStorage, {
+        retentionPolicy: { mode: 'retain_forever' },
+      })
       server = await createHttpTestServer(handler)
 
       const sessionId = `interop-${crypto.randomUUID()}`
@@ -577,6 +584,77 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       const missingHead = await fetch(sessionUrl.toString(), { method: 'HEAD' })
       expect(missingHead.status).toBe(404)
     })
+
+    it('should wake long-poll readers when DELETE races with active read', async () => {
+      const sharedStorage = createSharedStorage<string>()
+      const handler = createTestHandlerWithSharedStorage('delete race', sharedStorage, {
+        retentionPolicy: { mode: 'retain_forever' },
+      })
+      server = await createHttpTestServer(handler)
+
+      const sessionId = `delete-race-${crypto.randomUUID()}`
+      const sessionUrl = new URL(server.url)
+      sessionUrl.pathname = `/sessions/${encodeURIComponent(sessionId)}`
+
+      const createResponse = await fetch(sessionUrl.toString(), { method: 'PUT' })
+      expect(createResponse.status).toBe(201)
+
+      const pollUrl = new URL(sessionUrl)
+      pollUrl.searchParams.set('offset', '0')
+      pollUrl.searchParams.set('live', 'long-poll')
+      pollUrl.searchParams.set('timeout', '10')
+
+      const pollPromise = fetch(pollUrl.toString(), { method: 'GET' })
+      await new Promise(r => setTimeout(r, 30))
+
+      const deleteResponse = await fetch(sessionUrl.toString(), { method: 'DELETE' })
+      expect(deleteResponse.status).toBe(204)
+
+      const pollResponse = await pollPromise
+      expect(pollResponse.status).toBe(204)
+      expect(pollResponse.headers.get('Stream-Closed')).toBe('true')
+
+      const appendAfterDelete = await fetch(sessionUrl.toString(), {
+        method: 'POST',
+        body: 'late write',
+      })
+      expect(appendAfterDelete.status).toBe(404)
+    })
+
+    it('should keep in-flight chat response stable when DELETE races with writer', async () => {
+      const sharedStorage = createSharedStorage<string>()
+      const handler = createTestHandlerWithSharedStorage(
+        'token1 token2 token3 token4 token5 token6',
+        sharedStorage,
+        { tokenDelayMs: 25, retentionPolicy: { mode: 'retain_forever' } }
+      )
+      server = await createHttpTestServer(handler)
+
+      const response = await fetch(server.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: 'race writer delete' }],
+        }),
+      })
+
+      const sessionId = response.headers.get('X-Session-Id')
+      expect(sessionId).toBeTruthy()
+
+      const reader = response.body!.getReader()
+      await reader.read()
+
+      const deleteUrl = new URL(server.url)
+      deleteUrl.pathname = `/sessions/${encodeURIComponent(sessionId!)}`
+
+      const deleteResponse = await fetch(deleteUrl.toString(), { method: 'DELETE' })
+      expect(deleteResponse.status).toBe(204)
+
+      await reader.cancel()
+
+      const headAfterDelete = await fetch(deleteUrl.toString(), { method: 'HEAD' })
+      expect(headAfterDelete.status).toBe(404)
+    })
   })
 
   describe('Error Handling', () => {
@@ -613,7 +691,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
   })
 
   describe('Durability / Retention', () => {
-    it('should retain session and buffer after client fully consumes response', async () => {
+    it('should delete session and buffer after client fully consumes response by default', async () => {
       const sharedStorage = createSharedStorage<string>()
       const handler = createTestHandlerWithSharedStorage('Test cleanup', sharedStorage)
       server = await createHttpTestServer(handler)
@@ -640,12 +718,12 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       // Give runtime cleanup a moment to run
       await new Promise(r => setTimeout(r, 50))
 
-      // Session and buffer should remain for durable replay.
-      expect(sharedStorage.sessions.has(sessionId)).toBe(true)
-      expect(sharedStorage.buffers.has(sessionId)).toBe(true)
+      // Default retention policy auto-deletes successful sessions.
+      expect(sharedStorage.sessions.has(sessionId)).toBe(false)
+      expect(sharedStorage.buffers.has(sessionId)).toBe(false)
     })
 
-    it('should retain data after multiple sequential requests', async () => {
+    it('should delete data after multiple sequential requests by default', async () => {
       const sharedStorage = createSharedStorage<string>()
       const handler = createTestHandlerWithSharedStorage('Sequential test', sharedStorage)
       server = await createHttpTestServer(handler)
@@ -671,15 +749,15 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       // Give runtime cleanup time to run
       await new Promise(r => setTimeout(r, 100))
 
-      // All sessions should remain durable.
-      expect(sharedStorage.sessions.size).toBe(5)
-      expect(sharedStorage.buffers.size).toBe(5)
+      // All sessions should be deleted after successful close.
+      expect(sharedStorage.sessions.size).toBe(0)
+      expect(sharedStorage.buffers.size).toBe(0)
 
       // Verify we had unique session IDs
       expect(new Set(sessionIds).size).toBe(5)
     })
 
-    it('should retain data after concurrent requests', async () => {
+    it('should delete data after concurrent requests by default', async () => {
       const sharedStorage = createSharedStorage<string>()
       const handler = createTestHandlerWithSharedStorage('Concurrent test', sharedStorage)
       server = await createHttpTestServer(handler)
@@ -704,15 +782,15 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       // Give runtime cleanup time to run
       await new Promise(r => setTimeout(r, 100))
 
-      // All sessions should remain durable.
-      expect(sharedStorage.sessions.size).toBe(5)
-      expect(sharedStorage.buffers.size).toBe(5)
+      // All sessions should be deleted after successful close.
+      expect(sharedStorage.sessions.size).toBe(0)
+      expect(sharedStorage.buffers.size).toBe(0)
 
       // Verify we had unique session IDs
       expect(new Set(sessionIds).size).toBe(5)
     })
 
-    it('should retain session while and after streaming (slow provider)', async () => {
+    it('should retain session while streaming but delete after completion (slow provider)', async () => {
       const sharedStorage = createSharedStorage<string>()
 
       // Use slow streaming to ensure we can observe mid-stream state
@@ -748,14 +826,16 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
       // Wait for streaming to complete
       await new Promise(r => setTimeout(r, 300))
 
-      // It should still be retained after completion.
-      expect(sharedStorage.sessions.has(sessionId)).toBe(true)
-      expect(sharedStorage.buffers.has(sessionId)).toBe(true)
+      // It should be deleted after successful completion.
+      expect(sharedStorage.sessions.has(sessionId)).toBe(false)
+      expect(sharedStorage.buffers.has(sessionId)).toBe(false)
     })
 
-    it('should keep buffer available for replay after completion', async () => {
+    it('should keep buffer available for replay when retain_forever is configured', async () => {
       const sharedStorage = createSharedStorage<string>()
-      const handler = createTestHandlerWithSharedStorage('Replay retention', sharedStorage)
+      const handler = createTestHandlerWithSharedStorage('Replay retention', sharedStorage, {
+        retentionPolicy: { mode: 'retain_forever' },
+      })
       server = await createHttpTestServer(handler)
 
       // Make a request

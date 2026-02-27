@@ -9,8 +9,8 @@ bd ready              # Find available work
 bd show <id>          # View issue details
 bd update <id> --status in_progress  # Claim work
 bd close <id>         # Complete work
-bd dolt commit        # Commit beads state to Dolt
-bd dolt push          # Push to Dolt remote (if configured)
+bd vc status          # Check Dolt branch and commit state
+bd list --json        # Verify all issues are persisted
 ```
 
 <!-- BEGIN BEADS INTEGRATION -->
@@ -83,8 +83,10 @@ bd close bd-42 --reason "Completed" --json
 bd uses Dolt (a version-controlled SQL database) for persistent storage:
 
 - All issue state is stored in Dolt, not git
-- Use `bd dolt commit` to checkpoint your work
-- Use `bd dolt push` to sync to a Dolt remote (if configured)
+- The Dolt SQL server **auto-commits every write** (each `bd create`, `bd update`, `bd close` is immediately persisted)
+- Use `bd vc status` to verify current branch and last commit
+- Use `bd list --json` to verify all issues are persisted
+- **Do NOT use `bd dolt commit`** - it is broken in the current version (throws "no store available"). This is safe to ignore because the server auto-commits.
 - Beads state persists across sessions automatically
 
 ### Important Rules
@@ -110,13 +112,15 @@ For more details, see README.md and docs/QUICKSTART.md.
 1. **File issues for remaining work** - `bd create` for anything that needs follow-up
 2. **Run quality gates** (if code changed) - Tests, linters, builds must pass
 3. **Update issue status** - `bd close` finished work, `bd update` in-progress items with notes
-4. **Checkpoint beads state** - This is MANDATORY:
+4. **Verify beads state** - This is MANDATORY:
    ```bash
-   bd dolt commit
-   bd ready  # Verify accurate state
+   bd list --json        # Verify all issues are persisted with correct status
+   bd ready              # Verify accurate picture of remaining work
    ```
-5. **Verify** - `bd ready` shows accurate picture of remaining work
-6. **Hand off** - Provide context for next session
+   Since the Dolt SQL server auto-commits every write, your `bd create`/`bd update`/`bd close` calls are already persisted. The verification step confirms nothing was lost.
+   
+   **Do NOT run `bd dolt commit`** - it throws "no store available" and is unnecessary in server mode.
+5. **Hand off** - Provide context for next session
 
 ### Execution Cadence
 
@@ -129,6 +133,7 @@ For more details, see README.md and docs/QUICKSTART.md.
 - NEVER end a session with stale issue status
 - Quality gates (tests, types, lint) must pass before closing implementation issues
 - All discovered work must be captured as new issues
+- You are not allowed to alter the beads or create new beads unless its to capture discovered problems that need to be followed up on
 
 ### Git Operations (When Requested)
 

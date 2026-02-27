@@ -1,0 +1,99 @@
+{
+  "name": "@sweatpants/durable-streams",
+  "version": "0.1.0",
+  "description": "Internal durable stream protocol and storage primitives",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "import": "./src/index.ts",
+        "types": "./src/index.ts"
+      },
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./types": {
+      "development": {
+        "import": "./src/types.ts",
+        "types": "./src/types.ts"
+      },
+      "import": {
+        "types": "./dist/types.d.ts",
+        "default": "./dist/types.js"
+      }
+    },
+    "./in-memory-store": {
+      "development": {
+        "import": "./src/in-memory-store.ts",
+        "types": "./src/in-memory-store.ts"
+      },
+      "import": {
+        "types": "./dist/in-memory-store.d.ts",
+        "default": "./dist/in-memory-store.js"
+      }
+    },
+    "./protocol-headers": {
+      "development": {
+        "import": "./src/protocol-headers.ts",
+        "types": "./src/protocol-headers.ts"
+      },
+      "import": {
+        "types": "./dist/protocol-headers.d.ts",
+        "default": "./dist/protocol-headers.js"
+      }
+    },
+    "./read-transport": {
+      "development": {
+        "import": "./src/read-transport.ts",
+        "types": "./src/read-transport.ts"
+      },
+      "import": {
+        "types": "./dist/read-transport.d.ts",
+        "default": "./dist/read-transport.js"
+      }
+    },
+    "./mutation-transport": {
+      "development": {
+        "import": "./src/mutation-transport.ts",
+        "types": "./src/mutation-transport.ts"
+      },
+      "import": {
+        "types": "./dist/mutation-transport.d.ts",
+        "default": "./dist/mutation-transport.js"
+      }
+    },
+    "./sse-formatter": {
+      "development": {
+        "import": "./src/sse-formatter.ts",
+        "types": "./src/sse-formatter.ts"
+      },
+      "import": {
+        "types": "./dist/sse-formatter.d.ts",
+        "default": "./dist/sse-formatter.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "check": "tsc -b",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "effection": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "license": "MIT"
+}
