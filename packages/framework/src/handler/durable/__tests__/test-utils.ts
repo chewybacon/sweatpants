@@ -403,6 +403,7 @@ export function createChatRequest(
     method?: 'POST' | 'HEAD' | 'GET'
     live?: 'long-poll' | 'sse'
     timeout?: number
+    requestHeaders?: Record<string, string>
     persona?: string
     enabledTools?: boolean | string[]
     enabledPlugins?: string[]
@@ -415,16 +416,24 @@ export function createChatRequest(
     lastLSN,
     offset,
     useSessionPath,
-    method = 'POST',
+    method,
     live,
     timeout,
+    requestHeaders,
     ...bodyOptions
   } = options
+  const effectiveMethod = method ?? (useSessionPath ? 'GET' : 'POST')
   const body = { messages, ...bodyOptions }
 
   const headers = new Headers({
     'Content-Type': 'application/json',
   })
+
+  if (requestHeaders) {
+    for (const [key, value] of Object.entries(requestHeaders)) {
+      headers.set(key, value)
+    }
+  }
 
   const basePath = useSessionPath && sessionId
     ? `http://localhost/sessions/${encodeURIComponent(sessionId)}`
@@ -449,9 +458,9 @@ export function createChatRequest(
     url.searchParams.set('timeout', String(timeout))
   }
 
-  if (method === 'HEAD' || method === 'GET') {
+  if (effectiveMethod === 'HEAD' || effectiveMethod === 'GET') {
     const request = new Request(url.toString(), {
-      method,
+      method: effectiveMethod,
       headers,
     })
 
@@ -459,7 +468,7 @@ export function createChatRequest(
   }
 
   const request = new Request(url.toString(), {
-    method,
+    method: effectiveMethod,
     headers,
     body: JSON.stringify(body),
   })

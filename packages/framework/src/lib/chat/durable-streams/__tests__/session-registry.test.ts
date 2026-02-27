@@ -3,19 +3,19 @@
  *
  * Tests the SessionRegistry which manages:
  * - Session lifecycle (acquire/release with refCount)
- * - Buffer ownership (registry owns buffer cleanup)
+ * - Buffer ownership (registry retains buffers for durability)
  * - Disconnect/reconnect scenarios (Option D: single-server)
  *
  * Architecture:
  *   Client Request ──acquire──> Registry ──creates──> Session + Buffer + Writer
- *                  ──release──>          ──cleanup──> (when refCount=0 + complete)
+ *                  ──release──>          ──detach-runtime──> (when refCount=0)
  *
  * Key Scenario (Option D):
  *   1. Client connects, acquires session, LLM starts streaming
  *   2. Client disconnects (release), but LLM keeps writing
  *   3. Client reconnects (acquire), resumes reading from LSN
  *   4. Client finishes reading, releases
- *   5. Session is complete + refCount=0 → cleanup
+ *   5. Session is complete + refCount=0 → durable retention (buffer remains)
  */
 import { describe, it, expect } from './vitest-effection.ts'
 import { sleep, resource } from 'effection'
@@ -131,7 +131,7 @@ describe('Session Registry', () => {
       expect(entry2?.refCount).toBe(2)
     })
 
-    it('should cleanup when last release AND session complete', function* () {
+    it('should retain buffer when last release AND session complete', function* () {
       const { registry, bufferStore, registryStore } = yield* useTestRegistry()
 
       // Create session with fast stream
@@ -149,13 +149,14 @@ describe('Session Registry', () => {
       // Should be cleaned up
       yield* sleep(20) // Give cleanup time to run
       const entry = yield* registryStore.get('session-3')
-      expect(entry).toBe(null)
+      expect(entry).not.toBe(null)
+      expect(entry?.refCount).toBe(0)
 
       const buffer = yield* bufferStore.get('session-3')
-      expect(buffer).toBe(null)
+      expect(buffer).not.toBe(null)
     })
 
-    it('should NOT cleanup if session still streaming after release', function* () {
+    it('should retain streaming session after release', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()
 
       // Create session with slow stream
@@ -181,7 +182,7 @@ describe('Session Registry', () => {
       // Now should be cleaned up
       yield* sleep(50)
       const bufferAfter = yield* bufferStore.get('session-4')
-      expect(bufferAfter).toBe(null)
+      expect(bufferAfter).not.toBe(null)
     })
   })
 
@@ -262,7 +263,7 @@ describe('Session Registry', () => {
       expect(remaining.join('')).toBe(' Three Four')
     })
 
-    it('should cleanup after reconnected client finishes reading', function* () {
+    it('should retain session after reconnected client finishes reading', function* () {
       const { registry, bufferStore, registryStore } = yield* useTestRegistry()
 
       // Client 1 connects, starts fast LLM
@@ -276,12 +277,11 @@ describe('Session Registry', () => {
       // Wait for LLM to complete
       yield* sleep(50)
 
-      // Session still exists (deferred cleanup, but complete now)
-      // Actually it should cleanup since refCount=0 and complete
+      // Session still exists (durable retention, even when complete)
       yield* sleep(50)
 
       // Client 2 reconnects - but session might be gone
-      // This is the edge case: what if client reconnects AFTER cleanup?
+      // Reconnect after completion should still work because the buffer is retained.
       const entry = yield* registryStore.get('reconnect-3')
 
       // If entry is null, the session was cleaned up (expected in this case)
@@ -294,7 +294,7 @@ describe('Session Registry', () => {
       // Final state: should be cleaned up
       yield* sleep(50)
       const bufferAfter = yield* bufferStore.get('reconnect-3')
-      expect(bufferAfter).toBe(null)
+      expect(bufferAfter).not.toBe(null)
     })
   })
 
@@ -318,7 +318,7 @@ describe('Session Registry', () => {
       expect(entry?.refCount).toBe(3)
     })
 
-    it('should cleanup only after ALL clients release', function* () {
+    it('should keep durable buffer after ALL clients release', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()
 
       // Create session
@@ -351,9 +351,9 @@ describe('Session Registry', () => {
       yield* registry.release('multi-2')
       yield* sleep(20)
 
-      // Now should be cleaned up
+      // Now refCount should be zero, but durable buffer remains.
       buffer = yield* bufferStore.get('multi-2')
-      expect(buffer).toBe(null)
+      expect(buffer).not.toBe(null)
     })
   })
 
@@ -402,7 +402,7 @@ describe('Session Registry', () => {
   })
 
   describe('Full E2E: Disconnect and Reconnect Flow', () => {
-    it('should handle complete flow: connect → read → disconnect → reconnect → finish → cleanup', function* () {
+    it('should handle complete flow: connect → read → disconnect → reconnect → finish → retained', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()
       const events: string[] = []
 
@@ -451,11 +451,11 @@ describe('Session Registry', () => {
       events.push('client2:disconnect')
       yield* registry.release('e2e-session')
 
-      // 8. Should cleanup
+      // 8. Should retain durable buffer
       yield* sleep(50)
       const bufferAfter = yield* bufferStore.get('e2e-session')
-      expect(bufferAfter).toBe(null)
-      events.push('cleanup:complete')
+      expect(bufferAfter).not.toBe(null)
+      events.push('retained:complete')
 
       // Verify event flow
       expect(events[0]).toBe('client1:connect')
@@ -466,7 +466,7 @@ describe('Session Registry', () => {
       expect(events.includes('client2:read: quick')).toBe(true)
       expect(events.includes('client2:read: brown')).toBe(true)
       expect(events.includes('client2:read: fox')).toBe(true)
-      expect(events[events.length - 1]).toBe('cleanup:complete')
+      expect(events[events.length - 1]).toBe('retained:complete')
     })
   })
 })
