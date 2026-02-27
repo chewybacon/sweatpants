@@ -1,0 +1,172 @@
+{
+  "version": "v4",
+  "tasks": {
+    "sweatpants-218": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-218.md",
+      "created_at": "2026-02-27T14:25:58Z",
+      "updated_at": "2026-02-27T15:13:32Z"
+    },
+    "sweatpants-2wg": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-2wg.md",
+      "created_at": "2026-02-27T18:30:47Z",
+      "updated_at": "2026-02-27T18:38:22Z"
+    },
+    "sweatpants-4p7": {
+      "status": "done",
+      "priority": 0,
+      "file": "tasks/sweatpants-4p7.md",
+      "created_at": "2026-02-27T14:26:57Z",
+      "updated_at": "2026-02-27T14:27:26Z"
+    },
+    "sweatpants-50s": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-50s.md",
+      "created_at": "2026-02-27T14:27:05Z",
+      "updated_at": "2026-02-27T14:27:34Z"
+    },
+    "sweatpants-6vk": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-6vk.md",
+      "created_at": "2026-02-27T17:22:26Z",
+      "updated_at": "2026-02-27T17:29:27Z"
+    },
+    "sweatpants-7fo": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-7fo.md",
+      "created_at": "2026-02-27T18:02:33Z",
+      "updated_at": "2026-02-27T18:02:43Z"
+    },
+    "sweatpants-88h": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-88h.md",
+      "created_at": "2026-02-27T14:25:35Z",
+      "updated_at": "2026-02-27T15:13:29Z"
+    },
+    "sweatpants-8s1": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-8s1.md",
+      "created_at": "2026-02-27T16:48:01Z",
+      "updated_at": "2026-02-27T16:53:21Z"
+    },
+    "sweatpants-a6i": {
+      "status": "done",
+      "priority": 0,
+      "file": "tasks/sweatpants-a6i.md",
+      "created_at": "2026-02-27T14:26:55Z",
+      "updated_at": "2026-02-27T14:27:24Z"
+    },
+    "sweatpants-azx": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-azx.md",
+      "created_at": "2026-02-27T16:56:33Z",
+      "updated_at": "2026-02-27T16:59:41Z"
+    },
+    "sweatpants-c01": {
+      "status": "ready",
+      "priority": 1,
+      "description": "Investigate durable http-smoke long-poll regression after adapter createScope removal",
+      "file": "tasks/sweatpants-c01.md",
+      "created_at": "2026-02-27T16:56:26Z",
+      "updated_at": "2026-02-27T16:56:26Z"
+    },
+    "sweatpants-c3w": {
+      "status": "done",
+      "priority": 0,
+      "file": "tasks/sweatpants-c3w.md",
+      "created_at": "2026-02-27T14:27:00Z",
+      "updated_at": "2026-02-27T14:27:29Z"
+    },
+    "sweatpants-ftr": {
+      "status": "ready",
+      "priority": 2,
+      "file": "tasks/sweatpants-ftr.md",
+      "created_at": "2026-02-27T14:27:05Z",
+      "updated_at": "2026-02-27T14:27:05Z"
+    },
+    "sweatpants-gis": {
+      "status": "done",
+      "priority": 2,
+      "description": "Retire legacy tracker integration artifacts",
+      "file": "tasks/sweatpants-gis.md",
+      "created_at": "2026-02-27T14:38:46Z",
+      "updated_at": "2026-02-27T19:08:19.250137Z"
+    },
+    "sweatpants-h0v": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-h0v.md",
+      "created_at": "2026-02-27T17:17:26Z",
+      "updated_at": "2026-02-27T17:20:49Z"
+    },
+    "sweatpants-j77": {
+      "status": "done",
+      "priority": 0,
+      "file": "tasks/sweatpants-j77.md",
+      "created_at": "2026-02-27T14:27:02Z",
+      "updated_at": "2026-02-27T14:27:31Z"
+    },
+    "sweatpants-o1h": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-o1h.md",
+      "created_at": "2026-02-27T18:48:21Z",
+      "updated_at": "2026-02-27T18:51:54Z"
+    },
+    "sweatpants-qlg": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-qlg.md",
+      "created_at": "2026-02-27T16:53:25Z",
+      "updated_at": "2026-02-27T16:56:29Z"
+    },
+    "sweatpants-r75": {
+      "status": "done",
+      "priority": 0,
+      "file": "tasks/sweatpants-r75.md",
+      "created_at": "2026-02-27T14:26:59Z",
+      "updated_at": "2026-02-27T14:27:28Z"
+    },
+    "sweatpants-roe": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-roe.md",
+      "created_at": "2026-02-27T17:52:28Z",
+      "updated_at": "2026-02-27T17:57:11Z"
+    },
+    "sweatpants-vhy": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-vhy.md",
+      "created_at": "2026-02-27T17:30:59Z",
+      "updated_at": "2026-02-27T17:40:22Z"
+    },
+    "sweatpants-wt0": {
+      "status": "in_progress",
+      "priority": 1,
+      "file": "tasks/sweatpants-wt0.md",
+      "created_at": "2026-02-27T16:47:58Z",
+      "updated_at": "2026-02-27T16:48:08Z"
+    },
+    "sweatpants-zgy": {
+      "status": "done",
+      "priority": 1,
+      "file": "tasks/sweatpants-zgy.md",
+      "created_at": "2026-02-27T14:27:03Z",
+      "updated_at": "2026-02-27T14:27:32Z"
+    }
+  },
+  "archived_count": 0,
+  "learnings_count": 0,
+  "decisions_count": 0,
+  "updated_at": "2026-02-27T19:08:19.250402Z"
+}
