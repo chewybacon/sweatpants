@@ -1,13 +1,13 @@
 /**
  * Session Registry Implementation
  *
- * Manages session lifecycle with reference counting for automatic cleanup.
+ * Manages session lifecycle with reference counting and durable retention.
  * Sessions represent the duration of a single LLM request, not the entire
  * chat conversation.
  *
  * Key behaviors:
  * - acquire() creates or returns existing session, increments refCount
- * - release() decrements refCount, triggers cleanup when refCount=0 AND complete
+ * - release() decrements refCount, detaches runtime tasks when refCount=0
  * - LLM writer tasks run in background via useBackgroundTask, surviving client disconnects
  * - Reconnection works by acquiring the same sessionId while LLM is still streaming
  */
@@ -83,23 +83,33 @@ export function* createSessionRegistry<T>(
     sessionId: string,
     buffer: TokenBuffer<T>,
   ): SessionHandle<T> {
-    const state = sessionStates.get(sessionId)
     return {
       id: sessionId,
       buffer,
       *status(): Operation<SessionStatus> {
-        return state?.status ?? 'orphaned'
+        const state = sessionStates.get(sessionId)
+        if (state) {
+          return state.status
+        }
+
+        const error = yield* buffer.getError()
+        if (error) {
+          return 'error'
+        }
+
+        const complete = yield* buffer.isComplete()
+        return complete ? 'complete' : 'streaming'
       },
     }
   }
 
   /**
-   * Internal cleanup helper - removes session from all stores and maps.
-   */
-  function* cleanup(sessionId: string): Operation<void> {
-    log.debug({ sessionId }, 'cleaning up session')
-    yield* registryStore.delete(sessionId)
-    yield* bufferStore.delete(sessionId)
+ * Internal runtime cleanup helper.
+ *
+ * Durable entries and buffers remain in stores for replay/reconnect.
+ */
+  function* cleanupRuntime(sessionId: string): Operation<void> {
+    log.debug({ sessionId }, 'cleaning up runtime task state')
     sessionStates.delete(sessionId)
     sessionTasks.delete(sessionId)
   }
@@ -211,17 +221,17 @@ export function* createSessionRegistry<T>(
         const writerTask = tasks?.get(TASK_KEYS.WRITER)
         
         if (writerTask?.isDone()) {
-          // Writer is done and no clients - cleanup immediately
-          log.debug({ sessionId, writerStatus: writerTask.status() }, 'writer done, cleaning up immediately')
-          yield* cleanup(sessionId)
+          // Writer is done and no clients - detach runtime state.
+          log.debug({ sessionId, writerStatus: writerTask.status() }, 'writer done, detaching runtime state')
+          yield* cleanupRuntime(sessionId)
         } else {
-          // Writer still running - spawn cleanup waiter as background task
+          // Writer still running - spawn runtime cleanup waiter as background task.
           // This handles the case where client disconnects but LLM is still writing
-          log.debug({ sessionId }, 'writer still running, spawning cleanup waiter')
+          log.debug({ sessionId }, 'writer still running, spawning runtime cleanup waiter')
           
           // Capture references for closure
           const capturedRegistryStore = registryStore
-          const capturedCleanup = cleanup
+          const capturedCleanupRuntime = cleanupRuntime
           const capturedLog = log
           
           // Use useBackgroundTask instead of fireAndForget to ensure the scope stays alive
@@ -234,10 +244,10 @@ export function* createSessionRegistry<T>(
             // Re-check refCount (client might have reconnected)
             const currentEntry = yield* capturedRegistryStore.get(sessionId)
             if (currentEntry && currentEntry.refCount === 0) {
-              capturedLog.debug({ sessionId }, 'cleanup waiter: cleaning up session')
-              yield* capturedCleanup(sessionId)
+              capturedLog.debug({ sessionId }, 'cleanup waiter: detaching runtime state')
+              yield* capturedCleanupRuntime(sessionId)
             } else {
-              capturedLog.debug({ sessionId, refCount: currentEntry?.refCount }, 'cleanup waiter: client reconnected, skipping cleanup')
+              capturedLog.debug({ sessionId, refCount: currentEntry?.refCount }, 'cleanup waiter: client reconnected, keeping runtime state')
             }
           }, { name: `cleanup-waiter:${sessionId}` })
         }
