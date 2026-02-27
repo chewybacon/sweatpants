@@ -125,6 +125,12 @@ export {
   type RedisStoreConfig,
 } from './redis-store.ts'
 
+// Concrete node-redis adapter
+export {
+  createNodeRedisStoreAdapter,
+  type NodeRedisAdapterConfig,
+} from './node-redis-adapter.ts'
+
 // Postgres-backed stores
 export {
   createPostgresBufferStore,
@@ -132,3 +138,9 @@ export {
   type PostgresStoreAdapter,
   type PostgresStoreConfig,
 } from './postgres-store.ts'
+
+// Concrete pg adapter
+export {
+  createPgStoreAdapter,
+  type PgAdapterConfig,
+} from './pg-adapter.ts'

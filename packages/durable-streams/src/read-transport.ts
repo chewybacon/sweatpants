@@ -1,28 +1,24 @@
 import { race, resource, sleep, type Operation, type Stream } from 'effection'
 
-import type {
-  SessionHandle,
-  SessionRegistry,
-  TokenBuffer,
-} from '../../lib/chat/durable-streams/index.ts'
-import { createPullStream } from '../../lib/chat/durable-streams/index.ts'
-import type { HandlerContext, SetupResult } from '../streaming.ts'
+import type { ProtocolHandlerContext, ProtocolSetupResult } from './http-types.ts'
 import {
   applySnapshotHeaders,
   createStreamCursor,
   createStreamETag,
+  toOffsetString,
   type LiveMode,
   type ParsedOffset,
-  toOffsetString,
 } from './protocol-headers.ts'
+import { createPullStream } from './pull-stream.ts'
 import { createSSEEventStream } from './sse-formatter.ts'
+import type { SessionHandle, SessionRegistry, TokenBuffer } from './types.ts'
 
 interface LoggerLike {
   debug(data: unknown, message?: string): void
 }
 
 interface ReadTransportParams {
-  ctx: HandlerContext
+  ctx: ProtocolHandlerContext
   registry: SessionRegistry<string>
   session: SessionHandle<string>
   sessionId: string
@@ -120,11 +116,11 @@ function createDurableEventStream(
 }
 
 export function* createHeadMetadataResponse(
-  ctx: HandlerContext,
+  ctx: ProtocolHandlerContext,
   registry: SessionRegistry<string>,
   sessionId: string,
   startLSN: number,
-): Operation<SetupResult> {
+): Operation<ProtocolSetupResult> {
   let session: SessionHandle<string>
 
   try {
@@ -156,7 +152,7 @@ export function* createHeadMetadataResponse(
 
 export function* createProtocolReadResponse(
   params: ReadTransportParams,
-): Operation<SetupResult> {
+): Operation<ProtocolSetupResult> {
   const {
     ctx,
     registry,
@@ -237,8 +233,7 @@ export function* createProtocolReadResponse(
       const afterWaitMetadata = yield* readStreamMetadata(session)
       ctx.headers.set('Stream-Next-Offset', toOffsetString(afterWaitMetadata.tailOffset))
 
-      if (afterWaitMetadata.closed &&
-          effectiveStartLSN >= afterWaitMetadata.tailOffset) {
+      if (afterWaitMetadata.closed && effectiveStartLSN >= afterWaitMetadata.tailOffset) {
         ctx.status = 204
         ctx.headers.set('Stream-Closed', 'true')
         ctx.headers.set('Stream-Up-To-Date', 'true')
@@ -250,10 +245,7 @@ export function* createProtocolReadResponse(
         }
       }
 
-      if (
-        waitResult.type === 'timeout' &&
-        effectiveStartLSN >= afterWaitMetadata.tailOffset
-      ) {
+      if (waitResult.type === 'timeout' && effectiveStartLSN >= afterWaitMetadata.tailOffset) {
         ctx.status = 204
         ctx.headers.set('Stream-Up-To-Date', 'true')
         if (!afterWaitMetadata.closed) {

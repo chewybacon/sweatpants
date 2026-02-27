@@ -44,16 +44,14 @@ import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
+  createHeadMetadataResponse,
+  createProtocolMutationResponse,
+  createProtocolReadResponse,
   parseLiveMode,
   parseOffsetParam,
   parseSessionIdFromPath,
   parseTimeoutMs,
-} from "./protocol-headers.ts";
-import {
-  createHeadMetadataResponse,
-  createProtocolReadResponse,
-} from "./read-transport.ts";
-import { createProtocolMutationResponse } from './mutation-transport.ts';
+} from '@sweatpants/durable-streams';
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,

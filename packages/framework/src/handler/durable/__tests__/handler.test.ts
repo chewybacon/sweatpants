@@ -21,6 +21,7 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from '../../../lib/chat/durable-streams/index.ts'
+import type { RetentionPolicy } from '../../../lib/chat/durable-streams/types.ts'
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
 import type { InitializerHook, IsomorphicTool } from '../types.ts'
@@ -40,7 +41,8 @@ import {
  */
 function createTestHooks(
   provider: ReturnType<typeof createMockProvider>,
-  tools: IsomorphicTool[] = []
+  tools: IsomorphicTool[] = [],
+  options: { retentionPolicy?: RetentionPolicy } = {}
 ): InitializerHook[] {
   const bufferStore = createInMemoryBufferStore<string>()
   const registryStore = createInMemoryRegistryStore()
@@ -48,7 +50,11 @@ function createTestHooks(
   return [
     // Set up durable streams infrastructure
     function* setupDurable() {
-      yield* setupDurableStreams({ bufferStore, registryStore })
+      yield* setupDurableStreams({
+        bufferStore,
+        registryStore,
+        ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
+      })
     },
     // Set up provider
     function* setupProvider() {
@@ -612,7 +618,9 @@ describe('Durable Chat Handler', () => {
     it('should return [] when caught up with JSON accept header', function* () {
       const provider = createMockProvider({ responses: 'already caught up' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        initializerHooks: createTestHooks(provider, [], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
       })
 
       const { sessionId } = yield* call(() =>

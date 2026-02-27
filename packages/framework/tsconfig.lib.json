@@ -19,5 +19,5 @@
     "tests",
     "e2e"
   ],
-  "references": [{ "path": "../elicit-context" }]
+  "references": [{ "path": "../elicit-context" }, { "path": "../durable-streams" }]
 }

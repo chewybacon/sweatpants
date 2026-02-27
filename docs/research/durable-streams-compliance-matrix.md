@@ -1,6 +1,6 @@
 # Durable Streams Protocol Compliance Matrix
 
-Date: 2026-02-26
+Date: 2026-02-27
 
 This checklist tracks implemented protocol capabilities and where they are verified.
 
@@ -17,7 +17,7 @@ This checklist tracks implemented protocol capabilities and where they are verif
 | SSE mode (`live=sse`) | Implemented | `packages/framework/src/handler/durable/__tests__/handler.test.ts`, `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
 | `HEAD` metadata endpoint | Implemented | `packages/framework/src/handler/durable/__tests__/handler.test.ts` |
 | `ETag` and `If-None-Match` (`304`) | Implemented | `packages/framework/src/handler/durable/__tests__/handler.test.ts` |
-| Lexicographically sortable offsets | Implemented (zero-padded numeric tokens) | `packages/framework/src/handler/durable/protocol-headers.ts`, handler/smoke tests |
+| Lexicographically sortable offsets | Implemented (zero-padded numeric tokens) | `packages/durable-streams/src/protocol-headers.ts`, handler/smoke tests |
 
 ## Mutating Operations
 
@@ -27,15 +27,16 @@ This checklist tracks implemented protocol capabilities and where they are verif
 | `POST /sessions/{id}` append | Implemented | `packages/framework/src/handler/durable/__tests__/handler.test.ts`, `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
 | `POST /sessions/{id}` close via `Stream-Closed: true` | Implemented | `packages/framework/src/handler/durable/__tests__/handler.test.ts`, `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
 | `DELETE /sessions/{id}` delete stream | Implemented | `packages/framework/src/handler/durable/__tests__/handler.test.ts`, `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
+| DELETE race behavior (long-poll/read/write) | Implemented | `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
 
 ## Durability and Storage
 
 | Capability | Status | Verification |
 | --- | --- | --- |
-| Buffer retention independent of refCount | Implemented | `packages/framework/src/lib/chat/durable-streams/session-registry.ts`, `packages/framework/src/lib/chat/durable-streams/__tests__/session-registry.test.ts`, `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
+| Retention policy API (`auto_delete_on_close`, `retain_forever`, `retain_until_ttl`) | Implemented | `packages/durable-streams/src/types.ts`, `packages/framework/src/lib/chat/durable-streams/session-registry.ts`, `packages/framework/src/lib/chat/durable-streams/__tests__/session-registry.test.ts`, `packages/framework/src/handler/durable/__tests__/http-smoke.test.ts` |
 | In-memory shared storage | Implemented | Durable smoke tests |
 | Redis/Postgres backend abstractions | Implemented (adapter interfaces + stores) | `packages/framework/src/lib/chat/durable-streams/redis-store.ts`, `packages/framework/src/lib/chat/durable-streams/postgres-store.ts` |
-| Concrete Redis/Postgres clients + integration tests | Pending | `sweatpants-e4j` |
+| Concrete Redis/Postgres clients + integration tests | Implemented (env-gated integration tests) | `packages/framework/src/lib/chat/durable-streams/node-redis-adapter.ts`, `packages/framework/src/lib/chat/durable-streams/pg-adapter.ts`, `packages/framework/src/lib/chat/durable-streams/__tests__/adapters.integration.test.ts` |
 
 ## Interoperability Coverage
 
@@ -51,12 +52,20 @@ External-client-style protocol flow is validated in:
   - metadata (`HEAD`)
   - delete (`DELETE`)
 
+## Temporary Divergences
+
+| Divergence | Rationale | Compatibility impact | Planned resolution |
+| --- | --- | --- | --- |
+| Default retention is `auto_delete_on_close`; completed successful streams can disappear before a later `HEAD`/replay | Prevent unbounded memory/storage growth by default in internal deployments | External clients expecting post-close replay must configure `retain_forever` or `retain_until_ttl` | Keep policy configurable now; revisit protocol profile defaults before external publish |
+| In-flight writer + `DELETE` can emit internal writer failure logs (`Buffer is closed`) while still returning deterministic HTTP outcomes | `DELETE` now closes and removes stream state immediately to unblock long-poll/readers and prevent stale state | Logs may contain expected race noise; API behavior remains stable (`DELETE=204`, later reads/writes `404`) | Add structured race-specific log code and optional suppression for expected close-after-delete path |
+| SSE control payload uses internal field names (`streamNextOffset`, `streamCursor`, `streamClosed`, `upToDate`) rather than freezing an external schema contract | Current field set is stable for framework clients but not yet semver-frozen as public protocol package API | External consumers should treat control payload as provisional until package is externalized | Freeze field schema and publish explicit compatibility table in package docs during publish hardening |
+
 ## Definition of Done (Compliance Hardening Epic)
 
 - [x] Offsets are lexicographically sortable in protocol headers and control payloads.
-- [x] Stream retention is decoupled from active reader refCounts.
+- [x] Retention policy is configurable and defaulted to auto-delete on successful close.
 - [x] Read transport responsibilities are separated from chat orchestration path.
 - [x] JSON empty-catch behavior returns `[]` for `Accept: application/json`.
 - [x] Protocol-native mutating endpoints (`PUT`/`POST`/`DELETE`/close) are implemented and tested.
-- [ ] Concrete Redis/Postgres runtime adapters and integration tests are complete (`sweatpants-e4j`).
-- [ ] Final compliance review against upstream protocol examples is documented.
+- [x] Concrete Redis/Postgres runtime adapters and integration tests are complete (`sweatpants-e4j`).
+- [x] Temporary protocol divergences are documented with rationale and follow-up.

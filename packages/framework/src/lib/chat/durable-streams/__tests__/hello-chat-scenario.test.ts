@@ -247,7 +247,7 @@ describe('Hello Chat Scenarios (with SessionRegistry)', () => {
   })
 
   describe('Error Handling', () => {
-    it('should propagate LLM errors and cleanup', function* () {
+    it('should propagate LLM errors and retain error buffer for debugging', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()
       const sessionId = 'error-1'
 
@@ -274,10 +274,10 @@ describe('Hello Chat Scenarios (with SessionRegistry)', () => {
       yield* sleep(50)
       expect(yield* session.status()).toBe('error')
 
-      // Release and verify cleanup
+      // Release and verify default retention keeps errored stream state.
       yield* registry.release(sessionId)
       yield* sleep(20)
-      expect(yield* bufferStore.get(sessionId)).toBe(null)
+      expect(yield* bufferStore.get(sessionId)).not.toBe(null)
     })
   })
 

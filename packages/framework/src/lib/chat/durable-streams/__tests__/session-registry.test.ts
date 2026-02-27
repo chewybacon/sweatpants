@@ -20,7 +20,7 @@
 import { describe, it, expect } from './vitest-effection.ts'
 import { sleep, resource } from 'effection'
 import type { Operation, Subscription, Stream } from 'effection'
-import type { TokenFrame } from '../types.ts'
+import type { RetentionPolicy, TokenFrame } from '../types.ts'
 import {
   createPullStream,
   createMockLLMStream,
@@ -34,9 +34,11 @@ import {
 // TEST HELPER: Create test registry with DI pattern
 // =============================================================================
 
-function* useTestRegistry() {
+function* useTestRegistry(retentionPolicy?: RetentionPolicy) {
   // Setup DI contexts - returns the setup for direct access
-  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>()
+  const { registry, bufferStore, registryStore } = yield* setupInMemoryDurableStreams<string>(
+    retentionPolicy ? { retentionPolicy } : {}
+  )
   return { registry, bufferStore, registryStore }
 }
 
@@ -131,7 +133,7 @@ describe('Session Registry', () => {
       expect(entry2?.refCount).toBe(2)
     })
 
-    it('should retain buffer when last release AND session complete', function* () {
+    it('should auto-delete buffer when last release AND session complete', function* () {
       const { registry, bufferStore, registryStore } = yield* useTestRegistry()
 
       // Create session with fast stream
@@ -149,11 +151,10 @@ describe('Session Registry', () => {
       // Should be cleaned up
       yield* sleep(20) // Give cleanup time to run
       const entry = yield* registryStore.get('session-3')
-      expect(entry).not.toBe(null)
-      expect(entry?.refCount).toBe(0)
+      expect(entry).toBe(null)
 
       const buffer = yield* bufferStore.get('session-3')
-      expect(buffer).not.toBe(null)
+      expect(buffer).toBe(null)
     })
 
     it('should retain streaming session after release', function* () {
@@ -182,7 +183,7 @@ describe('Session Registry', () => {
       // Now should be cleaned up
       yield* sleep(50)
       const bufferAfter = yield* bufferStore.get('session-4')
-      expect(bufferAfter).not.toBe(null)
+      expect(bufferAfter).toBe(null)
     })
   })
 
@@ -263,7 +264,7 @@ describe('Session Registry', () => {
       expect(remaining.join('')).toBe(' Three Four')
     })
 
-    it('should retain session after reconnected client finishes reading', function* () {
+    it('should auto-delete session after reconnected client finishes reading', function* () {
       const { registry, bufferStore, registryStore } = yield* useTestRegistry()
 
       // Client 1 connects, starts fast LLM
@@ -294,7 +295,7 @@ describe('Session Registry', () => {
       // Final state: should be cleaned up
       yield* sleep(50)
       const bufferAfter = yield* bufferStore.get('reconnect-3')
-      expect(bufferAfter).not.toBe(null)
+      expect(bufferAfter).toBe(null)
     })
   })
 
@@ -318,7 +319,7 @@ describe('Session Registry', () => {
       expect(entry?.refCount).toBe(3)
     })
 
-    it('should keep durable buffer after ALL clients release', function* () {
+    it('should remove durable buffer after ALL clients release by default', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()
 
       // Create session
@@ -351,9 +352,9 @@ describe('Session Registry', () => {
       yield* registry.release('multi-2')
       yield* sleep(20)
 
-      // Now refCount should be zero, but durable buffer remains.
+      // Now refCount should be zero and buffer should be deleted.
       buffer = yield* bufferStore.get('multi-2')
-      expect(buffer).not.toBe(null)
+      expect(buffer).toBe(null)
     })
   })
 
@@ -402,7 +403,7 @@ describe('Session Registry', () => {
   })
 
   describe('Full E2E: Disconnect and Reconnect Flow', () => {
-    it('should handle complete flow: connect → read → disconnect → reconnect → finish → retained', function* () {
+    it('should handle complete flow: connect → read → disconnect → reconnect → finish → deleted', function* () {
       const { registry, bufferStore } = yield* useTestRegistry()
       const events: string[] = []
 
@@ -451,11 +452,11 @@ describe('Session Registry', () => {
       events.push('client2:disconnect')
       yield* registry.release('e2e-session')
 
-      // 8. Should retain durable buffer
+      // 8. Should auto-delete durable buffer
       yield* sleep(50)
       const bufferAfter = yield* bufferStore.get('e2e-session')
-      expect(bufferAfter).not.toBe(null)
-      events.push('retained:complete')
+      expect(bufferAfter).toBe(null)
+      events.push('deleted:complete')
 
       // Verify event flow
       expect(events[0]).toBe('client1:connect')
@@ -466,7 +467,42 @@ describe('Session Registry', () => {
       expect(events.includes('client2:read: quick')).toBe(true)
       expect(events.includes('client2:read: brown')).toBe(true)
       expect(events.includes('client2:read: fox')).toBe(true)
-      expect(events[events.length - 1]).toBe('retained:complete')
+      expect(events[events.length - 1]).toBe('deleted:complete')
+    })
+
+    it('should retain complete sessions with retain_forever policy', function* () {
+      const { registry, bufferStore, registryStore } = yield* useTestRegistry({
+        mode: 'retain_forever',
+      })
+
+      yield* registry.acquire('retain-forever', {
+        source: createMockLLMStream('keep me', { tokenDelayMs: 5 }),
+      })
+
+      yield* sleep(50)
+      yield* registry.release('retain-forever')
+      yield* sleep(20)
+
+      expect((yield* registryStore.get('retain-forever'))?.refCount).toBe(0)
+      expect(yield* bufferStore.get('retain-forever')).not.toBe(null)
+    })
+
+    it('should delete complete sessions after ttl with retain_until_ttl policy', function* () {
+      const { registry, bufferStore } = yield* useTestRegistry({
+        mode: 'retain_until_ttl',
+        ttlMs: 30,
+      })
+
+      yield* registry.acquire('retain-ttl', {
+        source: createMockLLMStream('expire me', { tokenDelayMs: 5 }),
+      })
+
+      yield* sleep(50)
+      yield* registry.release('retain-ttl')
+      expect(yield* bufferStore.get('retain-ttl')).not.toBe(null)
+
+      yield* sleep(50)
+      expect(yield* bufferStore.get('retain-ttl')).toBe(null)
     })
   })
 })

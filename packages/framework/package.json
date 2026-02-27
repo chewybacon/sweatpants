@@ -216,12 +216,15 @@
     }
   },
   "dependencies": {
+    "@sweatpants/durable-streams": "workspace:*",
     "@sweatpants/core": "workspace:*",
     "@sweatpants/elicit-context": "workspace:*",
     "fast-glob": "^3.3.2",
     "magic-string": "catalog:",
+    "pg": "^8.13.1",
     "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0"
+    "pino-pretty": "^13.0.0",
+    "redis": "^4.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",
@@ -234,6 +237,7 @@
     "@testing-library/react": "catalog:",
     "@types/babel__core": "^7.20.5",
     "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
     "@types/react": "catalog:",
     "clsx": "^2.1.1",
     "effection": "catalog:",

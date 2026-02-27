@@ -11,7 +11,7 @@
  * - LLM writer tasks run in background via useBackgroundTask, surviving client disconnects
  * - Reconnection works by acquiring the same sessionId while LLM is still streaming
  */
-import type { Operation } from 'effection'
+import { sleep, type Operation } from 'effection'
 import type {
   TokenBufferStore,
   TokenBuffer,
@@ -21,7 +21,9 @@ import type {
   SessionHandle,
   SessionStatus,
   CreateSessionOptions,
+  RetentionPolicy,
 } from './types.ts'
+import { DEFAULT_RETENTION_POLICY } from './types.ts'
 import { writeFromStreamToBuffer } from './pull-stream.ts'
 import { useLogger, LoggerFactoryContext } from '../../logger/index.ts'
 import { useBackgroundTask, type BackgroundTaskHandle } from '../../effection/index.ts'
@@ -68,9 +70,11 @@ const TASK_KEYS = {
  */
 export function* createSessionRegistry<T>(
   bufferStore: TokenBufferStore<T>,
-  registryStore: SessionRegistryStore
+  registryStore: SessionRegistryStore,
+  config: { retentionPolicy?: RetentionPolicy } = {}
 ): Operation<SessionRegistry<T>> {
   const log = yield* useLogger('durable-streams:registry')
+  const retentionPolicy = config.retentionPolicy ?? DEFAULT_RETENTION_POLICY
   
   // Track mutable state for each session (status updates from writer tasks)
   const sessionStates = new Map<string, MutableSessionState>()
@@ -78,6 +82,7 @@ export function* createSessionRegistry<T>(
   // Internal task tracking - NOT in SessionEntry to keep it serializable
   // Map<sessionId, Map<taskKey, BackgroundTaskHandle>>
   const sessionTasks = new Map<string, Map<string, BackgroundTaskHandle<void>>>()
+  const retentionTasks = new Map<string, BackgroundTaskHandle<void>>()
 
   function createHandle(
     sessionId: string,
@@ -114,6 +119,77 @@ export function* createSessionRegistry<T>(
     sessionTasks.delete(sessionId)
   }
 
+  function* clearRetentionTask(sessionId: string): Operation<void> {
+    const pending = retentionTasks.get(sessionId)
+    if (pending) {
+      yield* pending.halt()
+      retentionTasks.delete(sessionId)
+    }
+  }
+
+  function* deleteDurableState(sessionId: string): Operation<void> {
+    yield* registryStore.delete(sessionId)
+    yield* bufferStore.delete(sessionId)
+    yield* cleanupRuntime(sessionId)
+  }
+
+  function* scheduleTtlDeletion(sessionId: string, ttlMs: number): Operation<void> {
+    if (ttlMs <= 0) {
+      log.debug({ sessionId }, 'retention ttl expired immediately, deleting')
+      yield* deleteDurableState(sessionId)
+      return
+    }
+
+    const task = yield* useBackgroundTask(function* () {
+      yield* sleep(ttlMs)
+      const entry = yield* registryStore.get(sessionId)
+      if (entry && entry.refCount === 0) {
+        log.debug({ sessionId, ttlMs }, 'retention ttl reached, deleting')
+        yield* deleteDurableState(sessionId)
+      }
+    }, {
+      name: `retention-ttl:${sessionId}`,
+    })
+
+    retentionTasks.set(sessionId, task)
+  }
+
+  function* applyRetentionPolicy(
+    sessionId: string,
+    buffer: TokenBuffer<T>
+  ): Operation<void> {
+    const complete = yield* buffer.isComplete()
+    const error = yield* buffer.getError()
+    const succeeded = complete && !error
+
+    switch (retentionPolicy.mode) {
+      case 'auto_delete_on_close': {
+        if (succeeded) {
+          log.debug({ sessionId }, 'auto-delete retention deleting successful session')
+          yield* deleteDurableState(sessionId)
+        } else {
+          log.debug({ sessionId }, 'auto-delete retention preserving non-successful session')
+          yield* cleanupRuntime(sessionId)
+        }
+        return
+      }
+
+      case 'retain_until_ttl': {
+        log.debug({ sessionId, ttlMs: retentionPolicy.ttlMs }, 'retaining session until ttl')
+        yield* cleanupRuntime(sessionId)
+        yield* clearRetentionTask(sessionId)
+        yield* scheduleTtlDeletion(sessionId, retentionPolicy.ttlMs)
+        return
+      }
+
+      case 'retain_forever':
+      default: {
+        log.debug({ sessionId }, 'retaining session forever')
+        yield* cleanupRuntime(sessionId)
+      }
+    }
+  }
+
   const registry: SessionRegistry<T> = {
     *acquire(
       sessionId: string,
@@ -125,6 +201,8 @@ export function* createSessionRegistry<T>(
       const existing = yield* registryStore.get(sessionId)
 
       if (existing) {
+        yield* clearRetentionTask(sessionId)
+
         // Increment refCount and return existing handle
         yield* registryStore.updateRefCount(sessionId, 1)
 
@@ -221,9 +299,11 @@ export function* createSessionRegistry<T>(
         const writerTask = tasks?.get(TASK_KEYS.WRITER)
         
         if (writerTask?.isDone()) {
-          // Writer is done and no clients - detach runtime state.
-          log.debug({ sessionId, writerStatus: writerTask.status() }, 'writer done, detaching runtime state')
-          yield* cleanupRuntime(sessionId)
+          log.debug({ sessionId, writerStatus: writerTask.status() }, 'writer done, applying retention policy')
+          const buffer = yield* bufferStore.get(sessionId)
+          if (buffer) {
+            yield* applyRetentionPolicy(sessionId, buffer)
+          }
         } else {
           // Writer still running - spawn runtime cleanup waiter as background task.
           // This handles the case where client disconnects but LLM is still writing
@@ -244,8 +324,13 @@ export function* createSessionRegistry<T>(
             // Re-check refCount (client might have reconnected)
             const currentEntry = yield* capturedRegistryStore.get(sessionId)
             if (currentEntry && currentEntry.refCount === 0) {
-              capturedLog.debug({ sessionId }, 'cleanup waiter: detaching runtime state')
-              yield* capturedCleanupRuntime(sessionId)
+              capturedLog.debug({ sessionId }, 'cleanup waiter: applying retention policy')
+              const buffer = yield* bufferStore.get(sessionId)
+              if (buffer) {
+                yield* applyRetentionPolicy(sessionId, buffer)
+              } else {
+                yield* capturedCleanupRuntime(sessionId)
+              }
             } else {
               capturedLog.debug({ sessionId, refCount: currentEntry?.refCount }, 'cleanup waiter: client reconnected, keeping runtime state')
             }

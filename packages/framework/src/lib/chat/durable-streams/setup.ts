@@ -21,7 +21,12 @@
  * ```
  */
 import type { Operation } from 'effection'
-import type { SessionRegistry, TokenBufferStore, SessionRegistryStore } from './types.ts'
+import type {
+  RetentionPolicy,
+  SessionRegistry,
+  SessionRegistryStore,
+  TokenBufferStore,
+} from './types.ts'
 import { createInMemoryBufferStore, createInMemoryRegistryStore } from './in-memory-store.ts'
 import { createSessionRegistry } from './session-registry.ts'
 import {
@@ -42,6 +47,8 @@ export interface DurableStreamsConfig<T> {
   bufferStore: TokenBufferStore<T>
   /** Store for tracking session entries with refCount */
   registryStore: SessionRegistryStore
+  /** Retention policy for completed streams */
+  retentionPolicy?: RetentionPolicy
 }
 
 /**
@@ -84,10 +91,12 @@ export interface DurableStreamsSetup<T> {
 export function* setupDurableStreams<T>(
   config: DurableStreamsConfig<T>
 ): Operation<DurableStreamsSetup<T>> {
-  const { bufferStore, registryStore } = config
+  const { bufferStore, registryStore, retentionPolicy } = config
 
   // Create the registry (this is an Operation that may spawn tasks)
-  const registry = yield* createSessionRegistry(bufferStore, registryStore)
+  const registry = yield* createSessionRegistry(bufferStore, registryStore, {
+    ...(retentionPolicy ? { retentionPolicy } : {}),
+  })
 
   // Set all contexts for DI
   yield* TokenBufferStoreContext.set(bufferStore as TokenBufferStore<unknown>)
@@ -130,9 +139,15 @@ export function* setupDurableStreams<T>(
  * })
  * ```
  */
-export function* setupInMemoryDurableStreams<T>(): Operation<DurableStreamsSetup<T>> {
+export function* setupInMemoryDurableStreams<T>(
+  options: { retentionPolicy?: RetentionPolicy } = {}
+): Operation<DurableStreamsSetup<T>> {
   const bufferStore = createInMemoryBufferStore<T>()
   const registryStore = createInMemoryRegistryStore()
 
-  return yield* setupDurableStreams({ bufferStore, registryStore })
+  return yield* setupDurableStreams({
+    bufferStore,
+    registryStore,
+    ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
+  })
 }
