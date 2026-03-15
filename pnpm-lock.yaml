@@ -630,6 +630,9 @@ importers:
       '@sweatpants/elicit-context':
         specifier: workspace:*
         version: link:../elicit-context
+      '@sweatpants/stream-bridge':
+        specifier: workspace:*
+        version: link:../stream-bridge
       fast-glob:
         specifier: ^3.3.2
         version: 3.3.3

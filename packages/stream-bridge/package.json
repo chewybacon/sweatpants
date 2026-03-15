@@ -1,7 +1,7 @@
 {
   "name": "@sweatpants/stream-bridge",
-  "version": "0.0.1-experimental",
-  "description": "Experimental: bridging Effection streams to HTTP responses",
+  "version": "0.1.0",
+  "description": "Bridge Effection streams to HTTP responses with pull-based semantics",
   "type": "module",
   "exports": {
     ".": {
@@ -12,46 +12,6 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      }
-    },
-    "./approaches/readable-stream-bridge": {
-      "development": {
-        "import": "./src/approaches/readable-stream-bridge.ts",
-        "types": "./src/approaches/readable-stream-bridge.ts"
-      },
-      "import": {
-        "types": "./dist/approaches/readable-stream-bridge.d.ts",
-        "default": "./dist/approaches/readable-stream-bridge.js"
-      }
-    },
-    "./approaches/async-iterable-response": {
-      "development": {
-        "import": "./src/approaches/async-iterable-response.ts",
-        "types": "./src/approaches/async-iterable-response.ts"
-      },
-      "import": {
-        "types": "./dist/approaches/async-iterable-response.d.ts",
-        "default": "./dist/approaches/async-iterable-response.js"
-      }
-    },
-    "./approaches/scope-captured-stream": {
-      "development": {
-        "import": "./src/approaches/scope-captured-stream.ts",
-        "types": "./src/approaches/scope-captured-stream.ts"
-      },
-      "import": {
-        "types": "./dist/approaches/scope-captured-stream.d.ts",
-        "default": "./dist/approaches/scope-captured-stream.js"
-      }
-    },
-    "./approaches/effection-server": {
-      "development": {
-        "import": "./src/approaches/effection-server.ts",
-        "types": "./src/approaches/effection-server.ts"
-      },
-      "import": {
-        "types": "./dist/approaches/effection-server.d.ts",
-        "default": "./dist/approaches/effection-server.js"
       }
     }
   },
@@ -75,5 +35,12 @@
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
+  "keywords": [
+    "effection",
+    "stream",
+    "http",
+    "response",
+    "backpressure"
+  ],
   "license": "MIT"
 }
