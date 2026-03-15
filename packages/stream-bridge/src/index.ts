@@ -1,20 +1,35 @@
 /**
- * Stream Bridge Experiments
+ * @sweatpants/stream-bridge
  *
- * This package explores different approaches to bridging Effection streams
- * to HTTP response bodies. The goal is to find the cleanest, most efficient
- * approach that maintains pull-based semantics.
+ * Bridge Effection streams to HTTP responses with pull-based semantics.
  *
- * Approaches:
- * 1. readable-stream-bridge - Current baseline (ReadableStream with scope.run in pull)
- * 2. async-iterable-response - Use AsyncIterable as Response body directly
- * 3. scope-captured-stream - Pre-capture subscription, minimize scope.run calls
- * 4. effection-server - Full Effection-native server with Operation<Response>
+ * This package provides a clean way to convert Effection Stream<T> values
+ * into Web ReadableStreams that can be used as HTTP Response bodies.
+ *
+ * Key features:
+ * - Pull-based: values are only produced when the consumer requests them
+ * - Backpressure: slow consumers don't cause unbounded buffering
+ * - Efficient: minimal scope.run() overhead per item
+ *
+ * @example
+ * ```typescript
+ * import { createStreamResponse } from '@sweatpants/stream-bridge'
+ * import { resource } from 'effection'
+ *
+ * // Create an Effection stream
+ * const myStream = resource(function* (provide) {
+ *   yield* provide({
+ *     *next() {
+ *       return { done: false, value: 'hello' }
+ *     }
+ *   })
+ * })
+ *
+ * // Convert to HTTP Response
+ * const response = yield* createStreamResponse(myStream, {
+ *   serialize: (value) => new TextEncoder().encode(value + '\n')
+ * })
+ * ```
  */
 
-export { createReadableStreamBridge } from './approaches/readable-stream-bridge.ts'
-export { createAsyncIterableResponse } from './approaches/async-iterable-response.ts'
-export { createScopeCapturedStream } from './approaches/scope-captured-stream.ts'
-export { createEffectionServer, type EffectionServerOptions, type EffectionHandler } from './approaches/effection-server.ts'
-
-export { createCountingGenerator, type CountingGeneratorOptions } from './test-utils.ts'
+export { createStreamResponse, createReadableStream, type StreamResponseOptions, type StreamResponseResult } from './stream-response.ts'

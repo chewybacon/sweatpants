@@ -4,15 +4,10 @@
  * Bridges Effection-based TokenBuffers to Web ReadableStreams,
  * enabling use with standard HTTP Response objects.
  *
- * The challenge:
- * - Effection uses generator-based Operations with `yield*`
- * - Web Streams use `pull(controller)` async callbacks
- *
- * The solution:
- * - Use scope.run() inside pull() to execute Effection operations
- * - The scope is captured from the calling context
+ * This module wraps the generic stream-bridge with TokenBuffer-specific logic.
  */
-import type { Scope, Subscription } from 'effection'
+import { createReadableStream } from '@sweatpants/stream-bridge'
+import type { Scope } from 'effection'
 import type { TokenBuffer, TokenFrame } from './types.ts'
 import { createPullStream } from './pull-stream.ts'
 
@@ -41,43 +36,13 @@ export function createWebStreamFromBuffer(
   buffer: TokenBuffer<string>,
   startLSN = 0
 ): ReadableStream<Uint8Array> {
+  const stream = createPullStream(buffer, startLSN)
   const encoder = new TextEncoder()
-  let subscription: Subscription<TokenFrame<string>, void> | null = null
-  let initialized = false
 
-  return new ReadableStream<Uint8Array>({
-    async start() {
-      // Initialize the pull stream subscription
-      await scope.run(function* () {
-        subscription = yield* createPullStream(buffer, startLSN)
-        initialized = true
-      })
-    },
-
-    async pull(controller) {
-      if (!initialized || !subscription) {
-        controller.error(new Error('Stream not initialized'))
-        return
-      }
-
-      try {
-        // Run the Effection operation in the captured scope
-        // Extract to local const so TS can narrow after the guard above
-        const sub = subscription
-        const result = await scope.run(function* () {
-          return yield* sub.next()
-        })
-
-        if (result.done) {
-          controller.close()
-        } else {
-          const frame = result.value as TokenFrame<string>
-          const json = JSON.stringify(frame) + '\n'
-          controller.enqueue(encoder.encode(json))
-        }
-      } catch (err) {
-        controller.error(err)
-      }
+  return createReadableStream(scope, stream, {
+    serialize: (frame: TokenFrame<string>) => {
+      const json = JSON.stringify(frame) + '\n'
+      return encoder.encode(json)
     },
   })
 }

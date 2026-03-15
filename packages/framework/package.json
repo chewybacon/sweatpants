@@ -219,6 +219,7 @@
     "@sweatpants/durable-streams": "workspace:*",
     "@sweatpants/core": "workspace:*",
     "@sweatpants/elicit-context": "workspace:*",
+    "@sweatpants/stream-bridge": "workspace:*",
     "fast-glob": "^3.3.2",
     "magic-string": "catalog:",
     "pg": "^8.13.1",
