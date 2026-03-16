@@ -62,6 +62,18 @@
       "created_at": "2026-03-16T11:21:59.8126Z",
       "updated_at": "2026-03-16T11:27:07.321532Z"
     },
+    "durable-conversations-pull-based": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "stream-bridge"
+      ],
+      "description": "Make durable-conversations POST processing pull-based via Effection stream bridge",
+      "file": "tasks/durable-conversations-pull-based.md",
+      "created_at": "2026-03-16T21:49:55.728016Z",
+      "updated_at": "2026-03-16T21:50:02.057908Z"
+    },
     "durable-conversations-scaffold": {
       "status": "done",
       "priority": 1,
@@ -265,5 +277,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-16T12:03:41.557378Z"
+  "updated_at": "2026-03-16T21:50:02.05809Z"
 }
