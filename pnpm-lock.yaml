@@ -582,6 +582,40 @@ importers:
         specifier: 'catalog:'
         version: 4.1.13
 
+  packages/durable-conversations:
+    dependencies:
+      '@sweatpants/durable-streams':
+        specifier: workspace:*
+        version: link:../durable-streams
+      '@sweatpants/framework':
+        specifier: workspace:*
+        version: link:../framework
+      '@sweatpants/stream-bridge':
+        specifier: workspace:*
+        version: link:../stream-bridge
+      effection:
+        specifier: 'catalog:'
+        version: 4.1.0-alpha.7
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/durable-streams:
     dependencies:
       effection:
