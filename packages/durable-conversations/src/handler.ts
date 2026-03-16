@@ -1,7 +1,7 @@
 import { parseOffsetParam, toOffsetString } from '@sweatpants/durable-streams'
 import type { Message, ToolCall } from '@sweatpants/framework/chat'
 import { createStreamResponse } from '@sweatpants/stream-bridge'
-import { resource, run, type Operation, type Stream } from 'effection'
+import { call, resource, run, type Operation, type Stream } from 'effection'
 
 import {
   createEchoElicitRequest,
@@ -116,17 +116,43 @@ function createFrameStream(frames: EventFrame[]): Stream<EventFrame, void> {
   })
 }
 
+function createAsyncFrameStream(
+  createIterator: () => AsyncGenerator<EventFrame, void, void>,
+): Stream<EventFrame, void> {
+  return resource(function* (provide) {
+    let iterator: AsyncGenerator<EventFrame, void, void> | null = null
+    let done = false
+
+    yield* provide({
+      *next(): Operation<IteratorResult<EventFrame, void>> {
+        if (done) {
+          return { done: true, value: undefined }
+        }
+
+        if (!iterator) {
+          iterator = createIterator()
+        }
+
+        const iter = iterator
+        const next = yield* call(() => iter.next())
+        if (next.done) {
+          done = true
+          return { done: true, value: undefined }
+        }
+
+        return { done: false, value: next.value }
+      },
+    })
+  })
+}
+
 async function createStreamingNDJSONResponse(
-  frames: EventFrame[],
+  frameStream: Stream<EventFrame, void>,
   status: number,
   headers: Headers,
 ): Promise<Response> {
-  if (frames.length === 0) {
-    return new Response('', { status, headers })
-  }
-
   const bridge = await run(function* () {
-    return yield* createStreamResponse(createFrameStream(frames), {
+    return yield* createStreamResponse(frameStream, {
       contentType: 'application/x-ndjson',
       serialize: (frame) => new TextEncoder().encode(`${JSON.stringify(frame)}\n`),
     })
@@ -223,7 +249,7 @@ export function createDurableConversationHandler(
       headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
       headers.set('Stream-Up-To-Date', 'true')
 
-      return createStreamingNDJSONResponse(frames, 200, headers)
+      return createStreamingNDJSONResponse(createFrameStream(frames), 200, headers)
     }
 
     if (method !== 'POST') {
@@ -236,102 +262,115 @@ export function createDurableConversationHandler(
     store.create(conversationId)
 
     const parsedBody = parseJsonBody(await request.json().catch(() => ({})))
-    const appendedFrames: EventFrame[] = []
 
-    const pushEvent = (event: Omit<ConversationEvent, 'id' | 'timestamp'>): ConversationEvent => {
-      const appended = store.appendEvent(conversationId, event)
-      appendedFrames.push({
-        offset: toOffsetString(store.nextOffset(conversationId)),
-        event: appended,
-      })
-      return appended
-    }
+    const hasAnyInput =
+      (parsedBody.messages?.some((message) => message.role === 'user') ?? false) ||
+      (parsedBody.elicitResponses?.length ?? 0) > 0
 
-    for (const response of parsedBody.elicitResponses ?? []) {
-      pushEvent({
-        from: 'user',
-        type: 'elicit_response',
-        content: response.response,
-        callId: response.callId,
-        elicitId: response.elicitId,
-      })
-
-      const pending = store.resolvePendingTool(conversationId, response)
-      if (pending && pending.toolName === ECHO_TOOL_NAME) {
-        const result = completeEchoTool(parseEchoArgs(pending.args), response)
-        pushEvent({
-          from: 'tool',
-          type: 'tool_result',
-          content: result,
-          callId: pending.callId,
-          toolName: pending.toolName,
-        })
-      }
-    }
-
-    for (const message of parsedBody.messages ?? []) {
-      if (message.role !== 'user') {
-        continue
-      }
-      pushEvent({
-        from: 'user',
-        type: 'message',
-        content: message.content,
-      })
-    }
-
-    const allEvents = store.read(conversationId, 0)
-    if (allEvents.length === 0) {
+    if (!hasAnyInput) {
       headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
       return new Response('', { status: 204, headers })
     }
 
-    const hasElicitResponse = (parsedBody.elicitResponses?.length ?? 0) > 0
-    const modelMessages = buildModelMessages(allEvents, systemPrompt)
-    const llmResult = await runLLMTurn(modelMessages, {
-      allowTools: !hasElicitResponse,
-      requireTool: !hasElicitResponse,
-    })
-
-    const firstToolCall = llmResult.toolCalls.find((call) => call.function.name === ECHO_TOOL_NAME)
-
-    if (firstToolCall && !hasElicitResponse) {
-      pushEvent({
-        from: 'assistant',
-        type: 'tool_call',
-        content: `Calling ${firstToolCall.function.name}`,
-        callId: firstToolCall.id,
-        toolName: firstToolCall.function.name,
-        arguments: firstToolCall.function.arguments,
-      })
-
-      const args = parseEchoArgs(firstToolCall.function.arguments)
-      const elicit = createEchoElicitRequest(firstToolCall.id, args)
-      store.registerPendingTool(conversationId, {
-        callId: elicit.callId,
-        elicitId: elicit.elicitId,
-        toolName: ECHO_TOOL_NAME,
-        args,
-      })
-
-      pushEvent({
-        from: 'tool',
-        type: 'elicit_request',
-        content: elicit.message,
-        callId: elicit.callId,
-        elicitId: elicit.elicitId,
-        toolName: ECHO_TOOL_NAME,
-      })
-    } else if (llmResult.text.trim().length > 0) {
-      pushEvent({
-        from: 'assistant',
-        type: 'message',
-        content: llmResult.text,
-      })
-    }
-
+    // Snapshot the current offset in headers; body processing is lazy/pull-based.
     headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
 
-    return createStreamingNDJSONResponse(appendedFrames, 200, headers)
+    const postFrameStream = createAsyncFrameStream(async function* () {
+      const emit = (event: Omit<ConversationEvent, 'id' | 'timestamp'>): EventFrame => {
+        const appended = store.appendEvent(conversationId, event)
+        return {
+          offset: toOffsetString(store.nextOffset(conversationId)),
+          event: appended,
+        }
+      }
+
+      for (const response of parsedBody.elicitResponses ?? []) {
+        yield emit({
+          from: 'user',
+          type: 'elicit_response',
+          content: response.response,
+          callId: response.callId,
+          elicitId: response.elicitId,
+        })
+
+        const pending = store.resolvePendingTool(conversationId, response)
+        if (pending && pending.toolName === ECHO_TOOL_NAME) {
+          const result = completeEchoTool(parseEchoArgs(pending.args), response)
+          yield emit({
+            from: 'tool',
+            type: 'tool_result',
+            content: result,
+            callId: pending.callId,
+            toolName: pending.toolName,
+          })
+        }
+      }
+
+      for (const message of parsedBody.messages ?? []) {
+        if (message.role !== 'user') {
+          continue
+        }
+        yield emit({
+          from: 'user',
+          type: 'message',
+          content: message.content,
+        })
+      }
+
+      const allEvents = store.read(conversationId, 0)
+      if (allEvents.length === 0) {
+        return
+      }
+
+      const hasElicitResponse = (parsedBody.elicitResponses?.length ?? 0) > 0
+      const modelMessages = buildModelMessages(allEvents, systemPrompt)
+      const llmResult = await runLLMTurn(modelMessages, {
+        allowTools: !hasElicitResponse,
+        requireTool: !hasElicitResponse,
+      })
+
+      const firstToolCall = llmResult.toolCalls.find((call) => call.function.name === ECHO_TOOL_NAME)
+
+      if (firstToolCall && !hasElicitResponse) {
+        yield emit({
+          from: 'assistant',
+          type: 'tool_call',
+          content: `Calling ${firstToolCall.function.name}`,
+          callId: firstToolCall.id,
+          toolName: firstToolCall.function.name,
+          arguments: firstToolCall.function.arguments,
+        })
+
+        const args = parseEchoArgs(firstToolCall.function.arguments)
+        const elicit = createEchoElicitRequest(firstToolCall.id, args)
+        store.registerPendingTool(conversationId, {
+          callId: elicit.callId,
+          elicitId: elicit.elicitId,
+          toolName: ECHO_TOOL_NAME,
+          args,
+        })
+
+        yield emit({
+          from: 'tool',
+          type: 'elicit_request',
+          content: elicit.message,
+          callId: elicit.callId,
+          elicitId: elicit.elicitId,
+          toolName: ECHO_TOOL_NAME,
+        })
+
+        return
+      }
+
+      if (llmResult.text.trim().length > 0) {
+        yield emit({
+          from: 'assistant',
+          type: 'message',
+          content: llmResult.text,
+        })
+      }
+    })
+
+    return createStreamingNDJSONResponse(postFrameStream, 200, headers)
   }
 }
