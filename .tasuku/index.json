@@ -1,6 +1,103 @@
 {
   "version": "v4",
   "tasks": {
+    "durable-conversations-echo-tool": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "tools"
+      ],
+      "parent_id": "durable-conversations-spike",
+      "description": "Implement simple echo tool flow including elicit request/response",
+      "file": "tasks/durable-conversations-echo-tool.md",
+      "created_at": "2026-03-16T11:21:59.810623Z",
+      "updated_at": "2026-03-16T11:27:07.197315Z"
+    },
+    "durable-conversations-effection-bridge": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "stream-bridge"
+      ],
+      "description": "Refactor durable-conversations spike to stream responses via effection and @sweatpants/stream-bridge",
+      "file": "tasks/durable-conversations-effection-bridge.md",
+      "created_at": "2026-03-16T12:02:53.163898Z",
+      "updated_at": "2026-03-16T12:03:41.557185Z"
+    },
+    "durable-conversations-handler": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-conversations-spike",
+      "description": "Implement universal fetch conversation handler (PUT/POST/GET) with durable stream semantics",
+      "file": "tasks/durable-conversations-handler.md",
+      "created_at": "2026-03-16T11:21:59.810871Z",
+      "updated_at": "2026-03-16T11:27:07.197579Z"
+    },
+    "durable-conversations-http-tests": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "testing"
+      ],
+      "parent_id": "durable-conversations-spike",
+      "description": "Add HTTP integration tests using node server and real requests against running handler",
+      "file": "tasks/durable-conversations-http-tests.md",
+      "created_at": "2026-03-16T11:21:59.816267Z",
+      "updated_at": "2026-03-16T11:27:07.317625Z"
+    },
+    "durable-conversations-ollama": {
+      "status": "done",
+      "priority": 2,
+      "tags": [
+        "ollama",
+        "testing"
+      ],
+      "parent_id": "durable-conversations-spike",
+      "description": "Wire ollama glm-4.7-flash provider path and availability-gated vitest coverage",
+      "file": "tasks/durable-conversations-ollama.md",
+      "created_at": "2026-03-16T11:21:59.8126Z",
+      "updated_at": "2026-03-16T11:27:07.321532Z"
+    },
+    "durable-conversations-scaffold": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-conversations-spike",
+      "description": "Create @sweatpants/durable-conversations package scaffold and exports",
+      "file": "tasks/durable-conversations-scaffold.md",
+      "created_at": "2026-03-16T11:21:59.802151Z",
+      "updated_at": "2026-03-16T11:26:59.227233Z"
+    },
+    "durable-conversations-spike": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "durable-streams",
+        "spike"
+      ],
+      "description": "Spike durable conversations package with one-stream-per-conversation flow",
+      "file": "tasks/durable-conversations-spike.md",
+      "created_at": "2026-03-16T11:21:49.688831Z",
+      "updated_at": "2026-03-16T11:27:10.787657Z"
+    },
+    "durable-conversations-store": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-conversations-spike",
+      "description": "Implement in-memory conversation store with protocol offsets and pending elicit state",
+      "file": "tasks/durable-conversations-store.md",
+      "created_at": "2026-03-16T11:21:59.805819Z",
+      "updated_at": "2026-03-16T11:27:07.119486Z"
+    },
     "sweatpants-218": {
       "status": "done",
       "priority": 1,
@@ -168,5 +265,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-02-27T19:08:19.250402Z"
+  "updated_at": "2026-03-16T12:03:41.557378Z"
 }
