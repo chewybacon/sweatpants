@@ -1,7 +1,7 @@
 import { parseOffsetParam, toOffsetString } from '@sweatpants/durable-streams'
 import type { Message, ToolCall } from '@sweatpants/framework/chat'
 import { createStreamResponse } from '@sweatpants/stream-bridge'
-import { resource, run, sleep, type Operation, type Stream } from 'effection'
+import { call, race, resource, run, type Operation, type Stream } from 'effection'
 
 import {
   createEchoElicitRequest,
@@ -185,7 +185,17 @@ function createPostReadFrameStream(params: {
           return { done: true, value: undefined }
         }
 
-        yield* sleep(25)
+        yield* race([
+          (function* (): Operation<'changed'> {
+            yield* store.waitForChange(conversationId, cursor)
+            return 'changed'
+          })(),
+          (function* (): Operation<'done'> {
+            yield* call(() => completion)
+            return 'done'
+          })(),
+        ])
+
         return yield* this.next()
       },
     })

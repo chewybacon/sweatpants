@@ -32,6 +32,7 @@ export interface ConversationStore {
     event: Omit<ConversationEvent, 'id' | 'timestamp'>,
   ): Operation<ConversationEvent>
   read(id: string, offset: number): Operation<ConversationEvent[]>
+  waitForChange(id: string, afterOffset: number): Operation<void>
   nextOffset(id: string): Operation<number>
   nextOffsetString(id: string): Operation<string>
   registerPendingTool(id: string, pending: PendingToolRequest): void
@@ -89,6 +90,14 @@ export function createConversationStore(): ConversationStore {
       }
       const { tokens } = yield* conversation.buffer.read(offset)
       return tokens
+    },
+
+    *waitForChange(id, afterOffset) {
+      const conversation = conversations.get(id)
+      if (!conversation) {
+        return
+      }
+      yield* conversation.buffer.waitForChange(afterOffset)
     },
 
     *nextOffset(id) {
