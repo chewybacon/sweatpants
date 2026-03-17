@@ -158,6 +158,18 @@
       "created_at": "2026-03-16T23:17:43.808989Z",
       "updated_at": "2026-03-16T23:18:53.99568Z"
     },
+    "durable-conversations-waitforchange-stream": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "effection"
+      ],
+      "description": "Replace polling sleep in durable-conversations post stream with waitForChange signaling",
+      "file": "tasks/durable-conversations-waitforchange-stream.md",
+      "created_at": "2026-03-17T10:16:50.462003Z",
+      "updated_at": "2026-03-17T10:16:57.221114Z"
+    },
     "shared-node-fetch-adapter": {
       "status": "done",
       "priority": 1,
@@ -337,5 +349,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-17T09:12:43.961793Z"
+  "updated_at": "2026-03-17T10:16:57.221329Z"
 }
