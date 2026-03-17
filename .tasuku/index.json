@@ -62,6 +62,18 @@
       "created_at": "2026-03-16T11:21:59.8126Z",
       "updated_at": "2026-03-16T11:27:07.321532Z"
     },
+    "durable-conversations-post-effection-stream": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "effection"
+      ],
+      "description": "Refactor durable-conversations POST flow into pure Effection stream resource",
+      "file": "tasks/durable-conversations-post-effection-stream.md",
+      "created_at": "2026-03-17T08:27:51.19436Z",
+      "updated_at": "2026-03-17T08:29:34.197982Z"
+    },
     "durable-conversations-pull-based": {
       "status": "done",
       "priority": 1,
@@ -73,6 +85,18 @@
       "file": "tasks/durable-conversations-pull-based.md",
       "created_at": "2026-03-16T21:49:55.728016Z",
       "updated_at": "2026-03-16T21:50:02.057908Z"
+    },
+    "durable-conversations-runtime-queue": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "durable-streams"
+      ],
+      "description": "Decouple durable-conversations producer execution from response stream using background runtime queue",
+      "file": "tasks/durable-conversations-runtime-queue.md",
+      "created_at": "2026-03-17T09:08:38.306696Z",
+      "updated_at": "2026-03-17T09:12:43.961466Z"
     },
     "durable-conversations-scaffold": {
       "status": "done",
@@ -109,6 +133,42 @@
       "file": "tasks/durable-conversations-store.md",
       "created_at": "2026-03-16T11:21:59.805819Z",
       "updated_at": "2026-03-16T11:27:07.119486Z"
+    },
+    "durable-conversations-store-operations": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "effection"
+      ],
+      "description": "Refactor durable-conversations store methods to generator-based operations",
+      "file": "tasks/durable-conversations-store-operations.md",
+      "created_at": "2026-03-17T01:06:58.08638Z",
+      "updated_at": "2026-03-17T01:07:05.68526Z"
+    },
+    "durable-conversations-token-buffer": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "durable-streams"
+      ],
+      "description": "Add token buffer-backed storage to durable-conversations spike",
+      "file": "tasks/durable-conversations-token-buffer.md",
+      "created_at": "2026-03-16T23:17:43.808989Z",
+      "updated_at": "2026-03-16T23:18:53.99568Z"
+    },
+    "shared-node-fetch-adapter": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "infra"
+      ],
+      "description": "Centralize Node Fetch adapter with backpressure-safe response piping",
+      "file": "tasks/shared-node-fetch-adapter.md",
+      "created_at": "2026-03-16T22:02:10.872906Z",
+      "updated_at": "2026-03-16T22:06:03.619502Z"
     },
     "sweatpants-218": {
       "status": "done",
@@ -277,5 +337,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-16T21:50:02.05809Z"
+  "updated_at": "2026-03-17T09:12:43.961793Z"
 }
