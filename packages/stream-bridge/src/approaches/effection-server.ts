@@ -21,6 +21,8 @@
 import { run, spawn, call, type Operation, type Stream } from 'effection'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 
+import { nodeRequestToWebRequest, sendWebResponse } from '../node-fetch-adapter.ts'
+
 export interface EffectionHandler {
   (request: Request): Operation<Response>
 }
@@ -126,19 +128,10 @@ function handleRequestWithEffection(
 ): void {
   run(function* () {
     try {
-      const webRequest = nodeRequestToWebRequest(req)
+      const host = req.headers.host ?? 'localhost'
+      const webRequest = nodeRequestToWebRequest(req, `http://${host}`)
       const webResponse = yield* handler(webRequest)
-
-      res.statusCode = webResponse.status
-      webResponse.headers.forEach((value, key) => {
-        res.setHeader(key, value)
-      })
-
-      if (webResponse.body) {
-        yield* pipeBodyToResponse(webResponse.body, res)
-      }
-
-      res.end()
+      yield* call(() => sendWebResponse(res, webResponse))
     } catch (err) {
       res.statusCode = 500
       res.setHeader('Content-Type', 'application/json')
@@ -151,62 +144,6 @@ function handleRequestWithEffection(
       res.end('Internal Server Error')
     }
   })
-}
-
-/**
- * Converts a Node.js IncomingMessage to a Web standard Request.
- */
-function nodeRequestToWebRequest(req: IncomingMessage): Request {
-  const protocol = 'http'
-  const host = req.headers.host || 'localhost'
-  const url = `${protocol}://${host}${req.url}`
-
-  const headers = new Headers()
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value !== undefined) {
-      headers.set(key, Array.isArray(value) ? value.join(', ') : value)
-    }
-  }
-
-  return new Request(url, {
-    method: req.method || 'GET',
-    headers,
-    body: null,
-  })
-}
-
-/**
- * Pipes a Response body to a Node.js ServerResponse.
- */
-function pipeBodyToResponse(body: BodyInit, res: ServerResponse): Operation<void> {
-  return {
-    *[Symbol.iterator]() {
-      if (body instanceof ReadableStream) {
-        const reader = body.getReader()
-        try {
-          while (true) {
-            const { done, value } = yield* call(() => reader.read())
-            if (done) break
-            res.write(value)
-          }
-        } finally {
-          reader.releaseLock()
-        }
-      } else if (body && typeof (body as unknown as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] === 'function') {
-        // Handle async iterable - need to iterate asynchronously
-        const iterable = body as unknown as AsyncIterable<Uint8Array>
-        yield* call(async () => {
-          for await (const chunk of iterable) {
-            res.write(chunk)
-          }
-        })
-      } else if (typeof body === 'string') {
-        res.write(body)
-      } else if (body instanceof Uint8Array) {
-        res.write(body)
-      }
-    },
-  }
 }
 
 /**

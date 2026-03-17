@@ -9,8 +9,12 @@
  * - Call handler.fetch(request) → Web Response
  * - Convert Web Response → Node ServerResponse
  */
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http'
-import { Readable } from 'stream'
+import { createServer, type Server } from 'node:http'
+import {
+  nodeRequestToWebRequest,
+  sendWebResponse,
+  type FetchHandler,
+} from '@sweatpants/stream-bridge'
 
 // =============================================================================
 // TYPES
@@ -25,94 +29,6 @@ export interface TestServerHandle {
   close: () => Promise<void>
   /** The underlying Node HTTP server (for advanced use cases) */
   server: Server
-}
-
-export type FetchHandler = (request: Request) => Promise<Response>
-
-// =============================================================================
-// NODE ↔ WEB API BRIDGE
-// =============================================================================
-
-/**
- * Convert a Node IncomingMessage to a Web Request.
- */
-function nodeRequestToWebRequest(
-  req: IncomingMessage,
-  baseUrl: string
-): Request {
-  const url = new URL(req.url ?? '/', baseUrl)
-
-  // Build headers
-  const headers = new Headers()
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value) {
-      if (Array.isArray(value)) {
-        for (const v of value) {
-          headers.append(key, v)
-        }
-      } else {
-        headers.set(key, value)
-      }
-    }
-  }
-
-  // Build request init
-  const init: RequestInit = {
-    method: req.method ?? 'GET',
-    headers,
-  }
-
-  // Add body for non-GET/HEAD requests
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    // Convert Node readable stream to Web ReadableStream
-    init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>
-    // Required for streaming request bodies
-    ;(init as RequestInit & { duplex: string }).duplex = 'half'
-  }
-
-  return new Request(url.toString(), init)
-}
-
-/**
- * Send a Web Response through a Node ServerResponse.
- */
-async function sendWebResponse(
-  res: ServerResponse,
-  webRes: Response
-): Promise<void> {
-  // Set status
-  res.statusCode = webRes.status
-  res.statusMessage = webRes.statusText
-
-  // Set headers
-  webRes.headers.forEach((value, key) => {
-    // Handle multiple values for same header
-    const existing = res.getHeader(key)
-    if (existing) {
-      res.setHeader(key, Array.isArray(existing)
-        ? [...existing, value]
-        : [String(existing), value]
-      )
-    } else {
-      res.setHeader(key, value)
-    }
-  })
-
-  // Send body
-  if (webRes.body) {
-    const reader = webRes.body.getReader()
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        res.write(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
-  res.end()
 }
 
 // =============================================================================

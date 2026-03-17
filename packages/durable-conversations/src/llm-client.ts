@@ -1,4 +1,4 @@
-import { run } from 'effection'
+import { run, type Operation } from 'effection'
 
 import {
   ollamaProvider,
@@ -22,40 +22,51 @@ export interface LLMTurnOptions {
   allowTools?: boolean
 }
 
+export function runLLMTurnOperation(
+  messages: Message[],
+  options: LLMTurnOptions = {},
+): Operation<LLMTurnResult> {
+  const { requireTool = false, allowTools = true } = options
+
+  return {
+    *[Symbol.iterator]() {
+      const stream = ollamaProvider.stream(messages, {
+        model: process.env['OLLAMA_MODEL'] ?? 'glm-4.7-flash:latest',
+        ...(allowTools
+          ? {
+              isomorphicToolSchemas: [echoToolSchema],
+              toolChoice: requireTool ? 'required' : 'auto',
+            }
+          : {
+              toolChoice: 'none',
+            }),
+      })
+
+      const subscription = yield* stream
+      const events: ChatEvent[] = []
+
+      while (true) {
+        const next = yield* subscription.next()
+        if (next.done) {
+          return {
+            text: next.value.text,
+            toolCalls: next.value.toolCalls ?? [],
+            events,
+            raw: next.value,
+          }
+        }
+        events.push(next.value)
+      }
+    },
+  }
+}
+
 export async function runLLMTurn(
   messages: Message[],
   options: LLMTurnOptions = {},
 ): Promise<LLMTurnResult> {
-  const { requireTool = false, allowTools = true } = options
-
   return run(function* () {
-    const stream = ollamaProvider.stream(messages, {
-      model: process.env['OLLAMA_MODEL'] ?? 'glm-4.7-flash:latest',
-      ...(allowTools
-        ? {
-            isomorphicToolSchemas: [echoToolSchema],
-            toolChoice: requireTool ? 'required' : 'auto',
-          }
-        : {
-            toolChoice: 'none',
-          }),
-    })
-
-    const subscription = yield* stream
-    const events: ChatEvent[] = []
-
-    while (true) {
-      const next = yield* subscription.next()
-      if (next.done) {
-        return {
-          text: next.value.text,
-          toolCalls: next.value.toolCalls ?? [],
-          events,
-          raw: next.value,
-        }
-      }
-      events.push(next.value)
-    }
+    return yield* runLLMTurnOperation(messages, options)
   })
 }
 

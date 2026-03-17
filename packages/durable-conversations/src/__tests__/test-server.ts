@@ -1,69 +1,15 @@
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
-import { Readable } from 'node:stream'
+import { createServer, type Server } from 'node:http'
+import {
+  nodeRequestToWebRequest,
+  sendWebResponse,
+  type FetchHandler,
+} from '@sweatpants/stream-bridge'
 
 export interface TestServerHandle {
   url: string
   port: number
   server: Server
   close: () => Promise<void>
-}
-
-export type FetchHandler = (request: Request) => Promise<Response>
-
-function nodeRequestToWebRequest(req: IncomingMessage, baseUrl: string): Request {
-  const url = new URL(req.url ?? '/', baseUrl)
-
-  const headers = new Headers()
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value === undefined) {
-      continue
-    }
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        headers.append(key, item)
-      }
-      continue
-    }
-    headers.set(key, value)
-  }
-
-  const init: RequestInit = {
-    method: req.method ?? 'GET',
-    headers,
-  }
-
-  if (req.method !== 'GET' && req.method !== 'HEAD') {
-    init.body = Readable.toWeb(req) as ReadableStream<Uint8Array>
-    ;(init as RequestInit & { duplex: 'half' }).duplex = 'half'
-  }
-
-  return new Request(url.toString(), init)
-}
-
-async function sendWebResponse(res: ServerResponse, webRes: Response): Promise<void> {
-  res.statusCode = webRes.status
-  res.statusMessage = webRes.statusText
-
-  webRes.headers.forEach((value, key) => {
-    res.setHeader(key, value)
-  })
-
-  if (webRes.body) {
-    const reader = webRes.body.getReader()
-    try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          break
-        }
-        res.write(value)
-      }
-    } finally {
-      reader.releaseLock()
-    }
-  }
-
-  res.end()
 }
 
 export async function createHttpTestServer(handler: FetchHandler): Promise<TestServerHandle> {
@@ -77,13 +23,15 @@ export async function createHttpTestServer(handler: FetchHandler): Promise<TestS
       const response = await handler(request)
       await sendWebResponse(res, response)
     } catch (error) {
-      res.statusCode = 500
-      res.setHeader('content-type', 'application/json')
-      res.end(
-        JSON.stringify({
-          error: error instanceof Error ? error.message : 'Unknown server error',
-        }),
-      )
+      if (!res.headersSent && !res.writableEnded) {
+        res.statusCode = 500
+        res.setHeader('content-type', 'application/json')
+        res.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : 'Unknown server error',
+          }),
+        )
+      }
     }
   })
 

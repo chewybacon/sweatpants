@@ -1,7 +1,7 @@
 import { parseOffsetParam, toOffsetString } from '@sweatpants/durable-streams'
 import type { Message, ToolCall } from '@sweatpants/framework/chat'
 import { createStreamResponse } from '@sweatpants/stream-bridge'
-import { call, resource, run, type Operation, type Stream } from 'effection'
+import { resource, run, sleep, type Operation, type Stream } from 'effection'
 
 import {
   createEchoElicitRequest,
@@ -16,7 +16,7 @@ import type {
   ElicitResponseInput,
 } from './event-types.ts'
 import { createConversationStore, type ConversationStore } from './conversation-store.ts'
-import { runLLMTurn } from './llm-client.ts'
+import { runLLMTurnOperation } from './llm-client.ts'
 
 export interface DurableConversationHandlerOptions {
   store?: ConversationStore
@@ -27,6 +27,17 @@ export interface DurableConversationHandlerOptions {
 interface EventFrame {
   offset: string
   event: ConversationEvent
+}
+
+interface RuntimeWorkItem {
+  body: ConversationPostBody
+  resolve: () => void
+  reject: (error: unknown) => void
+}
+
+interface ConversationRuntime {
+  queue: RuntimeWorkItem[]
+  running: boolean
 }
 
 const DEFAULT_SYSTEM_PROMPT = [
@@ -116,31 +127,66 @@ function createFrameStream(frames: EventFrame[]): Stream<EventFrame, void> {
   })
 }
 
-function createAsyncFrameStream(
-  createIterator: () => AsyncGenerator<EventFrame, void, void>,
-): Stream<EventFrame, void> {
+function createPostReadFrameStream(params: {
+  store: ConversationStore
+  conversationId: string
+  startOffset: number
+  completion: Promise<void>
+}): Stream<EventFrame, void> {
+  const { store, conversationId, startOffset, completion } = params
+
   return resource(function* (provide) {
-    let iterator: AsyncGenerator<EventFrame, void, void> | null = null
+    const queue: EventFrame[] = []
     let done = false
+    let completionSettled = false
+    let completionError: unknown = null
+
+    let cursor = startOffset
+
+    completion.then(
+      () => {
+        completionSettled = true
+      },
+      (error) => {
+        completionError = error
+        completionSettled = true
+      },
+    )
 
     yield* provide({
       *next(): Operation<IteratorResult<EventFrame, void>> {
+        if (queue.length > 0) {
+          return { done: false, value: queue.shift()! }
+        }
+
         if (done) {
           return { done: true, value: undefined }
         }
 
-        if (!iterator) {
-          iterator = createIterator()
+        if (completionError) {
+          throw completionError
         }
 
-        const iter = iterator
-        const next = yield* call(() => iter.next())
-        if (next.done) {
+        const events = yield* store.read(conversationId, cursor)
+        if (events.length > 0) {
+          for (const [index, event] of events.entries()) {
+            const offset = cursor + index + 1
+            queue.push({
+              offset: toOffsetString(offset),
+              event,
+            })
+          }
+          cursor += events.length
+          return { done: false, value: queue.shift()! }
+        }
+
+        if (completionSettled) {
           done = true
           return { done: true, value: undefined }
         }
 
-        return { done: false, value: next.value }
+        yield* sleep(25)
+        return yield* this.next()
       },
     })
   })
@@ -216,6 +262,155 @@ export function createDurableConversationHandler(
   const store = options.store ?? createConversationStore()
   const generateConversationId = options.generateConversationId ?? (() => crypto.randomUUID())
   const systemPrompt = options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT
+  const runOp = <T>(operationFactory: () => Operation<T>): Promise<T> => run(operationFactory)
+  const runtimes = new Map<string, ConversationRuntime>()
+
+  const processWorkItem = function* (
+    conversationId: string,
+    parsedBody: ConversationPostBody,
+  ): Operation<void> {
+    const emit = function* (
+      event: Omit<ConversationEvent, 'id' | 'timestamp'>,
+    ): Operation<void> {
+      yield* store.appendEvent(conversationId, event)
+    }
+
+    for (const response of parsedBody.elicitResponses ?? []) {
+      yield* emit({
+        from: 'user',
+        type: 'elicit_response',
+        content: response.response,
+        callId: response.callId,
+        elicitId: response.elicitId,
+      })
+
+      const pending = store.resolvePendingTool(conversationId, response)
+      if (pending && pending.toolName === ECHO_TOOL_NAME) {
+        const result = completeEchoTool(parseEchoArgs(pending.args), response)
+        yield* emit({
+          from: 'tool',
+          type: 'tool_result',
+          content: result,
+          callId: pending.callId,
+          toolName: pending.toolName,
+        })
+      }
+    }
+
+    for (const message of parsedBody.messages ?? []) {
+      if (message.role !== 'user') {
+        continue
+      }
+      yield* emit({
+        from: 'user',
+        type: 'message',
+        content: message.content,
+      })
+    }
+
+    const allEvents = yield* store.read(conversationId, 0)
+    if (allEvents.length === 0) {
+      return
+    }
+
+    const hasElicitResponse = (parsedBody.elicitResponses?.length ?? 0) > 0
+    const modelMessages = buildModelMessages(allEvents, systemPrompt)
+    const llmResult = yield* runLLMTurnOperation(modelMessages, {
+      allowTools: !hasElicitResponse,
+      requireTool: !hasElicitResponse,
+    })
+
+    const firstToolCall = llmResult.toolCalls.find((call) => call.function.name === ECHO_TOOL_NAME)
+
+    if (firstToolCall && !hasElicitResponse) {
+      yield* emit({
+        from: 'assistant',
+        type: 'tool_call',
+        content: `Calling ${firstToolCall.function.name}`,
+        callId: firstToolCall.id,
+        toolName: firstToolCall.function.name,
+        arguments: firstToolCall.function.arguments,
+      })
+
+      const args = parseEchoArgs(firstToolCall.function.arguments)
+      const elicit = createEchoElicitRequest(firstToolCall.id, args)
+      store.registerPendingTool(conversationId, {
+        callId: elicit.callId,
+        elicitId: elicit.elicitId,
+        toolName: ECHO_TOOL_NAME,
+        args,
+      })
+
+      yield* emit({
+        from: 'tool',
+        type: 'elicit_request',
+        content: elicit.message,
+        callId: elicit.callId,
+        elicitId: elicit.elicitId,
+        toolName: ECHO_TOOL_NAME,
+      })
+      return
+    }
+
+    if (llmResult.text.trim().length > 0) {
+      yield* emit({
+        from: 'assistant',
+        type: 'message',
+        content: llmResult.text,
+      })
+    }
+  }
+
+  const enqueueWork = (conversationId: string, parsedBody: ConversationPostBody): Promise<void> => {
+    const runtime = runtimes.get(conversationId) ?? { queue: [], running: false }
+    runtimes.set(conversationId, runtime)
+
+    const runRuntimeQueue = () => {
+      if (runtime.running) {
+        return
+      }
+
+      runtime.running = true
+      void run(function* () {
+        while (runtime.queue.length > 0) {
+          const item = runtime.queue.shift()
+          if (!item) {
+            continue
+          }
+          try {
+            yield* processWorkItem(conversationId, item.body)
+            item.resolve()
+          } catch (error) {
+            item.reject(error)
+          }
+        }
+      })
+        .catch((error) => {
+          while (runtime.queue.length > 0) {
+            const item = runtime.queue.shift()
+            item?.reject(error)
+          }
+        })
+        .finally(() => {
+          runtime.running = false
+          if (runtime.queue.length > 0) {
+            runRuntimeQueue()
+          }
+        })
+    }
+
+    const completion = new Promise<void>((resolve, reject) => {
+      runtime.queue.push({
+        body: parsedBody,
+        resolve,
+        reject,
+      })
+    })
+
+    runRuntimeQueue()
+
+    return completion
+  }
 
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url)
@@ -229,8 +424,8 @@ export function createDurableConversationHandler(
     const method = request.method.toUpperCase()
 
     if (method === 'PUT') {
-      const { created } = store.create(conversationId)
-      headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
+      const { created } = await runOp(() => store.create(conversationId))
+      headers.set('Stream-Next-Offset', await runOp(() => store.nextOffsetString(conversationId)))
       return new Response('', {
         status: created ? 201 : 200,
         headers,
@@ -240,13 +435,13 @@ export function createDurableConversationHandler(
     if (method === 'GET') {
       const parsedOffset = parseOffsetParam(url.searchParams.get('offset'))
       const offset = parsedOffset.value ?? 0
-      const events = store.read(conversationId, offset)
+      const events = await runOp(() => store.read(conversationId, offset))
       const frames = events.map((event, index) => ({
         offset: toOffsetString(offset + index + 1),
         event,
       }))
 
-      headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
+      headers.set('Stream-Next-Offset', await runOp(() => store.nextOffsetString(conversationId)))
       headers.set('Stream-Up-To-Date', 'true')
 
       return createStreamingNDJSONResponse(createFrameStream(frames), 200, headers)
@@ -259,7 +454,7 @@ export function createDurableConversationHandler(
       })
     }
 
-    store.create(conversationId)
+    await runOp(() => store.create(conversationId))
 
     const parsedBody = parseJsonBody(await request.json().catch(() => ({})))
 
@@ -268,107 +463,20 @@ export function createDurableConversationHandler(
       (parsedBody.elicitResponses?.length ?? 0) > 0
 
     if (!hasAnyInput) {
-      headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
+      headers.set('Stream-Next-Offset', await runOp(() => store.nextOffsetString(conversationId)))
       return new Response('', { status: 204, headers })
     }
 
-    // Snapshot the current offset in headers; body processing is lazy/pull-based.
-    headers.set('Stream-Next-Offset', store.nextOffsetString(conversationId))
+    const startOffset = await runOp(() => store.nextOffset(conversationId))
+    const completion = enqueueWork(conversationId, parsedBody)
 
-    const postFrameStream = createAsyncFrameStream(async function* () {
-      const emit = (event: Omit<ConversationEvent, 'id' | 'timestamp'>): EventFrame => {
-        const appended = store.appendEvent(conversationId, event)
-        return {
-          offset: toOffsetString(store.nextOffset(conversationId)),
-          event: appended,
-        }
-      }
+    headers.set('Stream-Next-Offset', toOffsetString(startOffset))
 
-      for (const response of parsedBody.elicitResponses ?? []) {
-        yield emit({
-          from: 'user',
-          type: 'elicit_response',
-          content: response.response,
-          callId: response.callId,
-          elicitId: response.elicitId,
-        })
-
-        const pending = store.resolvePendingTool(conversationId, response)
-        if (pending && pending.toolName === ECHO_TOOL_NAME) {
-          const result = completeEchoTool(parseEchoArgs(pending.args), response)
-          yield emit({
-            from: 'tool',
-            type: 'tool_result',
-            content: result,
-            callId: pending.callId,
-            toolName: pending.toolName,
-          })
-        }
-      }
-
-      for (const message of parsedBody.messages ?? []) {
-        if (message.role !== 'user') {
-          continue
-        }
-        yield emit({
-          from: 'user',
-          type: 'message',
-          content: message.content,
-        })
-      }
-
-      const allEvents = store.read(conversationId, 0)
-      if (allEvents.length === 0) {
-        return
-      }
-
-      const hasElicitResponse = (parsedBody.elicitResponses?.length ?? 0) > 0
-      const modelMessages = buildModelMessages(allEvents, systemPrompt)
-      const llmResult = await runLLMTurn(modelMessages, {
-        allowTools: !hasElicitResponse,
-        requireTool: !hasElicitResponse,
-      })
-
-      const firstToolCall = llmResult.toolCalls.find((call) => call.function.name === ECHO_TOOL_NAME)
-
-      if (firstToolCall && !hasElicitResponse) {
-        yield emit({
-          from: 'assistant',
-          type: 'tool_call',
-          content: `Calling ${firstToolCall.function.name}`,
-          callId: firstToolCall.id,
-          toolName: firstToolCall.function.name,
-          arguments: firstToolCall.function.arguments,
-        })
-
-        const args = parseEchoArgs(firstToolCall.function.arguments)
-        const elicit = createEchoElicitRequest(firstToolCall.id, args)
-        store.registerPendingTool(conversationId, {
-          callId: elicit.callId,
-          elicitId: elicit.elicitId,
-          toolName: ECHO_TOOL_NAME,
-          args,
-        })
-
-        yield emit({
-          from: 'tool',
-          type: 'elicit_request',
-          content: elicit.message,
-          callId: elicit.callId,
-          elicitId: elicit.elicitId,
-          toolName: ECHO_TOOL_NAME,
-        })
-
-        return
-      }
-
-      if (llmResult.text.trim().length > 0) {
-        yield emit({
-          from: 'assistant',
-          type: 'message',
-          content: llmResult.text,
-        })
-      }
+    const postFrameStream = createPostReadFrameStream({
+      store,
+      conversationId,
+      startOffset,
+      completion,
     })
 
     return createStreamingNDJSONResponse(postFrameStream, 200, headers)

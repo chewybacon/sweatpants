@@ -33,3 +33,8 @@
  */
 
 export { createStreamResponse, createReadableStream, type StreamResponseOptions, type StreamResponseResult } from './stream-response.ts'
+export {
+  nodeRequestToWebRequest,
+  sendWebResponse,
+  type FetchHandler,
+} from './node-fetch-adapter.ts'
