@@ -123,4 +123,55 @@ describe('durable conversations over HTTP', () => {
     expect(allEventTypes).toContain('elicit_request')
     expect(allEventTypes).toContain('elicit_response')
   }, 60_000)
+
+  it('continues producer work even when streaming client disconnects', async () => {
+    if (!ollamaAvailable) {
+      return
+    }
+
+    const handler = createDurableConversationHandler()
+    server = await createHttpTestServer(handler)
+
+    const conversationId = crypto.randomUUID()
+    const baseUrl = `${server.url}/conversations/${conversationId}`
+
+    const createResponse = await fetch(baseUrl, { method: 'PUT' })
+    expect(createResponse.status).toBe(201)
+
+    const controller = new AbortController()
+    const postResponse = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'user',
+            content: 'Use the echo tool with message "continue without reader".',
+          },
+          {
+            role: 'user',
+            content: 'Second message should persist even if the reader disconnects.',
+          },
+        ],
+      }),
+    })
+
+    expect(postResponse.status).toBe(200)
+
+    // Simulate client disconnect right after response begins.
+    controller.abort()
+    await new Promise((resolve) => setTimeout(resolve, 1200))
+
+    // Reconnect and verify events were persisted despite disconnect.
+    const replayResponse = await fetch(`${baseUrl}?offset=0`, { method: 'GET' })
+    expect(replayResponse.status).toBe(200)
+    const frames = parseNDJSON(await replayResponse.text())
+
+    const userMessages = frames.filter((frame) => frame.event.type === 'message' && frame.event.from === 'user')
+
+    expect(userMessages.length).toBeGreaterThanOrEqual(2)
+  }, 60_000)
 })
