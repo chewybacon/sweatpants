@@ -1,7 +1,7 @@
 import { parseOffsetParam, toOffsetString } from '@sweatpants/durable-streams'
-import type { Message, ToolCall } from '@sweatpants/framework/chat'
+import type { ChatEvent, Message, ToolCall } from '@sweatpants/framework/chat'
 import { createStreamResponse } from '@sweatpants/stream-bridge'
-import { call, race, resource, run, type Operation, type Stream } from 'effection'
+import { run, type Operation, type Stream } from 'effection'
 
 import {
   createEchoElicitRequest,
@@ -17,16 +17,12 @@ import type {
 } from './event-types.ts'
 import { createConversationStore, type ConversationStore } from './conversation-store.ts'
 import { runLLMTurnOperation } from './llm-client.ts'
+import { createFrameStream, createTailFrameStream, type EventFrame } from './tail-stream.ts'
 
 export interface DurableConversationHandlerOptions {
   store?: ConversationStore
   generateConversationId?: () => string
   systemPrompt?: string
-}
-
-interface EventFrame {
-  offset: string
-  event: ConversationEvent
 }
 
 interface RuntimeWorkItem {
@@ -56,14 +52,12 @@ function parseConversationId(url: URL, generateConversationId: () => string): st
 }
 
 function eventToMessage(event: ConversationEvent): Message | null {
-  if (event.type === 'message') {
-    if (event.from === 'user') {
-      return { role: 'user', content: event.content }
-    }
-    if (event.from === 'assistant') {
-      return { role: 'assistant', content: event.content }
-    }
-    return { role: 'tool', content: event.content }
+  if (event.type === 'user_message') {
+    return { role: 'user', content: event.content }
+  }
+
+  if (event.type === 'assistant_message_complete') {
+    return { role: 'assistant', content: event.content }
   }
 
   if (event.type === 'tool_call' && event.callId && event.toolName && event.arguments) {
@@ -109,97 +103,6 @@ function buildModelMessages(events: ConversationEvent[], systemPrompt: string): 
     }
   }
   return messages
-}
-
-function createFrameStream(frames: EventFrame[]): Stream<EventFrame, void> {
-  return resource(function* (provide) {
-    let index = 0
-    yield* provide({
-      *next(): Operation<IteratorResult<EventFrame, void>> {
-        if (index >= frames.length) {
-          return { done: true, value: undefined }
-        }
-        const value = frames[index]
-        index += 1
-        return { done: false, value: value! }
-      },
-    })
-  })
-}
-
-function createPostReadFrameStream(params: {
-  store: ConversationStore
-  conversationId: string
-  startOffset: number
-  completion: Promise<void>
-}): Stream<EventFrame, void> {
-  const { store, conversationId, startOffset, completion } = params
-
-  return resource(function* (provide) {
-    const queue: EventFrame[] = []
-    let done = false
-    let completionSettled = false
-    let completionError: unknown = null
-
-    let cursor = startOffset
-
-    completion.then(
-      () => {
-        completionSettled = true
-      },
-      (error) => {
-        completionError = error
-        completionSettled = true
-      },
-    )
-
-    yield* provide({
-      *next(): Operation<IteratorResult<EventFrame, void>> {
-        if (queue.length > 0) {
-          return { done: false, value: queue.shift()! }
-        }
-
-        if (done) {
-          return { done: true, value: undefined }
-        }
-
-        if (completionError) {
-          throw completionError
-        }
-
-        const events = yield* store.read(conversationId, cursor)
-        if (events.length > 0) {
-          for (const [index, event] of events.entries()) {
-            const offset = cursor + index + 1
-            queue.push({
-              offset: toOffsetString(offset),
-              event,
-            })
-          }
-          cursor += events.length
-          return { done: false, value: queue.shift()! }
-        }
-
-        if (completionSettled) {
-          done = true
-          return { done: true, value: undefined }
-        }
-
-        yield* race([
-          (function* (): Operation<'changed'> {
-            yield* store.waitForChange(conversationId, cursor)
-            return 'changed'
-          })(),
-          (function* (): Operation<'done'> {
-            yield* call(() => completion)
-            return 'done'
-          })(),
-        ])
-
-        return yield* this.next()
-      },
-    })
-  })
 }
 
 async function createStreamingNDJSONResponse(
@@ -313,7 +216,7 @@ export function createDurableConversationHandler(
       }
       yield* emit({
         from: 'user',
-        type: 'message',
+        type: 'user_message',
         content: message.content,
       })
     }
@@ -325,10 +228,27 @@ export function createDurableConversationHandler(
 
     const hasElicitResponse = (parsedBody.elicitResponses?.length ?? 0) > 0
     const modelMessages = buildModelMessages(allEvents, systemPrompt)
-    const llmResult = yield* runLLMTurnOperation(modelMessages, {
-      allowTools: !hasElicitResponse,
-      requireTool: !hasElicitResponse,
-    })
+    const assistantMessageId = crypto.randomUUID()
+    let assistantTextFromChunks = ''
+    const llmResult = yield* runLLMTurnOperation(
+      modelMessages,
+      {
+        allowTools: !hasElicitResponse,
+        requireTool: !hasElicitResponse,
+      },
+      function* (event: ChatEvent): Operation<void> {
+        if (event.type !== 'text' || event.content.length === 0) {
+          return
+        }
+        assistantTextFromChunks += event.content
+        yield* emit({
+          from: 'assistant',
+          type: 'assistant_message_delta',
+          content: event.content,
+          messageId: assistantMessageId,
+        })
+      },
+    )
 
     const firstToolCall = llmResult.toolCalls.find((call) => call.function.name === ECHO_TOOL_NAME)
 
@@ -362,11 +282,13 @@ export function createDurableConversationHandler(
       return
     }
 
-    if (llmResult.text.trim().length > 0) {
+    const finalAssistantText = assistantTextFromChunks.length > 0 ? assistantTextFromChunks : llmResult.text
+    if (finalAssistantText.trim().length > 0) {
       yield* emit({
         from: 'assistant',
-        type: 'message',
-        content: llmResult.text,
+        type: 'assistant_message_complete',
+        content: finalAssistantText,
+        messageId: assistantMessageId,
       })
     }
   }
@@ -482,7 +404,7 @@ export function createDurableConversationHandler(
 
     headers.set('Stream-Next-Offset', toOffsetString(startOffset))
 
-    const postFrameStream = createPostReadFrameStream({
+    const postFrameStream = createTailFrameStream({
       store,
       conversationId,
       startOffset,
