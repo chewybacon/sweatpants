@@ -1,6 +1,18 @@
 {
   "version": "v4",
   "tasks": {
+    "durable-conversations-client-reducer": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "client"
+      ],
+      "description": "Add durable-conversations client reducer helpers for assistant delta assembly",
+      "file": "tasks/durable-conversations-client-reducer.md",
+      "created_at": "2026-03-21T09:34:19.405132Z",
+      "updated_at": "2026-03-21T09:36:01.497306Z"
+    },
     "durable-conversations-echo-tool": {
       "status": "done",
       "priority": 1,
@@ -37,6 +49,18 @@
       "created_at": "2026-03-21T09:22:37.268259Z",
       "updated_at": "2026-03-21T09:26:23.565604Z"
     },
+    "durable-conversations-get-tail": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "streaming"
+      ],
+      "description": "Let GET durable-conversations tail from offset with live stream option",
+      "file": "tasks/durable-conversations-get-tail.md",
+      "created_at": "2026-03-21T09:34:25.97849Z",
+      "updated_at": "2026-03-21T09:40:57.179933Z"
+    },
     "durable-conversations-handler": {
       "status": "done",
       "priority": 1,
@@ -60,6 +84,18 @@
       "file": "tasks/durable-conversations-http-tests.md",
       "created_at": "2026-03-16T11:21:59.816267Z",
       "updated_at": "2026-03-16T11:27:07.317625Z"
+    },
+    "durable-conversations-offset-assertions": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "testing",
+        "streaming"
+      ],
+      "description": "Strengthen reconnect test with exact offset progression across assistant deltas",
+      "file": "tasks/durable-conversations-offset-assertions.md",
+      "created_at": "2026-03-21T09:34:30.441516Z",
+      "updated_at": "2026-03-21T09:40:57.179662Z"
     },
     "durable-conversations-ollama": {
       "status": "done",
@@ -397,5 +433,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-21T09:27:49.590796Z"
+  "updated_at": "2026-03-21T09:40:57.180187Z"
 }
