@@ -367,6 +367,7 @@ export function createDurableConversationHandler(
     if (method === 'GET') {
       const parsedOffset = parseOffsetParam(url.searchParams.get('offset'))
       const offset = parsedOffset.value ?? 0
+      const live = url.searchParams.get('live')
       const events = await runOp(() => store.read(conversationId, offset))
       const frames = events.map((event, index) => ({
         offset: toOffsetString(offset + index + 1),
@@ -375,6 +376,20 @@ export function createDurableConversationHandler(
 
       headers.set('Stream-Next-Offset', await runOp(() => store.nextOffsetString(conversationId)))
       headers.set('Stream-Up-To-Date', 'true')
+
+      if (live === 'stream') {
+        const neverCompletes = new Promise<void>(() => {})
+        return createStreamingNDJSONResponse(
+          createTailFrameStream({
+            store,
+            conversationId,
+            startOffset: offset,
+            completion: neverCompletes,
+          }),
+          200,
+          headers,
+        )
+      }
 
       return createStreamingNDJSONResponse(createFrameStream(frames), 200, headers)
     }

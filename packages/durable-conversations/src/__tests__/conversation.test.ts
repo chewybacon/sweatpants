@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ConversationEvent } from '../event-types.ts'
+import { reduceConversationEvents } from '../client-reducer.ts'
 import { createDurableConversationHandler } from '../handler.ts'
 import { isOllamaAvailable } from '../llm-client.ts'
 import { createHttpTestServer, type TestServerHandle } from './test-server.ts'
@@ -13,6 +14,7 @@ interface EventFrame {
 async function readSomeFrames(
   response: Response,
   limit: number,
+  options: { cancel?: boolean } = {},
 ): Promise<{ frames: EventFrame[]; lastOffset: string | null }> {
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
@@ -40,7 +42,9 @@ async function readSomeFrames(
       }
     }
   } finally {
-    await reader.cancel()
+    if (options.cancel !== false) {
+      await reader.cancel()
+    }
     reader.releaseLock()
   }
 
@@ -161,6 +165,14 @@ describe('durable conversations over HTTP', () => {
     expect(allEventTypes).toContain('tool_result')
     expect(allEventTypes).toContain('elicit_request')
     expect(allEventTypes).toContain('elicit_response')
+
+    const reduced = reduceConversationEvents(allFrames.map((frame) => frame.event))
+    expect(reduced.orderedAssistantMessageIds.length).toBeGreaterThan(0)
+    const completedAssistant = reduced.orderedAssistantMessageIds
+      .map((id) => reduced.assistantMessages[id])
+      .find((message) => message?.completed)
+    expect(completedAssistant?.completed).toBe(true)
+    expect(completedAssistant?.text.length).toBeGreaterThan(0)
   }, 60_000)
 
   it('continues producer work even when streaming client disconnects', async () => {
@@ -281,5 +293,59 @@ describe('durable conversations over HTTP', () => {
 
     expect(replayFrames.length).toBeGreaterThan(0)
     expect(replayFrames.some((frame) => frame.event.type === 'assistant_message_delta' || frame.event.type === 'assistant_message_complete')).toBe(true)
+
+    const seenOffsets = [...initialRead.frames, ...replayFrames].map((frame) => frame.offset)
+    const sortedOffsets = [...seenOffsets].sort()
+    expect(seenOffsets).toEqual(sortedOffsets)
+  }, 60_000)
+
+  it('tails GET stream from an offset while new events arrive', async () => {
+    if (!ollamaAvailable) {
+      return
+    }
+
+    const handler = createDurableConversationHandler()
+    server = await createHttpTestServer(handler)
+
+    const conversationId = crypto.randomUUID()
+    const baseUrl = `${server.url}/conversations/${conversationId}`
+
+    const createResponse = await fetch(baseUrl, { method: 'PUT' })
+    expect(createResponse.status).toBe(201)
+
+    const controller = new AbortController()
+    const liveResponsePromise = fetch(`${baseUrl}?offset=0&live=stream`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+
+      const appendResponse = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: 'Use the echo tool with message "tail me".',
+            },
+          ],
+        }),
+      })
+      expect(appendResponse.status).toBe(200)
+
+      const liveResponse = await liveResponsePromise
+      expect(liveResponse.status).toBe(200)
+
+      const liveFrames = await readSomeFrames(liveResponse, 1)
+      expect(liveFrames.frames.length).toBeGreaterThan(0)
+      expect(liveFrames.frames.some((frame) => frame.event.type === 'user_message')).toBe(true)
+    } finally {
+      controller.abort()
+    }
   }, 60_000)
 })

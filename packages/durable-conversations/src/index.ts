@@ -20,3 +20,11 @@ export {
   createTailFrameStream,
   type EventFrame,
 } from './tail-stream.ts'
+
+export {
+  applyConversationEvent,
+  createReducedConversationState,
+  reduceConversationEvents,
+  type ReducedAssistantMessage,
+  type ReducedConversationState,
+} from './client-reducer.ts'
