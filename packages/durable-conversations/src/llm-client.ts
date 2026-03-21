@@ -22,9 +22,12 @@ export interface LLMTurnOptions {
   allowTools?: boolean
 }
 
+export type ChatEventSink = (event: ChatEvent) => Operation<void>
+
 export function runLLMTurnOperation(
   messages: Message[],
   options: LLMTurnOptions = {},
+  onEvent?: ChatEventSink,
 ): Operation<LLMTurnResult> {
   const { requireTool = false, allowTools = true } = options
 
@@ -54,6 +57,9 @@ export function runLLMTurnOperation(
             events,
             raw: next.value,
           }
+        }
+        if (onEvent) {
+          yield* onEvent(next.value)
         }
         events.push(next.value)
       }
