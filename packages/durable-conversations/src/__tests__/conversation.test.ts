@@ -10,6 +10,46 @@ interface EventFrame {
   event: ConversationEvent
 }
 
+async function readSomeFrames(
+  response: Response,
+  limit: number,
+): Promise<{ frames: EventFrame[]; lastOffset: string | null }> {
+  const reader = response.body!.getReader()
+  const decoder = new TextDecoder()
+  const frames: EventFrame[] = []
+  let pending = ''
+
+  try {
+    while (frames.length < limit) {
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      pending += decoder.decode(value, { stream: true })
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+
+      for (const line of lines) {
+        if (!line.trim()) {
+          continue
+        }
+        frames.push(JSON.parse(line) as EventFrame)
+        if (frames.length >= limit) {
+          break
+        }
+      }
+    }
+  } finally {
+    await reader.cancel()
+    reader.releaseLock()
+  }
+
+  return {
+    frames,
+    lastOffset: frames.length > 0 ? frames[frames.length - 1]!.offset : null,
+  }
+}
+
 function parseNDJSON(text: string): EventFrame[] {
   const trimmed = text.trim()
   if (!trimmed) {
@@ -69,8 +109,8 @@ describe('durable conversations over HTTP', () => {
     expect(firstResponse.status).toBe(200)
     const firstFrames = parseNDJSON(await firstResponse.text())
 
-    const userEvent = firstFrames.find((frame) => frame.event.type === 'message' && frame.event.from === 'user')
-    expect(userEvent).toBeDefined()
+    const userEvent = firstFrames.find((frame) => frame.event.type === 'user_message')
+    expect(userEvent?.event.type).toBe('user_message')
 
     const toolCallEvent = firstFrames.find((frame) => frame.event.type === 'tool_call')
     expect(toolCallEvent).toBeDefined()
@@ -107,9 +147,7 @@ describe('durable conversations over HTTP', () => {
     expect(toolResultEvent).toBeDefined()
     expect(toolResultEvent?.event.content).toContain('hello durable stream')
 
-    const assistantMessageEvent = secondFrames.find(
-      (frame) => frame.event.type === 'message' && frame.event.from === 'assistant',
-    )
+    const assistantMessageEvent = secondFrames.find((frame) => frame.event.type === 'assistant_message_complete')
     expect(assistantMessageEvent).toBeDefined()
 
     const getResponse = await fetch(`${baseUrl}?offset=0`, { method: 'GET' })
@@ -117,7 +155,8 @@ describe('durable conversations over HTTP', () => {
     const allFrames = parseNDJSON(await getResponse.text())
 
     const allEventTypes = allFrames.map((frame) => frame.event.type)
-    expect(allEventTypes).toContain('message')
+    expect(allEventTypes).toContain('user_message')
+    expect(allEventTypes).toContain('assistant_message_complete')
     expect(allEventTypes).toContain('tool_call')
     expect(allEventTypes).toContain('tool_result')
     expect(allEventTypes).toContain('elicit_request')
@@ -170,8 +209,77 @@ describe('durable conversations over HTTP', () => {
     expect(replayResponse.status).toBe(200)
     const frames = parseNDJSON(await replayResponse.text())
 
-    const userMessages = frames.filter((frame) => frame.event.type === 'message' && frame.event.from === 'user')
+    const userMessages = frames.filter((frame) => frame.event.type === 'user_message')
 
     expect(userMessages.length).toBeGreaterThanOrEqual(2)
+  }, 60_000)
+
+  it('reconnects during assistant generation using offsets', async () => {
+    if (!ollamaAvailable) {
+      return
+    }
+
+    const handler = createDurableConversationHandler()
+    server = await createHttpTestServer(handler)
+
+    const conversationId = crypto.randomUUID()
+    const baseUrl = `${server.url}/conversations/${conversationId}`
+
+    const createResponse = await fetch(baseUrl, { method: 'PUT' })
+    expect(createResponse.status).toBe(201)
+
+    const firstResponse = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'user',
+            content: 'Use the echo tool with message "reconnect me".',
+          },
+        ],
+      }),
+    })
+
+    const firstFrames = parseNDJSON(await firstResponse.text())
+    const elicitEvent = firstFrames.find((frame) => frame.event.type === 'elicit_request')
+    expect(elicitEvent).toBeDefined()
+
+    const secondResponse = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [],
+        elicitResponses: [
+          {
+            callId: elicitEvent?.event.callId,
+            elicitId: elicitEvent?.event.elicitId,
+            response: 'yes',
+          },
+        ],
+      }),
+    })
+
+    expect(secondResponse.status).toBe(200)
+
+    const initialRead = await readSomeFrames(secondResponse, 3)
+    expect(initialRead.frames.length).toBeGreaterThan(0)
+    expect(initialRead.lastOffset).toBeTruthy()
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+
+    const replayResponse = await fetch(`${baseUrl}?offset=${encodeURIComponent(initialRead.lastOffset!)}`, {
+      method: 'GET',
+    })
+
+    expect(replayResponse.status).toBe(200)
+    const replayFrames = parseNDJSON(await replayResponse.text())
+
+    expect(replayFrames.length).toBeGreaterThan(0)
+    expect(replayFrames.some((frame) => frame.event.type === 'assistant_message_delta' || frame.event.type === 'assistant_message_complete')).toBe(true)
   }, 60_000)
 })

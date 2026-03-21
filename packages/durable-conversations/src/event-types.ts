@@ -3,7 +3,9 @@ import type { Message } from '@sweatpants/framework/chat'
 export type ConversationActor = 'user' | 'assistant' | 'tool'
 
 export type ConversationEventType =
-  | 'message'
+  | 'user_message'
+  | 'assistant_message_delta'
+  | 'assistant_message_complete'
   | 'tool_call'
   | 'tool_result'
   | 'elicit_request'
@@ -15,6 +17,7 @@ export interface ConversationEvent {
   type: ConversationEventType
   content: string
   timestamp: number
+  messageId?: string
   callId?: string
   toolName?: string
   elicitId?: string

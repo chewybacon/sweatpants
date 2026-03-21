@@ -14,3 +14,9 @@ export {
   createDurableConversationHandler,
   type DurableConversationHandlerOptions,
 } from './handler.ts'
+
+export {
+  createFrameStream,
+  createTailFrameStream,
+  type EventFrame,
+} from './tail-stream.ts'

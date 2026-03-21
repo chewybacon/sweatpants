@@ -25,6 +25,18 @@
       "created_at": "2026-03-16T12:02:53.163898Z",
       "updated_at": "2026-03-16T12:03:41.557185Z"
     },
+    "durable-conversations-event-model": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-conversations-stream-refinement",
+      "description": "Replace overloaded message events with explicit assistant delta/complete event types",
+      "file": "tasks/durable-conversations-event-model.md",
+      "created_at": "2026-03-21T09:22:37.268259Z",
+      "updated_at": "2026-03-21T09:26:23.565604Z"
+    },
     "durable-conversations-handler": {
       "status": "done",
       "priority": 1,
@@ -86,6 +98,18 @@
       "created_at": "2026-03-16T21:49:55.728016Z",
       "updated_at": "2026-03-16T21:50:02.057908Z"
     },
+    "durable-conversations-reconnect-test": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "testing"
+      ],
+      "parent_id": "durable-conversations-stream-refinement",
+      "description": "Add reconnect-during-generation integration coverage for durable-conversations",
+      "file": "tasks/durable-conversations-reconnect-test.md",
+      "created_at": "2026-03-21T09:22:37.250536Z",
+      "updated_at": "2026-03-21T09:23:36.842456Z"
+    },
     "durable-conversations-runtime-queue": {
       "status": "done",
       "priority": 1,
@@ -145,6 +169,30 @@
       "file": "tasks/durable-conversations-store-operations.md",
       "created_at": "2026-03-17T01:06:58.08638Z",
       "updated_at": "2026-03-17T01:07:05.68526Z"
+    },
+    "durable-conversations-stream-refinement": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "spike"
+      ],
+      "description": "Refine durable-conversations stream model around reconnecting readers",
+      "file": "tasks/durable-conversations-stream-refinement.md",
+      "created_at": "2026-03-21T09:22:37.250537Z",
+      "updated_at": "2026-03-21T09:27:49.590565Z"
+    },
+    "durable-conversations-tail-helper": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-conversations-stream-refinement",
+      "description": "Extract durable-conversations tail stream helper from handler",
+      "file": "tasks/durable-conversations-tail-helper.md",
+      "created_at": "2026-03-21T09:22:37.274538Z",
+      "updated_at": "2026-03-21T09:27:49.412526Z"
     },
     "durable-conversations-token-buffer": {
       "status": "done",
@@ -349,5 +397,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-17T10:16:57.221329Z"
+  "updated_at": "2026-03-21T09:27:49.590796Z"
 }
