@@ -31,6 +31,7 @@
     "@sweatpants/stream-bridge": "workspace:*",
     "effection": "catalog:",
     "react": "catalog:",
+    "redis": "^4.7.1",
     "zod": "catalog:"
   },
   "devDependencies": {

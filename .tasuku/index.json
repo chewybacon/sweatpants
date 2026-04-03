@@ -300,6 +300,66 @@
       "created_at": "2026-03-17T10:16:50.462003Z",
       "updated_at": "2026-03-17T10:16:57.221114Z"
     },
+    "durable-streams-redis-store": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "redis"
+      ],
+      "description": "Implement Redis-backed TokenBuffer store for durable streams",
+      "file": "tasks/durable-streams-redis-store.md",
+      "created_at": "2026-04-03T23:11:46.947417Z",
+      "updated_at": "2026-04-03T23:18:12.51818Z"
+    },
+    "redis-infra": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "infrastructure"
+      ],
+      "parent_id": "durable-streams-redis-store",
+      "description": "Add Docker Compose and Redis test infrastructure",
+      "file": "tasks/redis-infra.md",
+      "created_at": "2026-04-03T23:11:52.131882Z",
+      "updated_at": "2026-04-03T23:15:55.822255Z"
+    },
+    "redis-integration-tests": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "testing"
+      ],
+      "parent_id": "durable-streams-redis-store",
+      "description": "Add integration tests for multi-client, reconnect, flush-on-read, ref-count cleanup",
+      "file": "tasks/redis-integration-tests.md",
+      "created_at": "2026-04-03T23:11:54.542345Z",
+      "updated_at": "2026-04-03T23:18:12.476717Z"
+    },
+    "redis-token-buffer-store": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-streams-redis-store",
+      "description": "Implement Redis-backed TokenBufferStore with XADD/XRANGE/XREAD BLOCK",
+      "file": "tasks/redis-token-buffer-store.md",
+      "created_at": "2026-04-03T23:11:52.502668Z",
+      "updated_at": "2026-04-03T23:15:55.867147Z"
+    },
+    "refcounted-token-buffer": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "parent_id": "durable-streams-redis-store",
+      "description": "Implement ref-counted TokenBuffer lifecycle with flush-on-read",
+      "file": "tasks/refcounted-token-buffer.md",
+      "created_at": "2026-04-03T23:11:53.21547Z",
+      "updated_at": "2026-04-03T23:16:27.772729Z"
+    },
     "shared-node-fetch-adapter": {
       "status": "done",
       "priority": 1,
@@ -474,10 +534,22 @@
       "file": "tasks/sweatpants-zgy.md",
       "created_at": "2026-02-27T14:27:03Z",
       "updated_at": "2026-02-27T14:27:32Z"
+    },
+    "wire-redis-into-conversations": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "integration"
+      ],
+      "parent_id": "durable-streams-redis-store",
+      "description": "Wire Redis-backed store into durable-conversations spike",
+      "file": "tasks/wire-redis-into-conversations.md",
+      "created_at": "2026-04-03T23:11:53.842154Z",
+      "updated_at": "2026-04-03T23:17:25.802687Z"
     }
   },
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-26T08:26:42.407596Z"
+  "updated_at": "2026-04-03T23:18:12.518505Z"
 }
