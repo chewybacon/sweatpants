@@ -30,11 +30,13 @@
     "@sweatpants/framework": "workspace:*",
     "@sweatpants/stream-bridge": "workspace:*",
     "effection": "catalog:",
+    "react": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
