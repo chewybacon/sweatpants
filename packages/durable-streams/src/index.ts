@@ -49,5 +49,6 @@ export {
 
 export { createProtocolMutationResponse } from './mutation-transport.ts'
 export { createSSEEventStream } from './sse-formatter.ts'
+export { createRedisTokenBufferStore, type RedisTokenBufferStore } from './redis-store.ts'
 
 export type { ProtocolHandlerContext, ProtocolSetupResult } from './http-types.ts'

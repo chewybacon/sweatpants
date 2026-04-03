@@ -39,17 +39,29 @@ export interface ConversationStore {
   resolvePendingTool(id: string, response: ElicitResponseInput): PendingToolRequest | null
 }
 
-export function createConversationStore(): ConversationStore {
+export interface ConversationStoreOptions {
+  /**
+   * Factory to create a TokenBuffer for a given conversation ID.
+   * Defaults to in-memory buffer. Override with Redis-backed buffer for persistence.
+   */
+  createBuffer?: (id: string) => TokenBuffer<ConversationEvent>
+}
+
+export function createConversationStore(
+  options: ConversationStoreOptions = {},
+): ConversationStore {
   const conversations = new Map<string, StoredConversation>()
+  const createBuffer = options.createBuffer ?? ((id) => createInMemoryBuffer<ConversationEvent>(id))
 
   const ensure = (id: string): StoredConversation => {
     const existing = conversations.get(id)
     if (existing) {
       return existing
     }
+    const buffer = createBuffer(id)
     const created: StoredConversation = {
       id,
-      buffer: createInMemoryBuffer<ConversationEvent>(id),
+      buffer,
       createdAt: Date.now(),
       pendingTools: new Map(),
     }

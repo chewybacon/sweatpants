@@ -86,7 +86,8 @@
     "test": "vitest"
   },
   "dependencies": {
-    "effection": "catalog:"
+    "effection": "catalog:",
+    "redis": "^4.7.0"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
