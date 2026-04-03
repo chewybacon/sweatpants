@@ -21,6 +21,8 @@ export {
   type EventFrame,
 } from './tail-stream.ts'
 
+export { createStreamingNDJSONResponse } from './response-framing.ts'
+
 export {
   applyConversationEvent,
   createReducedConversationState,
@@ -28,3 +30,15 @@ export {
   type ReducedAssistantMessage,
   type ReducedConversationState,
 } from './client-reducer.ts'
+
+export {
+  useDurableConversation,
+  type DurableConversationClient,
+  type DurableConversationHookOptions,
+  type DurableConversationHookValue,
+} from './use-durable-conversation.ts'
+
+export {
+  DurableConversationExample,
+  type DurableConversationExampleProps,
+} from './example-component.tsx'

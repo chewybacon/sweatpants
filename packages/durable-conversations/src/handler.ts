@@ -1,7 +1,6 @@
 import { parseOffsetParam, toOffsetString } from '@sweatpants/durable-streams'
 import type { ChatEvent, Message, ToolCall } from '@sweatpants/framework/chat'
-import { createStreamResponse } from '@sweatpants/stream-bridge'
-import { run, type Operation, type Stream } from 'effection'
+import { run, type Operation } from 'effection'
 
 import {
   createEchoElicitRequest,
@@ -17,7 +16,8 @@ import type {
 } from './event-types.ts'
 import { createConversationStore, type ConversationStore } from './conversation-store.ts'
 import { runLLMTurnOperation } from './llm-client.ts'
-import { createFrameStream, createTailFrameStream, type EventFrame } from './tail-stream.ts'
+import { createStreamingNDJSONResponse } from './response-framing.ts'
+import { createFrameStream, createTailFrameStream } from './tail-stream.ts'
 
 export interface DurableConversationHandlerOptions {
   store?: ConversationStore
@@ -103,30 +103,6 @@ function buildModelMessages(events: ConversationEvent[], systemPrompt: string): 
     }
   }
   return messages
-}
-
-async function createStreamingNDJSONResponse(
-  frameStream: Stream<EventFrame, void>,
-  status: number,
-  headers: Headers,
-): Promise<Response> {
-  const bridge = await run(function* () {
-    return yield* createStreamResponse(frameStream, {
-      contentType: 'application/x-ndjson',
-      serialize: (frame) => new TextEncoder().encode(`${JSON.stringify(frame)}\n`),
-    })
-  })
-
-  const response = new Response(bridge.response.body, {
-    status,
-    headers,
-  })
-
-  headers.forEach((value, key) => {
-    response.headers.set(key, value)
-  })
-
-  return response
 }
 
 function withBaseHeaders(conversationId: string): Headers {

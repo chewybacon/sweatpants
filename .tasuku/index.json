@@ -49,6 +49,18 @@
       "created_at": "2026-03-21T09:22:37.268259Z",
       "updated_at": "2026-03-21T09:26:23.565604Z"
     },
+    "durable-conversations-example-component": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "react"
+      ],
+      "description": "Add tiny example component demonstrating useDurableConversation",
+      "file": "tasks/durable-conversations-example-component.md",
+      "created_at": "2026-03-26T08:25:04.331693Z",
+      "updated_at": "2026-03-26T08:26:42.407362Z"
+    },
     "durable-conversations-get-tail": {
       "status": "done",
       "priority": 1,
@@ -84,6 +96,17 @@
       "file": "tasks/durable-conversations-http-tests.md",
       "created_at": "2026-03-16T11:21:59.816267Z",
       "updated_at": "2026-03-16T11:27:07.317625Z"
+    },
+    "durable-conversations-multi-delta-test": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "testing"
+      ],
+      "description": "Add blackbox coverage for multiple assistant delta chunks sharing messageId",
+      "file": "tasks/durable-conversations-multi-delta-test.md",
+      "created_at": "2026-03-21T12:15:38.373306Z",
+      "updated_at": "2026-03-21T12:19:23.402499Z"
     },
     "durable-conversations-offset-assertions": {
       "status": "done",
@@ -134,6 +157,18 @@
       "created_at": "2026-03-16T21:49:55.728016Z",
       "updated_at": "2026-03-16T21:50:02.057908Z"
     },
+    "durable-conversations-react-hook": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation",
+        "react"
+      ],
+      "description": "Add tiny useDurableConversation hook for spike consumers",
+      "file": "tasks/durable-conversations-react-hook.md",
+      "created_at": "2026-03-21T12:15:38.157466Z",
+      "updated_at": "2026-03-21T12:16:36.772831Z"
+    },
     "durable-conversations-reconnect-test": {
       "status": "done",
       "priority": 1,
@@ -145,6 +180,17 @@
       "file": "tasks/durable-conversations-reconnect-test.md",
       "created_at": "2026-03-21T09:22:37.250536Z",
       "updated_at": "2026-03-21T09:23:36.842456Z"
+    },
+    "durable-conversations-response-framing": {
+      "status": "done",
+      "priority": 1,
+      "tags": [
+        "implementation"
+      ],
+      "description": "Unify durable-conversations response framing around shared helper",
+      "file": "tasks/durable-conversations-response-framing.md",
+      "created_at": "2026-03-21T12:15:38.187548Z",
+      "updated_at": "2026-03-21T12:18:00.983248Z"
     },
     "durable-conversations-runtime-queue": {
       "status": "done",
@@ -433,5 +479,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-03-21T09:40:57.180187Z"
+  "updated_at": "2026-03-26T08:26:42.407596Z"
 }
