@@ -348,4 +348,74 @@ describe('durable conversations over HTTP', () => {
       controller.abort()
     }
   }, 60_000)
+
+  it('emits multiple assistant delta chunks with a shared messageId', async () => {
+    if (!ollamaAvailable) {
+      return
+    }
+
+    const handler = createDurableConversationHandler({
+      systemPrompt: [
+        'You are a concise assistant in a durable conversation.',
+        'When the user asks to echo, call the echo tool exactly once with {"message":"..."}.',
+        'After a tool result arrives, answer with five short numbered lines so the streamed output arrives in multiple chunks.',
+      ].join(' '),
+    })
+    server = await createHttpTestServer(handler)
+
+    const conversationId = crypto.randomUUID()
+    const baseUrl = `${server.url}/conversations/${conversationId}`
+
+    const createResponse = await fetch(baseUrl, { method: 'PUT' })
+    expect(createResponse.status).toBe(201)
+
+    const firstResponse = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'user',
+            content: 'Use the echo tool with message "delta chunks" and then explain the result in five short numbered lines.',
+          },
+        ],
+      }),
+    })
+
+    const firstFrames = parseNDJSON(await firstResponse.text())
+    const elicitEvent = firstFrames.find((frame) => frame.event.type === 'elicit_request')
+    expect(elicitEvent).toBeDefined()
+
+    const secondResponse = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [],
+        elicitResponses: [
+          {
+            callId: elicitEvent?.event.callId,
+            elicitId: elicitEvent?.event.elicitId,
+            response: 'yes',
+          },
+        ],
+      }),
+    })
+
+    expect(secondResponse.status).toBe(200)
+    const secondFrames = parseNDJSON(await secondResponse.text())
+
+    const deltaFrames = secondFrames.filter((frame) => frame.event.type === 'assistant_message_delta')
+    const completeFrame = secondFrames.find((frame) => frame.event.type === 'assistant_message_complete')
+
+    expect(deltaFrames.length).toBeGreaterThan(1)
+    expect(completeFrame).toBeDefined()
+
+    const messageIds = new Set(deltaFrames.map((frame) => frame.event.messageId))
+    expect(messageIds.size).toBe(1)
+    expect(completeFrame?.event.messageId).toBe(deltaFrames[0]?.event.messageId)
+  }, 60_000)
 })
