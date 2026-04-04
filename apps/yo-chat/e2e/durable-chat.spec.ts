@@ -458,4 +458,60 @@ test.describe('Durable Chat - Reconnection', () => {
     
     console.log(`Reconnect: ${lines2.length} events received`)
   })
+
+  test('persists conversation ID across page refresh', async ({ page }) => {
+    // Navigate to basic chat
+    await page.goto('/chat/basic/', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+
+    // Get the conversation ID from localStorage
+    const conversationId1 = await page.evaluate(() => localStorage.getItem('basic-chat-conversation-id'))
+    expect(conversationId1).toBeTruthy()
+    expect(conversationId1!.length).toBeGreaterThan(0)
+
+    // Refresh the page
+    await page.reload({ waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
+
+    // Verify the same conversation ID persists
+    const conversationId2 = await page.evaluate(() => localStorage.getItem('basic-chat-conversation-id'))
+    expect(conversationId2).toBe(conversationId1)
+
+    console.log(`Conversation ID persisted across refresh: ${conversationId1}`)
+  })
+
+  test('clear history generates new conversation ID', async ({ page }) => {
+    // Navigate to basic chat
+    await page.goto('/chat/basic/', { waitUntil: 'networkidle' })
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
+    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+
+    // Get the initial conversation ID
+    const conversationId1 = await page.evaluate(() => localStorage.getItem('basic-chat-conversation-id'))
+    expect(conversationId1).toBeTruthy()
+
+    // Send a message and wait for response
+    const input = page.getByPlaceholder('Type a message...')
+    await input.pressSequentially('Say hello', { delay: 10 })
+    await page.getByRole('button', { name: 'Send' }).click()
+    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+    await expect(page.getByText('2 messages')).toBeVisible({ timeout: 5000 })
+
+    // Clear history
+    await page.getByRole('button', { name: 'Clear History' }).click()
+
+    // Wait for page to reload
+    await page.waitForLoadState('networkidle')
+    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
+
+    // Verify a new conversation ID was generated
+    const conversationId2 = await page.evaluate(() => localStorage.getItem('basic-chat-conversation-id'))
+    expect(conversationId2).toBeTruthy()
+    expect(conversationId2).not.toBe(conversationId1)
+
+    console.log(`Old conversation ID: ${conversationId1}`)
+    console.log(`New conversation ID: ${conversationId2}`)
+  })
 })

@@ -341,6 +341,13 @@ export interface ChatRequestBody {
   elicitResponses?: ElicitResponse[]
 
   /**
+   * Conversation ID for durable streaming.
+   * When provided, the server loads history from the durable stream
+   * and appends new messages to it. Enables reconnect after refresh.
+   */
+  conversationId?: string
+
+  /**
    * Request to abort a tool session.
    * Used when the user cancels an in-progress tool.
    */

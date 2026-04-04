@@ -18,10 +18,8 @@ import {
   getSharedStores,
   setupDurableStreams as setupDurableStreamsWithConfig,
   createRedisTokenBufferStore,
-  createInMemoryBufferStore,
   createInMemoryRegistryStore,
 } from '@sweatpants/framework/chat/durable-streams'
-import { createClient, type RedisClientType } from 'redis'
 import {
   resolvePersona,
   ollamaProvider,
@@ -60,6 +58,7 @@ import { extendedMessageToProviderMessage } from '@sweatpants/framework/chat/mcp
 import type { Operation } from 'effection'
 import { run, call } from 'effection'
 import { env } from '@/env'
+import { getSharedRedisClient } from '@/lib/shared-redis'
 
 // Worker URL for tool execution - vite-plugin-node-worker handles bundling
 // In dev: transpiles TS and rewrites imports to file:// URLs
@@ -96,35 +95,9 @@ const allTools = [...toolList]
  */
 const sharedStorage = createSharedStorage<string>()
 
-// Redis client (lazily initialized)
-let redisClient: RedisClientType | null = null
-let redisInitialized = false
-
-async function getRedisClient(): Promise<RedisClientType | null> {
-  if (redisInitialized) {
-    return redisClient
-  }
-  redisInitialized = true
-
-  const redisUrl = env.REDIS_URL
-  if (!redisUrl) {
-    return null
-  }
-
-  try {
-    redisClient = createClient({ url: redisUrl })
-    await redisClient.connect()
-    return redisClient
-  } catch (error) {
-    console.warn('[api.chat] Failed to connect to Redis, falling back to in-memory:', (error as Error).message)
-    redisClient = null
-    return null
-  }
-}
-
 // Initializer hook that uses Redis if available, otherwise in-memory shared storage
 const setupDurableStreams = function* (): Operation<void> {
-  const client = yield* call(() => getRedisClient())
+  const client = yield* call(() => getSharedRedisClient())
 
   if (client) {
     // Redis-backed TokenBufferStore with in-memory registry store

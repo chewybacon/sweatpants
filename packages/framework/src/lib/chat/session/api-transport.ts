@@ -28,6 +28,7 @@ export function* executeChatFetch(
         isomorphicTools: options.isomorphicToolSchemas,
         isomorphicClientOutputs: options.isomorphicClientOutputs,
         elicitResponses: options.elicitResponses,
+        ...(options.conversationId && { conversationId: options.conversationId }),
       }),
       signal,
     })
