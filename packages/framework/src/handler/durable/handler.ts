@@ -214,7 +214,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const isReconnect =
         (pathSessionId !== undefined || requestedSessionId !== undefined) &&
         (parsedOffset.value !== null || parsedOffset.isNow);
-      const startLSN = parsedOffset.value ?? 0;
+      let startLSN = parsedOffset.value ?? 0;
 
       // Set response headers
       ctx.headers.set("X-Session-Id", sessionId);

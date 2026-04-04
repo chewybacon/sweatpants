@@ -1,16 +1,40 @@
 /**
- * /chat/basic - Basic Chat Demo (No Tools)
+ * /chat/basic - Basic Chat Demo (Durable Streams)
  *
  * A clean baseline chat demo with no tools or plugins.
+ * Uses durable streams so the conversation persists across page refreshes.
  * Uses the full pipeline (markdown + shiki + mermaid) for rich rendering.
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useChat, type ChatMessage } from '@sweatpants/framework/react/chat'
 
 export const Route = createFileRoute('/chat/basic/')({
   component: BasicChatDemo,
 })
+
+const CONVERSATION_ID_KEY = 'basic-chat-conversation-id'
+
+function createConversationId(): string {
+  return crypto.randomUUID()
+}
+
+function getOrCreateConversationId(): string {
+  const existingId = window.localStorage.getItem(CONVERSATION_ID_KEY)
+  if (existingId) {
+    return existingId
+  }
+
+  const nextId = createConversationId()
+  window.localStorage.setItem(CONVERSATION_ID_KEY, nextId)
+  return nextId
+}
+
+function replaceConversationId(): string {
+  const nextId = createConversationId()
+  window.localStorage.setItem(CONVERSATION_ID_KEY, nextId)
+  return nextId
+}
 
 /**
  * Renders a single message with its parts.
@@ -80,7 +104,16 @@ function Message({ message }: { message: ChatMessage }) {
   )
 }
 
-function BasicChatDemo() {
+function BasicChatSession({
+  conversationId,
+  onClearHistory,
+}: {
+  conversationId: string
+  onClearHistory: () => void
+}) {
+  const [input, setInput] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
   const {
     messages,
     streamingMessage,
@@ -88,7 +121,6 @@ function BasicChatDemo() {
     pipelineReady,
     send,
     abort,
-    reset,
     error,
   } = useChat({
     // Full pipeline for rich markdown rendering
@@ -97,10 +129,8 @@ function BasicChatDemo() {
     tools: [],
     // No plugins
     plugins: [],
+    conversationId,
   })
-
-  const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -123,7 +153,7 @@ function BasicChatDemo() {
               Basic Chat
             </h1>
             <p className="text-slate-400 text-sm">
-              Clean chat with full pipeline (markdown + shiki + mermaid)
+              Durable chat — conversation persists across refreshes
             </p>
           </div>
           <div className="text-xs">
@@ -221,7 +251,7 @@ function BasicChatDemo() {
 
         <div className="mt-4 flex justify-between text-xs text-slate-600 px-2">
           <button
-            onClick={reset}
+            onClick={onClearHistory}
             disabled={isStreaming || messages.length === 0}
             className="hover:text-slate-400 disabled:opacity-50 transition-colors"
           >
@@ -239,5 +269,54 @@ function BasicChatDemo() {
         </div>
       </div>
     </div>
+  )
+}
+
+function BasicChatDemo() {
+  const [conversationId, setConversationId] = useState<string | null>(null)
+
+  useEffect(() => {
+    setConversationId(getOrCreateConversationId())
+  }, [])
+
+  const handleClearHistory = useCallback(() => {
+    setConversationId(replaceConversationId())
+  }, [])
+
+  if (conversationId === null) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
+        <div className="max-w-3xl mx-auto">
+          <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h1 className="text-3xl font-bold text-cyan-400 mb-2">
+                Basic Chat
+              </h1>
+              <p className="text-slate-400 text-sm">
+                Durable chat — conversation persists across refreshes
+              </p>
+            </div>
+            <div className="text-xs">
+              <span className="text-amber-500 animate-pulse">Loading pipeline...</span>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 rounded-xl p-6 min-h-[60vh] max-h-[70vh] overflow-y-auto mb-6 shadow-inner border border-slate-800">
+            <div className="text-slate-600 text-center py-20 flex flex-col items-center gap-4">
+              <div className="text-4xl opacity-20">~</div>
+              <p>Preparing conversation...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <BasicChatSession
+      key={conversationId}
+      conversationId={conversationId}
+      onClearHistory={handleClearHistory}
+    />
   )
 }
