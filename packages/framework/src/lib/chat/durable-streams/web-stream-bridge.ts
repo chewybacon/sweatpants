@@ -8,8 +8,8 @@
  */
 import { createReadableStream } from '@sweatpants/stream-bridge'
 import type { Scope } from 'effection'
-import type { TokenBuffer, TokenFrame } from './types.ts'
-import { createPullStream } from './pull-stream.ts'
+import type { TokenBuffer, TokenFrame } from '@sweatpants/durable-streams'
+import { createPullStream } from '@sweatpants/durable-streams'
 
 /**
  * Creates a Web ReadableStream from a TokenBuffer.

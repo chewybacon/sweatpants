@@ -20,7 +20,7 @@
 import { describe, it, expect } from './vitest-effection.ts'
 import { sleep, resource } from 'effection'
 import type { Operation, Subscription, Stream } from 'effection'
-import type { RetentionPolicy, TokenFrame } from '../types.ts'
+import type { RetentionPolicy, TokenFrame } from '@sweatpants/durable-streams'
 import {
   createPullStream,
   createMockLLMStream,

@@ -17,7 +17,11 @@ import {
   createSharedStorage,
   getSharedStores,
   setupDurableStreams as setupDurableStreamsWithConfig,
+  createRedisTokenBufferStore,
+  createInMemoryBufferStore,
+  createInMemoryRegistryStore,
 } from '@sweatpants/framework/chat/durable-streams'
+import { createClient, type RedisClientType } from 'redis'
 import {
   resolvePersona,
   ollamaProvider,
@@ -54,7 +58,7 @@ import type {
 } from '@sweatpants/framework/chat'
 import { extendedMessageToProviderMessage } from '@sweatpants/framework/chat/mcp-tools'
 import type { Operation } from 'effection'
-import { run } from 'effection'
+import { run, call } from 'effection'
 import { env } from '@/env'
 
 // Worker URL for tool execution - vite-plugin-node-worker handles bundling
@@ -86,15 +90,52 @@ const allTools = [...toolList]
  * - Multi-client fan-out (multiple clients reading same session)
  * - Proper cleanup (sessions cleaned up when all clients disconnect AND stream completes)
  *
- * Note: In production with multiple server instances, you'd use Redis or a database
- * instead of this in-memory shared storage.
+ * Storage strategy:
+ * - REDIS_URL set → Redis-backed TokenBufferStore (durable across restarts)
+ * - No REDIS_URL → In-memory shared storage (single-process only)
  */
 const sharedStorage = createSharedStorage<string>()
 
-// Initializer hook that uses shared storage
+// Redis client (lazily initialized)
+let redisClient: RedisClientType | null = null
+let redisInitialized = false
+
+async function getRedisClient(): Promise<RedisClientType | null> {
+  if (redisInitialized) {
+    return redisClient
+  }
+  redisInitialized = true
+
+  const redisUrl = env.REDIS_URL
+  if (!redisUrl) {
+    return null
+  }
+
+  try {
+    redisClient = createClient({ url: redisUrl })
+    await redisClient.connect()
+    return redisClient
+  } catch (error) {
+    console.warn('[api.chat] Failed to connect to Redis, falling back to in-memory:', (error as Error).message)
+    redisClient = null
+    return null
+  }
+}
+
+// Initializer hook that uses Redis if available, otherwise in-memory shared storage
 const setupDurableStreams = function* (): Operation<void> {
-  const { bufferStore, registryStore } = getSharedStores(sharedStorage)
-  yield* setupDurableStreamsWithConfig({ bufferStore, registryStore })
+  const client = yield* call(() => getRedisClient())
+
+  if (client) {
+    // Redis-backed TokenBufferStore with in-memory registry store
+    const bufferStore = createRedisTokenBufferStore<string>(client)
+    const registryStore = createInMemoryRegistryStore()
+    yield* setupDurableStreamsWithConfig({ bufferStore, registryStore })
+  } else {
+    // In-memory shared storage
+    const { bufferStore, registryStore } = getSharedStores(sharedStorage)
+    yield* setupDurableStreamsWithConfig({ bufferStore, registryStore })
+  }
 }
 
 const setupProvider = function* (ctx: InitializerContext): Operation<void> {

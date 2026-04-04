@@ -16,7 +16,7 @@ import {
   type SharedStorage,
 } from '../../../lib/chat/durable-streams/index.ts'
 import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup.ts'
-import type { RetentionPolicy } from '../../../lib/chat/durable-streams/types.ts'
+import type { RetentionPolicy } from '@sweatpants/durable-streams'
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { ollamaProvider } from '../../../lib/chat/providers/index.ts'
 import { createDurableChatHandler } from '../handler.ts'

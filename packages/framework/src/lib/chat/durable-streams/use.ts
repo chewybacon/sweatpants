@@ -15,7 +15,7 @@
  * ```
  */
 import type { Operation } from 'effection'
-import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from './types.ts'
+import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from '@sweatpants/durable-streams'
 import {
   TokenBufferStoreContext,
   SessionRegistryStoreContext,

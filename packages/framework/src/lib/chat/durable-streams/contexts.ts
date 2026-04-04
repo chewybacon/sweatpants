@@ -21,7 +21,7 @@
  */
 import { createContext } from 'effection'
 import type { Context } from 'effection'
-import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from './types.ts'
+import type { TokenBufferStore, SessionRegistryStore, SessionRegistry } from '@sweatpants/durable-streams'
 
 // =============================================================================
 // TOKEN BUFFER STORE CONTEXT
