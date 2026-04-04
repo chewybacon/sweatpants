@@ -21,7 +21,7 @@
 import { describe, it, expect } from './vitest-effection.ts'
 import { sleep, call, resource, useScope } from 'effection'
 import type { Operation, Stream, Subscription, Scope } from 'effection'
-import type { TokenFrame } from '../types.ts'
+import type { TokenFrame } from '@sweatpants/durable-streams'
 import {
   createMockLLMStream,
   createWebStreamFromBuffer,

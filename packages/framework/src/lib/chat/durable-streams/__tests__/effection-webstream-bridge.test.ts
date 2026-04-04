@@ -17,7 +17,7 @@
 import { describe, it, expect } from './vitest-effection.ts'
 import { spawn, sleep, call, useScope } from 'effection'
 import type { Operation, Subscription, Scope } from 'effection'
-import type { TokenFrame } from '../types.ts'
+import type { TokenFrame } from '@sweatpants/durable-streams'
 import {
   createInMemoryBuffer,
   createPullStream,

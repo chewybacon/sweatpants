@@ -7,16 +7,16 @@
  */
 import { resource, sleep } from 'effection'
 import type { Operation, Stream } from 'effection'
-import type { TokenFrame } from '../types.ts'
+import type { TokenFrame } from '@sweatpants/durable-streams'
 
 // Re-export library implementations for test convenience
 export {
   createInMemoryBuffer,
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
-} from '../in-memory-store.ts'
-
-export { createPullStream, writeFromStreamToBuffer } from '../pull-stream.ts'
+  createPullStream,
+  writeFromStreamToBuffer,
+} from '@sweatpants/durable-streams'
 
 export { createWebStreamFromBuffer } from '../web-stream-bridge.ts'
 

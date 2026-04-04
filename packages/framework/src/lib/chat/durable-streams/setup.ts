@@ -26,8 +26,8 @@ import type {
   SessionRegistry,
   SessionRegistryStore,
   TokenBufferStore,
-} from './types.ts'
-import { createInMemoryBufferStore, createInMemoryRegistryStore } from './in-memory-store.ts'
+} from '@sweatpants/durable-streams'
+import { createInMemoryBufferStore, createInMemoryRegistryStore } from '@sweatpants/durable-streams'
 import { createSessionRegistry } from './session-registry.ts'
 import {
   TokenBufferStoreContext,

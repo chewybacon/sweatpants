@@ -50,7 +50,7 @@
  * ```
  */
 
-// Types
+// Re-exports from @sweatpants/durable-streams
 export type {
   SessionStatus,
   TokenBuffer,
@@ -62,19 +62,22 @@ export type {
   SessionEntry,
   SessionRegistryStore,
   SessionRegistry,
-} from './types.ts'
+  RetentionPolicy,
+  PullStreamOptions,
+} from '@sweatpants/durable-streams'
 
-// In-memory implementations
 export {
+  DEFAULT_RETENTION_POLICY,
   createInMemoryBuffer,
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
-} from './in-memory-store.ts'
+  createPullStream,
+  writeFromStreamToBuffer,
+  createRedisTokenBufferStore,
+  type RedisTokenBufferStore,
+} from '@sweatpants/durable-streams'
 
-// Pull stream
-export { createPullStream, writeFromStreamToBuffer } from './pull-stream.ts'
-
-// Session registry
+// Session registry (framework-specific orchestration)
 export { createSessionRegistry } from './session-registry.ts'
 
 // Web stream bridge
@@ -116,31 +119,3 @@ export {
   type SharedBufferState,
   type SharedDurableStreamsConfig,
 } from './shared-memory-store.ts'
-
-// Redis-backed stores
-export {
-  createRedisBufferStore,
-  createRedisRegistryStore,
-  type RedisStoreAdapter,
-  type RedisStoreConfig,
-} from './redis-store.ts'
-
-// Concrete node-redis adapter
-export {
-  createNodeRedisStoreAdapter,
-  type NodeRedisAdapterConfig,
-} from './node-redis-adapter.ts'
-
-// Postgres-backed stores
-export {
-  createPostgresBufferStore,
-  createPostgresRegistryStore,
-  type PostgresStoreAdapter,
-  type PostgresStoreConfig,
-} from './postgres-store.ts'
-
-// Concrete pg adapter
-export {
-  createPgStoreAdapter,
-  type PgAdapterConfig,
-} from './pg-adapter.ts'

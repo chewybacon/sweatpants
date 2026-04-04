@@ -18,6 +18,9 @@ export const appEnv = createEnv({
 
     // Max tool call iterations
     MAX_TOOL_ITERATIONS: z.coerce.number().default(10),
+
+    // Redis configuration (optional, falls back to in-memory if not set)
+    REDIS_URL: z.string().optional(),
   },
 
   /**

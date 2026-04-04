@@ -22,9 +22,8 @@ import type {
   SessionStatus,
   CreateSessionOptions,
   RetentionPolicy,
-} from './types.ts'
-import { DEFAULT_RETENTION_POLICY } from './types.ts'
-import { writeFromStreamToBuffer } from './pull-stream.ts'
+} from '@sweatpants/durable-streams'
+import { DEFAULT_RETENTION_POLICY, writeFromStreamToBuffer } from '@sweatpants/durable-streams'
 import { useLogger, LoggerFactoryContext } from '../../logger/index.ts'
 import { useBackgroundTask, type BackgroundTaskHandle } from '../../effection/index.ts'
 
