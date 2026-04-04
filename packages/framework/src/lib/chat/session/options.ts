@@ -184,6 +184,13 @@ export interface SessionOptions {
    * @default ''
    */
   abortSuffix?: string
+
+  /**
+   * Conversation ID for durable streaming.
+   * When provided, the server loads history from the durable stream
+   * and appends new messages to it. Enables reconnect after refresh.
+   */
+  conversationId?: string
 }
 
 // =============================================================================
@@ -214,10 +221,17 @@ export interface StreamChatOptions extends SessionOptions {
   }>
 
   /**
-   * Responses to pending elicitation requests.
+   * Elicit responses to pending elicitation requests.
    * Sent when resuming a conversation with tool elicitations.
    */
   elicitResponses?: ElicitResponseData[]
+
+  /**
+   * Conversation ID for durable streaming.
+   * When provided, the server loads history from the durable stream
+   * and appends new messages to it. Enables reconnect after refresh.
+   */
+  conversationId?: string
 }
 
 // =============================================================================

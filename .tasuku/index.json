@@ -312,6 +312,20 @@
       "created_at": "2026-04-03T23:11:46.947417Z",
       "updated_at": "2026-04-03T23:18:12.51818Z"
     },
+    "fix-basic-chat-ssrsafe-conversat": {
+      "status": "done",
+      "description": "Fix basic chat SSR-safe conversation persistence",
+      "file": "tasks/fix-basic-chat-ssrsafe-conversat.md",
+      "created_at": "2026-04-04T09:14:02.232178Z",
+      "updated_at": "2026-04-04T09:17:14.972028Z"
+    },
+    "prototype-threaded-durable-chat": {
+      "status": "in_progress",
+      "description": "Prototype threaded durable chat UI in yo-chat",
+      "file": "tasks/prototype-threaded-durable-chat.md",
+      "created_at": "2026-04-04T09:30:51.036968Z",
+      "updated_at": "2026-04-04T09:31:02.156207Z"
+    },
     "redis-infra": {
       "status": "done",
       "priority": 1,
@@ -347,6 +361,13 @@
       "file": "tasks/redis-token-buffer-store.md",
       "created_at": "2026-04-03T23:11:52.502668Z",
       "updated_at": "2026-04-03T23:15:55.867147Z"
+    },
+    "reenable-serverbacked-durable-co": {
+      "status": "ready",
+      "description": "Re-enable server-backed durable conversation history for basic chat",
+      "file": "tasks/reenable-serverbacked-durable-co.md",
+      "created_at": "2026-04-04T09:16:52.767582Z",
+      "updated_at": "2026-04-04T09:16:52.767582Z"
     },
     "refcounted-token-buffer": {
       "status": "done",
@@ -551,5 +572,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-04-03T23:18:12.518505Z"
+  "updated_at": "2026-04-04T09:31:02.156504Z"
 }
