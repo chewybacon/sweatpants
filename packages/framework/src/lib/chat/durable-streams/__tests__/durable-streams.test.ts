@@ -22,7 +22,7 @@ import type {
   SessionStatus,
   CreateSessionOptions,
   TokenFrame,
-} from '../types.ts'
+} from '@sweatpants/durable-streams'
 import {
   createInMemoryBuffer,
   createInMemoryBufferStore,
@@ -204,9 +204,9 @@ function createSessionManager<T>(
 
       if (existingBuffer) {
         // Rehydrate from existing buffer
-        const session = yield* createRehydratedSession(sessionId, existingBuffer)
-        yield* sessionStore.set(session)
-        return session
+        const rehydrated = yield* createRehydratedSession(sessionId, existingBuffer as TokenBuffer<T>)
+        yield* sessionStore.set(rehydrated)
+        return rehydrated
       }
 
       // 3. Create new session

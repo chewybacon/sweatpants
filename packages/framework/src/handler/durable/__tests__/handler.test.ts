@@ -21,7 +21,7 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from '../../../lib/chat/durable-streams/index.ts'
-import type { RetentionPolicy } from '../../../lib/chat/durable-streams/types.ts'
+import type { RetentionPolicy } from '@sweatpants/durable-streams'
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
 import type { InitializerHook, IsomorphicTool } from '../types.ts'

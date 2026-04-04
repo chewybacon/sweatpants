@@ -29,7 +29,7 @@ import type {
   SessionRegistryStore,
   SessionEntry,
   SessionStatus,
-} from './types.ts'
+} from '@sweatpants/durable-streams'
 import type { Logger } from '../../logger/index.ts'
 
 // Use a simple console-based logger at module level
