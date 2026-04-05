@@ -317,6 +317,29 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     ...(options.reactHandlers && { reactHandlers: options.reactHandlers }),
   }
 
+  const sessionIdentity = useMemo(
+    () => JSON.stringify({
+      baseUrl: mergedOptions.baseUrl,
+      conversationId: mergedOptions.conversationId ?? null,
+      toolNames: (mergedOptions.tools ?? []).map((tool) =>
+        typeof tool === 'object' && tool !== null && 'name' in tool
+          ? String((tool as { name: unknown }).name)
+          : 'unknown',
+      ),
+      pluginNames: (options.plugins ?? []).map((plugin) => plugin.toolName),
+      hasReactHandlers: Boolean(mergedOptions.reactHandlers),
+      transformCount: mergedOptions.transforms?.length ?? 0,
+    }),
+    [
+      mergedOptions.baseUrl,
+      mergedOptions.conversationId,
+      mergedOptions.reactHandlers,
+      mergedOptions.tools,
+      mergedOptions.transforms,
+      options.plugins,
+    ],
+  )
+
   // Stable ref to options to avoid re-running effect if object identity changes
   const optionsRef = useRef(mergedOptions)
   useEffect(() => {
@@ -373,7 +396,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         if (e.message !== 'halted') console.error(e);
       })
     }
-  }, [])
+  }, [sessionIdentity])
 
   // Stable command callbacks
   const send = useCallback((content: string) => {

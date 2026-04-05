@@ -369,12 +369,9 @@ describe('Durable Chat Handler', () => {
         expect.arrayContaining(['call-1']),
       )
 
-      const toolResults = getEventsByType(replay, 'tool_result') as Array<{
-        type: 'tool_result'
-        id: string
-        trace?: unknown
-      }>
-      expect(toolResults.some((result) => result.id === 'call-2' && result.trace)).toBe(true)
+      expect(
+        conversationStates[0]?.conversationState.replay?.toolTraces.map((trace) => trace.callId),
+      ).toEqual(expect.arrayContaining(['call-1', 'call-2']))
     })
 
     it('should execute server-side tools and emit results', function* () {
