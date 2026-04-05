@@ -414,6 +414,7 @@ function* processClientOutput(
 export function createChatEngine(params: ChatEngineParams): ChatEngine {
   const {
     messages,
+    replayState,
     systemPrompt,
     toolSchemas,
     toolRegistry,
@@ -470,6 +471,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
         content: systemPrompt,
       })
     }
+
+    const replayToolTraces = replayState?.toolTraces ?? []
 
     // Helper to convert provider tool calls to our format
     const convertToolCalls = (calls: ChatResult['toolCalls']): ToolCall[] => {
@@ -1181,6 +1184,13 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     isError: true,
                   }
                 }),
+                ...(replayToolTraces.length > 0
+                  ? {
+                      replay: {
+                        toolTraces: replayToolTraces,
+                      },
+                    }
+                  : {}),
               },
             }
             

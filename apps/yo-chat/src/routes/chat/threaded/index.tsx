@@ -121,7 +121,7 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   const hasEmissions = toolCall.emissions.length > 0
 
   return (
-    <div className="my-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
+    <div className="my-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3" data-testid="tool-call-block" data-call-id={toolCall.callId}>
       <div className="mb-2 text-[11px] uppercase tracking-[0.25em] text-sky-300/70">
         Tool · {toolCall.name}
       </div>
@@ -164,7 +164,7 @@ function HistoricalToolCallBlock({
   const hasEmissions = emissions.length > 0
 
   return (
-    <div className="my-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
+    <div className="my-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3" data-testid="tool-call-block" data-call-id={toolCall.callId}>
       <div className="mb-2 text-[11px] uppercase tracking-[0.25em] text-sky-300/70">
         Tool · {toolCall.name}
       </div>
@@ -197,7 +197,7 @@ function HistoricalToolCallBlock({
 
 function useThreadReplaySession(threadId: string) {
   const session = useChatSession({
-    transforms: [createPipelineTransform({ processors: 'markdown' })],
+    transforms: [createPipelineTransform({ processors: 'full' })],
     tools: [tools.pickCard],
     conversationId: threadId,
   })
@@ -226,7 +226,7 @@ function MessageBubble({
   const isUser = message.role === 'user'
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`} data-testid={`message-${message.role}`}>
       <div className={`max-w-3xl rounded-[24px] px-5 py-4 shadow-lg ${isUser ? 'bg-amber-300 text-slate-950 shadow-amber-500/10' : 'border border-slate-800 bg-slate-900/90 text-slate-100 shadow-black/20'}`}>
         <div className={`mb-2 text-[11px] uppercase tracking-[0.28em] ${isUser ? 'text-slate-800/70' : 'text-sky-300/70'}`}>
           {isUser ? 'You' : 'Assistant'}
@@ -251,6 +251,7 @@ function MessageBubble({
             return (
               <div
                 key={part.id}
+                data-testid="message-text"
                 className={`prose prose-sm max-w-none leading-7 ${isUser ? 'prose-stone' : 'prose-invert'}`}
                 dangerouslySetInnerHTML={{ __html: part.rendered }}
               />
@@ -282,7 +283,7 @@ function ThreadPanel({
     abort,
     error,
   } = useChat({
-    pipeline: 'markdown',
+    pipeline: 'full',
     tools: [tools.pickCard],
     conversationId: threadId,
   })
