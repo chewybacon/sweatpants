@@ -8,6 +8,8 @@ import type { HydratedToolExecutionTrace, ToolExecutionTrace } from '../isomorph
 import type { AnyIsomorphicTool } from '../isomorphic-tools/types.ts'
 import type { Message } from '../types.ts'
 import type { StreamEvent } from './streaming.ts'
+import type { PatchTransform } from './options.ts'
+import { renderReplayMessageParts } from './replay-render.ts'
 
 interface DurableFrame {
   lsn: number
@@ -18,6 +20,7 @@ interface ReadDurableHistoryOptions {
   baseUrl: string
   conversationId: string
   tools?: AnyIsomorphicTool[]
+  transforms?: PatchTransform[]
 }
 
 export interface DurableHistoryReplay {
@@ -58,6 +61,7 @@ function* replayToolTrace(
 export function* replayFramesToConversation(
   frames: DurableFrame[],
   tools?: AnyIsomorphicTool[],
+  transforms?: PatchTransform[],
 ): Operation<DurableHistoryReplay> {
   const patches: ChatPatch[] = []
   const history: Message[] = []
@@ -180,10 +184,13 @@ export function* replayFramesToConversation(
             })),
           }
 
+          const parts = yield* renderReplayMessageParts(assistantText, transforms)
+
           history.push(assistantWithTools)
           patches.push({
             type: 'history_message',
             message: assistantWithTools,
+            ...(parts ? { parts } : {}),
           })
         } else if (assistantText) {
           const assistantMessage: Message = {
@@ -192,10 +199,13 @@ export function* replayFramesToConversation(
             content: assistantText,
           }
 
+          const parts = yield* renderReplayMessageParts(assistantText, transforms)
+
           history.push(assistantMessage)
           patches.push({
             type: 'history_message',
             message: assistantMessage,
+            ...(parts ? { parts } : {}),
           })
         }
 
@@ -295,7 +305,7 @@ export function* replayFramesToConversation(
 export function* readDurableHistory(
   options: ReadDurableHistoryOptions,
 ): Operation<DurableHistoryReplay> {
-  const { baseUrl, conversationId, tools } = options
+  const { baseUrl, conversationId, tools, transforms } = options
   const url = new URL(baseUrl, 'http://localhost')
   url.searchParams.set('conversationId', conversationId)
 
@@ -328,5 +338,5 @@ export function* readDurableHistory(
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line) as DurableFrame)
 
-  return yield* replayFramesToConversation(frames, tools)
+  return yield* replayFramesToConversation(frames, tools, transforms)
 }

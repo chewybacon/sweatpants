@@ -238,6 +238,9 @@ export function* runChatSession(
       ...((options.tools?.length ?? 0) > 0
         ? { tools: options.tools as AnyIsomorphicTool[] }
         : {}),
+      ...((options.transforms?.length ?? 0) > 0
+        ? { transforms: options.transforms }
+        : {}),
     })
 
     for (const message of durableHistory.history) {

@@ -1,12 +1,45 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw } from 'lucide-react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { useChatSession } from '@sweatpants/framework/react/chat'
+import { createPipelineTransform } from '@sweatpants/framework/react/chat/pipeline'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { tools } from '@/__generated__/tool-registry.gen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { ThreadSummary } from '@/lib/threaded-chat-types'
+
+type ReplayableEmission = {
+  id: string
+  status: 'pending' | 'complete'
+  component: React.ComponentType<any>
+  props: Record<string, unknown>
+  response?: unknown
+  onRespond?: (value: unknown) => void
+}
+
+function toReplayableEmission(emission: {
+  id: string
+  status: 'pending' | 'complete' | 'error'
+  payload: { _component?: React.ComponentType<any>; props: Record<string, unknown> }
+  response?: unknown
+  respond?: (value: unknown) => void
+}): ReplayableEmission | null {
+  const component = emission.payload._component
+  if (!component) {
+    return null
+  }
+
+  return {
+    id: emission.id,
+    status: emission.status === 'error' ? 'complete' : emission.status,
+    component,
+    props: emission.payload.props,
+    ...(emission.response !== undefined ? { response: emission.response } : {}),
+    ...(emission.respond ? { onRespond: emission.respond } : {}),
+  }
+}
 
 export const Route = createFileRoute('/chat/threaded/')({
   component: ThreadedChatDemo,
@@ -119,7 +152,77 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   )
 }
 
-function MessageBubble({ message }: { message: ChatMessage }) {
+function HistoricalToolCallBlock({
+  toolCall,
+  replayed,
+}: {
+  toolCall: ChatToolCall
+  replayed: Record<string, ReplayableEmission[]>
+}) {
+  const replayedEmissions = replayed[toolCall.callId] ?? []
+  const emissions = toolCall.emissions.length > 0 ? toolCall.emissions : replayedEmissions
+  const hasEmissions = emissions.length > 0
+
+  return (
+    <div className="my-3 rounded-2xl border border-slate-800/80 bg-slate-950/60 p-3">
+      <div className="mb-2 text-[11px] uppercase tracking-[0.25em] text-sky-300/70">
+        Tool · {toolCall.name}
+      </div>
+
+      {emissions.map((emission) => {
+        const Component = emission.component
+        if (!Component) return null
+
+        return (
+          <Component
+            key={emission.id}
+            {...emission.props}
+            onRespond={emission.onRespond}
+            disabled={emission.status !== 'pending'}
+            response={emission.response}
+          />
+        )
+      })}
+
+      {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
+        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
+      )}
+
+      {toolCall.state === 'error' && toolCall.error && (
+        <div className="text-xs text-red-300">Error: {toolCall.error}</div>
+      )}
+    </div>
+  )
+}
+
+function useThreadReplaySession(threadId: string) {
+  const session = useChatSession({
+    transforms: [createPipelineTransform({ processors: 'markdown' })],
+    tools: [tools.pickCard],
+    conversationId: threadId,
+  })
+
+  const toolEmissionsByCallId = useMemo(() => {
+    return session.toolEmissions.reduce<Record<string, ReplayableEmission[]>>((acc, tracking) => {
+      acc[tracking.callId] = tracking.emissions
+        .map(toReplayableEmission)
+        .filter((emission): emission is ReplayableEmission => emission !== null)
+      return acc
+    }, {})
+  }, [session.toolEmissions])
+
+  return {
+    toolEmissionsByCallId,
+  }
+}
+
+function MessageBubble({
+  message,
+  replayedToolEmissions,
+}: {
+  message: ChatMessage
+  replayedToolEmissions: Record<string, ReplayableEmission[]>
+}) {
   const isUser = message.role === 'user'
 
   return (
@@ -141,7 +244,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
           }
 
           if (part.type === 'tool-call') {
-            return <ToolCallBlock key={part.id} toolCall={part} />
+            return <HistoricalToolCallBlock key={part.id} toolCall={part} replayed={replayedToolEmissions} />
           }
 
           if (part.type === 'text') {
@@ -183,6 +286,7 @@ function ThreadPanel({
     tools: [tools.pickCard],
     conversationId: threadId,
   })
+  const { toolEmissionsByCallId } = useThreadReplaySession(threadId)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -226,7 +330,7 @@ function ThreadPanel({
         ) : (
           <div className="space-y-6">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble key={message.id} message={message} replayedToolEmissions={toolEmissionsByCallId} />
             ))}
             <div ref={messagesEndRef} />
           </div>
