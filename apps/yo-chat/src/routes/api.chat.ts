@@ -19,6 +19,7 @@ import {
   setupDurableStreams as setupDurableStreamsWithConfig,
   createRedisTokenBufferStore,
   createInMemoryRegistryStore,
+  type RetentionPolicy,
 } from '@sweatpants/framework/chat/durable-streams'
 import {
   resolvePersona,
@@ -94,6 +95,7 @@ const allTools = [...toolList]
  * - No REDIS_URL → In-memory shared storage (single-process only)
  */
 const sharedStorage = createSharedStorage<string>()
+const retainForeverPolicy: RetentionPolicy = { mode: 'retain_forever' }
 
 // Initializer hook that uses Redis if available, otherwise in-memory shared storage
 const setupDurableStreams = function* (): Operation<void> {
@@ -103,11 +105,19 @@ const setupDurableStreams = function* (): Operation<void> {
     // Redis-backed TokenBufferStore with in-memory registry store
     const bufferStore = createRedisTokenBufferStore<string>(client)
     const registryStore = createInMemoryRegistryStore()
-    yield* setupDurableStreamsWithConfig({ bufferStore, registryStore })
+    yield* setupDurableStreamsWithConfig({
+      bufferStore,
+      registryStore,
+      retentionPolicy: retainForeverPolicy,
+    })
   } else {
     // In-memory shared storage
     const { bufferStore, registryStore } = getSharedStores(sharedStorage)
-    yield* setupDurableStreamsWithConfig({ bufferStore, registryStore })
+    yield* setupDurableStreamsWithConfig({
+      bufferStore,
+      registryStore,
+      retentionPolicy: retainForeverPolicy,
+    })
   }
 }
 
