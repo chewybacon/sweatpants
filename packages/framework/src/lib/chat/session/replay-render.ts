@@ -1,5 +1,5 @@
 import type { Operation } from 'effection'
-import { createChannel, each, spawn } from 'effection'
+import { createChannel, each, spawn, type Task } from 'effection'
 import type { PatchTransform } from './options.ts'
 import type { ChatPatch } from '../patches/index.ts'
 import type { MessagePart, TextPart, ReasoningPart } from '../types/chat-message.ts'
@@ -61,12 +61,12 @@ export function* renderReplayMessageParts(
   const order: string[] = []
   const runComposed = composeTransforms(transforms)
 
-  yield* spawn(function* () {
+  const transformTask: Task<void> = yield* spawn(function* () {
     yield* runComposed(input, output)
     yield* output.close()
   })
 
-  yield* spawn(function* () {
+  const collectTask: Task<void> = yield* spawn(function* () {
     for (const patch of yield* each(output)) {
       if ((patch.type === 'part_frame' || patch.type === 'part_end') && (patch.partType === 'text' || patch.partType === 'reasoning')) {
         const existing = parts.get(patch.partId)
@@ -92,6 +92,9 @@ export function* renderReplayMessageParts(
   yield* input.send({ type: 'streaming_text', content })
   yield* input.send({ type: 'streaming_end' })
   yield* input.close()
+
+  yield* transformTask
+  yield* collectTask
 
   return order.map((id) => parts.get(id)!).filter(Boolean)
 }

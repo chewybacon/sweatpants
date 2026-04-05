@@ -22,6 +22,7 @@ export type {
 
 // Message types - re-export for convenience
 export type { Message } from '../lib/chat/types.ts'
+import type { Message as ChatMessageBase } from '../lib/chat/types.ts'
 
 // Tool context types
 export type {
@@ -36,10 +37,7 @@ export type { ChatProvider } from '../lib/chat/providers/types.ts'
 // HANDLER-SPECIFIC TYPES
 // =============================================================================
 
-/**
- * Chat message alias (matches Message interface).
- */
-export type ChatMessage = import('../lib/chat/types').Message
+export type ChatMessage = ChatMessageBase
 
 /**
  * A finalized isomorphic tool definition.
