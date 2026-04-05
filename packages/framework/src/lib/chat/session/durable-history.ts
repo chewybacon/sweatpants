@@ -10,6 +10,7 @@ import type { Message } from '../types.ts'
 import type { ConversationReplayState, StreamEvent } from './streaming.ts'
 import type { PatchTransform } from './options.ts'
 import { renderReplayMessageParts } from './replay-render.ts'
+import type { MessagePart, ToolCallPart, ChatEmission } from '../types/chat-message.ts'
 
 interface DurableFrame {
   lsn: number
@@ -76,6 +77,77 @@ function* replayToolTrace(
   }
 
   return yield* tool.replayTrace(trace)
+}
+
+function buildReplayEmissions(
+  callId: string,
+  hydratedTrace: HydratedToolExecutionTrace | null,
+): ChatEmission[] {
+  if (!hydratedTrace) {
+    return []
+  }
+
+  const emissions: ChatEmission[] = []
+
+  for (const entry of hydratedTrace.emissions) {
+    if (!entry._component) {
+      continue
+    }
+
+    emissions.push({
+      id: `${callId}-replay-${entry.order + 1}`,
+      status: 'complete',
+      component: entry._component,
+      props: entry.props,
+      ...(entry.response !== undefined ? { response: entry.response } : {}),
+    })
+  }
+
+  return emissions
+}
+
+function* buildAssistantReplayParts(
+  message: Message,
+  toolResults: Message[],
+  replayToolTraceByCallId: Map<string, ConversationReplayState['toolTraces'][number]>,
+  tools: AnyIsomorphicTool[] | undefined,
+  transforms: PatchTransform[] | undefined,
+): Operation<MessagePart[] | undefined> {
+  if (message.role !== 'assistant') {
+    return undefined
+  }
+
+  const contentParts = (yield* renderReplayMessageParts(message.content, transforms)) ?? []
+  if (!message.tool_calls?.length) {
+    return contentParts.length > 0 ? contentParts : undefined
+  }
+
+  const toolParts: ToolCallPart[] = []
+
+  for (const toolCall of message.tool_calls) {
+    const toolResult = toolResults.find((candidate) => candidate.tool_call_id === toolCall.id)
+    const error = toolResult?.content?.startsWith('Error:') ? toolResult.content : undefined
+    const replayedTrace = replayToolTraceByCallId.get(toolCall.id)
+    const hydratedTrace = replayedTrace
+      ? yield* replayToolTrace(tools, replayedTrace.toolName, replayedTrace.trace)
+      : null
+
+    toolParts.push({
+      id: `${message.id}-tool-${toolCall.id}`,
+      type: 'tool-call',
+      callId: toolCall.id,
+      name: toolCall.function.name,
+      arguments: toolCall.function.arguments,
+      state: toolResult ? (error ? 'error' : 'complete') : 'running',
+      ...(toolResult && !error ? { result: toolResult.content } : {}),
+      ...(error ? { error } : {}),
+      emissions: buildReplayEmissions(toolCall.id, hydratedTrace),
+      pluginElicits: [],
+    })
+  }
+
+  const parts = [...contentParts, ...toolParts]
+  return parts.length > 0 ? parts : undefined
 }
 
 export function* replayFramesToConversation(
@@ -264,59 +336,19 @@ export function* replayFramesToConversation(
             const toolResults = event.conversationState.messages.filter(
               (candidate) => candidate.role === 'tool',
             )
-            const parts = message.role === 'assistant'
-              ? yield* renderReplayMessageParts(message.content, transforms)
-              : undefined
-            let assistantParts = parts ?? []
-
-            if (message.role === 'assistant' && message.tool_calls?.length) {
-              for (const toolCall of message.tool_calls) {
-                const toolResult = toolResults.find((candidate) => candidate.tool_call_id === toolCall.id)
-                const error = toolResult?.content?.startsWith('Error:') ? toolResult.content : undefined
-                const replayedTrace = replayToolTraceByCallId.get(toolCall.id)
-                const hydratedTrace = replayedTrace
-                  ? yield* replayToolTrace(tools, replayedTrace.toolName, replayedTrace.trace)
-                  : null
-                const emissions = hydratedTrace?.emissions
-                  .map((entry) => ({
-                    id: `${toolCall.id}-replay-${entry.order + 1}`,
-                    status: 'complete' as const,
-                    component: entry._component,
-                    props: entry.props,
-                    ...(entry.response !== undefined ? { response: entry.response } : {}),
-                  }))
-                  .filter((emission) => emission.component)
-                  .map((emission) => ({
-                    id: emission.id,
-                    status: emission.status,
-                    component: emission.component!,
-                    props: emission.props,
-                    ...(emission.response !== undefined ? { response: emission.response } : {}),
-                  })) ?? []
-
-                assistantParts = [
-                  ...assistantParts,
-                  {
-                    id: `${message.id}-tool-${toolCall.id}`,
-                    type: 'tool-call' as const,
-                    callId: toolCall.id,
-                    name: toolCall.function.name,
-                    arguments: toolCall.function.arguments,
-                    state: toolResult ? (error ? 'error' as const : 'complete' as const) : 'running' as const,
-                    ...(toolResult && !error ? { result: toolResult.content } : {}),
-                    ...(error ? { error } : {}),
-                    emissions,
-                    pluginElicits: [],
-                  },
-                ]
-              }
-            }
+            const assistantParts = yield* buildAssistantReplayParts(
+              message,
+              toolResults,
+              replayToolTraceByCallId,
+              tools,
+              transforms,
+            )
 
             history.push(message)
             patches.push({
               type: 'history_message',
               message,
-              ...(message.role === 'assistant' && assistantParts.length > 0 ? { parts: assistantParts } : {}),
+              ...(assistantParts ? { parts: assistantParts } : {}),
             })
           }
           seededFromConversationState = true

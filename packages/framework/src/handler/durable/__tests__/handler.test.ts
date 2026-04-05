@@ -30,6 +30,7 @@ import {
   createMockTool,
   consumeDurableResponse,
   createChatRequest,
+  getEventsByType,
 } from './test-utils.ts'
 
 // =============================================================================
@@ -93,6 +94,43 @@ async function makeRequest(
 
 describe('Durable Chat Handler', () => {
   describe('New Session: Basic Streaming', () => {
+    it('should replay prior user and assistant state for conversationId GET', function* () {
+      const provider = createMockProvider({ responses: 'Hello from durable world' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
+      })
+
+      const conversationId = 'durable-plain-thread'
+
+      yield* call(() =>
+        makeRequest(handler, [{ role: 'user', content: 'Hi durable handler' }], {
+          conversationId,
+        }),
+      )
+
+      const { request } = createChatRequest([], {
+        method: 'GET',
+        conversationId,
+      })
+      const response = yield* call(() => handler(request))
+      const replay = yield* call(() => consumeDurableResponse(response))
+
+      const conversationStates = getEventsByType(replay, 'conversation_state') as Array<{
+        type: 'conversation_state'
+        conversationState: {
+          messages: Array<{ role: string; content: string }>
+        }
+      }>
+
+      expect(conversationStates.length).toBeGreaterThan(0)
+      expect(conversationStates[0]?.conversationState.messages).toMatchObject([
+        { role: 'user', content: 'Hi durable handler' },
+      ])
+      expect(replay.text).toContain('Hello from durable world')
+    })
+
     it('should reuse the same durable session for repeated conversationId requests', function* () {
       const provider = createMockProvider({ responses: ['First response', 'Second response'] })
       const handler = createDurableChatHandler({
@@ -183,6 +221,162 @@ describe('Durable Chat Handler', () => {
   })
 
   describe('Tool Calling', () => {
+    it('should expose historical tool trace state in durable replay for completed client outputs', function* () {
+      const provider = createMockProvider({ responses: ['First tool turn', 'Second tool turn'] })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
+      })
+
+      const conversationId = 'durable-tool-trace-thread'
+
+      const firstBody = {
+        messages: [
+          { id: 'u1', role: 'user', content: 'Draw first card' },
+          {
+            id: 'a1',
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-1',
+                type: 'function' as const,
+                function: { name: 'pick_card', arguments: { count: 3 } },
+              },
+            ],
+          },
+          {
+            id: 't1',
+            role: 'tool',
+            tool_call_id: 'call-1',
+            content: 'The user selected the Ace of Spades.',
+          },
+        ],
+        conversationId,
+        isomorphicClientOutputs: [
+          {
+            callId: 'call-1',
+            toolName: 'pick_card',
+            params: { count: 3 },
+            clientOutput: { picked: 'A♠' },
+            trace: {
+              emissions: [
+                {
+                  order: 0,
+                  componentKey: 'CardPicker',
+                  props: { cards: ['A♠', 'K♣'], prompt: 'Pick one' },
+                  response: { picked: 'A♠' },
+                  timestamp: 100,
+                },
+              ],
+              startedAt: 50,
+              completedAt: 100,
+            },
+          },
+        ],
+      }
+
+      const firstRequest = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(firstBody),
+      })
+      yield* call(() => handler(firstRequest))
+
+      const secondBody = {
+        messages: [
+          ...firstBody.messages,
+          { id: 'a2', role: 'assistant', content: 'First card acknowledged.' },
+          { id: 'u2', role: 'user', content: 'Draw second card' },
+          {
+            id: 'a3',
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'call-2',
+                type: 'function' as const,
+                function: { name: 'pick_card', arguments: { count: 3 } },
+              },
+            ],
+          },
+          {
+            id: 't2',
+            role: 'tool',
+            tool_call_id: 'call-2',
+            content: 'The user selected the Four of Clubs.',
+          },
+        ],
+        conversationId,
+        replayState: {
+          toolTraces: [
+            {
+              callId: 'call-1',
+              toolName: 'pick_card',
+              trace: firstBody.isomorphicClientOutputs[0].trace,
+            },
+          ],
+        },
+        isomorphicClientOutputs: [
+          {
+            callId: 'call-2',
+            toolName: 'pick_card',
+            params: { count: 3 },
+            clientOutput: { picked: '4♣' },
+            trace: {
+              emissions: [
+                {
+                  order: 0,
+                  componentKey: 'CardPicker',
+                  props: { cards: ['4♣', 'A♦'], prompt: 'Pick again' },
+                  response: { picked: '4♣' },
+                  timestamp: 200,
+                },
+              ],
+              startedAt: 150,
+              completedAt: 200,
+            },
+          },
+        ],
+      }
+
+      const secondRequest = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(secondBody),
+      })
+      yield* call(() => handler(secondRequest))
+
+      const { request: replayRequest } = createChatRequest([], {
+        method: 'GET',
+        conversationId,
+      })
+      const replayResponse = yield* call(() => handler(replayRequest))
+      const replay = yield* call(() => consumeDurableResponse(replayResponse))
+
+      const conversationStates = getEventsByType(replay, 'conversation_state') as Array<{
+        type: 'conversation_state'
+        conversationState: {
+          replay?: {
+            toolTraces: Array<{ callId: string }>
+          }
+        }
+      }>
+
+      expect(conversationStates.length).toBeGreaterThan(0)
+      expect(conversationStates[0]?.conversationState.replay?.toolTraces.map((trace) => trace.callId)).toEqual(
+        expect.arrayContaining(['call-1']),
+      )
+
+      const toolResults = getEventsByType(replay, 'tool_result') as Array<{
+        type: 'tool_result'
+        id: string
+        trace?: unknown
+      }>
+      expect(toolResults.some((result) => result.id === 'call-2' && result.trace)).toBe(true)
+    })
+
     it('should execute server-side tools and emit results', function* () {
       const echoTool = createMockTool('echo', 'Echoes input')
       const provider = createMockProvider({

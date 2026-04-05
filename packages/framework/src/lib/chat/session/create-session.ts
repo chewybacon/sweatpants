@@ -299,10 +299,10 @@ export function* runChatSession(
   // Create approval signal if not provided (for client tools)
   const approvalSignal = options.approvalSignal ?? createSignal<ApprovalSignalValue, void>()
 
-  if (options.conversationId) {
-    const contextBaseUrl = yield* BaseUrlContext.get()
-    const baseUrl = options.baseUrl ?? contextBaseUrl ?? '/api/chat'
-    const durableHistory = yield* readDurableHistory({
+    if (options.conversationId) {
+      const contextBaseUrl = yield* BaseUrlContext.get()
+      const baseUrl = options.baseUrl ?? contextBaseUrl ?? '/api/chat'
+      const durableHistory = yield* readDurableHistory({
       baseUrl,
       conversationId: options.conversationId,
       ...((options.tools?.length ?? 0) > 0
@@ -311,11 +311,19 @@ export function* runChatSession(
       ...((options.transforms?.length ?? 0) > 0
         ? { transforms: options.transforms }
         : {}),
-    })
+      })
 
-    for (const message of durableHistory.history) {
-      history.push(message)
-    }
+      yield* call(() => {
+        console.log('[createChatSession] durable hydrate', {
+          conversationId: options.conversationId,
+          historyCount: durableHistory.history.length,
+          patchCount: durableHistory.patches.length,
+        })
+      })
+
+      for (const message of durableHistory.history) {
+        history.push(message)
+      }
 
     replayState = durableHistory.replayState
 

@@ -472,7 +472,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       })
     }
 
-    const replayToolTraces = replayState?.toolTraces ?? []
+    const replayToolTraceMap = new Map(
+      (replayState?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
+    )
 
     // Helper to convert provider tool calls to our format
     const convertToolCalls = (calls: ChatResult['toolCalls']): ToolCall[] => {
@@ -732,6 +734,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             for (const output of isomorphicClientOutputs) {
               const event = yield* processClientOutput(output, toolRegistry, signal)
               state.pendingEvents.push(event)
+
+              if (output.trace) {
+                replayToolTraceMap.set(output.callId, {
+                  callId: output.callId,
+                  toolName: output.toolName,
+                  trace: output.trace,
+                })
+              }
 
               // Also add to conversation messages if it's a result
               if (event.type === 'tool_result') {
@@ -1184,10 +1194,10 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     isError: true,
                   }
                 }),
-                ...(replayToolTraces.length > 0
+                ...(replayToolTraceMap.size > 0
                   ? {
                       replay: {
-                        toolTraces: replayToolTraces,
+                        toolTraces: Array.from(replayToolTraceMap.values()),
                       },
                     }
                   : {}),
