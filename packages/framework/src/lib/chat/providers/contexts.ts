@@ -1,11 +1,11 @@
 import { createContext } from 'effection'
 
 import type { ChatStreamOptions, ChatProvider } from './types.ts'
-import type { IsomorphicTool } from '../../../handler/types.ts'
-import type { PersonaResolver } from '../../../handler/types.ts'
+import type { IsomorphicTool, PersonaResolver } from '../../../handler/types.ts'
 import type { PluginRegistry } from '../mcp-tools/plugin-registry.ts'
 import type { McpToolRegistry } from '../../../handler/durable/types.ts'
-import type { ToolSessionStore } from '../mcp-tools/session/types.ts'
+import type { ToolSessionRegistry, ToolSessionStore } from '../mcp-tools/session/types.ts'
+import type { PluginSessionManager } from '../../../handler/durable/plugin-session-manager.ts'
 
 export const ChatStreamConfigContext = createContext<ChatStreamOptions>('ChatStreamOptions')
 export const ChatApiKeyContext = createContext<string>('ChatApiKeyContext')
@@ -48,7 +48,7 @@ export const PluginSessionStoreContext = createContext<ToolSessionStore>('Plugin
  * })
  * ```
  */
-export const PluginSessionRegistryContext = createContext<import('../mcp-tools/session/types').ToolSessionRegistry>('PluginSessionRegistry')
+export const PluginSessionRegistryContext = createContext<ToolSessionRegistry>('PluginSessionRegistry')
 
 /**
  * Context for the plugin session manager.
@@ -60,4 +60,4 @@ export const PluginSessionRegistryContext = createContext<import('../mcp-tools/s
  * This is critical for multi-step elicitation - the manager tracks which
  * events have been processed so reconnecting clients don't see old events.
  */
-export const PluginSessionManagerContext = createContext<import('../../../handler/durable/plugin-session-manager').PluginSessionManager>('PluginSessionManager')
+export const PluginSessionManagerContext = createContext<PluginSessionManager>('PluginSessionManager')
