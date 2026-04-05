@@ -29,6 +29,12 @@ await input.fill('hello threaded world')
 console.log('send enabled', await page.getByRole('button', { name: 'Send' }).isEnabled())
 await page.getByRole('button', { name: 'Send' }).click()
 await page.waitForTimeout(5000)
+console.log('--- after send ---')
+console.log(await page.locator('body').innerText())
+
+await page.reload({ waitUntil: 'networkidle' })
+await page.waitForTimeout(3000)
+console.log('--- after refresh ---')
 console.log(await page.locator('body').innerText())
 
 await browser.close()
