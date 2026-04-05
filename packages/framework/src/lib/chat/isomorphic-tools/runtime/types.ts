@@ -123,12 +123,10 @@ export type {
   ServerAuthorityContext,
   IsomorphicHandoffEvent,
 } from '../types.ts'
+import type { Message as ChatMessage } from '../../types.ts'
 
 // =============================================================================
 // EXECUTOR-SPECIFIC TYPES (defined here only)
 // =============================================================================
 
-/**
- * Chat message alias (for compatibility).
- */
-export type ChatMessage = import('../../types').Message
+export type { ChatMessage }

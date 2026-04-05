@@ -7,7 +7,7 @@ import type {
 import type { HydratedToolExecutionTrace, ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'
 import type { AnyIsomorphicTool } from '../isomorphic-tools/types.ts'
 import type { Message } from '../types.ts'
-import type { StreamEvent } from './streaming.ts'
+import type { ConversationReplayState, StreamEvent } from './streaming.ts'
 import type { PatchTransform } from './options.ts'
 import { renderReplayMessageParts } from './replay-render.ts'
 
@@ -26,6 +26,26 @@ interface ReadDurableHistoryOptions {
 export interface DurableHistoryReplay {
   patches: ChatPatch[]
   history: Message[]
+  replayState?: ConversationReplayState
+}
+
+function mergeReplayState(
+  current: ConversationReplayState | undefined,
+  incoming: ConversationReplayState | undefined,
+): ConversationReplayState | undefined {
+  const merged = new Map<string, ConversationReplayState['toolTraces'][number]>()
+
+  for (const trace of current?.toolTraces ?? []) {
+    merged.set(trace.callId, trace)
+  }
+
+  for (const trace of incoming?.toolTraces ?? []) {
+    merged.set(trace.callId, trace)
+  }
+
+  return merged.size > 0
+    ? { toolTraces: Array.from(merged.values()) }
+    : undefined
 }
 
 function toolResultContent(content: string): string {
@@ -69,6 +89,7 @@ export function* replayFramesToConversation(
   let pendingToolCalls: Array<{ id: string; name: string; arguments: unknown }> = []
   let pendingHandoffs: PendingHandoffState[] = []
   let seededFromConversationState = false
+  let replayState: ConversationReplayState | undefined = undefined
 
   for (const frame of frames) {
     const event = frame.event
@@ -98,6 +119,10 @@ export function* replayFramesToConversation(
       }
 
       case 'tool_result': {
+        replayState = mergeReplayState(replayState, {
+          toolTraces: event.trace ? [{ callId: event.id, toolName: event.name, trace: event.trace }] : [],
+        })
+
         const replayedTrace = yield* replayToolTrace(
           tools,
           event.name,
@@ -224,6 +249,8 @@ export function* replayFramesToConversation(
       }
 
       case 'conversation_state': {
+        replayState = mergeReplayState(replayState, event.conversationState.replay)
+
         if (!seededFromConversationState && history.length === 0 && event.conversationState.messages.length > 0) {
           const replayToolTraceByCallId = new Map(
             (event.conversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
@@ -359,7 +386,11 @@ export function* replayFramesToConversation(
     }
   }
 
-  return { patches, history }
+  return {
+    patches,
+    history,
+    ...(replayState ? { replayState } : {}),
+  }
 }
 
 export function* readDurableHistory(

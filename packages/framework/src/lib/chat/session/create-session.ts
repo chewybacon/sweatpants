@@ -61,8 +61,21 @@
  * 2. Re-initiates the request with tool results
  * 3. Continues until the LLM is done
  */
-import type { Operation, Task, Channel, Signal, Stream } from 'effection'
-import { spawn, each, createChannel, createSignal, resource, useScope, call } from 'effection'
+import {
+  spawn,
+  each,
+  createChannel,
+  createSignal,
+  resource,
+  useScope,
+  call,
+  type Operation,
+  type Task,
+  type Channel,
+  type Signal,
+  type Stream,
+  type Subscription,
+} from 'effection'
 import { streamChatOnce, type ElicitResponseData } from './stream-chat.ts'
 import { useTransformPipeline } from './transforms.ts'
 import { chatReducer, initialChatState } from '../state/reducer.ts'
@@ -71,23 +84,52 @@ import { StreamerContext, ToolRegistryContext, BaseUrlContext } from './contexts
 import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
 import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
-import type { StreamResult } from './streaming.ts'
+import type { ConversationReplayState, ConversationReplayToolTrace, StreamResult } from './streaming.ts'
 import { syncConversationStateForElicit, syncMessagesFromIndex } from './turn-manager.ts'
 import { readDurableHistory } from './durable-history.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
-import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools/index.ts'
-import type { PendingEmission } from '../isomorphic-tools/runtime/emissions.ts'
-
 import {
   executeIsomorphicToolsClient,
   executeIsomorphicToolsClientWithReactHandlers,
   formatIsomorphicToolResult,
   createUIRequestChannel,
   createIsomorphicToolRegistry,
+  type ToolHandlerRegistry,
+  type PendingUIRequest,
+  type AnyIsomorphicTool,
 } from '../isomorphic-tools/index.ts'
+import type { PendingEmission } from '../isomorphic-tools/runtime/emissions.ts'
 
 /** Default streamer - uses fetch to call the chat API */
 const defaultStreamer: Streamer = streamChatOnce
+
+function createBufferedStateSignal<T>() {
+  const values: T[] = []
+  const signal = createSignal<T, void>()
+
+  return {
+    send(value: T) {
+      values.push(value)
+      signal.send(value)
+    },
+    *subscribe(): Operation<Stream<T, void>> {
+      const live: Subscription<T, void> = yield* signal
+      let replayIndex = 0
+
+      return resource(function* (provide) {
+        yield* provide({
+          *next(): Operation<IteratorResult<T, void>> {
+            if (replayIndex < values.length) {
+              return { done: false, value: values[replayIndex++]! }
+            }
+
+            return yield* live.next()
+          },
+        })
+      })
+    },
+  }
+}
 
 /**
  * Value sent through the handoff response signal from UI handlers.
@@ -100,7 +142,7 @@ export interface HandoffResponseSignalValue {
 type ReplayToolTrace = {
   callId: string
   toolName: string
-  trace: import('./streaming.ts').ConversationReplayToolTrace['trace']
+  trace: ConversationReplayToolTrace['trace']
 }
 
 function collectReplayToolTraces(messages: Message[]): ReplayToolTrace[] {
@@ -176,7 +218,7 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
     const scope = yield* useScope()
     const commands = createSignal<ChatCommand, void>()
     const patches = createChannel<ChatPatch, void>()
-    const stateSignal = createSignal<ChatState, void>()
+    const stateSignal = createBufferedStateSignal<ChatState>()
 
     // Build tool registry from provided tools
     const toolsRegistry = options.tools?.length
@@ -213,10 +255,12 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
 
     // Provide the public API
     yield* provide({
-      state: stateSignal,
-      dispatch: (cmd) => scope.run(function* () { 
-        commands.send(cmd)
-        return undefined
+      state: yield* stateSignal.subscribe(),
+      dispatch: (cmd) => scope.run(function* () {
+        yield* call(() => {
+          commands.send(cmd)
+          return undefined
+        })
       }),
     })
   })
@@ -250,6 +294,7 @@ export function* runChatSession(
   // Track pending tool_calls that are awaiting elicitation (need tool result messages if cancelled)
   // These are tool_calls from assistant messages that haven't received their tool result yet
   let pendingToolCalls: Array<{ id: string; name: string }> = []
+  let replayState: ConversationReplayState | undefined
 
   // Create approval signal if not provided (for client tools)
   const approvalSignal = options.approvalSignal ?? createSignal<ApprovalSignalValue, void>()
@@ -271,6 +316,8 @@ export function* runChatSession(
     for (const message of durableHistory.history) {
       history.push(message)
     }
+
+    replayState = durableHistory.replayState
 
     for (const patch of durableHistory.patches) {
       yield* patches.send(patch)
@@ -422,6 +469,7 @@ export function* runChatSession(
                   ...(isomorphicToolSchemas != null && { isomorphicToolSchemas }),
                   ...(isomorphicClientOutputs.length > 0 && { isomorphicClientOutputs }),
                   ...(elicitResponsesToSend.length > 0 && { elicitResponses: elicitResponsesToSend }),
+                  ...(replayState ? { replayState } : {}),
                 }
               )
               
@@ -619,6 +667,7 @@ export function* runChatSession(
                 result.conversationState.replay = {
                   toolTraces: replayToolTraces,
                 }
+                replayState = result.conversationState.replay
                 currentMessages = conversationMessages
                 continue
               }
@@ -782,7 +831,9 @@ export function* runChatSession(
             let streamingEndForwardedResolve: (() => void) | null = null
             
             function waitForStreamingEndForwarded(): Promise<void> {
-              if (streamingEndForwarded) return Promise.resolve()
+              if (streamingEndForwarded) {
+                return Promise.resolve()
+              }
               return new Promise<void>((resolve) => {
                 streamingEndForwardedResolve = resolve
               })
@@ -817,7 +868,7 @@ export function* runChatSession(
             const streamer = contextStreamer ?? options.streamer ?? defaultStreamer
             
             // Convert history to API messages
-            let currentMessages: Message[] = [...history]
+            const currentMessages: Message[] = [...history]
             
             // Capture plugin elicit responses for this continuation
             let elicitResponsesToSend: ElicitResponseData[] = []

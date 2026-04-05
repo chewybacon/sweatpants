@@ -172,7 +172,7 @@ export interface ChatResult {
   text: string
   thinking?: string
   toolCalls?: ToolCall[]
-  usage: import('./core-types.ts').TokenUsage
+  usage: TokenUsage
 }
 
 // =============================================================================
@@ -237,3 +237,4 @@ export interface OllamaChatChunk {
   eval_duration?: number
   error?: string
 }
+import type { TokenUsage } from './core-types.ts'
