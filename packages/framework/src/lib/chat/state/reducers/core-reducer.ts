@@ -19,6 +19,19 @@ export function reduceCore(state: ChatState, patch: ChatPatch): ChatState | unde
       return {
         ...state,
         messages: [...state.messages, patch.message],
+        ...(
+          patch.type === 'history_message' &&
+          patch.message.id &&
+          patch.parts &&
+          patch.parts.length > 0
+            ? {
+                finalizedParts: {
+                  ...state.finalizedParts,
+                  [patch.message.id]: patch.parts,
+                },
+              }
+            : {}
+        ),
         error: null,
       }
 
