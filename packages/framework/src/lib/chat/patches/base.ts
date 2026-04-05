@@ -20,6 +20,7 @@
 import type { Message } from '../types.ts'
 import type { Capabilities } from '../core-types.ts'
 import type { Frame } from '../../../react/chat/pipeline/types.ts'
+import type { MessagePart } from '../types/chat-message.ts'
 
 // =============================================================================
 // CONTENT PART TYPES
@@ -58,6 +59,7 @@ export interface UserMessagePatch {
 export interface HistoryMessagePatch {
   type: 'history_message'
   message: Message
+  parts?: MessagePart[]
 }
 
 /**
