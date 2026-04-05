@@ -397,6 +397,7 @@ export function createChatRequest(
   messages: Message[],
   options: {
     sessionId?: string
+    conversationId?: string
     lastLSN?: number
     offset?: number
     useSessionPath?: boolean
@@ -413,6 +414,7 @@ export function createChatRequest(
 ): { request: Request; body: Record<string, unknown> } {
   const {
     sessionId,
+    conversationId,
     lastLSN,
     offset,
     useSessionPath,
@@ -442,6 +444,10 @@ export function createChatRequest(
 
   if (sessionId && !useSessionPath) {
     url.searchParams.set('sessionId', sessionId)
+  }
+
+  if (conversationId) {
+    url.searchParams.set('conversationId', conversationId)
   }
 
   if (offset !== undefined) {

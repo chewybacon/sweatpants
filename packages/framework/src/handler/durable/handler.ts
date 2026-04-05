@@ -44,6 +44,11 @@ import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
+  recordConversationSession,
+  resolveLatestConversationSession,
+} from './conversation-index.ts';
+import {
+  createEmptyStream,
   createHeadMetadataResponse,
   createProtocolMutationResponse,
   createProtocolReadResponse,
@@ -69,6 +74,7 @@ import type {
  */
 const durableParamsBinder = bindModel({
   sessionId: stringParam("x-unused-session-id", "sessionId"),
+  conversationId: stringParam('x-conversation-id', 'conversationId'),
 });
 
 
@@ -193,7 +199,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const request = ctx.request;
       const bindingSource = createBindingSource(request);
       const pathSessionId = parseSessionIdFromPath(new URL(request.url).pathname);
-      const { sessionId: requestedSessionId } = durableParamsBinder(bindingSource);
+      const {
+        sessionId: requestedSessionId,
+        conversationId: requestedConversationIdParam,
+      } = durableParamsBinder(bindingSource);
       const parsedOffset = parseOffsetParam(
         bindingSource.searchParams.get("offset"),
       );
@@ -209,10 +218,44 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         ? ((yield* call(() => request.json())) as ChatRequestBody)
         : ({ messages: [] } as ChatRequestBody);
 
+      const requestedConversationId =
+        body.conversationId?.trim() || requestedConversationIdParam?.trim() || undefined;
+
+      // Run initializer hooks
+      for (const hook of initializerHooks) {
+        yield* hook({ request, body });
+      }
+
+      const bufferStore = yield* useTokenBufferStore<string>();
+      const shouldResolveConversation =
+        requestedConversationId !== undefined &&
+        pathSessionId === undefined &&
+        requestedSessionId === undefined &&
+        method !== 'POST';
+      const resolvedConversationSessionId = shouldResolveConversation
+        ? yield* resolveLatestConversationSession(
+            bufferStore,
+            requestedConversationId,
+          )
+        : null;
+
+      if (shouldResolveConversation && !resolvedConversationSessionId) {
+        ctx.status = 404;
+        return yield* createEmptyStream();
+      }
+
       // Determine session ID
-      const sessionId = pathSessionId ?? requestedSessionId ?? crypto.randomUUID();
+      const sessionId =
+        pathSessionId ??
+        requestedSessionId ??
+        resolvedConversationSessionId ??
+        crypto.randomUUID();
       const isReconnect =
-        (pathSessionId !== undefined || requestedSessionId !== undefined) &&
+        (
+          pathSessionId !== undefined ||
+          requestedSessionId !== undefined ||
+          requestedConversationId !== undefined
+        ) &&
         (parsedOffset.value !== null || parsedOffset.isNow);
       let startLSN = parsedOffset.value ?? 0;
 
@@ -220,16 +263,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       ctx.headers.set("X-Session-Id", sessionId);
       ctx.headers.set("Cache-Control", "no-store");
 
-      // Run initializer hooks
-      for (const hook of initializerHooks) {
-        yield* hook({ request, body });
-      }
-
       // Get logger after hooks run (so setupLogger has executed)
       const log = yield* useLogger("handler:durable");
       log.debug(
         {
           sessionId,
+          conversationId: requestedConversationId,
+          resolvedConversationSessionId,
           method,
           isReconnect,
           startLSN,
@@ -239,7 +279,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       );
 
       if (isProtocolMutation) {
-        const bufferStore = yield* useTokenBufferStore<string>();
         const registryStore = yield* useSessionRegistryStore();
 
         return yield* createProtocolMutationResponse({
@@ -521,6 +560,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           source: serializedStream,
         });
         log.debug({ sessionId }, "new session path: session acquired");
+      }
+
+      if (requestedConversationId) {
+        yield* recordConversationSession(
+          bufferStore,
+          requestedConversationId,
+          sessionId,
+        );
       }
 
       return yield* createProtocolReadResponse({

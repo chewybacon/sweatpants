@@ -20,6 +20,8 @@ export type {
 // Streaming
 export { streamChatOnce } from './stream-chat.ts'
 export type { StreamChatOptions, ElicitResponseData } from './stream-chat.ts'
+export { readDurableHistory, replayFramesToConversation } from './durable-history.ts'
+export type { DurableHistoryReplay } from './durable-history.ts'
 
 // Transforms
 export {

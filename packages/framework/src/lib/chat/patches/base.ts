@@ -53,6 +53,14 @@ export interface UserMessagePatch {
 }
 
 /**
+ * History message patch - used for hydrating previously persisted messages.
+ */
+export interface HistoryMessagePatch {
+  type: 'history_message'
+  message: Message
+}
+
+/**
  * Assistant message patch - sent when an assistant message is finalized.
  */
 export interface AssistantMessagePatch {
@@ -188,6 +196,7 @@ export interface ResetPatch {
 export type CorePatch =
   | SessionInfoPatch
   | UserMessagePatch
+  | HistoryMessagePatch
   | AssistantMessagePatch
   | StreamingStartPatch
   | StreamingTextPatch

@@ -13,6 +13,7 @@ import type { ChatProvider } from '../../lib/chat/providers/types.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
+import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { PluginSessionManager } from './plugin-session-manager.ts'
 
 // =============================================================================
@@ -73,6 +74,7 @@ export interface IsomorphicTool {
   parameters: ZodType<unknown>
   server?: (params: unknown, ctx: unknown) => Operation<unknown>
   client?: (input: unknown, ctx: unknown, params: unknown) => Operation<unknown>
+  replayTrace?: (trace: ToolExecutionTrace) => Operation<unknown>
 }
 
 /**
@@ -119,6 +121,7 @@ export type ToolExecutionResult =
       callId: string
       toolName: string
       serverOutput: unknown
+      trace?: ToolExecutionTrace
     }
   | {
       ok: true
@@ -159,6 +162,7 @@ export interface IsomorphicClientOutput {
   clientOutput: unknown
   cachedHandoff?: unknown
   usesHandoff?: boolean
+  trace?: ToolExecutionTrace
 }
 
 // =============================================================================
