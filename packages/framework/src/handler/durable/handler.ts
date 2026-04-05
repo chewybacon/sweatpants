@@ -158,12 +158,19 @@ function mcpToolToSchema(tool: {
  */
 function createSerializedEventStream(
   engine: Stream<StreamEvent, void>,
+  initialEvents: StreamEvent[] = [],
 ): Stream<string, void> {
   return resource(function* (provide) {
     const subscription = yield* engine;
+    let initialIndex = 0
 
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
+        if (initialIndex < initialEvents.length) {
+          const event = initialEvents[initialIndex++]!
+          return { done: false, value: JSON.stringify(event) }
+        }
+
         const result = yield* subscription.next();
         if (result.done) {
           return { done: true, value: undefined };
@@ -547,7 +554,18 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events
-        const serializedStream = createSerializedEventStream(engine);
+        const initialEvents: StreamEvent[] = body.messages.length > 0
+          ? [{
+              type: 'conversation_state',
+              conversationState: {
+                messages: body.messages,
+                assistantContent: '',
+                toolCalls: [],
+                serverToolResults: [],
+              },
+            }]
+          : []
+        const serializedStream = createSerializedEventStream(engine, initialEvents);
         log.debug({ sessionId }, "new session path: serialized stream created");
 
         // Acquire session with the engine as source

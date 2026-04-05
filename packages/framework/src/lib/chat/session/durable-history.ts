@@ -64,6 +64,7 @@ export function* replayFramesToConversation(
   let currentAssistantText = ''
   let pendingToolCalls: Array<{ id: string; name: string; arguments: unknown }> = []
   let pendingHandoffs: PendingHandoffState[] = []
+  let seededFromConversationState = false
 
   for (const frame of frames) {
     const event = frame.event
@@ -213,6 +214,17 @@ export function* replayFramesToConversation(
       }
 
       case 'conversation_state': {
+        if (!seededFromConversationState && history.length === 0 && event.conversationState.messages.length > 0) {
+          for (const message of event.conversationState.messages) {
+            history.push(message)
+            patches.push({
+              type: 'history_message',
+              message,
+            })
+          }
+          seededFromConversationState = true
+        }
+
         currentAssistantText = event.conversationState.assistantContent
         pendingToolCalls = event.conversationState.toolCalls.map((toolCall) => ({
           id: toolCall.id,
