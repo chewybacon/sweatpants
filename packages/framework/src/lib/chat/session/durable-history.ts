@@ -225,11 +225,71 @@ export function* replayFramesToConversation(
 
       case 'conversation_state': {
         if (!seededFromConversationState && history.length === 0 && event.conversationState.messages.length > 0) {
+          const replayToolTraceByCallId = new Map(
+            (event.conversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
+          )
+
           for (const message of event.conversationState.messages) {
+            if (history.some((existing) => existing.id === message.id)) {
+              continue
+            }
+
+            const toolResults = event.conversationState.messages.filter(
+              (candidate) => candidate.role === 'tool',
+            )
+            const parts = message.role === 'assistant'
+              ? yield* renderReplayMessageParts(message.content, transforms)
+              : undefined
+            let assistantParts = parts ?? []
+
+            if (message.role === 'assistant' && message.tool_calls?.length) {
+              for (const toolCall of message.tool_calls) {
+                const toolResult = toolResults.find((candidate) => candidate.tool_call_id === toolCall.id)
+                const error = toolResult?.content?.startsWith('Error:') ? toolResult.content : undefined
+                const replayedTrace = replayToolTraceByCallId.get(toolCall.id)
+                const hydratedTrace = replayedTrace
+                  ? yield* replayToolTrace(tools, replayedTrace.toolName, replayedTrace.trace)
+                  : null
+                const emissions = hydratedTrace?.emissions
+                  .map((entry) => ({
+                    id: `${toolCall.id}-replay-${entry.order + 1}`,
+                    status: 'complete' as const,
+                    component: entry._component,
+                    props: entry.props,
+                    ...(entry.response !== undefined ? { response: entry.response } : {}),
+                  }))
+                  .filter((emission) => emission.component)
+                  .map((emission) => ({
+                    id: emission.id,
+                    status: emission.status,
+                    component: emission.component!,
+                    props: emission.props,
+                    ...(emission.response !== undefined ? { response: emission.response } : {}),
+                  })) ?? []
+
+                assistantParts = [
+                  ...assistantParts,
+                  {
+                    id: `${message.id}-tool-${toolCall.id}`,
+                    type: 'tool-call' as const,
+                    callId: toolCall.id,
+                    name: toolCall.function.name,
+                    arguments: toolCall.function.arguments,
+                    state: toolResult ? (error ? 'error' as const : 'complete' as const) : 'running' as const,
+                    ...(toolResult && !error ? { result: toolResult.content } : {}),
+                    ...(error ? { error } : {}),
+                    emissions,
+                    pluginElicits: [],
+                  },
+                ]
+              }
+            }
+
             history.push(message)
             patches.push({
               type: 'history_message',
               message,
+              ...(message.role === 'assistant' && assistantParts.length > 0 ? { parts: assistantParts } : {}),
             })
           }
           seededFromConversationState = true

@@ -18,7 +18,10 @@ export function reduceCore(state: ChatState, patch: ChatPatch): ChatState | unde
     case 'history_message':
       return {
         ...state,
-        messages: [...state.messages, patch.message],
+        messages:
+          patch.message.id && state.messages.some((message) => message.id === patch.message.id)
+            ? state.messages.map((message) => (message.id === patch.message.id ? patch.message : message))
+            : [...state.messages, patch.message],
         ...(
           patch.type === 'history_message' &&
           patch.message.id &&

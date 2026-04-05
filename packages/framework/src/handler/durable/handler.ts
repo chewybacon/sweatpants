@@ -531,6 +531,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // toolSchemas includes server tools, client isomorphic tools, AND MCP plugin tools
         const engine = createChatEngine({
           messages: body.messages,
+          ...(body.replayState ? { replayState: body.replayState } : {}),
           ...(systemPrompt !== undefined && { systemPrompt }),
           toolSchemas,
           toolRegistry,
@@ -562,6 +563,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 assistantContent: '',
                 toolCalls: [],
                 serverToolResults: [],
+                ...(body.replayState ? { replay: body.replayState } : {}),
               },
             }]
           : []

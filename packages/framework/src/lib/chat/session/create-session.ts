@@ -97,6 +97,31 @@ export interface HandoffResponseSignalValue {
   output: unknown
 }
 
+type ReplayToolTrace = {
+  callId: string
+  toolName: string
+  trace: import('./streaming.ts').ConversationReplayToolTrace['trace']
+}
+
+function collectReplayToolTraces(messages: Message[]): ReplayToolTrace[] {
+  const traces: ReplayToolTrace[] = []
+
+  for (const message of messages) {
+    const replay = (message as Message & { replay?: { trace?: ReplayToolTrace['trace']; toolName?: string } }).replay
+    if (!replay?.trace || !message.tool_call_id) {
+      continue
+    }
+
+    traces.push({
+      callId: message.tool_call_id,
+      toolName: replay.toolName ?? 'unknown',
+      trace: replay.trace,
+    })
+  }
+
+  return traces
+}
+
 /**
  * Extended session options with isomorphic tool support.
  */
@@ -543,6 +568,20 @@ export function* runChatSession(
                     content: serverResult.content,
                   })
                 }
+
+                const replayToolTraces = [
+                  ...collectReplayToolTraces(conversationMessages),
+                  ...isomorphicResults.flatMap((isoResult) => {
+                    if (!isoResult.ok || !isoResult.trace) {
+                      return []
+                    }
+                    return [{
+                      callId: isoResult.callId,
+                      toolName: isoResult.toolName,
+                      trace: isoResult.trace,
+                    }]
+                  }),
+                ]
                 
                 // Add isomorphic tool results (merged server + client outputs)
                 // Collect outputs for server phase 2 when needed:
@@ -577,6 +616,9 @@ export function* runChatSession(
                   }
                 }
                 // Update current messages for re-initiation
+                result.conversationState.replay = {
+                  toolTraces: replayToolTraces,
+                }
                 currentMessages = conversationMessages
                 continue
               }

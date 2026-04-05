@@ -9,6 +9,7 @@ import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
 import type { StreamResult } from './streaming.ts'
 import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
+import type { ConversationReplayState } from './streaming.ts'
 
 // =============================================================================
 // ELICIT RESPONSE DATA
@@ -220,6 +221,8 @@ export interface StreamChatOptions extends SessionOptions {
     usesHandoff?: boolean
     trace?: ToolExecutionTrace
   }>
+
+  replayState?: ConversationReplayState
 
   /**
    * Elicit responses to pending elicitation requests.

@@ -15,6 +15,7 @@ import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { PluginSessionManager } from './plugin-session-manager.ts'
+import type { ConversationReplayState } from '../../lib/chat/session/streaming.ts'
 
 // =============================================================================
 // ENGINE STATE PHASES
@@ -175,6 +176,9 @@ export interface IsomorphicClientOutput {
 export interface ChatEngineParams {
   /** Conversation messages */
   messages: ChatMessage[]
+
+  /** Replay metadata from prior turns for durable restoration */
+  replayState?: ConversationReplayState
 
   /** System prompt to prepend */
   systemPrompt?: string
@@ -343,6 +347,8 @@ export interface ChatRequestBody {
    * collects the user's response, and sends it back here.
    */
   elicitResponses?: ElicitResponse[]
+
+  replayState?: ConversationReplayState
 
   /**
    * Conversation ID for durable streaming.
