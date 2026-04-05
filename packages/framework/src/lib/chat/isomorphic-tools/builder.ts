@@ -58,6 +58,7 @@ import type {
   ContextForMode,
 } from './contexts.ts'
 import type { IsomorphicApprovalConfig, ServerToolContext, ServerAuthorityContext } from './types.ts'
+import type { ToolExecutionTrace, HydratedToolExecutionTrace } from './runtime/emissions.ts'
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -338,6 +339,11 @@ export interface FinalizedIsomorphicTool<
     ctx: ContextForMode<TContext>,
     params: TParams
   ) => Operation<TClient>
+
+  /**
+   * Rebuild a durable execution trace for hydration replay.
+   */
+  replayTrace?: (trace: ToolExecutionTrace) => Operation<HydratedToolExecutionTrace>
 }
 
 // =============================================================================
@@ -468,6 +474,9 @@ function createBuilder(state: BuilderState): any {
         contextMode: state.contextMode,
         approval: state.approval,
         handoffConfig: config,
+        replayTrace: function* (trace: ToolExecutionTrace) {
+          return trace as HydratedToolExecutionTrace
+        },
         // For compatibility, also set server/client that use the handoff
         server: function*(params: any, ctx: ServerAuthorityContext) {
           // This wrapper is for the executor - it uses handoff() internally
@@ -498,6 +507,9 @@ function createBuilder(state: BuilderState): any {
             parameters: state.parameters!,
             contextMode: state.contextMode,
             approval: state.approval,
+            replayTrace: function* (trace: ToolExecutionTrace) {
+              return trace as HydratedToolExecutionTrace
+            },
             server: fn,
             client: clientFn,
           } as FinalizedIsomorphicTool<any, any, any, any, any, any>
@@ -513,6 +525,9 @@ function createBuilder(state: BuilderState): any {
             parameters: state.parameters!,
             contextMode: state.contextMode,
             approval: state.approval,
+            replayTrace: function* (trace: ToolExecutionTrace) {
+              return trace as HydratedToolExecutionTrace
+            },
             server: fn,
           } as FinalizedIsomorphicTool<any, any, any, any, any, any>
         },
@@ -530,6 +545,9 @@ function createBuilder(state: BuilderState): any {
         parameters: state.parameters!,
         contextMode: state.contextMode,
         approval: state.approval,
+        replayTrace: function* (trace: ToolExecutionTrace) {
+          return trace as HydratedToolExecutionTrace
+        },
         client: fn,
       } as FinalizedIsomorphicTool<any, any, any, any, any, any>
     },

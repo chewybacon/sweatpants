@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { ChatProvider } from '../ChatProvider.tsx'
 import { useChatSession } from '../useChatSession.ts'
 import type { PluginClientRegistrationInput } from '../../../lib/chat/mcp-tools/plugin.ts'
+import { createIsomorphicTool } from '../../../lib/chat/isomorphic-tools/builder.ts'
 
 function ndjsonResponse(events: unknown[]): Response {
   const lines = events.map((event, i) => JSON.stringify({ lsn: i + 1, event }) + '\n')
@@ -28,6 +29,16 @@ function TestFlightPicker(props: { flights: unknown[]; message: string; onRespon
 }
 
 function TestSeatPicker(props: { seatMap: unknown; message: string; onRespond: (value: unknown) => void }) {
+  return null
+}
+
+function TestCardPicker(props: {
+  cards: string[]
+  prompt: string
+  onRespond: (value: unknown) => void
+  disabled?: boolean
+  response?: unknown
+}) {
   return null
 }
 
@@ -192,5 +203,174 @@ describe('useChatSession (black-box)', () => {
     })
 
     unmount()
+  })
+
+  it('hydrates durable conversation history when conversationId is provided', async () => {
+    const fetchBodies: unknown[] = []
+
+    const historyResponse = ndjsonResponse([
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: [] },
+        persona: null,
+      },
+      { type: 'text', content: 'Hello from history' },
+      { type: 'complete', text: 'Hello from history' },
+    ])
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('conversationId=thread-1') && (!init?.method || init.method === 'GET')) {
+        return historyResponse.clone()
+      }
+
+      if (init?.body) {
+        try {
+          fetchBodies.push(JSON.parse(String(init.body)))
+        } catch {
+          fetchBodies.push(init.body)
+        }
+      }
+
+      return ndjsonResponse([
+        {
+          type: 'session_info',
+          capabilities: { thinking: false, streaming: true, tools: [] },
+          persona: null,
+        },
+        { type: 'text', content: 'Fresh response' },
+        { type: 'complete', text: 'Fresh response' },
+      ])
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const { result } = renderHook(
+      () => useChatSession({ transforms: [], conversationId: 'thread-1' }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.state.messages).toHaveLength(1)
+    })
+
+    expect(result.current.state.messages[0]?.content).toBe('Hello from history')
+
+    act(() => {
+      result.current.send('Continue the thread')
+    })
+
+    await waitFor(() => {
+      expect(result.current.state.messages.some((message) => message.content === 'Fresh response')).toBe(true)
+    })
+
+    expect(fetchBodies).toHaveLength(1)
+    const requestBody = fetchBodies[0] as Record<string, unknown>
+    expect(requestBody['conversationId']).toBe('thread-1')
+    expect(requestBody['messages']).toMatchObject([
+      { role: 'assistant', content: 'Hello from history' },
+      { role: 'user', content: 'Continue the thread' },
+    ])
+  })
+
+  it('rehydrates isomorphic tool emissions from durable history when tools are provided', async () => {
+    const pickCardTool = createIsomorphicTool('pick_card')
+      .description('Pick a card')
+      .parameters(z.object({ count: z.number() }))
+      .context('browser')
+      .handoff({
+        *before() {
+          return { cards: ['A', 'K'], prompt: 'Pick a card' }
+        },
+        *client(_handoff, _ctx: any) {
+          return { picked: 'A' }
+        },
+        *after(_handoff, client) {
+          return { picked: client.picked }
+        },
+      })
+
+    pickCardTool.replayTrace = function* (trace) {
+      return {
+        ...trace,
+        emissions: trace.emissions.map((entry) => ({
+          ...entry,
+          _component: TestCardPicker,
+        })),
+      }
+    }
+
+    const historyResponse = ndjsonResponse([
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: ['pick_card'] },
+        persona: null,
+      },
+      {
+        type: 'tool_calls',
+        calls: [{ id: 'call-1', name: 'pick_card', arguments: { count: 2 } }],
+      },
+      {
+        type: 'tool_result',
+        id: 'call-1',
+        name: 'pick_card',
+        content: 'The user selected the Ace of Spades.',
+        trace: {
+          emissions: [
+            {
+              order: 0,
+              componentKey: 'CardPicker',
+              props: {
+                cards: ['A', 'K'],
+                prompt: 'Pick a card',
+              },
+              response: { picked: 'A' },
+              timestamp: 100,
+            },
+          ],
+          startedAt: 50,
+          completedAt: 200,
+        },
+      },
+      { type: 'complete', text: 'Done' },
+    ])
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('conversationId=thread-tools') && (!init?.method || init.method === 'GET')) {
+        return historyResponse.clone()
+      }
+
+      return ndjsonResponse([
+        {
+          type: 'session_info',
+          capabilities: { thinking: false, streaming: true, tools: [] },
+          persona: null,
+        },
+        { type: 'complete', text: 'noop' },
+      ])
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const { result } = renderHook(
+      () => useChatSession({ transforms: [], conversationId: 'thread-tools', tools: [pickCardTool] }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.toolEmissions.length).toBe(1)
+    })
+
+    const tracking = result.current.toolEmissions[0]
+    expect(tracking?.callId).toBe('call-1')
+    expect(tracking?.status).toBe('complete')
+    expect(tracking?.emissions[0]?.payload._component).toBe(TestCardPicker)
+    expect(tracking?.emissions[0]?.response).toEqual({ picked: 'A' })
+    expect(tracking?.emissions[0]?.status).toBe('complete')
   })
 })
