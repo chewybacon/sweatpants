@@ -5,6 +5,7 @@ test.setTimeout(240000)
 async function createNewThread(page: Page) {
   await page.goto('/chat/threaded/', { waitUntil: 'domcontentloaded' })
   await expect(page.getByRole('heading', { name: 'Threaded Chat' })).toBeVisible()
+  await expect(page.getByText('Thread ready')).toBeVisible({ timeout: 10000 })
   await page.getByTestId('thread-create').click()
   await expect(page.getByText('Active')).toBeVisible()
 }
@@ -34,6 +35,7 @@ async function sendMessage(page: Page, text: string) {
 }
 
 async function waitForIdle(page: Page) {
+  await expect(page.getByText('Thread ready')).toBeVisible({ timeout: 60000 })
   await expect(page.getByRole('button', { name: 'Send' })).toBeVisible({ timeout: 60000 })
 }
 
@@ -66,6 +68,7 @@ test.describe('Threaded Chat Prototype', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: 'Threaded Chat' })).toBeVisible()
+    await expect(page.getByText('Thread ready')).toBeVisible({ timeout: 30000 })
 
     await expect(toolCallBlocks(page)).toHaveCount(2, { timeout: 30000 })
 
@@ -90,6 +93,7 @@ test.describe('Threaded Chat Prototype', () => {
 
     await page.reload({ waitUntil: 'domcontentloaded' })
     await expect(page.getByRole('heading', { name: 'Threaded Chat' })).toBeVisible()
+    await expect(page.getByText('Thread ready')).toBeVisible({ timeout: 30000 })
 
     const replayedAssistant = assistantMessages(page).last()
     await expect(replayedAssistant.locator('svg').first()).toBeVisible({ timeout: 30000 })
