@@ -183,6 +183,7 @@ function ThreadPanel({
     send,
     abort,
     error,
+    session,
   } = useChat({
     pipeline: 'full',
     tools: [tools.pickCard],
@@ -197,9 +198,11 @@ function ThreadPanel({
         threadId,
         messageCount: messages.length,
         messages,
+        sessionMessageCount: session.state.messages.length,
+        sessionMessages: session.state.messages,
       }
     }
-  }, [messages, threadId])
+  }, [messages, session.state.messages, threadId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

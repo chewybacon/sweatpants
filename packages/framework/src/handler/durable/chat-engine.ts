@@ -750,6 +750,17 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 for (const msg of state.conversationMessages) {
                   if (msg.role === 'tool' && msg.tool_call_id === output.callId) {
                     msg.content = event.content
+                    if (output.trace) {
+                      ;(msg as typeof msg & {
+                        replay?: {
+                          toolName: string
+                          trace: ToolExecutionTrace
+                        }
+                      }).replay = {
+                        toolName: output.toolName,
+                        trace: output.trace,
+                      }
+                    }
                     found = true
                     break
                   }
@@ -759,6 +770,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     role: 'tool',
                     tool_call_id: output.callId,
                     content: event.content,
+                    ...(output.trace
+                      ? {
+                          replay: {
+                            toolName: output.toolName,
+                            trace: output.trace,
+                          },
+                        }
+                      : {}),
                   })
                 }
               }
