@@ -15,6 +15,7 @@ export function reduceCore(state: ChatState, patch: ChatPatch): ChatState | unde
       }
 
     case 'user_message':
+    case 'history_message':
       return {
         ...state,
         messages: [...state.messages, patch.message],

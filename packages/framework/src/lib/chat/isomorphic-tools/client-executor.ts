@@ -17,6 +17,7 @@ import {
 } from './ui-requests.ts'
 import {
   createRuntime,
+  createToolTrace,
   type PendingEmission,
   type RuntimeConfig,
   COMPONENT_EMISSION_TYPE,
@@ -24,6 +25,7 @@ import {
 import {
   createBrowserContext,
   type BrowserRenderContext,
+  createExecutionState,
 } from './runtime/browser-context.ts'
 
 export function* executeClientPart(
@@ -97,8 +99,11 @@ export function* executeClientPart(
   )
 
   let executionContext: BaseToolContext | BrowserRenderContext = baseContext
+  let executionState = undefined
 
   if (emissionChannel) {
+    executionState = createExecutionState(callId, tool.name)
+
     const runtimeConfig: RuntimeConfig = {
       handlers: {
         [COMPONENT_EMISSION_TYPE]: () => {
@@ -115,6 +120,7 @@ export function* executeClientPart(
       runtime,
       callId,
       toolName: tool.name,
+      executionState,
       baseContext,
       signal: abortSignal,
     })
@@ -157,6 +163,13 @@ export function* executeClientPart(
       content,
       serverOutput,
       clientOutput,
+      ...(executionState && {
+        trace: createToolTrace(
+          executionState.emissions,
+          executionState.startedAt,
+          Date.now(),
+        ),
+      }),
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error)

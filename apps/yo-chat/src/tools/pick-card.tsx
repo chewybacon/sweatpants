@@ -121,6 +121,32 @@ function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPicker
 // Ensure the component has a display name for serialization
 CardPicker.displayName = 'CardPicker'
 
+function* replayPickCardTrace(trace: {
+  emissions: Array<{
+    order: number
+    componentKey: string
+    props: Record<string, unknown>
+    response?: unknown
+    timestamp: number
+  }>
+  startedAt: number
+  completedAt: number
+}) {
+  return {
+    ...trace,
+    emissions: trace.emissions.map((entry: {
+      order: number
+      componentKey: string
+      props: Record<string, unknown>
+      response?: unknown
+      timestamp: number
+    }) => ({
+      ...entry,
+      _component: CardPicker,
+    })),
+  }
+}
+
 // =============================================================================
 // TOOL DEFINITION
 // =============================================================================
@@ -167,3 +193,5 @@ export const pickCard = createIsomorphicTool('pick_card')
       return `The user selected the ${client.rank} of ${client.suit}. Please acknowledge their choice.`
     },
   })
+
+;(pickCard as typeof pickCard & { replayTrace?: typeof replayPickCardTrace }).replayTrace = replayPickCardTrace

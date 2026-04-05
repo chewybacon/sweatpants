@@ -43,6 +43,7 @@ import type { Operation } from 'effection'
 import type { z } from 'zod'
 import type { ApprovalType, DenialBehavior } from './runtime/tool-runtime.ts'
 import type { ContextMode, BaseToolContext } from './contexts.ts'
+import type { ToolExecutionTrace, HydratedToolExecutionTrace } from './runtime/emissions.ts'
 
 // --- Approval Configuration ---
 
@@ -244,6 +245,7 @@ export interface AnyIsomorphicTool {
 
   server?(params: any, context: any, clientOutput?: any): Operation<any>
   client?(input: any, context: BaseToolContext, params: any): Operation<any>
+  replayTrace?(trace: ToolExecutionTrace): Operation<HydratedToolExecutionTrace>
   
   /** Execution context mode (required for new tools, optional for legacy) */
   contextMode?: ContextMode
@@ -320,6 +322,7 @@ export interface IsomorphicToolResult {
   error?: string
   serverOutput?: unknown
   clientOutput?: unknown
+  trace?: ToolExecutionTrace
 }
 
 // --- Registry Types ---

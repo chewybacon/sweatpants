@@ -124,6 +124,14 @@ export interface EmissionTraceEntry {
 }
 
 /**
+ * Hydrated trace entry for replay.
+ * Adds the transient component reference back for UI rendering.
+ */
+export interface HydratedEmissionTraceEntry extends EmissionTraceEntry {
+  _component?: ComponentType<any>
+}
+
+/**
  * Tool execution trace - included in completed tool messages.
  */
 export interface ToolExecutionTrace {
@@ -134,6 +142,15 @@ export interface ToolExecutionTrace {
   startedAt: number
 
   /** End timestamp */
+  completedAt: number
+}
+
+/**
+ * Tool execution trace with transient component references restored.
+ */
+export interface HydratedToolExecutionTrace {
+  emissions: HydratedEmissionTraceEntry[]
+  startedAt: number
   completedAt: number
 }
 

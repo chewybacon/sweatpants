@@ -12,6 +12,7 @@ export type {
   // Core patches
   SessionInfoPatch,
   UserMessagePatch,
+  HistoryMessagePatch,
   AssistantMessagePatch,
   StreamingStartPatch,
   StreamingTextPatch,
@@ -122,6 +123,7 @@ export function isCorePatch(patch: ChatPatch): patch is CorePatch {
   return [
     'session_info',
     'user_message',
+    'history_message',
     'assistant_message',
     'streaming_start',
     'streaming_text',

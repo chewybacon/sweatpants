@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { handleThreadedChatRequest } from '@/lib/threaded-chat-api'
+import { handleThreadMetadataRequest } from '@/lib/thread-metadata-api'
 
 export const Route = createFileRoute('/api/threaded-chat/threads/$threadId')({
   server: {
     handlers: {
-      GET: async ({ request }) => handleThreadedChatRequest(request),
-      POST: async ({ request }) => handleThreadedChatRequest(request),
-      PUT: async ({ request }) => handleThreadedChatRequest(request),
+      GET: async ({ request }) => handleThreadMetadataRequest(request),
+      PUT: async ({ request }) => handleThreadMetadataRequest(request),
+      PATCH: async ({ request }) => handleThreadMetadataRequest(request),
+      DELETE: async ({ request }) => handleThreadMetadataRequest(request),
     },
   },
 })

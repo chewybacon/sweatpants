@@ -358,6 +358,12 @@ const chatHandler = createChatHandler({
 export const Route = createFileRoute('/api/chat')({
   server: {
     handlers: {
+      GET: async ({ request }) => {
+        return chatHandler(request)
+      },
+      HEAD: async ({ request }) => {
+        return chatHandler(request)
+      },
       POST: async ({ request }) => {
         return chatHandler(request)
       },

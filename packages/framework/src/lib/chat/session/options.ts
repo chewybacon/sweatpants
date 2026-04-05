@@ -218,6 +218,7 @@ export interface StreamChatOptions extends SessionOptions {
     clientOutput: unknown
     cachedHandoff?: unknown
     usesHandoff?: boolean
+    trace?: ToolExecutionTrace
   }>
 
   /**
@@ -282,3 +283,4 @@ export type ChatCommand =
        */
       autoContinue?: boolean
     }
+import type { ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'

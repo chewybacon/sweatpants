@@ -75,6 +75,7 @@ async function makeRequest(
   messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
   options: {
     sessionId?: string
+    conversationId?: string
     lastLSN?: number
     enabledTools?: boolean | string[]
   } = {}
@@ -92,6 +93,44 @@ async function makeRequest(
 
 describe('Durable Chat Handler', () => {
   describe('New Session: Basic Streaming', () => {
+    it('should reuse the same durable session for repeated conversationId requests', function* () {
+      const provider = createMockProvider({ responses: ['First response', 'Second response'] })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
+      })
+
+      const conversationId = 'thread-123'
+
+      const first = yield* call(() =>
+        makeRequest(handler, [{ role: 'user', content: 'Hello' }], {
+          conversationId,
+        })
+      )
+
+      expect(first.sessionId).toBeDefined()
+
+      const { request: replayRequest } = createChatRequest([], {
+        method: 'GET',
+        conversationId,
+      })
+      const replayResponse = yield* call(() => handler(replayRequest))
+      expect(replayResponse.status).toBe(200)
+      expect(replayResponse.headers.get('X-Session-Id')).toBe(first.sessionId)
+
+      const replayBody = yield* call(() => replayResponse.text())
+      expect(replayBody).toContain('First response')
+
+      const { request: headRequest } = createChatRequest([], {
+        method: 'HEAD',
+        conversationId,
+      })
+      const headResponse = yield* call(() => handler(headRequest))
+      expect(headResponse.status).toBe(200)
+      expect(headResponse.headers.get('X-Session-Id')).toBe(first.sessionId)
+    })
+
     it('should stream a simple text response with session info', function* () {
       const provider = createMockProvider({ responses: 'Hello, world!' })
       const handler = createDurableChatHandler({

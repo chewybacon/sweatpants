@@ -20,6 +20,7 @@ import type { ChatEvent, ChatResult } from '../../lib/chat/types.ts'
 import type { IsomorphicToolSchema } from '../../lib/chat/isomorphic-tools/index.ts'
 import { HandoffReadyError } from '../../lib/chat/isomorphic-tools/types.ts'
 import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types.ts'
+import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
 import type {
   ChatEngineParams,
@@ -175,11 +176,14 @@ function toolResultToStreamEvent(result: ToolExecutionResult): StreamEvent {
       ? result.serverOutput
       : JSON.stringify(result.serverOutput)
 
+  const trace: ToolExecutionTrace | undefined = 'trace' in result ? result.trace : undefined
+
   return {
     type: 'tool_result',
     id: result.callId,
     name: result.toolName,
     content,
+    ...(trace ? { trace } : {}),
   }
 }
 
@@ -367,6 +371,7 @@ function* processClientOutput(
         id: output.callId,
         name: output.toolName,
         content,
+        ...(output.trace && { trace: output.trace }),
       }
     }
 
@@ -381,6 +386,7 @@ function* processClientOutput(
       id: output.callId,
       name: output.toolName,
       content,
+      ...(output.trace && { trace: output.trace }),
     }
   } catch (error) {
     return {

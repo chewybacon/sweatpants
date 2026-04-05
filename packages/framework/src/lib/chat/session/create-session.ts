@@ -73,6 +73,7 @@ import type { Message } from '../types.ts'
 import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
 import type { StreamResult } from './streaming.ts'
 import { syncConversationStateForElicit, syncMessagesFromIndex } from './turn-manager.ts'
+import { readDurableHistory } from './durable-history.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
 import type { ToolHandlerRegistry, PendingUIRequest, AnyIsomorphicTool } from '../isomorphic-tools/index.ts'
 import type { PendingEmission } from '../isomorphic-tools/runtime/emissions.ts'
@@ -227,6 +228,26 @@ export function* runChatSession(
 
   // Create approval signal if not provided (for client tools)
   const approvalSignal = options.approvalSignal ?? createSignal<ApprovalSignalValue, void>()
+
+  if (options.conversationId) {
+    const contextBaseUrl = yield* BaseUrlContext.get()
+    const baseUrl = options.baseUrl ?? contextBaseUrl ?? '/api/chat'
+    const durableHistory = yield* readDurableHistory({
+      baseUrl,
+      conversationId: options.conversationId,
+      ...((options.tools?.length ?? 0) > 0
+        ? { tools: options.tools as AnyIsomorphicTool[] }
+        : {}),
+    })
+
+    for (const message of durableHistory.history) {
+      history.push(message)
+    }
+
+    for (const patch of durableHistory.patches) {
+      yield* patches.send(patch)
+    }
+  }
 
   // Command loop - SUSPENDS here waiting for next command (0 CPU while waiting)
   // See file header for detailed explanation of how this works.
@@ -540,6 +561,7 @@ export function* runChatSession(
                         toolName: isoResult.toolName,
                         params: handoff.params,
                         clientOutput: isoResult.clientOutput,
+                        ...(isoResult.trace && { trace: isoResult.trace }),
                         // For V7 handoff: pass the cached handoff data (serverOutput from phase 1)
                         cachedHandoff: handoff.usesHandoff ? handoff.serverOutput : undefined,
                         usesHandoff: handoff.usesHandoff ?? false,
