@@ -190,6 +190,18 @@ function ThreadPanel({
   })
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      ;(window as typeof window & {
+        __threadedDebug?: unknown
+      }).__threadedDebug = {
+        threadId,
+        messageCount: messages.length,
+        messages,
+      }
+    }
+  }, [messages, threadId])
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
@@ -278,6 +290,8 @@ function ThreadedChatDemo() {
   const [loading, setLoading] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [hydrated, setHydrated] = useState(false)
+  const [sessionMountKey, setSessionMountKey] = useState(0)
 
   const persistSelection = useCallback((threadId: string | null) => {
     if (typeof window === 'undefined') {
@@ -313,6 +327,7 @@ function ThreadedChatDemo() {
       setThreads(nextThreads)
       setSelectedThreadId(nextSelected)
       persistSelection(nextSelected)
+      setSessionMountKey((current) => current + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load threaded chat')
     } finally {
@@ -321,6 +336,7 @@ function ThreadedChatDemo() {
   }, [persistSelection])
 
   useEffect(() => {
+    setHydrated(true)
     void hydrate()
   }, [hydrate])
 
@@ -331,6 +347,7 @@ function ThreadedChatDemo() {
       setThreads((previous) => [created, ...previous])
       setSelectedThreadId(created.id)
       persistSelection(created.id)
+      setSessionMountKey((current) => current + 1)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create thread')
     }
@@ -339,6 +356,7 @@ function ThreadedChatDemo() {
   const handleSelectThread = useCallback((threadId: string) => {
     setSelectedThreadId(threadId)
     persistSelection(threadId)
+    setSessionMountKey((current) => current + 1)
   }, [persistSelection])
 
   const handleMetadata = useCallback((threadId: string, summary: Pick<ThreadSummary, 'title' | 'lastMessagePreview' | 'messageCount'>) => {
@@ -441,11 +459,11 @@ function ThreadedChatDemo() {
             </Button>
           </div>
 
-          {loading || !selectedThreadId ? (
+          {!hydrated || loading || !selectedThreadId ? (
             <div className="flex h-full items-center justify-center text-slate-400">Loading threads...</div>
           ) : (
             <ThreadPanel
-              key={selectedThreadId}
+              key={`${selectedThreadId}-${sessionMountKey}`}
               threadId={selectedThreadId}
               onMetadata={handleMetadata}
             />

@@ -15,6 +15,7 @@ import type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from '../.
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { setupInMemoryDurableStreams, type DurableStreamsSetup } from '../../../lib/chat/durable-streams/index.ts'
 import type { IsomorphicTool, ToolSchema, InitializerHook, DurableStreamEvent } from '../types.ts'
+import type { StreamEvent } from '../../types.ts'
 
 // =============================================================================
 // MOCK PROVIDER
@@ -284,6 +285,18 @@ export interface DurableResponseResult {
   error: ErrorEvent | null
   /** Highest LSN seen */
   lastLSN: number
+}
+
+export function getEventsByType(
+  result: DurableResponseResult,
+  type: string,
+): StreamEvent[] {
+  return result.events
+    .map((entry) => entry.event)
+    .filter((event) => {
+      const candidate = event as { type?: string }
+      return candidate.type === type
+    })
 }
 
 /**
