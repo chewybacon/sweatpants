@@ -1,6 +1,5 @@
 import type { Operation } from 'effection'
 import { createChannel, each, spawn } from 'effection'
-import { createPipelineTransform } from '../../../react/chat/pipeline/runner.ts'
 import type { PatchTransform } from './options.ts'
 import type { ChatPatch } from '../patches/index.ts'
 import type { MessagePart, TextPart, ReasoningPart } from '../types/chat-message.ts'
@@ -60,11 +59,7 @@ export function* renderReplayMessageParts(
   const output = createChannel<ChatPatch, void>()
   const parts = new Map<string, ReplayableContentPart>()
   const order: string[] = []
-  const pipelineTransform = createPipelineTransform({ processors: [] })
-  const runComposed = composeTransforms([
-    pipelineTransform,
-    ...transforms,
-  ])
+  const runComposed = composeTransforms(transforms)
 
   yield* spawn(function* () {
     yield* runComposed(input, output)

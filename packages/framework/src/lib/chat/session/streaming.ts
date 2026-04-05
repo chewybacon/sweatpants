@@ -9,6 +9,16 @@ import type { IsomorphicHandoffEvent } from '../isomorphic-tools/types.ts'
 import type { ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'
 import type { Message } from '../types.ts'
 
+export interface ConversationReplayToolTrace {
+  callId: string
+  toolName: string
+  trace: ToolExecutionTrace
+}
+
+export interface ConversationReplayState {
+  toolTraces: ConversationReplayToolTrace[]
+}
+
 // =============================================================================
 // CONVERSATION STATE
 // =============================================================================
@@ -25,6 +35,8 @@ export interface ConversationState {
   toolCalls: ToolCallInfo[]
   /** Results from server-side tool execution (already complete) */
   serverToolResults: ServerToolResult[]
+  /** Replay metadata needed to restore durable UI state across turns */
+  replay?: ConversationReplayState
 }
 
 // =============================================================================

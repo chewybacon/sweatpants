@@ -1,10 +1,9 @@
 ---
-status: blocked
+status: in_progress
 tags: [yo-chat, e2e, usechat]
-blocked_by: [yo-chat-rebuild-threaded-page-on-usechat, framework-expose-read-replay-path-for-durable-chat]
 parent_id: prototype-threaded-durable-chat
 created_at: 2026-04-04T11:15:00.238906Z
-updated_at: 2026-04-04T11:15:17.65444Z
+updated_at: 2026-04-05T13:58:14.384396Z
 ---
 
 # yo-chat: e2e threaded chat on useChat
