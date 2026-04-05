@@ -64,6 +64,7 @@ import type {
   ToolRegistry,
   ToolSchema,
 } from "./types.ts";
+import type { ConversationReplayState } from '../../lib/chat/session/streaming.ts'
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -179,6 +180,31 @@ function createSerializedEventStream(
       },
     });
   });
+}
+
+function mergeReplayState(
+  base: ConversationReplayState | undefined,
+  body: ChatRequestBody,
+): ConversationReplayState | undefined {
+  const traces = new Map<string, ConversationReplayState['toolTraces'][number]>()
+
+  for (const trace of base?.toolTraces ?? []) {
+    traces.set(trace.callId, trace)
+  }
+
+  for (const output of body.isomorphicClientOutputs ?? []) {
+    if (!output.trace) {
+      continue
+    }
+
+    traces.set(output.callId, {
+      callId: output.callId,
+      toolName: output.toolName,
+      trace: output.trace,
+    })
+  }
+
+  return traces.size > 0 ? { toolTraces: Array.from(traces.values()) } : undefined
 }
 
 // =============================================================================
@@ -555,6 +581,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events
+        const initialReplayState = mergeReplayState(body.replayState, body)
         const initialEvents: StreamEvent[] = body.messages.length > 0
           ? [{
               type: 'conversation_state',
@@ -563,7 +590,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 assistantContent: '',
                 toolCalls: [],
                 serverToolResults: [],
-                ...(body.replayState ? { replay: body.replayState } : {}),
+                ...(initialReplayState ? { replay: initialReplayState } : {}),
               },
             }]
           : []
