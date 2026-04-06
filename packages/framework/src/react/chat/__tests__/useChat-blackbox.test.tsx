@@ -5,6 +5,7 @@ import { type ReactNode } from 'react'
 
 import { ChatProvider } from '../ChatProvider.tsx'
 import { useChat } from '../useChat.ts'
+import { useChatSession } from '../useChatSession.ts'
 
 function ndjsonResponse(events: unknown[]): Response {
   const lines = events.map((event, i) => JSON.stringify({ lsn: i + 1, event }) + '\n')
@@ -113,5 +114,141 @@ describe('useChat (black-box)', () => {
     const assistantWithTool = result.current.messages.find((message) => message.id === 'assistant-1')
     expect(assistantWithTool).toBeTruthy()
     expect(assistantWithTool?.parts.some((part) => part.type === 'tool-call')).toBe(true)
+  })
+
+  it('hydrates messages after remount with the same conversationId', async () => {
+    const historyResponse = ndjsonResponse([
+      {
+        type: 'conversation_state',
+        conversationState: {
+          messages: [
+            {
+              id: 'user-1',
+              role: 'user',
+              content: 'hello threaded world',
+            },
+          ],
+          assistantContent: '',
+          toolCalls: [],
+          serverToolResults: [],
+        },
+      },
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: [] },
+        persona: null,
+      },
+      { type: 'text', content: 'Hello' },
+      { type: 'text', content: ' threaded' },
+      { type: 'text', content: ' world' },
+      { type: 'complete', text: 'Hello threaded world' },
+    ])
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('conversationId=thread-remount') && (!init?.method || init.method === 'GET')) {
+        return historyResponse.clone()
+      }
+
+      return ndjsonResponse([
+        {
+          type: 'session_info',
+          capabilities: { thinking: false, streaming: true, tools: [] },
+          persona: null,
+        },
+        { type: 'complete', text: 'noop' },
+      ])
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const first = renderHook(
+      () => useChat({ conversationId: 'thread-remount', pipeline: 'full' }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(first.result.current.messages.length).toBe(2)
+    })
+
+    first.unmount()
+
+    const second = renderHook(
+      () => useChat({ conversationId: 'thread-remount', pipeline: 'full' }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(second.result.current.messages.length).toBe(2)
+    })
+  })
+
+  it('hydrates session state after remount with the same conversationId', async () => {
+    const historyResponse = ndjsonResponse([
+      {
+        type: 'conversation_state',
+        conversationState: {
+          messages: [
+            {
+              id: 'user-1',
+              role: 'user',
+              content: 'hello threaded world',
+            },
+          ],
+          assistantContent: '',
+          toolCalls: [],
+          serverToolResults: [],
+        },
+      },
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: [] },
+        persona: null,
+      },
+      { type: 'text', content: 'Hello' },
+      { type: 'complete', text: 'Hello' },
+    ])
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('conversationId=session-remount') && (!init?.method || init.method === 'GET')) {
+        return historyResponse.clone()
+      }
+
+      return ndjsonResponse([
+        {
+          type: 'session_info',
+          capabilities: { thinking: false, streaming: true, tools: [] },
+          persona: null,
+        },
+        { type: 'complete', text: 'noop' },
+      ])
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const first = renderHook(
+      () => useChatSession({ conversationId: 'session-remount', transforms: [] }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(first.result.current.state.messages.length).toBe(1)
+    })
+
+    first.unmount()
+
+    const second = renderHook(
+      () => useChatSession({ conversationId: 'session-remount', transforms: [] }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(second.result.current.state.messages.length).toBe(1)
+    })
   })
 })
