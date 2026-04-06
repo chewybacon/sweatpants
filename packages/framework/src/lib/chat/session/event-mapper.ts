@@ -189,5 +189,6 @@ export function* mapStreamEventsToPatches(
     text: assistantText,
     ...(toolCalls.length > 0 ? { toolCalls } : {}),
     ...(toolResults.length > 0 ? { toolResults } : {}),
+    ...(conversationState ? { conversationState } : {}),
   }
 }

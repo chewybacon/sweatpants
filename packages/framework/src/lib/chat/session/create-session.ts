@@ -85,7 +85,11 @@ import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
 import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
 import type { ConversationReplayState, ConversationReplayToolTrace, StreamResult } from './streaming.ts'
-import { syncConversationStateForElicit, syncMessagesFromIndex } from './turn-manager.ts'
+import {
+  syncConversationStateForElicit,
+  syncConversationStateForComplete,
+  syncMessagesFromIndex,
+} from './turn-manager.ts'
 import { readDurableHistory } from './durable-history.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
 import {
@@ -487,6 +491,9 @@ export function* runChatSession(
               
               // If complete, we're done
               if (result.type === 'complete') {
+                if (result.conversationState) {
+                  syncConversationStateForComplete(history, result.conversationState)
+                }
                 break
               }
               

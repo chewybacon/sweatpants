@@ -50,6 +50,37 @@ export function syncConversationStateForElicit(
   }))
 }
 
+export function syncConversationStateForComplete(
+  history: Message[],
+  conversationState: ConversationState,
+): void {
+  const seenIds = new Set(history.map((message) => message.id).filter(Boolean))
+
+  for (const convMsg of conversationState.messages) {
+    const id = convMsg.id ?? crypto.randomUUID()
+    if (seenIds.has(id)) {
+      continue
+    }
+
+    history.push({
+      ...convMsg,
+      id,
+    })
+    seenIds.add(id)
+  }
+
+  if (conversationState.assistantContent) {
+    const lastAssistant = history[history.length - 1]
+    if (!lastAssistant || lastAssistant.role !== 'assistant' || lastAssistant.content !== conversationState.assistantContent) {
+      history.push({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: conversationState.assistantContent,
+      })
+    }
+  }
+}
+
 export function syncMessagesFromIndex(
   history: Message[],
   sourceMessages: Message[],

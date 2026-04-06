@@ -59,6 +59,8 @@ export interface StreamCompleteResult {
   toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
   /** Tool results from this turn (for history sync) */
   toolResults?: Array<{ id: string; name: string; content: string }>
+  /** Semantic conversation snapshot if server provided one */
+  conversationState?: ConversationState
 }
 
 /**
