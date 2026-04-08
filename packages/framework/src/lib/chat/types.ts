@@ -33,6 +33,7 @@ export type {
 // Re-export from session
 export type {
   ConversationState,
+  ConversationReplayToolTrace,
   StreamResult,
   StreamCompleteResult,
   StreamIsomorphicHandoffResult,
@@ -131,6 +132,10 @@ export interface Message {
   partial?: boolean
   tool_calls?: ToolCall[]
   tool_call_id?: string
+  replay?: {
+    toolName?: string
+    trace?: ConversationReplayToolTrace['trace']
+  }
 }
 
 /**

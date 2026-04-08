@@ -46,7 +46,7 @@ import type { PatchTransform } from './options.ts'
  * The forwarder waits for a subscriber before starting to forward messages.
  * close() waits for all messages to be delivered before completing.
  */
-function useBufferedChannel<T>(): Operation<Channel<T, void>> {
+export function useBufferedChannel<T>(): Operation<Channel<T, void>> {
   return resource<Channel<T, void>>(function* (provide) {
     // Queue for buffering messages
     const queue: T[] = []
