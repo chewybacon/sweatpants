@@ -317,14 +317,6 @@ export function* runChatSession(
         : {}),
       })
 
-      yield* call(() => {
-        console.log('[createChatSession] durable hydrate', {
-          conversationId: options.conversationId,
-          historyCount: durableHistory.history.length,
-          patchCount: durableHistory.patches.length,
-        })
-      })
-
       for (const message of durableHistory.history) {
         history.push(message)
       }

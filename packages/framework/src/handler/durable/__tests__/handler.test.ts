@@ -16,6 +16,7 @@
  */
 import { describe, it, expect } from './vitest-effection.ts'
 import { call } from 'effection'
+import { z } from 'zod'
 import {
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
@@ -495,6 +496,89 @@ describe('Durable Chat Handler', () => {
       expect(result.toolResults).not.toBeNull()
       expect(result.toolResults?.[0]?.name).toBe('echo')
       expect(result.toolResults?.[0]?.content).toContain('Mock result for: hello')
+    })
+
+    it('should include accumulated replay state in handoff conversation_state events', function* () {
+      const handoffTool: IsomorphicTool = {
+        name: 'mock_handoff',
+        description: 'A mock isomorphic tool with handoff',
+        parameters: z.object({ count: z.number() }),
+        server: function* (params: unknown) {
+          const { count } = params as { count: number }
+          return { cards: Array.from({ length: count }, (_, i) => `Card ${i + 1}`) }
+        },
+        client: function* (_input: unknown, _ctx: unknown, _params: unknown) {
+          return 'Client picked a card'
+        },
+      }
+
+      const provider = createMockProvider({
+        responses: ['Let me draw a card for you'],
+        toolCalls: [{ id: 'call-new', name: 'mock_handoff', arguments: { count: 3 } }],
+      })
+
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [handoffTool], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
+        maxToolIterations: 5,
+      })
+
+      const conversationId = 'durable-handoff-replay-thread'
+
+      const priorTrace = {
+        callId: 'call-prior',
+        toolName: 'mock_handoff',
+        trace: {
+          emissions: [{
+            order: 0,
+            componentKey: 'CardPicker',
+            props: { cards: ['A♠', 'K♣'], prompt: 'Pick one' },
+            response: { picked: 'A♠' },
+            timestamp: 100,
+          }],
+          startedAt: 50,
+          completedAt: 100,
+        },
+      }
+
+      const request = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          messages: [{ id: 'u1', role: 'user', content: 'Draw a card' }],
+          replayState: { toolTraces: [priorTrace] },
+          isomorphicTools: [{
+            name: 'mock_handoff',
+            description: 'A mock isomorphic tool with handoff',
+            parameters: { type: 'object', properties: { count: { type: 'number' } } },
+            usesHandoff: true,
+          }],
+        }),
+      })
+
+      const response = yield* call(() => handler(request))
+      const result = yield* call(() => consumeDurableResponse(response))
+
+      const conversationStates = getEventsByType(result, 'conversation_state') as Array<{
+        type: 'conversation_state'
+        conversationState: {
+          toolCalls?: Array<{ id: string; name: string }>
+          replay?: {
+            toolTraces: Array<{ callId: string; toolName: string }>
+          }
+        }
+      }>
+
+      const handoffState = conversationStates.find(
+        (cs) => cs.conversationState.toolCalls && cs.conversationState.toolCalls.length > 0,
+      )
+
+      expect(handoffState).toBeDefined()
+      expect(
+        handoffState!.conversationState.replay?.toolTraces.map((t) => t.callId),
+      ).toContain('call-prior')
     })
   })
 

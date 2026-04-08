@@ -402,19 +402,10 @@ export function useChat(options: UseChatOptions = {}): UseChatReturn {
     pendingElicits: state.pendingElicits,
   }), [toolEmissions, state.pendingElicits])
 
-  // Derive messages using the framework-agnostic derivation function
+// Derive messages using the framework-agnostic derivation function
   const messages: ChatMessage[] = useMemo(
     () => {
-      const derived = deriveMessages<React.ComponentType<any>>(state, deriveOptions, extractComponent)
-      if (state.messages.length > 0 && derived.length === 0) {
-        console.log('[useChat] derive mismatch', {
-          stateMessageCount: state.messages.length,
-          finalizedPartKeys: Object.keys(state.finalizedParts),
-          toolEmissionKeys: Object.keys(deriveOptions.toolEmissions),
-          pendingElicitKeys: Object.keys(deriveOptions.pendingElicits ?? {}),
-          stateMessages: state.messages,
-        })
-      }
+const derived = deriveMessages<React.ComponentType<any>>(state, deriveOptions, extractComponent)
       return derived
     },
     [state, deriveOptions]
