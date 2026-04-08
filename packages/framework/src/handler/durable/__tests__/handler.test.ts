@@ -374,6 +374,102 @@ describe('Durable Chat Handler', () => {
       ).toEqual(expect.arrayContaining(['call-1', 'call-2']))
     })
 
+    it('does not retain stale handoff placeholders after a client tool completes', function* () {
+      const provider = createMockProvider({ responses: 'Second tool turn' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
+      })
+
+      const conversationId = 'durable-tool-placeholder-thread'
+
+      const request = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId,
+          messages: [
+            { id: 'u1', role: 'user', content: 'Draw first card' },
+            {
+              id: 'a1',
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  type: 'function' as const,
+                  function: { name: 'pick_card', arguments: { count: 3 } },
+                },
+              ],
+            },
+            {
+              id: 't1',
+              role: 'tool',
+              tool_call_id: 'call-1',
+              content: '',
+            },
+          ],
+          isomorphicClientOutputs: [
+            {
+              callId: 'call-1',
+              toolName: 'pick_card',
+              params: { count: 3 },
+              clientOutput: { picked: 'A♠' },
+              usesHandoff: true,
+              trace: {
+                emissions: [
+                  {
+                    order: 0,
+                    componentKey: 'CardPicker',
+                    props: { cards: ['A♠', 'K♣'], prompt: 'Pick one' },
+                    response: { picked: 'A♠' },
+                    timestamp: 100,
+                  },
+                ],
+                startedAt: 50,
+                completedAt: 100,
+              },
+            },
+          ],
+        }),
+      })
+
+      yield* call(() => handler(request))
+
+      const { request: replayRequest } = createChatRequest([], {
+        method: 'GET',
+        conversationId,
+      })
+      const replayResponse = yield* call(() => handler(replayRequest))
+      const replay = yield* call(() => consumeDurableResponse(replayResponse))
+
+      const conversationStates = getEventsByType(replay, 'conversation_state') as Array<{
+        type: 'conversation_state'
+        conversationState: {
+          messages: Array<{
+            role: string
+            content: string
+            tool_calls?: Array<{ id: string }>
+            tool_call_id?: string
+          }>
+        }
+      }>
+
+      expect(conversationStates.length).toBeGreaterThan(0)
+      const messages = conversationStates[0]?.conversationState.messages ?? []
+
+      expect(
+        messages.filter((message) => message.role === 'assistant' && message.tool_calls?.some((toolCall) => toolCall.id === 'call-1')),
+      ).toHaveLength(1)
+      expect(
+        messages.filter((message) => message.role === 'tool' && message.tool_call_id === 'call-1'),
+      ).toHaveLength(1)
+      expect(
+        messages.find((message) => message.role === 'tool' && message.tool_call_id === 'call-1')?.content,
+      ).toBe('')
+    })
+
     it('should execute server-side tools and emit results', function* () {
       const echoTool = createMockTool('echo', 'Echoes input')
       const provider = createMockProvider({

@@ -40,6 +40,7 @@ export {
 // Streaming types
 export type {
   ConversationState,
+  ConversationReplayToolTrace,
   StreamResult,
   StreamCompleteResult,
   StreamIsomorphicHandoffResult,
