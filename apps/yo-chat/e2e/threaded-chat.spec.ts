@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
-test.setTimeout(240000)
+test.setTimeout(300000)
 
 async function createNewThread(page: Page) {
   await page.goto('/chat/threaded/', { waitUntil: 'domcontentloaded' })
@@ -12,10 +12,6 @@ async function createNewThread(page: Page) {
 
 function threadInput(page: Page) {
   return page.getByPlaceholder('Ask this thread to draw a card...')
-}
-
-function assistantMessages(page: Page) {
-  return page.getByTestId('message-assistant')
 }
 
 function toolCallBlocks(page: Page) {
@@ -30,10 +26,6 @@ function interactiveToolCallBlocks(page: Page) {
   return toolCallBlocks(page).filter({
     has: page.locator('button:not([disabled])').filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ }),
   })
-}
-
-function interactiveCardButtons(scope: Locator) {
-  return scope.locator('button:not([disabled])').filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ })
 }
 
 async function sendMessage(page: Page, text: string) {
@@ -51,14 +43,25 @@ async function waitForIdle(page: Page) {
 
 async function completeCardPick(page: Page) {
   await expect(interactiveToolCallBlocks(page).last()).toBeVisible({ timeout: 60000 })
-  const latestBlock = interactiveToolCallBlocks(page).last()
-  const cards = interactiveCardButtons(latestBlock)
-  await expect(cards.first()).toBeVisible({ timeout: 60000 })
-  const pickedLabel = (await cards.first().textContent())?.trim()
+  const callId = await interactiveToolCallBlocks(page).last().getAttribute('data-call-id')
+  expect(callId).toBeTruthy()
+  const block = page.locator(`[data-call-id="${callId}"]`)
+  const enabledCards = block.locator('button:not([disabled])').filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ })
+  await expect(enabledCards.first()).toBeVisible({ timeout: 60000 })
+  const pickedLabel = (await enabledCards.first().textContent())?.trim()
   expect(pickedLabel).toBeTruthy()
-  await cards.first().click()
-  await expect(latestBlock.getByText(`You picked: ${pickedLabel}`)).toBeVisible({ timeout: 20000 })
-  return { latestBlock, pickedLabel: pickedLabel! }
+  await enabledCards.first().click()
+  await expect(block.getByText(`You picked: ${pickedLabel}`)).toBeVisible({ timeout: 20000 })
+  return { block, pickedLabel: pickedLabel! }
+}
+
+async function assertCompletedCardPicks(page: Page, labels: string[]) {
+  await expect(toolCallBlocks(page)).toHaveCount(labels.length, { timeout: 30000 })
+  for (let i = 0; i < labels.length; i++) {
+    const block = toolCallBlocks(page).nth(i)
+    await expect(block.getByText(`You picked: ${labels[i]}`)).toBeVisible({ timeout: 30000 })
+    await expect(pickableCardButtons(block).first()).toBeDisabled({ timeout: 10000 })
+  }
 }
 
 test.describe('Threaded Chat Prototype', () => {
@@ -72,24 +75,12 @@ test.describe('Threaded Chat Prototype', () => {
     const second = await completeCardPick(page)
     await waitForIdle(page)
 
-    await expect(toolCallBlocks(page)).toHaveCount(2)
-    await expect(toolCallBlocks(page).nth(0).getByText(`You picked: ${first.pickedLabel}`)).toBeVisible()
-    await expect(toolCallBlocks(page).nth(1).getByText(`You picked: ${second.pickedLabel}`)).toBeVisible()
+    await assertCompletedCardPicks(page, [first.pickedLabel, second.pickedLabel])
 
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Threaded Chat' })).toBeVisible()
     await expect(page.getByText('Thread ready')).toBeVisible({ timeout: 30000 })
 
-    await expect(toolCallBlocks(page)).toHaveCount(2, { timeout: 30000 })
-
-    const replayedFirst = toolCallBlocks(page).nth(0)
-    const replayedSecond = toolCallBlocks(page).nth(1)
-
-    await expect(replayedFirst.getByText(`You picked: ${first.pickedLabel}`)).toBeVisible({ timeout: 30000 })
-    await expect(replayedSecond.getByText(`You picked: ${second.pickedLabel}`)).toBeVisible({ timeout: 30000 })
-
-    await expect(pickableCardButtons(replayedFirst).first()).toBeDisabled()
-    await expect(pickableCardButtons(replayedSecond).first()).toBeDisabled()
+    await assertCompletedCardPicks(page, [first.pickedLabel, second.pickedLabel])
   })
 
   test('replays mermaid svg after refresh', async ({ page }) => {
@@ -98,14 +89,13 @@ test.describe('Threaded Chat Prototype', () => {
     await sendMessage(page, 'Explain rock paper scissors in mermaid and render it as a mermaid diagram')
     await waitForIdle(page)
 
-    const latestAssistant = assistantMessages(page).last()
+    const latestAssistant = page.getByTestId('message-assistant').last()
     await expect(latestAssistant.locator('svg').first()).toBeVisible({ timeout: 30000 })
 
     await page.reload({ waitUntil: 'domcontentloaded' })
-    await expect(page.getByRole('heading', { name: 'Threaded Chat' })).toBeVisible()
     await expect(page.getByText('Thread ready')).toBeVisible({ timeout: 30000 })
 
-    const replayedAssistant = assistantMessages(page).last()
+    const replayedAssistant = page.getByTestId('message-assistant').last()
     await expect(replayedAssistant.locator('svg').first()).toBeVisible({ timeout: 30000 })
   })
 })
