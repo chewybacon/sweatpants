@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw } from 'lucide-react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { tools } from '@/__generated__/tool-registry.gen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -189,20 +189,6 @@ function ThreadPanel({
     tools: [tools.pickCard],
     conversationId: threadId,
   })
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      ;(window as typeof window & {
-        __threadedDebug?: unknown
-      }).__threadedDebug = {
-        threadId,
-        messageCount: messages.length,
-        messages,
-        sessionMessageCount: session.state.messages.length,
-        sessionMessages: session.state.messages,
-      }
-    }
-  }, [messages, session.state.messages, threadId])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

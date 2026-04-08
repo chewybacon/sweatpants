@@ -1101,6 +1101,13 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       isError: true,
                     }
                   }),
+                  ...(replayToolTraceMap.size > 0
+                    ? {
+                        replay: {
+                          toolTraces: Array.from(replayToolTraceMap.values()),
+                        },
+                      }
+                    : {}),
                 },
               }
 

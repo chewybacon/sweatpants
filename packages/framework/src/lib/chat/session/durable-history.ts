@@ -12,7 +12,7 @@ import type { PatchTransform } from './options.ts'
 import { renderReplayMessageParts } from './replay-render.ts'
 import type { MessagePart, ToolCallPart, ChatEmission } from '../types/chat-message.ts'
 
-interface DurableFrame {
+export interface DurableFrame {
   lsn: number
   event: StreamEvent
 }
@@ -51,6 +51,40 @@ function mergeReplayState(
 
 function toolResultContent(content: string): string {
   return content.startsWith('Error:') ? content : content
+}
+
+export function deduplicateMessages(messages: Message[]): Message[] {
+  const seen = new Map<string, number>()
+  const result: Message[] = []
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i]!
+
+    if (msg.role === 'tool' && msg.tool_call_id) {
+      const existingIdx = seen.get(msg.tool_call_id)
+      if (existingIdx !== undefined) {
+        const existing = result[existingIdx]!
+        if (msg.replay && !existing.replay) {
+          result[existingIdx] = msg
+        }
+        continue
+      }
+      seen.set(msg.tool_call_id, result.length)
+      result.push(msg)
+    } else if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) {
+      const key = msg.tool_calls.map((tc) => tc.id).sort().join(',')
+      const existingIdx = seen.get(`assistant-tools:${key}`)
+      if (existingIdx !== undefined) {
+        continue
+      }
+      seen.set(`assistant-tools:${key}`, result.length)
+      result.push(msg)
+    } else {
+      result.push(msg)
+    }
+  }
+
+  return result
 }
 
 function upsertPendingHandoff(
@@ -161,6 +195,8 @@ export function* replayFramesToConversation(
   let pendingToolCalls: Array<{ id: string; name: string; arguments: unknown }> = []
   let pendingHandoffs: PendingHandoffState[] = []
   let seededFromConversationState = false
+  let seededToolCallIds: Set<string> = new Set()
+  let seededAssistantContent: Set<string> = new Set()
   let replayState: ConversationReplayState | undefined = undefined
 
   for (const frame of frames) {
@@ -195,54 +231,59 @@ export function* replayFramesToConversation(
           toolTraces: event.trace ? [{ callId: event.id, toolName: event.name, trace: event.trace }] : [],
         })
 
-        const replayedTrace = yield* replayToolTrace(
-          tools,
-          event.name,
-          event.trace,
-        )
+        const alreadySeeded = seededFromConversationState &&
+          history.some((m) => m.role === 'tool' && m.tool_call_id === event.id)
 
-        const toolMessage: Message = {
-          id: crypto.randomUUID(),
-          role: 'tool',
-          tool_call_id: event.id,
-          content: toolResultContent(event.content),
-        }
+        if (!alreadySeeded) {
+          const replayedTrace = yield* replayToolTrace(
+            tools,
+            event.name,
+            event.trace,
+          )
 
-        history.push(toolMessage)
-        patches.push({
-          type: 'history_message',
-          message: toolMessage,
-        })
-        if (replayedTrace) {
+          const toolMessage: Message = {
+            id: crypto.randomUUID(),
+            role: 'tool',
+            tool_call_id: event.id,
+            content: toolResultContent(event.content),
+          }
+
+          history.push(toolMessage)
           patches.push({
-            type: 'tool_emission_start',
-            callId: event.id,
-            toolName: event.name,
+            type: 'history_message',
+            message: toolMessage,
           })
-          for (const entry of replayedTrace.emissions) {
+          if (replayedTrace) {
             patches.push({
-              type: 'tool_emission',
+              type: 'tool_emission_start',
               callId: event.id,
               toolName: event.name,
-              emission: {
-                id: `${event.id}-replay-${entry.order + 1}`,
-                type: '__component__',
-                payload: {
-                  componentKey: entry.componentKey,
-                  props: entry.props,
-                  ...(entry._component && { _component: entry._component }),
+            })
+            for (const entry of replayedTrace.emissions) {
+              patches.push({
+                type: 'tool_emission',
+                callId: event.id,
+                toolName: event.name,
+                emission: {
+                  id: `${event.id}-replay-${entry.order + 1}`,
+                  type: '__component__',
+                  payload: {
+                    componentKey: entry.componentKey,
+                    props: entry.props,
+                    ...(entry._component && { _component: entry._component }),
+                  },
+                  status: 'complete',
+                  timestamp: entry.timestamp,
+                  ...(entry.response !== undefined ? { response: entry.response } : {}),
                 },
-                status: 'complete',
-                timestamp: entry.timestamp,
-                ...(entry.response !== undefined ? { response: entry.response } : {}),
-              },
+              })
+            }
+            patches.push({
+              type: 'tool_emission_complete',
+              callId: event.id,
+              trace: replayedTrace,
             })
           }
-          patches.push({
-            type: 'tool_emission_complete',
-            callId: event.id,
-            trace: replayedTrace,
-          })
         }
         break
       }
@@ -267,43 +308,66 @@ export function* replayFramesToConversation(
         const assistantText = currentAssistantText || event.text
 
         if (pendingToolCalls.length > 0) {
-          const assistantWithTools: Message = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: assistantText,
-            tool_calls: pendingToolCalls.map((call) => ({
-              id: call.id,
-              type: 'function',
-              function: {
-                name: call.name,
-                arguments: call.arguments as Record<string, unknown>,
-              },
-            })),
+          const toolCallIds = pendingToolCalls.map((call) => call.id)
+
+          const alreadySeeded = seededFromConversationState &&
+            toolCallIds.every((id) => seededToolCallIds.has(id))
+
+          const alreadyInHistory = history.some((m) =>
+            m.role === 'assistant' &&
+            m.tool_calls &&
+            m.tool_calls.length === toolCallIds.length &&
+            toolCallIds.every((id) => m.tool_calls!.some((tc) => tc.id === id)),
+          )
+
+          if (!alreadySeeded && !alreadyInHistory) {
+            const assistantWithTools: Message = {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: assistantText,
+              tool_calls: pendingToolCalls.map((call) => ({
+                id: call.id,
+                type: 'function',
+                function: {
+                  name: call.name,
+                  arguments: call.arguments as Record<string, unknown>,
+                },
+              })),
+            }
+
+            const parts = yield* renderReplayMessageParts(assistantText, transforms)
+
+            history.push(assistantWithTools)
+            patches.push({
+              type: 'history_message',
+              message: assistantWithTools,
+              ...(parts ? { parts } : {}),
+            })
           }
-
-          const parts = yield* renderReplayMessageParts(assistantText, transforms)
-
-          history.push(assistantWithTools)
-          patches.push({
-            type: 'history_message',
-            message: assistantWithTools,
-            ...(parts ? { parts } : {}),
-          })
         } else if (assistantText) {
-          const assistantMessage: Message = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: assistantText,
+          const alreadySeeded = seededFromConversationState &&
+            seededAssistantContent.has(assistantText)
+
+          const alreadyInHistory = history.some((m) =>
+            m.role === 'assistant' && m.content === assistantText,
+          )
+
+          if (!alreadySeeded && !alreadyInHistory) {
+            const assistantMessage: Message = {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: assistantText,
+            }
+
+            const parts = yield* renderReplayMessageParts(assistantText, transforms)
+
+            history.push(assistantMessage)
+            patches.push({
+              type: 'history_message',
+              message: assistantMessage,
+              ...(parts ? { parts } : {}),
+            })
           }
-
-          const parts = yield* renderReplayMessageParts(assistantText, transforms)
-
-          history.push(assistantMessage)
-          patches.push({
-            type: 'history_message',
-            message: assistantMessage,
-            ...(parts ? { parts } : {}),
-          })
         }
 
         currentAssistantText = ''
@@ -328,12 +392,25 @@ export function* replayFramesToConversation(
             (event.conversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
           )
 
-          for (const message of event.conversationState.messages) {
-            if (history.some((existing) => existing.id === message.id)) {
-              continue
+          const dedupedMessages = deduplicateMessages(event.conversationState.messages)
+
+          for (const message of dedupedMessages) {
+            if (!message.id) {
+              message.id = crypto.randomUUID()
+            }
+            if (message.role === 'tool' && message.tool_call_id) {
+              seededToolCallIds.add(message.tool_call_id)
+            }
+            if (message.role === 'assistant' && message.content) {
+              seededAssistantContent.add(message.content)
+            }
+            if (message.role === 'assistant' && message.tool_calls) {
+              for (const tc of message.tool_calls) {
+                seededToolCallIds.add(tc.id)
+              }
             }
 
-            const toolResults = event.conversationState.messages.filter(
+            const toolResults = dedupedMessages.filter(
               (candidate) => candidate.role === 'tool',
             )
             const assistantParts = yield* buildAssistantReplayParts(
@@ -352,6 +429,95 @@ export function* replayFramesToConversation(
             })
           }
           seededFromConversationState = true
+        } else if (event.conversationState.messages.length > 0) {
+          const existingToolCallIds = new Set(
+            history
+              .filter((m) => m.role === 'assistant' && m.tool_calls)
+              .flatMap((m) => m.tool_calls!.map((tc) => tc.id))
+              .concat(
+                history
+                  .filter((m) => m.role === 'tool' && m.tool_call_id)
+                  .map((m) => m.tool_call_id!),
+              ),
+          )
+          const existingAssistantContents = new Set(
+            history
+              .filter((m) => m.role === 'assistant' && m.content)
+              .map((m) => m.content!),
+          )
+          const existingUserContents = new Set(
+            history
+              .filter((m) => m.role === 'user' && m.content)
+              .map((m) => m.content!),
+          )
+
+          const replayToolTraceByCallId = new Map(
+            (event.conversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
+          )
+
+          const dedupedMessages = deduplicateMessages(event.conversationState.messages)
+
+          const toolResults = dedupedMessages.filter(
+            (candidate) => candidate.role === 'tool',
+          )
+
+          for (const message of dedupedMessages) {
+            if (!message.id) {
+              message.id = crypto.randomUUID()
+            }
+            let isDuplicate = false
+
+            if (message.role === 'tool' && message.tool_call_id) {
+              seededToolCallIds.add(message.tool_call_id)
+              isDuplicate = existingToolCallIds.has(message.tool_call_id)
+            } else if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+              for (const tc of message.tool_calls) {
+                seededToolCallIds.add(tc.id)
+              }
+              isDuplicate = message.tool_calls.every((tc) => existingToolCallIds.has(tc.id))
+            } else if (message.role === 'assistant' && message.content) {
+              seededAssistantContent.add(message.content)
+              isDuplicate = existingAssistantContents.has(message.content)
+            } else if (message.role === 'user' && message.content) {
+              isDuplicate = existingUserContents.has(message.content)
+            }
+
+            if (!isDuplicate) {
+              const assistantParts = yield* buildAssistantReplayParts(
+                message,
+                toolResults,
+                replayToolTraceByCallId,
+                tools,
+                transforms,
+              )
+
+              history.push(message)
+              patches.push({
+                type: 'history_message',
+                message,
+                ...(assistantParts ? { parts: assistantParts } : {}),
+              })
+            }
+          }
+        } else {
+          const dedupedMessages = event.conversationState.messages.length > 0
+            ? deduplicateMessages(event.conversationState.messages)
+            : []
+          for (const message of dedupedMessages) {
+            if (!message.id) {
+              message.id = crypto.randomUUID()
+            }
+            if (message.role === 'tool' && message.tool_call_id) {
+            }
+            if (message.role === 'assistant' && message.content) {
+              seededAssistantContent.add(message.content)
+            }
+            if (message.role === 'assistant' && message.tool_calls) {
+              for (const tc of message.tool_calls) {
+                seededToolCallIds.add(tc.id)
+              }
+            }
+          }
         }
 
         currentAssistantText = event.conversationState.assistantContent
