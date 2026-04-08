@@ -26,6 +26,16 @@ function pickableCardButtons(scope: Locator) {
   return scope.locator('button').filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ })
 }
 
+function interactiveToolCallBlocks(page: Page) {
+  return toolCallBlocks(page).filter({
+    has: page.locator('button:not([disabled])').filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ }),
+  })
+}
+
+function interactiveCardButtons(scope: Locator) {
+  return scope.locator('button:not([disabled])').filter({ hasText: /[AKQJ\d]+[♥♦♣♠]/ })
+}
+
 async function sendMessage(page: Page, text: string) {
   const input = threadInput(page)
   await input.click()
@@ -40,9 +50,9 @@ async function waitForIdle(page: Page) {
 }
 
 async function completeCardPick(page: Page) {
-  await expect(toolCallBlocks(page).last()).toBeVisible({ timeout: 60000 })
-  const latestBlock = toolCallBlocks(page).last()
-  const cards = pickableCardButtons(latestBlock)
+  await expect(interactiveToolCallBlocks(page).last()).toBeVisible({ timeout: 60000 })
+  const latestBlock = interactiveToolCallBlocks(page).last()
+  const cards = interactiveCardButtons(latestBlock)
   await expect(cards.first()).toBeVisible({ timeout: 60000 })
   const pickedLabel = (await cards.first().textContent())?.trim()
   expect(pickedLabel).toBeTruthy()

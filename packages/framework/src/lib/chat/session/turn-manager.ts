@@ -102,6 +102,7 @@ export function syncMessagesFromIndex(
       id: crypto.randomUUID(),
       role: apiMsg.role,
       content: content,
+      ...(apiMsg.replay ? { replay: apiMsg.replay } : {}),
     }
 
     if (apiMsg.tool_calls && apiMsg.tool_calls.length > 0) {

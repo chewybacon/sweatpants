@@ -153,7 +153,7 @@ function collectReplayToolTraces(messages: Message[]): ReplayToolTrace[] {
   const traces: ReplayToolTrace[] = []
 
   for (const message of messages) {
-    const replay = (message as Message & { replay?: { trace?: ReplayToolTrace['trace']; toolName?: string } }).replay
+    const replay = message.replay
     if (!replay?.trace || !message.tool_call_id) {
       continue
     }
@@ -491,7 +491,7 @@ export function* runChatSession(
               
               // If complete, we're done
               if (result.type === 'complete') {
-                if (result.conversationState) {
+                if (result.conversationState && currentMessages.length === originalHistoryLength) {
                   syncConversationStateForComplete(history, result.conversationState)
                 }
                 break
@@ -658,9 +658,24 @@ export function* runChatSession(
                   
                   if (needsPhase2) {
                     // For phase 2 tools, DON'T add the tool message here.
-                    // The server will add the proper result after running *after().
-                    // We just need to send the client output for the server to process.
+                    // We include a placeholder tool message so the next request has a
+                    // valid assistant tool_call -> tool result shape. The actual
+                    // content is filled in from phase 2 server output before history sync.
                     if (isoResult.ok && isoResult.clientOutput !== undefined) {
+                      conversationMessages.push({
+                        role: 'tool',
+                        tool_call_id: isoResult.callId,
+                        content: '',
+                        ...(isoResult.trace
+                          ? {
+                              replay: {
+                                toolName: isoResult.toolName,
+                                trace: isoResult.trace,
+                              },
+                            }
+                          : {}),
+                      })
+
                       isomorphicClientOutputs.push({
                         callId: isoResult.callId,
                         toolName: isoResult.toolName,

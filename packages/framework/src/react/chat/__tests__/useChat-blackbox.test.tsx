@@ -173,6 +173,9 @@ describe('useChat (black-box)', () => {
       expect(first.result.current.messages.length).toBe(2)
     })
 
+    expect(first.result.current.session.state.messages.length).toBe(2)
+    expect(first.result.current.session.state.finalizedParts).not.toEqual({})
+
     first.unmount()
 
     const second = renderHook(
@@ -182,6 +185,76 @@ describe('useChat (black-box)', () => {
 
     await waitFor(() => {
       expect(second.result.current.messages.length).toBe(2)
+    })
+
+    expect(second.result.current.session.state.messages.length).toBe(2)
+    expect(second.result.current.session.state.finalizedParts).not.toEqual({})
+  })
+
+  it('hydrates messages with explicit transforms after remount with the same conversationId', async () => {
+    const historyResponse = ndjsonResponse([
+      {
+        type: 'conversation_state',
+        conversationState: {
+          messages: [
+            {
+              id: 'user-1',
+              role: 'user',
+              content: 'hello threaded world',
+            },
+          ],
+          assistantContent: '',
+          toolCalls: [],
+          serverToolResults: [],
+        },
+      },
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: [] },
+        persona: null,
+      },
+      { type: 'text', content: 'Hello threaded world' },
+      { type: 'complete', text: 'Hello threaded world' },
+    ])
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('conversationId=thread-remount-explicit') && (!init?.method || init.method === 'GET')) {
+        return historyResponse.clone()
+      }
+
+      return ndjsonResponse([
+        {
+          type: 'session_info',
+          capabilities: { thinking: false, streaming: true, tools: [] },
+          persona: null,
+        },
+        { type: 'complete', text: 'noop' },
+      ])
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const first = renderHook(
+      () => useChat({ conversationId: 'thread-remount-explicit', transforms: [] }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(first.result.current.session.state.messages.length).toBe(2)
+    })
+
+    first.unmount()
+
+    const second = renderHook(
+      () => useChat({ conversationId: 'thread-remount-explicit', transforms: [] }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(second.result.current.session.state.messages.length).toBe(2)
     })
   })
 
@@ -237,7 +310,7 @@ describe('useChat (black-box)', () => {
     )
 
     await waitFor(() => {
-      expect(first.result.current.state.messages.length).toBe(1)
+      expect(first.result.current.state.messages.length).toBe(2)
     })
 
     first.unmount()
@@ -248,7 +321,7 @@ describe('useChat (black-box)', () => {
     )
 
     await waitFor(() => {
-      expect(second.result.current.state.messages.length).toBe(1)
+      expect(second.result.current.state.messages.length).toBe(2)
     })
   })
 })

@@ -1,14 +1,15 @@
-import type { Operation } from 'effection'
-import { createChannel, each, spawn, type Task } from 'effection'
+import type { Operation, Channel } from 'effection'
+import { each, spawn, type Task } from 'effection'
 import type { PatchTransform } from './options.ts'
 import type { ChatPatch } from '../patches/index.ts'
 import type { MessagePart, TextPart, ReasoningPart } from '../types/chat-message.ts'
 import { getRenderedFromFrame } from '../types/chat-message.ts'
+import { useBufferedChannel } from './transforms.ts'
 
 type ReplayableContentPart = TextPart | ReasoningPart
 
 function composeTransforms(transforms: PatchTransform[]) {
-  return function* (input: ReturnType<typeof createChannel<ChatPatch, void>>, output: ReturnType<typeof createChannel<ChatPatch, void>>): Operation<void> {
+  return function* (input: Channel<ChatPatch, void>, output: Channel<ChatPatch, void>): Operation<void> {
     if (transforms.length === 0) {
       for (const patch of yield* each(input)) {
         yield* output.send(patch)
@@ -17,23 +18,29 @@ function composeTransforms(transforms: PatchTransform[]) {
       return
     }
 
-    let currentIn = input
+    let currentIn: Channel<ChatPatch, void> = input
+    const tasks: Task<void>[] = []
 
     for (let i = 0; i < transforms.length; i++) {
       const transform = transforms[i]!
       const isLast = i === transforms.length - 1
-      const nextOut = isLast ? output : createChannel<ChatPatch, void>()
+      const nextOut: Channel<ChatPatch, void> = isLast ? output : (yield* useBufferedChannel<ChatPatch>())
       const source = currentIn
       const dest = nextOut
 
-      yield* spawn(function* () {
+      const task = yield* spawn(function* () {
         yield* transform(source, dest)
         if (!isLast) {
           yield* dest.close()
         }
       })
+      tasks.push(task)
 
       currentIn = nextOut
+    }
+
+    for (const task of tasks) {
+      yield* task
     }
   }
 }
@@ -55,8 +62,8 @@ export function* renderReplayMessageParts(
     }]
   }
 
-  const input = createChannel<ChatPatch, void>()
-  const output = createChannel<ChatPatch, void>()
+  const input = yield* useBufferedChannel<ChatPatch>()
+  const output = yield* useBufferedChannel<ChatPatch>()
   const parts = new Map<string, ReplayableContentPart>()
   const order: string[] = []
   const runComposed = composeTransforms(transforms)

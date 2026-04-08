@@ -373,4 +373,104 @@ describe('useChatSession (black-box)', () => {
     expect(tracking?.emissions[0]?.response).toEqual({ picked: 'A' })
     expect(tracking?.emissions[0]?.status).toBe('complete')
   })
+
+  it('does not duplicate assistant tool-call messages when continuing after durable handoff history', async () => {
+    const historyResponse = ndjsonResponse([
+      {
+        type: 'conversation_state',
+        conversationState: {
+          messages: [
+            {
+              id: 'user-1',
+              role: 'user',
+              content: 'Draw 3 cards and let me pick one card',
+            },
+            {
+              id: 'assistant-1',
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                {
+                  id: 'call-1',
+                  type: 'function',
+                  function: {
+                    name: 'pick_card',
+                    arguments: { count: 3 },
+                  },
+                },
+              ],
+            },
+            {
+              id: 'tool-1',
+              role: 'tool',
+              tool_call_id: 'call-1',
+              content: 'The user selected the Ace of Spades.',
+            },
+            {
+              id: 'assistant-2',
+              role: 'assistant',
+              content: 'You picked **Ace of Spades**.',
+            },
+          ],
+          assistantContent: '',
+          toolCalls: [],
+          serverToolResults: [],
+        },
+      },
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: ['pick_card'] },
+        persona: null,
+      },
+    ])
+
+    const fetchBodies: unknown[] = []
+
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('conversationId=thread-followup') && (!init?.method || init.method === 'GET')) {
+        return historyResponse.clone()
+      }
+
+      if (init?.body) {
+        fetchBodies.push(JSON.parse(String(init.body)))
+      }
+
+      return ndjsonResponse([
+        {
+          type: 'session_info',
+          capabilities: { thinking: false, streaming: true, tools: ['pick_card'] },
+          persona: null,
+        },
+        { type: 'text', content: 'Follow-up complete' },
+        { type: 'complete', text: 'Follow-up complete' },
+      ])
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const { result } = renderHook(
+      () => useChatSession({ transforms: [], conversationId: 'thread-followup' }),
+      { wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.state.messages.length).toBe(4)
+    })
+
+    act(() => {
+      result.current.send('continue')
+    })
+
+    await waitFor(() => {
+      expect(result.current.state.messages.some((message) => message.content === 'Follow-up complete')).toBe(true)
+    })
+
+    expect(fetchBodies).toHaveLength(1)
+    const requestBody = fetchBodies[0] as { messages?: Array<{ role: string; tool_calls?: unknown[] }> }
+    expect(requestBody.messages?.filter((message) => message.role === 'assistant' && message.tool_calls?.length)).toHaveLength(1)
+    expect(requestBody.messages?.filter((message) => message.role === 'tool')).toHaveLength(1)
+  })
 })

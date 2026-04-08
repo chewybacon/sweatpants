@@ -69,8 +69,10 @@ function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPicker
         <p className="text-sm text-muted-foreground mb-2">{prompt}</p>
         <div className="flex gap-2 flex-wrap">
           {cards.map((card) => (
-            <div
+            <button
+              type="button"
               key={`${card.rank}-${card.suit}`}
+              disabled
               className={`
                 px-3 py-2 rounded border text-lg font-mono
                 ${card.display === response.picked.display
@@ -80,7 +82,7 @@ function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPicker
               `}
             >
               {card.display}
-            </div>
+            </button>
           ))}
         </div>
         <p className="text-xs text-muted-foreground mt-2">
