@@ -42,7 +42,6 @@ import {
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
-import { normalizeTranscriptMessageIds } from '../../lib/chat/session/message-identity.ts';
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
   recordConversationSession,
@@ -518,7 +517,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       let session: SessionHandle<string>;
-      const normalizedMessages = normalizeTranscriptMessageIds(body.messages);
 
       // Debug: log which path we're taking and if we have elicit responses
       log.debug(
@@ -558,7 +556,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // Create the chat engine
         // toolSchemas includes server tools, client isomorphic tools, AND MCP plugin tools
         const engine = createChatEngine({
-          messages: normalizedMessages,
+          messages: body.messages,
           ...(body.replayState ? { replayState: body.replayState } : {}),
           ...(systemPrompt !== undefined && { systemPrompt }),
           toolSchemas,
@@ -584,11 +582,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
         // Wrap engine to serialize events
         const initialReplayState = mergeReplayState(body.replayState, body)
-        const initialEvents: StreamEvent[] = normalizedMessages.length > 0
+        const initialEvents: StreamEvent[] = body.messages.length > 0
           ? [{
               type: 'conversation_state',
               conversationState: {
-                messages: normalizedMessages,
+                messages: body.messages,
                 assistantContent: '',
                 toolCalls: [],
                 serverToolResults: [],

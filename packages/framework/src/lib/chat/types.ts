@@ -22,6 +22,7 @@ export type {
   ToolCallInfo,
   ServerToolResult,
 } from './core-types.ts'
+import type { ConversationReplayToolTrace } from './session/streaming.ts'
 
 // Re-export from isomorphic-tools
 export type {
@@ -126,7 +127,7 @@ export {
  * This provides a common contract for message passing between layers.
  */
 export interface Message {
-  id?: string
+  id: string
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string
   partial?: boolean

@@ -26,6 +26,7 @@
  *
  */
 import type { IsomorphicToolResult } from './types.ts'
+import { messageIdForTool } from '../session/message-identity.ts'
 export { executeServerPart, executeServerPhase2 } from './server-executor.ts'
 export { executeClientPart, executeIsomorphicToolsClient } from './client-executor.ts'
 export {
@@ -40,8 +41,9 @@ export {
  */
 export function formatIsomorphicToolResult(
   result: IsomorphicToolResult
-): { role: 'tool'; tool_call_id: string; content: string } {
+): { id: string; role: 'tool'; tool_call_id: string; content: string } {
   return {
+    id: messageIdForTool(result.callId),
     role: 'tool',
     tool_call_id: result.callId,
     content: result.ok ? result.content! : `Error: ${result.error}`,

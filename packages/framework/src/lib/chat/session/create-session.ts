@@ -91,14 +91,13 @@ import {
   syncMessagesFromIndex,
 } from './turn-manager.ts'
 import {
-  inferTurnKeyFromHistory,
-  messageIdForAssistantFinal,
-  messageIdForAssistantTools,
-  messageIdForTool,
-  messageIdForUser,
-  nextUserTurnKey,
-  turnKeyFromToolCalls,
-} from './message-identity.ts'
+  appendAssistantFinalMessage,
+  appendAssistantToolCallMessage,
+  appendToolMessage,
+  appendUserMessage,
+  createTranscriptState,
+  resetTranscriptState,
+} from './transcript.ts'
 import { readDurableHistory } from './durable-history.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
 import {
@@ -296,6 +295,7 @@ export function* runChatSession(
 ): Operation<void> {
   // Session state (owned by this operation)
   const history: Message[] = []
+  const transcriptState = createTranscriptState(history)
   let currentRequestTask: Task<StreamResult> | null = null
   
   // Track disabled tools (from denial with 'disable' behavior)
@@ -330,6 +330,8 @@ export function* runChatSession(
         history.push(message)
       }
 
+      resetTranscriptState(transcriptState, history)
+
     replayState = durableHistory.replayState
 
     for (const patch of durableHistory.patches) {
@@ -353,30 +355,22 @@ export function* runChatSession(
         // This happens when the user sends a new message while a tool was waiting for elicitation.
         if (pendingToolCalls.length > 0) {
           for (const tc of pendingToolCalls) {
-            const cancelledToolMsg: Message = {
-              id: messageIdForTool(tc.id),
-              role: 'tool',
-              content: 'Tool execution was cancelled by user sending a new message.',
-              tool_call_id: tc.id,
-            }
-            history.push(cancelledToolMsg)
+            appendToolMessage(
+              history,
+              transcriptState,
+              tc.id,
+              'Tool execution was cancelled by user sending a new message.',
+            )
           }
           pendingToolCalls = []
         }
 
         // Create user message
-        const userTurnKey = nextUserTurnKey(history)
-        const userMessage: Message = {
-          id: messageIdForUser(userTurnKey),
-          role: 'user',
-          content: cmd.content,
-        }
+        const userMessage = appendUserMessage(history, transcriptState, cmd.content)
 
         // Render user message if renderer provided
         const rendered = options.renderer?.(cmd.content)
 
-        // Add to history immediately
-        history.push(userMessage)
         yield* patches.send({
           type: 'user_message',
           message: userMessage,
@@ -495,6 +489,7 @@ export function* runChatSession(
               if (result.type === 'complete') {
                 if (result.conversationState && currentMessages.length === originalHistoryLength) {
                   syncConversationStateForComplete(history, result.conversationState)
+                  resetTranscriptState(transcriptState, history)
                 }
                 break
               }
@@ -510,6 +505,7 @@ export function* runChatSession(
                   history,
                   result.conversationState
                 )
+                resetTranscriptState(transcriptState, history)
                 
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
@@ -608,6 +604,7 @@ export function* runChatSession(
                 
                 // Build messages for re-initiation
                 const conversationMessages: Message[] = [...result.conversationState.messages]
+                const conversationTranscriptState = createTranscriptState(conversationMessages)
                 
                 // Add assistant message with tool_calls
                 const allToolCalls = result.conversationState.toolCalls.map(tc => ({
@@ -619,21 +616,21 @@ export function* runChatSession(
                   },
                 }))
                 
-                conversationMessages.push({
-                  id: messageIdForAssistantTools(allToolCalls.map((tc) => tc.id)),
-                  role: 'assistant',
-                  content: result.conversationState.assistantContent || '',
-                  tool_calls: allToolCalls,
-                })
+                appendAssistantToolCallMessage(
+                  conversationMessages,
+                  conversationTranscriptState,
+                  allToolCalls,
+                  result.conversationState.assistantContent || '',
+                )
                 
                 // Add server tool results
                 for (const serverResult of result.conversationState.serverToolResults) {
-                  conversationMessages.push({
-                    id: messageIdForTool(serverResult.id),
-                    role: 'tool',
-                    tool_call_id: serverResult.id,
-                    content: serverResult.content,
-                  })
+                  appendToolMessage(
+                    conversationMessages,
+                    conversationTranscriptState,
+                    serverResult.id,
+                    serverResult.content,
+                  )
                 }
 
                 const replayToolTraces = [
@@ -666,20 +663,18 @@ export function* runChatSession(
                     // valid assistant tool_call -> tool result shape. The actual
                     // content is filled in from phase 2 server output before history sync.
                     if (isoResult.ok && isoResult.clientOutput !== undefined) {
-                      conversationMessages.push({
-                        id: messageIdForTool(isoResult.callId),
-                        role: 'tool',
-                        tool_call_id: isoResult.callId,
-                        content: '',
-                        ...(isoResult.trace
+                      appendToolMessage(
+                        conversationMessages,
+                        conversationTranscriptState,
+                        isoResult.callId,
+                        '',
+                        isoResult.trace
                           ? {
-                              replay: {
-                                toolName: isoResult.toolName,
-                                trace: isoResult.trace,
-                              },
+                              toolName: isoResult.toolName,
+                              trace: isoResult.trace,
                             }
-                          : {}),
-                      })
+                          : undefined,
+                      )
 
                       isomorphicClientOutputs.push({
                         callId: isoResult.callId,
@@ -736,15 +731,11 @@ export function* runChatSession(
               originalHistoryLength,
               toolResultsMap
             )
+            resetTranscriptState(transcriptState, history)
 
             // Create final assistant message with the response text
             const finalContent = completeResult.text || ''
-            const assistantMessage: Message = {
-              id: messageIdForAssistantFinal(userTurnKey),
-              role: 'assistant',
-              content: finalContent,
-            }
-            history.push(assistantMessage)
+            const assistantMessage = appendAssistantFinalMessage(history, transcriptState, finalContent)
             
             // IMPORTANT ORDER: assistant_message MUST come before streaming_end!
             // The reducer needs the message ID to save finalized parts to finalizedParts.
@@ -948,6 +939,7 @@ export function* runChatSession(
                   history,
                   result.conversationState
                 )
+                resetTranscriptState(transcriptState, history)
                 
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
@@ -971,20 +963,14 @@ export function* runChatSession(
                 toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
                 toolResults?: Array<{ id: string; name: string; content: string }>
               }
-              const finalTurnKey = completeResult.toolCalls && completeResult.toolCalls.length > 0
-                ? turnKeyFromToolCalls(completeResult.toolCalls)
-                : inferTurnKeyFromHistory(history)
-              
               // Sync tool calls and results to history
               // This is critical for multi-turn tool conversations where the LLM
               // makes multiple tool calls in sequence (like in tictactoe)
               if (completeResult.toolCalls && completeResult.toolCalls.length > 0) {
-                // Add assistant message with tool_calls
-                const assistantWithToolsMsg: Message = {
-                  id: messageIdForAssistantTools(completeResult.toolCalls.map((tc) => tc.id)),
-                  role: 'assistant',
-                  content: '', // Tool-calling messages typically have empty content
-                  tool_calls: completeResult.toolCalls.map(tc => ({
+                appendAssistantToolCallMessage(
+                  history,
+                  transcriptState,
+                  completeResult.toolCalls.map(tc => ({
                     id: tc.id,
                     type: 'function' as const,
                     function: {
@@ -992,31 +978,20 @@ export function* runChatSession(
                       arguments: tc.arguments as Record<string, unknown>,
                     },
                   })),
-                }
-                history.push(assistantWithToolsMsg)
+                  '',
+                )
               }
               
               if (completeResult.toolResults && completeResult.toolResults.length > 0) {
                 // Add tool result messages
                 for (const tr of completeResult.toolResults) {
-                  const toolMsg: Message = {
-                    id: messageIdForTool(tr.id),
-                    role: 'tool',
-                    content: tr.content,
-                    tool_call_id: tr.id,
-                  }
-                  history.push(toolMsg)
+                  appendToolMessage(history, transcriptState, tr.id, tr.content)
                 }
               }
               
               // Only add assistant message if there's content
               if (completeResult.text) {
-                const assistantMessage: Message = {
-                  id: messageIdForAssistantFinal(finalTurnKey),
-                  role: 'assistant',
-                  content: completeResult.text,
-                }
-                history.push(assistantMessage)
+                const assistantMessage = appendAssistantFinalMessage(history, transcriptState, completeResult.text)
                 
                 yield* patches.send({
                   type: 'assistant_message',
