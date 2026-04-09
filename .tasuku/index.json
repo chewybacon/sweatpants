@@ -349,6 +349,33 @@
       "created_at": "2026-04-09T10:10:54.291756Z",
       "updated_at": "2026-04-09T10:10:54.296359Z"
     },
+    "framework-add-transcript-wr": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "framework: add transcript writer API",
+      "file": "tasks/framework-add-transcript-wr.md",
+      "created_at": "2026-04-09T20:53:04.543986Z",
+      "updated_at": "2026-04-09T21:00:05.428719Z"
+    },
+    "framework-collapse-identity-": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "framework: collapse identity helpers to pure functions",
+      "file": "tasks/framework-collapse-identity-.md",
+      "created_at": "2026-04-09T20:53:04.543974Z",
+      "updated_at": "2026-04-09T21:00:05.364487Z"
+    },
+    "framework-deterministic-id": {
+      "status": "done",
+      "priority": 2,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "framework: deterministic identity polish",
+      "file": "tasks/framework-deterministic-id.md",
+      "created_at": "2026-04-09T21:39:11.386426Z",
+      "updated_at": "2026-04-09T21:40:19.118955Z"
+    },
     "framework-deterministic-message": {
       "status": "done",
       "priority": 1,
@@ -358,13 +385,13 @@
       "updated_at": "2026-04-09T19:34:34.550886Z"
     },
     "framework-deterministic-message-tdd": {
-      "status": "ready",
+      "status": "done",
       "priority": 1,
       "parent_id": "prototype-threaded-durable-chat",
       "description": "framework: deterministic message identity TDD implementation",
       "file": "tasks/framework-deterministic-message-tdd.md",
       "created_at": "2026-04-09T10:06:43.392893Z",
-      "updated_at": "2026-04-09T10:06:43.394153Z"
+      "updated_at": "2026-04-09T21:00:05.530425Z"
     },
     "framework-durable-identity-for-conversationid": {
       "status": "done",
@@ -399,6 +426,15 @@
       "created_at": "2026-04-04T11:15:00.004079Z",
       "updated_at": "2026-04-04T11:15:17.398197Z"
     },
+    "framework-final-deterministic": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "framework: final deterministic identity cleanup",
+      "file": "tasks/framework-final-deterministic.md",
+      "created_at": "2026-04-09T21:29:21.269411Z",
+      "updated_at": "2026-04-09T21:32:35.093841Z"
+    },
     "framework-normalize-deterministi": {
       "status": "ready",
       "priority": 1,
@@ -407,6 +443,15 @@
       "file": "tasks/framework-normalize-deterministi.md",
       "created_at": "2026-04-09T10:10:54.291756Z",
       "updated_at": "2026-04-09T10:10:54.295578Z"
+    },
+    "framework-remove-downstream-": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "framework: remove downstream id derivation",
+      "file": "tasks/framework-remove-downstream-.md",
+      "created_at": "2026-04-09T20:53:04.543973Z",
+      "updated_at": "2026-04-09T21:00:05.481461Z"
     },
     "framework-remove-replay-id-f": {
       "status": "ready",
@@ -423,6 +468,15 @@
       "file": "tasks/framework-replay-isomorphic-tool.md",
       "created_at": "2026-04-04T12:17:37.893509Z",
       "updated_at": "2026-04-04T13:30:32.407569Z"
+    },
+    "framework-require-message-i": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "framework: require message ids at type level",
+      "file": "tasks/framework-require-message-i.md",
+      "created_at": "2026-04-09T21:22:51.938198Z",
+      "updated_at": "2026-04-09T21:24:20.279238Z"
     },
     "framework-test-durable-hydration-and-resume": {
       "status": "blocked",
@@ -763,5 +817,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-04-09T19:34:34.621654Z"
+  "updated_at": "2026-04-09T21:40:19.119261Z"
 }

@@ -7,14 +7,12 @@ import type { ConversationState } from './streaming.ts'
 import type { Message } from '../types.ts'
 import {
   assertMessageHasId,
-  inferTurnKeyFromHistory,
-  messageIdForAssistantFinal,
-  messageIdForAssistantTools,
-  messageIdForSystem,
-  messageIdForTool,
-  messageIdForUser,
-  turnKeyFromToolCalls,
 } from './message-identity.ts'
+import {
+  appendAssistantFinalMessage,
+  appendAssistantToolCallMessage,
+  createTranscriptState,
+} from './transcript.ts'
 
 export type PendingToolCall = { id: string; name: string }
 
@@ -38,11 +36,10 @@ export function syncConversationStateForElicit(
   )
 
   if (!hasAssistantWithTools && conversationState.toolCalls.length > 0) {
-    const assistantMsg: Message = {
-      id: messageIdForAssistantTools(conversationState.toolCalls.map((tc) => tc.id)),
-      role: 'assistant',
-      content: conversationState.assistantContent || '',
-      tool_calls: conversationState.toolCalls.map((tc) => ({
+    appendAssistantToolCallMessage(
+      history,
+      createTranscriptState(history),
+      conversationState.toolCalls.map((tc) => ({
         id: tc.id,
         type: 'function' as const,
         function: {
@@ -50,8 +47,8 @@ export function syncConversationStateForElicit(
           arguments: tc.arguments,
         },
       })),
-    }
-    history.push(assistantMsg)
+      conversationState.assistantContent || '',
+    )
   }
 
   return conversationState.toolCalls.map((tc) => ({
@@ -82,14 +79,11 @@ export function syncConversationStateForComplete(
   if (conversationState.assistantContent) {
     const lastAssistant = history[history.length - 1]
     if (!lastAssistant || lastAssistant.role !== 'assistant' || lastAssistant.content !== conversationState.assistantContent) {
-      const turnKey = conversationState.toolCalls.length > 0
-        ? turnKeyFromToolCalls(conversationState.toolCalls)
-        : inferTurnKeyFromHistory(history)
-      history.push({
-        id: messageIdForAssistantFinal(turnKey),
-        role: 'assistant',
-        content: conversationState.assistantContent,
-      })
+      appendAssistantFinalMessage(
+        history,
+        createTranscriptState(history),
+        conversationState.assistantContent,
+      )
     }
   }
 }
@@ -112,17 +106,7 @@ export function syncMessagesFromIndex(
     }
 
     const msg: Message = {
-      id: apiMsg.id ? assertMessageHasId(apiMsg, 'syncMessagesFromIndex') : (
-        apiMsg.role === 'tool' && apiMsg.tool_call_id
-          ? messageIdForTool(apiMsg.tool_call_id)
-          : apiMsg.role === 'assistant' && apiMsg.tool_calls && apiMsg.tool_calls.length > 0
-            ? messageIdForAssistantTools(apiMsg.tool_calls.map((tc) => tc.id))
-            : apiMsg.role === 'assistant'
-              ? messageIdForAssistantFinal(inferTurnKeyFromHistory(history))
-              : apiMsg.role === 'user'
-                ? messageIdForUser(inferTurnKeyFromHistory(history))
-                : messageIdForSystem(history.filter((message) => message.role === 'system').length)
-      ),
+      id: assertMessageHasId(apiMsg, 'syncMessagesFromIndex'),
       role: apiMsg.role,
       content: content,
       ...(apiMsg.replay ? { replay: apiMsg.replay } : {}),

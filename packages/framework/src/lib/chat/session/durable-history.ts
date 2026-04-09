@@ -13,11 +13,12 @@ import { renderReplayMessageParts } from './replay-render.ts'
 import type { MessagePart, ToolCallPart, ChatEmission } from '../types/chat-message.ts'
 import {
   assertMessageHasId,
-  inferTurnKeyFromHistory,
+  deriveTurnKeyFromToolCalls,
   messageIdForAssistantFinal,
   messageIdForAssistantTools,
   messageIdForTool,
 } from './message-identity.ts'
+import { createTranscriptState, resetTranscriptState } from './transcript.ts'
 
 export interface DurableFrame {
   lsn: number
@@ -198,6 +199,7 @@ export function* replayFramesToConversation(
 ): Operation<DurableHistoryReplay> {
   const patches: ChatPatch[] = []
   const history: Message[] = []
+  const transcriptState = createTranscriptState(history)
   let currentAssistantText = ''
   let pendingToolCalls: Array<{ id: string; name: string; arguments: unknown }> = []
   let pendingHandoffs: PendingHandoffState[] = []
@@ -255,8 +257,9 @@ export function* replayFramesToConversation(
             content: toolResultContent(event.content),
           }
 
-          history.push(toolMessage)
-          patches.push({
+            history.push(toolMessage)
+            transcriptState.currentTurnKey = event.id
+            patches.push({
             type: 'history_message',
             message: toolMessage,
           })
@@ -297,14 +300,15 @@ export function* replayFramesToConversation(
 
       case 'tool_error': {
         const toolErrorMessage: Message = {
-          id: crypto.randomUUID(),
+          id: messageIdForTool(event.id),
           role: 'tool',
           tool_call_id: event.id,
           content: `Error: ${event.message}`,
         }
 
-        history.push(toolErrorMessage)
-        patches.push({
+            history.push(toolErrorMessage)
+            transcriptState.currentTurnKey = event.id
+            patches.push({
           type: 'history_message',
           message: toolErrorMessage,
         })
@@ -345,6 +349,7 @@ export function* replayFramesToConversation(
             const parts = yield* renderReplayMessageParts(assistantText, transforms)
 
             history.push(assistantWithTools)
+            transcriptState.currentTurnKey = deriveTurnKeyFromToolCalls(toolCallIds)
             patches.push({
               type: 'history_message',
               message: assistantWithTools,
@@ -360,9 +365,8 @@ export function* replayFramesToConversation(
           )
 
           if (!alreadySeeded && !alreadyInHistory) {
-            const turnKey = inferTurnKeyFromHistory(history)
             const assistantMessage: Message = {
-              id: messageIdForAssistantFinal(turnKey),
+              id: messageIdForAssistantFinal(transcriptState.currentTurnKey),
               role: 'assistant',
               content: assistantText,
             }
@@ -428,6 +432,7 @@ export function* replayFramesToConversation(
             )
 
             history.push(message)
+            resetTranscriptState(transcriptState, history)
             patches.push({
               type: 'history_message',
               message,
@@ -496,6 +501,7 @@ export function* replayFramesToConversation(
               )
 
               history.push(message)
+              resetTranscriptState(transcriptState, history)
               patches.push({
                 type: 'history_message',
                 message,

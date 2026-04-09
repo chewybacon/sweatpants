@@ -40,10 +40,11 @@ import {
   pluginResultToStreamEvent,
 } from './plugin-tool-executor.ts'
 import {
-  messageIdForAssistantTools,
-  messageIdForSystem,
-  messageIdForTool,
-} from '../../lib/chat/session/message-identity.ts'
+  appendAssistantToolCallMessage,
+  appendSystemMessage,
+  appendToolMessage,
+  createTranscriptState,
+} from '../../lib/chat/session/transcript.ts'
 
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)
@@ -468,14 +469,11 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       pendingPluginSessions: new Map(),
       awaitingElicitResult: null,
     }
+    const conversationTranscriptState = createTranscriptState(state.conversationMessages)
 
     // Prepend system prompt if provided
     if (systemPrompt) {
-      state.conversationMessages.unshift({
-        id: messageIdForSystem(0),
-        role: 'system',
-        content: systemPrompt,
-      })
+      appendSystemMessage(state.conversationMessages, conversationTranscriptState, systemPrompt)
     }
 
     const replayToolTraceMap = new Map(
@@ -603,12 +601,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   })
                   
                   // Add synthetic tool error to conversation
-                  state.conversationMessages.push({
-                    id: messageIdForTool(callId),
-                    role: 'tool',
-                    tool_call_id: callId,
-                    content: 'Error: Plugin session was lost. Please retry the operation.',
-                  })
+                  appendToolMessage(
+                    state.conversationMessages,
+                    conversationTranscriptState,
+                    callId,
+                    'Error: Plugin session was lost. Please retry the operation.',
+                  )
                   continue
                 }
                 
@@ -680,12 +678,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     })
                     
                     // Add to conversation
-                    state.conversationMessages.push({
-                      id: messageIdForTool(callId),
-                      role: 'tool',
-                      tool_call_id: callId,
+                    appendToolMessage(
+                      state.conversationMessages,
+                      conversationTranscriptState,
+                      callId,
                       content,
-                    })
+                    )
                     break
                   }
                   
@@ -699,12 +697,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     })
                     
                     // Add to conversation
-                    state.conversationMessages.push({
-                      id: messageIdForTool(callId),
-                      role: 'tool',
-                      tool_call_id: callId,
-                      content: `Error: ${nextEvent.message}`,
-                    })
+                    appendToolMessage(
+                      state.conversationMessages,
+                      conversationTranscriptState,
+                      callId,
+                      `Error: ${nextEvent.message}`,
+                    )
                     break
                   }
                   
@@ -775,20 +773,18 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   }
                 }
                 if (!found) {
-                  state.conversationMessages.push({
-                    id: messageIdForTool(output.callId),
-                    role: 'tool',
-                    tool_call_id: output.callId,
-                    content: event.content,
-                    ...(output.trace
+                  appendToolMessage(
+                    state.conversationMessages,
+                    conversationTranscriptState,
+                    output.callId,
+                    event.content,
+                    output.trace
                       ? {
-                          replay: {
-                            toolName: output.toolName,
-                            trace: output.trace,
-                          },
+                          toolName: output.toolName,
+                          trace: output.trace,
                         }
-                      : {}),
-                  })
+                      : undefined,
+                  )
                 }
               }
             }
@@ -1030,19 +1026,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               // client syncs and sends the next request, the LLM sees the proper
               // tool_call -> tool_result sequence. Without this, multi-turn elicit
               // conversations (like tictactoe) fail with "No tool call found" errors.
-              state.conversationMessages.push({
-                id: messageIdForAssistantTools(toolCalls.map((tc) => tc.id)),
-                role: 'assistant',
-                content: providerResult.text,
-                tool_calls: toolCalls.map((tc) => ({
-                  id: tc.id,
-                  type: 'function' as const,
-                  function: {
-                    name: tc.function.name,
-                    arguments: tc.function.arguments,
-                  },
-                })),
-              })
+              appendAssistantToolCallMessage(
+                state.conversationMessages,
+                conversationTranscriptState,
+                toolCalls,
+                providerResult.text,
+              )
               
               // Plugin tool(s) need elicitation - emit elicit events and transition
               for (const r of pluginAwaitingResults) {
@@ -1127,39 +1116,31 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
             // No handoffs - update messages and continue loop
             // Add assistant message with tool calls
-            state.conversationMessages.push({
-              id: messageIdForAssistantTools(toolCalls.map((tc) => tc.id)),
-              role: 'assistant',
-              content: providerResult.text,
-              tool_calls: toolCalls.map((tc) => ({
-                id: tc.id,
-                type: 'function' as const,
-                function: {
-                  name: tc.function.name,
-                  arguments: tc.function.arguments,
-                },
-              })),
-            })
+            appendAssistantToolCallMessage(
+              state.conversationMessages,
+              conversationTranscriptState,
+              toolCalls,
+              providerResult.text,
+            )
 
             // Add tool result messages
             for (const r of results) {
               if (r.ok && r.kind === 'result') {
-                state.conversationMessages.push({
-                  id: messageIdForTool(r.callId),
-                  role: 'tool',
-                  tool_call_id: r.callId,
-                  content:
-                    typeof r.serverOutput === 'string'
-                      ? r.serverOutput
-                      : JSON.stringify(r.serverOutput),
-                })
+                appendToolMessage(
+                  state.conversationMessages,
+                  conversationTranscriptState,
+                  r.callId,
+                  typeof r.serverOutput === 'string'
+                    ? r.serverOutput
+                    : JSON.stringify(r.serverOutput),
+                )
               } else if (!r.ok) {
-                state.conversationMessages.push({
-                  id: messageIdForTool(r.error.callId),
-                  role: 'tool',
-                  tool_call_id: r.error.callId,
-                  content: `Error: ${r.error.message}`,
-                })
+                appendToolMessage(
+                  state.conversationMessages,
+                  conversationTranscriptState,
+                  r.error.callId,
+                  `Error: ${r.error.message}`,
+                )
               }
             }
 
