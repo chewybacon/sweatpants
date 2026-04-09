@@ -580,6 +580,66 @@ describe('Durable Chat Handler', () => {
         handoffState!.conversationState.replay?.toolTraces.map((t) => t.callId),
       ).toContain('call-prior')
     })
+
+    it('should emit conversation_state messages with ids for handoff transcripts', function* () {
+      const handoffTool: IsomorphicTool = {
+        name: 'mock_handoff',
+        description: 'A mock isomorphic tool with handoff',
+        parameters: z.object({ count: z.number() }),
+        server: function* (params: unknown) {
+          const { count } = params as { count: number }
+          return { cards: Array.from({ length: count }, (_, i) => `Card ${i + 1}`) }
+        },
+        client: function* () {
+          return 'Client picked a card'
+        },
+      }
+
+      const provider = createMockProvider({
+        responses: ['Let me draw a card for you'],
+        toolCalls: [{ id: 'call-new', name: 'mock_handoff', arguments: { count: 3 } }],
+      })
+
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [handoffTool], {
+          retentionPolicy: { mode: 'retain_forever' },
+        }),
+        maxToolIterations: 5,
+      })
+
+      const request = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: 'durable-handoff-message-ids',
+          messages: [{ id: 'user:seed', role: 'user', content: 'Draw a card' }],
+          isomorphicTools: [{
+            name: 'mock_handoff',
+            description: 'A mock isomorphic tool with handoff',
+            parameters: { type: 'object', properties: { count: { type: 'number' } } },
+            usesHandoff: true,
+          }],
+        }),
+      })
+
+      const response = yield* call(() => handler(request))
+      const result = yield* call(() => consumeDurableResponse(response))
+
+      const conversationStates = getEventsByType(result, 'conversation_state') as Array<{
+        type: 'conversation_state'
+        conversationState: {
+          messages: Array<{ id?: string; role: string }>
+        }
+      }>
+
+      expect(conversationStates.length).toBeGreaterThan(0)
+
+      for (const event of conversationStates) {
+        for (const message of event.conversationState.messages) {
+          expect(message.id, `expected id for ${message.role} message in conversation_state`).toBeTruthy()
+        }
+      }
+    })
   })
 
   describe('Error Handling', () => {

@@ -39,6 +39,11 @@ import {
   pluginResultToToolResult,
   pluginResultToStreamEvent,
 } from './plugin-tool-executor.ts'
+import {
+  messageIdForAssistantTools,
+  messageIdForSystem,
+  messageIdForTool,
+} from '../../lib/chat/session/message-identity.ts'
 
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)
@@ -467,6 +472,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     // Prepend system prompt if provided
     if (systemPrompt) {
       state.conversationMessages.unshift({
+        id: messageIdForSystem(0),
         role: 'system',
         content: systemPrompt,
       })
@@ -598,6 +604,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   
                   // Add synthetic tool error to conversation
                   state.conversationMessages.push({
+                    id: messageIdForTool(callId),
                     role: 'tool',
                     tool_call_id: callId,
                     content: 'Error: Plugin session was lost. Please retry the operation.',
@@ -674,6 +681,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     
                     // Add to conversation
                     state.conversationMessages.push({
+                      id: messageIdForTool(callId),
                       role: 'tool',
                       tool_call_id: callId,
                       content,
@@ -692,6 +700,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     
                     // Add to conversation
                     state.conversationMessages.push({
+                      id: messageIdForTool(callId),
                       role: 'tool',
                       tool_call_id: callId,
                       content: `Error: ${nextEvent.message}`,
@@ -767,6 +776,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 }
                 if (!found) {
                   state.conversationMessages.push({
+                    id: messageIdForTool(output.callId),
                     role: 'tool',
                     tool_call_id: output.callId,
                     content: event.content,
@@ -1021,6 +1031,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               // tool_call -> tool_result sequence. Without this, multi-turn elicit
               // conversations (like tictactoe) fail with "No tool call found" errors.
               state.conversationMessages.push({
+                id: messageIdForAssistantTools(toolCalls.map((tc) => tc.id)),
                 role: 'assistant',
                 content: providerResult.text,
                 tool_calls: toolCalls.map((tc) => ({
@@ -1117,6 +1128,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // No handoffs - update messages and continue loop
             // Add assistant message with tool calls
             state.conversationMessages.push({
+              id: messageIdForAssistantTools(toolCalls.map((tc) => tc.id)),
               role: 'assistant',
               content: providerResult.text,
               tool_calls: toolCalls.map((tc) => ({
@@ -1133,6 +1145,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             for (const r of results) {
               if (r.ok && r.kind === 'result') {
                 state.conversationMessages.push({
+                  id: messageIdForTool(r.callId),
                   role: 'tool',
                   tool_call_id: r.callId,
                   content:
@@ -1142,6 +1155,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 })
               } else if (!r.ok) {
                 state.conversationMessages.push({
+                  id: messageIdForTool(r.error.callId),
                   role: 'tool',
                   tool_call_id: r.error.callId,
                   content: `Error: ${r.error.message}`,

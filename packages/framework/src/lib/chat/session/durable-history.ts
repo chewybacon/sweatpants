@@ -11,6 +11,13 @@ import type { ConversationReplayState, StreamEvent } from './streaming.ts'
 import type { PatchTransform } from './options.ts'
 import { renderReplayMessageParts } from './replay-render.ts'
 import type { MessagePart, ToolCallPart, ChatEmission } from '../types/chat-message.ts'
+import {
+  assertMessageHasId,
+  inferTurnKeyFromHistory,
+  messageIdForAssistantFinal,
+  messageIdForAssistantTools,
+  messageIdForTool,
+} from './message-identity.ts'
 
 export interface DurableFrame {
   lsn: number
@@ -167,7 +174,7 @@ function* buildAssistantReplayParts(
       : null
 
     toolParts.push({
-      id: `${message.id}-tool-${toolCall.id}`,
+      id: `${assertMessageHasId(message, 'assistant replay parts')}-tool-${toolCall.id}`,
       type: 'tool-call',
       callId: toolCall.id,
       name: toolCall.function.name,
@@ -242,7 +249,7 @@ export function* replayFramesToConversation(
           )
 
           const toolMessage: Message = {
-            id: crypto.randomUUID(),
+            id: messageIdForTool(event.id),
             role: 'tool',
             tool_call_id: event.id,
             content: toolResultContent(event.content),
@@ -322,7 +329,7 @@ export function* replayFramesToConversation(
 
           if (!alreadySeeded && !alreadyInHistory) {
             const assistantWithTools: Message = {
-              id: crypto.randomUUID(),
+              id: messageIdForAssistantTools(toolCallIds),
               role: 'assistant',
               content: assistantText,
               tool_calls: pendingToolCalls.map((call) => ({
@@ -353,8 +360,9 @@ export function* replayFramesToConversation(
           )
 
           if (!alreadySeeded && !alreadyInHistory) {
+            const turnKey = inferTurnKeyFromHistory(history)
             const assistantMessage: Message = {
-              id: crypto.randomUUID(),
+              id: messageIdForAssistantFinal(turnKey),
               role: 'assistant',
               content: assistantText,
             }
@@ -395,9 +403,7 @@ export function* replayFramesToConversation(
           const dedupedMessages = deduplicateMessages(event.conversationState.messages)
 
           for (const message of dedupedMessages) {
-            if (!message.id) {
-              message.id = crypto.randomUUID()
-            }
+            assertMessageHasId(message, 'conversation_state seed')
             if (message.role === 'tool' && message.tool_call_id) {
               seededToolCallIds.add(message.tool_call_id)
             }
@@ -462,9 +468,7 @@ export function* replayFramesToConversation(
           )
 
           for (const message of dedupedMessages) {
-            if (!message.id) {
-              message.id = crypto.randomUUID()
-            }
+            assertMessageHasId(message, 'conversation_state supplement')
             let isDuplicate = false
 
             if (message.role === 'tool' && message.tool_call_id) {
@@ -504,9 +508,7 @@ export function* replayFramesToConversation(
             ? deduplicateMessages(event.conversationState.messages)
             : []
           for (const message of dedupedMessages) {
-            if (!message.id) {
-              message.id = crypto.randomUUID()
-            }
+            assertMessageHasId(message, 'conversation_state bookkeeping')
             if (message.role === 'tool' && message.tool_call_id) {
             }
             if (message.role === 'assistant' && message.content) {

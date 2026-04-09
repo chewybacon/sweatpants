@@ -5,6 +5,16 @@
  */
 import type { ConversationState } from './streaming.ts'
 import type { Message } from '../types.ts'
+import {
+  assertMessageHasId,
+  inferTurnKeyFromHistory,
+  messageIdForAssistantFinal,
+  messageIdForAssistantTools,
+  messageIdForSystem,
+  messageIdForTool,
+  messageIdForUser,
+  turnKeyFromToolCalls,
+} from './message-identity.ts'
 
 export type PendingToolCall = { id: string; name: string }
 
@@ -19,7 +29,7 @@ export function syncConversationStateForElicit(
     const convMsg = conversationMessages[i]!
     history.push({
       ...convMsg,
-      id: convMsg.id ?? crypto.randomUUID(),
+      id: assertMessageHasId(convMsg, 'syncConversationStateForElicit'),
     })
   }
 
@@ -29,7 +39,7 @@ export function syncConversationStateForElicit(
 
   if (!hasAssistantWithTools && conversationState.toolCalls.length > 0) {
     const assistantMsg: Message = {
-      id: crypto.randomUUID(),
+      id: messageIdForAssistantTools(conversationState.toolCalls.map((tc) => tc.id)),
       role: 'assistant',
       content: conversationState.assistantContent || '',
       tool_calls: conversationState.toolCalls.map((tc) => ({
@@ -57,7 +67,7 @@ export function syncConversationStateForComplete(
   const seenIds = new Set(history.map((message) => message.id).filter(Boolean))
 
   for (const convMsg of conversationState.messages) {
-    const id = convMsg.id ?? crypto.randomUUID()
+    const id = assertMessageHasId(convMsg, 'syncConversationStateForComplete')
     if (seenIds.has(id)) {
       continue
     }
@@ -72,8 +82,11 @@ export function syncConversationStateForComplete(
   if (conversationState.assistantContent) {
     const lastAssistant = history[history.length - 1]
     if (!lastAssistant || lastAssistant.role !== 'assistant' || lastAssistant.content !== conversationState.assistantContent) {
+      const turnKey = conversationState.toolCalls.length > 0
+        ? turnKeyFromToolCalls(conversationState.toolCalls)
+        : inferTurnKeyFromHistory(history)
       history.push({
-        id: crypto.randomUUID(),
+        id: messageIdForAssistantFinal(turnKey),
         role: 'assistant',
         content: conversationState.assistantContent,
       })
@@ -99,7 +112,17 @@ export function syncMessagesFromIndex(
     }
 
     const msg: Message = {
-      id: crypto.randomUUID(),
+      id: apiMsg.id ? assertMessageHasId(apiMsg, 'syncMessagesFromIndex') : (
+        apiMsg.role === 'tool' && apiMsg.tool_call_id
+          ? messageIdForTool(apiMsg.tool_call_id)
+          : apiMsg.role === 'assistant' && apiMsg.tool_calls && apiMsg.tool_calls.length > 0
+            ? messageIdForAssistantTools(apiMsg.tool_calls.map((tc) => tc.id))
+            : apiMsg.role === 'assistant'
+              ? messageIdForAssistantFinal(inferTurnKeyFromHistory(history))
+              : apiMsg.role === 'user'
+                ? messageIdForUser(inferTurnKeyFromHistory(history))
+                : messageIdForSystem(history.filter((message) => message.role === 'system').length)
+      ),
       role: apiMsg.role,
       content: content,
       ...(apiMsg.replay ? { replay: apiMsg.replay } : {}),
