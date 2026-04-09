@@ -90,6 +90,15 @@ import {
   syncConversationStateForComplete,
   syncMessagesFromIndex,
 } from './turn-manager.ts'
+import {
+  inferTurnKeyFromHistory,
+  messageIdForAssistantFinal,
+  messageIdForAssistantTools,
+  messageIdForTool,
+  messageIdForUser,
+  nextUserTurnKey,
+  turnKeyFromToolCalls,
+} from './message-identity.ts'
 import { readDurableHistory } from './durable-history.ts'
 import type { ApprovalSignalValue } from '../isomorphic-tools/runtime/tool-runtime.ts'
 import {
@@ -345,7 +354,7 @@ export function* runChatSession(
         if (pendingToolCalls.length > 0) {
           for (const tc of pendingToolCalls) {
             const cancelledToolMsg: Message = {
-              id: crypto.randomUUID(),
+              id: messageIdForTool(tc.id),
               role: 'tool',
               content: 'Tool execution was cancelled by user sending a new message.',
               tool_call_id: tc.id,
@@ -356,8 +365,9 @@ export function* runChatSession(
         }
 
         // Create user message
+        const userTurnKey = nextUserTurnKey(history)
         const userMessage: Message = {
-          id: crypto.randomUUID(),
+          id: messageIdForUser(userTurnKey),
           role: 'user',
           content: cmd.content,
         }
@@ -610,6 +620,7 @@ export function* runChatSession(
                 }))
                 
                 conversationMessages.push({
+                  id: messageIdForAssistantTools(allToolCalls.map((tc) => tc.id)),
                   role: 'assistant',
                   content: result.conversationState.assistantContent || '',
                   tool_calls: allToolCalls,
@@ -618,6 +629,7 @@ export function* runChatSession(
                 // Add server tool results
                 for (const serverResult of result.conversationState.serverToolResults) {
                   conversationMessages.push({
+                    id: messageIdForTool(serverResult.id),
                     role: 'tool',
                     tool_call_id: serverResult.id,
                     content: serverResult.content,
@@ -655,6 +667,7 @@ export function* runChatSession(
                     // content is filled in from phase 2 server output before history sync.
                     if (isoResult.ok && isoResult.clientOutput !== undefined) {
                       conversationMessages.push({
+                        id: messageIdForTool(isoResult.callId),
                         role: 'tool',
                         tool_call_id: isoResult.callId,
                         content: '',
@@ -727,7 +740,7 @@ export function* runChatSession(
             // Create final assistant message with the response text
             const finalContent = completeResult.text || ''
             const assistantMessage: Message = {
-              id: crypto.randomUUID(),
+              id: messageIdForAssistantFinal(userTurnKey),
               role: 'assistant',
               content: finalContent,
             }
@@ -958,6 +971,9 @@ export function* runChatSession(
                 toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
                 toolResults?: Array<{ id: string; name: string; content: string }>
               }
+              const finalTurnKey = completeResult.toolCalls && completeResult.toolCalls.length > 0
+                ? turnKeyFromToolCalls(completeResult.toolCalls)
+                : inferTurnKeyFromHistory(history)
               
               // Sync tool calls and results to history
               // This is critical for multi-turn tool conversations where the LLM
@@ -965,7 +981,7 @@ export function* runChatSession(
               if (completeResult.toolCalls && completeResult.toolCalls.length > 0) {
                 // Add assistant message with tool_calls
                 const assistantWithToolsMsg: Message = {
-                  id: crypto.randomUUID(),
+                  id: messageIdForAssistantTools(completeResult.toolCalls.map((tc) => tc.id)),
                   role: 'assistant',
                   content: '', // Tool-calling messages typically have empty content
                   tool_calls: completeResult.toolCalls.map(tc => ({
@@ -984,7 +1000,7 @@ export function* runChatSession(
                 // Add tool result messages
                 for (const tr of completeResult.toolResults) {
                   const toolMsg: Message = {
-                    id: crypto.randomUUID(),
+                    id: messageIdForTool(tr.id),
                     role: 'tool',
                     content: tr.content,
                     tool_call_id: tr.id,
@@ -996,7 +1012,7 @@ export function* runChatSession(
               // Only add assistant message if there's content
               if (completeResult.text) {
                 const assistantMessage: Message = {
-                  id: crypto.randomUUID(),
+                  id: messageIdForAssistantFinal(finalTurnKey),
                   role: 'assistant',
                   content: completeResult.text,
                 }

@@ -363,4 +363,40 @@ describe('Multi-turn conversation history', () => {
     expect(historyWithTurn2[4]!.role).toBe('user')
     expect(historyWithTurn2[4]!.content).toBe('draw 2 more')
   })
+
+  it('should preserve deterministic structured ids through tool turn sync', () => {
+    const historyAfterTurn1: Message[] = [
+      { id: 'user:call_1', role: 'user', content: 'draw 3 cards' },
+      {
+        id: 'assistant:tools:call_1',
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call_1',
+            type: 'function',
+            function: { name: 'pick_card', arguments: { count: 3 } },
+          },
+        ],
+      },
+      {
+        id: 'tool:call_1',
+        role: 'tool',
+        content: 'You picked the 5 of Hearts.',
+        tool_call_id: 'call_1',
+      },
+      {
+        id: 'assistant:final:call_1',
+        role: 'assistant',
+        content: 'Great choice! You picked the 5 of Hearts.',
+      },
+    ]
+
+    expect(historyAfterTurn1.map((msg) => msg.id)).toEqual([
+      'user:call_1',
+      'assistant:tools:call_1',
+      'tool:call_1',
+      'assistant:final:call_1',
+    ])
+  })
 })

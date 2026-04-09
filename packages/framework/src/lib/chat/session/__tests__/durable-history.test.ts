@@ -320,6 +320,51 @@ describe('replayFramesToConversation', () => {
     expect(youPickedCount).toBe(1)
   })
 
+  it('does not invent message ids during replay for conversation_state messages', async () => {
+    const frames: DurableFrame[] = [
+      makeFrame(makeConversationState([
+        { id: 'user:call_1', role: 'user', content: 'Draw a card' },
+        {
+          id: 'assistant:tools:call_1',
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'pick_card', arguments: {} } }],
+        },
+        { id: 'tool:call_1', role: 'tool', tool_call_id: 'call_1', content: 'Selected Ace of Spades' },
+        { id: 'assistant:final:call_1', role: 'assistant', content: 'You picked the Ace of Spades.' },
+      ]), 1),
+    ]
+
+    const result = await run(function* () {
+      return yield* replayFramesToConversation(frames, [], [])
+    })
+
+    const messages = getHistoryMessages(result.patches)
+    expect(messages.map((message) => message.id)).toEqual([
+      'user:call_1',
+      'assistant:tools:call_1',
+      'tool:call_1',
+      'assistant:final:call_1',
+    ])
+  })
+
+  it('requires ids on conversation_state messages for new transcripts', async () => {
+    const frames: DurableFrame[] = [
+      makeFrame(makeConversationState([
+        { role: 'user', content: 'Draw a card' },
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'pick_card', arguments: {} } }],
+        },
+      ] as Message[]), 1),
+    ]
+
+    await expect(run(function* () {
+      return yield* replayFramesToConversation(frames, [], [])
+    })).rejects.toThrow(/message id/i)
+  })
+
   it('updates seededToolCallIds from second conversation_state to prevent duplicate complete events', async () => {
     const callId1 = 'call_pick_card_1'
     const callId2 = 'call_pick_card_2'
