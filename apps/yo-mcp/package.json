@@ -10,7 +10,7 @@
     "dev": "tsx src/cli.ts",
     "dev:silent": "pnpm --silent dev",
     "build": "tsup",
-    "check": "tsc -b",
+    "check": "tsc --noEmit",
     "start": "node dist/cli.js",
     "inspect": "tsx src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
     "test": "playwright test",

@@ -8,11 +8,7 @@
     { "path": "./packages/durable-streams" },
     { "path": "./packages/elicit-context" },
     { "path": "./packages/cli" },
-    { "path": "./packages/framework" },
-    { "path": "./apps/hydra" },
-    { "path": "./apps/yo-chat" },
-    { "path": "./apps/yo-agent" },
-    { "path": "./apps/yo-mcp" }
+    { "path": "./packages/framework" }
   ],
   "files": []
 }

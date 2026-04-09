@@ -34,6 +34,7 @@ import type { AnyIsomorphicTool } from './types.ts'
 import { type AgentToolContext, type PromptOptions, type ApprovalResult, validateContextMode } from './contexts.ts'
 import type { ChatProvider, ChatStreamOptions } from '../providers/types.ts'
 import type { Message, ChatEvent, ChatResult } from '../types.ts'
+import { messageIdForSystem, messageIdForUser } from '../session/message-identity.ts'
 
 // --- LLM Client Types ---
 
@@ -87,11 +88,11 @@ export function createAgentLLMClient(options: CreateAgentLLMClientOptions): Agen
       // Add system message if provided
       const system = opts.system ?? defaultSystem
       if (system) {
-        messages.push({ role: 'system', content: system })
+        messages.push({ id: messageIdForSystem(0), role: 'system', content: system })
       }
 
       // Add user message with the prompt
-      messages.push({ role: 'user', content: opts.prompt })
+      messages.push({ id: messageIdForUser('u1'), role: 'user', content: opts.prompt })
 
       // Create stream options with model override
       const model = opts.model ?? defaultModel ?? streamOptions?.model
