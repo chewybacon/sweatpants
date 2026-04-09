@@ -31,6 +31,12 @@ import type {
   ToolResultMessage,
 } from './mcp-tool-types.ts'
 import type { McpMessage, McpContentBlock } from './protocol/types.ts'
+import {
+  messageIdForAssistantFinal,
+  messageIdForAssistantTools,
+  messageIdForTool,
+  messageIdForUser,
+} from '../session/message-identity.ts'
 
 /**
  * Type guard for ToolCallMessage (assistant message with tool_calls).
@@ -68,6 +74,7 @@ export function extendedMessageToProviderMessage(msg: ExtendedMessage): ChatMess
   // ToolCallMessage — already in provider format
   if (isToolCallMessage(msg)) {
     return {
+      id: messageIdForAssistantTools(msg.tool_calls.map((toolCall) => toolCall.id)),
       role: msg.role,
       content: msg.content,
       tool_calls: msg.tool_calls,
@@ -77,6 +84,7 @@ export function extendedMessageToProviderMessage(msg: ExtendedMessage): ChatMess
   // ToolResultMessage — already in provider format
   if (isToolResultMessage(msg)) {
     return {
+      id: messageIdForTool(msg.tool_call_id),
       role: msg.role,
       content: msg.content,
       tool_call_id: msg.tool_call_id,
@@ -86,6 +94,7 @@ export function extendedMessageToProviderMessage(msg: ExtendedMessage): ChatMess
   // Plain Message with string content — passthrough
   if (!isMcpMessage(msg)) {
     return {
+      id: msg.role === 'assistant' ? messageIdForAssistantFinal('mcp') : messageIdForUser('mcp'),
       role: msg.role as ChatMessage['role'],
       content: msg.content as string,
     }
@@ -106,6 +115,7 @@ export function extendedMessageToProviderMessage(msg: ExtendedMessage): ChatMess
   )
   if (toolUseBlocks.length > 0) {
     return {
+      id: messageIdForAssistantTools(toolUseBlocks.map((b) => b.id)),
       role: 'assistant',
       content: textContent,
       tool_calls: toolUseBlocks.map((b) => ({
@@ -127,6 +137,7 @@ export function extendedMessageToProviderMessage(msg: ExtendedMessage): ChatMess
       .map((b) => b.text)
       .join('')
     return {
+      id: messageIdForTool(firstResult.toolUseId),
       role: 'tool',
       content: resultText,
       tool_call_id: firstResult.toolUseId,
@@ -135,6 +146,7 @@ export function extendedMessageToProviderMessage(msg: ExtendedMessage): ChatMess
 
   // Text-only MCP message
   return {
+    id: msg.role === 'assistant' ? messageIdForAssistantFinal('mcp') : messageIdForUser('mcp'),
     role: msg.role as ChatMessage['role'],
     content: textContent,
   }

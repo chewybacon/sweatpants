@@ -1,11 +1,26 @@
 {
   "extends": "@sweatpants/ts-config/tsconfig.package.json",
   "compilerOptions": {
+    "composite": true,
     "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
     "ignoreDeprecations": "5.0"
   },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "tests",
+    "e2e"
+  ],
   "references": [
-    { "path": "./tsconfig.lib.json" },
-    { "path": "./tsconfig.test.json" }
+    { "path": "../elicit-context" },
+    { "path": "../durable-streams" }
   ]
 }
