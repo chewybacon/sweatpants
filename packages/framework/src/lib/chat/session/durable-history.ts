@@ -689,6 +689,7 @@ export function* readDurableHistory(
   const { baseUrl, conversationId, tools, transforms, onStreamEvent } = options
   const url = new URL(baseUrl, 'http://localhost')
   url.searchParams.set('conversationId', conversationId)
+  url.searchParams.set('offset', '0')
 
   const response = yield* call(() =>
     fetch(url.pathname + url.search, {
