@@ -39,6 +39,9 @@ export {
 
 // Streaming types
 export type {
+  AgUiCheckpoint,
+  AgUiCustomState,
+  AgUiRunMetadata,
   ConversationState,
   ConversationReplayToolTrace,
   StreamResult,

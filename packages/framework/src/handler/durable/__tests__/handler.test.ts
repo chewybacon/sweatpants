@@ -106,7 +106,7 @@ describe('Durable Chat Handler', () => {
       const conversationId = 'durable-plain-thread'
 
       yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi durable handler' }], {
+        makeRequest(handler, [{ id: 'user:durable-handler', role: 'user', content: 'Hi durable handler' }], {
           conversationId,
         }),
       )
@@ -143,7 +143,7 @@ describe('Durable Chat Handler', () => {
       const conversationId = 'thread-123'
 
       const first = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hello' }], {
+        makeRequest(handler, [{ id: 'user:hello', role: 'user', content: 'Hello' }], {
           conversationId,
         })
       )
@@ -177,7 +177,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { result, sessionId } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       // Should have session ID
@@ -210,7 +210,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { result } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Count' }])
+        makeRequest(handler, [{ id: 'user:count', role: 'user', content: 'Count' }])
       )
 
       // LSNs should be monotonically increasing
@@ -483,7 +483,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { result } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Echo something' }], {
+        makeRequest(handler, [{ id: 'user:echo', role: 'user', content: 'Echo something' }], {
           enabledTools: true,
         })
       )
@@ -496,6 +496,62 @@ describe('Durable Chat Handler', () => {
       expect(result.toolResults).not.toBeNull()
       expect(result.toolResults?.[0]?.name).toBe('echo')
       expect(result.toolResults?.[0]?.content).toContain('Mock result for: hello')
+    })
+
+    it('should emit AG-UI tool lifecycle events for server-side tools', function* () {
+      const echoTool = createMockTool('echo', 'Echoes input')
+      const provider = createMockProvider({
+        responses: 'Let me echo that',
+        toolCalls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [echoTool]),
+        maxToolIterations: 1,
+      })
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: 'user:u1', role: 'user', content: 'Echo something' }], {
+          conversationId: 'thread-ag-ui-server-tool',
+          enabledTools: true,
+        })
+      )
+
+      const toolStartEvents = getEventsByType(result, 'ag_ui_tool_call_start') as Array<{
+        type: 'ag_ui_tool_call_start'
+        toolCallId: string
+        toolCallName: string
+      }>
+      const toolArgEvents = getEventsByType(result, 'ag_ui_tool_call_args') as Array<{
+        type: 'ag_ui_tool_call_args'
+        toolCallId: string
+        delta: string
+      }>
+      const toolEndEvents = getEventsByType(result, 'ag_ui_tool_call_end') as Array<{
+        type: 'ag_ui_tool_call_end'
+        toolCallId: string
+      }>
+
+      expect(toolStartEvents).toEqual([
+        {
+          type: 'ag_ui_tool_call_start',
+          toolCallId: 'call-1',
+          toolCallName: 'echo',
+          parentMessageId: 'assistant:tools:call-1',
+        },
+      ])
+      expect(toolArgEvents).toEqual([
+        {
+          type: 'ag_ui_tool_call_args',
+          toolCallId: 'call-1',
+          delta: JSON.stringify({ input: 'hello' }),
+        },
+      ])
+      expect(toolEndEvents).toEqual([
+        {
+          type: 'ag_ui_tool_call_end',
+          toolCallId: 'call-1',
+        },
+      ])
     })
 
     it('should include accumulated replay state in handoff conversation_state events', function* () {
@@ -654,7 +710,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { result } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       // Should have error event
@@ -678,7 +734,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { result } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       expect(result.error).not.toBeNull()
@@ -694,7 +750,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { sessionId } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       expect(sessionId).toBeDefined()
@@ -708,7 +764,7 @@ describe('Durable Chat Handler', () => {
         initializerHooks: createTestHooks(provider),
       })
 
-      const { request } = createChatRequest([{ role: 'user', content: 'Hi' }])
+      const { request } = createChatRequest([{ id: 'user:hi', role: 'user', content: 'Hi' }])
       const response = yield* call(() => handler(request))
 
       expect(response.headers.get('Content-Type')).toBe('application/x-ndjson')
@@ -726,7 +782,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { sessionId, result: initial } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       const { request } = createChatRequest([], {
@@ -874,7 +930,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { sessionId } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       const { request: longPollRequest } = createChatRequest([], {
@@ -1094,7 +1150,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { sessionId } = yield* call(() =>
-        makeRequest(handler, [{ role: 'user', content: 'Hi' }])
+        makeRequest(handler, [{ id: 'user:hi', role: 'user', content: 'Hi' }])
       )
 
       const { request: headRequest } = createChatRequest([], {
@@ -1187,7 +1243,7 @@ describe('Durable Chat Handler', () => {
         initializerHooks: createTestHooks(provider),
       })
 
-      const { request } = createChatRequest([{ role: 'user', content: 'Hi' }])
+      const { request } = createChatRequest([{ id: 'user:hi', role: 'user', content: 'Hi' }])
       const response = yield* call(() => handler(request))
 
       // Read raw response
@@ -1201,6 +1257,44 @@ describe('Durable Chat Handler', () => {
         expect(parsed.event).toBeDefined()
         expect(typeof parsed.event.type).toBe('string')
       }
+    })
+
+    it('should emit ag_ui_checkpoint alongside conversation_state for durable thread hydration', function* () {
+      const provider = createMockProvider({ responses: 'Test' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request } = createChatRequest([{ id: 'user:u1', role: 'user', content: 'Hi' }], {
+        conversationId: 'thread-ag-ui-checkpoint',
+      })
+      const response = yield* call(() => handler(request))
+      const text = yield* call(() => response.text())
+      const events = text.trim().split('\n').map((line) => JSON.parse(line).event)
+
+      expect(events.some((event) => event.type === 'ag_ui_checkpoint')).toBe(true)
+      expect(events.some((event) => event.type === 'conversation_state')).toBe(true)
+    })
+
+    it('should emit AG-UI run, message, and state events for threaded requests', function* () {
+      const provider = createMockProvider({ responses: 'Hello there' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider),
+      })
+
+      const { request } = createChatRequest([{ id: 'user:u1', role: 'user', content: 'Hi' }], {
+        conversationId: 'thread-ag-ui-events',
+      })
+      const response = yield* call(() => handler(request))
+      const text = yield* call(() => response.text())
+      const events = text.trim().split('\n').map((line) => JSON.parse(line).event)
+
+      expect(events.some((event) => event.type === 'ag_ui_run_started')).toBe(true)
+      expect(events.some((event) => event.type === 'ag_ui_messages_snapshot')).toBe(true)
+      expect(events.some((event) => event.type === 'ag_ui_state_snapshot')).toBe(true)
+      expect(events.some((event) => event.type === 'ag_ui_text_message_start')).toBe(true)
+      expect(events.some((event) => event.type === 'ag_ui_text_message_content')).toBe(true)
+      expect(events.some((event) => event.type === 'ag_ui_text_message_end')).toBe(true)
     })
   })
 })

@@ -15,7 +15,7 @@ import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { PluginSessionManager } from './plugin-session-manager.ts'
-import type { ConversationReplayState } from '../../lib/chat/session/streaming.ts'
+import type { ConversationReplayState, AgUiRunMetadata } from '../../lib/chat/session/streaming.ts'
 
 // =============================================================================
 // ENGINE STATE PHASES
@@ -209,6 +209,9 @@ export interface ChatEngineParams {
 
   /** Session info to emit at start */
   sessionInfo?: StreamEvent & { type: 'session_info' }
+
+  /** AG-UI run metadata for durable emission */
+  agUiRun: AgUiRunMetadata
 
   /**
    * Plugin registry for MCP plugin tools.

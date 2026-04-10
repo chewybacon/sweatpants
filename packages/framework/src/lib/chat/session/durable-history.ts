@@ -537,6 +537,139 @@ export function* replayFramesToConversation(
         break
       }
 
+      case 'ag_ui_checkpoint': {
+        const checkpointConversationState = {
+          messages: event.checkpoint.messages.messages,
+          assistantContent: event.checkpoint.state.assistantContent,
+          toolCalls: event.checkpoint.state.toolCalls,
+          serverToolResults: event.checkpoint.state.serverToolResults,
+          ...(event.checkpoint.state.replay ? { replay: event.checkpoint.state.replay } : {}),
+        }
+
+        replayState = mergeReplayState(replayState, checkpointConversationState.replay)
+
+        if (!seededFromConversationState && history.length === 0 && checkpointConversationState.messages.length > 0) {
+          const replayToolTraceByCallId = new Map(
+            (checkpointConversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
+          )
+
+          const dedupedMessages = deduplicateMessages(checkpointConversationState.messages)
+
+          for (const message of dedupedMessages) {
+            assertMessageHasId(message, 'ag_ui_checkpoint seed')
+            if (message.role === 'tool' && message.tool_call_id) {
+              seededToolCallIds.add(message.tool_call_id)
+            }
+            if (message.role === 'assistant' && message.content) {
+              seededAssistantContent.add(message.content)
+            }
+            if (message.role === 'assistant' && message.tool_calls) {
+              for (const tc of message.tool_calls) {
+                seededToolCallIds.add(tc.id)
+              }
+            }
+
+            const toolResults = dedupedMessages.filter(
+              (candidate) => candidate.role === 'tool',
+            )
+            const assistantParts = yield* buildAssistantReplayParts(
+              message,
+              toolResults,
+              replayToolTraceByCallId,
+              tools,
+              transforms,
+            )
+
+            history.push(message)
+            resetTranscriptState(transcriptState, history)
+            patches.push({
+              type: 'history_message',
+              message,
+              ...(assistantParts ? { parts: assistantParts } : {}),
+            })
+          }
+          seededFromConversationState = true
+        }
+
+        currentAssistantText = checkpointConversationState.assistantContent
+        pendingToolCalls = checkpointConversationState.toolCalls.map((toolCall) => ({
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+        }))
+        break
+      }
+
+      case 'ag_ui_state_snapshot': {
+        for (const action of event.state.pendingClientActions ?? []) {
+          if (action.kind === 'handoff') {
+            pendingHandoffs = upsertPendingHandoff(pendingHandoffs, {
+              callId: action.toolCallId,
+              toolName: action.toolName,
+              params: action.params ?? {},
+              data: action.data,
+              usesHandoff: action.usesHandoff ?? false,
+            })
+
+            patches.push({
+              type: 'pending_handoff',
+              handoff: {
+                callId: action.toolCallId,
+                toolName: action.toolName,
+                params: action.params ?? {},
+                data: action.data,
+                usesHandoff: action.usesHandoff ?? false,
+              },
+            })
+          }
+
+          if (
+            action.kind === 'elicit' &&
+            action.sessionId &&
+            action.elicitId &&
+            action.key &&
+            action.message &&
+            action.schema
+          ) {
+            if (!patches.some((patch) => patch.type === 'elicit_start' && patch.callId === action.toolCallId)) {
+              patches.push({
+                type: 'elicit_start',
+                callId: action.toolCallId,
+                toolName: action.toolName,
+              })
+            }
+
+            patches.push({
+              type: 'elicit',
+              callId: action.toolCallId,
+              elicit: {
+                elicitId: action.elicitId,
+                sessionId: action.sessionId,
+                key: action.key,
+                message: action.message,
+                schema: action.schema,
+                context: (action.schema as { 'x-model-context'?: unknown })['x-model-context'],
+                status: 'pending',
+                timestamp: Date.now(),
+              },
+            })
+          }
+        }
+        break
+      }
+
+      case 'ag_ui_run_started':
+      case 'ag_ui_run_finished':
+      case 'ag_ui_messages_snapshot':
+      case 'ag_ui_text_message_start':
+      case 'ag_ui_text_message_content':
+      case 'ag_ui_text_message_end':
+      case 'ag_ui_tool_call_start':
+      case 'ag_ui_tool_call_args':
+      case 'ag_ui_tool_call_end': {
+        break
+      }
+
       case 'isomorphic_handoff': {
         pendingHandoffs = upsertPendingHandoff(pendingHandoffs, {
           callId: event.callId,

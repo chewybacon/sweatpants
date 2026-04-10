@@ -20,6 +20,50 @@ export interface ConversationReplayState {
 }
 
 // =============================================================================
+// AG-UI CHECKPOINT SHAPES
+// =============================================================================
+
+export interface AgUiRunMetadata {
+  threadId: string
+  runId: string
+  parentRunId?: string
+}
+
+export interface AgUiMessagesSnapshot {
+  messages: Message[]
+}
+
+export interface AgUiStateSnapshot {
+  assistantContent: string
+  toolCalls: ToolCallInfo[]
+  serverToolResults: ServerToolResult[]
+  replay?: ConversationReplayState
+}
+
+export interface AgUiCheckpoint {
+  run: AgUiRunMetadata
+  messages: AgUiMessagesSnapshot
+  state: AgUiStateSnapshot
+}
+
+export interface AgUiCustomState {
+  replay?: ConversationReplayState
+  pendingClientActions?: Array<{
+    toolCallId: string
+    toolName: string
+    kind: 'handoff' | 'elicit'
+    params?: unknown
+    sessionId?: string
+    elicitId?: string
+    key?: string
+    message?: string
+    schema?: Record<string, unknown>
+    data?: unknown
+    usesHandoff?: boolean
+  }>
+}
+
+// =============================================================================
 // CONVERSATION STATE
 // =============================================================================
 
@@ -97,6 +141,92 @@ export interface StreamElicitResult {
 export interface ConversationStateStreamEvent {
   type: 'conversation_state'
   conversationState: ConversationState
+}
+
+/**
+ * Transitional AG-UI-aligned checkpoint event.
+ *
+ * This intentionally coexists with `conversation_state` while we migrate durable
+ * replay and refresh restore behavior onto an explicit checkpoint model.
+ */
+export interface AgUiCheckpointStreamEvent {
+  type: 'ag_ui_checkpoint'
+  checkpoint: AgUiCheckpoint
+}
+
+export interface AgUiRunStartedStreamEvent {
+  type: 'ag_ui_run_started'
+  run: AgUiRunMetadata
+  input?: {
+    messages: Message[]
+  }
+}
+
+export interface AgUiRunFinishedStreamEvent {
+  type: 'ag_ui_run_finished'
+  run: AgUiRunMetadata
+}
+
+export interface AgUiMessagesSnapshotStreamEvent {
+  type: 'ag_ui_messages_snapshot'
+  run: AgUiRunMetadata
+  messages: Message[]
+}
+
+export interface AgUiStateSnapshotStreamEvent {
+  type: 'ag_ui_state_snapshot'
+  run: AgUiRunMetadata
+  state: AgUiCustomState
+}
+
+export interface AgUiTextMessageStartStreamEvent {
+  type: 'ag_ui_text_message_start'
+  messageId: string
+  role: 'assistant' | 'user' | 'system'
+}
+
+export interface AgUiTextMessageContentStreamEvent {
+  type: 'ag_ui_text_message_content'
+  messageId: string
+  delta: string
+}
+
+export interface AgUiTextMessageEndStreamEvent {
+  type: 'ag_ui_text_message_end'
+  messageId: string
+}
+
+export interface AgUiToolCallStartStreamEvent {
+  type: 'ag_ui_tool_call_start'
+  toolCallId: string
+  toolCallName: string
+  parentMessageId?: string
+}
+
+export interface AgUiToolCallArgsStreamEvent {
+  type: 'ag_ui_tool_call_args'
+  toolCallId: string
+  delta: string
+}
+
+export interface AgUiToolCallEndStreamEvent {
+  type: 'ag_ui_tool_call_end'
+  toolCallId: string
+}
+
+export interface AgUiToolCallResultStreamEvent {
+  type: 'ag_ui_tool_call_result'
+  toolCallId: string
+  toolCallName: string
+  content: string
+  trace?: ToolExecutionTrace
+}
+
+export interface AgUiToolCallErrorStreamEvent {
+  type: 'ag_ui_tool_call_error'
+  toolCallId: string
+  toolCallName: string
+  message: string
 }
 
 /**
@@ -178,6 +308,19 @@ export type StreamEvent =
   | { type: 'tool_error'; id: string; name: string; message: string }
   | { type: 'complete'; text: string; usage?: TokenUsage }
   | { type: 'error'; message: string; recoverable: boolean }
+  | AgUiRunStartedStreamEvent
+  | AgUiRunFinishedStreamEvent
+  | AgUiMessagesSnapshotStreamEvent
+  | AgUiStateSnapshotStreamEvent
+  | AgUiTextMessageStartStreamEvent
+  | AgUiTextMessageContentStreamEvent
+  | AgUiTextMessageEndStreamEvent
+  | AgUiToolCallStartStreamEvent
+  | AgUiToolCallArgsStreamEvent
+  | AgUiToolCallEndStreamEvent
+  | AgUiToolCallResultStreamEvent
+  | AgUiToolCallErrorStreamEvent
+  | AgUiCheckpointStreamEvent
   | IsomorphicHandoffStreamEvent
   | ConversationStateStreamEvent
   | ElicitRequestStreamEvent

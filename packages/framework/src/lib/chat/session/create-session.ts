@@ -515,6 +515,12 @@ export function* runChatSession(
                 break
               }
 
+              if (result.type === 'isomorphic_handoff' && !isomorphicToolsRegistry) {
+                syncConversationStateForComplete(history, result.conversationState)
+                resetTranscriptState(transcriptState, history)
+                break
+              }
+
               // Isomorphic handoff - execute client parts
               if (result.type === 'isomorphic_handoff' && isomorphicToolsRegistry) {
                 // Build handoff data for each isomorphic tool
@@ -947,7 +953,13 @@ export function* runChatSession(
                 // When user responds, another 'continue' command will be dispatched.
                 break
               }
-              
+
+              if (result.type === 'isomorphic_handoff') {
+                syncConversationStateForComplete(history, result.conversationState)
+                resetTranscriptState(transcriptState, history)
+                break
+              }
+               
               // Unknown result type - shouldn't happen
               break
             }

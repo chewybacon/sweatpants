@@ -33,6 +33,9 @@ export type {
 
 // Re-export from session
 export type {
+  AgUiCheckpoint,
+  AgUiCustomState,
+  AgUiRunMetadata,
   ConversationState,
   ConversationReplayToolTrace,
   StreamResult,
