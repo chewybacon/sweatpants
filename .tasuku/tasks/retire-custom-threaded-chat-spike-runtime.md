@@ -1,10 +1,9 @@
 ---
-status: blocked
+status: ready
 tags: [cleanup, yo-chat]
-blocked_by: [yo-chat-rebuild-threaded-page-on-usechat]
 parent_id: prototype-threaded-durable-chat
 created_at: 2026-04-04T11:15:00.14195Z
-updated_at: 2026-04-04T11:15:17.553476Z
+updated_at: 2026-04-10T09:43:25.898915Z
 ---
 
 # Retire custom threaded chat spike runtime

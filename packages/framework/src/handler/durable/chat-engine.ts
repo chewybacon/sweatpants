@@ -37,7 +37,6 @@ import {
   isPluginTool,
   executePluginTool,
   pluginResultToToolResult,
-  pluginResultToStreamEvent,
 } from './plugin-tool-executor.ts'
 import {
   appendAssistantToolCallMessage,
@@ -125,40 +124,58 @@ function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
 }
 
 /**
- * Convert a ChatEvent from the provider to a StreamEvent.
- * 
- * Note: We use 'content' field (not 'text') to match the client's StreamEvent type
- * defined in lib/chat/session/streaming.ts
+ * Convert a ChatEvent from the provider to AG-UI StreamEvents.
+ *
+ * Text tokens are emitted incrementally as `ag_ui_text_message_content` events.
+ * The first text token also triggers `ag_ui_text_message_start`.
+ * Thinking tokens are passed through as `thinking` events.
+ * Tool call events are ignored here — tool lifecycle is emitted at `tools_complete`.
  */
-function providerEventToStreamEvent(event: ChatEvent): StreamEvent | null {
+function providerEventToAgUiStreamEvents(
+  event: ChatEvent,
+  state: EngineState,
+  agUiRun: { threadId: string; runId: string; parentRunId?: string },
+): StreamEvent[] {
   switch (event.type) {
-    case 'text':
-      return { type: 'text', content: event.content }
-    case 'thinking':
-      return { type: 'thinking', content: event.content }
-    case 'tool_calls':
-      return {
-        type: 'tool_calls',
-        calls: event.toolCalls.map((tc) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: tc.function.arguments,
-        })),
+    case 'text': {
+      const events: StreamEvent[] = []
+      if (!state.assistantTextOpen) {
+        // Assign a deterministic message ID for the streamed assistant message
+        state.assistantMessageId ??= `assistant:final:${agUiRun.runId}`
+        state.assistantTextOpen = true
+        events.push({
+          type: 'ag_ui_text_message_start',
+          messageId: state.assistantMessageId,
+          role: 'assistant' as const,
+        })
       }
+      events.push({
+        type: 'ag_ui_text_message_content',
+        messageId: state.assistantMessageId!,
+        delta: event.content,
+      })
+      return events
+    }
+    case 'thinking':
+      return [{ type: 'thinking', content: event.content }]
     default:
-      return null
+      return []
   }
 }
 
 /**
- * Convert a tool execution result to a StreamEvent.
+ * Convert a tool execution result to an AG-UI StreamEvent.
+ *
+ * - Success results emit `ag_ui_tool_call_result`
+ * - Error results emit `ag_ui_tool_call_error`
+ * - Handoff and elicit results pass through unchanged (they are not legacy)
  */
-function toolResultToStreamEvent(result: ToolExecutionResult): StreamEvent {
+function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
   if (!result.ok) {
     return {
-      type: 'tool_error',
-      id: result.error.callId,
-      name: result.error.toolName,
+      type: 'ag_ui_tool_call_error',
+      toolCallId: result.error.callId,
+      toolCallName: result.error.toolName,
       message: result.error.message,
     }
   }
@@ -189,9 +206,9 @@ function toolResultToStreamEvent(result: ToolExecutionResult): StreamEvent {
   const trace: ToolExecutionTrace | undefined = 'trace' in result ? result.trace : undefined
 
   return {
-    type: 'tool_result',
-    id: result.callId,
-    name: result.toolName,
+    type: 'ag_ui_tool_call_result',
+    toolCallId: result.callId,
+    toolCallName: result.toolName,
     content,
     ...(trace ? { trace } : {}),
   }
@@ -377,6 +394,7 @@ function* executeToolCall(
 
 /**
  * Process client outputs from phase 1 handoffs (phase 2 execution).
+ * Returns AG-UI tool call result/error events.
  */
 function* processClientOutput(
   output: IsomorphicClientOutput,
@@ -387,9 +405,9 @@ function* processClientOutput(
 
   if (!tool) {
     return {
-      type: 'tool_error',
-      id: output.callId,
-      name: output.toolName,
+      type: 'ag_ui_tool_call_error',
+      toolCallId: output.callId,
+      toolCallName: output.toolName,
       message: `Tool not found: ${output.toolName}`,
     }
   }
@@ -418,9 +436,9 @@ function* processClientOutput(
           : JSON.stringify(serverResult)
 
       return {
-        type: 'tool_result',
-        id: output.callId,
-        name: output.toolName,
+        type: 'ag_ui_tool_call_result',
+        toolCallId: output.callId,
+        toolCallName: output.toolName,
         content,
         ...(output.trace && { trace: output.trace }),
       }
@@ -433,17 +451,17 @@ function* processClientOutput(
         : JSON.stringify(output.clientOutput)
 
     return {
-      type: 'tool_result',
-      id: output.callId,
-      name: output.toolName,
+      type: 'ag_ui_tool_call_result',
+      toolCallId: output.callId,
+      toolCallName: output.toolName,
       content,
       ...(output.trace && { trace: output.trace }),
     }
   } catch (error) {
     return {
-      type: 'tool_error',
-      id: output.callId,
-      name: output.toolName,
+      type: 'ag_ui_tool_call_error',
+      toolCallId: output.callId,
+      toolCallName: output.toolName,
       message: error instanceof Error ? error.message : String(error),
     }
   }
@@ -720,9 +738,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       : JSON.stringify(nextEvent.result)
                     
                     state.pendingEvents.push({
-                      type: 'tool_result',
-                      id: callId,
-                      name: session.toolName,
+                      type: 'ag_ui_tool_call_result',
+                      toolCallId: callId,
+                      toolCallName: session.toolName,
                       content,
                     })
                     
@@ -739,9 +757,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   case 'error': {
                     // Tool failed
                     state.pendingEvents.push({
-                      type: 'tool_error',
-                      id: callId,
-                      name: session.toolName,
+                      type: 'ag_ui_tool_call_error',
+                      toolCallId: callId,
+                      toolCallName: session.toolName,
                       message: nextEvent.message,
                     })
                     
@@ -758,9 +776,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   case 'cancelled': {
                     // Tool was cancelled
                     state.pendingEvents.push({
-                      type: 'tool_error',
-                      id: callId,
-                      name: session.toolName,
+                      type: 'ag_ui_tool_call_error',
+                      toolCallId: callId,
+                      toolCallName: session.toolName,
                       message: nextEvent.reason ?? 'Tool execution was cancelled',
                     })
                     break
@@ -800,7 +818,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               }
 
               // Also add to conversation messages if it's a result
-              if (event.type === 'tool_result') {
+              if (event.type === 'ag_ui_tool_call_result') {
                 // Find existing tool message or add new one
                 let found = false
                 for (const msg of state.conversationMessages) {
@@ -879,10 +897,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               return yield* this.next()
             }
 
-            // Convert provider event to stream event
-            const streamEvent = providerEventToStreamEvent(result.value)
-            if (streamEvent) {
-              return { done: false, value: streamEvent }
+            // Convert provider event to AG-UI stream events
+            const streamEvents = providerEventToAgUiStreamEvents(result.value, state, agUiRun)
+            if (streamEvents.length > 0) {
+              // Queue all events except the first, return the first immediately
+              for (let i = 1; i < streamEvents.length; i++) {
+                state.pendingEvents.push(streamEvents[i]!)
+              }
+              return { done: false, value: streamEvents[0]! }
             }
 
             // Unknown event type, continue
@@ -898,6 +920,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             }
 
             if (result.toolCalls && result.toolCalls.length > 0) {
+              // Close the assistant text lifecycle if it was opened during streaming
+              if (state.assistantTextOpen) {
+                state.pendingEvents.push({
+                  type: 'ag_ui_text_message_end',
+                  messageId: state.assistantMessageId!,
+                })
+                state.assistantTextOpen = false
+              }
               // Filter to known tools and convert
               const allCalls = convertToolCalls(result.toolCalls)
               state.toolCalls = allCalls.filter((tc) => toolNames.has(tc.function.name))
@@ -908,19 +938,26 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
             // No tool calls - complete
             state.phase = 'complete'
-             state.pendingEvents.push(
-               ...agUiTextLifecycleEvents(
-                 `assistant:final:${agUiRun.runId}`,
-                 'assistant',
-                 result.text,
-               ),
-             )
-            const completeEvent: StreamEvent = {
-              type: 'complete',
-              text: result.text,
-              ...(result.usage && { usage: result.usage }),
+
+            if (state.assistantTextOpen) {
+              // Text was streamed incrementally — just close the lifecycle
+              state.pendingEvents.push({
+                type: 'ag_ui_text_message_end',
+                messageId: state.assistantMessageId!,
+              })
+              state.assistantTextOpen = false
+            } else {
+              // No text was streamed (edge case: empty response or provider gave no text events)
+              // Emit the full text lifecycle as a batch
+              state.pendingEvents.push(
+                ...agUiTextLifecycleEvents(
+                  `assistant:final:${agUiRun.runId}`,
+                  'assistant',
+                  result.text,
+                ),
+              )
             }
-            state.pendingEvents.push(completeEvent)
+
             state.pendingEvents.push({
               type: 'ag_ui_run_finished',
               run: {
@@ -998,9 +1035,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     // Don't push to pendingEvents yet - will be handled in tools_complete
                   } else if (event.type === 'result') {
                     // Tool completed immediately (no elicitation needed)
-                    const content = typeof event.result === 'string'
-                      ? event.result
-                      : JSON.stringify(event.result)
                     results.push({
                       ok: true,
                       kind: 'result',
@@ -1009,10 +1043,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       serverOutput: event.result,
                     })
                     state.pendingEvents.push({
-                      type: 'tool_result',
-                      id: tc.id,
-                      name: toolName,
-                      content,
+                      type: 'ag_ui_tool_call_result',
+                      toolCallId: tc.id,
+                      toolCallName: toolName,
+                      content: typeof event.result === 'string'
+                        ? event.result
+                        : JSON.stringify(event.result),
                     })
                     // Clean up session
                     state.pendingPluginSessions.delete(tc.id)
@@ -1026,9 +1062,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       },
                     })
                     state.pendingEvents.push({
-                      type: 'tool_error',
-                      id: tc.id,
-                      name: toolName,
+                      type: 'ag_ui_tool_call_error',
+                      toolCallId: tc.id,
+                      toolCallName: toolName,
                       message: event.message,
                     })
                     state.pendingPluginSessions.delete(tc.id)
@@ -1055,13 +1091,13 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   })
                   const result = pluginResultToToolResult(pluginResult)
                   results.push(result)
-                  state.pendingEvents.push(pluginResultToStreamEvent(pluginResult))
+                  state.pendingEvents.push(toolResultToAgUiStreamEvent(result))
                 }
               } else {
                 // Execute as regular isomorphic tool
                 const result = yield* executeToolCall(tc, toolRegistry, signal)
                 results.push(result)
-                state.pendingEvents.push(toolResultToStreamEvent(result))
+                state.pendingEvents.push(toolResultToAgUiStreamEvent(result))
               }
             }
 
@@ -1127,54 +1163,34 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             const handoffResults = results.filter((r) => r.ok && r.kind === 'handoff')
 
             if (handoffResults.length > 0) {
-              // Hand off to client - emit conversation state and stop
+              // Hand off to client - emit AG-UI checkpoint and stop
               state.phase = 'handoff_pending'
 
-              const conversationState: StreamEvent = {
-                type: 'conversation_state',
-                conversationState: {
-                  messages: state.conversationMessages,
-                  assistantContent: providerResult.text,
-                  toolCalls: toolCalls.map((tc) => ({
-                    id: tc.id,
-                    name: tc.function.name,
-                    arguments: tc.function.arguments,
-                  })),
-                  serverToolResults: results.map((r) => {
-                    if (r.ok) {
-                      if (r.kind === 'handoff') {
-                        return { id: r.callId, name: r.toolName, content: '', isError: false }
-                      }
-                      if (r.kind === 'plugin_awaiting') {
-                        // Plugin tool waiting for elicitation - no content yet
-                        return { id: r.callId, name: r.toolName, content: '', isError: false }
-                      }
-                      return {
-                        id: r.callId,
-                        name: r.toolName,
-                        content:
-                          typeof r.serverOutput === 'string'
-                            ? r.serverOutput
-                            : JSON.stringify(r.serverOutput),
-                        isError: false,
-                      }
-                    }
-                    return {
-                      id: r.error.callId,
-                      name: r.error.toolName,
-                      content: `Error: ${r.error.message}`,
-                      isError: true,
-                    }
-                  }),
-                  ...(replayToolTraceMap.size > 0
-                    ? {
-                        replay: {
-                          toolTraces: Array.from(replayToolTraceMap.values()),
-                        },
-                      }
-                    : {}),
-                },
-              }
+              const serverToolResults = results.map((r) => {
+                if (r.ok) {
+                  if (r.kind === 'handoff') {
+                    return { id: r.callId, name: r.toolName, content: '', isError: false }
+                  }
+                  if (r.kind === 'plugin_awaiting') {
+                    return { id: r.callId, name: r.toolName, content: '', isError: false }
+                  }
+                  return {
+                    id: r.callId,
+                    name: r.toolName,
+                    content:
+                      typeof r.serverOutput === 'string'
+                        ? r.serverOutput
+                        : JSON.stringify(r.serverOutput),
+                    isError: false,
+                  }
+                }
+                return {
+                  id: r.error.callId,
+                  name: r.error.toolName,
+                  content: `Error: ${r.error.message}`,
+                  isError: true,
+                }
+              })
 
               state.pendingEvents.push({
                 type: 'ag_ui_state_snapshot',
@@ -1205,7 +1221,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   messages: state.conversationMessages,
                   assistantContent: providerResult.text,
                   toolCalls,
-                  serverToolResults: (conversationState.conversationState.serverToolResults),
+                  serverToolResults,
                   ...(replayToolTraceMap.size > 0
                     ? {
                         replay: {
@@ -1216,7 +1232,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 }),
               })
 
-              state.pendingEvents.push(conversationState)
               return { done: false, value: state.pendingEvents.shift()! }
             }
 
@@ -1290,47 +1305,28 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               }
             }
             
-            const conversationState: StreamEvent = {
-              type: 'conversation_state',
-              conversationState: {
-                messages: state.conversationMessages,
-                assistantContent: providerResult?.text ?? '',
-                toolCalls: toolCalls.map((tc) => ({
-                  id: tc.id,
-                  name: tc.function.name,
-                  arguments: tc.function.arguments,
-                })),
-                serverToolResults: results.map((r) => {
-                  if (r.ok) {
-                    if (r.kind === 'handoff' || r.kind === 'plugin_awaiting') {
-                      return { id: r.callId, name: r.toolName, content: '', isError: false }
-                    }
-                    return {
-                      id: r.callId,
-                      name: r.toolName,
-                      content:
-                        typeof r.serverOutput === 'string'
-                          ? r.serverOutput
-                          : JSON.stringify(r.serverOutput),
-                      isError: false,
-                    }
+            const serverToolResults = results.map((r) => {
+                if (r.ok) {
+                  if (r.kind === 'handoff' || r.kind === 'plugin_awaiting') {
+                    return { id: r.callId, name: r.toolName, content: '', isError: false }
                   }
                   return {
-                    id: r.error.callId,
-                    name: r.error.toolName,
-                    content: `Error: ${r.error.message}`,
-                    isError: true,
+                    id: r.callId,
+                    name: r.toolName,
+                    content:
+                      typeof r.serverOutput === 'string'
+                        ? r.serverOutput
+                        : JSON.stringify(r.serverOutput),
+                    isError: false,
                   }
-                }),
-                ...(replayToolTraceMap.size > 0
-                  ? {
-                      replay: {
-                        toolTraces: Array.from(replayToolTraceMap.values()),
-                      },
-                    }
-                  : {}),
-              },
-            }
+                }
+                return {
+                  id: r.error.callId,
+                  name: r.error.toolName,
+                  content: `Error: ${r.error.message}`,
+                  isError: true,
+                }
+              })
 
             state.pendingEvents.push({
               type: 'ag_ui_state_snapshot',
@@ -1370,7 +1366,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 messages: state.conversationMessages,
                 assistantContent: providerResult?.text ?? '',
                 toolCalls,
-                serverToolResults: conversationState.conversationState.serverToolResults,
+                serverToolResults,
                 ...(replayToolTraceMap.size > 0
                   ? {
                       replay: {
@@ -1381,7 +1377,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               }),
             })
             
-            state.pendingEvents.push(conversationState)
             state.phase = 'handoff_pending'
             
             // Return first pending event
@@ -1392,7 +1387,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           }
 
           case 'handoff_pending': {
-            // After emitting conversation_state, we're done
+            // After emitting AG-UI checkpoint, we're done
             state.phase = 'done'
             return { done: true, value: undefined }
           }

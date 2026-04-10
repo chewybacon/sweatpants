@@ -55,8 +55,7 @@ test.describe('Interactor-style Playwright API', () => {
     
     // Using including() for partial match
     await I.Heading(including('Basic')).exists()
-    // Note: + is a special regex char, so use plain string here
-    await I.HTML('markdown + shiki').exists()
+    await I.HTML(including('pipeline: full')).exists()
   })
 
   test('can work with lists using nth()', async ({ page }) => {

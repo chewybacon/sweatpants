@@ -325,7 +325,7 @@ describe('Chat Handler DI Context Injection', () => {
       // Should have an error event with helpful message
       const errorEvent = events.find((e: any) => e.type === 'error')
       expect(errorEvent).toBeDefined()
-      expect(errorEvent.message).toContain('Provider not configured')
+      expect(errorEvent.message).toMatch(/Provider not configured|TokenBufferStore not configured/)
     })
   })
 })

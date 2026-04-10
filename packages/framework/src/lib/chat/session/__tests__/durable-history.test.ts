@@ -10,28 +10,6 @@ function makeFrame(event: StreamEvent, lsn: number = 0): DurableFrame {
   return { lsn, event }
 }
 
-function makeConversationState(messages: Message[], opts?: {
-  assistantContent?: string
-  toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
-  replayTraces?: Array<{ callId: string; toolName: string; trace: unknown }>
-}): StreamEvent {
-  const cs: any = {
-    type: 'conversation_state' as const,
-    conversationState: {
-      messages,
-      assistantContent: opts?.assistantContent ?? '',
-      toolCalls: opts?.toolCalls ?? [],
-      serverToolResults: [],
-    },
-  }
-  if (opts?.replayTraces) {
-    cs.conversationState.replay = {
-      toolTraces: opts.replayTraces,
-    }
-  }
-  return cs
-}
-
 function makeAgUiCheckpoint(messages: Message[], opts?: {
   threadId?: string
   runId?: string
@@ -93,6 +71,32 @@ function makeAgUiStateSnapshot(opts: {
   }
 }
 
+function makeTextContent(messageId: string, delta: string): StreamEvent {
+  return { type: 'ag_ui_text_message_content', messageId, delta }
+}
+
+function makeToolCallStart(toolCallId: string, toolCallName: string): StreamEvent {
+  return { type: 'ag_ui_tool_call_start', toolCallId, toolCallName }
+}
+
+function makeToolCallArgs(toolCallId: string, delta: string): StreamEvent {
+  return { type: 'ag_ui_tool_call_args', toolCallId, delta }
+}
+
+function makeToolCallResult(toolCallId: string, toolCallName: string, content: string): StreamEvent {
+  return { type: 'ag_ui_tool_call_result', toolCallId, toolCallName, content }
+}
+
+function makeRunFinished(opts?: { threadId?: string; runId?: string }): StreamEvent {
+  return {
+    type: 'ag_ui_run_finished',
+    run: {
+      threadId: opts?.threadId ?? 'thread-1',
+      runId: opts?.runId ?? 'run-1',
+    },
+  }
+}
+
 function isHistoryPatch(p: ChatPatch): p is ChatPatch & { type: 'history_message' | 'user_message' } {
   return p.type === 'history_message' || p.type === 'user_message'
 }
@@ -102,28 +106,23 @@ function getHistoryMessages(patches: ChatPatch[]): Message[] {
 }
 
 describe('replayFramesToConversation', () => {
-  it('seeds messages from first conversation_state and deduplicates subsequent events', async () => {
+  it('seeds messages from first checkpoint and deduplicates subsequent events', async () => {
     const callId1 = 'call_pick_card_1'
     const callId2 = 'call_pick_card_2'
 
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // Turn 1: checkpoint seeds initial user message
+      makeFrame(makeAgUiCheckpoint(
         [{ id: 'msg-1', role: 'user', content: 'Draw 3 cards and let me pick one' }],
       ), 1),
-      makeFrame({ type: 'text', content: 'I will draw cards for you.' }, 2),
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId1, name: 'pick_card', arguments: { count: 3 } }],
-      }, 3),
-      makeFrame({
-        type: 'tool_result',
-        id: callId1,
-        name: 'pick_card',
-        content: 'The user selected the 3 of Hearts.',
-      }, 4),
-      makeFrame({ type: 'complete', text: 'You picked the 3 of Hearts!' }, 5),
+      makeFrame(makeTextContent('assistant:final:run-1', 'I will draw cards for you.'), 2),
+      makeFrame(makeToolCallStart(callId1, 'pick_card'), 3),
+      makeFrame(makeToolCallArgs(callId1, JSON.stringify({ count: 3 })), 4),
+      makeFrame(makeToolCallResult(callId1, 'pick_card', 'The user selected the 3 of Hearts.'), 5),
+      makeFrame(makeRunFinished(), 6),
 
-      makeFrame(makeConversationState(
+      // Turn 2: checkpoint with full history + new user message
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'Draw 3 cards and let me pick one' },
           { id: 'msg-2', role: 'assistant', content: '', tool_calls: [{ id: callId1, type: 'function' as const, function: { name: 'pick_card', arguments: { count: 3 } } }] },
@@ -134,20 +133,14 @@ describe('replayFramesToConversation', () => {
         {
           assistantContent: '',
           toolCalls: [],
+          runId: 'run-2',
         },
-      ), 6),
-      makeFrame({ type: 'text', content: 'Drawing more cards...' }, 7),
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId2, name: 'pick_card', arguments: { count: 3 } }],
-      }, 8),
-      makeFrame({
-        type: 'tool_result',
-        id: callId2,
-        name: 'pick_card',
-        content: 'The user selected the Q of Diamonds.',
-      }, 9),
-      makeFrame({ type: 'complete', text: 'You picked the Queen of Diamonds!' }, 10),
+      ), 7),
+      makeFrame(makeTextContent('assistant:final:run-2', 'Drawing more cards...'), 8),
+      makeFrame(makeToolCallStart(callId2, 'pick_card'), 9),
+      makeFrame(makeToolCallArgs(callId2, JSON.stringify({ count: 3 })), 10),
+      makeFrame(makeToolCallResult(callId2, 'pick_card', 'The user selected the Q of Diamonds.'), 11),
+      makeFrame(makeRunFinished({ runId: 'run-2' }), 12),
     ]
 
     const result = await run(function* () {
@@ -170,11 +163,12 @@ describe('replayFramesToConversation', () => {
     expect(userMessages.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('deduplicates tool result events when already seeded from conversation_state', async () => {
+  it('deduplicates tool result events when already seeded from checkpoint', async () => {
     const callId = 'call_pick_card_1'
 
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // Checkpoint already contains the full history including tool result
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'Draw a card' },
           { id: 'msg-2', role: 'assistant', content: '', tool_calls: [{ id: callId, type: 'function' as const, function: { name: 'pick_card', arguments: {} } }] },
@@ -183,12 +177,8 @@ describe('replayFramesToConversation', () => {
         ],
       ), 1),
 
-      makeFrame({
-        type: 'tool_result',
-        id: callId,
-        name: 'pick_card',
-        content: 'Selected 3 of Hearts',
-      }, 2),
+      // Duplicate tool result event after checkpoint
+      makeFrame(makeToolCallResult(callId, 'pick_card', 'Selected 3 of Hearts'), 2),
     ]
 
     const result = await run(function* () {
@@ -203,22 +193,25 @@ describe('replayFramesToConversation', () => {
     expect(toolMessages).toHaveLength(1)
   })
 
-  it('supplements missing user messages from second conversation_state', async () => {
+  it('supplements missing user messages from second checkpoint', async () => {
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // First checkpoint: just the initial user message
+      makeFrame(makeAgUiCheckpoint(
         [{ id: 'msg-1', role: 'user', content: 'First message' }],
       ), 1),
-      makeFrame({ type: 'text', content: 'Okay!' }, 2),
-      makeFrame({ type: 'complete', text: 'Okay!' }, 3),
-      makeFrame(makeConversationState(
+      makeFrame(makeTextContent('assistant:final:run-1', 'Okay!'), 2),
+      makeFrame(makeRunFinished(), 3),
+      // Second checkpoint: adds previous assistant reply + new user message
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'First message' },
           { id: 'msg-2', role: 'assistant', content: 'Okay!' },
           { id: 'msg-3', role: 'user', content: 'Second message' },
         ],
+        { runId: 'run-2' },
       ), 4),
-      makeFrame({ type: 'text', content: 'Got it!' }, 5),
-      makeFrame({ type: 'complete', text: 'Got it!' }, 6),
+      makeFrame(makeTextContent('assistant:final:run-2', 'Got it!'), 5),
+      makeFrame(makeRunFinished({ runId: 'run-2' }), 6),
     ]
 
     const result = await run(function* () {
@@ -234,35 +227,33 @@ describe('replayFramesToConversation', () => {
     expect(userContents).toContain('Second message')
   })
 
-  it('deduplicates complete events using seededAssistantContent from all conversation_state events', async () => {
+  it('deduplicates ag_ui_run_finished events using seededAssistantContent from all checkpoints', async () => {
     const callId = 'call_pick_card'
 
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // First checkpoint: user message only
+      makeFrame(makeAgUiCheckpoint(
         [{ id: 'msg-1', role: 'user', content: 'Draw a card' }],
       ), 1),
 
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId, name: 'pick_card', arguments: {} }],
-      }, 2),
-      makeFrame({
-        type: 'tool_result',
-        id: callId,
-        name: 'pick_card',
-        content: 'Selected 3 of Hearts',
-      }, 3),
+      makeFrame(makeToolCallStart(callId, 'pick_card'), 2),
+      makeFrame(makeToolCallArgs(callId, '{}'), 3),
+      makeFrame(makeToolCallResult(callId, 'pick_card', 'Selected 3 of Hearts'), 4),
 
-      makeFrame(makeConversationState(
+      // Second checkpoint: contains full history including assistant reply
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'Draw a card' },
           { id: 'msg-2', role: 'assistant', content: '', tool_calls: [{ id: callId, type: 'function' as const, function: { name: 'pick_card', arguments: {} } }] },
           { id: 'msg-3', role: 'tool', tool_call_id: callId, content: 'Selected 3 of Hearts' },
           { id: 'msg-4', role: 'assistant', content: 'You picked 3 of Hearts!' },
         ],
-      ), 4),
+        { runId: 'run-2' },
+      ), 5),
 
-      makeFrame({ type: 'complete', text: 'You picked 3 of Hearts!' }, 5),
+      // ag_ui_run_finished with text that matches checkpoint — should be deduplicated
+      makeFrame(makeTextContent('assistant:final:run-2', 'You picked 3 of Hearts!'), 6),
+      makeFrame(makeRunFinished({ runId: 'run-2' }), 7),
     ]
 
     const result = await run(function* () {
@@ -283,23 +274,18 @@ describe('replayFramesToConversation', () => {
     const callId2 = 'call_pick_card_2'
 
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // Turn 1
+      makeFrame(makeAgUiCheckpoint(
         [{ id: 'msg-1', role: 'user', content: 'Draw a card' }],
       ), 1),
 
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId1, name: 'pick_card', arguments: { count: 3 } }],
-      }, 2),
-      makeFrame({
-        type: 'tool_result',
-        id: callId1,
-        name: 'pick_card',
-        content: 'Selected 3 of Hearts',
-      }, 3),
-      makeFrame({ type: 'complete', text: 'You picked 3 of Hearts!' }, 4),
+      makeFrame(makeToolCallStart(callId1, 'pick_card'), 2),
+      makeFrame(makeToolCallArgs(callId1, JSON.stringify({ count: 3 })), 3),
+      makeFrame(makeToolCallResult(callId1, 'pick_card', 'Selected 3 of Hearts'), 4),
+      makeFrame(makeRunFinished(), 5),
 
-      makeFrame(makeConversationState(
+      // Turn 2
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'Draw a card' },
           { id: 'msg-2', role: 'assistant', content: '', tool_calls: [{ id: callId1, type: 'function' as const, function: { name: 'pick_card', arguments: { count: 3 } } }] },
@@ -307,19 +293,13 @@ describe('replayFramesToConversation', () => {
           { id: 'msg-4', role: 'assistant', content: 'You picked 3 of Hearts!' },
           { id: 'msg-5', role: 'user', content: 'Draw another card' },
         ],
-      ), 5),
+        { runId: 'run-2' },
+      ), 6),
 
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId2, name: 'pick_card', arguments: { count: 3 } }],
-      }, 6),
-      makeFrame({
-        type: 'tool_result',
-        id: callId2,
-        name: 'pick_card',
-        content: 'Selected Q of Diamonds',
-      }, 7),
-      makeFrame({ type: 'complete', text: 'You picked Q of Diamonds!' }, 8),
+      makeFrame(makeToolCallStart(callId2, 'pick_card'), 7),
+      makeFrame(makeToolCallArgs(callId2, JSON.stringify({ count: 3 })), 8),
+      makeFrame(makeToolCallResult(callId2, 'pick_card', 'Selected Q of Diamonds'), 9),
+      makeFrame(makeRunFinished({ runId: 'run-2' }), 10),
     ]
 
     const result = await run(function* () {
@@ -336,36 +316,35 @@ describe('replayFramesToConversation', () => {
     expect(uniqueToolCallIds).toHaveLength(2)
   })
 
-  it('deduplicates complete events against local history when they come before second conversation_state', async () => {
+  it('deduplicates ag_ui_run_finished events against local history when they come before second checkpoint', async () => {
     const callId1 = 'call_pick_card_1'
 
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // First checkpoint
+      makeFrame(makeAgUiCheckpoint(
         [{ id: 'msg-1', role: 'user', content: 'Draw a card' }],
       ), 1),
 
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId1, name: 'pick_card', arguments: {} }],
-      }, 2),
-      makeFrame({
-        type: 'tool_result',
-        id: callId1,
-        name: 'pick_card',
-        content: 'Picked 3H',
-      }, 3),
-      makeFrame({ type: 'complete', text: '' }, 4),
+      makeFrame(makeToolCallStart(callId1, 'pick_card'), 2),
+      makeFrame(makeToolCallArgs(callId1, '{}'), 3),
+      makeFrame(makeToolCallResult(callId1, 'pick_card', 'Picked 3H'), 4),
+      // Empty text completion (tool-only turn)
+      makeFrame(makeRunFinished(), 5),
 
-      makeFrame(makeConversationState(
+      // Second checkpoint with assistant message
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'Draw a card' },
           { id: 'msg-2', role: 'assistant', content: '', tool_calls: [{ id: callId1, type: 'function' as const, function: { name: 'pick_card', arguments: {} } }] },
           { id: 'msg-3', role: 'tool', tool_call_id: callId1, content: 'Picked 3H' },
           { id: 'msg-4', role: 'assistant', content: 'You picked 3H!' },
         ],
-      ), 5),
+        { runId: 'run-2' },
+      ), 6),
 
-      makeFrame({ type: 'complete', text: 'You picked 3H!' }, 6),
+      // Text + run_finished that matches checkpoint
+      makeFrame(makeTextContent('assistant:final:run-2', 'You picked 3H!'), 7),
+      makeFrame(makeRunFinished({ runId: 'run-2' }), 8),
     ]
 
     const result = await run(function* () {
@@ -381,9 +360,9 @@ describe('replayFramesToConversation', () => {
     expect(youPickedCount).toBe(1)
   })
 
-  it('does not invent message ids during replay for conversation_state messages', async () => {
+  it('does not invent message ids during replay for checkpoint messages', async () => {
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState([
+      makeFrame(makeAgUiCheckpoint([
         { id: 'user:call_1', role: 'user', content: 'Draw a card' },
         {
           id: 'assistant:tools:call_1',
@@ -484,9 +463,9 @@ describe('replayFramesToConversation', () => {
     expect(result.patches.some((patch) => patch.type === 'elicit')).toBe(true)
   })
 
-  it('requires ids on conversation_state messages for new transcripts', async () => {
+  it('requires ids on checkpoint messages for new transcripts', async () => {
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState([
+      makeFrame(makeAgUiCheckpoint([
         { role: 'user', content: 'Draw a card' },
         {
           role: 'assistant',
@@ -501,28 +480,23 @@ describe('replayFramesToConversation', () => {
     })).rejects.toThrow(/message id/i)
   })
 
-  it('updates seededToolCallIds from second conversation_state to prevent duplicate complete events', async () => {
+  it('updates seededToolCallIds from second checkpoint to prevent duplicate events', async () => {
     const callId1 = 'call_pick_card_1'
     const callId2 = 'call_pick_card_2'
 
     const frames: DurableFrame[] = [
-      makeFrame(makeConversationState(
+      // First checkpoint
+      makeFrame(makeAgUiCheckpoint(
         [{ id: 'msg-1', role: 'user', content: 'Draw a card' }],
       ), 1),
 
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId1, name: 'pick_card', arguments: {} }],
-      }, 2),
-      makeFrame({
-        type: 'tool_result',
-        id: callId1,
-        name: 'pick_card',
-        content: 'Picked 3H',
-      }, 3),
-      makeFrame({ type: 'complete', text: '' }, 4),
+      makeFrame(makeToolCallStart(callId1, 'pick_card'), 2),
+      makeFrame(makeToolCallArgs(callId1, '{}'), 3),
+      makeFrame(makeToolCallResult(callId1, 'pick_card', 'Picked 3H'), 4),
+      makeFrame(makeRunFinished(), 5),
 
-      makeFrame(makeConversationState(
+      // Second checkpoint with both turns and pending tool call
+      makeFrame(makeAgUiCheckpoint(
         [
           { id: 'msg-1', role: 'user', content: 'Draw a card' },
           { id: 'msg-2', role: 'assistant', content: '', tool_calls: [{ id: callId1, type: 'function' as const, function: { name: 'pick_card', arguments: {} } }] },
@@ -530,20 +504,13 @@ describe('replayFramesToConversation', () => {
           { id: 'msg-4', role: 'assistant', content: 'You picked 3H' },
           { id: 'msg-5', role: 'user', content: 'Another' },
         ],
-        { assistantContent: '', toolCalls: [{ id: callId2, name: 'pick_card', arguments: {} }] },
-      ), 5),
+        { assistantContent: '', toolCalls: [{ id: callId2, name: 'pick_card', arguments: {} }], runId: 'run-2' },
+      ), 6),
 
-      makeFrame({
-        type: 'tool_calls',
-        calls: [{ id: callId2, name: 'pick_card', arguments: {} }],
-      }, 6),
-      makeFrame({
-        type: 'tool_result',
-        id: callId2,
-        name: 'pick_card',
-        content: 'Picked QD',
-      }, 7),
-      makeFrame({ type: 'complete', text: '' }, 8),
+      makeFrame(makeToolCallStart(callId2, 'pick_card'), 7),
+      makeFrame(makeToolCallArgs(callId2, '{}'), 8),
+      makeFrame(makeToolCallResult(callId2, 'pick_card', 'Picked QD'), 9),
+      makeFrame(makeRunFinished({ runId: 'run-2' }), 10),
     ]
 
     const result = await run(function* () {

@@ -1,9 +1,9 @@
 ---
-status: in_progress
+status: done
 tags: [yo-chat, ui, usechat]
 parent_id: prototype-threaded-durable-chat
 created_at: 2026-04-04T11:15:00.098887Z
-updated_at: 2026-04-04T12:08:13.757337Z
+updated_at: 2026-04-10T09:43:25.880462Z
 ---
 
 # yo-chat: rebuild threaded page on useChat

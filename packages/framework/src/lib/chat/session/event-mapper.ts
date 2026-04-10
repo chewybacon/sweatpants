@@ -339,9 +339,10 @@ export function* mapStreamEventsToPatches(
         })
         break
 
-      case 'complete':
+      case 'ag_ui_run_finished':
+        // Completion signal — final text already accumulated from ag_ui_text_message_content events
         resetAssistantSource()
-        setAssistantContent(event.text)
+        setAssistantContent(assistantText)
         break
 
       case 'isomorphic_handoff':

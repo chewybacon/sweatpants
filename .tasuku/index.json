@@ -56,13 +56,13 @@
       "updated_at": "2026-04-10T02:15:16.990563Z"
     },
     "ag-ui-spike-checkpoint-m": {
-      "status": "in_progress",
+      "status": "done",
       "priority": 1,
       "parent_id": "framework-deterministic-message-tdd",
       "description": "AG-UI spike: checkpoint model",
       "file": "tasks/ag-ui-spike-checkpoint-m.md",
       "created_at": "2026-04-10T01:38:22.234925Z",
-      "updated_at": "2026-04-10T01:38:29.756093Z"
+      "updated_at": "2026-04-10T09:43:25.991926Z"
     },
     "ag-ui-spike-interactive-": {
       "status": "done",
@@ -670,19 +670,16 @@
       "updated_at": "2026-04-05T16:57:09.283684Z"
     },
     "retire-custom-threaded-chat-spike-runtime": {
-      "status": "blocked",
+      "status": "ready",
       "tags": [
         "cleanup",
         "yo-chat"
-      ],
-      "blocked_by": [
-        "yo-chat-rebuild-threaded-page-on-usechat"
       ],
       "parent_id": "prototype-threaded-durable-chat",
       "description": "Retire custom threaded chat spike runtime",
       "file": "tasks/retire-custom-threaded-chat-spike-runtime.md",
       "created_at": "2026-04-04T11:15:00.14195Z",
-      "updated_at": "2026-04-04T11:15:17.553476Z"
+      "updated_at": "2026-04-10T09:43:25.898915Z"
     },
     "shared-node-fetch-adapter": {
       "status": "done",
@@ -872,13 +869,13 @@
       "updated_at": "2026-04-03T23:17:25.802687Z"
     },
     "write-ag-ui-vertical-slic": {
-      "status": "in_progress",
+      "status": "done",
       "priority": 1,
       "parent_id": "framework-deterministic-message-tdd",
       "description": "write AG-UI vertical slice planning doc",
       "file": "tasks/write-ag-ui-vertical-slic.md",
       "created_at": "2026-04-10T01:31:55.715535Z",
-      "updated_at": "2026-04-10T01:31:55.759276Z"
+      "updated_at": "2026-04-10T09:43:26.040525Z"
     },
     "yo-chat-build-thread-metadata-api": {
       "status": "done",
@@ -894,7 +891,7 @@
       "updated_at": "2026-04-04T12:01:40.217005Z"
     },
     "yo-chat-e2e-threaded-chat-on-usechat": {
-      "status": "in_progress",
+      "status": "done",
       "tags": [
         "yo-chat",
         "e2e",
@@ -904,10 +901,10 @@
       "description": "yo-chat: e2e threaded chat on useChat",
       "file": "tasks/yo-chat-e2e-threaded-chat-on-usechat.md",
       "created_at": "2026-04-04T11:15:00.238906Z",
-      "updated_at": "2026-04-05T13:58:14.384396Z"
+      "updated_at": "2026-04-10T09:43:25.944287Z"
     },
     "yo-chat-rebuild-threaded-page-on-usechat": {
-      "status": "in_progress",
+      "status": "done",
       "tags": [
         "yo-chat",
         "ui",
@@ -917,11 +914,11 @@
       "description": "yo-chat: rebuild threaded page on useChat",
       "file": "tasks/yo-chat-rebuild-threaded-page-on-usechat.md",
       "created_at": "2026-04-04T11:15:00.098887Z",
-      "updated_at": "2026-04-04T12:08:13.757337Z"
+      "updated_at": "2026-04-10T09:43:25.880462Z"
     }
   },
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-04-10T08:33:25.525378Z"
+  "updated_at": "2026-04-10T09:43:26.040812Z"
 }

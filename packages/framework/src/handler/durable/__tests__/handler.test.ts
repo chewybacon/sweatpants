@@ -26,6 +26,7 @@ import type { RetentionPolicy } from '@sweatpants/durable-streams'
 import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
 import type { InitializerHook, IsomorphicTool } from '../types.ts'
+import type { Message } from '../../../lib/chat/types.ts'
 import {
   createMockProvider,
   createMockTool,
@@ -74,7 +75,7 @@ function createTestHooks(
  */
 async function makeRequest(
   handler: (req: Request) => Promise<Response>,
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+  messages: Message[],
   options: {
     sessionId?: string
     conversationId?: string
@@ -118,15 +119,17 @@ describe('Durable Chat Handler', () => {
       const response = yield* call(() => handler(request))
       const replay = yield* call(() => consumeDurableResponse(response))
 
-      const conversationStates = getEventsByType(replay, 'conversation_state') as Array<{
-        type: 'conversation_state'
-        conversationState: {
-          messages: Array<{ role: string; content: string }>
+      const checkpoints = getEventsByType(replay, 'ag_ui_checkpoint') as Array<{
+        type: 'ag_ui_checkpoint'
+        checkpoint: {
+          messages: {
+            messages: Array<{ role: string; content: string }>
+          }
         }
       }>
 
-      expect(conversationStates.length).toBeGreaterThan(0)
-      expect(conversationStates[0]?.conversationState.messages).toMatchObject([
+      expect(checkpoints.length).toBeGreaterThan(0)
+      expect(checkpoints[0]?.checkpoint.messages.messages).toMatchObject([
         { role: 'user', content: 'Hi durable handler' },
       ])
       expect(replay.text).toContain('Hello from durable world')
@@ -158,8 +161,8 @@ describe('Durable Chat Handler', () => {
       expect(replayResponse.status).toBe(200)
       expect(replayResponse.headers.get('X-Session-Id')).toBe(first.sessionId)
 
-      const replayBody = yield* call(() => replayResponse.text())
-      expect(replayBody).toContain('First response')
+      const replayResult = yield* call(() => consumeDurableResponse(replayResponse))
+      expect(replayResult.text).toContain('First response')
 
       const { request: headRequest } = createChatRequest([], {
         method: 'HEAD',
@@ -191,9 +194,9 @@ describe('Durable Chat Handler', () => {
       // Should have text
       expect(result.text).toBe('Hello, world!')
 
-      // Should have complete event
+      // Should have complete event (ag_ui_run_finished)
       expect(result.complete).not.toBeNull()
-      expect(result.complete?.type).toBe('complete')
+      expect(result.complete?.type).toBe('ag_ui_run_finished')
 
       // All events should have LSN
       expect(result.events.length).toBeGreaterThan(0)
@@ -356,22 +359,24 @@ describe('Durable Chat Handler', () => {
       const replayResponse = yield* call(() => handler(replayRequest))
       const replay = yield* call(() => consumeDurableResponse(replayResponse))
 
-      const conversationStates = getEventsByType(replay, 'conversation_state') as Array<{
-        type: 'conversation_state'
-        conversationState: {
-          replay?: {
-            toolTraces: Array<{ callId: string }>
+      const checkpoints = getEventsByType(replay, 'ag_ui_checkpoint') as Array<{
+        type: 'ag_ui_checkpoint'
+        checkpoint: {
+          state: {
+            replay?: {
+              toolTraces: Array<{ callId: string }>
+            }
           }
         }
       }>
 
-      expect(conversationStates.length).toBeGreaterThan(0)
-      expect(conversationStates[0]?.conversationState.replay?.toolTraces.map((trace) => trace.callId)).toEqual(
+      expect(checkpoints.length).toBeGreaterThan(0)
+      expect(checkpoints[0]?.checkpoint.state.replay?.toolTraces.map((trace) => trace.callId)).toEqual(
         expect.arrayContaining(['call-1']),
       )
 
       expect(
-        conversationStates[0]?.conversationState.replay?.toolTraces.map((trace) => trace.callId),
+        checkpoints[0]?.checkpoint.state.replay?.toolTraces.map((trace) => trace.callId),
       ).toEqual(expect.arrayContaining(['call-1', 'call-2']))
     })
 
@@ -445,20 +450,22 @@ describe('Durable Chat Handler', () => {
       const replayResponse = yield* call(() => handler(replayRequest))
       const replay = yield* call(() => consumeDurableResponse(replayResponse))
 
-      const conversationStates = getEventsByType(replay, 'conversation_state') as Array<{
-        type: 'conversation_state'
-        conversationState: {
-          messages: Array<{
-            role: string
-            content: string
-            tool_calls?: Array<{ id: string }>
-            tool_call_id?: string
-          }>
+      const checkpoints = getEventsByType(replay, 'ag_ui_checkpoint') as Array<{
+        type: 'ag_ui_checkpoint'
+        checkpoint: {
+          messages: {
+            messages: Array<{
+              role: string
+              content: string
+              tool_calls?: Array<{ id: string }>
+              tool_call_id?: string
+            }>
+          }
         }
       }>
 
-      expect(conversationStates.length).toBeGreaterThan(0)
-      const messages = conversationStates[0]?.conversationState.messages ?? []
+      expect(checkpoints.length).toBeGreaterThan(0)
+      const messages = checkpoints[0]?.checkpoint.messages.messages ?? []
 
       expect(
         messages.filter((message) => message.role === 'assistant' && message.tool_calls?.some((toolCall) => toolCall.id === 'call-1')),
@@ -617,27 +624,29 @@ describe('Durable Chat Handler', () => {
       const response = yield* call(() => handler(request))
       const result = yield* call(() => consumeDurableResponse(response))
 
-      const conversationStates = getEventsByType(result, 'conversation_state') as Array<{
-        type: 'conversation_state'
-        conversationState: {
-          toolCalls?: Array<{ id: string; name: string }>
-          replay?: {
-            toolTraces: Array<{ callId: string; toolName: string }>
+      const checkpoints = getEventsByType(result, 'ag_ui_checkpoint') as Array<{
+        type: 'ag_ui_checkpoint'
+        checkpoint: {
+          state: {
+            toolCalls?: Array<{ id: string; name: string }>
+            replay?: {
+              toolTraces: Array<{ callId: string; toolName: string }>
+            }
           }
         }
       }>
 
-      const handoffState = conversationStates.find(
-        (cs) => cs.conversationState.toolCalls && cs.conversationState.toolCalls.length > 0,
+      const handoffState = checkpoints.find(
+        (cp) => cp.checkpoint.state.toolCalls && cp.checkpoint.state.toolCalls.length > 0,
       )
 
       expect(handoffState).toBeDefined()
       expect(
-        handoffState!.conversationState.replay?.toolTraces.map((t) => t.callId),
+        handoffState!.checkpoint.state.replay?.toolTraces.map((t) => t.callId),
       ).toContain('call-prior')
     })
 
-    it('should emit conversation_state messages with ids for handoff transcripts', function* () {
+    it('should emit ag_ui_checkpoint messages with ids for handoff transcripts', function* () {
       const handoffTool: IsomorphicTool = {
         name: 'mock_handoff',
         description: 'A mock isomorphic tool with handoff',
@@ -681,18 +690,20 @@ describe('Durable Chat Handler', () => {
       const response = yield* call(() => handler(request))
       const result = yield* call(() => consumeDurableResponse(response))
 
-      const conversationStates = getEventsByType(result, 'conversation_state') as Array<{
-        type: 'conversation_state'
-        conversationState: {
-          messages: Array<{ id?: string; role: string }>
+      const checkpoints = getEventsByType(result, 'ag_ui_checkpoint') as Array<{
+        type: 'ag_ui_checkpoint'
+        checkpoint: {
+          messages: {
+            messages: Array<{ id?: string; role: string }>
+          }
         }
       }>
 
-      expect(conversationStates.length).toBeGreaterThan(0)
+      expect(checkpoints.length).toBeGreaterThan(0)
 
-      for (const event of conversationStates) {
-        for (const message of event.conversationState.messages) {
-          expect(message.id, `expected id for ${message.role} message in conversation_state`).toBeTruthy()
+      for (const event of checkpoints) {
+        for (const message of event.checkpoint.messages.messages) {
+          expect(message.id, `expected id for ${message.role} message in ag_ui_checkpoint`).toBeTruthy()
         }
       }
     })
@@ -805,7 +816,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -836,7 +847,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -887,7 +898,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -955,7 +966,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -990,7 +1001,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -1044,7 +1055,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -1077,7 +1088,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -1114,7 +1125,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const { request: initialRequest } = createChatRequest([
-        { role: 'user', content: 'Hi' },
+        { id: 'user:hi', role: 'user', content: 'Hi' },
       ])
       const initialResponse = yield* call(() => handler(initialRequest))
       const sessionId = initialResponse.headers.get('X-Session-Id')
@@ -1259,7 +1270,7 @@ describe('Durable Chat Handler', () => {
       }
     })
 
-    it('should emit ag_ui_checkpoint alongside conversation_state for durable thread hydration', function* () {
+    it('should emit ag_ui_checkpoint for durable thread hydration', function* () {
       const provider = createMockProvider({ responses: 'Test' })
       const handler = createDurableChatHandler({
         initializerHooks: createTestHooks(provider),
@@ -1273,7 +1284,6 @@ describe('Durable Chat Handler', () => {
       const events = text.trim().split('\n').map((line) => JSON.parse(line).event)
 
       expect(events.some((event) => event.type === 'ag_ui_checkpoint')).toBe(true)
-      expect(events.some((event) => event.type === 'conversation_state')).toBe(true)
     })
 
     it('should emit AG-UI run, message, and state events for threaded requests', function* () {

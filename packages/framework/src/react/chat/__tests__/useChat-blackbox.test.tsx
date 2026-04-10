@@ -21,6 +21,20 @@ function ndjsonResponse(events: unknown[]): Response {
   })
 }
 
+/** Minimal AG-UI run identifiers shared across events in a single response. */
+const run = { threadId: 'test-thread', runId: 'test-run' }
+
+/** Wrap a simple text response in full AG-UI event sequence. */
+function agUiTextEvents(text: string, messageId = 'assistant:final:test-run') {
+  return [
+    { type: 'ag_ui_run_started', run, input: { messages: [] } },
+    { type: 'ag_ui_text_message_start', messageId, role: 'assistant' },
+    { type: 'ag_ui_text_message_content', messageId, delta: text },
+    { type: 'ag_ui_text_message_end', messageId },
+    { type: 'ag_ui_run_finished', run },
+  ]
+}
+
 describe('useChat (black-box)', () => {
   let originalFetch: typeof globalThis.fetch
 
@@ -35,44 +49,49 @@ describe('useChat (black-box)', () => {
   it('hydrates historical tool call messages from durable history', async () => {
     const historyResponse = ndjsonResponse([
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [
-            {
-              id: 'user-1',
-              role: 'user',
-              content: 'Draw me a card',
-            },
-            {
-              id: 'assistant-1',
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  id: 'call-1',
-                  type: 'function',
-                  function: {
-                    name: 'pick_card',
-                    arguments: { count: 3 },
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run,
+          messages: {
+            messages: [
+              {
+                id: 'user-1',
+                role: 'user',
+                content: 'Draw me a card',
+              },
+              {
+                id: 'assistant-1',
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'pick_card',
+                      arguments: { count: 3 },
+                    },
                   },
-                },
-              ],
-            },
-            {
-              id: 'tool-1',
-              role: 'tool',
-              tool_call_id: 'call-1',
-              content: 'The user selected the Ace of Spades.',
-            },
-            {
-              id: 'assistant-2',
-              role: 'assistant',
-              content: 'You picked **Ace of Spades**.',
-            },
-          ],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+                ],
+              },
+              {
+                id: 'tool-1',
+                role: 'tool',
+                tool_call_id: 'call-1',
+                content: 'The user selected the Ace of Spades.',
+              },
+              {
+                id: 'assistant-2',
+                role: 'assistant',
+                content: 'You picked **Ace of Spades**.',
+              },
+            ],
+          },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
       {
@@ -94,7 +113,7 @@ describe('useChat (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: [] },
           persona: null,
         },
-        { type: 'complete', text: 'noop' },
+        ...agUiTextEvents('noop'),
       ])
     }
 
@@ -119,18 +138,23 @@ describe('useChat (black-box)', () => {
   it('hydrates messages after remount with the same conversationId', async () => {
     const historyResponse = ndjsonResponse([
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [
-            {
-              id: 'user-1',
-              role: 'user',
-              content: 'hello threaded world',
-            },
-          ],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run,
+          messages: {
+            messages: [
+              {
+                id: 'user-1',
+                role: 'user',
+                content: 'hello threaded world',
+              },
+            ],
+          },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
       {
@@ -138,10 +162,12 @@ describe('useChat (black-box)', () => {
         capabilities: { thinking: false, streaming: true, tools: [] },
         persona: null,
       },
-      { type: 'text', content: 'Hello' },
-      { type: 'text', content: ' threaded' },
-      { type: 'text', content: ' world' },
-      { type: 'complete', text: 'Hello threaded world' },
+      { type: 'ag_ui_text_message_start', messageId: 'assistant:final:test-run', role: 'assistant' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:test-run', delta: 'Hello' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:test-run', delta: ' threaded' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:test-run', delta: ' world' },
+      { type: 'ag_ui_text_message_end', messageId: 'assistant:final:test-run' },
+      { type: 'ag_ui_run_finished', run },
     ])
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -156,7 +182,7 @@ describe('useChat (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: [] },
           persona: null,
         },
-        { type: 'complete', text: 'noop' },
+        ...agUiTextEvents('noop'),
       ])
     }
 
@@ -194,18 +220,23 @@ describe('useChat (black-box)', () => {
   it('hydrates messages with explicit transforms after remount with the same conversationId', async () => {
     const historyResponse = ndjsonResponse([
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [
-            {
-              id: 'user-1',
-              role: 'user',
-              content: 'hello threaded world',
-            },
-          ],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run,
+          messages: {
+            messages: [
+              {
+                id: 'user-1',
+                role: 'user',
+                content: 'hello threaded world',
+              },
+            ],
+          },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
       {
@@ -213,8 +244,10 @@ describe('useChat (black-box)', () => {
         capabilities: { thinking: false, streaming: true, tools: [] },
         persona: null,
       },
-      { type: 'text', content: 'Hello threaded world' },
-      { type: 'complete', text: 'Hello threaded world' },
+      { type: 'ag_ui_text_message_start', messageId: 'assistant:final:test-run', role: 'assistant' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:test-run', delta: 'Hello threaded world' },
+      { type: 'ag_ui_text_message_end', messageId: 'assistant:final:test-run' },
+      { type: 'ag_ui_run_finished', run },
     ])
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -229,7 +262,7 @@ describe('useChat (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: [] },
           persona: null,
         },
-        { type: 'complete', text: 'noop' },
+        ...agUiTextEvents('noop'),
       ])
     }
 
@@ -261,18 +294,23 @@ describe('useChat (black-box)', () => {
   it('hydrates session state after remount with the same conversationId', async () => {
     const historyResponse = ndjsonResponse([
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [
-            {
-              id: 'user-1',
-              role: 'user',
-              content: 'hello threaded world',
-            },
-          ],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run,
+          messages: {
+            messages: [
+              {
+                id: 'user-1',
+                role: 'user',
+                content: 'hello threaded world',
+              },
+            ],
+          },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
       {
@@ -280,8 +318,10 @@ describe('useChat (black-box)', () => {
         capabilities: { thinking: false, streaming: true, tools: [] },
         persona: null,
       },
-      { type: 'text', content: 'Hello' },
-      { type: 'complete', text: 'Hello' },
+      { type: 'ag_ui_text_message_start', messageId: 'assistant:final:test-run', role: 'assistant' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:test-run', delta: 'Hello' },
+      { type: 'ag_ui_text_message_end', messageId: 'assistant:final:test-run' },
+      { type: 'ag_ui_run_finished', run },
     ])
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -296,7 +336,7 @@ describe('useChat (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: [] },
           persona: null,
         },
-        { type: 'complete', text: 'noop' },
+        ...agUiTextEvents('noop'),
       ])
     }
 

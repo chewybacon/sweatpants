@@ -293,7 +293,7 @@ export function pluginResultToToolResult(result: PluginToolResult): ToolExecutio
 }
 
 /**
- * Convert a plugin tool result to a StreamEvent.
+ * Convert a plugin tool result to an AG-UI StreamEvent.
  */
 export function pluginResultToStreamEvent(result: PluginToolResult): StreamEvent {
   if (result.ok) {
@@ -303,17 +303,17 @@ export function pluginResultToStreamEvent(result: PluginToolResult): StreamEvent
         : JSON.stringify(result.result)
 
     return {
-      type: 'tool_result',
-      id: result.callId,
-      name: result.toolName,
+      type: 'ag_ui_tool_call_result',
+      toolCallId: result.callId,
+      toolCallName: result.toolName,
       content,
     }
   }
 
   return {
-    type: 'tool_error',
-    id: result.callId,
-    name: result.toolName,
+    type: 'ag_ui_tool_call_error',
+    toolCallId: result.callId,
+    toolCallName: result.toolName,
     message: result.error,
   }
 }
