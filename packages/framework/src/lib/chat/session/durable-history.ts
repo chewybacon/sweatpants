@@ -8,7 +8,7 @@ import type { HydratedToolExecutionTrace, ToolExecutionTrace } from '../isomorph
 import type { AnyIsomorphicTool } from '../isomorphic-tools/types.ts'
 import type { Message } from '../types.ts'
 import type { ConversationReplayState, StreamEvent } from './streaming.ts'
-import type { PatchTransform } from './options.ts'
+import type { PatchTransform, StreamEventEntry } from './options.ts'
 import { renderReplayMessageParts } from './replay-render.ts'
 import type { MessagePart, ToolCallPart, ChatEmission } from '../types/chat-message.ts'
 import {
@@ -30,6 +30,7 @@ interface ReadDurableHistoryOptions {
   conversationId: string
   tools?: AnyIsomorphicTool[]
   transforms?: PatchTransform[]
+  onStreamEvent?: (entry: StreamEventEntry) => void
 }
 
 export interface DurableHistoryReplay {
@@ -196,6 +197,7 @@ export function* replayFramesToConversation(
   frames: DurableFrame[],
   tools?: AnyIsomorphicTool[],
   transforms?: PatchTransform[],
+  onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<DurableHistoryReplay> {
   const patches: ChatPatch[] = []
   const history: Message[] = []
@@ -210,6 +212,13 @@ export function* replayFramesToConversation(
 
   for (const frame of frames) {
     const event = frame.event
+
+    onStreamEvent?.({
+      lsn: frame.lsn,
+      event,
+      phase: 'replay',
+      receivedAt: Date.now(),
+    })
 
     switch (event.type) {
       case 'session_info': {
@@ -677,7 +686,7 @@ export function* replayFramesToConversation(
 export function* readDurableHistory(
   options: ReadDurableHistoryOptions,
 ): Operation<DurableHistoryReplay> {
-  const { baseUrl, conversationId, tools, transforms } = options
+  const { baseUrl, conversationId, tools, transforms, onStreamEvent } = options
   const url = new URL(baseUrl, 'http://localhost')
   url.searchParams.set('conversationId', conversationId)
 
@@ -710,5 +719,5 @@ export function* readDurableHistory(
     .filter((line) => line.trim().length > 0)
     .map((line) => JSON.parse(line) as DurableFrame)
 
-  return yield* replayFramesToConversation(frames, tools, transforms)
+  return yield* replayFramesToConversation(frames, tools, transforms, onStreamEvent)
 }

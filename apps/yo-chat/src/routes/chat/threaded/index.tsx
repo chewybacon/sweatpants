@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { MessageCirclePlus, PanelLeftOpen, RefreshCcw } from 'lucide-react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from 'lucide-react'
+import { useChat, type ChatMessage, type ChatToolCall, type StreamEventEntry } from '@sweatpants/framework/react/chat'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { tools } from '@/__generated__/tool-registry.gen'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import type { ThreadSummary } from '@/lib/threaded-chat-types'
+import { StreamInspector } from '@/components/StreamInspector'
 
 export const Route = createFileRoute('/chat/threaded/')({
   component: ThreadedChatDemo,
@@ -169,9 +170,17 @@ function MessageBubble({
 function ThreadPanel({
   threadId,
   onMetadata,
+  onStreamEvent,
+  onStreamingChange,
+  onInspectorToggle,
+  inspectorOpen,
 }: {
   threadId: string
   onMetadata: (threadId: string, summary: Pick<ThreadSummary, 'title' | 'lastMessagePreview' | 'messageCount'>) => void
+  onStreamEvent: (entry: StreamEventEntry) => void
+  onStreamingChange: (streaming: boolean) => void
+  onInspectorToggle: () => void
+  inspectorOpen: boolean
 }) {
   const [draft, setDraft] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -188,11 +197,16 @@ function ThreadPanel({
     pipeline: 'full',
     tools: [tools.pickCard],
     conversationId: threadId,
+    onStreamEvent,
   })
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    onStreamingChange(isStreaming)
+  }, [isStreaming, onStreamingChange])
 
   useEffect(() => {
     onMetadata(threadId, summarizeThread(threadId, messages))
@@ -217,8 +231,22 @@ function ThreadPanel({
             <div className="font-serif text-xl text-slate-100">{pipelineReady ? 'Thread ready' : 'Loading thread'}</div>
           </div>
         </div>
-        <div className="rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs text-sky-200">
-          {threadId}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onInspectorToggle}
+            className={cn(
+              'rounded-lg',
+              inspectorOpen && 'bg-sky-500/15 text-sky-300',
+            )}
+            title="Toggle stream inspector"
+          >
+            <Terminal className="size-4" />
+          </Button>
+          <div className="rounded-full border border-sky-400/30 bg-sky-400/10 px-3 py-1 text-xs text-sky-200">
+            {threadId}
+          </div>
         </div>
       </div>
 
@@ -281,6 +309,23 @@ function ThreadedChatDemo() {
   const [error, setError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [sessionMountKey, setSessionMountKey] = useState(0)
+
+  // Stream inspector state — lifted here so StreamInspector renders as a sibling of <main>
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [inspectorEntries, setInspectorEntries] = useState<StreamEventEntry[]>([])
+  const [inspectorIsStreaming, setInspectorIsStreaming] = useState(false)
+  const handleStreamEvent = useCallback((entry: StreamEventEntry) => {
+    setInspectorEntries((prev) => [...prev, entry])
+  }, [])
+  const handleClearInspector = useCallback(() => {
+    setInspectorEntries([])
+  }, [])
+  const handleInspectorToggle = useCallback(() => {
+    setInspectorOpen((prev) => !prev)
+  }, [])
+  const handleStreamingChange = useCallback((streaming: boolean) => {
+    setInspectorIsStreaming(streaming)
+  }, [])
 
   const persistSelection = useCallback((threadId: string | null) => {
     if (typeof window === 'undefined') {
@@ -346,6 +391,7 @@ function ThreadedChatDemo() {
     setSelectedThreadId(threadId)
     persistSelection(threadId)
     setSessionMountKey((current) => current + 1)
+    setInspectorEntries([])
   }, [persistSelection])
 
   const handleMetadata = useCallback((threadId: string, summary: Pick<ThreadSummary, 'title' | 'lastMessagePreview' | 'messageCount'>) => {
@@ -387,7 +433,7 @@ function ThreadedChatDemo() {
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.18),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(59,130,246,0.16),_transparent_30%),linear-gradient(180deg,_#0f172a_0%,_#111827_52%,_#0b1220_100%)] text-slate-100">
-      <div className="mx-auto flex min-h-[calc(100vh-64px)] max-w-7xl flex-col gap-4 p-4 md:flex-row md:p-6">
+      <div className="mx-auto flex h-[calc(100vh-64px)] flex-col gap-4 p-4 md:flex-row md:p-6">
         <aside className={cn(
           'w-full shrink-0 flex-col rounded-[28px] border border-amber-200/10 bg-slate-950/70 p-4 shadow-2xl shadow-black/30 backdrop-blur md:flex md:w-80',
           sidebarOpen ? 'flex' : 'hidden',
@@ -441,7 +487,7 @@ function ThreadedChatDemo() {
           </div>
         </aside>
 
-        <main className="flex min-h-[82vh] flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-800/80 bg-slate-950/75 shadow-2xl shadow-black/30 backdrop-blur">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[32px] border border-slate-800/80 bg-slate-950/75 shadow-2xl shadow-black/30 backdrop-blur">
           <div className="flex items-center justify-between border-b border-slate-800/80 px-5 py-4 md:hidden">
             <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen((open) => !open)}>
               <PanelLeftOpen className="size-4" />
@@ -455,6 +501,10 @@ function ThreadedChatDemo() {
               key={`${selectedThreadId}-${sessionMountKey}`}
               threadId={selectedThreadId}
               onMetadata={handleMetadata}
+              onStreamEvent={handleStreamEvent}
+              onStreamingChange={handleStreamingChange}
+              onInspectorToggle={handleInspectorToggle}
+              inspectorOpen={inspectorOpen}
             />
           )}
 
@@ -464,6 +514,15 @@ function ThreadedChatDemo() {
             </div>
           )}
         </main>
+
+        {inspectorOpen && (
+          <StreamInspector
+            entries={inspectorEntries}
+            isStreaming={inspectorIsStreaming}
+            onClear={handleClearInspector}
+            onClose={handleInspectorToggle}
+          />
+        )}
       </div>
     </div>
   )

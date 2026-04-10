@@ -151,6 +151,7 @@ export type {
   ConversationStateStreamEvent,
   IsomorphicHandoffStreamEvent,
   StreamEvent,
+  StreamEventEntry,
   Streamer,
   MessageRenderer,
   PatchTransform,
