@@ -58,6 +58,7 @@ export type {
 
 // Options and configuration
 export type {
+  StreamEventEntry,
   Streamer,
   MessageRenderer,
   PatchTransform,

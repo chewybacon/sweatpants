@@ -324,6 +324,7 @@ export function* runChatSession(
       ...((options.transforms?.length ?? 0) > 0
         ? { transforms: options.transforms }
         : {}),
+      ...(options.onStreamEvent ? { onStreamEvent: options.onStreamEvent } : {}),
       })
 
       for (const message of durableHistory.history) {

@@ -7,9 +7,30 @@
 import type { Operation, Channel } from 'effection'
 import type { ChatPatch } from '../patches/index.ts'
 import type { Message } from '../types.ts'
-import type { StreamResult } from './streaming.ts'
+import type { StreamEvent, StreamResult } from './streaming.ts'
 import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
 import type { ConversationReplayState } from './streaming.ts'
+
+// =============================================================================
+// STREAM EVENT OBSERVATION
+// =============================================================================
+
+/**
+ * Entry passed to the `onStreamEvent` callback.
+ *
+ * Provides raw wire-level visibility into every durable stream event,
+ * both during live streaming and durable history replay.
+ */
+export interface StreamEventEntry {
+  /** Log sequence number from the durable frame */
+  lsn: number
+  /** The raw stream event */
+  event: StreamEvent
+  /** Whether the event was received live or replayed from history */
+  phase: 'live' | 'replay'
+  /** Timestamp (Date.now()) when the event was observed */
+  receivedAt: number
+}
 
 // =============================================================================
 // ELICIT RESPONSE DATA
@@ -192,6 +213,25 @@ export interface SessionOptions {
    * and appends new messages to it. Enables reconnect after refresh.
    */
   conversationId?: string
+
+  /**
+   * Callback invoked for every raw durable stream event.
+   *
+   * Fires during both live streaming and durable history replay,
+   * providing wire-level visibility into the event flow.
+   *
+   * When `undefined` (the default), no observation overhead is incurred.
+   *
+   * @example
+   * ```tsx
+   * useChat({
+   *   onStreamEvent: (entry) => {
+   *     console.log(`[${entry.phase}] LSN ${entry.lsn}: ${entry.event.type}`)
+   *   },
+   * })
+   * ```
+   */
+  onStreamEvent?: (entry: StreamEventEntry) => void
 }
 
 // =============================================================================

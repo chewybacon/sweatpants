@@ -56,5 +56,5 @@ export function* streamChatOnce(
   // We parse as unknown and extract the inner event
   const eventStream = parseNDJSON<unknown>(response.body!, { signal })
 
-  return yield* mapStreamEventsToPatches(eventStream, patches)
+  return yield* mapStreamEventsToPatches(eventStream, patches, options.onStreamEvent)
 }

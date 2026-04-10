@@ -12,10 +12,12 @@ import type {
   ConversationState,
 } from './streaming.ts'
 import type { Message } from '../types.ts'
+import type { StreamEventEntry } from './options.ts'
 
 export function* mapStreamEventsToPatches(
   eventStream: Stream<unknown, void>,
-  patches: Channel<ChatPatch, void>
+  patches: Channel<ChatPatch, void>,
+  onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<StreamResult> {
   function rememberToolCall(call: { id: string; name: string; arguments: unknown }) {
     if (!toolCalls.some((candidate) => candidate.id === call.id)) {
@@ -77,7 +79,15 @@ export function* mapStreamEventsToPatches(
   }
 
   for (const rawEvent of yield* each(eventStream)) {
-    const event = (rawEvent as { lsn: number; event: StreamEvent }).event
+    const frame = rawEvent as { lsn: number; event: StreamEvent }
+    const event = frame.event
+
+    onStreamEvent?.({
+      lsn: frame.lsn,
+      event,
+      phase: 'live',
+      receivedAt: Date.now(),
+    })
 
     switch (event.type) {
       case 'session_info':
@@ -89,7 +99,6 @@ export function* mapStreamEventsToPatches(
         break
 
       case 'ag_ui_run_started':
-      case 'ag_ui_run_finished':
         break
 
       case 'ag_ui_messages_snapshot':
