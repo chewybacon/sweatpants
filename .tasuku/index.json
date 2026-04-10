@@ -1,6 +1,87 @@
 {
   "version": "v4",
   "tasks": {
+    "ag-ui-slice-client-adapt": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI slice: client adapter bridge",
+      "file": "tasks/ag-ui-slice-client-adapt.md",
+      "created_at": "2026-04-10T01:38:22.237124Z",
+      "updated_at": "2026-04-10T08:04:34.945174Z"
+    },
+    "ag-ui-slice-durable-seri": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI slice: durable serialization compaction",
+      "file": "tasks/ag-ui-slice-durable-seri.md",
+      "created_at": "2026-04-10T01:38:22.234906Z",
+      "updated_at": "2026-04-10T02:15:16.991034Z"
+    },
+    "ag-ui-slice-handoff-elic": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI slice: handoff elicit resume",
+      "file": "tasks/ag-ui-slice-handoff-elic.md",
+      "created_at": "2026-04-10T01:38:22.234857Z",
+      "updated_at": "2026-04-10T08:04:34.944257Z"
+    },
+    "ag-ui-slice-interactive": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI slice: interactive replay activity",
+      "file": "tasks/ag-ui-slice-interactive.md",
+      "created_at": "2026-04-10T01:38:22.234996Z",
+      "updated_at": "2026-04-10T08:04:34.944714Z"
+    },
+    "ag-ui-slice-server-tool-": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI slice: server tool calls",
+      "file": "tasks/ag-ui-slice-server-tool-.md",
+      "created_at": "2026-04-10T01:38:22.234944Z",
+      "updated_at": "2026-04-10T08:04:34.945653Z"
+    },
+    "ag-ui-slice-text-only-th": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI slice: text-only threads",
+      "file": "tasks/ag-ui-slice-text-only-th.md",
+      "created_at": "2026-04-10T01:38:22.234973Z",
+      "updated_at": "2026-04-10T02:15:16.990563Z"
+    },
+    "ag-ui-spike-checkpoint-m": {
+      "status": "in_progress",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI spike: checkpoint model",
+      "file": "tasks/ag-ui-spike-checkpoint-m.md",
+      "created_at": "2026-04-10T01:38:22.234925Z",
+      "updated_at": "2026-04-10T01:38:29.756093Z"
+    },
+    "ag-ui-spike-interactive-": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI spike: interactive tool replay model",
+      "file": "tasks/ag-ui-spike-interactive-.md",
+      "created_at": "2026-04-10T01:38:22.235067Z",
+      "updated_at": "2026-04-10T02:15:16.992299Z"
+    },
+    "ag-ui-spike-pause-resume": {
+      "status": "done",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "AG-UI spike: pause resume handoff model",
+      "file": "tasks/ag-ui-spike-pause-resume.md",
+      "created_at": "2026-04-10T01:38:22.235018Z",
+      "updated_at": "2026-04-10T02:15:16.991598Z"
+    },
     "apply-typescript-monorepo-p": {
       "status": "done",
       "priority": 1,
@@ -574,6 +655,13 @@
       "created_at": "2026-04-03T23:11:53.21547Z",
       "updated_at": "2026-04-03T23:16:27.772729Z"
     },
+    "remove-legacy-durable-chat-proto": {
+      "status": "in_progress",
+      "description": "Remove legacy durable chat protocol after AG-UI parity",
+      "file": "tasks/remove-legacy-durable-chat-proto.md",
+      "created_at": "2026-04-10T08:33:11.067361Z",
+      "updated_at": "2026-04-10T08:33:25.524525Z"
+    },
     "repo-lint-setup-with-oxlint-and": {
       "status": "in_progress",
       "description": "repo lint setup with oxlint and oxfmt",
@@ -783,6 +871,15 @@
       "created_at": "2026-04-03T23:11:53.842154Z",
       "updated_at": "2026-04-03T23:17:25.802687Z"
     },
+    "write-ag-ui-vertical-slic": {
+      "status": "in_progress",
+      "priority": 1,
+      "parent_id": "framework-deterministic-message-tdd",
+      "description": "write AG-UI vertical slice planning doc",
+      "file": "tasks/write-ag-ui-vertical-slic.md",
+      "created_at": "2026-04-10T01:31:55.715535Z",
+      "updated_at": "2026-04-10T01:31:55.759276Z"
+    },
     "yo-chat-build-thread-metadata-api": {
       "status": "done",
       "tags": [
@@ -826,5 +923,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-04-09T21:52:01.10228Z"
+  "updated_at": "2026-04-10T08:33:25.525378Z"
 }

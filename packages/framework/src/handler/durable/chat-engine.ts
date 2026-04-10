@@ -45,6 +45,7 @@ import {
   appendToolMessage,
   createTranscriptState,
 } from '../../lib/chat/session/transcript.ts'
+import { buildAgUiCheckpoint, buildAgUiCustomState } from '../../lib/chat/session/ag-ui-checkpoint.ts'
 
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)
@@ -102,6 +103,9 @@ interface EngineState {
   // Plugin session state
   pendingPluginSessions: Map<string, { callId: string; toolName: string }>
   awaitingElicitResult: ToolExecutionResult | null
+  assistantMessageId: string | null
+  assistantTextOpen: boolean
+  toolLifecycleEmitted: boolean
 }
 
 // =============================================================================
@@ -191,6 +195,47 @@ function toolResultToStreamEvent(result: ToolExecutionResult): StreamEvent {
     content,
     ...(trace ? { trace } : {}),
   }
+}
+
+function agUiToolLifecycleEvents(toolCalls: ToolCall[]): StreamEvent[] {
+  return toolCalls.flatMap((toolCall) => [
+    {
+      type: 'ag_ui_tool_call_start' as const,
+      toolCallId: toolCall.id,
+      toolCallName: toolCall.function.name,
+      parentMessageId: `assistant:tools:${toolCall.id}`,
+    },
+    {
+      type: 'ag_ui_tool_call_args' as const,
+      toolCallId: toolCall.id,
+      delta: JSON.stringify(toolCall.function.arguments),
+    },
+    {
+      type: 'ag_ui_tool_call_end' as const,
+      toolCallId: toolCall.id,
+    },
+  ])
+}
+
+function agUiTextLifecycleEvents(messageId: string, role: 'assistant' | 'user' | 'system', text: string): StreamEvent[] {
+  return [
+    {
+      type: 'ag_ui_text_message_start',
+      messageId,
+      role,
+    },
+    ...(text.length > 0
+      ? [{
+          type: 'ag_ui_text_message_content' as const,
+          messageId,
+          delta: text,
+        }]
+      : []),
+    {
+      type: 'ag_ui_text_message_end',
+      messageId,
+    },
+  ]
 }
 
 /**
@@ -430,6 +475,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     maxIterations,
     signal,
     sessionInfo,
+    agUiRun,
     pluginRegistry,
     pluginEmissionChannel,
     mcpToolRegistry,
@@ -468,6 +514,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       error: null,
       pendingPluginSessions: new Map(),
       awaitingElicitResult: null,
+      assistantMessageId: null,
+      assistantTextOpen: false,
+      toolLifecycleEmitted: false,
     }
     const conversationTranscriptState = createTranscriptState(state.conversationMessages)
 
@@ -859,12 +908,27 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
             // No tool calls - complete
             state.phase = 'complete'
+             state.pendingEvents.push(
+               ...agUiTextLifecycleEvents(
+                 `assistant:final:${agUiRun.runId}`,
+                 'assistant',
+                 result.text,
+               ),
+             )
             const completeEvent: StreamEvent = {
               type: 'complete',
               text: result.text,
               ...(result.usage && { usage: result.usage }),
             }
             state.pendingEvents.push(completeEvent)
+            state.pendingEvents.push({
+              type: 'ag_ui_run_finished',
+              run: {
+                threadId: agUiRun.threadId,
+                runId: agUiRun.runId,
+                ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
+              },
+            })
             return { done: false, value: state.pendingEvents.shift()! }
           }
 
@@ -1032,6 +1096,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 toolCalls,
                 providerResult.text,
               )
+              state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
               
               // Plugin tool(s) need elicitation - emit elicit events and transition
               for (const r of pluginAwaitingResults) {
@@ -1111,7 +1176,48 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 },
               }
 
-              return { done: false, value: conversationState }
+              state.pendingEvents.push({
+                type: 'ag_ui_state_snapshot',
+                run: {
+                  threadId: agUiRun.threadId,
+                  runId: agUiRun.runId,
+                  ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
+                },
+                state: buildAgUiCustomState({
+                  ...(replayToolTraceMap.size > 0
+                    ? {
+                        replay: {
+                          toolTraces: Array.from(replayToolTraceMap.values()),
+                        },
+                      }
+                    : {}),
+                  handoffs: handoffResults
+                    .filter((r): r is Extract<typeof handoffResults[number], { ok: true; kind: 'handoff' }> => r.ok && r.kind === 'handoff')
+                    .map((r) => r.handoff),
+                }),
+              })
+              state.pendingEvents.push({
+                type: 'ag_ui_checkpoint',
+                checkpoint: buildAgUiCheckpoint({
+                  threadId: agUiRun.threadId,
+                  runId: agUiRun.runId,
+                  ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
+                  messages: state.conversationMessages,
+                  assistantContent: providerResult.text,
+                  toolCalls,
+                  serverToolResults: (conversationState.conversationState.serverToolResults),
+                  ...(replayToolTraceMap.size > 0
+                    ? {
+                        replay: {
+                          toolTraces: Array.from(replayToolTraceMap.values()),
+                        },
+                      }
+                    : {}),
+                }),
+              })
+
+              state.pendingEvents.push(conversationState)
+              return { done: false, value: state.pendingEvents.shift()! }
             }
 
             // No handoffs - update messages and continue loop
@@ -1122,6 +1228,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               toolCalls,
               providerResult.text,
             )
+            state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
 
             // Add tool result messages
             for (const r of results) {
@@ -1224,6 +1331,55 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   : {}),
               },
             }
+
+            state.pendingEvents.push({
+              type: 'ag_ui_state_snapshot',
+              run: {
+                threadId: agUiRun.threadId,
+                runId: agUiRun.runId,
+                ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
+              },
+              state: buildAgUiCustomState({
+                ...(replayToolTraceMap.size > 0
+                  ? {
+                      replay: {
+                        toolTraces: Array.from(replayToolTraceMap.values()),
+                      },
+                    }
+                  : {}),
+                elicits: state.awaitingElicitResult && state.awaitingElicitResult.ok && state.awaitingElicitResult.kind === 'plugin_awaiting'
+                  ? [{
+                      type: 'elicit_request' as const,
+                      sessionId: state.awaitingElicitResult.sessionId,
+                      callId: state.awaitingElicitResult.callId,
+                      toolName: state.awaitingElicitResult.toolName,
+                      elicitId: state.awaitingElicitResult.elicitRequest.elicitId,
+                      key: state.awaitingElicitResult.elicitRequest.key,
+                      message: state.awaitingElicitResult.elicitRequest.message,
+                      schema: state.awaitingElicitResult.elicitRequest.schema,
+                    }]
+                  : [],
+              }),
+            })
+            state.pendingEvents.push({
+              type: 'ag_ui_checkpoint',
+              checkpoint: buildAgUiCheckpoint({
+                threadId: agUiRun.threadId,
+                runId: agUiRun.runId,
+                ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
+                messages: state.conversationMessages,
+                assistantContent: providerResult?.text ?? '',
+                toolCalls,
+                serverToolResults: conversationState.conversationState.serverToolResults,
+                ...(replayToolTraceMap.size > 0
+                  ? {
+                      replay: {
+                        toolTraces: Array.from(replayToolTraceMap.values()),
+                      },
+                    }
+                  : {}),
+              }),
+            })
             
             state.pendingEvents.push(conversationState)
             state.phase = 'handoff_pending'

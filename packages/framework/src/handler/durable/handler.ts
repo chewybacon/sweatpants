@@ -42,6 +42,7 @@ import {
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
+import { buildAgUiCheckpoint, buildAgUiCustomState } from '../../lib/chat/session/ag-ui-checkpoint.ts';
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
   recordConversationSession,
@@ -568,6 +569,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           signal: engineAbortController.signal,
           ...(body.model !== undefined && { model: body.model }),
           sessionInfo,
+          agUiRun: {
+            threadId: requestedConversationId ?? sessionId,
+            runId: sessionId,
+          },
           // Plugin support for MCP tools
           ...(pluginRegistry && { pluginRegistry }),
           ...(mcpToolRegistry && { mcpToolRegistry }),
@@ -583,16 +588,60 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // Wrap engine to serialize events
         const initialReplayState = mergeReplayState(body.replayState, body)
         const initialEvents: StreamEvent[] = body.messages.length > 0
-          ? [{
-              type: 'conversation_state',
-              conversationState: {
-                messages: body.messages,
-                assistantContent: '',
-                toolCalls: [],
-                serverToolResults: [],
-                ...(initialReplayState ? { replay: initialReplayState } : {}),
+          ? [
+              ...(requestedConversationId
+                ? [{
+                    type: 'ag_ui_run_started',
+                    run: {
+                      threadId: requestedConversationId,
+                      runId: sessionId,
+                    },
+                    input: {
+                      messages: body.messages,
+                    },
+                  } satisfies StreamEvent,
+                  {
+                    type: 'ag_ui_messages_snapshot',
+                    run: {
+                      threadId: requestedConversationId,
+                      runId: sessionId,
+                    },
+                    messages: body.messages,
+                  } satisfies StreamEvent,
+                  {
+                    type: 'ag_ui_state_snapshot',
+                    run: {
+                      threadId: requestedConversationId,
+                      runId: sessionId,
+                    },
+                    state: buildAgUiCustomState({
+                      ...(initialReplayState ? { replay: initialReplayState } : {}),
+                    }),
+                  } satisfies StreamEvent,
+                  {
+                    type: 'ag_ui_checkpoint',
+                    checkpoint: buildAgUiCheckpoint({
+                      threadId: requestedConversationId,
+                      runId: sessionId,
+                      messages: body.messages,
+                      assistantContent: '',
+                      toolCalls: [],
+                      serverToolResults: [],
+                      ...(initialReplayState ? { replay: initialReplayState } : {}),
+                    }),
+                  } satisfies StreamEvent]
+                : []),
+              {
+                type: 'conversation_state',
+                conversationState: {
+                  messages: body.messages,
+                  assistantContent: '',
+                  toolCalls: [],
+                  serverToolResults: [],
+                  ...(initialReplayState ? { replay: initialReplayState } : {}),
+                },
               },
-            }]
+            ]
           : []
         const serializedStream = createSerializedEventStream(engine, initialEvents);
         log.debug({ sessionId }, "new session path: serialized stream created");

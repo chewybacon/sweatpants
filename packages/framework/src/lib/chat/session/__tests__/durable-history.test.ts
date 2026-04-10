@@ -32,6 +32,67 @@ function makeConversationState(messages: Message[], opts?: {
   return cs
 }
 
+function makeAgUiCheckpoint(messages: Message[], opts?: {
+  threadId?: string
+  runId?: string
+  assistantContent?: string
+  toolCalls?: Array<{ id: string; name: string; arguments: unknown }>
+  replayTraces?: Array<{ callId: string; toolName: string; trace: unknown }>
+}): StreamEvent {
+  const checkpoint: any = {
+    type: 'ag_ui_checkpoint' as const,
+    checkpoint: {
+      run: {
+        threadId: opts?.threadId ?? 'thread-1',
+        runId: opts?.runId ?? 'run-1',
+      },
+      messages: {
+        messages,
+      },
+      state: {
+        assistantContent: opts?.assistantContent ?? '',
+        toolCalls: opts?.toolCalls ?? [],
+        serverToolResults: [],
+      },
+    },
+  }
+  if (opts?.replayTraces) {
+    checkpoint.checkpoint.state.replay = {
+      toolTraces: opts.replayTraces,
+    }
+  }
+  return checkpoint
+}
+
+function makeAgUiStateSnapshot(opts: {
+  threadId?: string
+  runId?: string
+    pendingClientActions?: Array<{
+      toolCallId: string
+      toolName: string
+      kind: 'handoff' | 'elicit'
+      params?: unknown
+      sessionId?: string
+      elicitId?: string
+      key?: string
+    message?: string
+    schema?: Record<string, unknown>
+    data?: unknown
+    usesHandoff?: boolean
+  }>
+}): StreamEvent {
+  return {
+    type: 'ag_ui_state_snapshot',
+    run: {
+      threadId: opts.threadId ?? 'thread-1',
+      runId: opts.runId ?? 'run-1',
+    },
+    state: {
+      ...(opts.pendingClientActions ? { pendingClientActions: opts.pendingClientActions } : {}),
+    },
+  }
+}
+
 function isHistoryPatch(p: ChatPatch): p is ChatPatch & { type: 'history_message' | 'user_message' } {
   return p.type === 'history_message' || p.type === 'user_message'
 }
@@ -346,6 +407,81 @@ describe('replayFramesToConversation', () => {
       'tool:call_1',
       'assistant:final:call_1',
     ])
+  })
+
+  it('seeds history from ag_ui_checkpoint messages', async () => {
+    const frames: DurableFrame[] = [
+      makeFrame(makeAgUiCheckpoint([
+        { id: 'user:u1', role: 'user', content: 'Draw a card' },
+        {
+          id: 'assistant:tools:call_1',
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'call_1', type: 'function' as const, function: { name: 'pick_card', arguments: {} } }],
+        },
+        { id: 'tool:call_1', role: 'tool', tool_call_id: 'call_1', content: 'Selected Ace of Spades' },
+        { id: 'assistant:final:call_1', role: 'assistant', content: 'You picked the Ace of Spades.' },
+      ]), 1),
+    ]
+
+    const result = await run(function* () {
+      return yield* replayFramesToConversation(frames, [], [])
+    })
+
+    const messages = getHistoryMessages(result.patches)
+    expect(messages.map((message) => message.id)).toEqual([
+      'user:u1',
+      'assistant:tools:call_1',
+      'tool:call_1',
+      'assistant:final:call_1',
+    ])
+  })
+
+  it('reconstructs pending client actions from ag_ui_state_snapshot', async () => {
+    const frames: DurableFrame[] = [
+      makeFrame(
+        makeAgUiStateSnapshot({
+          pendingClientActions: [
+            {
+              toolCallId: 'call_1',
+              toolName: 'pick_card',
+              kind: 'handoff',
+              params: { count: 2 },
+              data: { cards: ['A', 'K'] },
+              usesHandoff: true,
+            },
+            {
+              toolCallId: 'call_2',
+              toolName: 'confirm',
+              kind: 'elicit',
+              sessionId: 'session-2',
+              elicitId: 'elicit-2',
+              key: 'confirmAction',
+              message: 'Confirm?',
+              schema: { type: 'object' },
+            },
+          ],
+        }),
+        1,
+      ),
+    ]
+
+    const result = await run(function* () {
+      return yield* replayFramesToConversation(frames, [], [])
+    })
+
+    expect(result.patches).toContainEqual({
+      type: 'pending_handoff',
+      handoff: {
+        callId: 'call_1',
+        toolName: 'pick_card',
+        params: { count: 2 },
+        data: { cards: ['A', 'K'] },
+        usesHandoff: true,
+      },
+    })
+    expect(result.patches.some((patch) => patch.type === 'elicit_start')).toBe(true)
+    expect(result.patches.some((patch) => patch.type === 'elicit')).toBe(true)
   })
 
   it('requires ids on conversation_state messages for new transcripts', async () => {
