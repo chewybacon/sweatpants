@@ -232,12 +232,11 @@ export interface SessionInfoEvent {
 }
 
 /**
- * Complete event from stream.
+ * Complete event from stream (AG-UI run finished).
  */
 export interface CompleteEvent {
-  type: 'complete'
-  text: string
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+  type: 'ag_ui_run_finished'
+  run: { threadId: string; runId: string }
 }
 
 /**
@@ -349,22 +348,36 @@ export async function consumeDurableResponse(response: Response): Promise<Durabl
       case 'session_info':
         sessionInfo = e as SessionInfoEvent
         break
-      case 'text':
-        text += e.content
+      case 'ag_ui_text_message_content':
+        text += e.delta
         break
       case 'thinking':
         thinking += e.content
         break
-      case 'tool_calls':
-        toolCalls = e.calls
+      case 'ag_ui_tool_call_start':
+        if (!toolCalls) {
+          toolCalls = []
+        }
+        toolCalls.push({ id: e.toolCallId, name: e.toolCallName, arguments: undefined })
         break
-      case 'tool_result':
-        toolResults.push({ id: e.id, name: e.name, content: e.content })
+      case 'ag_ui_tool_call_args': {
+        const existing = toolCalls?.find((tc) => tc.id === e.toolCallId)
+        if (existing) {
+          try {
+            existing.arguments = JSON.parse(e.delta)
+          } catch {
+            existing.arguments = e.delta
+          }
+        }
+        break
+      }
+      case 'ag_ui_tool_call_result':
+        toolResults.push({ id: e.toolCallId, name: e.toolCallName, content: e.content })
         break
       case 'isomorphic_handoff':
         handoffs.push(e as HandoffEvent)
         break
-      case 'complete':
+      case 'ag_ui_run_finished':
         complete = e as CompleteEvent
         break
       case 'error':

@@ -4,7 +4,7 @@
  * Streaming types for chat sessions.
  */
 
-import type { Capabilities, TokenUsage, ToolCallInfo, ServerToolResult } from '../core-types.ts'
+import type { Capabilities, ToolCallInfo, ServerToolResult } from '../core-types.ts'
 import type { IsomorphicHandoffEvent } from '../isomorphic-tools/types.ts'
 import type { ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'
 import type { Message } from '../types.ts'
@@ -298,15 +298,7 @@ export type StreamEvent =
       capabilities: Capabilities
       persona: string | null
     }
-  | { type: 'text'; content: string }
   | { type: 'thinking'; content: string }
-  | {
-      type: 'tool_calls'
-      calls: Array<{ id: string; name: string; arguments: unknown }>
-    }
-  | { type: 'tool_result'; id: string; name: string; content: string; trace?: ToolExecutionTrace }
-  | { type: 'tool_error'; id: string; name: string; message: string }
-  | { type: 'complete'; text: string; usage?: TokenUsage }
   | { type: 'error'; message: string; recoverable: boolean }
   | AgUiRunStartedStreamEvent
   | AgUiRunFinishedStreamEvent
@@ -322,7 +314,6 @@ export type StreamEvent =
   | AgUiToolCallErrorStreamEvent
   | AgUiCheckpointStreamEvent
   | IsomorphicHandoffStreamEvent
-  | ConversationStateStreamEvent
   | ElicitRequestStreamEvent
   | ToolSessionStatusStreamEvent
   | ToolSessionErrorStreamEvent

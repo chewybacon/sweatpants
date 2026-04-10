@@ -66,6 +66,9 @@ export async function createHttpTestServer(
       await sendWebResponse(res, webRes)
     } catch (error) {
       console.error('[http-test-server] Handler error:', error)
+      if (res.headersSent || res.destroyed) {
+        return
+      }
       res.statusCode = 500
       res.setHeader('Content-Type', 'application/json')
       res.end(JSON.stringify({

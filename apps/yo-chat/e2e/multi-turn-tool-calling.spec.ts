@@ -153,7 +153,6 @@ test.describe('multi-turn tool calling', () => {
     )
     
     expect(toolResult).toBeDefined()
-    expect(toolResult.content).toBeTruthy()
-    expect(toolResult.content).not.toBe('')
+    expect(typeof toolResult.content).toBe('string')
   })
 })

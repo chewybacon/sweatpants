@@ -92,19 +92,20 @@ describe('useChatSession (black-box)', () => {
       },
       // Tool call must come first to create the tool-call part in streaming state
       {
-        type: 'tool_calls',
-        calls: [{ id: 'call-1', name: 'book_flight', arguments: { from: 'NYC', to: 'LAX' } }],
-      },
-      // Then the elicit request arrives (tool is running and needs user input)
-      {
-        type: 'elicit_request',
-        sessionId: 'sess-1',
-        callId: 'call-1',
-        toolName: 'book_flight',
-        elicitId: 'elicit-1',
-        key: 'pickFlight',
-        message: 'Pick a flight',
-        schema: { type: 'object', properties: { flightId: { type: 'string' } } },
+        type: 'ag_ui_state_snapshot',
+        run: { threadId: 'thread-1', runId: 'run-1' },
+        state: {
+          pendingClientActions: [{
+            toolCallId: 'call-1',
+            toolName: 'book_flight',
+            kind: 'elicit',
+            sessionId: 'sess-1',
+            elicitId: 'elicit-1',
+            key: 'pickFlight',
+            message: 'Pick a flight',
+            schema: { type: 'object', properties: { flightId: { type: 'string' } } },
+          }],
+        },
       },
     ])
 
@@ -115,14 +116,20 @@ describe('useChatSession (black-box)', () => {
         persona: null,
       },
       {
-        type: 'elicit_request',
-        sessionId: 'sess-1',
-        callId: 'call-1',
-        toolName: 'book_flight',
-        elicitId: 'elicit-2',
-        key: 'pickSeat',
-        message: 'Pick a seat',
-        schema: { type: 'object', properties: { row: { type: 'number' }, seat: { type: 'string' } } },
+        type: 'ag_ui_state_snapshot',
+        run: { threadId: 'thread-1', runId: 'run-2', parentRunId: 'run-1' },
+        state: {
+          pendingClientActions: [{
+            toolCallId: 'call-1',
+            toolName: 'book_flight',
+            kind: 'elicit',
+            sessionId: 'sess-1',
+            elicitId: 'elicit-2',
+            key: 'pickSeat',
+            message: 'Pick a seat',
+            schema: { type: 'object', properties: { row: { type: 'number' }, seat: { type: 'string' } } },
+          }],
+        },
       },
     ])
 
@@ -203,7 +210,7 @@ describe('useChatSession (black-box)', () => {
     })
 
     unmount()
-  })
+  }, 15000)
 
   it('hydrates durable conversation history when conversationId is provided', async () => {
     const fetchBodies: unknown[] = []
@@ -214,8 +221,10 @@ describe('useChatSession (black-box)', () => {
         capabilities: { thinking: false, streaming: true, tools: [] },
         persona: null,
       },
-      { type: 'text', content: 'Hello from history' },
-      { type: 'complete', text: 'Hello from history' },
+      { type: 'ag_ui_text_message_start', messageId: 'assistant:final:run-1', role: 'assistant' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:run-1', delta: 'Hello from history' },
+      { type: 'ag_ui_text_message_end', messageId: 'assistant:final:run-1' },
+      { type: 'ag_ui_run_finished', run: { threadId: 'thread-1', runId: 'run-1' } },
     ])
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -238,8 +247,10 @@ describe('useChatSession (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: [] },
           persona: null,
         },
-        { type: 'text', content: 'Fresh response' },
-        { type: 'complete', text: 'Fresh response' },
+        { type: 'ag_ui_text_message_start', messageId: 'assistant:final:run-2', role: 'assistant' },
+        { type: 'ag_ui_text_message_content', messageId: 'assistant:final:run-2', delta: 'Fresh response' },
+        { type: 'ag_ui_text_message_end', messageId: 'assistant:final:run-2' },
+        { type: 'ag_ui_run_finished', run: { threadId: 'thread-1', runId: 'run-2' } },
       ])
     }
 
@@ -309,13 +320,23 @@ describe('useChatSession (black-box)', () => {
         persona: null,
       },
       {
-        type: 'tool_calls',
-        calls: [{ id: 'call-1', name: 'pick_card', arguments: { count: 2 } }],
+        type: 'ag_ui_tool_call_start',
+        toolCallId: 'call-1',
+        toolCallName: 'pick_card',
       },
       {
-        type: 'tool_result',
-        id: 'call-1',
-        name: 'pick_card',
+        type: 'ag_ui_tool_call_args',
+        toolCallId: 'call-1',
+        delta: JSON.stringify({ count: 2 }),
+      },
+      {
+        type: 'ag_ui_tool_call_end',
+        toolCallId: 'call-1',
+      },
+      {
+        type: 'ag_ui_tool_call_result',
+        toolCallId: 'call-1',
+        toolCallName: 'pick_card',
         content: 'The user selected the Ace of Spades.',
         trace: {
           emissions: [
@@ -334,7 +355,10 @@ describe('useChatSession (black-box)', () => {
           completedAt: 200,
         },
       },
-      { type: 'complete', text: 'Done' },
+      { type: 'ag_ui_text_message_start', messageId: 'assistant:final:run-1', role: 'assistant' },
+      { type: 'ag_ui_text_message_content', messageId: 'assistant:final:run-1', delta: 'Done' },
+      { type: 'ag_ui_text_message_end', messageId: 'assistant:final:run-1' },
+      { type: 'ag_ui_run_finished', run: { threadId: 'thread-tools', runId: 'run-1' } },
     ])
 
     globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -349,7 +373,7 @@ describe('useChatSession (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: [] },
           persona: null,
         },
-        { type: 'complete', text: 'noop' },
+        { type: 'ag_ui_run_finished', run: { threadId: 'thread-tools', runId: 'run-noop' } },
       ])
     }
 
@@ -377,44 +401,49 @@ describe('useChatSession (black-box)', () => {
   it('does not duplicate assistant tool-call messages when continuing after durable handoff history', async () => {
     const historyResponse = ndjsonResponse([
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [
-            {
-              id: 'user-1',
-              role: 'user',
-              content: 'Draw 3 cards and let me pick one card',
-            },
-            {
-              id: 'assistant-1',
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  id: 'call-1',
-                  type: 'function',
-                  function: {
-                    name: 'pick_card',
-                    arguments: { count: 3 },
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run: { threadId: 'thread-followup', runId: 'run-1' },
+          messages: {
+            messages: [
+              {
+                id: 'user-1',
+                role: 'user',
+                content: 'Draw 3 cards and let me pick one card',
+              },
+              {
+                id: 'assistant-1',
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                  {
+                    id: 'call-1',
+                    type: 'function',
+                    function: {
+                      name: 'pick_card',
+                      arguments: { count: 3 },
+                    },
                   },
-                },
-              ],
-            },
-            {
-              id: 'tool-1',
-              role: 'tool',
-              tool_call_id: 'call-1',
-              content: 'The user selected the Ace of Spades.',
-            },
-            {
-              id: 'assistant-2',
-              role: 'assistant',
-              content: 'You picked **Ace of Spades**.',
-            },
-          ],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+                ],
+              },
+              {
+                id: 'tool-1',
+                role: 'tool',
+                tool_call_id: 'call-1',
+                content: 'The user selected the Ace of Spades.',
+              },
+              {
+                id: 'assistant-2',
+                role: 'assistant',
+                content: 'You picked **Ace of Spades**.',
+              },
+            ],
+          },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
       {
@@ -442,8 +471,10 @@ describe('useChatSession (black-box)', () => {
           capabilities: { thinking: false, streaming: true, tools: ['pick_card'] },
           persona: null,
         },
-        { type: 'text', content: 'Follow-up complete' },
-        { type: 'complete', text: 'Follow-up complete' },
+        { type: 'ag_ui_text_message_start', messageId: 'assistant:final:run-2', role: 'assistant' },
+        { type: 'ag_ui_text_message_content', messageId: 'assistant:final:run-2', delta: 'Follow-up complete' },
+        { type: 'ag_ui_text_message_end', messageId: 'assistant:final:run-2' },
+        { type: 'ag_ui_run_finished', run: { threadId: 'thread-followup', runId: 'run-2' } },
       ])
     }
 

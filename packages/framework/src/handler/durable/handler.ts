@@ -618,31 +618,21 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                       ...(initialReplayState ? { replay: initialReplayState } : {}),
                     }),
                   } satisfies StreamEvent,
-                  {
-                    type: 'ag_ui_checkpoint',
-                    checkpoint: buildAgUiCheckpoint({
-                      threadId: requestedConversationId,
-                      runId: sessionId,
-                      messages: body.messages,
-                      assistantContent: '',
-                      toolCalls: [],
-                      serverToolResults: [],
-                      ...(initialReplayState ? { replay: initialReplayState } : {}),
-                    }),
-                  } satisfies StreamEvent]
-                : []),
               {
-                type: 'conversation_state',
-                conversationState: {
+                type: 'ag_ui_checkpoint',
+                checkpoint: buildAgUiCheckpoint({
+                  threadId: requestedConversationId,
+                  runId: sessionId,
                   messages: body.messages,
                   assistantContent: '',
                   toolCalls: [],
                   serverToolResults: [],
                   ...(initialReplayState ? { replay: initialReplayState } : {}),
-                },
-              },
-            ]
-          : []
+                }),
+              } satisfies StreamEvent]
+            : []),
+          ]
+        : []
         const serializedStream = createSerializedEventStream(engine, initialEvents);
         log.debug({ sessionId }, "new session path: serialized stream created");
 

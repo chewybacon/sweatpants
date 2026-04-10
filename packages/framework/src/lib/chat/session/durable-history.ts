@@ -221,44 +221,60 @@ export function* replayFramesToConversation(
         break
       }
 
-      case 'text': {
-        currentAssistantText += event.content
-        break
-      }
-
       case 'thinking': {
         break
       }
 
-      case 'tool_calls': {
-        pendingToolCalls = event.calls
+      case 'ag_ui_text_message_content': {
+        currentAssistantText += event.delta
         break
       }
 
-      case 'tool_result': {
+      case 'ag_ui_tool_call_start': {
+        pendingToolCalls.push({
+          id: event.toolCallId,
+          name: event.toolCallName,
+          arguments: undefined,
+        })
+        break
+      }
+
+      case 'ag_ui_tool_call_args': {
+        const pending = pendingToolCalls.find((tc) => tc.id === event.toolCallId)
+        if (pending) {
+          try {
+            pending.arguments = JSON.parse(event.delta)
+          } catch {
+            pending.arguments = event.delta
+          }
+        }
+        break
+      }
+
+      case 'ag_ui_tool_call_result': {
         replayState = mergeReplayState(replayState, {
-          toolTraces: event.trace ? [{ callId: event.id, toolName: event.name, trace: event.trace }] : [],
+          toolTraces: event.trace ? [{ callId: event.toolCallId, toolName: event.toolCallName, trace: event.trace }] : [],
         })
 
         const alreadySeeded = seededFromConversationState &&
-          history.some((m) => m.role === 'tool' && m.tool_call_id === event.id)
+          history.some((m) => m.role === 'tool' && m.tool_call_id === event.toolCallId)
 
         if (!alreadySeeded) {
           const replayedTrace = yield* replayToolTrace(
             tools,
-            event.name,
+            event.toolCallName,
             event.trace,
           )
 
           const toolMessage: Message = {
-            id: messageIdForTool(event.id),
+            id: messageIdForTool(event.toolCallId),
             role: 'tool',
-            tool_call_id: event.id,
+            tool_call_id: event.toolCallId,
             content: toolResultContent(event.content),
           }
 
             history.push(toolMessage)
-            transcriptState.currentTurnKey = event.id
+            transcriptState.currentTurnKey = event.toolCallId
             patches.push({
             type: 'history_message',
             message: toolMessage,
@@ -266,16 +282,16 @@ export function* replayFramesToConversation(
           if (replayedTrace) {
             patches.push({
               type: 'tool_emission_start',
-              callId: event.id,
-              toolName: event.name,
+              callId: event.toolCallId,
+              toolName: event.toolCallName,
             })
             for (const entry of replayedTrace.emissions) {
               patches.push({
                 type: 'tool_emission',
-                callId: event.id,
-                toolName: event.name,
+                callId: event.toolCallId,
+                toolName: event.toolCallName,
                 emission: {
-                  id: `${event.id}-replay-${entry.order + 1}`,
+                  id: `${event.toolCallId}-replay-${entry.order + 1}`,
                   type: '__component__',
                   payload: {
                     componentKey: entry.componentKey,
@@ -290,7 +306,7 @@ export function* replayFramesToConversation(
             }
             patches.push({
               type: 'tool_emission_complete',
-              callId: event.id,
+              callId: event.toolCallId,
               trace: replayedTrace,
             })
           }
@@ -298,16 +314,16 @@ export function* replayFramesToConversation(
         break
       }
 
-      case 'tool_error': {
+      case 'ag_ui_tool_call_error': {
         const toolErrorMessage: Message = {
-          id: messageIdForTool(event.id),
+          id: messageIdForTool(event.toolCallId),
           role: 'tool',
-          tool_call_id: event.id,
+          tool_call_id: event.toolCallId,
           content: `Error: ${event.message}`,
         }
 
             history.push(toolErrorMessage)
-            transcriptState.currentTurnKey = event.id
+            transcriptState.currentTurnKey = event.toolCallId
             patches.push({
           type: 'history_message',
           message: toolErrorMessage,
@@ -315,8 +331,8 @@ export function* replayFramesToConversation(
         break
       }
 
-      case 'complete': {
-        const assistantText = currentAssistantText || event.text
+      case 'ag_ui_run_finished': {
+        const assistantText = currentAssistantText
 
         if (pendingToolCalls.length > 0) {
           const toolCallIds = pendingToolCalls.map((call) => call.id)
@@ -396,147 +412,6 @@ export function* replayFramesToConversation(
         break
       }
 
-      case 'conversation_state': {
-        replayState = mergeReplayState(replayState, event.conversationState.replay)
-
-        if (!seededFromConversationState && history.length === 0 && event.conversationState.messages.length > 0) {
-          const replayToolTraceByCallId = new Map(
-            (event.conversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
-          )
-
-          const dedupedMessages = deduplicateMessages(event.conversationState.messages)
-
-          for (const message of dedupedMessages) {
-            assertMessageHasId(message, 'conversation_state seed')
-            if (message.role === 'tool' && message.tool_call_id) {
-              seededToolCallIds.add(message.tool_call_id)
-            }
-            if (message.role === 'assistant' && message.content) {
-              seededAssistantContent.add(message.content)
-            }
-            if (message.role === 'assistant' && message.tool_calls) {
-              for (const tc of message.tool_calls) {
-                seededToolCallIds.add(tc.id)
-              }
-            }
-
-            const toolResults = dedupedMessages.filter(
-              (candidate) => candidate.role === 'tool',
-            )
-            const assistantParts = yield* buildAssistantReplayParts(
-              message,
-              toolResults,
-              replayToolTraceByCallId,
-              tools,
-              transforms,
-            )
-
-            history.push(message)
-            resetTranscriptState(transcriptState, history)
-            patches.push({
-              type: 'history_message',
-              message,
-              ...(assistantParts ? { parts: assistantParts } : {}),
-            })
-          }
-          seededFromConversationState = true
-        } else if (event.conversationState.messages.length > 0) {
-          const existingToolCallIds = new Set(
-            history
-              .filter((m) => m.role === 'assistant' && m.tool_calls)
-              .flatMap((m) => m.tool_calls!.map((tc) => tc.id))
-              .concat(
-                history
-                  .filter((m) => m.role === 'tool' && m.tool_call_id)
-                  .map((m) => m.tool_call_id!),
-              ),
-          )
-          const existingAssistantContents = new Set(
-            history
-              .filter((m) => m.role === 'assistant' && m.content)
-              .map((m) => m.content!),
-          )
-          const existingUserContents = new Set(
-            history
-              .filter((m) => m.role === 'user' && m.content)
-              .map((m) => m.content!),
-          )
-
-          const replayToolTraceByCallId = new Map(
-            (event.conversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
-          )
-
-          const dedupedMessages = deduplicateMessages(event.conversationState.messages)
-
-          const toolResults = dedupedMessages.filter(
-            (candidate) => candidate.role === 'tool',
-          )
-
-          for (const message of dedupedMessages) {
-            assertMessageHasId(message, 'conversation_state supplement')
-            let isDuplicate = false
-
-            if (message.role === 'tool' && message.tool_call_id) {
-              seededToolCallIds.add(message.tool_call_id)
-              isDuplicate = existingToolCallIds.has(message.tool_call_id)
-            } else if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
-              for (const tc of message.tool_calls) {
-                seededToolCallIds.add(tc.id)
-              }
-              isDuplicate = message.tool_calls.every((tc) => existingToolCallIds.has(tc.id))
-            } else if (message.role === 'assistant' && message.content) {
-              seededAssistantContent.add(message.content)
-              isDuplicate = existingAssistantContents.has(message.content)
-            } else if (message.role === 'user' && message.content) {
-              isDuplicate = existingUserContents.has(message.content)
-            }
-
-            if (!isDuplicate) {
-              const assistantParts = yield* buildAssistantReplayParts(
-                message,
-                toolResults,
-                replayToolTraceByCallId,
-                tools,
-                transforms,
-              )
-
-              history.push(message)
-              resetTranscriptState(transcriptState, history)
-              patches.push({
-                type: 'history_message',
-                message,
-                ...(assistantParts ? { parts: assistantParts } : {}),
-              })
-            }
-          }
-        } else {
-          const dedupedMessages = event.conversationState.messages.length > 0
-            ? deduplicateMessages(event.conversationState.messages)
-            : []
-          for (const message of dedupedMessages) {
-            assertMessageHasId(message, 'conversation_state bookkeeping')
-            if (message.role === 'tool' && message.tool_call_id) {
-            }
-            if (message.role === 'assistant' && message.content) {
-              seededAssistantContent.add(message.content)
-            }
-            if (message.role === 'assistant' && message.tool_calls) {
-              for (const tc of message.tool_calls) {
-                seededToolCallIds.add(tc.id)
-              }
-            }
-          }
-        }
-
-        currentAssistantText = event.conversationState.assistantContent
-        pendingToolCalls = event.conversationState.toolCalls.map((toolCall) => ({
-          id: toolCall.id,
-          name: toolCall.name,
-          arguments: toolCall.arguments,
-        }))
-        break
-      }
-
       case 'ag_ui_checkpoint': {
         const checkpointConversationState = {
           messages: event.checkpoint.messages.messages,
@@ -549,6 +424,7 @@ export function* replayFramesToConversation(
         replayState = mergeReplayState(replayState, checkpointConversationState.replay)
 
         if (!seededFromConversationState && history.length === 0 && checkpointConversationState.messages.length > 0) {
+          // Initial seed — populate history from checkpoint messages
           const replayToolTraceByCallId = new Map(
             (checkpointConversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
           )
@@ -589,6 +465,76 @@ export function* replayFramesToConversation(
             })
           }
           seededFromConversationState = true
+        } else if (checkpointConversationState.messages.length > 0) {
+          // Supplement — subsequent checkpoint with new messages (e.g. new user turn)
+          const existingToolCallIds = new Set(
+            history
+              .filter((m) => m.role === 'assistant' && m.tool_calls)
+              .flatMap((m) => m.tool_calls!.map((tc) => tc.id))
+              .concat(
+                history
+                  .filter((m) => m.role === 'tool' && m.tool_call_id)
+                  .map((m) => m.tool_call_id!),
+              ),
+          )
+          const existingAssistantContents = new Set(
+            history
+              .filter((m) => m.role === 'assistant' && m.content)
+              .map((m) => m.content!),
+          )
+          const existingUserContents = new Set(
+            history
+              .filter((m) => m.role === 'user' && m.content)
+              .map((m) => m.content!),
+          )
+
+          const replayToolTraceByCallId = new Map(
+            (checkpointConversationState.replay?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
+          )
+
+          const dedupedMessages = deduplicateMessages(checkpointConversationState.messages)
+
+          const toolResults = dedupedMessages.filter(
+            (candidate) => candidate.role === 'tool',
+          )
+
+          for (const message of dedupedMessages) {
+            assertMessageHasId(message, 'ag_ui_checkpoint supplement')
+            let isDuplicate = false
+
+            if (message.role === 'tool' && message.tool_call_id) {
+              seededToolCallIds.add(message.tool_call_id)
+              isDuplicate = existingToolCallIds.has(message.tool_call_id)
+            } else if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
+              for (const tc of message.tool_calls) {
+                seededToolCallIds.add(tc.id)
+              }
+              isDuplicate = message.tool_calls.every((tc) => existingToolCallIds.has(tc.id))
+            } else if (message.role === 'assistant' && message.content) {
+              seededAssistantContent.add(message.content)
+              isDuplicate = existingAssistantContents.has(message.content)
+            } else if (message.role === 'user' && message.content) {
+              isDuplicate = existingUserContents.has(message.content)
+            }
+
+            if (!isDuplicate) {
+              const assistantParts = yield* buildAssistantReplayParts(
+                message,
+                toolResults,
+                replayToolTraceByCallId,
+                tools,
+                transforms,
+              )
+
+              history.push(message)
+              resetTranscriptState(transcriptState, history)
+              patches.push({
+                type: 'history_message',
+                message,
+                ...(assistantParts ? { parts: assistantParts } : {}),
+              })
+            }
+          }
         }
 
         currentAssistantText = checkpointConversationState.assistantContent
@@ -659,13 +605,9 @@ export function* replayFramesToConversation(
       }
 
       case 'ag_ui_run_started':
-      case 'ag_ui_run_finished':
       case 'ag_ui_messages_snapshot':
       case 'ag_ui_text_message_start':
-      case 'ag_ui_text_message_content':
       case 'ag_ui_text_message_end':
-      case 'ag_ui_tool_call_start':
-      case 'ag_ui_tool_call_args':
       case 'ag_ui_tool_call_end': {
         break
       }

@@ -81,8 +81,8 @@ describe('mapStreamEventsToPatches', () => {
         messageId: 'assistant:final:run-1',
       },
       {
-        type: 'complete',
-        text: 'Hello world',
+        type: 'ag_ui_run_finished',
+        run: { threadId: 'thread-1', runId: 'run-1' },
       },
     ])
 
@@ -91,37 +91,6 @@ describe('mapStreamEventsToPatches', () => {
       { type: 'streaming_text', content: ' world' },
     ])
     expect(result).toMatchObject({ type: 'complete', text: 'Hello world' })
-  })
-
-  it('prefers AG-UI text over duplicate legacy text events', async () => {
-    const { patches } = await mapEvents([
-      {
-        type: 'ag_ui_text_message_start',
-        messageId: 'assistant:final:run-1',
-        role: 'assistant',
-      },
-      {
-        type: 'ag_ui_text_message_content',
-        messageId: 'assistant:final:run-1',
-        delta: 'Hello world',
-      },
-      {
-        type: 'text',
-        content: 'Hello world',
-      },
-      {
-        type: 'ag_ui_text_message_end',
-        messageId: 'assistant:final:run-1',
-      },
-      {
-        type: 'complete',
-        text: 'Hello world',
-      },
-    ])
-
-    expect(patches.filter((patch) => patch.type === 'streaming_text')).toEqual([
-      { type: 'streaming_text', content: 'Hello world' },
-    ])
   })
 
   it('maps AG-UI tool lifecycle into one tool_call_start patch', async () => {
@@ -152,8 +121,8 @@ describe('mapStreamEventsToPatches', () => {
         content: 'Mock result for: hello',
       },
       {
-        type: 'complete',
-        text: '',
+        type: 'ag_ui_run_finished',
+        run: { threadId: 'thread-1', runId: 'run-1' },
       },
     ])
 
@@ -171,39 +140,6 @@ describe('mapStreamEventsToPatches', () => {
       type: 'complete',
       toolCalls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
       toolResults: [{ id: 'call-1', name: 'echo', content: 'Mock result for: hello' }],
-    })
-  })
-
-  it('does not duplicate tool patches when AG-UI and legacy tool events coexist', async () => {
-    const { patches, result } = await mapEvents([
-      {
-        type: 'ag_ui_tool_call_start',
-        toolCallId: 'call-1',
-        toolCallName: 'echo',
-      },
-      {
-        type: 'ag_ui_tool_call_args',
-        toolCallId: 'call-1',
-        delta: '{"input":"hello"}',
-      },
-      {
-        type: 'ag_ui_tool_call_end',
-        toolCallId: 'call-1',
-      },
-      {
-        type: 'tool_calls',
-        calls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
-      },
-      {
-        type: 'complete',
-        text: '',
-      },
-    ])
-
-    expect(patches.filter((patch) => patch.type === 'tool_call_start')).toHaveLength(1)
-    expect(result).toMatchObject({
-      type: 'complete',
-      toolCalls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
     })
   })
 
@@ -229,12 +165,15 @@ describe('mapStreamEventsToPatches', () => {
         },
       },
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run: { threadId: 'thread-1', runId: 'run-1' },
+          messages: { messages: [] },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
     ])
@@ -283,12 +222,15 @@ describe('mapStreamEventsToPatches', () => {
         },
       },
       {
-        type: 'conversation_state',
-        conversationState: {
-          messages: [],
-          assistantContent: '',
-          toolCalls: [],
-          serverToolResults: [],
+        type: 'ag_ui_checkpoint',
+        checkpoint: {
+          run: { threadId: 'thread-1', runId: 'run-1' },
+          messages: { messages: [] },
+          state: {
+            assistantContent: '',
+            toolCalls: [],
+            serverToolResults: [],
+          },
         },
       },
     ])

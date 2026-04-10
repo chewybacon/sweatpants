@@ -40,9 +40,11 @@
  *   commands.send({ type: 'send', content: 'Hello' })
  *   yield* sleep(10)
  *
- *   // Step through streaming
- *   yield* controls.emit({ type: 'text', content: 'Hello ' })
- *   yield* controls.emit({ type: 'text', content: 'world!' })
+ *   // Step through streaming (AG-UI events)
+ *   yield* controls.emit({ type: 'ag_ui_text_message_start', messageId: 'msg-1', role: 'assistant' })
+ *   yield* controls.emit({ type: 'ag_ui_text_message_content', messageId: 'msg-1', delta: 'Hello ' })
+ *   yield* controls.emit({ type: 'ag_ui_text_message_content', messageId: 'msg-1', delta: 'world!' })
+ *   yield* controls.emit({ type: 'ag_ui_text_message_end', messageId: 'msg-1' })
  *   yield* controls.complete('Hello world!')
  *
  *   yield* sleep(50)
@@ -119,7 +121,9 @@ export interface TestStreamer {
  * { streamer, transforms: [...] }
  *
  * // In your test:
- * yield* controls.emit({ type: 'text', content: 'Hello' })
+ * yield* controls.emit({ type: 'ag_ui_text_message_start', messageId: 'msg-1', role: 'assistant' })
+ * yield* controls.emit({ type: 'ag_ui_text_message_content', messageId: 'msg-1', delta: 'Hello' })
+ * yield* controls.emit({ type: 'ag_ui_text_message_end', messageId: 'msg-1' })
  * yield* controls.complete('Hello')
  * ```
  */
@@ -161,7 +165,7 @@ export function createTestStreamer(): TestStreamer {
         break
       }
 
-      // Process the stream event (same logic as streamChatOnce)
+      // Process the stream event — mirrors event-mapper.ts logic for AG-UI events
       switch (event.type) {
         case 'session_info':
           yield* patches.send({
@@ -171,9 +175,16 @@ export function createTestStreamer(): TestStreamer {
           })
           break
 
-        case 'text':
-          finalText += event.content
-          yield* patches.send({ type: 'streaming_text', content: event.content })
+        case 'ag_ui_text_message_start':
+          // Track assistant message lifecycle (simplified — test streamer assumes assistant)
+          break
+
+        case 'ag_ui_text_message_content':
+          finalText += event.delta
+          yield* patches.send({ type: 'streaming_text', content: event.delta })
+          break
+
+        case 'ag_ui_text_message_end':
           break
 
         case 'thinking':
@@ -183,38 +194,53 @@ export function createTestStreamer(): TestStreamer {
           })
           break
 
-        case 'tool_calls':
-          for (const call of event.calls) {
-            yield* patches.send({
-              type: 'tool_call_start',
-              call: {
-                id: call.id,
-                name: call.name,
-                arguments: JSON.stringify(call.arguments),
-              },
-            })
-          }
+        case 'ag_ui_tool_call_start':
+        case 'ag_ui_tool_call_args':
+          // Accumulation tracked by event-mapper; test streamer emits on ag_ui_tool_call_end
           break
 
-        case 'tool_result':
+        case 'ag_ui_tool_call_end':
+          // In real mapper this emits tool_call_start after accumulating args.
+          // Test streamer doesn't accumulate — callers should emit full tool calls via
+          // ag_ui_checkpoint or emit tool_call_start patches directly.
+          break
+
+        case 'ag_ui_tool_call_result':
           yield* patches.send({
             type: 'tool_call_result',
-            id: event.id,
+            id: event.toolCallId,
             result: event.content,
           })
           break
 
-        case 'tool_error':
+        case 'ag_ui_tool_call_error':
           yield* patches.send({
             type: 'tool_call_error',
-            id: event.id,
+            id: event.toolCallId,
             error: event.message,
           })
           break
 
-        case 'complete':
-          // Final text from server (authoritative)
-          finalText = event.text
+        case 'ag_ui_run_started':
+        case 'ag_ui_run_finished':
+        case 'ag_ui_messages_snapshot':
+        case 'ag_ui_state_snapshot':
+        case 'ag_ui_checkpoint':
+          // Lifecycle / state events — no patches in simplified test streamer
+          break
+
+        case 'isomorphic_handoff':
+          yield* patches.send({
+            type: 'isomorphic_tool_state',
+            id: event.callId,
+            state: 'awaiting_client_approval',
+            serverOutput: event.serverOutput,
+          })
+          break
+
+        case 'elicit_request':
+        case 'tool_session_status':
+        case 'tool_session_error':
           break
 
         case 'error':
@@ -281,14 +307,17 @@ export function createImmediateStreamer(
   return function* (_messages, patches, _options) {
     for (const event of events) {
       switch (event.type) {
-        case 'text':
-          yield* patches.send({ type: 'streaming_text', content: event.content })
+        case 'ag_ui_text_message_content':
+          yield* patches.send({ type: 'streaming_text', content: event.delta })
           break
         case 'thinking':
           yield* patches.send({ type: 'streaming_reasoning', content: event.content })
           break
-        case 'complete':
-          // Ignore, we use finalText parameter
+        case 'ag_ui_text_message_start':
+        case 'ag_ui_text_message_end':
+        case 'ag_ui_run_started':
+        case 'ag_ui_run_finished':
+          // Lifecycle events — no patches in simplified streamer
           break
         // Add other event types as needed
       }
