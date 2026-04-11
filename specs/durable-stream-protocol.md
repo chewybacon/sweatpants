@@ -2,7 +2,7 @@
 
 - **Status:** Draft
 - **Version:** 2026-04-10
-- **Companion:** [Stream Event Catalog](./stream-event-catalog.md)
+- **Companion:** [Stream Event Catalog](./stream-event-catalog.md), [Durable Storage Contract](./durable-storage-contract.md)
 
 ## 1. Introduction
 
