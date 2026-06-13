@@ -274,7 +274,9 @@ export function reduceStreamingParts(state: ChatState, patch: ChatPatch): ChatSt
 
       return {
         ...state,
-        messages: [...state.messages, messageWithId],
+        messages: state.messages.some((message) => message.id === messageId)
+          ? state.messages.map((message) => (message.id === messageId ? messageWithId : message))
+          : [...state.messages, messageWithId],
       }
     }
 

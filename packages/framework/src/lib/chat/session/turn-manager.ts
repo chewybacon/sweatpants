@@ -21,14 +21,19 @@ export function syncConversationStateForElicit(
   conversationState: ConversationState
 ): PendingToolCall[] {
   const conversationMessages = conversationState.messages
-  const originalHistoryLength = history.length
+  const seenIds = new Set(history.map((message) => message.id).filter(Boolean))
 
-  for (let i = originalHistoryLength; i < conversationMessages.length; i++) {
-    const convMsg = conversationMessages[i]!
+  for (const convMsg of conversationMessages) {
+    const id = assertMessageHasId(convMsg, 'syncConversationStateForElicit')
+    if (seenIds.has(id)) {
+      continue
+    }
+
     history.push({
       ...convMsg,
-      id: assertMessageHasId(convMsg, 'syncConversationStateForElicit'),
+      id,
     })
+    seenIds.add(id)
   }
 
   const hasAssistantWithTools = conversationMessages.some(

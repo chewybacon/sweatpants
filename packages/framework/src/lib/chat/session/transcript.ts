@@ -136,11 +136,19 @@ export function appendAssistantFinalMessage(
   state: TranscriptState,
   content: string,
 ): Message {
+  const id = messageIdForAssistantFinal(state.currentTurnKey)
   const message: Message = {
-    id: messageIdForAssistantFinal(state.currentTurnKey),
+    id,
     role: 'assistant',
     content,
   }
+
+  const existingIndex = history.findIndex((entry) => entry.id === id)
+  if (existingIndex >= 0) {
+    history[existingIndex] = message
+    return message
+  }
+
   history.push(message)
   return message
 }
