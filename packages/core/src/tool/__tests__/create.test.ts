@@ -197,7 +197,7 @@ describe("createTool", () => {
 
       expect(error).toBeDefined();
       expect(error?.message).toContain("no-impl");
-      expect(error?.message).toContain("transport routing is not yet implemented");
+      expect(error?.message).toContain("requires a transport");
     });
   });
 
@@ -315,17 +315,17 @@ describe("createTool", () => {
       const chain = yield* Chain();
       const result = yield* chain({});
 
-      // Middleware wraps: second(first(impl))
-      // second-before -> first-before -> impl -> first-after -> second-after
-      // Value: impl=1, first adds 10 = 11, second doubles = 22
+      // Middleware wraps in registration order: first(second(impl))
+      // first-before -> second-before -> impl -> second-after -> first-after
+      // Value: impl=1, second doubles = 2, first adds 10 = 12
       expect(callOrder).toEqual([
-        "second-before",
         "first-before",
+        "second-before",
         "impl",
-        "first-after",
         "second-after",
+        "first-after",
       ]);
-      expect(result).toEqual({ value: 22 });
+      expect(result).toEqual({ value: 12 });
     });
   });
 
