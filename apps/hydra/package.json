@@ -39,7 +39,7 @@
   "author": "",
   "license": "MIT",
   "peerDependencies": {
-    "effection": ">=4.0.0-beta.0",
+    "effection": ">=4.1.0-alpha.9 <5.0.0",
     "express": ">=4.0.0",
     "http-proxy": ">=1.0.0"
   },
@@ -47,7 +47,7 @@
     "express": ">=4.0.0",
     "http-proxy": ">=1.0.0",
     "morgan": "^1.10.0",
-    "effection": "^4.0.0-beta.3",
+    "effection": "catalog:",
     "@effectionx/process": "^0.6.1",
     "@effectionx/tinyexec": "^0.3.1",
     "zod": "4.1.13"

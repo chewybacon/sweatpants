@@ -200,7 +200,7 @@
   "peerDependencies": {
     "@effectionx/context-api": "^0.2.1",
     "@effectionx/raf": "^0.1.1",
-    "effection": "^4.0.0",
+    "effection": ">=4.1.0-alpha.9 <5.0.0",
     "katex": "^0.16.27",
     "marked": "^17.0.1",
     "mermaid": "^11.12.2",

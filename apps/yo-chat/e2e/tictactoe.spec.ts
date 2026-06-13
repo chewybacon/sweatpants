@@ -292,8 +292,17 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
 
     const thinkingLocator = page.getByText('thinking...', { exact: true })
     let moves = 0
-    while (moves < 4 && await emptyCell.isVisible()) {
-      await emptyCell.click()
+    while (moves < 4) {
+      const nextEmptyCell = page.locator('button').filter({ hasText: /^[0-8]$/ }).first()
+      if (!await nextEmptyCell.isVisible().catch(() => false)) break
+
+      try {
+        await nextEmptyCell.click({ timeout: 5000 })
+      } catch {
+        // The game can end between visibility checks and the click becoming
+        // actionable. Stop the loop and assert on the moves already rendered.
+        break
+      }
       moves++
       
       try {

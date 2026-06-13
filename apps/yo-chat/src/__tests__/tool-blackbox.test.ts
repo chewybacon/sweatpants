@@ -33,9 +33,11 @@ import {
   streamChatOnce,
   type ElicitResponseData,
 } from '../../../../packages/framework/src/lib/chat/session/stream-chat.ts'
+import { createChatSession } from '../../../../packages/framework/src/lib/chat/session/create-session.ts'
 import type { Message } from '../../../../packages/framework/src/lib/chat/types.ts'
 import type { StreamResult } from '../../../../packages/framework/src/lib/chat/session/streaming.ts'
 import type { ChatPatch } from '../../../../packages/framework/src/lib/chat/patches/index.ts'
+import type { ChatState } from '../../../../packages/framework/src/lib/chat/state/chat-state.ts'
 
 import { initialChatState, chatReducer } from '../../../../packages/framework/src/lib/chat/state/index.ts'
 
@@ -81,6 +83,49 @@ function* withTimeout<T>(label: string, op: Operation<T>, timeoutMs = 5_000): Op
   }
 
   return raced.value
+}
+
+type PendingElicit = ChatState['pendingElicits'][string]['elicitations'][number]
+
+function findPendingElicit(
+  state: ChatState,
+  key: string,
+  callId?: string
+): PendingElicit | null {
+  for (const tracking of Object.values(state.pendingElicits)) {
+    for (const elicit of tracking.elicitations) {
+      if (elicit.key === key && elicit.status === 'pending' && (!callId || elicit.callId === callId)) {
+        return elicit
+      }
+    }
+  }
+
+  return null
+}
+
+function countAssistantMessagesContaining(state: ChatState, text: string): number {
+  return state.messages.filter(
+    (message) => message.role === 'assistant' && message.content.includes(text)
+  ).length
+}
+
+function* waitForState(
+  label: string,
+  getState: () => ChatState,
+  predicate: (state: ChatState) => boolean,
+  timeoutMs = 10_000
+): Operation<ChatState> {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = getState()
+    if (predicate(state)) {
+      return state
+    }
+    yield* sleep(25)
+  }
+
+  throw new Error(`Timeout waiting for state: ${label}`)
 }
 
 describe('yo-chat tool blackbox', () => {
@@ -248,6 +293,238 @@ describe('yo-chat tool blackbox', () => {
       })
     },
     30_000
+  )
+
+  it(
+    'book_flight can run outbound and return flows when provider omits tool call ids',
+    async () => {
+      await run(function* () {
+        const pluginRegistry = createPluginRegistryFrom([bookFlightPlugin.client as any])
+        const mcpToolRegistry = createSingleToolMcpRegistry(bookFlightTool)
+
+        const [serverScope, destroyServerScope] = createScope()
+        const ready = createChannel<PluginSessionManager, void>()
+
+        serverScope.run(function* () {
+          const store = createInMemoryToolSessionStore()
+          const samplingProvider = {
+            *sample() {
+              return { text: 'ok', model: 'mock', stopReason: 'endTurn' as const }
+            },
+          }
+
+          const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+          const manager = yield* createPluginSessionManager({ registry })
+
+          yield* ready.send(manager)
+          yield* suspend()
+        })
+
+        const readySub = yield* ready
+        const readyResult = yield* readySub.next()
+        if (readyResult.done) {
+          throw new Error('PluginSessionManager setup channel closed unexpectedly')
+        }
+        const pluginSessionManager = readyResult.value
+
+        const chatProviderMessages: Message[][] = []
+        const provider = createMockProvider({
+          customStream: (messages, options) => {
+            const transcript = messages.map((message) => message.content).join('\n')
+
+            if (transcript.includes('Give a brief, helpful travel tip')) {
+              return createMockProvider({ responses: 'Arrive early and keep your ID handy.' }).stream(messages, options)
+            }
+
+            chatProviderMessages.push(JSON.parse(JSON.stringify(messages)) as Message[])
+
+            const lastMessage = messages[messages.length - 1]
+            if (lastMessage?.role === 'user' && /return/i.test(lastMessage.content)) {
+              return createMockProvider({
+                responses: 'Calling return flight tool',
+                toolCalls: [
+                  {
+                    id: undefined as unknown as string,
+                    name: bookFlightTool.name,
+                    arguments: { from: 'NYC', destination: 'LA' },
+                  },
+                ],
+              }).stream(messages, options)
+            }
+
+            if (lastMessage?.role === 'user') {
+              return createMockProvider({
+                responses: 'Calling outbound flight tool',
+                toolCalls: [
+                  {
+                    id: undefined as unknown as string,
+                    name: bookFlightTool.name,
+                    arguments: { from: 'LA', destination: 'NYC' },
+                  },
+                ],
+              }).stream(messages, options)
+            }
+
+            const latestToolMessage = [...messages].reverse().find((message) => message.role === 'tool')
+            if (latestToolMessage?.content.includes('"to":"LA"')) {
+              return createMockProvider({ responses: 'Return booked' }).stream(messages, options)
+            }
+
+            if (latestToolMessage?.content.includes('"to":"NYC"')) {
+              return createMockProvider({ responses: 'Outbound booked' }).stream(messages, options)
+            }
+
+            return createMockProvider({ responses: 'No booking needed' }).stream(messages, options)
+          },
+        })
+
+        const initializerHooks = [
+          function* setupDurableStreams() {
+            yield* setupInMemoryDurableStreams<string>()
+          },
+          function* setupProvider() {
+            yield* ProviderContext.set(provider)
+          },
+          function* setupTools() {
+            yield* ToolRegistryContext.set([])
+          },
+          function* setupPlugins() {
+            yield* PluginRegistryContext.set(pluginRegistry)
+            yield* McpToolRegistryContext.set(mcpToolRegistry)
+            yield* PluginSessionManagerContext.set(pluginSessionManager)
+          },
+        ]
+
+        const handler = createChatHandler({ initializerHooks, maxToolIterations: 5 })
+
+        const originalFetch = globalThis.fetch
+        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          const { signal, ...restInit } = init ?? {}
+          const url = typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url
+          return handler(new Request(url, restInit))
+        }
+
+        try {
+          const { state, dispatch } = yield* createChatSession({
+            baseUrl: 'http://localhost/chat',
+            enabledPlugins: [bookFlightTool.name],
+          })
+          let currentState = initialChatState
+
+          yield* spawn(function* () {
+            for (const nextState of yield* each(state)) {
+              currentState = nextState
+              yield* each.next()
+            }
+          })
+
+          yield* sleep(0)
+
+          dispatch({ type: 'send', content: 'Book a flight from LA to NYC' })
+
+          let stateWithElicit = yield* waitForState(
+            'outbound pickFlight elicit',
+            () => currentState,
+            (candidate) => !candidate.isStreaming && findPendingElicit(candidate, 'pickFlight') !== null,
+            20_000
+          )
+          const outboundFlight = findPendingElicit(stateWithElicit, 'pickFlight')
+          expect(outboundFlight?.callId).toEqual(expect.any(String))
+          const outboundCallId = outboundFlight!.callId
+
+          dispatch({
+            type: 'elicit_response',
+            sessionId: outboundFlight!.sessionId,
+            callId: outboundFlight!.callId,
+            elicitId: outboundFlight!.elicitId,
+            result: { action: 'accept', content: { flightId: 'FL001' } },
+          })
+
+          stateWithElicit = yield* waitForState(
+            'outbound pickSeat elicit',
+            () => currentState,
+            (candidate) => !candidate.isStreaming && findPendingElicit(candidate, 'pickSeat', outboundCallId) !== null,
+            20_000
+          )
+          const outboundSeat = findPendingElicit(stateWithElicit, 'pickSeat', outboundCallId)
+          expect(outboundSeat?.callId).toBe(outboundCallId)
+
+          dispatch({
+            type: 'elicit_response',
+            sessionId: outboundSeat!.sessionId,
+            callId: outboundSeat!.callId,
+            elicitId: outboundSeat!.elicitId,
+            result: { action: 'accept', content: { row: 2, seat: 'B' } },
+          })
+
+          yield* waitForState(
+            'outbound booking complete',
+            () => currentState,
+            (candidate) => !candidate.isStreaming && countAssistantMessagesContaining(candidate, 'Outbound booked') === 1,
+            20_000
+          )
+
+          dispatch({ type: 'send', content: 'ok great, now I need to book the return flight' })
+
+          stateWithElicit = yield* waitForState(
+            'return pickFlight elicit',
+            () => currentState,
+            (candidate) => !candidate.isStreaming && findPendingElicit(candidate, 'pickFlight') !== null,
+            20_000
+          )
+          const returnFlight = findPendingElicit(stateWithElicit, 'pickFlight')
+          expect(returnFlight?.callId).toEqual(expect.any(String))
+          const returnCallId = returnFlight!.callId
+          expect(returnCallId).not.toBe(outboundCallId)
+
+          dispatch({
+            type: 'elicit_response',
+            sessionId: returnFlight!.sessionId,
+            callId: returnFlight!.callId,
+            elicitId: returnFlight!.elicitId,
+            result: { action: 'accept', content: { flightId: 'FL002' } },
+          })
+
+          stateWithElicit = yield* waitForState(
+            'return pickSeat elicit',
+            () => currentState,
+            (candidate) => !candidate.isStreaming && findPendingElicit(candidate, 'pickSeat', returnCallId) !== null,
+            20_000
+          )
+          const returnSeat = findPendingElicit(stateWithElicit, 'pickSeat', returnCallId)
+          expect(returnSeat?.callId).toBe(returnCallId)
+
+          dispatch({
+            type: 'elicit_response',
+            sessionId: returnSeat!.sessionId,
+            callId: returnSeat!.callId,
+            elicitId: returnSeat!.elicitId,
+            result: { action: 'accept', content: { row: 3, seat: 'C' } },
+          })
+
+          yield* waitForState(
+            'return booking complete',
+            () => currentState,
+            (candidate) => !candidate.isStreaming && countAssistantMessagesContaining(candidate, 'Return booked') === 1,
+            20_000
+          )
+
+          expect(countAssistantMessagesContaining(currentState, 'Outbound booked')).toBe(1)
+          expect(countAssistantMessagesContaining(currentState, 'Return booked')).toBe(1)
+          expect(chatProviderMessages.some((messages) =>
+            messages.some((message) => message.role === 'user' && /return flight/i.test(message.content))
+          )).toBe(true)
+        } finally {
+          globalThis.fetch = originalFetch
+          yield* call(() => destroyServerScope())
+        }
+      })
+    },
+    60_000
   )
 
   it(

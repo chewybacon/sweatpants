@@ -57,8 +57,18 @@ function* handleRequest<M extends Methods>(
   const { id, type, payload } = request;
 
   try {
-    // Check if method exists on the protocol
-    if (!(type in handle.protocol.methods)) {
+    // Check if method exists on the protocol. Built-in transport requests use
+    // `type` for UI-specific elicit kinds (for example "confirmation"), so
+    // fall back to the transport `kind` when the kind names a protocol method.
+    const usedKindFallback = !(type in handle.protocol.methods) &&
+      request.kind in handle.protocol.methods;
+    const methodName = (type in handle.protocol.methods
+      ? type
+      : usedKindFallback
+        ? request.kind
+        : undefined) as keyof M | undefined;
+
+    if (!methodName) {
       const response: ResponseMessage = {
         type: "response",
         id,
@@ -74,7 +84,6 @@ function* handleRequest<M extends Methods>(
     // Invoke the method
     // Type assertion needed since payload comes from transport as unknown
     // The protocol could validate against schemas if needed
-    const methodName = type as keyof M;
     const stream = handle.invoke({
       name: methodName,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,14 +107,36 @@ function* handleRequest<M extends Methods>(
       streamResult = yield* subscription.next();
     }
 
-    // Send final response
+    // Send final response. Generic protocol methods are wrapped as accepted
+    // transport responses. Built-in requests that fell back from UI-specific
+    // `type` values to protocol `kind` methods already return transport-shaped
+    // values and need to be normalized instead of double-wrapped.
+    let finalResponse: ResponseMessage["response"];
+    if (usedKindFallback && request.kind === "notify") {
+      finalResponse = streamResult.value as ResponseMessage["response"];
+    } else if (usedKindFallback && request.kind === "elicit") {
+      const elicitResult = streamResult.value as {
+        status: "accepted" | "declined" | "cancelled";
+        value?: unknown;
+      };
+      if (elicitResult.status === "accepted") {
+        finalResponse = { status: "accepted", content: elicitResult.value };
+      } else if (elicitResult.status === "declined") {
+        finalResponse = { status: "declined" };
+      } else {
+        finalResponse = { status: "cancelled" };
+      }
+    } else {
+      finalResponse = {
+        status: "accepted",
+        content: streamResult.value,
+      };
+    }
+
     const response: ResponseMessage = {
       type: "response",
       id,
-      response: {
-        status: "accepted",
-        content: streamResult.value,
-      },
+      response: finalResponse,
     };
     yield* transport.send(response);
   } catch (error) {
