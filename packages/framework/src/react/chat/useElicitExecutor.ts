@@ -179,8 +179,20 @@ function* executePluginHandler(
     // Create a signal to wait for the response
     const responseSignal = createSignal<TResponse, void>()
 
+    let responded = false
+
     // Create respond callback that resumes the generator
     const respond = (value: TResponse): void => {
+      if (responded) return
+      responded = true
+
+      dispatchEmissionPatch({
+        type: 'tool_emission_response',
+        callId: elicit.callId,
+        emissionId,
+        response: value,
+      })
+
       responseSignal.send(value)
     }
 

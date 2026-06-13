@@ -212,6 +212,114 @@ describe('useChatSession (black-box)', () => {
     unmount()
   }, 15000)
 
+  it('completes plugin emissions and ignores duplicate direct respond calls', async () => {
+    const fetchBodies: unknown[] = []
+
+    const response1 = ndjsonResponse([
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: ['book_flight'] },
+        persona: null,
+      },
+      {
+        type: 'ag_ui_state_snapshot',
+        run: { threadId: 'thread-1', runId: 'run-1' },
+        state: {
+          pendingClientActions: [{
+            toolCallId: 'call-direct',
+            toolName: 'book_flight',
+            kind: 'elicit',
+            sessionId: 'sess-direct',
+            elicitId: 'elicit-direct',
+            key: 'pickFlight',
+            message: 'Pick a flight',
+            schema: { type: 'object', properties: { flightId: { type: 'string' } } },
+          }],
+        },
+      },
+    ])
+
+    const response2 = ndjsonResponse([
+      {
+        type: 'session_info',
+        capabilities: { thinking: false, streaming: true, tools: ['book_flight'] },
+        persona: null,
+      },
+      {
+        type: 'ag_ui_tool_call_result',
+        toolCallId: 'call-direct',
+        toolCallName: 'book_flight',
+        content: '{"ok":true}',
+      },
+      { type: 'ag_ui_run_finished', run: { threadId: 'thread-1', runId: 'run-2' } },
+    ])
+
+    const responses = [response1, response2]
+
+    globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.body) {
+        fetchBodies.push(JSON.parse(String(init.body)))
+      }
+
+      const next = responses.shift()
+      if (!next) {
+        throw new Error('Unexpected extra fetch call')
+      }
+      return next
+    }
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <ChatProvider baseUrl="http://localhost/chat">{children}</ChatProvider>
+    )
+
+    const { result, unmount } = renderHook(
+      () => useChatSession({ transforms: [], plugins: [createMockBookFlightPlugin()] }),
+      { wrapper }
+    )
+
+    act(() => {
+      result.current.send('Book a flight')
+    })
+
+    await waitFor(() => {
+      expect(result.current.toolEmissions[0]?.emissions[0]?.respond).toBeTypeOf('function')
+    })
+
+    const emission = result.current.toolEmissions[0]!.emissions[0]!
+
+    act(() => {
+      emission.respond?.({ flightId: 'FL001' })
+      emission.respond?.({ flightId: 'FL002' })
+    })
+
+    await waitFor(() => {
+      const completed = result.current.toolEmissions[0]?.emissions[0]
+      expect(completed?.status).toBe('complete')
+      expect(completed?.response).toEqual({ flightId: 'FL001' })
+      expect(completed?.respond).toBeUndefined()
+    })
+
+    await waitFor(() => {
+      expect(fetchBodies.length).toBeGreaterThanOrEqual(2)
+    })
+
+    const elicitResponseBodies = fetchBodies
+      .map((body) => body as { elicitResponses?: unknown[] })
+      .filter((body) => body.elicitResponses?.length)
+
+    expect(elicitResponseBodies).toHaveLength(1)
+    expect(elicitResponseBodies[0]!.elicitResponses).toMatchObject([
+      {
+        sessionId: 'sess-direct',
+        callId: 'call-direct',
+        elicitId: 'elicit-direct',
+        result: { action: 'accept', content: { flightId: 'FL001' } },
+      },
+    ])
+
+    unmount()
+  }, 15000)
+
   it('hydrates durable conversation history when conversationId is provided', async () => {
     const fetchBodies: unknown[] = []
 

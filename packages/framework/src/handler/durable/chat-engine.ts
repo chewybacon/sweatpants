@@ -1338,9 +1338,20 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // resuming from elicitation - the original state.toolCalls was set during
             // the first request's provider_streaming phase, but on subsequent requests
             // (elicit responses), we create a new engine with fresh state.
-            if (toolCalls.length === 0 && state.awaitingElicitResult) {
-              // Find assistant message with tool_calls in conversationMessages
-              const assistantWithToolCalls = state.conversationMessages.find(
+            if (
+              toolCalls.length === 0 &&
+              state.awaitingElicitResult?.ok &&
+              state.awaitingElicitResult.kind === 'plugin_awaiting'
+            ) {
+              // Find the assistant message that owns the currently awaited tool call.
+              // Conversation history can contain prior completed plugin calls; using
+              // the first assistant with tool calls can attach the new elicitation UI
+              // to stale tool-call parts from an earlier turn.
+              const awaitedCallId = state.awaitingElicitResult.callId
+              const assistantWithToolCalls = [...state.conversationMessages].reverse().find(
+                msg => msg.role === 'assistant' &&
+                  msg.tool_calls?.some((toolCall) => toolCall.id === awaitedCallId)
+              ) ?? [...state.conversationMessages].reverse().find(
                 msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
               )
               if (assistantWithToolCalls && assistantWithToolCalls.tool_calls) {

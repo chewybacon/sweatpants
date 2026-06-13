@@ -102,6 +102,7 @@ function localEmissionReducer(
           ...tracking,
           emissions: tracking.emissions.map(e => {
             if (e.id !== action.emissionId) return e
+            if (e.status === 'complete') return e
             // Create new emission without respond callback
             const { respond: _, ...rest } = e
             return { ...rest, status: 'complete' as const, response: action.response }
@@ -484,13 +485,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     const localEmission = localTracking?.emissions.find((e: ToolEmissionState) => e.id === emissionId)
     if (localEmission?.respond) {
       localEmission.respond(response)
-      // Also update local state to mark as responded
-      dispatchLocalEmission({
-        type: 'tool_emission_response',
-        callId,
-        emissionId,
-        response,
-      })
       return
     }
 
