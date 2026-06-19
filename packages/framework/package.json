@@ -74,6 +74,20 @@
         "default": "./dist/chat/durable-streams.cjs"
       }
     },
+    "./chat/runtime": {
+      "development": {
+        "import": "./src/lib/chat/runtime/index.ts",
+        "types": "./src/lib/chat/runtime/index.ts"
+      },
+      "import": {
+        "types": "./dist/chat/runtime.d.ts",
+        "default": "./dist/chat/runtime.js"
+      },
+      "require": {
+        "types": "./dist/chat/runtime.d.cts",
+        "default": "./dist/chat/runtime.cjs"
+      }
+    },
     "./chat/isomorphic-tools": {
       "development": {
         "import": "./src/lib/chat/isomorphic-tools/index.ts",
@@ -231,8 +245,9 @@
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
-    "@sweatpants/durable-streams": "workspace:*",
+    "@earendil-works/pi-ai": "^0.79.8",
     "@sweatpants/core": "workspace:*",
+    "@sweatpants/durable-streams": "workspace:*",
     "@sweatpants/elicit-context": "workspace:*",
     "@sweatpants/stream-bridge": "workspace:*",
     "fast-glob": "^3.3.2",

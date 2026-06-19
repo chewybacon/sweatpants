@@ -7,6 +7,7 @@ export default defineConfig({
     'handler/durable': 'src/handler/durable/index.ts',
     chat: 'src/lib/chat/index.ts',
     'chat/durable-streams': 'src/lib/chat/durable-streams/index.ts',
+    'chat/runtime': 'src/lib/chat/runtime/index.ts',
     'chat/isomorphic-tools': 'src/lib/chat/isomorphic-tools/index.ts',
     'chat/mcp-tools': 'src/lib/chat/mcp-tools/index.ts',
     'chat/mcp-tools/worker': 'src/lib/chat/mcp-tools/session/worker-exports.ts',

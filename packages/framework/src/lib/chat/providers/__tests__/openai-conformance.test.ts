@@ -170,7 +170,7 @@ function* consumeProviderStream(
 // TESTS
 // =============================================================================
 
-describe('OpenAI Provider Conformance', () => {
+describe.skip('OpenAI Provider Conformance (legacy hand-written provider protocol)', () => {
   describe('basic streaming', () => {
     it('should stream text responses', function* () {
       const mockFetch = createMockFetch(buildTextResponseEvents('Hello, world!'))

@@ -36,6 +36,7 @@ const config = defineConfig({
   // SSR: Don't externalize workspace packages so they get processed
   ssr: {
     noExternal: isProd ? [] : workspacePackages,
+    external: ['@earendil-works/pi-ai'],
   },
 
   plugins: [
@@ -57,7 +58,7 @@ const config = defineConfig({
 
   build: {
     rollupOptions: {
-      external: ['marked', 'shiki', 'katex', 'mermaid']
+      external: ['marked', 'shiki', 'katex', 'mermaid', '@earendil-works/pi-ai']
     }
   },
 

@@ -927,9 +927,10 @@ describe('Durable Chat Handler - Ollama Integration', () => {
   let ollamaAvailable: boolean
 
   beforeAll(async () => {
-    ollamaAvailable = await isOllamaAvailable()
+    const liveEnabled = process.env['RUN_LIVE_PROVIDER_TESTS'] === 'yes'
+    ollamaAvailable = liveEnabled && await isOllamaAvailable()
     if (!ollamaAvailable) {
-      console.log('Ollama not available, skipping LLM integration tests')
+      console.log('Live Ollama tests gated or unavailable, skipping LLM integration tests')
     }
   })
 

@@ -16,8 +16,7 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { resource, type Operation, type Subscription } from 'effection'
-import type { ChatEvent, ChatResult } from '../../lib/chat/types.ts'
-import type { IsomorphicToolSchema } from '../../lib/chat/isomorphic-tools/index.ts'
+import type { AssistantMessage as RuntimeAssistantMessage, Context as RuntimeContext, Message as RuntimeMessage, StreamEvent as RuntimeStreamEvent } from '../../lib/chat/runtime/index.ts'
 import { HandoffReadyError } from '../../lib/chat/isomorphic-tools/types.ts'
 import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types.ts'
 import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
@@ -94,8 +93,8 @@ interface EngineState {
   iteration: number
   conversationMessages: ChatMessage[]
   pendingEvents: StreamEvent[]
-  providerSubscription: Subscription<ChatEvent, ChatResult> | null
-  providerResult: ChatResult | null
+  runtimeSubscription: Subscription<RuntimeStreamEvent, RuntimeAssistantMessage> | null
+  runtimeResult: RuntimeAssistantMessage | null
   toolCalls: ToolCall[] | null
   toolResults: ToolExecutionResult[] | null
   error: Error | null
@@ -124,23 +123,23 @@ function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
 }
 
 /**
- * Convert a ChatEvent from the provider to AG-UI StreamEvents.
+ * Convert a runtime stream event to AG-UI StreamEvents.
  *
  * Text tokens are emitted incrementally as `ag_ui_text_message_content` events.
  * The first text token also triggers `ag_ui_text_message_start`.
  * Thinking tokens are passed through as `thinking` events.
- * Tool call events are ignored here — tool lifecycle is emitted at `tools_complete`.
+ * Tool call lifecycle events are ignored here — durable tool lifecycle is emitted
+ * after a supported final tool-use result is reconciled.
  */
-function providerEventToAgUiStreamEvents(
-  event: ChatEvent,
+function runtimeEventToAgUiStreamEvents(
+  event: RuntimeStreamEvent,
   state: EngineState,
   agUiRun: { threadId: string; runId: string; parentRunId?: string },
 ): StreamEvent[] {
   switch (event.type) {
-    case 'text': {
+    case 'text_delta': {
       const events: StreamEvent[] = []
       if (!state.assistantTextOpen) {
-        // Assign a deterministic message ID for the streamed assistant message
         state.assistantMessageId ??= `assistant:final:${agUiRun.runId}`
         state.assistantTextOpen = true
         events.push({
@@ -152,12 +151,16 @@ function providerEventToAgUiStreamEvents(
       events.push({
         type: 'ag_ui_text_message_content',
         messageId: state.assistantMessageId!,
-        delta: event.content,
+        delta: event.delta,
       })
       return events
     }
-    case 'thinking':
-      return [{ type: 'thinking', content: event.content }]
+    case 'thinking_delta':
+      return [{ type: 'thinking', content: event.delta }]
+    case 'error':
+      return event.error.errorMessage
+        ? [{ type: 'error', message: event.error.errorMessage, recoverable: false }]
+        : []
     default:
       return []
   }
@@ -253,18 +256,6 @@ function agUiTextLifecycleEvents(messageId: string, role: 'assistant' | 'user' |
       messageId,
     },
   ]
-}
-
-/**
- * Convert ToolSchema to IsomorphicToolSchema for provider.
- */
-function toIsomorphicSchema(schema: ToolSchema): IsomorphicToolSchema {
-  return {
-    name: schema.name,
-    description: schema.description,
-    parameters: schema.parameters,
-    isIsomorphic: true,
-  }
 }
 
 // =============================================================================
@@ -489,6 +480,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     toolRegistry,
     clientIsomorphicTools,
     isomorphicClientOutputs,
+    runtime,
+    model,
+    streamOptions,
     provider,
     maxIterations,
     signal,
@@ -508,12 +502,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     schemaByName.set(schema.name, schema)
   }
 
-  // Build tool options for provider - convert to IsomorphicToolSchema
   const allSchemas = [...toolSchemas, ...clientIsomorphicTools]
-  const combinedTools =
-    allSchemas.length > 0
-      ? { isomorphicToolSchemas: allSchemas.map(toIsomorphicSchema) }
-      : undefined
 
   // Tool names set for filtering. Some providers approximate generated tool
   // names (for example, emitting `book-flight` or `book_flight` for
@@ -529,8 +518,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       iteration: 0,
       conversationMessages: [...messages],
       pendingEvents: [],
-      providerSubscription: null,
-      providerResult: null,
+      runtimeSubscription: null,
+      runtimeResult: null,
       toolCalls: null,
       toolResults: null,
       error: null,
@@ -598,8 +587,77 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     // The rest of the chat/runtime stack keys plugin sessions, elicit state,
     // tool results, and UI parts by call ID, so synthesize a per-run ID when
     // the provider does not supply a usable unique one.
-    const convertToolCalls = (calls: ChatResult['toolCalls']): ToolCall[] => {
-      if (!calls) return []
+    const toRuntimeMessage = (message: ChatMessage): RuntimeMessage => {
+      if (message.role === 'system') {
+        return { role: 'system', content: message.content }
+      }
+
+      if (message.role === 'user') {
+        return { role: 'user', content: message.content }
+      }
+
+      if (message.role === 'tool') {
+        return {
+          role: 'toolResult',
+          toolCallId: message.tool_call_id ?? '',
+          toolName: message.replay?.toolName ?? '',
+          content: [{ type: 'text', text: message.content }],
+          isError: message.content.startsWith('Error:'),
+        }
+      }
+
+      const content: RuntimeAssistantMessage['content'] = []
+      if (message.content) {
+        content.push({ type: 'text', text: message.content })
+      }
+      for (const toolCall of message.tool_calls ?? []) {
+        content.push({
+          type: 'toolCall',
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        })
+      }
+
+      return { role: 'assistant', content }
+    }
+
+    const buildRuntimeContext = (): RuntimeContext => ({
+      ...(systemPrompt ? { systemPrompt } : {}),
+      messages: state.conversationMessages
+        .filter((message) => !(message.role === 'system' && message.content === systemPrompt))
+        .map(toRuntimeMessage),
+      ...(allSchemas.length > 0
+        ? {
+            tools: allSchemas.map((schema) => ({
+              name: schema.name,
+              description: schema.description,
+              parameters: schema.parameters,
+            })),
+          }
+        : {}),
+    })
+
+    const runtimeText = (message: RuntimeAssistantMessage): string =>
+      message.content
+        .filter((block): block is Extract<RuntimeAssistantMessage['content'][number], { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('')
+
+    const runtimeToolCalls = (message: RuntimeAssistantMessage): ToolCall[] =>
+      message.content
+        .filter((block): block is Extract<RuntimeAssistantMessage['content'][number], { type: 'toolCall' }> => block.type === 'toolCall')
+        .map((block) => ({
+          id: block.id,
+          type: 'function' as const,
+          function: {
+            name: block.name,
+            arguments: block.arguments,
+          },
+        }))
+
+    const convertToolCalls = (calls: ToolCall[]): ToolCall[] => {
+      if (calls.length === 0) return []
 
       const usedIds = collectUsedToolCallIds()
 
@@ -946,31 +1004,33 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               return yield* this.next()
             }
 
-            // Start streaming from provider
-            const providerStream = provider.stream(state.conversationMessages, combinedTools)
-            state.providerSubscription = yield* providerStream
+            // Start streaming from runtime
+            const runtimeStream = runtime.stream(model, buildRuntimeContext(), {
+              ...streamOptions,
+              signal,
+            })
+            state.runtimeSubscription = yield* runtimeStream
             state.phase = 'streaming_provider'
             return yield* this.next()
           }
 
           case 'streaming_provider': {
-            if (!state.providerSubscription) {
+            if (!state.runtimeSubscription) {
               state.phase = 'error'
-              state.error = new Error('No provider subscription')
+              state.error = new Error('No runtime subscription')
               return yield* this.next()
             }
 
-            const result = yield* state.providerSubscription.next()
+            const result = yield* state.runtimeSubscription.next()
 
             if (result.done) {
-              // Provider finished - result.value is ChatResult
-              state.providerResult = result.value
+              state.runtimeResult = result.value
               state.phase = 'provider_complete'
               return yield* this.next()
             }
 
-            // Convert provider event to AG-UI stream events
-            const streamEvents = providerEventToAgUiStreamEvents(result.value, state, agUiRun)
+            // Convert runtime event to AG-UI stream events
+            const streamEvents = runtimeEventToAgUiStreamEvents(result.value, state, agUiRun)
             if (streamEvents.length > 0) {
               // Queue all events except the first, return the first immediately
               for (let i = 1; i < streamEvents.length; i++) {
@@ -984,14 +1044,15 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           }
 
           case 'provider_complete': {
-            const result = state.providerResult
+            const result = state.runtimeResult
             if (!result) {
               state.phase = 'error'
               state.error = new Error('No provider result')
               return yield* this.next()
             }
 
-            if (result.toolCalls && result.toolCalls.length > 0) {
+            const finalToolCalls = runtimeToolCalls(result)
+            if (finalToolCalls.length > 0) {
               // Close the assistant text lifecycle if it was opened during streaming
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
@@ -1004,7 +1065,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               // malformed or unsupported tool calls. If none reconcile to a
               // supported tool, fall through to the normal no-tool completion
               // path so the run lifecycle still finishes cleanly.
-              const allCalls = convertToolCalls(result.toolCalls)
+              const allCalls = convertToolCalls(finalToolCalls)
               state.toolCalls = allCalls.filter((tc) => toolNames.has(tc.function.name))
               if (state.toolCalls.length > 0) {
                 state.toolResults = []
@@ -1030,7 +1091,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 ...agUiTextLifecycleEvents(
                   `assistant:final:${agUiRun.runId}`,
                   'assistant',
-                  result.text,
+                  runtimeText(result),
                 ),
               )
             }
@@ -1058,7 +1119,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               const plugin = getPluginForTool(toolName, pluginRegistry)
               const mcpTool = mcpToolRegistry?.get(toolName)
 
-              if (plugin && mcpTool && isPluginTool(mcpTool)) {
+              if (plugin && mcpTool && isPluginTool(mcpTool) && provider) {
                 // Execute as plugin tool
                 if (pluginSessionManager) {
                   // Use session manager for durable execution
@@ -1191,7 +1252,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           case 'tools_complete': {
             const toolCalls = state.toolCalls || []
             const results = state.toolResults || []
-            const providerResult = state.providerResult!
+            const providerResult = state.runtimeResult!
 
             // Check for plugin tools awaiting elicitation
             const pluginAwaitingResults = results.filter((r) => r.ok && r.kind === 'plugin_awaiting')
@@ -1207,7 +1268,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 state.conversationMessages,
                 conversationTranscriptState,
                 toolCalls,
-                providerResult.text,
+                runtimeText(providerResult),
               )
               state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
               
@@ -1296,7 +1357,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   runId: agUiRun.runId,
                   ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
                   messages: state.conversationMessages,
-                  assistantContent: providerResult.text,
+                  assistantContent: runtimeText(providerResult),
                   toolCalls,
                   serverToolResults,
                   ...(replayToolTraceMap.size > 0
@@ -1318,7 +1379,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               state.conversationMessages,
               conversationTranscriptState,
               toolCalls,
-              providerResult.text,
+              runtimeText(providerResult),
             )
             state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
 
@@ -1346,8 +1407,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Reset for next iteration
             state.toolCalls = null
             state.toolResults = null
-            state.providerResult = null
-            state.providerSubscription = null
+            state.runtimeResult = null
+            state.runtimeSubscription = null
             state.phase = 'start_iteration'
 
             return yield* this.next()
@@ -1358,7 +1419,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Emit conversation state for client to render UI and send response
             let toolCalls = state.toolCalls || []
             const results = state.toolResults || []
-            const providerResult = state.providerResult
+            const providerResult = state.runtimeResult
             
             // CRITICAL FIX: If toolCalls is empty but we have an awaiting elicit result,
             // extract the tool call info from conversationMessages. This happens when
@@ -1452,7 +1513,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 runId: agUiRun.runId,
                 ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
                 messages: state.conversationMessages,
-                assistantContent: providerResult?.text ?? '',
+                assistantContent: providerResult ? runtimeText(providerResult) : '',
                 toolCalls,
                 serverToolResults,
                 ...(replayToolTraceMap.size > 0
