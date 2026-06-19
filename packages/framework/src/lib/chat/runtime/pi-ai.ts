@@ -258,11 +258,12 @@ function toPiImageModel(model: ImageModel): PiImagesModel<string> {
   }
 }
 
-function toPiStreamOptions(options: StreamOptions | undefined, signal: AbortSignal): PiProviderStreamOptions {
+function toPiStreamOptions(model: Model, options: StreamOptions | undefined, signal: AbortSignal): PiProviderStreamOptions {
+  const apiKey = options?.apiKey ?? (model.provider === 'ollama' ? 'ollama' : undefined)
   return {
     ...(options?.providerOptions ?? {}),
     signal,
-    ...(options?.apiKey ? { apiKey: options.apiKey } : {}),
+    ...(apiKey ? { apiKey } : {}),
     ...(options?.env ? { env: options.env as Record<string, string> } : {}),
     ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
@@ -364,7 +365,7 @@ export function createPiAiRuntime(): Runtime {
       return resource(function* (provide) {
         const scopeSignal = yield* useAbortSignal()
         const combined = combineAbortSignals(scopeSignal, options?.signal)
-        const stream = piStream(toPiModel(model), toPiContext(context), toPiStreamOptions(options, combined.controller.signal))
+        const stream = piStream(toPiModel(model), toPiContext(context), toPiStreamOptions(model, options, combined.controller.signal))
         const iterator = stream[Symbol.asyncIterator]()
 
         try {

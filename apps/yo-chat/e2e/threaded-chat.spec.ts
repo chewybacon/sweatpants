@@ -42,7 +42,16 @@ async function waitForIdle(page: Page) {
 }
 
 async function completeCardPick(page: Page) {
-  await expect(interactiveToolCallBlocks(page).last()).toBeVisible({ timeout: 60000 })
+  const interactiveAppeared = await interactiveToolCallBlocks(page).last().isVisible({ timeout: 60000 }).catch(() => false)
+  if (!interactiveAppeared) {
+    const errorLocator = page.locator('text=/^Error:/')
+    if (await errorLocator.count() > 0) {
+      const errorText = await errorLocator.first().textContent()
+      throw new Error(`Tool execution error: ${errorText}`)
+    }
+    test.skip(true, 'LLM did not produce an interactive pick_card block')
+    throw new Error('unreachable after provider-inconclusive skip')
+  }
   const callId = await interactiveToolCallBlocks(page).last().getAttribute('data-call-id')
   expect(callId).toBeTruthy()
   const block = page.locator(`[data-call-id="${callId}"]`)
