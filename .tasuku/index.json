@@ -1,6 +1,13 @@
 {
   "version": "v4",
   "tasks": {
+    "add-ee-regression-for-repeated-b": {
+      "status": "in_progress",
+      "description": "Add e2e regression for repeated book_flight flow",
+      "file": "tasks/add-ee-regression-for-repeated-b.md",
+      "created_at": "2026-06-13T13:02:50.840729Z",
+      "updated_at": "2026-06-13T13:02:53.541244Z"
+    },
     "ag-ui-slice-client-adapt": {
       "status": "done",
       "priority": 1,
@@ -90,6 +97,20 @@
       "file": "tasks/apply-typescript-monorepo-p.md",
       "created_at": "2026-04-09T21:48:14.982773Z",
       "updated_at": "2026-04-09T21:52:01.101917Z"
+    },
+    "bump-effection-to-alpha-and-reru": {
+      "status": "done",
+      "description": "Bump Effection to 4.1.0-alpha.9 and rerun e2e",
+      "file": "tasks/bump-effection-to-alpha-and-reru.md",
+      "created_at": "2026-06-13T11:57:09.66508Z",
+      "updated_at": "2026-06-13T12:08:15.263652Z"
+    },
+    "design-effection-pr-preview-pack": {
+      "status": "done",
+      "description": "Design Effection PR 1168 preview package unification",
+      "file": "tasks/design-effection-pr-preview-pack.md",
+      "created_at": "2026-05-30T21:29:14.892833Z",
+      "updated_at": "2026-05-30T22:02:07.44476Z"
     },
     "durable-conversations-client-reducer": {
       "status": "done",
@@ -409,6 +430,20 @@
       "created_at": "2026-04-04T09:14:02.232178Z",
       "updated_at": "2026-04-04T09:17:14.972028Z"
     },
+    "fix-core-effection-test-adapter": {
+      "status": "done",
+      "description": "Fix core Effection test adapter compatibility",
+      "file": "tasks/fix-core-effection-test-adapter.md",
+      "created_at": "2026-06-04T11:37:05.957897Z",
+      "updated_at": "2026-06-04T11:50:13.482801Z"
+    },
+    "fix-yochat-messageid-typecheck-e": {
+      "status": "ready",
+      "description": "Fix yo-chat Message.id typecheck errors",
+      "file": "tasks/fix-yochat-messageid-typecheck-e.md",
+      "created_at": "2026-06-03T23:29:18.016269Z",
+      "updated_at": "2026-06-03T23:29:18.016269Z"
+    },
     "framework-add-deterministic-repl": {
       "status": "done",
       "priority": 1,
@@ -586,6 +621,20 @@
       "created_at": "2026-04-04T11:15:00.192259Z",
       "updated_at": "2026-04-04T11:15:17.602772Z"
     },
+    "implement-effection-pr-preview-u": {
+      "status": "done",
+      "description": "Implement Effection latest 4.1 alpha unification",
+      "file": "tasks/implement-effection-pr-preview-u.md",
+      "created_at": "2026-05-30T22:26:00.982304Z",
+      "updated_at": "2026-06-03T23:29:48.839562Z"
+    },
+    "jam-book-flight-repeated-tool-fl": {
+      "status": "done",
+      "description": "Jam book flight repeated tool flow regression",
+      "file": "tasks/jam-book-flight-repeated-tool-fl.md",
+      "created_at": "2026-06-13T12:18:48.183442Z",
+      "updated_at": "2026-06-13T12:33:47.48503Z"
+    },
     "lint-ban-inline-ts-import-types": {
       "status": "in_progress",
       "description": "lint ban inline ts import types",
@@ -699,6 +748,13 @@
       "file": "tasks/shared-node-fetch-adapter.md",
       "created_at": "2026-03-16T22:02:10.872906Z",
       "updated_at": "2026-03-16T22:06:03.619502Z"
+    },
+    "spec-effection-pr-preview-packag": {
+      "status": "done",
+      "description": "Spec Effection PR 1168 preview package unification",
+      "file": "tasks/spec-effection-pr-preview-packag.md",
+      "created_at": "2026-05-30T22:02:48.223352Z",
+      "updated_at": "2026-05-30T22:21:13.265494Z"
     },
     "sweatpants-218": {
       "status": "done",
@@ -863,6 +919,20 @@
       "created_at": "2026-02-27T14:27:03Z",
       "updated_at": "2026-02-27T14:27:32Z"
     },
+    "test-plan-effection-pr-preview-p": {
+      "status": "done",
+      "description": "Test plan Effection PR 1168 preview package unification",
+      "file": "tasks/test-plan-effection-pr-preview-p.md",
+      "created_at": "2026-05-30T22:21:36.21389Z",
+      "updated_at": "2026-05-30T22:24:18.416406Z"
+    },
+    "validate-effection-alpha-test-fa": {
+      "status": "done",
+      "description": "Validate Effection alpha test failures",
+      "file": "tasks/validate-effection-alpha-test-fa.md",
+      "created_at": "2026-06-04T10:57:47.263332Z",
+      "updated_at": "2026-06-04T11:19:02.395296Z"
+    },
     "wire-redis-into-conversations": {
       "status": "done",
       "priority": 1,
@@ -927,5 +997,5 @@
   "archived_count": 0,
   "learnings_count": 0,
   "decisions_count": 0,
-  "updated_at": "2026-04-29T12:03:04.523136Z"
+  "updated_at": "2026-06-13T13:02:53.541702Z"
 }

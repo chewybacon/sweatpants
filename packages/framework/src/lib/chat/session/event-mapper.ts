@@ -338,6 +338,10 @@ export function* mapStreamEventsToPatches(
           id: event.toolCallId,
           result: event.content,
         })
+        yield* patches.send({
+          type: 'elicit_complete',
+          callId: event.toolCallId,
+        })
         break
 
       case 'ag_ui_tool_call_error':
@@ -345,6 +349,10 @@ export function* mapStreamEventsToPatches(
           type: 'tool_call_error',
           id: event.toolCallId,
           error: event.message,
+        })
+        yield* patches.send({
+          type: 'elicit_complete',
+          callId: event.toolCallId,
         })
         break
 

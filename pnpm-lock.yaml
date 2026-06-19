@@ -19,14 +19,14 @@ catalogs:
       specifier: ^0.7.1
       version: 0.7.1
     '@effectionx/vitest':
-      specifier: ^0.1.0
-      version: 0.1.0
+      specifier: ^0.3.1
+      version: 0.3.1
     '@effectionx/websocket':
       specifier: ^2.3.0
       version: 2.3.0
     '@effectionx/worker':
-      specifier: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138
-      version: 0.4.1
+      specifier: ^0.5.2
+      version: 0.5.2
     '@t3-oss/env-core':
       specifier: ^0.13.8
       version: 0.13.10
@@ -87,9 +87,6 @@ catalogs:
     compression:
       specifier: ^1.8.1
       version: 1.8.1
-    effection:
-      specifier: ^4.1.0-alpha.7
-      version: 4.1.0-alpha.7
     express:
       specifier: ^5.2.1
       version: 5.2.1
@@ -149,8 +146,9 @@ catalogs:
       version: 4.1.13
 
 overrides:
-  '@effectionx/signals': ^0.5.0
-  '@effectionx/timebox': ^0.4.0
+  '@effectionx/signals': ^0.5.3
+  '@effectionx/timebox': ^0.4.3
+  effection: 4.1.0-alpha.9
 
 importers:
 
@@ -160,8 +158,8 @@ importers:
         specifier: 'catalog:'
         version: 0.2.1
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
@@ -191,8 +189,8 @@ importers:
         specifier: ^0.3.1
         version: 0.3.1
       effection:
-        specifier: ^4.0.0-beta.3
-        version: 4.0.0
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       express:
         specifier: '>=4.0.0'
         version: 5.2.1
@@ -249,8 +247,8 @@ importers:
         specifier: ^5.4.1
         version: 5.6.2
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       fast-glob:
         specifier: ^3.3.2
         version: 3.3.3
@@ -358,8 +356,8 @@ importers:
         specifier: 'catalog:'
         version: 1.8.1
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       express:
         specifier: 'catalog:'
         version: 5.2.1
@@ -494,8 +492,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/framework
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       zod:
         specifier: 'catalog:'
         version: 4.1.13
@@ -554,24 +552,24 @@ importers:
   packages/core:
     dependencies:
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
     devDependencies:
       '@effectionx/node':
         specifier: 'catalog:'
-        version: 0.2.0(effection@4.1.0-alpha.7)
+        version: 0.2.0(effection@4.1.0-alpha.9)
       '@effectionx/stream-helpers':
         specifier: 'catalog:'
-        version: 0.7.1(effection@4.1.0-alpha.7)
+        version: 0.7.1(effection@4.1.0-alpha.9)
       '@effectionx/vitest':
         specifier: 'catalog:'
-        version: 0.1.0(effection@4.1.0-alpha.7)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 0.3.1(effection@4.1.0-alpha.9)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       '@effectionx/websocket':
         specifier: 'catalog:'
-        version: 2.3.0(effection@4.1.0-alpha.7)
+        version: 2.3.0(effection@4.1.0-alpha.9)
       '@effectionx/worker':
         specifier: 'catalog:'
-        version: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138(effection@4.1.0-alpha.7)
+        version: 0.5.2(effection@4.1.0-alpha.9)
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -609,8 +607,8 @@ importers:
         specifier: workspace:*
         version: link:../stream-bridge
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       react:
         specifier: 'catalog:'
         version: 19.2.3
@@ -643,8 +641,8 @@ importers:
   packages/durable-streams:
     dependencies:
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       redis:
         specifier: ^4.7.0
         version: 4.7.1
@@ -753,8 +751,8 @@ importers:
         specifier: ^2.1.1
         version: 2.1.1
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
       katex:
         specifier: ^0.16.27
         version: 0.16.27
@@ -792,8 +790,8 @@ importers:
   packages/stream-bridge:
     dependencies:
       effection:
-        specifier: 'catalog:'
-        version: 4.1.0-alpha.7
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
@@ -1071,7 +1069,7 @@ packages:
     resolution: {integrity: sha512-eBknFGcpylbnl6IIkyAbEJdE4Nc1s3nIgWXQ3fKG1ZtxCXli4D+RpQNYqn8BkXgCM/tAuGhxHHDU/x8D3msMuQ==}
     engines: {node: '>= 22'}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
   '@effectionx/process@0.6.2':
     resolution: {integrity: sha512-U94gqTNXASRw8KBJOtSE+MaWL09Tox7la9/rmJCzUpaLWSmrSOvH28NCv++PKKy8qNCErD+QQip5q+E8lARNEQ==}
@@ -1081,53 +1079,47 @@ packages:
     resolution: {integrity: sha512-bEf7FTHjO7kzX4zcSiwLpTSfNANKTuB5kxLVyL9eP3vs11+T/IPR8FNZifqkw0gV1/nRXCjBopPLIlzcrB7zZg==}
     engines: {node: '>= 16'}
 
-  '@effectionx/signals@0.5.0':
-    resolution: {integrity: sha512-lvS9D/+2YI0tpSqvYIZk4MrF5noV178iEk97zeD/nyPsQhkh06bsA0bIu6oa7Vf6IkJKOcs6qB3X0HwdSBWAsg==}
-    engines: {node: '>= 22'}
+  '@effectionx/signals@0.5.3':
+    resolution: {integrity: sha512-AJvbUeCD5QHJ0Lc+kVtvAOZUJjXCJcOVVkRVTyOE3DPnUNQnbxVpB2o/lmBN7dnjNlGI78F4lWLMjoGZ98XRcQ==}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
   '@effectionx/stream-helpers@0.7.1':
     resolution: {integrity: sha512-g1uQCD0MaPzXC0HSCcRMXWeiBVZSyR5FHarBul4c6gSL2hbgvjBxybWvw8SHwVVq9oSZED8XGnzenHnwo1o1Sg==}
     engines: {node: '>= 22'}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/test-adapter@0.7.0':
-    resolution: {integrity: sha512-/+7jQuyjVdiimBcFRj5RiQZV7QpiFatzYMovYtmx+wKXBCCqSPjeg1GaBI8FMYJDXOH7HagWphau3Z+XJStqtg==}
-    engines: {node: '>= 22'}
+  '@effectionx/test-adapter@0.7.4':
+    resolution: {integrity: sha512-zPA5dz2SKG1N/1WxIxYy4zBB1qjviLZy6o/u8PEQo82Tnjtch4rS+2zIrHriWGKX6KY+5VjPlryjtzcBaxvD3Q==}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/timebox@0.4.0':
-    resolution: {integrity: sha512-nLjQCKshBMyfmh/JAcQVwlyQEF9QvUmZIFunc3zGU92x9y5NJstwZ8/e/fid4Z8om3n6afFSOl89HoyW/1/uXA==}
-    engines: {node: '>= 22'}
+  '@effectionx/timebox@0.4.3':
+    resolution: {integrity: sha512-cc7SLpL3svAYK8M5NS8kLQuL0lrZNoQb+Hi9NSaWOudzAW1HoewuDfUtfXLemPJnnLqLYhbghRhmpVqCm4Xg3Q==}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
   '@effectionx/tinyexec@0.3.1':
     resolution: {integrity: sha512-FV4XRhsq1jHFgRqQUU/YgUsfNqjlq0+wg8YqvDS2wmwWPsUzBfjiijsmkrowVU5AVtrxda7b+8WE2BWPcoPz0w==}
     engines: {node: '>= 16'}
 
-  '@effectionx/vitest@0.1.0':
-    resolution: {integrity: sha512-iNglMahG3dXW3QmnJpPpjflyGcnAtxevWYily5okIWEu9+vLYdVPJ+3AqS7MSuEWwuGy2Yt6qdfnVT+lKrL3fQ==}
-    engines: {node: '>= 22'}
+  '@effectionx/vitest@0.3.1':
+    resolution: {integrity: sha512-sWOcpslkK5ftFSzu7uMAefeku6EqoymceNaAM/GXDQ3FeFPtd1iWNS9LEvHa/GA2IyC5BstnsxFV6A46H44buA==}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
       vitest: ^3 || ^4
 
   '@effectionx/websocket@2.3.0':
     resolution: {integrity: sha512-FpAptS5zvmw5jJVQp69BqPzAfgstaYKP/D+EThjaAsT/zxlfwqYnKeZNvgePxM3y8q/zmMrBi5QGud8CRkV5Yg==}
     engines: {node: '>= 22'}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/worker@https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138':
-    resolution: {tarball: https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138}
-    version: 0.4.1
-    engines: {node: '>= 22'}
+  '@effectionx/worker@0.5.2':
+    resolution: {integrity: sha512-a8iXYkDrEwV6uiP7GCO2w/cVDE+yymiT+RNRPtLBqYAyb1BqtTVAkVT4pDHCLgWkjz9SYe3e/dk68gKGlC0ZkA==}
     peerDependencies:
-      effection: ^3 || ^4
+      effection: 4.1.0-alpha.9
 
   '@emnapi/core@1.9.1':
     resolution: {integrity: sha512-mukuNALVsoix/w1BJwFzwXBN/dHeejQtuVzcDsfOEsdpCumXb/E9j8w11h5S54tT1xhifGfbbSm/ICrObRb3KA==}
@@ -4510,16 +4502,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effection@4.0.0:
-    resolution: {integrity: sha512-eW2yqhyBdey4k8lkp7hpiev2FSHvJvQqvaIebI3EGikHZvfUWvNy7SmkwOnJa6WcsUtSh7VHUwdjHTbV++8M9w==}
-    engines: {node: '>= 16'}
-
-  effection@4.0.2:
-    resolution: {integrity: sha512-O8WMGP10nPuJDwbNGILcaCNWS+CvDYjcdsUSD79nWZ+WtUQ8h1MEV7JJwCSZCSeKx8+TdEaZ/8r6qPTR2o/o8w==}
-    engines: {node: '>= 16'}
-
-  effection@4.1.0-alpha.7:
-    resolution: {integrity: sha512-ir7qM7vQXOo7eiuNxaD6FgwUetdy3XMB3dwtzUxp9ytiZl6abZUrXwM3vMqKWdMW4cW1KZzJqSEuXofJFscwFw==}
+  effection@4.1.0-alpha.9:
+    resolution: {integrity: sha512-vjZ2RRoXagbjuPin21TCusmO6VScPT7Kru/LWiE8t78MsQJA8qRmzaGTGw2PFIiHcfzrrXpgMvHXUy0aW3/Uhg==}
     engines: {node: '>= 16'}
 
   electron-to-chromium@1.5.267:
@@ -7690,69 +7674,69 @@ snapshots:
 
   '@effectionx/context-api@0.2.1':
     dependencies:
-      effection: 4.0.2
+      effection: 4.1.0-alpha.9
 
   '@effectionx/jsonl-store@0.3.1':
     dependencies:
-      effection: 4.0.2
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/node@0.2.0(effection@4.1.0-alpha.7)':
+  '@effectionx/node@0.2.0(effection@4.1.0-alpha.9)':
     dependencies:
-      effection: 4.1.0-alpha.7
+      effection: 4.1.0-alpha.9
 
   '@effectionx/process@0.6.2':
     dependencies:
       '@types/cross-spawn': 6.0.6
       cross-spawn: 7.0.6
       ctrlc-windows: 2.2.0
-      effection: 4.0.2
+      effection: 4.1.0-alpha.9
       shellwords: 1.1.1
 
   '@effectionx/raf@0.1.1':
     dependencies:
-      effection: 4.0.2
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/signals@0.5.0(effection@4.1.0-alpha.7)':
+  '@effectionx/signals@0.5.3(effection@4.1.0-alpha.9)':
     dependencies:
-      effection: 4.1.0-alpha.7
+      effection: 4.1.0-alpha.9
       immutable: 5.1.4
 
-  '@effectionx/stream-helpers@0.7.1(effection@4.1.0-alpha.7)':
+  '@effectionx/stream-helpers@0.7.1(effection@4.1.0-alpha.9)':
     dependencies:
-      '@effectionx/signals': 0.5.0(effection@4.1.0-alpha.7)
-      '@effectionx/timebox': 0.4.0(effection@4.1.0-alpha.7)
-      effection: 4.1.0-alpha.7
+      '@effectionx/signals': 0.5.3(effection@4.1.0-alpha.9)
+      '@effectionx/timebox': 0.4.3(effection@4.1.0-alpha.9)
+      effection: 4.1.0-alpha.9
       immutable: 5.1.4
       remeda: 2.33.4
 
-  '@effectionx/test-adapter@0.7.0(effection@4.1.0-alpha.7)':
+  '@effectionx/test-adapter@0.7.4(effection@4.1.0-alpha.9)':
     dependencies:
-      effection: 4.1.0-alpha.7
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/timebox@0.4.0(effection@4.1.0-alpha.7)':
+  '@effectionx/timebox@0.4.3(effection@4.1.0-alpha.9)':
     dependencies:
-      effection: 4.1.0-alpha.7
+      effection: 4.1.0-alpha.9
 
   '@effectionx/tinyexec@0.3.1':
     dependencies:
-      effection: 4.0.2
+      effection: 4.1.0-alpha.9
       tinyexec: 0.3.2
 
-  '@effectionx/vitest@0.1.0(effection@4.1.0-alpha.7)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
+  '@effectionx/vitest@0.3.1(effection@4.1.0-alpha.9)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
-      '@effectionx/test-adapter': 0.7.0(effection@4.1.0-alpha.7)
-      effection: 4.1.0-alpha.7
+      '@effectionx/test-adapter': 0.7.4(effection@4.1.0-alpha.9)
+      effection: 4.1.0-alpha.9
       vitest: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
-  '@effectionx/websocket@2.3.0(effection@4.1.0-alpha.7)':
+  '@effectionx/websocket@2.3.0(effection@4.1.0-alpha.9)':
     dependencies:
-      effection: 4.1.0-alpha.7
+      effection: 4.1.0-alpha.9
 
-  '@effectionx/worker@https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138(effection@4.1.0-alpha.7)':
+  '@effectionx/worker@0.5.2(effection@4.1.0-alpha.9)':
     dependencies:
-      '@effectionx/signals': 0.5.0(effection@4.1.0-alpha.7)
-      '@effectionx/timebox': 0.4.0(effection@4.1.0-alpha.7)
-      effection: 4.1.0-alpha.7
+      '@effectionx/signals': 0.5.3(effection@4.1.0-alpha.9)
+      '@effectionx/timebox': 0.4.3(effection@4.1.0-alpha.9)
+      effection: 4.1.0-alpha.9
       web-worker: 1.5.0
 
   '@emnapi/core@1.9.1':
@@ -11091,11 +11075,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effection@4.0.0: {}
-
-  effection@4.0.2: {}
-
-  effection@4.1.0-alpha.7: {}
+  effection@4.1.0-alpha.9: {}
 
   electron-to-chromium@1.5.267: {}
 

@@ -38,6 +38,23 @@ describe('transcript writer', () => {
     ])
   })
 
+  it('replaces an existing final assistant message with the same deterministic id', () => {
+    const history: Message[] = []
+    const state = createTranscriptState(history)
+
+    appendUserMessage(history, state, 'Draw 3 cards')
+    appendAssistantToolCallMessage(history, state, [toolCall('call_1')], '')
+    appendAssistantFinalMessage(history, state, '')
+    appendAssistantFinalMessage(history, state, 'You picked the 5 of Hearts.')
+
+    expect(history.filter((message) => message.id === 'assistant:final:call_1')).toHaveLength(1)
+    expect(history.at(-1)).toMatchObject({
+      id: 'assistant:final:call_1',
+      role: 'assistant',
+      content: 'You picked the 5 of Hearts.',
+    })
+  })
+
   it('can reconstruct a deterministic transcript from append helpers only', () => {
     const normalized: Message[] = []
     const state = createTranscriptState(normalized)

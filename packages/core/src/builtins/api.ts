@@ -33,7 +33,7 @@ function generateId(prefix: string): string {
  * const result = yield* SweatpantsApi.operations.elicit({ ... });
  * 
  * // Add middleware
- * yield* SweatpantsApi.decorate({
+ * yield* SweatpantsApi.around({
  *   *sample([options], next) {
  *     console.log("Sampling:", options.prompt);
  *     return yield* next(options);
@@ -69,6 +69,7 @@ export const SweatpantsApi = createApi("sweatpants", {
       kind: "elicit",
       type: options.type,
       payload: {
+        type: options.type,
         message: options.message,
         schema: options.schema,
         meta: options.meta,

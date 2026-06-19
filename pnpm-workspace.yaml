@@ -6,12 +6,12 @@ catalog:
   '@effectionx/context-api': ^0.2.1
   '@effectionx/node': ^0.2.0
   '@effectionx/raf': ^0.1.1
-  '@effectionx/signals': ^0.5.0
+  '@effectionx/signals': ^0.5.3
   '@effectionx/stream-helpers': ^0.7.1
-  '@effectionx/timebox': ^0.4.0
-  '@effectionx/vitest': ^0.1.0
+  '@effectionx/timebox': ^0.4.3
+  '@effectionx/vitest': ^0.3.1
   '@effectionx/websocket': ^2.3.0
-  '@effectionx/worker': https://pkg.pr.new/thefrontside/effectionx/@effectionx/worker@138
+  '@effectionx/worker': ^0.5.2
   '@t3-oss/env-core': ^0.13.8
   '@tailwindcss/vite': ^4.0.6
   '@tanstack/devtools-vite': ^0.3.11
@@ -34,7 +34,7 @@ catalog:
   acorn: ^8.14.0
   citty: ^0.1.6
   compression: ^1.8.1
-  effection: ^4.1.0-alpha.7
+  effection: 4.1.0-alpha.9
   express: ^5.2.1
   jsdom: ^27.0.0
   lucide-react: 0.544.0

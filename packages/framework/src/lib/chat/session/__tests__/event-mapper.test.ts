@@ -136,10 +136,39 @@ describe('mapStreamEventsToPatches', () => {
         },
       },
     ])
+    expect(patches).toContainEqual({
+      type: 'elicit_complete',
+      callId: 'call-1',
+    })
     expect(result).toMatchObject({
       type: 'complete',
       toolCalls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
       toolResults: [{ id: 'call-1', name: 'echo', content: 'Mock result for: hello' }],
+    })
+  })
+
+  it('clears elicit state when an AG-UI tool error is mapped', async () => {
+    const { patches } = await mapEvents([
+      {
+        type: 'ag_ui_tool_call_error',
+        toolCallId: 'call-error',
+        toolCallName: 'explode',
+        message: 'boom',
+      },
+      {
+        type: 'ag_ui_run_finished',
+        run: { threadId: 'thread-1', runId: 'run-1' },
+      },
+    ])
+
+    expect(patches).toContainEqual({
+      type: 'tool_call_error',
+      id: 'call-error',
+      error: 'boom',
+    })
+    expect(patches).toContainEqual({
+      type: 'elicit_complete',
+      callId: 'call-error',
     })
   })
 

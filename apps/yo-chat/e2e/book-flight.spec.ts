@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 
 /**
  * E2E tests for the book_flight MCP plugin tool.
@@ -21,8 +21,124 @@ import { test, expect } from '@playwright/test'
  * Run with: pnpm test:e2e --grep "book_flight"
  */
 
-// Reasonable timeout for LLM responses - fail fast if things are broken
-test.setTimeout(120000) // 2 minutes per test max
+// Reasonable timeout for LLM responses - fail fast if things are broken.
+// The repeated-flow regression test drives two complete tool flows.
+test.setTimeout(180000) // 3 minutes per test max
+
+const TOOL_ERROR_PATTERN = /^Error:|tool execution failed|is not iterable|undefined is not|SESSION_NOT_FOUND/i
+const BOOKING_CONFIRMATION_PATTERN = /ticket|confirmed|booked|confirmation|TKT-/i
+
+async function sendChatMessage(page: Page, message: string) {
+  const input = page.getByPlaceholder('Type a message...')
+  await expect(input).toBeEnabled({ timeout: 30000 })
+  await input.fill('')
+  await input.pressSequentially(message, { delay: 5 })
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 5000 })
+  await page.getByRole('button', { name: 'Send' }).click()
+}
+
+async function assertNoToolErrors(page: Page) {
+  const errors = page.locator('text=' + TOOL_ERROR_PATTERN.toString())
+  const count = await errors.count()
+  if (count > 0) {
+    const errorText = await errors.last().textContent()
+    throw new Error(`Tool execution error detected: ${errorText}`)
+  }
+}
+
+function latestFlightCard(page: Page): Locator {
+  return page.locator('button').filter({ hasText: /\$\d+/ }).last()
+}
+
+function latestSeatButton(page: Page, seatCode: string): Locator {
+  return page.getByTitle(`Seat ${seatCode}`).last()
+}
+
+function confirmationMessages(page: Page): Locator {
+  return page.locator('text=' + BOOKING_CONFIRMATION_PATTERN.toString())
+}
+
+async function waitForFlightPicker(page: Page, label: string): Promise<Locator> {
+  console.log(`${label}: waiting for FlightList`)
+  const flightCard = latestFlightCard(page)
+  await expect(flightCard, `${label}: expected active flight choices`).toBeVisible({ timeout: 60000 })
+  await expect(flightCard, `${label}: expected active flight choice to be enabled`).toBeEnabled()
+  await assertNoToolErrors(page)
+  return flightCard
+}
+
+async function selectLatestFlight(page: Page, label: string) {
+  const flightCard = await waitForFlightPicker(page, label)
+  const flightText = await flightCard.textContent()
+  console.log(`${label}: selecting flight ${flightText?.slice(0, 120)}`)
+  await flightCard.click()
+
+  await expect(
+    page.getByText(/Selected|Select your seat|Select.*seat/i).last(),
+    `${label}: expected flight selection acknowledgement or seat picker prompt`
+  ).toBeVisible({ timeout: 30000 })
+  await assertNoToolErrors(page)
+}
+
+async function waitForSeatPicker(page: Page, label: string, seatCode: string): Promise<Locator> {
+  console.log(`${label}: waiting for SeatPicker`)
+  const seatButton = latestSeatButton(page, seatCode)
+  await expect(seatButton, `${label}: expected active seat ${seatCode}`).toBeVisible({ timeout: 45000 })
+  await expect(seatButton, `${label}: expected active seat ${seatCode} to be enabled`).toBeEnabled()
+  await assertNoToolErrors(page)
+  return seatButton
+}
+
+async function selectSeatAndAssertConfirmButton(page: Page, label: string, seatCode: string) {
+  const seatButton = await waitForSeatPicker(page, label, seatCode)
+  console.log(`${label}: selecting seat ${seatCode}`)
+  await seatButton.click()
+
+  const confirmSeatButton = page.getByRole('button', { name: new RegExp(`Confirm Seat ${seatCode}`, 'i') }).last()
+  await expect(
+    confirmSeatButton,
+    `${label}: selecting seat ${seatCode} should reveal the matching Confirm Seat button`
+  ).toBeVisible({ timeout: 5000 })
+  await expect(confirmSeatButton, `${label}: confirm seat button should be enabled`).toBeEnabled()
+
+  console.log(`${label}: confirming seat ${seatCode}`)
+  await confirmSeatButton.click()
+
+  await expect(
+    confirmSeatButton,
+    `${label}: confirming seat ${seatCode} should leave the interactive SeatPicker state`
+  ).not.toBeVisible({ timeout: 5000 })
+  await assertNoToolErrors(page)
+}
+
+async function waitForAdditionalBookingConfirmation(
+  page: Page,
+  label: string,
+  previousConfirmationCount: number
+): Promise<number> {
+  console.log(`${label}: waiting for booking confirmation`)
+  await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
+  await expect
+    .poll(async () => confirmationMessages(page).count(), {
+      message: `${label}: expected another booking confirmation message`,
+      timeout: 60000,
+    })
+    .toBeGreaterThan(previousConfirmationCount)
+
+  await assertNoToolErrors(page)
+  return confirmationMessages(page).count()
+}
+
+async function completeBookingFlow(
+  page: Page,
+  label: string,
+  seatCode: string,
+  previousConfirmationCount: number
+): Promise<number> {
+  await selectLatestFlight(page, label)
+  await selectSeatAndAssertConfirmButton(page, label, seatCode)
+  return waitForAdditionalBookingConfirmation(page, label, previousConfirmationCount)
+}
 
 // =============================================================================
 // SETUP
@@ -331,50 +447,26 @@ test.describe('book_flight Plugin Tool', () => {
   // EDGE CASE TESTS
   // =============================================================================
 
-  test('handles multi-turn conversation after booking', async ({ page }) => {
-    // First, complete a booking (abbreviated flow for speed)
-    const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Quick: book flight NYC to LA with book_flight', { delay: 5 })
-    await page.getByRole('button', { name: 'Send' }).click()
+  test('can complete outbound and return bookings in the same chat session', async ({ page }) => {
+    let confirmationCount = await confirmationMessages(page).count()
 
-    // Try to complete the booking flow
-    const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
+    await sendChatMessage(
+      page,
+      'Use the book_flight tool to book an outbound flight from Los Angeles to New York.'
+    )
+    confirmationCount = await completeBookingFlow(page, 'Outbound booking', '2A', confirmationCount)
 
-    try {
-      await expect(flightCard).toBeVisible({ timeout: 45000 })
-      await flightCard.click()
+    await sendChatMessage(
+      page,
+      'Great, now use the book_flight tool again to book the return flight from New York to Los Angeles.'
+    )
 
-      // Select seat if it appears
-      const seatButton = page.locator('button').filter({ hasText: /^[A-F]$/ }).first()
-      try {
-        await expect(seatButton).toBeVisible({ timeout: 30000 })
-        await seatButton.click()
-      } catch {
-        // Seat picker might not appear in all cases
-      }
+    // Regression assertion: after a completed first flow, the second flow must
+    // enter a fresh SeatPicker runtime. The bug we are capturing is that the
+    // second SeatPicker renders, but clicking a seat does not reveal the
+    // matching "Confirm Seat" button.
+    confirmationCount = await completeBookingFlow(page, 'Return booking', '3C', confirmationCount)
 
-      // Wait for any response to complete
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
-
-      // === Now test multi-turn ===
-      console.log('Testing multi-turn after booking...')
-
-      // Clear input and ask a follow-up question
-      await input.pressSequentially('What was my flight number?', { delay: 5 })
-      await page.getByRole('button', { name: 'Send' }).click()
-
-      // Wait for response
-      await expect(page.getByText('streaming...')).toBeVisible({ timeout: 30000 })
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
-
-      // Should have more than 2 messages now (original + booking responses + follow-up)
-      const messageCount = page.locator('text=/\\d+ messages/')
-      await expect(messageCount).toBeVisible()
-
-      console.log('Multi-turn conversation works after booking!')
-
-    } catch {
-      test.skip(true, 'Could not complete initial booking for multi-turn test')
-    }
+    expect(confirmationCount).toBeGreaterThanOrEqual(2)
   })
 })

@@ -110,7 +110,7 @@ export function createTool<
           };
 
           // Install the impl as middleware that replaces the default
-          yield* api.decorate({
+          yield* api.around({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // @ts-expect-error - send typing is complex, will refine later
               return yield* actualImpl(args, send);
@@ -118,10 +118,16 @@ export function createTool<
           });
         } else {
           // No impl - route to transport
-          yield* api.decorate({
+          yield* api.around({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // Get transport from context
-              const transport = yield* TransportContext.expect();
+              const transport = yield* TransportContext.get();
+              if (!transport) {
+                throw new Error(
+                  `Tool "${config.name}" requires a transport for remote invocation. ` +
+                  `Set TransportContext (${TransportContext.name}) before invoking tools without a local implementation.`
+                );
+              }
               
               // Generate unique request ID
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -181,7 +187,7 @@ export function createTool<
   factory.decorate = function (
     middleware: ToolMiddleware<TInput, TOutput>,
   ): Operation<void> {
-    return api.decorate({
+    return api.around({
       *invoke([args]: [Input], next: (...args: [Input]) => Operation<Output>) {
         return yield* middleware(args, (...a) => next(...a));
       },
@@ -220,6 +226,25 @@ export function createTool<
   return factory as ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput>;
 }
 
+
+function withContextBindings<T>(
+  bindings: ContextBinding[],
+  operation: () => Operation<T>,
+): Operation<T> {
+  return {
+    *[Symbol.iterator]() {
+      let run = operation;
+      for (const binding of bindings) {
+        const next = run;
+        run = () => binding.context.with(binding.value, function* () {
+          return yield* next();
+        });
+      }
+      return yield* run();
+    },
+  };
+}
+
 /**
  * Internal: Create a tool factory with pre-configured context bindings.
  * Used by withContext() to build up the chain of bindings.
@@ -253,7 +278,7 @@ function createToolWithBindings<
           };
 
           // Install the impl as middleware that replaces the default
-          yield* api.decorate({
+          yield* api.around({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // @ts-expect-error - send typing is complex, will refine later
               return yield* actualImpl(args, send);
@@ -261,10 +286,16 @@ function createToolWithBindings<
           });
         } else {
           // No impl - route to transport
-          yield* api.decorate({
+          yield* api.around({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
               // Get transport from context
-              const transport = yield* TransportContext.expect();
+              const transport = yield* TransportContext.get();
+              if (!transport) {
+                throw new Error(
+                  `Tool "${config.name}" requires a transport for remote invocation. ` +
+                  `Set TransportContext (${TransportContext.name}) before invoking tools without a local implementation.`
+                );
+              }
               
               // Generate unique request ID
               const requestId = `${config.name}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -306,21 +337,13 @@ function createToolWithBindings<
           });
         }
 
-        // Apply context bindings as middleware
-        // First binding is outermost, so we iterate in reverse to build the onion
-        for (const binding of [...bindings].reverse()) {
-          yield* api.decorate({
-            *invoke([args]: [Input], next: (...args: [Input]) => Operation<Output>) {
-              return yield* binding.context.with(binding.value, function* () {
-                return yield* next(args);
-              });
-            },
-          });
-        }
 
-        // Return the activated tool function
+        // Return the activated tool function with this factory's context
+        // bindings applied per invocation. Bindings are kept out of the shared
+        // Effection API middleware stack so multiple bound variants of the same
+        // tool can coexist in one scope.
         const tool: Tool<TInput, TOutput> = (args: Input): Operation<Output> => {
-          return api.operations.invoke(args);
+          return withContextBindings(bindings, () => api.operations.invoke(args));
         };
 
         return tool;
@@ -332,7 +355,7 @@ function createToolWithBindings<
   factory.decorate = function (
     middleware: ToolMiddleware<TInput, TOutput>,
   ): Operation<void> {
-    return api.decorate({
+    return api.around({
       *invoke([args]: [Input], next: (...args: [Input]) => Operation<Output>) {
         return yield* middleware(args, (...a) => next(...a));
       },

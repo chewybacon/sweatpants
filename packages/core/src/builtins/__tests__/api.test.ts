@@ -318,7 +318,7 @@ describe("Built-in API", () => {
 
       const callOrder: string[] = [];
 
-      yield* SweatpantsApi.decorate({
+      yield* SweatpantsApi.around({
         *elicit([options], next) {
           callOrder.push("middleware-before");
           const result = yield* next(options);
@@ -356,7 +356,7 @@ describe("Built-in API", () => {
 
       let receivedPayload: unknown;
 
-      yield* SweatpantsApi.decorate({
+      yield* SweatpantsApi.around({
         *sample([options], next) {
           // Add default maxTokens if not specified
           return yield* next({
@@ -397,7 +397,7 @@ describe("Built-in API", () => {
 
       const notifications: string[] = [];
 
-      yield* SweatpantsApi.decorate({
+      yield* SweatpantsApi.around({
         *notify([options], next) {
           notifications.push(`[LOG] ${options.message}`);
           return yield* next(options);

@@ -97,6 +97,48 @@ describe('chatReducer (pure logic)', () => {
     expect(nextState.streaming.activePartType).toBe('text')
   })
 
+  it('should remove pending elicits on elicit_complete', () => {
+    const startState: ChatState = {
+      ...initialChatState,
+      pendingElicits: {
+        'call-123': {
+          callId: 'call-123',
+          toolName: 'myTool',
+          elicitations: [],
+          status: 'awaiting_elicit',
+          startedAt: Date.now(),
+        },
+        'call-456': {
+          callId: 'call-456',
+          toolName: 'myTool',
+          elicitations: [],
+          status: 'awaiting_elicit',
+          startedAt: Date.now(),
+        },
+      },
+    }
+
+    const nextState = chatReducer(startState, { type: 'elicit_complete', callId: 'call-123' })
+
+    expect(nextState.pendingElicits['call-123']).toBeUndefined()
+    expect(nextState.pendingElicits['call-456']).toBeDefined()
+  })
+
+  it('should replace assistant messages with duplicate ids', () => {
+    const first = chatReducer(initialChatState, {
+      type: 'assistant_message',
+      message: { id: 'assistant:final:call-1', role: 'assistant', content: '' },
+    })
+
+    const nextState = chatReducer(first, {
+      type: 'assistant_message',
+      message: { id: 'assistant:final:call-1', role: 'assistant', content: 'Done' },
+    })
+
+    expect(nextState.messages.filter((message) => message.id === 'assistant:final:call-1')).toHaveLength(1)
+    expect(nextState.messages[0]?.content).toBe('Done')
+  })
+
   it('should finalize message on assistant_message and streaming_end', () => {
     const startState: ChatState = {
       ...initialChatState,
