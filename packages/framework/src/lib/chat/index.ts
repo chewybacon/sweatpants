@@ -6,8 +6,9 @@ export * from './ndjson.ts'
 export * from './stream.ts'
 export * from './sse.ts'
 
-// Providers - exported from main chat.ts to avoid conflicts
-export { getChatProvider, ollamaProvider, openaiProvider } from './providers/index.ts'
+// Contexts are browser-safe; provider implementations live under
+// @sweatpants/framework/chat/providers to keep pi-ai/server dependencies out of
+// the top-level chat barrel.
 export * from './providers/contexts.ts'
 
 export * from './personas/index.ts'

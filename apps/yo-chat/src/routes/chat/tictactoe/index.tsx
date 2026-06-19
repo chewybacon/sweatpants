@@ -139,8 +139,11 @@ function TicTacToeDemo() {
     pipeline: 'markdown',
     // No isomorphic tools - using plugin instead
     tools: [],
-    // TicTacToe plugin
-    plugins: [tictactoePlugin.client],
+    // TicTacToe plugin. Register canonical runtime name for AgentCore mode.
+    plugins: [
+      tictactoePlugin.client,
+      { ...tictactoePlugin.client, toolName: 'tictactoe' },
+    ],
     // Tell server to only enable tictactoe plugin
     enabledPlugins: [tictactoeTool.name],
     // System prompt for the game

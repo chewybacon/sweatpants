@@ -922,7 +922,7 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
   return createDurableChatHandler({ initializerHooks })
 }
 
-describe('Durable Chat Handler - Ollama Integration', () => {
+describe.skipIf(process.env['RUN_LIVE_PROVIDER_TESTS'] !== 'yes')('Durable Chat Handler - Ollama Integration', () => {
   let server: TestServerHandle
   let ollamaAvailable: boolean
 

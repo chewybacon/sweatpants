@@ -59,7 +59,14 @@ function toTokenUsage(message: AssistantMessage): TokenUsage {
   }
 }
 
+function assertSuccessfulAssistant(message: AssistantMessage): void {
+  if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+    throw new Error(message.errorMessage ?? `Provider generation ${message.stopReason}`)
+  }
+}
+
 function toChatResult(message: AssistantMessage): ChatResult {
+  assertSuccessfulAssistant(message)
   const toolCalls: ToolCall[] = []
   let text = ''
   let thinking = ''
@@ -85,6 +92,9 @@ function toChatResult(message: AssistantMessage): ChatResult {
 }
 
 function toChatEvent(event: StreamEvent): ChatEvent | null {
+  if (event.type === 'error') {
+    throw new Error(event.error.errorMessage ?? `Provider generation ${event.reason}`)
+  }
   if (event.type === 'text_delta') return { type: 'text', content: event.delta }
   if (event.type === 'thinking_delta') return { type: 'thinking', content: event.delta }
   if (event.type === 'toolcall_end') {

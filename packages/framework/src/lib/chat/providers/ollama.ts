@@ -66,7 +66,14 @@ function toTokenUsage(message: AssistantMessage): TokenUsage {
   }
 }
 
+function assertSuccessfulAssistant(message: AssistantMessage): void {
+  if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+    throw new Error(message.errorMessage ?? `Provider generation ${message.stopReason}`)
+  }
+}
+
 function toChatResult(message: AssistantMessage): ChatResult {
+  assertSuccessfulAssistant(message)
   const toolCalls: ToolCall[] = []
   let text = ''
   let thinking = ''
@@ -95,6 +102,9 @@ function toChatResult(message: AssistantMessage): ChatResult {
 }
 
 function toChatEvent(event: StreamEvent): ChatEvent | null {
+  if (event.type === 'error') {
+    throw new Error(event.error.errorMessage ?? `Provider generation ${event.reason}`)
+  }
   if (event.type === 'text_delta') return { type: 'text', content: event.delta }
   if (event.type === 'thinking_delta') return { type: 'thinking', content: event.delta }
   if (event.type === 'toolcall_end') {
@@ -113,6 +123,11 @@ function toChatEvent(event: StreamEvent): ChatEvent | null {
   return null
 }
 
+function normalizeOllamaBaseUrl(value: string): string {
+  const trimmed = value.replace(/\/$/, '')
+  return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
+}
+
 function createRuntimeBackedProvider(name: string, defaultModel: () => ReturnType<typeof createOllamaModel>): ChatProvider {
   return {
     name,
@@ -124,11 +139,7 @@ function createRuntimeBackedProvider(name: string, defaultModel: () => ReturnTyp
           {
             ...model,
             ...(options?.model ? { id: options.model, name: `${options.model} (Ollama)` } : {}),
-            ...(options?.baseUri
-              ? { baseUrl: options.baseUri.replace(/\/$/, '').endsWith('/v1')
-                  ? options.baseUri.replace(/\/$/, '')
-                  : `${options.baseUri.replace(/\/$/, '')}/v1` }
-              : {}),
+            ...(options?.baseUri ? { baseUrl: normalizeOllamaBaseUrl(options.baseUri) } : {}),
           },
           toRuntimeContext(messages, options),
           {
@@ -156,6 +167,6 @@ function createRuntimeBackedProvider(name: string, defaultModel: () => ReturnTyp
 export const ollamaProvider: ChatProvider = createRuntimeBackedProvider('ollama', () =>
   createOllamaModel(
     process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest',
-    process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434/v1',
+    normalizeOllamaBaseUrl(process.env['OLLAMA_BASE_URL'] ?? process.env['OLLAMA_URL'] ?? 'http://localhost:11434'),
   ),
 )

@@ -89,6 +89,8 @@ function toPiContentBlock(block: ContentBlock): unknown {
       return {
         type: 'thinking',
         thinking: block.text,
+        ...(block.thinkingSignature ? { thinkingSignature: block.thinkingSignature } : {}),
+        ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
       }
     default:
       return block
@@ -103,11 +105,17 @@ function fromPiContentBlock(block: unknown): ContentBlock {
       type: 'thinking',
       text: typeof candidate['thinking'] === 'string' ? candidate['thinking'] : '',
       ...(typeof candidate['format'] === 'string' ? { format: candidate['format'] } : {}),
+      ...(typeof candidate['thinkingSignature'] === 'string' ? { thinkingSignature: candidate['thinkingSignature'] } : {}),
+      ...(typeof candidate['redacted'] === 'boolean' ? { redacted: candidate['redacted'] } : {}),
     }
   }
 
   if (candidate.type === 'text') {
-    return { type: 'text', text: typeof candidate['text'] === 'string' ? candidate['text'] : '' }
+    return {
+      type: 'text',
+      text: typeof candidate['text'] === 'string' ? candidate['text'] : '',
+      ...(typeof candidate['textSignature'] === 'string' ? { textSignature: candidate['textSignature'] } : {}),
+    }
   }
 
   if (candidate.type === 'image') {
@@ -124,6 +132,7 @@ function fromPiContentBlock(block: unknown): ContentBlock {
       id: typeof candidate['id'] === 'string' ? candidate['id'] : '',
       name: typeof candidate['name'] === 'string' ? candidate['name'] : '',
       arguments: isRecord(candidate['arguments']) ? candidate['arguments'] : {},
+      ...(typeof candidate['thoughtSignature'] === 'string' ? { thoughtSignature: candidate['thoughtSignature'] } : {}),
     }
   }
 
@@ -134,16 +143,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function safeErrorMessage(message: string | undefined): string | undefined {
+  if (!message) return undefined
+  return message
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [redacted]')
+    .replace(/sk-[A-Za-z0-9_-]{12,}/g, 'sk-[redacted]')
+    .replace(/arn:aws:[^\s"']+/g, '[redacted-aws-arn]')
+    .replace(/\b\d{12}\b/g, '[redacted-account-id]')
+    .slice(0, 2000)
+}
+
+function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(metadata)) {
+    if (key === 'raw' || key === 'diagnostics' || key === 'stack' || key === 'details') continue
+    result[key] = typeof value === 'string' ? safeErrorMessage(value) : value
+  }
+  return result
+}
+
 function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
   return {
     type: 'toolCall',
     id: toolCall.id,
     name: toolCall.name,
     arguments: toolCall.arguments,
+    ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
   }
 }
 
 function toPiAssistantMessage(message: AssistantMessage): PiAssistantMessage {
+  const errorMessage = safeErrorMessage(message.errorMessage)
   return {
     role: 'assistant',
     content: message.content
@@ -155,37 +185,39 @@ function toPiAssistantMessage(message: AssistantMessage): PiAssistantMessage {
     ...(message.responseId ? { responseId: message.responseId } : {}),
     usage: toPiUsage(message.usage),
     stopReason: (message.stopReason ?? 'stop') as PiAssistantMessage['stopReason'],
-    ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+    ...(errorMessage ? { errorMessage } : {}),
     timestamp: message.timestamp ?? Date.now(),
   }
 }
 
 function fromPiAssistantMessage(message: PiAssistantMessage): AssistantMessage {
   const usage = fromPiUsage(message.usage)
+  const errorMessage = safeErrorMessage(message.errorMessage)
   return {
     role: 'assistant',
     content: message.content.map(fromPiContentBlock),
     ...(usage ? { usage } : {}),
     stopReason: message.stopReason,
     ...(message.responseId ? { responseId: message.responseId } : {}),
-    ...(message.errorMessage ? { errorMessage: message.errorMessage } : {}),
+    ...(errorMessage ? { errorMessage } : {}),
     timestamp: message.timestamp,
-    metadata: {
+    metadata: safeMetadata({
       api: message.api,
       provider: message.provider,
       model: message.model,
       ...(message.responseModel ? { responseModel: message.responseModel } : {}),
-      ...(message.diagnostics ? { diagnostics: message.diagnostics } : {}),
-    },
+    }),
   }
 }
 
 function toPiContext(context: Context): PiContext {
   const messages: PiContext['messages'] = []
+  const systemMessages = context.messages
+    .filter((message) => message.role === 'system')
+    .map((message) => message.content)
 
   for (const message of context.messages) {
     if (message.role === 'system') {
-      messages.push({ role: 'user', content: message.content, timestamp: message.timestamp ?? Date.now() })
       continue
     }
 
@@ -219,8 +251,9 @@ function toPiContext(context: Context): PiContext {
     })
   }
 
+  const systemPrompt = [context.systemPrompt, ...systemMessages].filter(Boolean).join('\n\n')
   const piContext: PiContext = {
-    ...(context.systemPrompt ? { systemPrompt: context.systemPrompt } : {}),
+    ...(systemPrompt ? { systemPrompt } : {}),
     messages,
   }
   if (context.tools) piContext.tools = context.tools as NonNullable<PiContext['tools']>
@@ -269,7 +302,9 @@ function toPiStreamOptions(model: Model, options: StreamOptions | undefined, sig
     ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
     ...(options?.onPayload ? { onPayload: (payload: unknown) => options.onPayload?.(payload) } : {}),
-    ...(options?.reasoning && options.reasoning !== 'off' ? { reasoning: options.reasoning } : {}),
+    ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
+    ...(options?.reasoning && options.reasoning !== 'off' ? { reasoningEffort: options.reasoning } : {}),
+    ...(options?.responseFormat ? { responseFormat: options.responseFormat } : {}),
   }
 }
 
@@ -344,12 +379,13 @@ function toPiImagesContext(context: ImageGenerationContext): PiImagesContext {
 
 function fromPiAssistantImages(images: PiAssistantImages): AssistantImages {
   const usage = fromPiUsage(images.usage)
+  const errorMessage = safeErrorMessage(images.errorMessage)
   return {
     output: images.output.map(fromPiContentBlock) as AssistantImages['output'],
     ...(usage ? { usage } : {}),
     stopReason: images.stopReason,
     ...(images.responseId ? { responseId: images.responseId } : {}),
-    ...(images.errorMessage ? { errorMessage: images.errorMessage } : {}),
+    ...(errorMessage ? { errorMessage } : {}),
     metadata: {
       api: images.api,
       provider: images.provider,

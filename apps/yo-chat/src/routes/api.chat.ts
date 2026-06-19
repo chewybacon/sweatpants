@@ -23,15 +23,17 @@ import {
 } from '@sweatpants/framework/chat/durable-streams'
 import {
   resolvePersona,
-  ollamaProvider,
-  openaiProvider,
   setupLogger,
 } from '@sweatpants/framework/chat'
+import { ollamaProvider, openaiProvider } from '@sweatpants/framework/chat/providers'
 import {
   DefaultRuntime,
-  ProviderContext,
   RuntimeContext,
   RuntimeModelContext,
+  resolveRuntimeModel,
+} from '@sweatpants/framework/chat/runtime'
+import {
+  ProviderContext,
   ToolRegistryContext,
   PersonaResolverContext,
   MaxIterationsContext,
@@ -39,7 +41,6 @@ import {
   McpToolRegistryContext,
   PluginSessionRegistryContext,
   PluginSessionManagerContext,
-  resolveRuntimeModel,
 } from '@sweatpants/framework/chat'
 import {
   createInMemoryToolSessionStore,
@@ -502,9 +503,6 @@ function* createAgentCoreStores(): Operation<AgentCoreToolSessionStores> {
 }
 
 function requireAgentCorePaidInvocationApproval(): void {
-  const isProductionLike = process.env['NODE_ENV'] === 'production'
-  if (isProductionLike) return
-
   if (process.env['APPROVE_AGENTCORE_PAID_INVOCATION'] !== 'yes') {
     throw new Error(
       'MCP_TOOL_RUNTIME=agentcore with AGENTCORE_RUNTIME_ARN may invoke paid AWS Bedrock AgentCore Runtime services. '
@@ -546,10 +544,16 @@ function* createAgentCorePluginToolSessionRegistry(): Operation<ToolSessionRegis
   })
 }
 
+function redactAgentCoreArn(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const suffix = value.split('/').pop()?.slice(-8) ?? 'unknown'
+  return `[redacted-agentcore-runtime:${suffix}]`
+}
+
 function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
   if (env.MCP_TOOL_RUNTIME === 'agentcore') {
     console.info('[yo-chat] MCP tool runtime: agentcore', {
-      runtimeArn: env.AGENTCORE_RUNTIME_ARN,
+      runtimeArn: redactAgentCoreArn(env.AGENTCORE_RUNTIME_ARN),
       endpointName: env.AGENTCORE_ENDPOINT_NAME,
       region: env.AGENTCORE_REGION,
       toolNames: activeAgentCoreToolNames(),

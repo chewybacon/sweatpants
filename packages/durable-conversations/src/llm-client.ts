@@ -1,12 +1,12 @@
 import { run, type Operation } from 'effection'
 
-import {
-  ollamaProvider,
-  type ChatEvent,
-  type ChatResult,
-  type Message,
-  type ToolCall,
+import type {
+  ChatEvent,
+  ChatResult,
+  Message,
+  ToolCall,
 } from '@sweatpants/framework/chat'
+import { ollamaProvider } from '@sweatpants/framework/chat/providers'
 
 import { echoToolSchema } from './echo-tool.ts'
 

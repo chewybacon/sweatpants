@@ -75,7 +75,7 @@ test.describe('play_ttt Agentic Tool', () => {
     const boardCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
 
     // Wait with a generous timeout since the model might take time
-    const boardAppeared = await boardCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await boardCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     
     if (!boardAppeared) {
       // Check for error
@@ -140,7 +140,7 @@ test.describe('play_ttt Agentic Tool', () => {
     console.log('Starting game...')
 
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -180,7 +180,7 @@ test.describe('play_ttt Agentic Tool', () => {
 
     // Wait for board to appear
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -229,7 +229,7 @@ test.describe('play_ttt Agentic Tool', () => {
     // Wait for either an interactive board or a completed/static board.
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
     const board = page.locator('.grid-cols-3').last()
-    const boardAppeared = await emptyCell.or(board).isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.or(board).waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -260,7 +260,7 @@ test.describe('play_ttt Agentic Tool', () => {
 
     // Wait for board
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -297,7 +297,7 @@ test.describe('play_ttt Agentic Tool', () => {
     await page.getByRole('button', { name: 'Start Game' }).click()
 
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -360,7 +360,7 @@ test.describe('play_ttt Agentic Tool', () => {
 
     // Wait for board to appear
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -413,7 +413,7 @@ test.describe('play_ttt Agentic Tool', () => {
       // If game didn't end, a later move card may appear. The exact move
       // number depends on random X/O assignment and model choices, so don't
       // require Move #3 specifically.
-      if (await moveCard3.isVisible({ timeout: 10000 }).catch(() => false)) {
+      if (await moveCard3.waitFor({ state: 'visible', timeout: 10000 }).then(() => true).catch(() => false)) {
         console.log('Second round: 3+ move cards visible - emission accumulation working!')
       } else {
         console.log('No third move card yet; verifying previous cards remain visible')

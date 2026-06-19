@@ -89,12 +89,18 @@ export type ContentBlock = TextBlock | ThinkingBlock | ToolCallBlock | ImageBloc
 export interface TextBlock {
   type: 'text'
   text: string
+  /** Opaque provider replay signature, preserved but never interpreted by Sweatpants. */
+  textSignature?: string
 }
 
 export interface ThinkingBlock {
   type: 'thinking'
   text: string
   format?: string
+  /** Opaque provider replay signature, preserved but never interpreted by Sweatpants. */
+  thinkingSignature?: string
+  /** Whether the provider marked this reasoning block as redacted. */
+  redacted?: boolean
 }
 
 export interface ToolCallBlock {
@@ -102,6 +108,8 @@ export interface ToolCallBlock {
   id: string
   name: string
   arguments: Record<string, unknown>
+  /** Opaque provider replay signature associated with this tool call. */
+  thoughtSignature?: string
 }
 
 export interface ImageBlock {

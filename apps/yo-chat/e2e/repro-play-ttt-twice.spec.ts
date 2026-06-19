@@ -13,7 +13,7 @@ test.describe('play_ttt Multiple Games', () => {
     
     // Wait for the game to start (board visible)
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const firstBoardAppeared = await emptyCell.isVisible({ timeout: 30000 }).catch(() => false)
+    const firstBoardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false)
     if (!firstBoardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
