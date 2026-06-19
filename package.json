@@ -6,8 +6,9 @@
   "license": "MIT",
   "pnpm": {
     "overrides": {
-      "@effectionx/signals": "^0.5.0",
-      "@effectionx/timebox": "^0.4.0"
+      "@effectionx/signals": "^0.5.3",
+      "@effectionx/timebox": "^0.4.3",
+      "effection": "4.1.0-alpha.9"
     }
   },
   "scripts": {

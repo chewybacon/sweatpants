@@ -507,6 +507,21 @@ export function* runChatSession(
                   result.conversationState
                 )
                 resetTranscriptState(transcriptState, history)
+
+                const assistantElicitHostMessage = [...history].reverse().find(
+                  (message) =>
+                    message.role === 'assistant' &&
+                    message.content === '' &&
+                    !message.tool_calls?.length &&
+                    typeof message.id === 'string' &&
+                    message.id.startsWith('assistant:final:')
+                )
+                if (assistantElicitHostMessage) {
+                  yield* patches.send({
+                    type: 'assistant_message',
+                    message: assistantElicitHostMessage,
+                  })
+                }
                 
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.
@@ -947,6 +962,21 @@ export function* runChatSession(
                   result.conversationState
                 )
                 resetTranscriptState(transcriptState, history)
+
+                const assistantElicitHostMessage = [...history].reverse().find(
+                  (message) =>
+                    message.role === 'assistant' &&
+                    message.content === '' &&
+                    !message.tool_calls?.length &&
+                    typeof message.id === 'string' &&
+                    message.id.startsWith('assistant:final:')
+                )
+                if (assistantElicitHostMessage) {
+                  yield* patches.send({
+                    type: 'assistant_message',
+                    message: assistantElicitHostMessage,
+                  })
+                }
                 
                 // Patches have already been emitted by stream-chat.
                 // React state now has the pending elicitations in pendingElicits.

@@ -547,17 +547,67 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       (replayState?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
     )
 
-    // Helper to convert provider tool calls to our format
+    function sanitizeToolCallIdPart(value: string): string {
+      return value.replace(/[^A-Za-z0-9_-]/g, '_') || 'tool'
+    }
+
+    function collectUsedToolCallIds(): Set<string> {
+      const ids = new Set<string>()
+
+      for (const message of state.conversationMessages) {
+        for (const toolCall of message.tool_calls ?? []) {
+          const id = (toolCall as { id?: unknown }).id
+          if (typeof id === 'string' && id.trim().length > 0) {
+            ids.add(id)
+          }
+        }
+
+        const toolCallId = (message as { tool_call_id?: unknown }).tool_call_id
+        if (typeof toolCallId === 'string' && toolCallId.trim().length > 0) {
+          ids.add(toolCallId)
+        }
+      }
+
+      return ids
+    }
+
+    // Helper to convert provider tool calls to our format.
+    // Some providers (notably Ollama-compatible APIs) can omit tool call IDs.
+    // The rest of the chat/runtime stack keys plugin sessions, elicit state,
+    // tool results, and UI parts by call ID, so synthesize a per-run ID when
+    // the provider does not supply a usable unique one.
     const convertToolCalls = (calls: ChatResult['toolCalls']): ToolCall[] => {
       if (!calls) return []
-      return calls.map((tc) => ({
-        id: tc.id,
-        type: 'function' as const,
-        function: {
-          name: tc.function.name,
-          arguments: tc.function.arguments,
-        },
-      }))
+
+      const usedIds = collectUsedToolCallIds()
+
+      return calls.map((tc, index) => {
+        const rawId = (tc as { id?: unknown }).id
+        let id = typeof rawId === 'string' && rawId.trim().length > 0
+          ? rawId
+          : ''
+
+        if (!id || usedIds.has(id)) {
+          const toolName = sanitizeToolCallIdPart(tc.function.name)
+          let suffix = 0
+          do {
+            const suffixPart = suffix === 0 ? '' : `:${suffix}`
+            id = `call:${agUiRun.runId}:${state.iteration}:${index}:${toolName}${suffixPart}`
+            suffix++
+          } while (usedIds.has(id))
+        }
+
+        usedIds.add(id)
+
+        return {
+          id,
+          type: 'function' as const,
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments,
+          },
+        }
+      })
     }
 
     // The subscription we provide to consumers
@@ -1288,9 +1338,20 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // resuming from elicitation - the original state.toolCalls was set during
             // the first request's provider_streaming phase, but on subsequent requests
             // (elicit responses), we create a new engine with fresh state.
-            if (toolCalls.length === 0 && state.awaitingElicitResult) {
-              // Find assistant message with tool_calls in conversationMessages
-              const assistantWithToolCalls = state.conversationMessages.find(
+            if (
+              toolCalls.length === 0 &&
+              state.awaitingElicitResult?.ok &&
+              state.awaitingElicitResult.kind === 'plugin_awaiting'
+            ) {
+              // Find the assistant message that owns the currently awaited tool call.
+              // Conversation history can contain prior completed plugin calls; using
+              // the first assistant with tool calls can attach the new elicitation UI
+              // to stale tool-call parts from an earlier turn.
+              const awaitedCallId = state.awaitingElicitResult.callId
+              const assistantWithToolCalls = [...state.conversationMessages].reverse().find(
+                msg => msg.role === 'assistant' &&
+                  msg.tool_calls?.some((toolCall) => toolCall.id === awaitedCallId)
+              ) ?? [...state.conversationMessages].reverse().find(
                 msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
               )
               if (assistantWithToolCalls && assistantWithToolCalls.tool_calls) {
