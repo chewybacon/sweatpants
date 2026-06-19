@@ -116,6 +116,20 @@
         "default": "./dist/chat/mcp-tools/worker.cjs"
       }
     },
+    "./chat/mcp-tools/agentcore": {
+      "development": {
+        "import": "./src/lib/chat/mcp-tools/session/agentcore-exports.ts",
+        "types": "./src/lib/chat/mcp-tools/session/agentcore-exports.ts"
+      },
+      "import": {
+        "types": "./dist/chat/mcp-tools/agentcore.d.ts",
+        "default": "./dist/chat/mcp-tools/agentcore.js"
+      },
+      "require": {
+        "types": "./dist/chat/mcp-tools/agentcore.d.cts",
+        "default": "./dist/chat/mcp-tools/agentcore.cjs"
+      }
+    },
     "./chat/core-tools": {
       "development": {
         "import": "./src/lib/chat/core-tools/index.ts",
@@ -216,6 +230,7 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
     "@sweatpants/durable-streams": "workspace:*",
     "@sweatpants/core": "workspace:*",
     "@sweatpants/elicit-context": "workspace:*",

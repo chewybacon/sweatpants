@@ -303,6 +303,7 @@ export function* runChatSession(
   
   // Track pending plugin elicit responses (sent with next message)
   const pendingElicitResponses: ElicitResponseData[] = []
+  const sentElicitResponseIds = new Set<string>()
   
   // Track pending tool_calls that are awaiting elicitation (need tool result messages if cancelled)
   // These are tool_calls from assistant messages that haven't received their tool result yet
@@ -1067,6 +1068,14 @@ export function* runChatSession(
       }
 
       case 'elicit_response': {
+        // Ignore duplicate responses from stale/historical plugin UIs. A given
+        // elicitation id can be answered only once; further clicks should not
+        // enqueue another continuation while the remote tool has advanced.
+        if (sentElicitResponseIds.has(cmd.elicitId)) {
+          break
+        }
+        sentElicitResponseIds.add(cmd.elicitId)
+
         // Store the response to be sent with the next message (or continuation)
         pendingElicitResponses.push({
           sessionId: cmd.sessionId,

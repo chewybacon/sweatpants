@@ -101,11 +101,17 @@ function localEmissionReducer(
         [action.callId]: {
           ...tracking,
           emissions: tracking.emissions.map(e => {
-            if (e.id !== action.emissionId) return e
             if (e.status === 'complete') return e
-            // Create new emission without respond callback
+            // Once any elicitation emission for a tool call receives a response,
+            // disable all pending emissions for that call. Historical plugin
+            // UIs remain visible but must not stay interactive while the remote
+            // tool coroutine advances to sampling or the next elicitation.
             const { respond: _, ...rest } = e
-            return { ...rest, status: 'complete' as const, response: action.response }
+            return {
+              ...rest,
+              status: 'complete' as const,
+              ...(e.id === action.emissionId ? { response: action.response } : {}),
+            }
           }),
         },
       }

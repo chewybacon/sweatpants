@@ -8,6 +8,20 @@ import { frameworkPlugin, nodeWorkerPlugin } from '@sweatpants/framework/vite'
 import { imagetools } from "vite-imagetools";
 const isProd = process.env['NODE_ENV'] === 'production'
 
+const agentCoreToolDiscovery = {
+  dir: 'src/tools',
+  outFile: 'src/__generated__/tool-registry.gen.ts',
+  pattern: '**/*.{ts,tsx}',
+  generateWorker: true,
+  workerOutFile: 'src/__generated__/tool-worker.gen.ts',
+  generateAgentCoreRegistry: true,
+  agentCoreOutFile: 'src/__generated__/agentcore-tool-registry.gen.ts',
+  // Batch-1 AgentCore Runtime support is deliberately narrow and explicit:
+  // only MCP bridge-compatible tools in this allowlist are imported into
+  // the generated AgentCore registry.
+  agentCoreSupportedToolNames: ['book_flight', 'play_ttt', 'tictactoe'],
+}
+
 // Workspace packages that should hot-reload in dev
 // Note: No resolve.alias needed - framework package.json exports have
 // "development" condition that Vite uses automatically in dev mode
@@ -37,13 +51,7 @@ const config = defineConfig({
     viteReact(),
     // Tool discovery: scan src/tools/ and generate registry
     ...frameworkPlugin({
-      tools: {
-        dir: 'src/tools',
-        outFile: 'src/__generated__/tool-registry.gen.ts',
-        pattern: '**/*.{ts,tsx}',
-        generateWorker: true,
-        workerOutFile: 'src/__generated__/tool-worker.gen.ts',
-      },
+      tools: agentCoreToolDiscovery,
     }),
   ],
 

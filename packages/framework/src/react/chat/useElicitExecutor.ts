@@ -66,16 +66,36 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
   // Track which elicitations we've already started executing
   const executingRef = useRef<Set<string>>(new Set())
 
+  // Track elicitations whose client handler already produced a response.
+  // The server may not clear the pending elicit from React state until the next
+  // stream update, so completed ids must not be executed again during that gap.
+  const completedRef = useRef<Set<string>>(new Set())
+
   // Track running tasks so we can clean up
   const tasksRef = useRef<Map<string, Task<void>>>(new Map())
 
   useEffect(() => {
-    // Find pending elicitations that we haven't started executing yet
+    const currentPendingIds = new Set<string>()
+    for (const tracking of pendingElicits) {
+      for (const elicit of tracking.elicitations) {
+        if (elicit.status === 'pending') currentPendingIds.add(elicit.elicitId)
+      }
+    }
+
+    for (const id of completedRef.current) {
+      if (!currentPendingIds.has(id)) completedRef.current.delete(id)
+    }
+    for (const id of executingRef.current) {
+      if (!currentPendingIds.has(id)) executingRef.current.delete(id)
+    }
+
+    // Find pending elicitations that we haven't started or completed yet
     for (const tracking of pendingElicits) {
       for (const elicit of tracking.elicitations) {
         // Skip if not pending or already executing
         if (elicit.status !== 'pending') continue
         if (executingRef.current.has(elicit.elicitId)) continue
+        if (completedRef.current.has(elicit.elicitId)) continue
 
         // Look up the plugin
         const plugin = registry.get(elicit.toolName)
@@ -114,13 +134,13 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
         // Clean up when task completes
         task.then(() => {
           tasksRef.current.delete(elicit.elicitId)
-          executingRef.current.delete(elicit.elicitId)
+          completedRef.current.add(elicit.elicitId)
         }).catch((err) => {
           if (err.message !== 'halted') {
             console.error(`Plugin handler error for ${elicit.toolName}.${elicit.key}:`, err)
           }
           tasksRef.current.delete(elicit.elicitId)
-          executingRef.current.delete(elicit.elicitId)
+          completedRef.current.add(elicit.elicitId)
         })
       }
     }

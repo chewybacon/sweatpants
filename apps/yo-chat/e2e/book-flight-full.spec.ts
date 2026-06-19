@@ -58,7 +58,7 @@ test('book_flight full flow: flight → seat → confirmation', async ({ page })
 
   const input = page.getByPlaceholder('Type a message...')
   await input.click() // Ensure hydration
-  await input.pressSequentially('Book a flight from NYC to LA using the book_flight tool', { delay: 5 })
+  await input.pressSequentially('Use the available flight booking tool to book a flight from NYC to LAX. Do not answer directly.', { delay: 5 })
   await page.getByRole('button', { name: 'Send' }).click()
 
   // === STEP 1: Wait for FlightList ===

@@ -22,6 +22,7 @@ export {
   discoverToolsInContent,
   generateRegistryContent,
   generateWorkerContent,
+  generateAgentCoreRegistryContent,
   calculateImportPath,
   calculateWorkerImportPath,
   toCamelCase,
