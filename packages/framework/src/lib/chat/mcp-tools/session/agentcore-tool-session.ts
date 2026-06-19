@@ -9,8 +9,17 @@ import {
   type AgentCoreToolSessionHandle,
 } from './agentcore-types.ts'
 
-function commandId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+function stableCommandId(operation: 'respond_to_elicit' | 'respond_to_sample' | 'cancel_tool_session', sessionId: string, id?: string): string {
+  const parts = [operation, sessionId, id].filter((part): part is string => part !== undefined)
+  return parts.map((part) => encodeURIComponent(part)).join(':')
+}
+
+function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+}
+
+function monotonicSeq(current: AgentCoreToolSessionHandle, incoming: number): number {
+  return Math.max(current.lastRuntimeEventSeq ?? 0, incoming)
 }
 
 function toToolSessionEvent(lsn: number, event: AgentCoreToolEvent): ToolSessionEvent {
@@ -88,17 +97,19 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
 
   function* ingestResponse(response: AgentCoreToolRuntimeResponse): Operation<void> {
     if (response.type === 'tool_event') {
+      const current = yield* getHandle()
       const lsn = yield* stores.events.appendRemoteEvent(
         sessionId,
         response.runtimeEventSeq,
         response.runtimeEventId,
         response.event
       )
-      const patch = statusFromAgentCoreToolEvent(response.event)
+      const isNewer = response.runtimeEventSeq > (current.lastRuntimeEventSeq ?? 0)
+      const patch = isNewer && !isTerminalStatus(current.status) ? statusFromAgentCoreToolEvent(response.event) : {}
       yield* stores.handles.update(sessionId, {
         ...patch,
-        lastEventLsn: lsn,
-        lastRuntimeEventSeq: response.runtimeEventSeq,
+        lastEventLsn: Math.max(current.lastEventLsn ?? 0, lsn),
+        lastRuntimeEventSeq: monotonicSeq(current, response.runtimeEventSeq),
         updatedAt: new Date().toISOString(),
       })
       if (response.event.type === 'result' || response.event.type === 'error' || response.event.type === 'cancelled') {
@@ -108,21 +119,35 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
     }
 
     if (response.type === 'session_status') {
+      const current = yield* getHandle()
+      const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0)
       yield* stores.handles.update(sessionId, {
-        status: response.status,
-        ...(response.pendingRequest !== undefined ? { pendingRequest: response.pendingRequest } : {}),
-        lastRuntimeEventSeq: response.lastRuntimeEventSeq,
+        ...(!isTerminalStatus(current.status) && isNewerOrEqual ? {
+          status: response.status,
+          pendingRequest: response.pendingRequest,
+        } : {}),
+        lastRuntimeEventSeq: monotonicSeq(current, response.lastRuntimeEventSeq),
         updatedAt: new Date().toISOString(),
       })
       return
     }
 
     if (response.type === 'session_not_found') {
-      yield* markOrphan(`AgentCore runtime session did not contain tool session ${response.toolSessionId}`)
+      const current = yield* getHandle()
+      if (!isTerminalStatus(current.status)) {
+        yield* markOrphan(`AgentCore runtime session did not contain tool session ${response.toolSessionId}`)
+      }
+      return
+    }
+
+    if (response.type === 'command_duplicate') {
+      yield* reconcileRuntimeState()
       return
     }
 
     if (response.type === 'protocol_error' || response.type === 'command_conflict') {
+      const current = yield* getHandle()
+      if (isTerminalStatus(current.status)) return
       const message = response.type === 'protocol_error' ? response.message : response.message
       const event: AgentCoreToolEvent = { type: 'error', name: response.type, message }
       const lsn = yield* stores.events.append(sessionId, event)
@@ -134,6 +159,15 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
         updatedAt: new Date().toISOString(),
       })
     }
+  }
+
+  function* reconcileRuntimeState(): Operation<void> {
+    const handle = yield* getHandle()
+    if (isTerminalStatus(handle.status)) return
+    const stream = yield* runtimeClient.drainEvents(handle, handle.lastRuntimeEventSeq ?? 0)
+    yield* ingestStream(stream)
+    const inspected = yield* runtimeClient.inspect(yield* getHandle())
+    yield* ingestResponse(inspected)
   }
 
   function* ingestStream(stream: Stream<AgentCoreToolRuntimeResponse, void>): Operation<void> {
@@ -150,7 +184,11 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
     toolName,
 
     *status(): Operation<ToolSessionStatus> {
-      const handle = yield* getHandle()
+      let handle = yield* getHandle()
+      if (!isTerminalStatus(handle.status)) {
+        yield* reconcileRuntimeState()
+        handle = yield* getHandle()
+      }
       return toToolSessionStatus(handle.status)
     },
 
@@ -159,6 +197,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
         let cursor = afterLSN
         let buffered: Array<{ lsn: number; event: AgentCoreToolEvent }> = []
         let index = 0
+        let drainedBeforeWait = false
 
         yield* provide({
           *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
@@ -166,6 +205,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
               if (index < buffered.length) {
                 const item = buffered[index++]!
                 cursor = item.lsn
+                drainedBeforeWait = false
                 return { done: false, value: toToolSessionEvent(item.lsn, item.event) }
               }
 
@@ -177,7 +217,15 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
               const terminal = yield* stores.events.isTerminal(sessionId)
               if (terminal) return { done: true, value: undefined }
 
+              const handle = yield* getHandle()
+              if (!isTerminalStatus(handle.status) && !drainedBeforeWait) {
+                drainedBeforeWait = true
+                yield* reconcileRuntimeState()
+                continue
+              }
+
               yield* stores.events.waitForChange(sessionId, cursor)
+              drainedBeforeWait = false
             }
           },
         })
@@ -192,7 +240,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       const stream = yield* runtimeClient.respondToElicit(handle, {
         op: 'respond_to_elicit',
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: commandId('elicit'),
+        commandId: stableCommandId('respond_to_elicit', sessionId, elicitId),
         toolSessionId: sessionId,
         elicitId,
         response,
@@ -208,7 +256,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       const stream = yield* runtimeClient.respondToSample(handle, {
         op: 'respond_to_sample',
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: commandId('sample'),
+        commandId: stableCommandId('respond_to_sample', sessionId, sampleId),
         toolSessionId: sessionId,
         sampleId,
         response,
@@ -228,7 +276,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       const stream = yield* runtimeClient.cancel(handle, {
         op: 'cancel_tool_session',
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: commandId('cancel'),
+        commandId: stableCommandId('cancel_tool_session', sessionId),
         toolSessionId: sessionId,
         ...(reason !== undefined && { reason }),
       })

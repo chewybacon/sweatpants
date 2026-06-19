@@ -85,7 +85,7 @@ describe('Redis-backed durable conversations', () => {
 
   beforeAll(async () => {
     redisAvailable = await isRedisAvailable()
-    ollamaAvailable = await isOllamaAvailable()
+    ollamaAvailable = await isOllamaAvailable({ requireToolCalling: true })
     if (!redisAvailable) {
       return
     }

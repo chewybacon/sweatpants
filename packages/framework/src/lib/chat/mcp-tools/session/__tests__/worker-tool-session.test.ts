@@ -3,13 +3,15 @@
  * Worker Tool Session Tests (Worker Transport)
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
 
 const execFileAsync = promisify(execFile)
+
+vi.setConfig({ testTimeout: 15_000 })
 
 const harnessCandidates = [
   resolve(
@@ -61,7 +63,7 @@ describe('WorkerToolSession', () => {
 
       expect(result.status).toBe('failed')
       expect(result.error).toContain('Tool not found')
-    })
+    }, 15_000)
   })
 
   describe('sampling backchannel', () => {

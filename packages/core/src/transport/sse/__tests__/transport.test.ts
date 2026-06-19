@@ -24,6 +24,20 @@ interface SSETestServer {
   };
 }
 
+function* waitForCondition(predicate: () => boolean, timeoutMs = 1000): Operation<void> {
+  const startedAt = Date.now();
+  while (!predicate()) {
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error("Timed out waiting for condition");
+    }
+    yield* sleep(10);
+  }
+}
+
+function* waitForReceived(operative: SSETestServer["operative"], count: number): Operation<void> {
+  yield* waitForCondition(() => operative.received.length >= count);
+}
+
 function useSSETestServer(): Operation<SSETestServer> {
   return resource(function* (provide) {
     const postedRequests: TransportRequest[] = [];
@@ -139,7 +153,7 @@ describe("SSE+POST Transport", () => {
         expect(result.done).toBe(true);
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 1);
 
       expect(operative.received).toHaveLength(1);
       expect(operative.received[0]).toEqual(message);
@@ -162,7 +176,7 @@ describe("SSE+POST Transport", () => {
         payload: { accuracy: "high" },
       };
 
-      let result: IteratorResult<unknown, ElicitResponse>;
+      let result: IteratorResult<unknown, ElicitResponse> | undefined;
 
       yield* spawn(function* () {
         const subscription = yield* correlated.request<unknown, ElicitResponse>(message);
@@ -186,7 +200,7 @@ describe("SSE+POST Transport", () => {
         });
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 1);
 
       // Operative sends progress updates
       yield* operative.send({
@@ -195,7 +209,7 @@ describe("SSE+POST Transport", () => {
         data: { status: "requesting-permission" },
       });
 
-      yield* sleep(20);
+      yield* waitForCondition(() => !!result && result.done === false && (result.value as { status?: string }).status === "requesting-permission");
 
       yield* operative.send({
         type: "progress",
@@ -203,7 +217,7 @@ describe("SSE+POST Transport", () => {
         data: { status: "acquiring" },
       });
 
-      yield* sleep(20);
+      yield* waitForCondition(() => !!result && result.done === false && (result.value as { status?: string }).status === "acquiring");
 
       // Operative sends final response
       yield* operative.send({
@@ -238,7 +252,7 @@ describe("SSE+POST Transport", () => {
         });
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 1);
 
       yield* operative.send({
         type: "response",
@@ -283,7 +297,7 @@ describe("SSE+POST Transport", () => {
         }
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 2);
 
       expect(operative.received).toHaveLength(2);
 
@@ -300,7 +314,7 @@ describe("SSE+POST Transport", () => {
         response: { status: "denied" },
       });
 
-      yield* sleep(20);
+      yield* waitForCondition(() => !!responses["msg-1"] && !!responses["msg-2"]);
 
       expect(responses["msg-1"]).toEqual({ status: "denied" });
       expect(responses["msg-2"]).toEqual({
@@ -324,7 +338,7 @@ describe("SSE+POST Transport", () => {
         expect(result.value).toEqual({ status: "declined" });
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 1);
 
       yield* operative.send({
         type: "response",
@@ -351,7 +365,7 @@ describe("SSE+POST Transport", () => {
         });
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 1);
 
       yield* operative.send({
         type: "response",
@@ -378,7 +392,7 @@ describe("SSE+POST Transport", () => {
         expect(result.value).toEqual({ status: "cancelled" });
       });
 
-      yield* sleep(20);
+      yield* waitForReceived(operative, 1);
 
       yield* operative.send({
         type: "response",

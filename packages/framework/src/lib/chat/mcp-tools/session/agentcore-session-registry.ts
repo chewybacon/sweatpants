@@ -34,6 +34,14 @@ function terminal(event: AgentCoreToolEvent): boolean {
   return event.type === 'result' || event.type === 'error' || event.type === 'cancelled'
 }
 
+function terminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+}
+
+function monotonicSeq(handle: AgentCoreToolSessionHandle, incoming: number): number {
+  return Math.max(handle.lastRuntimeEventSeq ?? 0, incoming)
+}
+
 export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSessionRegistryOptions): ToolSessionRegistry {
   const { stores, runtimeClient, profiles } = options
   const active = new Map<string, ToolSession>()
@@ -51,17 +59,19 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
 
   function* ingest(handle: AgentCoreToolSessionHandle, response: AgentCoreToolRuntimeResponse): Operation<AgentCoreToolSessionHandle> {
     if (response.type === 'tool_event') {
+      const current = (yield* stores.handles.get(handle.sessionId)) ?? handle
       const lsn = yield* stores.events.appendRemoteEvent(
         handle.sessionId,
         response.runtimeEventSeq,
         response.runtimeEventId,
         response.event
       )
-      const patch = statusFromAgentCoreToolEvent(response.event)
+      const isNewer = response.runtimeEventSeq > (current.lastRuntimeEventSeq ?? 0)
+      const patch = isNewer && !terminalStatus(current.status) ? statusFromAgentCoreToolEvent(response.event) : {}
       const updated = yield* stores.handles.update(handle.sessionId, {
         ...patch,
-        lastEventLsn: lsn,
-        lastRuntimeEventSeq: response.runtimeEventSeq,
+        lastEventLsn: Math.max(current.lastEventLsn ?? 0, lsn),
+        lastRuntimeEventSeq: monotonicSeq(current, response.runtimeEventSeq),
         updatedAt: now().toISOString(),
       })
       if (terminal(response.event)) yield* stores.events.markTerminal(handle.sessionId)
@@ -69,15 +79,21 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
     }
 
     if (response.type === 'session_status') {
+      const current = (yield* stores.handles.get(handle.sessionId)) ?? handle
+      const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0)
       return yield* stores.handles.update(handle.sessionId, {
-        status: response.status,
-        ...(response.pendingRequest !== undefined ? { pendingRequest: response.pendingRequest } : {}),
-        lastRuntimeEventSeq: response.lastRuntimeEventSeq,
+        ...(!terminalStatus(current.status) && isNewerOrEqual ? {
+          status: response.status,
+          pendingRequest: response.pendingRequest,
+        } : {}),
+        lastRuntimeEventSeq: monotonicSeq(current, response.lastRuntimeEventSeq),
         updatedAt: now().toISOString(),
       })
     }
 
     if (response.type === 'session_not_found') {
+      const current = (yield* stores.handles.get(handle.sessionId)) ?? handle
+      if (terminalStatus(current.status)) return current
       const lsn = yield* stores.events.append(handle.sessionId, {
         type: 'error',
         name: 'AgentCoreToolSessionOrphaned',
@@ -93,6 +109,8 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
     }
 
     if (response.type === 'protocol_error' || response.type === 'command_conflict') {
+      const current = (yield* stores.handles.get(handle.sessionId)) ?? handle
+      if (terminalStatus(current.status)) return current
       const lsn = yield* stores.events.append(handle.sessionId, {
         type: 'error',
         name: response.type,
@@ -105,6 +123,14 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         lastEventLsn: lsn,
         updatedAt: now().toISOString(),
       })
+    }
+
+    if (response.type === 'command_duplicate') {
+      const current = (yield* stores.handles.get(handle.sessionId)) ?? handle
+      if (terminalStatus(current.status)) return current
+      const stream = yield* runtimeClient.drainEvents(current, current.lastRuntimeEventSeq ?? 0)
+      const drained = yield* ingestStream(current, stream)
+      return yield* ingest(drained, yield* runtimeClient.inspect(drained))
     }
 
     return handle
@@ -188,6 +214,7 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
     *acquire(sessionId: string): Operation<ToolSession> {
       const session = yield* getSession(sessionId)
       if (!session) throw new Error(`Session not found: ${sessionId}`)
+      yield* session.status()
       return session
     },
 

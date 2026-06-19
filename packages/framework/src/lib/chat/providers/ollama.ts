@@ -64,7 +64,7 @@ export const ollamaProvider: ChatProvider = {
       const signal = yield* useAbortSignal()
       const values: ResolvedChatStreamConfig = yield* resolveChatStreamConfig(options, {
         baseUri: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
-        model: process.env['OLLAMA_MODEL'] ?? 'qwen3:30b',
+        model: process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest',
         envApiKeyName: 'OLLAMA_API_KEY',
       })
 

@@ -50,6 +50,7 @@ interface PendingSample {
 type Pending = PendingElicit | PendingSample
 
 interface RuntimeToolSession {
+  runtimeSessionId: string
   toolSessionId: string
   toolName: string
   status: ToolStatus
@@ -57,6 +58,7 @@ interface RuntimeToolSession {
   nextSeq: number
   events: Array<{ seq: number; id: string; event: RuntimeEvent }>
   commandFingerprints: Map<string, string>
+  startFingerprint: string
   waiters: Array<() => void>
   abortController?: AbortController | undefined
   backgroundTask?: Promise<void> | undefined
@@ -153,6 +155,18 @@ function toBridgeSampleResult(response: RawSampleResponse): SampleResponse['resu
   return result as unknown as SampleResponse['result']
 }
 
+export interface RuntimeSessionContext {
+  runtimeSessionId: string
+}
+
+function sessionKey(runtimeSessionId: string, toolSessionId: string): string {
+  return JSON.stringify([runtimeSessionId, toolSessionId])
+}
+
+function isTerminalStatus(status: ToolStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+}
+
 export class RuntimeSessionRegistry {
   private readonly sessions = new Map<string, RuntimeToolSession>()
 
@@ -163,36 +177,44 @@ export class RuntimeSessionRegistry {
     return false
   }
 
-  async handle(request: RuntimeRequest): Promise<RuntimeResponse[]> {
-    const duplicate = this.checkDuplicate(request)
-    if (duplicate) return [duplicate]
+  async handle(request: RuntimeRequest, context: RuntimeSessionContext): Promise<RuntimeResponse[]> {
+    const duplicate = this.checkDuplicate(request, context)
+    if (duplicate) return duplicate
 
     switch (request.op) {
       case 'start_tool_session':
-        return await this.start(request)
+        return await this.start(request, context)
       case 'respond_to_elicit':
-        return await this.respondToElicit(request)
+        return await this.respondToElicit(request, context)
       case 'respond_to_sample':
-        return await this.respondToSample(request)
+        return await this.respondToSample(request, context)
       case 'cancel_tool_session':
-        return this.cancel(request)
+        return this.cancel(request, context)
       case 'inspect_tool_session':
-        return [this.inspect(request.toolSessionId)]
+        return [this.inspect(request.toolSessionId, context)]
       case 'drain_tool_session_events':
-        return this.drain(request.toolSessionId, request.afterRuntimeEventSeq)
+        return this.drain(request.toolSessionId, request.afterRuntimeEventSeq, context)
       default:
         return [{ type: 'protocol_error', message: `unsupported op ${(request as { op?: string }).op}` }]
     }
   }
 
-  private checkDuplicate(request: RuntimeRequest): RuntimeResponse | null {
-    const session = this.sessions.get(request.toolSessionId)
-    const previous = session?.commandFingerprints.get(request.commandId)
+  private getSession(toolSessionId: string, context: RuntimeSessionContext): RuntimeToolSession | undefined {
+    return this.sessions.get(sessionKey(context.runtimeSessionId, toolSessionId))
+  }
+
+  private checkDuplicate(request: RuntimeRequest, context: RuntimeSessionContext): RuntimeResponse[] | null {
+    const session = this.getSession(request.toolSessionId, context)
+    if (!session) return null
+    const previous = session.commandFingerprints.get(request.commandId)
     if (!previous) return null
     if (previous === fingerprint(request)) {
-      return { type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' }
+      return [
+        { type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' },
+        statusResponse(session),
+      ]
     }
-    return { type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'commandId reused with different payload' }
+    return [{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'commandId reused with different payload' }]
   }
 
   private recordCommand(session: RuntimeToolSession, request: RuntimeRequest): void {
@@ -265,9 +287,17 @@ export class RuntimeSessionRegistry {
     }
   }
 
-  private async start(request: Extract<RuntimeRequest, { op: 'start_tool_session' }>): Promise<RuntimeResponse[]> {
-    const existing = this.sessions.get(request.toolSessionId)
-    if (existing) return [{ type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' }, statusResponse(existing)]
+  private async start(request: Extract<RuntimeRequest, { op: 'start_tool_session' }>, context: RuntimeSessionContext): Promise<RuntimeResponse[]> {
+    const existing = this.getSession(request.toolSessionId, context)
+    if (existing) {
+      if (existing.startFingerprint === fingerprint(request)) {
+        return [
+          { type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' },
+          statusResponse(existing),
+        ]
+      }
+      return [{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'toolSessionId already exists with different start command' }]
+    }
 
     const isBuiltInSmokeTool = request.toolName === 'elicit_then_result' || request.toolName === 'sample_then_result' || request.toolName === 'simple_result'
     const bridgeTool = getRuntimeMcpTool(request.toolName)
@@ -279,12 +309,14 @@ export class RuntimeSessionRegistry {
     }
 
     const session: RuntimeToolSession = {
+      runtimeSessionId: context.runtimeSessionId,
       toolSessionId: request.toolSessionId,
       toolName: request.toolName,
       status: 'running',
       nextSeq: 1,
       events: [],
       commandFingerprints: new Map(),
+      startFingerprint: fingerprint(request),
       waiters: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -298,7 +330,7 @@ export class RuntimeSessionRegistry {
       'gen_ai.operation.name': 'tool.execute',
       'gen_ai.tool.name': request.toolName,
     })
-    this.sessions.set(request.toolSessionId, session)
+    this.sessions.set(sessionKey(context.runtimeSessionId, request.toolSessionId), session)
     this.recordCommand(session, request)
     log('info', 'agentcore.tool_session.start', {
       toolSessionId: request.toolSessionId,
@@ -361,7 +393,7 @@ export class RuntimeSessionRegistry {
   }
 
   private handleBridgeEvent(session: RuntimeToolSession, event: BridgeEvent): void {
-    if (session.status === 'cancelled') return
+    if (isTerminalStatus(session.status)) return
 
     switch (event.type) {
       case 'notify':
@@ -451,7 +483,7 @@ export class RuntimeSessionRegistry {
         yield* effectionSleep(0)
 
         const result = yield* host.run()
-        if ((session.status as ToolStatus) === 'cancelled') return
+        if (isTerminalStatus(session.status)) return
         session.pending = undefined
         session.status = 'completed'
         const duration = Date.now() - session.createdAt
@@ -471,7 +503,7 @@ export class RuntimeSessionRegistry {
         })
         self.emit(session, { type: 'result', result })
       } catch (error) {
-        if ((session.status as ToolStatus) === 'cancelled') return
+        if (isTerminalStatus(session.status)) return
         session.pending = undefined
         session.status = 'failed'
         const duration = Date.now() - session.createdAt
@@ -496,7 +528,7 @@ export class RuntimeSessionRegistry {
     }).then(
       () => undefined,
       (error: unknown) => {
-        if ((session.status as ToolStatus) === 'cancelled') return
+        if (isTerminalStatus(session.status)) return
         session.pending = undefined
         session.status = 'failed'
         const duration = Date.now() - session.createdAt
@@ -521,20 +553,22 @@ export class RuntimeSessionRegistry {
     )
 
     await this.waitForPauseOrTerminal(session)
-    return this.drain(session.toolSessionId, 0)
+    return this.drain(session.toolSessionId, 0, { runtimeSessionId: session.runtimeSessionId })
   }
 
   private async runElicitTool(session: RuntimeToolSession, pending: Deferred<RawElicitResponse>): Promise<void> {
     try {
       const response = await pending.promise
-      if (session.status === 'cancelled') return
+      if (isTerminalStatus(session.status)) return
       session.pending = undefined
       session.status = 'running'
       const content = response.action === 'accept' ? response.content : { action: response.action }
       this.emit(session, { type: 'progress', message: 'resumed after elicit', progress: 0.75 })
+      if (isTerminalStatus(session.status)) return
       session.status = 'completed'
       this.emit(session, { type: 'result', result: { elicitResponse: content } })
     } catch (error) {
+      if (isTerminalStatus(session.status)) return
       session.status = 'failed'
       this.emit(session, { type: 'error', name: 'ToolError', message: error instanceof Error ? error.message : String(error) })
     }
@@ -543,21 +577,24 @@ export class RuntimeSessionRegistry {
   private async runSampleTool(session: RuntimeToolSession, pending: Deferred<{ text: string; model?: string | undefined; stopReason?: string | undefined; parsed?: unknown; parseError?: unknown; toolCalls?: unknown[] | undefined }>): Promise<void> {
     try {
       const response = await pending.promise
-      if (session.status === 'cancelled') return
+      if (isTerminalStatus(session.status)) return
       session.pending = undefined
       session.status = 'running'
       this.emit(session, { type: 'progress', message: 'resumed after sample', progress: 0.75 })
+      if (isTerminalStatus(session.status)) return
       session.status = 'completed'
       this.emit(session, { type: 'result', result: { sampleText: response.text, model: response.model ?? null } })
     } catch (error) {
+      if (isTerminalStatus(session.status)) return
       session.status = 'failed'
       this.emit(session, { type: 'error', name: 'ToolError', message: error instanceof Error ? error.message : String(error) })
     }
   }
 
-  private async respondToElicit(request: Extract<RuntimeRequest, { op: 'respond_to_elicit' }>): Promise<RuntimeResponse[]> {
-    const session = this.sessions.get(request.toolSessionId)
+  private async respondToElicit(request: Extract<RuntimeRequest, { op: 'respond_to_elicit' }>, context: RuntimeSessionContext): Promise<RuntimeResponse[]> {
+    const session = this.getSession(request.toolSessionId, context)
     if (!session) return [{ type: 'session_not_found', toolSessionId: request.toolSessionId }]
+    if (isTerminalStatus(session.status)) return [statusResponse(session)]
     const pending = session.pending
     if (!pending || pending.type !== 'elicit' || pending.elicitId !== request.elicitId) {
       return [{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'not awaiting matching elicit' }]
@@ -568,12 +605,13 @@ export class RuntimeSessionRegistry {
     pending.deferred?.resolve(request.response)
     pending.bridge?.signal.send({ id: pending.bridge.requestId, result: toBridgeElicitResult(request.response) })
     await this.waitForPauseOrTerminal(session)
-    return this.drain(request.toolSessionId, 0)
+    return this.drain(request.toolSessionId, 0, context)
   }
 
-  private async respondToSample(request: Extract<RuntimeRequest, { op: 'respond_to_sample' }>): Promise<RuntimeResponse[]> {
-    const session = this.sessions.get(request.toolSessionId)
+  private async respondToSample(request: Extract<RuntimeRequest, { op: 'respond_to_sample' }>, context: RuntimeSessionContext): Promise<RuntimeResponse[]> {
+    const session = this.getSession(request.toolSessionId, context)
     if (!session) return [{ type: 'session_not_found', toolSessionId: request.toolSessionId }]
+    if (isTerminalStatus(session.status)) return [statusResponse(session)]
     const pending = session.pending
     if (!pending || pending.type !== 'sample' || pending.sampleId !== request.sampleId) {
       return [{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'not awaiting matching sample' }]
@@ -584,12 +622,13 @@ export class RuntimeSessionRegistry {
     pending.deferred?.resolve(request.response)
     pending.bridge?.signal.send({ result: toBridgeSampleResult(request.response) })
     await this.waitForPauseOrTerminal(session)
-    return this.drain(request.toolSessionId, 0)
+    return this.drain(request.toolSessionId, 0, context)
   }
 
-  private cancel(request: Extract<RuntimeRequest, { op: 'cancel_tool_session' }>): RuntimeResponse[] {
-    const session = this.sessions.get(request.toolSessionId)
+  private cancel(request: Extract<RuntimeRequest, { op: 'cancel_tool_session' }>, context: RuntimeSessionContext): RuntimeResponse[] {
+    const session = this.getSession(request.toolSessionId, context)
     if (!session) return [{ type: 'session_not_found', toolSessionId: request.toolSessionId }]
+    if (isTerminalStatus(session.status)) return [statusResponse(session)]
     this.recordCommand(session, request)
     session.pending = undefined
     session.abortController?.abort(request.reason)
@@ -605,14 +644,14 @@ export class RuntimeSessionRegistry {
     return [this.emit(session, { type: 'cancelled', ...(request.reason !== undefined && { reason: request.reason }) }), statusResponse(session)]
   }
 
-  private inspect(toolSessionId: string): RuntimeResponse {
-    const session = this.sessions.get(toolSessionId)
+  private inspect(toolSessionId: string, context: RuntimeSessionContext): RuntimeResponse {
+    const session = this.getSession(toolSessionId, context)
     if (!session) return { type: 'session_not_found', toolSessionId }
     return statusResponse(session)
   }
 
-  private drain(toolSessionId: string, afterRuntimeEventSeq: number): RuntimeResponse[] {
-    const session = this.sessions.get(toolSessionId)
+  private drain(toolSessionId: string, afterRuntimeEventSeq: number, context: RuntimeSessionContext): RuntimeResponse[] {
+    const session = this.getSession(toolSessionId, context)
     if (!session) return [{ type: 'session_not_found', toolSessionId }]
     return [
       ...session.events

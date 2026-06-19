@@ -13,10 +13,12 @@ import {
   summarizeResponse,
 } from './observability.ts'
 
-async function handlePayload(payload: unknown): Promise<{ responses: RuntimeResponse[]; requestSummary: Record<string, unknown> }> {
+async function handlePayload(payload: unknown, runtimeSessionId: string): Promise<{ responses: RuntimeResponse[]; requestSummary: Record<string, unknown> }> {
   const parsed = parseRuntimeRequest(payload)
   const requestSummary = summarizeRequest(parsed)
-  const responses = await registry.handle(parsed)
+  // Use AgentCore's trusted invocation context session ID for ownership. Any
+  // caller-provided payload field is intentionally ignored for runtime isolation.
+  const responses = await registry.handle(parsed, { runtimeSessionId })
   return { responses, requestSummary }
 }
 
@@ -37,7 +39,7 @@ export function createApp(): BedrockAgentCoreApp {
             'agentcore.request.id': context.requestId ?? '',
             'agentcore.runtime_session.id': context.sessionId,
           }, async (span) => {
-            const handled = await handlePayload(payload)
+            const handled = await handlePayload(payload, context.sessionId)
             span.setAttributes({
               ...otelSafeAttributes(handled.requestSummary, 'agentcore.request'),
               'agentcore.response.count': handled.responses.length,

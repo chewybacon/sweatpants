@@ -8,13 +8,16 @@ export const appEnv = createEnv({
 
     // Ollama configuration
     OLLAMA_URL: z.string().default('http://localhost:11434'),
-    OLLAMA_MODEL: z.string().default('qwen3:30b'),
+    OLLAMA_MODEL: z.string().default('lfm2.5:latest'),
     //OLLAMA_MODEL: z.string().default('deepseek-r1:70b'),
 
     // OpenAI configuration (required when CHAT_PROVIDER=openai)
     OPENAI_API_KEY: z.string().optional(),
     OPENAI_MODEL: z.string().default('gpt-5-chat-latest'),
     OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
+
+    // Default system prompt for manual chat mode. Individual requests/personas may override it.
+    CHAT_SYSTEM_PROMPT: z.string().default(`You are yo-chat, a tool-using assistant. Use the available tools whenever the user asks you to use a tool, book a flight, calculate something, pick a card, or play a game. When the user says not to answer directly, you must call the appropriate tool instead of explaining. Use the provider's native tool-calling mechanism; do not print tool-call JSON as text. After a tool returns a result, treat that result as authoritative. If the result completes the user's request, confirms success, or includes a ticket/confirmation/reservation, do not call the same tool again for that request; summarize the completed result to the user.`),
 
     // Max tool call iterations
     MAX_TOOL_ITERATIONS: z.coerce.number().default(10),
