@@ -50,6 +50,32 @@ export interface ToolDiscoveryOptions {
    * @default 'src/__generated__/tool-worker.gen.ts'
    */
   workerOutFile?: string
+
+  /**
+   * Generate an AgentCore runtime registry artifact from the same discovered tools.
+   *
+   * This registry is intended for server/runtime packaging. It imports the
+   * discovered tool definitions and records both the generated app-facing tool
+   * name and the runtime tool object's intrinsic name as an alias.
+   *
+   * @default false
+   */
+  generateAgentCoreRegistry?: boolean
+
+  /**
+   * Output file for the generated AgentCore registry, relative to project root.
+   * @default 'src/__generated__/agentcore-tool-registry.gen.ts'
+   */
+  agentCoreOutFile?: string
+
+  /**
+   * Explicit Batch-1 AgentCore-supported tool names. Values may be canonical
+   * intrinsic MCP names (for example, `book_flight`) or generated app-facing
+   * names (for example, `book-flight_book_flight`). When omitted, no tools are
+   * emitted into the AgentCore registry.
+   * @default []
+   */
+  agentCoreSupportedToolNames?: string[]
 }
 
 export interface ResolvedToolDiscoveryOptions {
@@ -61,6 +87,9 @@ export interface ResolvedToolDiscoveryOptions {
   logLevel: 'silent' | 'normal' | 'verbose'
   generateWorker: boolean
   workerOutFile: string
+  generateAgentCoreRegistry: boolean
+  agentCoreOutFile: string
+  agentCoreSupportedToolNames: string[]
 }
 
 export function resolveToolDiscoveryOptions(
@@ -82,6 +111,9 @@ export function resolveToolDiscoveryOptions(
     logLevel: options.logLevel ?? 'normal',
     generateWorker: options.generateWorker ?? false,
     workerOutFile: options.workerOutFile ?? 'src/__generated__/tool-worker.gen.ts',
+    generateAgentCoreRegistry: options.generateAgentCoreRegistry ?? false,
+    agentCoreOutFile: options.agentCoreOutFile ?? 'src/__generated__/agentcore-tool-registry.gen.ts',
+    agentCoreSupportedToolNames: [...(options.agentCoreSupportedToolNames ?? [])].sort(),
   }
 }
 
@@ -111,4 +143,9 @@ export interface DiscoveredTool {
    * Variable name to use in the registry (camelCase of toolName or exportName).
    */
   variableName: string
+
+  /**
+   * Intrinsic MCP tool name from the builder call before path uniquification.
+   */
+  originalToolName?: string
 }

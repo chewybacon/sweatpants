@@ -1,0 +1,17 @@
+{
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "outDir": "dist",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "noImplicitAny": false,
+    "baseUrl": ".",
+    "paths": {
+      "@sweatpants/framework/chat": ["./src/framework-chat-agentcore-shim.ts"]
+    },
+    "composite": false
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
+}

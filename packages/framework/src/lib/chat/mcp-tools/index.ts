@@ -260,6 +260,21 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
+
+  // AgentCore-backed sessions
+  AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
+  createAgentCoreToolSession,
+  statusFromAgentCoreToolEvent,
+  createAgentCoreToolSessionRegistry,
+  createInMemoryAgentCoreToolSessionHandleStore,
+  createInMemoryAgentCoreToolSessionEventStore,
+  createRedisAgentCoreToolSessionHandleStore,
+  createRedisAgentCoreToolSessionEventStore,
+  createAgentCoreRemoteToolRuntimeClient,
+  streamFromAgentCoreResponses,
+  protocolErrorStream,
+  FakeAgentCoreRemoteToolRuntimeClient,
+  setupAgentCoreToolSessions,
 } from './session/index.ts'
 
 export type {
@@ -291,6 +306,33 @@ export type {
   // Options
   ToolSessionRegistryOptions,
   SetupToolSessionsOptions,
+
+  // AgentCore-backed sessions
+  AgentCoreToolSessionHandle,
+  AgentCoreToolSessionStatus,
+  AgentCoreToolSessionTerminalStatus,
+  AgentCoreToolEvent,
+  StoredToolSessionEvent,
+  AgentCoreToolRuntimeRequest,
+  AgentCoreToolRuntimeResponse,
+  StartToolSessionRequest,
+  RespondToElicitRequest,
+  RespondToSampleRequest,
+  CancelToolSessionRequest,
+  InspectToolSessionRequest,
+  DrainToolSessionEventsRequest,
+  RuntimeInvokeOptions,
+  SerializableToolSessionHandleStore,
+  ToolSessionEventStore,
+  RemoteToolRuntimeClient,
+  AgentCoreToolRuntimeProfile,
+  AgentCoreToolSessionStores,
+  AgentCoreToolSessionRegistryOptions,
+  RedisLikeClient,
+  AgentCoreRedisStoreOptions,
+  AgentCoreInvoker,
+  AgentCoreInvokeInput,
+  SetupAgentCoreToolSessionsOptions,
 } from './session/index.ts'
 
 // =============================================================================

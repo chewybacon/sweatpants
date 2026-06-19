@@ -1,0 +1,43 @@
+{
+  "name": "@sweatpants/agentcore-tool-session-tracer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "pnpm build:deps && tsup",
+    "build:deps": "pnpm --filter @sweatpants/elicit-context build",
+    "start": "node dist/index.js",
+    "smoke:local": "pnpm build:deps && tsx scripts/run-local-smoke.ts",
+    "smoke:book-flight:local": "pnpm build:deps && tsx scripts/run-book-flight-local-smoke.ts",
+    "tracer:live": "tsx scripts/invoke-live-tracer.ts",
+    "facade:live": "tsx scripts/run-live-facade.ts",
+    "book-flight:live": "tsx scripts/run-live-book-flight.ts",
+    "deploy:agentcore": "tsx scripts/deploy-agentcore-runtime.ts",
+    "build:image": "./scripts/build-image.sh",
+    "check": "pnpm build:deps && tsc --noEmit",
+    "test": "vitest --run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
+    "@aws-sdk/client-bedrock-agentcore-control": "^3.996.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1072.0",
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.219.0",
+    "@opentelemetry/resources": "^2.8.0",
+    "@opentelemetry/sdk-node": "^0.219.0",
+    "@opentelemetry/semantic-conventions": "^1.41.1",
+    "@sweatpants/framework": "workspace:*",
+    "bedrock-agentcore": "^0.2.0",
+    "effection": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sweatpants/ts-config": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

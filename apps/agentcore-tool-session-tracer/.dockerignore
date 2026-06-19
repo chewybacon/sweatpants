@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+**/coverage
+.git
+.pi
+.tasuku
+apps/yo-chat
+apps/yo-agent
+apps/yo-mcp
+apps/yo-slides
+apps/hydra

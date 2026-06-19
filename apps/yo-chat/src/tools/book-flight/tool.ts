@@ -35,7 +35,7 @@ export interface SeatMap {
 // MOCK DATA
 // =============================================================================
 
-function mockFlightSearch(from: string, destination: string): Flight[] {
+function mockFlightSearch(_from: string, _destination: string): Flight[] {
   // Simulate flight search - in production this would call an API
   return [
     {
@@ -140,7 +140,7 @@ export const bookFlightTool = createMcpTool('book_flight')
       }),
     },
   })
-  .execute(function*(params, ctx) {
+  .execute(function*(params: { from: string; destination: string }, ctx: any) {
     // 1. Search for flights
     yield* ctx.notify('Searching for flights...', 0.1)
     const flights = mockFlightSearch(params.from, params.destination)

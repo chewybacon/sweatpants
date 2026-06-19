@@ -67,6 +67,7 @@ export type ToolSessionStatus =
   | 'completed' // Tool finished successfully
   | 'failed' // Tool threw an error
   | 'cancelled' // Tool was cancelled by client
+  | 'orphaned' // Remote session state was lost and cannot be resumed
 
 // =============================================================================
 // SESSION EVENTS
