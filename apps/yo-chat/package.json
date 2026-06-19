@@ -16,6 +16,7 @@
     "server:dev": "tsx express-server.ts"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "^0.79.8",
     "@effectionx/context-api": "catalog:",
     "@radix-ui/react-avatar": "^1.1.11",
     "@radix-ui/react-collapsible": "^1.1.12",

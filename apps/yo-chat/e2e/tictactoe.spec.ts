@@ -58,7 +58,7 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
 
   async function waitForInteractiveCellOrSkip(page: Page): Promise<Locator | null> {
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -87,7 +87,7 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
     // Wait for the board to appear - look for clickable cells (numbers 0-8)
     const boardCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
 
-    const boardAppeared = await boardCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await boardCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
@@ -146,7 +146,7 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
     console.log('Starting game...')
 
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -191,7 +191,7 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
     await page.getByRole('button', { name: 'Start Game' }).click()
 
     const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -322,7 +322,7 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
     const thinkingLocator = page.getByText('thinking...', { exact: true })
     await expect(thinkingLocator).toBeVisible({ timeout: 30000 })
 
-    const boardAppeared = await emptyCell.isVisible({ timeout: 90000 }).catch(() => false)
+    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
     if (!boardAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {

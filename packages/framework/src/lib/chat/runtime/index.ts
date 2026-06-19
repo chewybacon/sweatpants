@@ -1,4 +1,5 @@
 export * from './types.ts'
+export * from './contexts.ts'
 export {
   createOllamaModel,
   createOpenAiResponsesModel,

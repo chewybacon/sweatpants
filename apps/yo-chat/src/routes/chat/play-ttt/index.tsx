@@ -137,7 +137,10 @@ function PlayTttDemo() {
   } = useChat({
     pipeline: 'markdown',
     tools: [],
-    plugins: [playTttPlugin.client],
+    plugins: [
+      playTttPlugin.client,
+      { ...playTttPlugin.client, toolName: 'play_ttt' },
+    ],
     enabledPlugins: [playTttTool.name],
     systemPrompt: `You can play tic-tac-toe with the user using the play_ttt tool.
 

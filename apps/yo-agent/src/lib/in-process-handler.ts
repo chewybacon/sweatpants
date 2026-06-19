@@ -19,16 +19,17 @@
 import { createChatHandler } from '@sweatpants/framework/handler'
 import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/handler'
 import {
-  DefaultRuntime,
   MaxIterationsContext,
   ProviderContext,
+  ToolRegistryContext,
+} from '@sweatpants/framework/chat'
+import { ollamaProvider, openaiProvider } from '@sweatpants/framework/chat/providers'
+import {
+  DefaultRuntime,
   RuntimeContext,
   RuntimeModelContext,
-  ToolRegistryContext,
-  ollamaProvider,
-  openaiProvider,
   resolveRuntimeModel,
-} from '@sweatpants/framework/chat'
+} from '@sweatpants/framework/chat/runtime'
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 import type { Operation } from 'effection'
 

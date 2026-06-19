@@ -4,13 +4,12 @@ import {
   type TokenBuffer,
   type TokenBufferStore,
 } from '@sweatpants/framework/chat/durable-streams'
-import {
-  ollamaProvider,
-  openaiProvider,
-  type ChatEvent,
-  type ChatResult,
-  type Message,
+import type {
+  ChatEvent,
+  ChatResult,
+  Message,
 } from '@sweatpants/framework/chat'
+import { ollamaProvider, openaiProvider } from '@sweatpants/framework/chat/providers'
 import { call, race, resource, run, type Operation, type Stream, type Task } from 'effection'
 import type { RedisClientType } from 'redis'
 import type { ThreadEvent, ThreadFrame, ThreadMessageInput } from './threaded-chat-types'

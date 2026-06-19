@@ -42,7 +42,7 @@ async function waitForIdle(page: Page) {
 }
 
 async function completeCardPick(page: Page) {
-  const interactiveAppeared = await interactiveToolCallBlocks(page).last().isVisible({ timeout: 60000 }).catch(() => false)
+  const interactiveAppeared = await interactiveToolCallBlocks(page).last().waitFor({ state: 'visible', timeout: 60000 }).then(() => true).catch(() => false)
   if (!interactiveAppeared) {
     const errorLocator = page.locator('text=/^Error:/')
     if (await errorLocator.count() > 0) {
@@ -99,7 +99,7 @@ test.describe('Threaded Chat Prototype', () => {
     await waitForIdle(page)
 
     const latestAssistant = page.getByTestId('message-assistant').last()
-    const svgAppeared = await latestAssistant.locator('svg').first().isVisible({ timeout: 30000 }).catch(() => false)
+    const svgAppeared = await latestAssistant.locator('svg').first().waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false)
     if (!svgAppeared) {
       const text = await latestAssistant.textContent().catch(() => '')
       console.log('Mermaid SVG did not appear. Assistant response:', text?.slice(0, 200))

@@ -86,7 +86,7 @@ test('debug multi-step elicitation', async ({ page }) => {
 
   // Wait for FlightList - increased timeout for slow LLMs
   const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
-  const flightListAppeared = await flightCard.isVisible({ timeout: 240000 }).catch(() => false)
+  const flightListAppeared = await flightCard.waitFor({ state: 'visible', timeout: 240000 }).then(() => true).catch(() => false)
   if (!flightListAppeared) {
     const errorLocator = page.locator('text=/^Error:/')
     if (await errorLocator.count() > 0) {

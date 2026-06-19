@@ -77,8 +77,7 @@ test.describe('multi-turn tool calling', () => {
         const errorText = await errorLocator.first().textContent()
         throw new Error(`Tool execution error: ${errorText}`)
       }
-      test.skip(true, 'LLM did not complete after first pick_card result')
-      return
+      throw new Error('Chat did not complete after first pick_card result')
     }
     
     // Also wait for the "streaming..." indicator to disappear
@@ -95,7 +94,7 @@ test.describe('multi-turn tool calling', () => {
     // We can verify by checking we have more than 3 card elements total
     // (first 3 are now disabled, second set should be clickable)
     const newCardPicker = page.locator('text=Pick one of these').last()
-    const secondPickerAppeared = await newCardPicker.isVisible({ timeout: 30000 }).catch(() => false)
+    const secondPickerAppeared = await newCardPicker.waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false)
     if (!secondPickerAppeared) {
       const errorLocator = page.locator('text=/^Error:/')
       if (await errorLocator.count() > 0) {
@@ -109,7 +108,7 @@ test.describe('multi-turn tool calling', () => {
     // Verify the second card picker has interactive buttons
     // Wait longer since the LLM response may still be streaming
     const interactiveButtons = page.locator('button:not([disabled])').filter({ hasText: /[♠♥♦♣]/ })
-    const interactiveAppeared = await interactiveButtons.first().isVisible({ timeout: 30000 }).catch(() => false)
+    const interactiveAppeared = await interactiveButtons.first().waitFor({ state: 'visible', timeout: 30000 }).then(() => true).catch(() => false)
     if (!interactiveAppeared) {
       test.skip(true, 'Second pick_card UI was not interactive')
       return
@@ -153,8 +152,7 @@ test.describe('multi-turn tool calling', () => {
         const errorText = await errorLocator.first().textContent()
         throw new Error(`Tool execution error: ${errorText}`)
       }
-      test.skip(true, 'LLM did not complete after first pick_card result')
-      return
+      throw new Error('Chat did not complete after first pick_card result')
     }
     
     // Also wait for streaming indicator to disappear

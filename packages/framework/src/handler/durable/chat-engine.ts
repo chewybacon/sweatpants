@@ -502,7 +502,11 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     schemaByName.set(schema.name, schema)
   }
 
-  const allSchemas = [...toolSchemas, ...clientIsomorphicTools]
+  const allSchemaMap = new Map<string, ToolSchema>()
+  for (const schema of [...toolSchemas, ...clientIsomorphicTools]) {
+    if (!allSchemaMap.has(schema.name)) allSchemaMap.set(schema.name, schema)
+  }
+  const allSchemas = Array.from(allSchemaMap.values())
 
   // Tool names set for filtering. Some providers approximate generated tool
   // names (for example, emitting `book-flight` or `book_flight` for
@@ -1031,6 +1035,22 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               return yield* this.next()
             }
 
+            if (result.value.type === 'error') {
+              if (state.assistantTextOpen) {
+                state.pendingEvents.push({
+                  type: 'ag_ui_text_message_end',
+                  messageId: state.assistantMessageId!,
+                })
+                state.assistantTextOpen = false
+              }
+              state.pendingEvents.push(...runtimeEventToAgUiStreamEvents(result.value, state, agUiRun))
+              state.phase = 'done'
+              if (state.pendingEvents.length > 0) {
+                return { done: false, value: state.pendingEvents.shift()! }
+              }
+              return { done: true, value: undefined }
+            }
+
             // Convert runtime event to AG-UI stream events
             const streamEvents = runtimeEventToAgUiStreamEvents(result.value, state, agUiRun)
             if (streamEvents.length > 0) {
@@ -1051,6 +1071,23 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               state.phase = 'error'
               state.error = new Error('No provider result')
               return yield* this.next()
+            }
+
+            if (result.stopReason === 'error' || result.stopReason === 'aborted') {
+              if (state.assistantTextOpen) {
+                state.pendingEvents.push({
+                  type: 'ag_ui_text_message_end',
+                  messageId: state.assistantMessageId!,
+                })
+                state.assistantTextOpen = false
+              }
+              state.pendingEvents.push({
+                type: 'error',
+                message: result.errorMessage ?? `Runtime generation ${result.stopReason}`,
+                recoverable: false,
+              })
+              state.phase = 'done'
+              return { done: false, value: state.pendingEvents.shift()! }
             }
 
             const finalToolCalls = runtimeToolCalls(result)
@@ -1121,7 +1158,20 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               const plugin = getPluginForTool(toolName, pluginRegistry)
               const mcpTool = mcpToolRegistry?.get(toolName)
 
-              if (plugin && mcpTool && isPluginTool(mcpTool) && provider) {
+              if (plugin && mcpTool && isPluginTool(mcpTool)) {
+                if (!provider) {
+                  results.push({
+                    ok: false,
+                    error: {
+                      callId: tc.id,
+                      toolName,
+                      message: 'Plugin sampling provider not configured for this runtime',
+                    },
+                  })
+                  state.pendingEvents.push(toolResultToAgUiStreamEvent(results[results.length - 1]!))
+                  continue
+                }
+
                 // Execute as plugin tool
                 if (pluginSessionManager) {
                   // Use session manager for durable execution

@@ -88,6 +88,20 @@
         "default": "./dist/chat/runtime.cjs"
       }
     },
+    "./chat/providers": {
+      "development": {
+        "import": "./src/lib/chat/providers/index.ts",
+        "types": "./src/lib/chat/providers/index.ts"
+      },
+      "import": {
+        "types": "./dist/chat/providers.d.ts",
+        "default": "./dist/chat/providers.js"
+      },
+      "require": {
+        "types": "./dist/chat/providers.d.cts",
+        "default": "./dist/chat/providers.cjs"
+      }
+    },
     "./chat/isomorphic-tools": {
       "development": {
         "import": "./src/lib/chat/isomorphic-tools/index.ts",

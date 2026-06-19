@@ -31,12 +31,14 @@ import {
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
   ProviderContext,
+  ToolRegistryContext,
+} from "../../lib/chat/providers/contexts.ts";
+import {
   RuntimeContext,
   RuntimeModelContext,
   RuntimeStreamConfigContext,
-  ToolRegistryContext,
   resolveRuntimeModel,
-} from "../../lib/chat/providers/contexts.ts";
+} from '../../lib/chat/runtime/index.ts';
 import { useLogger } from "../../lib/logger/index.ts";
 import {
   bindModel,
