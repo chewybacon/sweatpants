@@ -880,6 +880,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       conversationTranscriptState,
                       callId,
                       content,
+                      { toolName: session.toolName },
                     )
                     break
                   }
@@ -899,6 +900,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       conversationTranscriptState,
                       callId,
                       `Error: ${nextEvent.message}`,
+                      { toolName: session.toolName },
                     )
                     break
                   }
@@ -1393,6 +1395,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   typeof r.serverOutput === 'string'
                     ? r.serverOutput
                     : JSON.stringify(r.serverOutput),
+                  { toolName: r.toolName },
                 )
               } else if (!r.ok) {
                 appendToolMessage(
@@ -1400,6 +1403,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   conversationTranscriptState,
                   r.error.callId,
                   `Error: ${r.error.message}`,
+                  { toolName: r.error.toolName },
                 )
               }
             }

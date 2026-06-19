@@ -86,6 +86,7 @@ import toolWorkerUrl from '../__generated__/tool-worker.gen.ts?modulePath'
 import { toolList } from '../__generated__/tool-registry.gen'
 import {
   agentCoreToolNames,
+  normalizeAgentCoreToolName,
   normalizeAgentCoreToolNames,
   unsupportedAgentCoreToolNames,
 } from '../__generated__/agentcore-tool-registry.gen'
@@ -235,6 +236,16 @@ async function requestWithDefaultSystemPrompt(request: Request): Promise<Request
 function createMcpToolRegistry(mcpTools: { name: string }[]): McpToolRegistry {
   const map = new Map<string, unknown>()
   for (const tool of mcpTools) {
+    if (env.MCP_TOOL_RUNTIME === 'agentcore') {
+      const canonicalName = normalizeAgentCoreToolName(tool.name) ?? tool.name
+      const canonicalTool = canonicalName === tool.name
+        ? tool
+        : { ...(tool as object), name: canonicalName }
+      map.set(tool.name, canonicalTool)
+      map.set(canonicalName, canonicalTool)
+      continue
+    }
+
     map.set(tool.name, tool)
   }
   return {
@@ -248,8 +259,21 @@ function createMcpToolRegistry(mcpTools: { name: string }[]): McpToolRegistry {
 const mcpPluginTools = [bookFlightTool, tictactoeTool, playTttTool]
 
 // Plugin registry (handlers for elicitation)
-// Note: Type assertion needed due to TypeScript variance with generic handlers
-const pluginRegistry = createPluginRegistryFrom([bookFlightPlugin.client as any, tictactoePlugin.client as any, playTttPlugin.client as any])
+// Note: Type assertion needed due to TypeScript variance with generic handlers.
+// In AgentCore mode, the model/runtime may use canonical MCP names such as
+// `book_flight`, while the app-facing plugin names are generated aliases such
+// as `book-flight_book_flight`. Register both names against the same handlers.
+const pluginClients = [bookFlightPlugin.client as any, tictactoePlugin.client as any, playTttPlugin.client as any]
+const pluginRegistry = createPluginRegistryFrom(
+  env.MCP_TOOL_RUNTIME === 'agentcore'
+    ? pluginClients.flatMap((plugin) => {
+        const canonicalName = normalizeAgentCoreToolName(plugin.toolName)
+        return canonicalName && canonicalName !== plugin.toolName
+          ? [plugin, { ...plugin, toolName: canonicalName }]
+          : [plugin]
+      })
+    : pluginClients,
+)
 
 function rawConfiguredAgentCoreToolNames(): string[] {
   const override = env.AGENTCORE_TOOL_NAMES
@@ -277,7 +301,10 @@ function configuredAgentCoreToolNames(): string[] {
 function activeMcpPluginTools(): Array<(typeof mcpPluginTools)[number]> {
   if (env.MCP_TOOL_RUNTIME !== 'agentcore') return mcpPluginTools
   const configured = new Set(configuredAgentCoreToolNames())
-  return mcpPluginTools.filter((tool) => configured.has(tool.name))
+  return mcpPluginTools.filter((tool) => {
+    const canonicalName = normalizeAgentCoreToolName(tool.name) ?? tool.name
+    return configured.has(canonicalName)
+  })
 }
 
 function activeAgentCoreToolNames(): string[] {
