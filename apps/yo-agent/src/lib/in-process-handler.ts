@@ -18,7 +18,17 @@
 
 import { createChatHandler } from '@sweatpants/framework/handler'
 import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/handler'
-import { ollamaProvider, openaiProvider, ProviderContext, ToolRegistryContext, MaxIterationsContext } from '@sweatpants/framework/chat'
+import {
+  DefaultRuntime,
+  MaxIterationsContext,
+  ProviderContext,
+  RuntimeContext,
+  RuntimeModelContext,
+  ToolRegistryContext,
+  ollamaProvider,
+  openaiProvider,
+  resolveRuntimeModel,
+} from '@sweatpants/framework/chat'
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 import type { Operation } from 'effection'
 
@@ -63,6 +73,8 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
       throw new Error(`Unknown provider: ${providerName}`)
     }
 
+    yield* RuntimeContext.set(DefaultRuntime)
+    yield* RuntimeModelContext.set(resolveRuntimeModel(providerName))
     yield* ProviderContext.set(selectedProvider)
   }
 

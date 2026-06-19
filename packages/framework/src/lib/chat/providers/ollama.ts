@@ -1,210 +1,161 @@
-import type { Operation, Stream, Subscription } from 'effection'
-import { resource, call, useAbortSignal } from 'effection'
-import { parseNDJSON } from '../ndjson.ts'
-import type {
-  OllamaMessage,
-  OllamaChatRequest,
-  OllamaChatChunk,
-  ChatEvent,
-  ChatResult,
-  TokenUsage,
-  ToolCall,
-} from '../types.ts'
+import { resource, type Operation, type Subscription } from 'effection'
+import type { ChatEvent, ChatResult, Message, TokenUsage, ToolCall } from '../types.ts'
+import { createOllamaModel, piAiRuntime, type AssistantMessage, type Context, type StreamEvent } from '../runtime/index.ts'
 import type { ChatProvider, ChatStreamOptions } from './types.ts'
-import { resolveChatStreamConfig, type ResolvedChatStreamConfig } from './config.ts'
 
-/**
- * Minimal interface for a Node.js-style readable stream body.
- * In Node.js, `fetch().body` may be a Node.js `Readable` rather than a Web
- * `ReadableStream`. We only need the `on()` method to bridge it.
- */
-interface NodeReadableBody {
-  on(event: 'data', cb: (chunk: Buffer) => void): void
-  on(event: 'end', cb: () => void): void
-  on(event: 'error', cb: (err: Error) => void): void
-}
+function toRuntimeContext(messages: Message[], options?: ChatStreamOptions): Context {
+  const runtimeMessages: Context['messages'] = []
+  let systemPrompt: string | undefined
 
-/**
- * Bridge a Node.js-style readable body to a Web ReadableStream.
- */
-function toWebReadableStream(nodeBody: NodeReadableBody): ReadableStream<Uint8Array> {
-  return new ReadableStream({
-    start(controller) {
-      nodeBody.on('data', (chunk: Buffer) => {
-        controller.enqueue(new Uint8Array(chunk))
-      })
-      nodeBody.on('end', () => {
-        controller.close()
-      })
-      nodeBody.on('error', (err: Error) => {
-        controller.error(err)
-      })
+  for (const message of messages) {
+    if (message.role === 'system') {
+      systemPrompt = systemPrompt ? `${systemPrompt}\n\n${message.content}` : message.content
+      continue
     }
-  })
-}
 
-type OllamaTool = NonNullable<OllamaChatRequest['tools']>[number]
+    if (message.role === 'user') {
+      runtimeMessages.push({ role: 'user', content: message.content })
+      continue
+    }
 
-/**
- * Ollama chat provider implementation
- */
-export const ollamaProvider: ChatProvider = {
-  name: 'ollama',
-
-  capabilities: {
-    thinking: true,
-    toolCalling: true,
-  },
-
-  stream(
-    messages: OllamaMessage[],
-    options?: ChatStreamOptions,
-  ): Stream<ChatEvent, ChatResult> {
-    return resource(function*(provide) {
-      const signal = yield* useAbortSignal()
-      const values: ResolvedChatStreamConfig = yield* resolveChatStreamConfig(options, {
-        baseUri: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
-        model: process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest',
-        envApiKeyName: 'OLLAMA_API_KEY',
+    if (message.role === 'tool') {
+      runtimeMessages.push({
+        role: 'toolResult',
+        toolCallId: message.tool_call_id ?? '',
+        toolName: message.replay?.toolName ?? '',
+        content: [{ type: 'text', text: message.content }],
+        isError: message.content.startsWith('Error:'),
       })
+      continue
+    }
 
-      // Build tools array from schemas
-      const toolSchemas = values.isomorphicToolSchemas ?? []
+    runtimeMessages.push({
+      role: 'assistant',
+      content: [
+        ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+        ...(message.tool_calls ?? []).map((toolCall) => ({
+          type: 'toolCall' as const,
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        })),
+      ],
+    })
+  }
 
-      const allTools: OllamaTool[] = toolSchemas.map(
-        (schema) => ({
-          type: 'function' as const,
-          function: {
+  return {
+    ...(systemPrompt ? { systemPrompt } : {}),
+    messages: runtimeMessages,
+    ...(options?.isomorphicToolSchemas
+      ? {
+          tools: options.isomorphicToolSchemas.map((schema) => ({
             name: schema.name,
             description: schema.description,
             parameters: schema.parameters,
-          },
-        })
-      )
+          })),
+        }
+      : {}),
+  }
+}
 
-      const request: OllamaChatRequest = {
-        model: values.model,
-        messages,
-        stream: true,
-        ...(allTools.length > 0 && { tools: allTools }),
-        ...(allTools.length > 0 && values.toolChoice && { tool_choice: values.toolChoice }),
-        ...(values.schema && { format: values.schema }),
-      }
+function toTokenUsage(message: AssistantMessage): TokenUsage {
+  return {
+    promptTokens: message.usage?.input ?? 0,
+    completionTokens: message.usage?.output ?? 0,
+    totalTokens: message.usage?.total ?? (message.usage?.input ?? 0) + (message.usage?.output ?? 0),
+  }
+}
 
-      const url = `${values.baseUri.replace(/\/$/, '')}/api/chat`
+function toChatResult(message: AssistantMessage): ChatResult {
+  const toolCalls: ToolCall[] = []
+  let text = ''
+  let thinking = ''
 
-      const response = yield* call(() =>
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(request),
-          signal,
-        })
-      )
-
-      if (!response.ok) {
-        const errorText = yield* call(() => response.text())
-        throw new Error(`Ollama API error: ${response.status} - ${errorText}`)
-      }
-
-      if (!response.body) {
-        throw new Error('No response body')
-      }
-
-      // In Node.js, response.body might be a Node.js Readable, not a Web ReadableStream
-      const readableStream = response.body instanceof ReadableStream
-        ? response.body
-        : toWebReadableStream(response.body as NodeReadableBody)
-
-      const chunkStream = parseNDJSON<OllamaChatChunk>(readableStream)
-      const subscription: Subscription<OllamaChatChunk, void> =
-        yield* chunkStream
-
-      // Accumulators
-      let textBuffer = ''
-      let thinkingBuffer = ''
-      let toolCalls: ToolCall[] = []
-      let usage: TokenUsage = {
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
-      }
-
-      // Queue of events to yield
-      const pendingEvents: ChatEvent[] = []
-
-      yield* provide({
-        *next(): Operation<IteratorResult<ChatEvent, ChatResult>> {
-          // Yield any pending events first
-          if (pendingEvents.length > 0) {
-            return { done: false, value: pendingEvents.shift()! }
-          }
-
-          // Read next chunk from Ollama
-          const next = yield* subscription.next()
-
-            if (next.done) {
-              // Stream finished, return final result
-              return {
-                done: true,
-                value: {
-                  text: textBuffer,
-                  ...(thinkingBuffer ? { thinking: thinkingBuffer } : {}),
-                  ...(toolCalls.length > 0 ? { toolCalls } : {}),
-                  usage,
-                },
-              }
-            }
-
-          const chunk = next.value
-
-          if (chunk.error) {
-            throw new Error(`Ollama: ${chunk.error}`)
-          }
-
-          // Capture usage from final chunk
-          if (chunk.done) {
-            usage = {
-              promptTokens: chunk.prompt_eval_count ?? 0,
-              completionTokens: chunk.eval_count ?? 0,
-              totalTokens:
-                (chunk.prompt_eval_count ?? 0) + (chunk.eval_count ?? 0),
-            }
-          }
-
-          // Accumulate and emit text
-          if (chunk.message.content) {
-            textBuffer += chunk.message.content
-            pendingEvents.push({ type: 'text', content: chunk.message.content })
-          }
-
-          // Accumulate and emit thinking
-          if (chunk.message.thinking) {
-            thinkingBuffer += chunk.message.thinking
-            pendingEvents.push({
-              type: 'thinking',
-              content: chunk.message.thinking,
-            })
-          }
-
-          // Accumulate and emit tool calls
-          if (chunk.message.tool_calls) {
-            toolCalls = [...toolCalls, ...chunk.message.tool_calls]
-            pendingEvents.push({
-              type: 'tool_calls',
-              toolCalls: chunk.message.tool_calls,
-            })
-          }
-
-          // Return first pending event, or recurse to get next chunk
-          if (pendingEvents.length > 0) {
-            return { done: false, value: pendingEvents.shift()! }
-          }
-
-          // No events from this chunk, get next
-          return yield* this.next()
+  for (const block of message.content) {
+    if (block.type === 'text') text += block.text
+    if (block.type === 'thinking') thinking += block.text
+    if (block.type === 'toolCall') {
+      toolCalls.push({
+        id: block.id,
+        type: 'function',
+        function: {
+          name: block.name,
+          arguments: block.arguments,
         },
       })
-    })
-  },
+    }
+  }
+
+  return {
+    text,
+    ...(thinking ? { thinking } : {}),
+    ...(toolCalls.length > 0 ? { toolCalls } : {}),
+    usage: toTokenUsage(message),
+  }
 }
+
+function toChatEvent(event: StreamEvent): ChatEvent | null {
+  if (event.type === 'text_delta') return { type: 'text', content: event.delta }
+  if (event.type === 'thinking_delta') return { type: 'thinking', content: event.delta }
+  if (event.type === 'toolcall_end') {
+    return {
+      type: 'tool_calls',
+      toolCalls: [{
+        id: event.toolCall.id,
+        type: 'function',
+        function: {
+          name: event.toolCall.name,
+          arguments: event.toolCall.arguments,
+        },
+      }],
+    }
+  }
+  return null
+}
+
+function createRuntimeBackedProvider(name: string, defaultModel: () => ReturnType<typeof createOllamaModel>): ChatProvider {
+  return {
+    name,
+    capabilities: { thinking: true, toolCalling: true },
+    stream(messages, options) {
+      return resource(function* (provide) {
+        const model = defaultModel()
+        const subscription: Subscription<StreamEvent, AssistantMessage> = yield* piAiRuntime.stream(
+          {
+            ...model,
+            ...(options?.model ? { id: options.model, name: `${options.model} (Ollama)` } : {}),
+            ...(options?.baseUri
+              ? { baseUrl: options.baseUri.replace(/\/$/, '').endsWith('/v1')
+                  ? options.baseUri.replace(/\/$/, '')
+                  : `${options.baseUri.replace(/\/$/, '')}/v1` }
+              : {}),
+          },
+          toRuntimeContext(messages, options),
+          {
+            ...(options?.apiKey ? { apiKey: options.apiKey } : {}),
+            ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
+            ...(options?.schema ? { responseFormat: { type: 'json_schema', name: 'structured_output', schema: options.schema } } : {}),
+          },
+        )
+
+        yield* provide({
+          *next(): Operation<IteratorResult<ChatEvent, ChatResult>> {
+            while (true) {
+              const next = yield* subscription.next()
+              if (next.done) return { done: true, value: toChatResult(next.value) }
+              const event = toChatEvent(next.value)
+              if (event) return { done: false, value: event }
+            }
+          },
+        })
+      })
+    },
+  }
+}
+
+export const ollamaProvider: ChatProvider = createRuntimeBackedProvider('ollama', () =>
+  createOllamaModel(
+    process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest',
+    process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434/v1',
+  ),
+)

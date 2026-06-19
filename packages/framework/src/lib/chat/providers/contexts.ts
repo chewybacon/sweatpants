@@ -1,6 +1,8 @@
 import { createContext } from 'effection'
 
 import type { ChatStreamOptions, ChatProvider } from './types.ts'
+import type { Model, Runtime, StreamOptions } from '../runtime/index.ts'
+import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from '../runtime/index.ts'
 import type { IsomorphicTool, PersonaResolver } from '../../../handler/types.ts'
 import type { PluginRegistry } from '../mcp-tools/plugin-registry.ts'
 import type { McpToolRegistry } from '../../../handler/durable/types.ts'
@@ -9,6 +11,26 @@ import type { PluginSessionManager } from '../../../handler/durable/plugin-sessi
 
 export const ChatStreamConfigContext = createContext<ChatStreamOptions>('ChatStreamOptions')
 export const ChatApiKeyContext = createContext<string>('ChatApiKeyContext')
+
+export const RuntimeStreamConfigContext = createContext<StreamOptions>('RuntimeStreamOptions')
+export const RuntimeModelContext = createContext<Model>('RuntimeModel')
+export const RuntimeContext = createContext<Runtime>('Runtime')
+
+export function resolveRuntimeModel(provider: 'ollama' | 'openai' | string = process.env['CHAT_PROVIDER'] ?? 'ollama', modelOverride?: string): Model {
+  if (provider === 'openai') {
+    return createOpenAiResponsesModel(
+      modelOverride ?? process.env['OPENAI_MODEL'] ?? 'gpt-5-chat-latest',
+      process.env['OPENAI_BASE_URL'] ?? 'https://api.openai.com/v1',
+    )
+  }
+
+  return createOllamaModel(
+    modelOverride ?? process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest',
+    process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434/v1',
+  )
+}
+
+export const DefaultRuntime = piAiRuntime
 
 // DI contexts for hook-based configuration
 export const ProviderContext = createContext<ChatProvider>('Provider')

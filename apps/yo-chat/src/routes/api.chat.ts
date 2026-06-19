@@ -28,7 +28,10 @@ import {
   setupLogger,
 } from '@sweatpants/framework/chat'
 import {
+  DefaultRuntime,
   ProviderContext,
+  RuntimeContext,
+  RuntimeModelContext,
   ToolRegistryContext,
   PersonaResolverContext,
   MaxIterationsContext,
@@ -36,6 +39,7 @@ import {
   McpToolRegistryContext,
   PluginSessionRegistryContext,
   PluginSessionManagerContext,
+  resolveRuntimeModel,
 } from '@sweatpants/framework/chat'
 import {
   createInMemoryToolSessionStore,
@@ -152,10 +156,14 @@ function selectChatProvider(providerName: string): typeof ollamaProvider {
 }
 
 const setupProvider = function* (ctx: InitializerContext): Operation<void> {
-  // Dynamic provider selection based on request
-  // Note: provider field is an extension not in the base ChatRequestBody type
-  const body = ctx.body as { provider?: string }
-  yield* ProviderContext.set(selectChatProvider(body.provider || env.CHAT_PROVIDER))
+  // Dynamic runtime/provider selection based on request.
+  // ProviderContext remains available for plugin sampling compatibility; model
+  // execution is configured through RuntimeContext/RuntimeModelContext.
+  const body = ctx.body as { provider?: string; model?: string }
+  const providerName = body.provider || env.CHAT_PROVIDER
+  yield* RuntimeContext.set(DefaultRuntime)
+  yield* RuntimeModelContext.set(resolveRuntimeModel(providerName, body.model))
+  yield* ProviderContext.set(selectChatProvider(providerName))
 }
 
 const setupTools = function* (_ctx: InitializerContext): Operation<void> {
