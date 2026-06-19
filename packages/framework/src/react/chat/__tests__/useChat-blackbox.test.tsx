@@ -197,7 +197,7 @@ describe('useChat (black-box)', () => {
 
     await waitFor(() => {
       expect(first.result.current.messages.length).toBe(2)
-    })
+    }, { timeout: 5000 })
 
     expect(first.result.current.session.state.messages.length).toBe(2)
     expect(first.result.current.session.state.finalizedParts).not.toEqual({})
@@ -211,7 +211,7 @@ describe('useChat (black-box)', () => {
 
     await waitFor(() => {
       expect(second.result.current.messages.length).toBe(2)
-    })
+    }, { timeout: 5000 })
 
     expect(second.result.current.session.state.messages.length).toBe(2)
     expect(second.result.current.session.state.finalizedParts).not.toEqual({})

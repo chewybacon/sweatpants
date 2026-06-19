@@ -46,7 +46,7 @@ export const e2eConfig: E2EConfig = {
   llmResponseTimeout: parseInt(process.env['E2E_LLM_TIMEOUT'] ?? '120000', 10),
   interactorTimeout: parseInt(process.env['E2E_INTERACTOR_TIMEOUT'] ?? '30000', 10),
   retries: parseInt(process.env['E2E_RETRIES'] ?? (process.env['CI'] ? '3' : '1'), 10),
-  defaultModel: process.env['E2E_MODEL'] ?? 'llama3.1:latest',
+  defaultModel: process.env['E2E_MODEL'] ?? 'lfm2.5:latest',
   provider: (process.env['E2E_PROVIDER'] as 'ollama' | 'openai') ?? 'ollama',
   useDeterministicPrompts: process.env['E2E_DETERMINISTIC'] !== 'false',
   // Use durable endpoint if E2E_USE_DURABLE=true, otherwise default /api/chat

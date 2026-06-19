@@ -53,11 +53,11 @@ function parseConversationId(url: URL, generateConversationId: () => string): st
 
 function eventToMessage(event: ConversationEvent): Message | null {
   if (event.type === 'user_message') {
-    return { role: 'user', content: event.content }
+    return { id: event.messageId ?? event.id, role: 'user', content: event.content }
   }
 
   if (event.type === 'assistant_message_complete') {
-    return { role: 'assistant', content: event.content }
+    return { id: event.messageId ?? event.id, role: 'assistant', content: event.content }
   }
 
   if (event.type === 'tool_call' && event.callId && event.toolName && event.arguments) {
@@ -70,6 +70,7 @@ function eventToMessage(event: ConversationEvent): Message | null {
       },
     }
     return {
+      id: event.messageId ?? event.id,
       role: 'assistant',
       content: '',
       tool_calls: [toolCall],
@@ -78,6 +79,7 @@ function eventToMessage(event: ConversationEvent): Message | null {
 
   if (event.type === 'tool_result' && event.callId) {
     return {
+      id: event.messageId ?? event.id,
       role: 'tool',
       tool_call_id: event.callId,
       content: event.content,
@@ -86,6 +88,7 @@ function eventToMessage(event: ConversationEvent): Message | null {
 
   if (event.type === 'elicit_response') {
     return {
+      id: event.messageId ?? event.id,
       role: 'user',
       content: event.content,
     }
@@ -95,7 +98,7 @@ function eventToMessage(event: ConversationEvent): Message | null {
 }
 
 function buildModelMessages(events: ConversationEvent[], systemPrompt: string): Message[] {
-  const messages: Message[] = [{ role: 'system', content: systemPrompt }]
+  const messages: Message[] = [{ id: 'system', role: 'system', content: systemPrompt }]
   for (const event of events) {
     const message = eventToMessage(event)
     if (message) {

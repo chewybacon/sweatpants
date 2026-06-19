@@ -515,8 +515,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       ? { isomorphicToolSchemas: allSchemas.map(toIsomorphicSchema) }
       : undefined
 
-  // Tool names set for filtering
+  // Tool names set for filtering. Some providers approximate generated tool
+  // names (for example, emitting `book-flight` or `book_flight` for
+  // `book-flight_book_flight`). Keep the ordered list for unique alias
+  // reconciliation before filtering unsupported calls.
   const toolNames = new Set(allSchemas.map((t) => t.name))
+  const toolNameList = allSchemas.map((t) => t.name)
 
   return resource(function* (provide) {
     // Initialize state
@@ -571,6 +575,24 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       return ids
     }
 
+    const resolveProviderToolName = (name: string): string | undefined => {
+      if (toolNames.has(name)) return name
+
+      const candidates = toolNameList.filter((candidate) => {
+        if (candidate === name) return true
+        if (candidate.startsWith(`${name}_`)) return true
+        if (candidate.endsWith(`_${name}`)) return true
+
+        const splitAt = candidate.indexOf('_')
+        if (splitAt <= 0) return false
+        const namespacePart = candidate.slice(0, splitAt)
+        const intrinsicPart = candidate.slice(splitAt + 1)
+        return name === namespacePart || name === intrinsicPart
+      })
+
+      return candidates.length === 1 ? candidates[0] : undefined
+    }
+
     // Helper to convert provider tool calls to our format.
     // Some providers (notably Ollama-compatible APIs) can omit tool call IDs.
     // The rest of the chat/runtime stack keys plugin sessions, elicit state,
@@ -603,7 +625,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           id,
           type: 'function' as const,
           function: {
-            name: tc.function.name,
+            name: resolveProviderToolName(tc.function.name) ?? tc.function.name,
             arguments: tc.function.arguments,
           },
         }
@@ -978,15 +1000,20 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 })
                 state.assistantTextOpen = false
               }
-              // Filter to known tools and convert
+              // Convert and filter to known tools. Some real providers can emit
+              // malformed or unsupported tool calls. If none reconcile to a
+              // supported tool, fall through to the normal no-tool completion
+              // path so the run lifecycle still finishes cleanly.
               const allCalls = convertToolCalls(result.toolCalls)
               state.toolCalls = allCalls.filter((tc) => toolNames.has(tc.function.name))
-              state.toolResults = []
-              state.phase = 'executing_tools'
-              return yield* this.next()
+              if (state.toolCalls.length > 0) {
+                state.toolResults = []
+                state.phase = 'executing_tools'
+                return yield* this.next()
+              }
             }
 
-            // No tool calls - complete
+            // No supported tool calls - complete
             state.phase = 'complete'
 
             if (state.assistantTextOpen) {

@@ -2,7 +2,7 @@ import { PROTOCOL_VERSION, type RuntimeRequest, type RuntimeResponse } from '../
 import { registry } from '../src/runtime-session-registry.ts'
 
 async function invoke(request: RuntimeRequest): Promise<RuntimeResponse[]> {
-  return await registry.handle(request)
+  return await registry.handle(request, { runtimeSessionId: 'book-flight-local-smoke-runtime-session' })
 }
 
 function assert(condition: unknown, message: string): asserts condition {

@@ -59,6 +59,14 @@ function commandFingerprint(request: object): string {
   return JSON.stringify(request)
 }
 
+function sessionKey(handle: AgentCoreToolSessionHandle, toolSessionId = handle.sessionId): string {
+  return JSON.stringify([handle.runtimeSessionId, toolSessionId])
+}
+
+function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+}
+
 export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeClient<AgentCoreToolSessionHandle> {
   readonly sessions = new Map<string, FakeSession>()
   readonly invocations: Array<{ op: string; runtimeSessionId: string; request: unknown }> = []
@@ -70,8 +78,17 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     _options?: RuntimeInvokeOptions
   ) {
     this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const existing = this.sessions.get(request.toolSessionId)
-    if (existing) return streamFromResponses([{ type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' }])
+    const existing = this.sessions.get(sessionKey(handle, request.toolSessionId))
+    if (existing) {
+      const previous = existing.acceptedCommands.get(request.commandId)
+      if (previous === commandFingerprint(request)) {
+        return streamFromResponses([
+          { type: 'command_duplicate', toolSessionId: request.toolSessionId, commandId: request.commandId, originalStatus: 'accepted' },
+          statusResponse(existing),
+        ])
+      }
+      return streamFromResponses([{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'toolSessionId already exists with different start command' }])
+    }
 
     const session: FakeSession = {
       toolSessionId: request.toolSessionId,
@@ -81,7 +98,7 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
       events: [],
       acceptedCommands: new Map([[request.commandId, commandFingerprint(request)]]),
     }
-    this.sessions.set(request.toolSessionId, session)
+    this.sessions.set(sessionKey(handle, request.toolSessionId), session)
 
     const responses: AgentCoreToolRuntimeResponse[] = []
     responses.push(eventResponse(session, { type: 'progress', message: `started ${request.toolName}`, progress: 0 }))
@@ -134,10 +151,11 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     _options?: RuntimeInvokeOptions
   ) {
     this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const session = this.sessions.get(request.toolSessionId)
+    const session = this.sessions.get(sessionKey(handle, request.toolSessionId))
     if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: request.toolSessionId }])
     const duplicate = this.checkDuplicate(session, request.commandId, request)
-    if (duplicate) return streamFromResponses([duplicate])
+    if (duplicate) return streamFromResponses([duplicate, statusResponse(session)])
+    if (isTerminalStatus(session.status)) return streamFromResponses([statusResponse(session)])
     if (!session.pending || session.pending.type !== 'elicit' || session.pending.elicitId !== request.elicitId) {
       return streamFromResponses([{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'not awaiting matching elicit' }])
     }
@@ -159,10 +177,11 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     _options?: RuntimeInvokeOptions
   ) {
     this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const session = this.sessions.get(request.toolSessionId)
+    const session = this.sessions.get(sessionKey(handle, request.toolSessionId))
     if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: request.toolSessionId }])
     const duplicate = this.checkDuplicate(session, request.commandId, request)
-    if (duplicate) return streamFromResponses([duplicate])
+    if (duplicate) return streamFromResponses([duplicate, statusResponse(session)])
+    if (isTerminalStatus(session.status)) return streamFromResponses([statusResponse(session)])
     if (!session.pending || session.pending.type !== 'sample' || session.pending.sampleId !== request.sampleId) {
       return streamFromResponses([{ type: 'command_conflict', toolSessionId: request.toolSessionId, commandId: request.commandId, message: 'not awaiting matching sample' }])
     }
@@ -183,8 +202,12 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     _options?: RuntimeInvokeOptions
   ) {
     this.invocations.push({ op: request.op, runtimeSessionId: handle.runtimeSessionId, request })
-    const session = this.sessions.get(request.toolSessionId)
+    const session = this.sessions.get(sessionKey(handle, request.toolSessionId))
     if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: request.toolSessionId }])
+    const duplicate = this.checkDuplicate(session, request.commandId, request)
+    if (duplicate) return streamFromResponses([duplicate, statusResponse(session)])
+    if (isTerminalStatus(session.status)) return streamFromResponses([statusResponse(session)])
+    session.acceptedCommands.set(request.commandId, commandFingerprint(request))
     session.status = 'cancelled'
     session.pending = undefined
     return streamFromResponses([
@@ -198,7 +221,8 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     handle: AgentCoreToolSessionHandle,
     _options?: RuntimeInvokeOptions
   ) {
-    const session = this.sessions.get(handle.sessionId)
+    this.invocations.push({ op: 'inspect_tool_session', runtimeSessionId: handle.runtimeSessionId, request: { op: 'inspect_tool_session', toolSessionId: handle.sessionId } })
+    const session = this.sessions.get(sessionKey(handle))
     if (!session) return { type: 'session_not_found', toolSessionId: handle.sessionId }
     return statusResponse(session)
   }
@@ -209,7 +233,8 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     afterRuntimeEventSeq: number,
     _options?: RuntimeInvokeOptions
   ) {
-    const session = this.sessions.get(handle.sessionId)
+    this.invocations.push({ op: 'drain_tool_session_events', runtimeSessionId: handle.runtimeSessionId, request: { op: 'drain_tool_session_events', toolSessionId: handle.sessionId, afterRuntimeEventSeq } })
+    const session = this.sessions.get(sessionKey(handle))
     if (!session) return streamFromResponses([{ type: 'session_not_found', toolSessionId: handle.sessionId }])
     return streamFromResponses(session.events
       .filter((event) => event.seq > afterRuntimeEventSeq)

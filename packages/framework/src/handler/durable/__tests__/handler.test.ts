@@ -505,6 +505,51 @@ describe('Durable Chat Handler', () => {
       expect(result.toolResults?.[0]?.content).toContain('Mock result for: hello')
     })
 
+    it('should reconcile unique generated tool-name aliases before execution', function* () {
+      const generatedTool = createMockTool('book-flight_book_flight', 'Books a flight')
+      const provider = createMockProvider({
+        responses: 'I will book that',
+        toolCalls: [{ id: 'call-1', name: 'book-flight', arguments: { input: 'NYC to LAX' } }],
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [generatedTool]),
+        maxToolIterations: 1,
+      })
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: 'user:alias-tool', role: 'user', content: 'Book a flight' }], {
+          enabledTools: true,
+        })
+      )
+
+      expect(result.toolCalls?.[0]?.name).toBe('book-flight_book_flight')
+      expect(result.toolResults?.[0]?.name).toBe('book-flight_book_flight')
+      expect(result.toolResults?.[0]?.content).toContain('Mock result for: NYC to LAX')
+    })
+
+    it('should finish cleanly when provider tool calls do not match any supported tool', function* () {
+      const echoTool = createMockTool('echo', 'Echoes input')
+      const provider = createMockProvider({
+        responses: '',
+        toolCalls: [{ id: 'call-unsupported', name: 'unsupported_tool', arguments: { input: 'hello' } }],
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [echoTool]),
+        maxToolIterations: 1,
+      })
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: 'user:unsupported-tool', role: 'user', content: 'Call an unsupported tool' }], {
+          enabledTools: true,
+        })
+      )
+
+      expect(result.error).toBeNull()
+      expect(result.toolCalls).toBeNull()
+      expect(result.toolResults).toBeNull()
+      expect(result.complete).not.toBeNull()
+    })
+
     it('should emit AG-UI tool lifecycle events for server-side tools', function* () {
       const echoTool = createMockTool('echo', 'Echoes input')
       const provider = createMockProvider({

@@ -34,7 +34,7 @@ export function runLLMTurnOperation(
   return {
     *[Symbol.iterator]() {
       const stream = ollamaProvider.stream(messages, {
-        model: process.env['OLLAMA_MODEL'] ?? 'glm-4.7-flash:latest',
+        model: process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest',
         ...(allowTools
           ? {
               isomorphicToolSchemas: [echoToolSchema],
@@ -76,11 +76,25 @@ export async function runLLMTurn(
   })
 }
 
-export async function isOllamaAvailable(): Promise<boolean> {
+export async function isOllamaAvailable(options: { requireToolCalling?: boolean } = {}): Promise<boolean> {
   const base = process.env['OLLAMA_URL'] ?? 'http://localhost:11434'
+  const model = process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest'
   try {
     const response = await fetch(`${base}/api/tags`, { method: 'GET' })
-    return response.ok
+    if (!response.ok) {
+      return false
+    }
+    const body = await response.json() as { models?: Array<{ name?: string; model?: string }> }
+    const hasModel = (body.models ?? []).some((entry) => entry.name === model || entry.model === model)
+    if (!hasModel || !options.requireToolCalling) {
+      return hasModel
+    }
+
+    const toolProbe = await runLLMTurn([
+      { id: 'system', role: 'system', content: 'When asked to echo, call the echo tool exactly once.' },
+      { id: 'user', role: 'user', content: 'Use the echo tool with message "tool probe".' },
+    ], { requireTool: true })
+    return toolProbe.toolCalls.some((call) => call.function.name === 'echo')
   } catch {
     return false
   }
