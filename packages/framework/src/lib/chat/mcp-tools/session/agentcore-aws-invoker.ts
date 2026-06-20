@@ -15,23 +15,36 @@ export interface AwsSdkAgentCoreInvokerOptions {
   clientConfig?: BedrockAgentCoreClientConfig
 }
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+type LogLevel = 'silent' | 'debug' | 'info' | 'warn' | 'error'
 
-const LOG_LEVEL_ORDER: Record<LogLevel, number> = { debug: 10, info: 20, warn: 30, error: 40 }
+const LOG_LEVEL_ORDER: Record<Exclude<LogLevel, 'silent'>, number> = { debug: 10, info: 20, warn: 30, error: 40 }
 
 function configuredInvokerLogLevel(): LogLevel {
   const value = process.env['AGENTCORE_INVOKER_LOG_LEVEL']?.toLowerCase()
-  return value === 'debug' || value === 'info' || value === 'warn' || value === 'error' ? value : 'info'
+  return value === 'silent' || value === 'debug' || value === 'info' || value === 'warn' || value === 'error' ? value : 'info'
 }
 
-function logInvoker(level: LogLevel, event: string, fields: Record<string, unknown>): void {
-  if (LOG_LEVEL_ORDER[level] < LOG_LEVEL_ORDER[configuredInvokerLogLevel()]) return
+function redactLogValue(key: string, value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  if (key.toLowerCase().includes('arn')) {
+    const suffix = value.split('/').pop()?.slice(-8) ?? 'unknown'
+    return `[redacted-agentcore-runtime:${suffix}]`
+  }
+  return value
+    .replace(/arn:aws:[^\s"']+/g, '[redacted-aws-arn]')
+    .replace(/\b\d{12}\b/g, '[redacted-account-id]')
+}
+
+function logInvoker(level: Exclude<LogLevel, 'silent'>, event: string, fields: Record<string, unknown>): void {
+  const configured = configuredInvokerLogLevel()
+  if (configured === 'silent' || LOG_LEVEL_ORDER[level] < LOG_LEVEL_ORDER[configured]) return
+  const safeFields = Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, redactLogValue(key, value)]))
   const record = {
     timestamp: new Date().toISOString(),
     level,
     service: 'sweatpants-agentcore-invoker',
     event,
-    ...fields,
+    ...safeFields,
   }
   const line = JSON.stringify(record)
   if (level === 'error') console.error(line)
