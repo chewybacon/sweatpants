@@ -233,6 +233,9 @@
     "dist",
     "src"
   ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
