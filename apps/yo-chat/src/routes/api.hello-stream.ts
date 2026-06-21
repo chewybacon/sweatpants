@@ -5,7 +5,7 @@
  * This uses the createStreamingHandler primitive.
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { createStreamingHandler, useHandlerContext } from '@sweatpants/framework/handler'
+import { createStreamingHandler, useHandlerContext } from '@sweatpants/framework/server'
 import { resource, sleep, call } from 'effection'
 import type { Operation, Stream } from 'effection'
 

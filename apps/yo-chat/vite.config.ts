@@ -4,7 +4,7 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
-import { frameworkPlugin, nodeWorkerPlugin } from '@sweatpants/framework/vite'
+import { frameworkPlugin, nodeWorkerPlugin } from '@sweatpants/vite-plugin'
 import { imagetools } from "vite-imagetools";
 const isProd = process.env['NODE_ENV'] === 'production'
 

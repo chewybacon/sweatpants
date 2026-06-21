@@ -26,6 +26,8 @@ export type {
   // Emission types (ctx.render pattern)
   ToolEmissionState,
   ToolEmissionTrackingState,
+  ElicitState,
+  ElicitTrackingState,
 } from './chat-state.ts'
 
 export { initialChatState } from './chat-state.ts'

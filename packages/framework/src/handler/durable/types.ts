@@ -9,8 +9,8 @@
  */
 import type { Operation, Stream, Channel } from 'effection'
 import type { ZodType } from 'zod'
-import type { ChatProvider } from '../../lib/chat/providers/types.ts'
 import type { Model, Runtime, StreamOptions } from '../../lib/chat/runtime/index.ts'
+import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
@@ -205,8 +205,8 @@ export interface ChatEngineParams {
   /** Runtime stream options */
   streamOptions?: StreamOptions
 
-  /** Legacy chat provider used only for plugin sampling while plugin sampling migrates to Runtime. */
-  provider?: ChatProvider
+  /** Provider used for direct plugin-tool sampling when no PluginSessionManager is installed. */
+  pluginSamplingProvider?: ToolSessionSamplingProvider
 
   /** Maximum tool loop iterations */
   maxIterations: number

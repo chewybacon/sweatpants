@@ -520,7 +520,7 @@ function FlightList({ flights, message, onRespond, disabled }: FlightListProps) 
 # Step 4: Use It
 
 ```tsx
-import { useChat } from '@sweatpants/framework/react'
+import { useChat } from '@sweatpants/react-chat'
 import { bookFlightPlugin } from './tools/book-flight'
 
 function ChatApp() {

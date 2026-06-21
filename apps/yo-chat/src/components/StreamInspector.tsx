@@ -7,7 +7,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronRight, Radio, Trash2, Filter, X } from 'lucide-react'
-import type { StreamEventEntry } from '@sweatpants/framework/react/chat'
+import type { StreamEventEntry } from '@sweatpants/react-chat'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 

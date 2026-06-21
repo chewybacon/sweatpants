@@ -32,7 +32,8 @@
     "effection": "catalog:",
     "react": "catalog:",
     "redis": "^4.7.1",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@sweatpants/model-provider-pi-ai": "workspace:*"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",

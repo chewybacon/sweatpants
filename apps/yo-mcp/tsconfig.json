@@ -5,6 +5,7 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../../packages/framework/tsconfig.lib.json" }
+    { "path": "../../packages/framework/tsconfig.lib.json" },
+    { "path": "../../packages/tool-runtime-local/tsconfig.json" }
   ]
 }

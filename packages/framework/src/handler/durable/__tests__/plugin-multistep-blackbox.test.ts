@@ -21,7 +21,6 @@ import {
   McpToolRegistryContext,
   PluginRegistryContext,
   PluginSessionManagerContext,
-  ProviderContext,
   ToolRegistryContext,
 } from '../../../lib/chat/providers/contexts.ts'
 
@@ -37,7 +36,7 @@ import { createInMemoryToolSessionStore } from '../../../lib/chat/mcp-tools/sess
 import { createToolSessionRegistry } from '../../../lib/chat/mcp-tools/session/session-registry.ts'
 
 import { setupInMemoryDurableStreams } from '../../../lib/chat/durable-streams/index.ts'
-import { consumeDurableResponse, createChatRequest, createMockProvider } from './test-utils.ts'
+import { consumeDurableResponse, createChatRequest, createMockProvider, setupMockModelProvider } from './test-utils.ts'
 
 function createSingleToolMcpRegistry(tool: { name: string }): McpToolRegistry {
   const map = new Map<string, unknown>([[tool.name, tool]])
@@ -190,7 +189,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             yield* setupInMemoryDurableStreams<string>()
           },
           function* setupProvider() {
-            yield* ProviderContext.set(provider)
+            yield* setupMockModelProvider(provider)
           },
           function* setupTools() {
             yield* ToolRegistryContext.set([])
@@ -419,7 +418,7 @@ describe('Plugin multi-step elicitation (black-box)', () => {
             yield* setupInMemoryDurableStreams<string>()
           },
           function* setupProvider() {
-            yield* ProviderContext.set(provider)
+            yield* setupMockModelProvider(provider)
           },
           function* setupTools() {
             yield* ToolRegistryContext.set([])

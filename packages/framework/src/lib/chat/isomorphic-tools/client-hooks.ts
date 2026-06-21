@@ -50,7 +50,7 @@
  * }
  * ```
  */
-import type { ReactNode } from 'react'
+type RenderNode = unknown
 import type { FinalizedIsomorphicTool } from './builder.ts'
 import type { IsomorphicHandoffEvent } from './types.ts'
 
@@ -98,7 +98,7 @@ export type HandoffHandler<THandoff, TParams, TClient> = (
   params: TParams,
   respond: (clientOutput: TClient) => void,
   event: IsomorphicHandoffEvent
-) => ReactNode
+) => RenderNode
 
 /**
  * A tool-specific handoff handler that can be used directly with an event.
@@ -108,7 +108,7 @@ export interface TypedHandoffHandler<THandoff, _TParams, TClient> {
    * Handle a handoff event for this tool.
    * Returns null if the event is not for this tool.
    */
-  (event: IsomorphicHandoffEvent, respond: (clientOutput: TClient) => void): ReactNode | null
+  (event: IsomorphicHandoffEvent, respond: (clientOutput: TClient) => void): RenderNode | null
   
   /**
    * The tool name this handler is for.
@@ -160,7 +160,7 @@ export function createHandoffHandler<
   const typedHandler = (
     event: IsomorphicHandoffEvent,
     respond: (clientOutput: TClient) => void
-  ): ReactNode | null => {
+  ): RenderNode | null => {
     if (event.toolName !== tool.name) {
       return null
     }
@@ -194,7 +194,7 @@ export interface HandoffHandlerRegistry {
    * Handle a handoff event by dispatching to the appropriate handler.
    * Returns null if no handler is registered for the tool.
    */
-  handle(event: IsomorphicHandoffEvent, respond: (output: unknown) => void): ReactNode | null
+  handle(event: IsomorphicHandoffEvent, respond: (output: unknown) => void): RenderNode | null
   
   /**
    * Get the handler for a specific tool name.

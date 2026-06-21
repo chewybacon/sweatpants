@@ -11,7 +11,7 @@
  *
  * @example TanStack Start
  * ```ts
- * import { createChatHandler } from '@sweatpants/framework/handler'
+ * import { createChatHandler } from '@sweatpants/framework/server'
  * import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
  * import { toolList } from './__generated__/tool-registry.gen'
  *
@@ -30,7 +30,7 @@
  *
  * @example Next.js
  * ```ts
- * import { createChatHandler } from '@sweatpants/framework/handler'
+ * import { createChatHandler } from '@sweatpants/framework/server'
  *
  * const handler = createChatHandler({ initializerHooks: [...] })
  * export const POST = handler

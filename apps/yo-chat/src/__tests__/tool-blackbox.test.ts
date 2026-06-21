@@ -13,11 +13,11 @@ import {
 } from 'effection'
 import { describe, expect, it } from 'vitest'
 
-import { createChatHandler } from '@sweatpants/framework/handler'
+import { createChatHandler } from '@sweatpants/framework/server'
 import {
   createPluginSessionManager,
   type PluginSessionManager,
-} from '@sweatpants/framework/handler/durable'
+} from '@sweatpants/framework/server'
 
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 
@@ -25,7 +25,6 @@ import {
   McpToolRegistryContext,
   PluginRegistryContext,
   PluginSessionManagerContext,
-  ProviderContext,
   ToolRegistryContext,
 } from '@sweatpants/framework/chat'
 
@@ -42,7 +41,7 @@ import type { ChatState } from '../../../../packages/framework/src/lib/chat/stat
 import { initialChatState, chatReducer } from '../../../../packages/framework/src/lib/chat/state/index.ts'
 
 import { createPluginRegistryFrom } from '@sweatpants/framework/chat/mcp-tools'
-import { createInMemoryToolSessionStore, createToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+import { createInMemoryToolSessionStore, createToolSessionRegistry } from '@sweatpants/tool-runtime-local'
 
 import {
   executeClientPart,
@@ -53,7 +52,7 @@ import type { IsomorphicHandoffEvent } from '@sweatpants/framework/chat/isomorph
 import type { ApprovalSignalValue } from '../../../../packages/framework/src/lib/chat/isomorphic-tools/runtime/tool-runtime.ts'
 import type { PendingEmission } from '../../../../packages/framework/src/lib/chat/isomorphic-tools/runtime/emissions.ts'
 
-import { createMockProvider } from '../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts'
+import { createMockProvider, setupMockModelProvider } from '../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts'
 import { pickCard } from '../tools/pick-card'
 import { bookFlightTool, bookFlightPlugin } from '../tools/book-flight'
 
@@ -186,7 +185,7 @@ describe('yo-chat tool blackbox', () => {
             yield* setupInMemoryDurableStreams<string>()
           },
           function* setupProvider() {
-            yield* ProviderContext.set(provider)
+            yield* setupMockModelProvider(provider)
           },
           function* setupTools() {
             yield* ToolRegistryContext.set([])
@@ -383,7 +382,7 @@ describe('yo-chat tool blackbox', () => {
             yield* setupInMemoryDurableStreams<string>()
           },
           function* setupProvider() {
-            yield* ProviderContext.set(provider)
+            yield* setupMockModelProvider(provider)
           },
           function* setupTools() {
             yield* ToolRegistryContext.set([])

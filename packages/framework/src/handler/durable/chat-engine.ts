@@ -483,7 +483,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     runtime,
     model,
     streamOptions,
-    provider,
+    pluginSamplingProvider,
     maxIterations,
     signal,
     sessionInfo,
@@ -788,8 +788,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               for (const response of elicitResponses) {
                 const { sessionId, callId, elicitId, result } = response
                 
-                // Look up the session (pass provider for session recovery)
-                const session = yield* pluginSessionManager.get(sessionId, provider)
+                const session = yield* pluginSessionManager.get(sessionId)
                 
                 if (!session) {
                   // Session not found - emit error
@@ -1159,19 +1158,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               const mcpTool = mcpToolRegistry?.get(toolName)
 
               if (plugin && mcpTool && isPluginTool(mcpTool)) {
-                if (!provider) {
-                  results.push({
-                    ok: false,
-                    error: {
-                      callId: tc.id,
-                      toolName,
-                      message: 'Plugin sampling provider not configured for this runtime',
-                    },
-                  })
-                  state.pendingEvents.push(toolResultToAgUiStreamEvent(results[results.length - 1]!))
-                  continue
-                }
-
                 // Execute as plugin tool
                 if (pluginSessionManager) {
                   // Use session manager for durable execution
@@ -1179,7 +1165,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     tool: mcpTool,
                     params: tc.function.arguments,
                     callId: tc.id,
-                    provider,
                     emissionChannel: pluginEmissionChannel,
                     signal,
                   })
@@ -1271,11 +1256,24 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   }
                 } else {
                   // No session manager - use direct execution (legacy path)
+                  if (!pluginSamplingProvider) {
+                    results.push({
+                      ok: false,
+                      error: {
+                        callId: tc.id,
+                        toolName,
+                        message: 'Plugin sampling provider not configured for this runtime',
+                      },
+                    })
+                    state.pendingEvents.push(toolResultToAgUiStreamEvent(results[results.length - 1]!))
+                    continue
+                  }
+
                   const pluginResult = yield* executePluginTool({
                     toolCall: tc,
                     tool: mcpTool,
                     plugin,
-                    provider,
+                    samplingProvider: pluginSamplingProvider,
                     emissionChannel: pluginEmissionChannel,
                     signal,
                   })

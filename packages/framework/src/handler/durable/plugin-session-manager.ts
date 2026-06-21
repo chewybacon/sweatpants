@@ -47,7 +47,6 @@
  * @packageDocumentation
  */
 import { type Operation, type Channel, resource } from 'effection'
-import type { ChatProvider, ChatStreamOptions } from '../../lib/chat/providers/types.ts'
 import type {
   ToolSession,
   ToolSessionStatus,
@@ -55,12 +54,12 @@ import type {
   RawSampleResultBase,
   RawSampleResultWithParsed,
   RawSampleResultWithToolCalls,
+  ToolSessionSamplingProvider,
 } from '../../lib/chat/mcp-tools/session/types.ts'
 // Note: createToolSessionRegistry should be called at server startup, not here
 // import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry.ts'
-import type { ElicitsMap, RawElicitResult, SamplingToolCall } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
+import type { ElicitsMap, RawElicitResult } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
-import { extendedMessageToProviderMessage } from '../../lib/chat/mcp-tools/message-conversion.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 
 // =============================================================================
@@ -121,9 +120,6 @@ export interface CreatePluginSessionConfig {
 
   /** Call ID from the LLM's tool_call (used as session ID) */
   callId: string
-
-  /** Chat provider for handling sample requests server-side */
-  provider: ChatProvider
 
   /** Emission channel for plugin UI rendering (optional) */
   emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined
@@ -192,9 +188,8 @@ export interface PluginSessionManager {
    * Returns null if session doesn't exist.
    * 
    * @param sessionId - Session to retrieve
-   * @param provider - Chat provider for server-side sampling (required for recovered sessions)
    */
-  get(sessionId: string, provider?: ChatProvider): Operation<PluginSession | null>
+  get(sessionId: string): Operation<PluginSession | null>
 
   /**
    * Abort a session by ID.
@@ -231,6 +226,9 @@ export interface PluginSessionManagerOptions {
    * ```
    */
   registry: ToolSessionRegistry
+
+  /** Provider used for server-side sampling when a plugin tool calls ctx.sample(). */
+  samplingProvider?: ToolSessionSamplingProvider
 }
 
 // =============================================================================
@@ -252,13 +250,12 @@ export function createPluginSessionManager(
   options: PluginSessionManagerOptions
 ): Operation<PluginSessionManager> {
   return resource<PluginSessionManager>(function* (provide) {
-    const { registry } = options
+    const { registry, samplingProvider } = options
 
-    // Track active plugin sessions with their providers
+    // Track active plugin sessions.
     const pluginSessions = new Map<string, {
       session: PluginSession
       toolSession: ToolSession
-      provider: ChatProvider
       info: PluginSessionInfo
     }>()
 
@@ -271,7 +268,6 @@ export function createPluginSessionManager(
     function createPluginSessionWrapper(
       toolSession: ToolSession,
       callId: string,
-      provider: ChatProvider,
       _createdAt: number,
       initialLastLSN: number = 0,
       onTerminal?: () => void
@@ -334,105 +330,23 @@ export function createPluginSessionManager(
                 }
 
               case 'sample_request': {
-                // Handle sampling server-side using the provider
                 const sampleEvent = event
                 try {
-                  // Convert ExtendedMessage[] to chat provider Message[]
-                  const chatMessages = sampleEvent.messages.map(extendedMessageToProviderMessage)
-
-                  // Build provider options
-                  const streamOptions: ChatStreamOptions = {}
-                  
-                  // Convert MCP sampling tools to isomorphic tool schemas
-                  if (sampleEvent.tools && sampleEvent.tools.length > 0) {
-                    streamOptions.isomorphicToolSchemas = sampleEvent.tools.map(tool => ({
-                      name: tool.name,
-                      description: tool.description ?? '',
-                      parameters: tool.inputSchema as Record<string, unknown>,
-                      isIsomorphic: true as const,
-                    }))
-                    
-                    // Pass through toolChoice if specified
-                    if (sampleEvent.toolChoice) {
-                      streamOptions.toolChoice = sampleEvent.toolChoice
-                    }
+                  if (!samplingProvider) {
+                    throw new Error('Plugin sampling provider not configured')
                   }
 
-                  // Pass through schema for structured output
-                  if (sampleEvent.schema) {
-                    streamOptions.schema = sampleEvent.schema
-                  }
+                  const result: RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls =
+                    yield* samplingProvider.sample(sampleEvent.messages, {
+                      ...(sampleEvent.systemPrompt ? { systemPrompt: sampleEvent.systemPrompt } : {}),
+                      ...(sampleEvent.maxTokens !== undefined ? { maxTokens: sampleEvent.maxTokens } : {}),
+                      ...(sampleEvent.tools ? { tools: sampleEvent.tools } : {}),
+                      ...(sampleEvent.toolChoice ? { toolChoice: sampleEvent.toolChoice } : {}),
+                      ...(sampleEvent.schema ? { schema: sampleEvent.schema } : {}),
+                    })
 
-                  // Call the provider
-                  const stream = provider.stream(chatMessages, streamOptions)
-
-                  const subscription = yield* stream
-
-                  // Collect response
-                  let fullText = ''
-                  const toolCalls: SamplingToolCall[] = []
-                  let iteration = yield* subscription.next()
-                  while (!iteration.done) {
-                    if (iteration.value.type === 'text') {
-                      fullText += iteration.value.content
-                    } else if (iteration.value.type === 'tool_calls') {
-                      // Collect tool calls from the stream
-                      for (const tc of iteration.value.toolCalls) {
-                        toolCalls.push({
-                          id: tc.id,
-                          name: tc.function.name,
-                          arguments: tc.function.arguments,
-                        })
-                      }
-                    }
-                    iteration = yield* subscription.next()
-                  }
-
-                  const chatResult = iteration.value
-                  const responseText = chatResult?.text ?? fullText
-
-                  // Determine response type and build result
-                  let result: RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls
-
-                  if (toolCalls.length > 0) {
-                    // Tool calling response
-                    result = {
-                      text: responseText,
-                      stopReason: 'toolUse' as const,
-                      toolCalls,
-                    }
-                  } else if (sampleEvent.schema) {
-                    // Structured output - parse with schema
-                    // Note: The schema is JSON Schema, we need to validate manually
-                    // For MVP, we just return the text and let the runtime validate
-                    // In a full implementation, we'd use a JSON Schema validator
-                    try {
-                      const parsed = JSON.parse(responseText)
-                      result = {
-                        text: responseText,
-                        parsed,
-                      }
-                    } catch (parseError) {
-                      result = {
-                        text: responseText,
-                        parsed: null,
-                        parseError: {
-                          message: parseError instanceof Error ? parseError.message : 'Failed to parse JSON',
-                          rawText: responseText,
-                        },
-                      }
-                    }
-                  } else {
-                    // Plain text response
-                    result = {
-                      text: responseText,
-                    }
-                  }
-
-                  // Send response back to tool session
                   yield* toolSession.respondToSample(sampleEvent.sampleId, result)
                 } catch (error) {
-                  // Sampling failed - send error response
                   yield* toolSession.respondToSample(sampleEvent.sampleId, {
                     text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]`,
                   })
@@ -495,7 +409,7 @@ export function createPluginSessionManager(
 
     const manager: PluginSessionManager = {
       *create(config: CreatePluginSessionConfig): Operation<PluginSession> {
-        const { tool, params, callId, provider, signal } = config
+        const { tool, params, callId, signal } = config
 
         // Create the underlying tool session
         const sessionOptions: { sessionId: string; signal?: AbortSignal } = {
@@ -511,7 +425,6 @@ export function createPluginSessionManager(
         const pluginSession = createPluginSessionWrapper(
           toolSession,
           callId,
-          provider,
           createdAt,
           0, // initialLastLSN
           () => {
@@ -535,14 +448,13 @@ export function createPluginSessionManager(
         pluginSessions.set(callId, {
           session: pluginSession,
           toolSession,
-          provider,
           info,
         })
 
         return pluginSession
       },
 
-      *get(sessionId: string, provider?: ChatProvider): Operation<PluginSession | null> {
+      *get(sessionId: string): Operation<PluginSession | null> {
         const entry = pluginSessions.get(sessionId)
         if (entry) {
           return entry.session
@@ -554,18 +466,11 @@ export function createPluginSessionManager(
           return null
         }
 
-        // We need a provider to recreate the wrapper for server-side sampling
-        if (!provider) {
-          // Can't recover without provider
-          return null
-        }
-
         // Recover the session by creating a new wrapper with cleanup callback
         const createdAt = Date.now()
         const pluginSession = createPluginSessionWrapper(
           toolSession,
           sessionId, // callId is the same as sessionId
-          provider,
           createdAt,
           0, // initialLastLSN
           () => {
@@ -586,7 +491,6 @@ export function createPluginSessionManager(
         pluginSessions.set(sessionId, {
           session: pluginSession,
           toolSession,
-          provider,
           info,
         })
 

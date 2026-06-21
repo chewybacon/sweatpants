@@ -11,7 +11,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
 import { tictactoePlugin } from '@/tools/tictactoe/plugin.ts'
 import { tictactoeTool } from '@/tools/tictactoe/tool'
 

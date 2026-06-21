@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@sweatpants/framework": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*",
     "effection": "catalog:",
     "zod": "catalog:"
   },

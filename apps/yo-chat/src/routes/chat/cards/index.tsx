@@ -6,7 +6,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
 import { tools } from '@/__generated__/tool-registry.gen'
 
 export const Route = createFileRoute('/chat/cards/')({

@@ -12,7 +12,7 @@
  *
  * @example Worker script
  * ```typescript
- * import { runWorker, createWorkerToolRegistry } from '@sweatpants/framework/chat/mcp-tools/worker'
+ * import { runWorker, createWorkerToolRegistry } from '@sweatpants/tool-runtime-local/worker'
  *
  * const registry = createWorkerToolRegistry()
  *   .register(myTool)

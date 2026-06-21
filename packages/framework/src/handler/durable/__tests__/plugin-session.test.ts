@@ -136,7 +136,6 @@ describe('PluginSessionManager', () => {
         tool: asPluginTool(simpleElicitTool),
         params: { prompt: 'test prompt' },
         callId: 'call_123',
-        provider,
       })
 
       expect(session.id).toBe('call_123')
@@ -153,14 +152,12 @@ describe('PluginSessionManager', () => {
         tool: asPluginTool(simpleElicitTool),
         params: { prompt: 'test 1' },
         callId: 'call_1',
-        provider,
       })
 
       yield* sessionManager.create({
         tool: asPluginTool(simpleElicitTool),
         params: { prompt: 'test 2' },
         callId: 'call_2',
-        provider,
       })
 
       const activeSessions = yield* sessionManager.listActive()
@@ -175,7 +172,6 @@ describe('PluginSessionManager', () => {
         tool: asPluginTool(simpleElicitTool),
         params: { prompt: 'test' },
         callId: 'call_abc',
-        provider,
       })
 
       const session = yield* sessionManager.get('call_abc')
@@ -195,7 +191,6 @@ describe('PluginSessionManager', () => {
         tool: asPluginTool(simpleElicitTool),
         params: { prompt: 'test' },
         callId: 'call_abort',
-        provider,
       })
 
       yield* sessionManager.abort('call_abort', 'User cancelled')
@@ -232,7 +227,6 @@ describe('Plugin Session Event Flow', () => {
       tool: asPluginTool(simpleElicitTool),
       params: { prompt: 'What is your name?' },
       callId: 'call_elicit',
-      provider,
     })
 
     // Get the first event - should be an elicit request
@@ -252,7 +246,6 @@ describe('Plugin Session Event Flow', () => {
       tool: asPluginTool(simpleElicitTool),
       params: { prompt: 'Test prompt' },
       callId: 'call_complete',
-      provider,
     })
 
     // Get elicit request
@@ -283,7 +276,6 @@ describe('Plugin Session Event Flow', () => {
       tool: asPluginTool(simpleElicitTool),
       params: { prompt: 'Test' },
       callId: 'call_decline',
-      provider,
     })
 
     // Get elicit request
@@ -374,7 +366,6 @@ describe('Multi-Step Elicitation', () => {
       tool: asPluginTool(multiStepTool),
       params: { destination: 'NYC' },
       callId: 'call_multi_step',
-      provider,
     })
 
     // First elicitation: pickFlight
@@ -428,7 +419,6 @@ describe('Multi-Step Elicitation', () => {
       tool: asPluginTool(multiStepTool),
       params: { destination: 'LAX' },
       callId: 'call_decline_first',
-      provider,
     })
 
     // First elicitation
@@ -458,7 +448,6 @@ describe('Multi-Step Elicitation', () => {
       tool: asPluginTool(multiStepTool),
       params: { destination: 'SFO' },
       callId: 'call_decline_second',
-      provider,
     })
 
     // First elicitation - accept
@@ -513,7 +502,6 @@ describe('Immediate Completion Tools', () => {
       tool: asPluginTool(immediateCompleteTool),
       params: { input: 'hello' },
       callId: 'call_immediate',
-      provider,
     })
 
     // Should get result immediately
@@ -546,7 +534,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(simpleElicitTool),
       params: { prompt: 'test' },
       callId: 'call_status',
-      provider,
     })
 
     // Get elicit request to move to awaiting state
@@ -564,7 +551,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(immediateCompleteTool),
       params: { input: 'test' },
       callId: 'call_complete_status',
-      provider,
     })
 
     // Yield to let spawned tool runner complete (cooperative scheduling)
@@ -590,7 +576,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(immediateCompleteTool),
       params: { input: 'test' },
       callId: 'call_cleanup',
-      provider,
     })
 
     // Verify session is active
@@ -614,7 +599,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(simpleElicitTool),
       params: { prompt: 'test' },
       callId: 'call_elicit_cleanup',
-      provider,
     })
 
     // Get elicit request
@@ -651,7 +635,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(immediateCompleteTool),
       params: { input: 'test1' },
       callId: 'call_multi_1',
-      provider,
     })
 
     // Create second session (needs elicitation)
@@ -659,7 +642,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(simpleElicitTool),
       params: { prompt: 'test2' },
       callId: 'call_multi_2',
-      provider,
     })
 
     // Both should be active
@@ -703,7 +685,6 @@ describe('Status Tracking and Cleanup', () => {
       tool: asPluginTool(immediateCompleteTool),
       params: { input: 'test' },
       callId: 'call_get_cleanup',
-      provider,
     })
 
     // Consume result - this triggers cleanup from pluginSessions map
@@ -712,7 +693,7 @@ describe('Status Tracking and Cleanup', () => {
 
     // Session is removed from pluginSessions map, but still exists in registry
     // get() can recover it (for reconnection scenarios or inspection)
-    const retrieved = yield* sessionManager.get('call_get_cleanup', provider)
+    const retrieved = yield* sessionManager.get('call_get_cleanup')
     expect(retrieved).not.toBeNull()
     expect(retrieved?.id).toBe('call_get_cleanup')
     

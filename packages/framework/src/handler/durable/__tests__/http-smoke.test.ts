@@ -17,10 +17,9 @@ import {
 } from '../../../lib/chat/durable-streams/index.ts'
 import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup.ts'
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
-import { ollamaProvider } from '../../../lib/chat/providers/index.ts'
+import { ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
-import { createMockProvider, consumeDurableResponse } from './test-utils.ts'
+import { createMockProvider, consumeDurableResponse, setupMockModelProvider } from './test-utils.ts'
 import { createHttpTestServer, type TestServerHandle } from './http-test-server.ts'
 import type { InitializerHook } from '../types.ts'
 
@@ -40,7 +39,7 @@ function createTestHandler(mockResponse: string) {
       yield* setupInMemoryDurableStreams<string>()
     },
     function* setupProvider() {
-      yield* ProviderContext.set(provider)
+      yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
       yield* ToolRegistryContext.set([])
@@ -74,7 +73,7 @@ function createTestHandlerWithSharedStorage(
       })
     },
     function* setupProvider() {
-      yield* ProviderContext.set(provider)
+      yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
       yield* ToolRegistryContext.set([])
@@ -686,7 +685,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
 
       const result = await consumeDurableResponse(response)
       expect(result.error).not.toBeNull()
-      expect(result.error?.message).toContain('Provider not configured')
+      expect(result.error?.message).toContain('Model provider not configured')
     })
   })
 
@@ -892,7 +891,7 @@ function createOllamaHandler() {
       yield* setupInMemoryDurableStreams<string>()
     },
     function* setupProvider() {
-      yield* ProviderContext.set(ollamaProvider)
+      throw new Error('Live Ollama provider smoke tests moved to @sweatpants/model-provider-pi-ai')
     },
     function* setupTools() {
       yield* ToolRegistryContext.set([])
@@ -912,7 +911,7 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
       yield* setupDurableStreams({ bufferStore, registryStore })
     },
     function* setupProvider() {
-      yield* ProviderContext.set(ollamaProvider)
+      throw new Error('Live Ollama provider smoke tests moved to @sweatpants/model-provider-pi-ai')
     },
     function* setupTools() {
       yield* ToolRegistryContext.set([])
@@ -922,7 +921,7 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
   return createDurableChatHandler({ initializerHooks })
 }
 
-describe.skipIf(process.env['RUN_LIVE_PROVIDER_TESTS'] !== 'yes')('Durable Chat Handler - Ollama Integration', () => {
+describe.skip('Durable Chat Handler - Ollama Integration (moved to @sweatpants/model-provider-pi-ai)', () => {
   let server: TestServerHandle
   let ollamaAvailable: boolean
 

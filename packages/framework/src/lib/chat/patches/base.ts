@@ -19,7 +19,7 @@
 
 import type { Message } from '../types.ts'
 import type { Capabilities } from '../core-types.ts'
-import type { Frame } from '../../../react/chat/pipeline/types.ts'
+import type { Frame } from '../frame.ts'
 import type { MessagePart } from '../types/chat-message.ts'
 
 // =============================================================================

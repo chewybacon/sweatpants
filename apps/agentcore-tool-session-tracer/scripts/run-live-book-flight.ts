@@ -2,22 +2,22 @@ import crypto from 'node:crypto'
 import { call, run } from 'effection'
 import {
   createAwsSdkAgentCoreInvoker,
-} from '../../../packages/framework/src/lib/chat/mcp-tools/session/agentcore-aws-invoker.ts'
+} from '@sweatpants/tool-runtime-agentcore'
 import {
   createAgentCoreRemoteToolRuntimeClient,
-} from '../../../packages/framework/src/lib/chat/mcp-tools/session/agentcore-runtime-client.ts'
+} from '@sweatpants/tool-runtime-agentcore'
 import {
   createAgentCoreToolSessionRegistry,
-} from '../../../packages/framework/src/lib/chat/mcp-tools/session/agentcore-session-registry.ts'
+} from '@sweatpants/tool-runtime-agentcore'
 import {
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
-} from '../../../packages/framework/src/lib/chat/mcp-tools/session/agentcore-memory-store.ts'
+} from '@sweatpants/tool-runtime-agentcore'
 import type {
   AgentCoreToolEvent,
   AgentCoreToolRuntimeProfile,
   AgentCoreToolSessionStores,
-} from '../../../packages/framework/src/lib/chat/mcp-tools/session/agentcore-types.ts'
+} from '@sweatpants/tool-runtime-agentcore'
 
 if (process.env['APPROVE_AGENTCORE_PAID_INVOCATION'] !== 'yes') {
   console.error('Refusing live AgentCore book-flight smoke without APPROVE_AGENTCORE_PAID_INVOCATION=yes')

@@ -18,6 +18,12 @@ export type {
 } from './chat-message.ts'
 
 export {
+  generatePartId,
+  resetPartIdCounter,
+  createTextPart,
+  createReasoningPart,
+  createToolCallPart,
+  createToolResultPart,
   getRenderedFromFrame,
   isContentPart,
   getMessageTextContent,

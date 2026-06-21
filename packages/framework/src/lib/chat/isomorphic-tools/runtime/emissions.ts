@@ -38,7 +38,10 @@
  */
 import type { Operation, Channel } from 'effection'
 import { createSignal } from 'effection'
-import type { ComponentType } from 'react'
+
+export type ComponentTypeLike<TProps = any> =
+  | ((props: TProps) => unknown)
+  | { displayName?: string | undefined; name?: string | undefined }
 
 // =============================================================================
 // EMISSION TYPES
@@ -90,7 +93,7 @@ export interface ComponentEmissionPayload<TProps = Record<string, unknown>> {
    * Transient component reference for immediate rendering.
    * Not serialized - on rehydration, the tool re-runs and provides fresh reference.
    */
-  _component?: ComponentType<any>
+  _component?: ComponentTypeLike
 }
 
 /**
@@ -128,7 +131,7 @@ export interface EmissionTraceEntry {
  * Adds the transient component reference back for UI rendering.
  */
 export interface HydratedEmissionTraceEntry extends EmissionTraceEntry {
-  _component?: ComponentType<any>
+  _component?: ComponentTypeLike
 }
 
 /**
@@ -329,8 +332,9 @@ export function createComponentHandler(
 /**
  * Extract a serializable key from a component.
  */
-export function getComponentKey(Component: ComponentType<any>): string {
-  return Component.displayName || Component.name || 'Anonymous'
+export function getComponentKey(Component: ComponentTypeLike): string {
+  const candidate = Component as { displayName?: string; name?: string }
+  return candidate.displayName || candidate.name || 'Anonymous'
 }
 
 /**

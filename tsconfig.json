@@ -5,10 +5,18 @@
     "ignoreDeprecations": "5.0"
   },
   "references": [
-    { "path": "./packages/durable-streams" },
-    { "path": "./packages/elicit-context" },
-    { "path": "./packages/cli" },
-    { "path": "./packages/framework" }
+    {
+      "path": "./packages/durable-streams"
+    },
+    {
+      "path": "./packages/elicit-context"
+    },
+    {
+      "path": "./packages/cli"
+    },
+    {
+      "path": "./packages/framework"
+    }
   ],
   "files": []
 }

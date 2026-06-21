@@ -16,20 +16,16 @@
  * The handler returns a streaming Response, which we pass back to the hook.
  */
 
-import { createChatHandler } from '@sweatpants/framework/handler'
-import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/handler'
+import { createChatHandler } from '@sweatpants/framework/server'
+import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/server'
 import {
   MaxIterationsContext,
-  ProviderContext,
   ToolRegistryContext,
 } from '@sweatpants/framework/chat'
-import { ollamaProvider, openaiProvider } from '@sweatpants/framework/chat/providers'
 import {
-  DefaultRuntime,
-  RuntimeContext,
-  RuntimeModelContext,
+  installPiAiModelProvider,
   resolveRuntimeModel,
-} from '@sweatpants/framework/chat/runtime'
+} from '@sweatpants/model-provider-pi-ai'
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 import type { Operation } from 'effection'
 
@@ -64,19 +60,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   }
 
   const setupProvider = function* (_ctx: InitializerContext): Operation<void> {
-    const providerMap = {
-      ollama: ollamaProvider,
-      openai: openaiProvider,
-    }
-
-    const selectedProvider = providerMap[providerName]
-    if (!selectedProvider) {
-      throw new Error(`Unknown provider: ${providerName}`)
-    }
-
-    yield* RuntimeContext.set(DefaultRuntime)
-    yield* RuntimeModelContext.set(resolveRuntimeModel(providerName))
-    yield* ProviderContext.set(selectedProvider)
+    yield* installPiAiModelProvider({ model: resolveRuntimeModel(providerName) })
   }
 
   const setupTools = function* (_ctx: InitializerContext): Operation<void> {

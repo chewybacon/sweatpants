@@ -16,11 +16,13 @@
 import { run } from 'effection'
 import {
   createMcpHandler,
-  createInMemoryToolSessionStore,
-  createToolSessionRegistry,
   type ToolSessionSamplingProvider,
   type SampleResult,
 } from '@sweatpants/framework/chat/mcp-tools'
+import {
+  createInMemoryToolSessionStore,
+  createToolSessionRegistry,
+} from '@sweatpants/tool-runtime-local'
 import { createToolsMap, allTools } from './tools/index.js'
 
 const SERVER_NAME = 'yo-mcp'
