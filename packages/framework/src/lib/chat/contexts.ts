@@ -1,6 +1,6 @@
 import { createContext } from 'effection'
 
-import type { IsomorphicTool, PersonaResolver } from '../../handler/types.ts'
+import type { IsomorphicTool, PersonaResolver } from './setup-types.ts'
 import type { PluginRegistry } from './mcp-tools/plugin-registry.ts'
 import type { McpToolRegistry } from '../../handler/durable/types.ts'
 import type { ToolSessionRegistry, ToolSessionStore } from './mcp-tools/session/types.ts'

@@ -1,4 +1,13 @@
 export {
+  createIsomorphicToolInventoryEntry,
+  createLocalToolRuntimeDriver,
+  createMcpToolInventoryEntry,
+  installLocalToolRuntime,
+  type LocalIsomorphicTool,
+  type LocalToolRuntimeDriverOptions,
+} from './driver.ts'
+
+export {
   createToolSession,
 } from './tool-session.ts'
 

@@ -2,6 +2,7 @@
 export * from './types.ts'
 export * from './types/index.ts'
 export * from './frame.ts'
+export type { IsomorphicTool, PersonaResolver, ResolvedPersona } from './setup-types.ts'
 
 // Stream utilities
 export * from './ndjson.ts'
@@ -10,6 +11,7 @@ export * from './sse.ts'
 
 // Scope-driven driver contracts and APIs.
 export * from './model-provider.ts'
+export * from './tool-inventory.ts'
 export * from './tool-runtime.ts'
 
 // Scope-driven chat setup contexts.

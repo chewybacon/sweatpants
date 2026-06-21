@@ -17,9 +17,8 @@ import {
 } from '../../../lib/chat/durable-streams/index.ts'
 import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup.ts'
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
-import { ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
-import { createMockProvider, consumeDurableResponse, setupMockModelProvider } from './test-utils.ts'
+import { createMockProvider, consumeDurableResponse, setupMockModelProvider, setupMockTools } from './test-utils.ts'
 import { createHttpTestServer, type TestServerHandle } from './http-test-server.ts'
 import type { InitializerHook } from '../types.ts'
 
@@ -42,7 +41,7 @@ function createTestHandler(mockResponse: string) {
       yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
@@ -76,7 +75,7 @@ function createTestHandlerWithSharedStorage(
       yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
@@ -664,7 +663,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
           yield* setupInMemoryDurableStreams<string>()
         },
         function* setupTools() {
-          yield* ToolRegistryContext.set([])
+          yield* setupMockTools([])
         },
         // No provider setup - should cause error
       ]
@@ -894,7 +893,7 @@ function createOllamaHandler() {
       throw new Error('Live Ollama provider smoke tests moved to @sweatpants/model-provider-pi-ai')
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
@@ -914,7 +913,7 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
       throw new Error('Live Ollama provider smoke tests moved to @sweatpants/model-provider-pi-ai')
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 

@@ -27,7 +27,8 @@
     "shiki": "^3.20.0",
     "zod": "catalog:",
     "@sweatpants/react-chat": "workspace:*",
-    "@sweatpants/model-provider-pi-ai": "workspace:*"
+    "@sweatpants/model-provider-pi-ai": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",

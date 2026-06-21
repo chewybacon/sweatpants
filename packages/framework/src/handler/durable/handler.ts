@@ -13,7 +13,6 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { call, resource, type Operation, type Stream } from "effection";
-import { z } from "zod";
 import type {
   SessionHandle,
   SessionRegistry,
@@ -33,6 +32,8 @@ import {
   ToolRegistryContext,
 } from "../../lib/chat/contexts.ts";
 import { ModelProviderApi, ModelProviderContext, type ModelProviderDriver } from '../../lib/chat/model-provider.ts';
+import { ToolExposureApi, ToolInventoryApi, type ToolDefinition } from '../../lib/chat/tool-inventory.ts'
+import { ToolRuntimeContext } from '../../lib/chat/tool-runtime.ts'
 import { useLogger } from "../../lib/logger/index.ts";
 import {
   bindModel,
@@ -107,53 +108,13 @@ function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
   };
 }
 
-/**
- * Convert a tool to its schema representation.
- */
-function toToolSchema(tool: IsomorphicTool): ToolSchema {
+function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
   return {
-    name: tool.name,
-    description: tool.description,
-    parameters: z.toJSONSchema(tool.parameters),
-    isIsomorphic: true,
-  };
-}
-
-/**
- * Check if an object is an MCP tool (has name, description, parameters).
- */
-function isMcpToolLike(
-  tool: unknown,
-): tool is {
-  name: string;
-  description: string;
-  parameters: z.ZodType<unknown>;
-} {
-  return (
-    typeof tool === "object" &&
-    tool !== null &&
-    "name" in tool &&
-    "description" in tool &&
-    "parameters" in tool &&
-    typeof (tool as { name: unknown }).name === "string" &&
-    typeof (tool as { description: unknown }).description === "string"
-  );
-}
-
-/**
- * Convert an MCP tool to its schema representation.
- */
-function mcpToolToSchema(tool: {
-  name: string;
-  description: string;
-  parameters: z.ZodType<unknown>;
-}): ToolSchema {
-  return {
-    name: tool.name,
-    description: tool.description,
-    parameters: z.toJSONSchema(tool.parameters),
+    name: definition.name,
+    description: definition.description,
+    parameters: definition.parameters,
     isIsomorphic: false,
-  };
+  }
 }
 
 /**
@@ -418,6 +379,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Create tool registry
       const toolRegistry = createToolRegistry(tools);
+      const inventoryEntries = yield* ToolInventoryApi.list();
+      const activeToolRuntime = yield* ToolRuntimeContext.get();
+      if (!activeToolRuntime) {
+        throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.');
+      }
 
       // Build tool schemas
       const clientToolNames = (body.isomorphicTools ?? []).map((t) => t.name);
@@ -504,36 +470,25 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         };
       }
 
-      // Build tool schemas
-      const serverEnabledSchemas = Array.from(enabledToolNames)
-        .map((name) => toolRegistry.get(name))
-        .filter((t): t is IsomorphicTool => t !== undefined)
-        .map(toToolSchema);
+      // Build model-facing tool schemas through inventory + exposure policy.
+      const exposedDefinitions = yield* ToolExposureApi.definitions({
+        phase: 'outer-chat',
+        entries: inventoryEntries,
+        request: body,
+        enabledTools: body.enabledTools === true ? true : Array.from(enabledToolNames),
+        enabledPlugins: body.enabledPlugins ?? [],
+        metadata: { sessionId, conversationId: requestedConversationId },
+      })
 
       const clientSchemas = body.isomorphicTools ?? [];
 
-      // Build MCP plugin tool schemas
-      // Filter based on enabledPlugins:
-      // - undefined or []: no plugin tools (explicit opt-in required)
-      // - string[]: only include specified tools by name
-      const mcpToolSchemas: ToolSchema[] = [];
-      if (mcpToolRegistry) {
-        const enabledPlugins = body.enabledPlugins ?? [];
-        for (const toolName of enabledPlugins) {
-          const tool = mcpToolRegistry.get(toolName);
-          if (tool && isMcpToolLike(tool)) {
-            mcpToolSchemas.push(mcpToolToSchema(tool));
-          }
-        }
-      }
-
-      // Dedupe schemas
+      // Dedupe schemas. Client-provided schemas are still included for browser-only
+      // tools, but executable outer calls must resolve through ToolInventory.
       const seenNames = new Set<string>();
       const toolSchemas: ToolSchema[] = [];
       for (const schema of [
-        ...serverEnabledSchemas,
+        ...exposedDefinitions.map(definitionToToolSchema),
         ...clientSchemas,
-        ...mcpToolSchemas,
       ]) {
         if (!seenNames.has(schema.name)) {
           seenNames.add(schema.name);
@@ -591,6 +546,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           runtime,
           model,
           ...(streamOptions ? { streamOptions } : {}),
+          toolInventoryEntries: inventoryEntries,
+          toolRuntime: activeToolRuntime,
+          toolRuntimeId: activeToolRuntime.id,
           maxIterations,
           signal: engineAbortController.signal,
           sessionInfo,
