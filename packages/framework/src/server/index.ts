@@ -1,7 +1,9 @@
-import { createChatHandler } from '../handler/durable/index.ts'
-import type { DurableChatHandlerConfig } from '../handler/durable/types.ts'
+import { call, createScope, suspend, useAbortSignal, useScope, type Operation, type Scope } from 'effection'
+import type { FetchHandler, ScopedFetchHandler } from '../handler/streaming.ts'
 
-type FetchHandler = (request: Request) => Response | Promise<Response>
+export interface ChatApplicationSetupContext {
+  signal: AbortSignal
+}
 
 export interface ChatApplication {
   handle(request: Request): Promise<Response>
@@ -9,22 +11,59 @@ export interface ChatApplication {
 }
 
 export interface ChatApplicationConfig {
-  handler?: FetchHandler
-  setup?: () => void | Promise<void>
+  handler: FetchHandler
+  setup?: (ctx: ChatApplicationSetupContext) => Operation<void>
 }
 
 let closedApplicationErrorMessage = 'ChatApplication is closed'
 
-export function createChatApplication(config: ChatApplicationConfig & { handler: FetchHandler }): ChatApplication
-export function createChatApplication(config: ChatApplicationConfig & DurableChatHandlerConfig): ChatApplication
-export function createChatApplication(config: ChatApplicationConfig & Partial<DurableChatHandlerConfig> = {}): ChatApplication {
-  const handler = config.handler ?? createChatHandler(config as DurableChatHandlerConfig)
-  let closed = false
-  let setupPromise: Promise<void> | undefined
+function isScopedFetchHandler(handler: FetchHandler): handler is ScopedFetchHandler {
+  return typeof (handler as { withScope?: unknown }).withScope === 'function'
+}
 
-  function ensureSetup(): Promise<void> {
+function isHaltedError(error: unknown): boolean {
+  return error instanceof Error && error.message === 'halted'
+}
+
+export function createChatApplication(config: ChatApplicationConfig): ChatApplication {
+  const baseHandler = config.handler
+  const [rootScope, destroyRootScope] = createScope()
+
+  let closed = false
+  let setupPromise: Promise<Scope> | undefined
+  let scopedHandler: FetchHandler | undefined
+
+  function ensureSetup(): Promise<Scope> {
     if (!setupPromise) {
-      setupPromise = Promise.resolve().then(() => config.setup?.()).then(() => undefined)
+      setupPromise = new Promise<Scope>((resolve, reject) => {
+        let settled = false
+        rootScope.run(function* () {
+          try {
+            const signal = yield* useAbortSignal()
+            if (config.setup) {
+              yield* config.setup({ signal })
+            }
+            const scope = yield* useScope()
+            settled = true
+            resolve(scope)
+            yield* suspend()
+          } catch (error) {
+            if (!settled) {
+              settled = true
+              reject(error)
+              return
+            }
+            if (!isHaltedError(error)) {
+              throw error
+            }
+          }
+        }).catch((error) => {
+          if (!settled) {
+            settled = true
+            reject(error)
+          }
+        })
+      })
     }
     return setupPromise
   }
@@ -33,18 +72,31 @@ export function createChatApplication(config: ChatApplicationConfig & Partial<Du
     async handle(request: Request): Promise<Response> {
       if (closed) throw new Error(closedApplicationErrorMessage)
       try {
-        await ensureSetup()
-      } catch {
+        const scope = await ensureSetup()
+        if (closed) throw new Error(closedApplicationErrorMessage)
+        if (!scopedHandler) {
+          scopedHandler = isScopedFetchHandler(baseHandler)
+            ? baseHandler.withScope(scope)
+            : (nextRequest) => scope.run(function* () {
+                return yield* call(() => baseHandler(nextRequest))
+              })
+        }
+        return scopedHandler(request)
+      } catch (error) {
+        if (closed || error instanceof Error && error.message === closedApplicationErrorMessage) {
+          throw new Error(closedApplicationErrorMessage)
+        }
         return new Response(JSON.stringify({ type: 'error', message: 'Chat application setup failed' }), {
           status: 500,
           headers: { 'content-type': 'application/json' },
         })
       }
-      if (closed) throw new Error(closedApplicationErrorMessage)
-      return handler(request)
     },
     async close(): Promise<void> {
+      if (closed) return
       closed = true
+      await destroyRootScope()
+      scopedHandler = undefined
     },
   }
 }
@@ -64,9 +116,9 @@ export {
 
 export type {
   DurableChatHandlerConfig as ChatHandlerConfig,
+  ChatHandlerSetupContext,
+  ChatHandlerSetup,
   ChatRequestBody,
-  InitializerContext,
-  InitializerHook,
   DurableStreamEvent,
   DurableStreamParams,
   IsomorphicTool,

@@ -292,17 +292,17 @@ export interface DurableStreamEvent {
 // =============================================================================
 
 /**
- * Initializer hook context.
+ * Request setup context for chat handlers.
  */
-export interface InitializerContext {
+export interface ChatHandlerSetupContext {
   request: Request
   body: ChatRequestBody
 }
 
 /**
- * Initializer hook type.
+ * Request setup operation for chat handlers.
  */
-export type InitializerHook = (ctx: InitializerContext) => Operation<void>
+export type ChatHandlerSetup = (ctx: ChatHandlerSetupContext) => Operation<void>
 
 /**
  * Response to an elicitation request.
@@ -394,8 +394,8 @@ export interface ChatRequestBody {
  * Configuration for the durable chat handler.
  */
 export interface DurableChatHandlerConfig {
-  /** Hooks to run during initialization (set up DI contexts) */
-  initializerHooks: InitializerHook[]
+  /** Request-scoped setup operation for configuring DI contexts before durable dependency resolution. */
+  setup?: ChatHandlerSetup
 
   /** Maximum tool loop iterations (default: 10) */
   maxToolIterations?: number

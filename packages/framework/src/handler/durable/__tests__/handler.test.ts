@@ -25,7 +25,7 @@ import {
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
 import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
-import type { InitializerHook, IsomorphicTool } from '../types.ts'
+import type { ChatHandlerSetup, IsomorphicTool } from '../types.ts'
 import type { Message } from '../../../lib/chat/types.ts'
 import {
   createMockProvider,
@@ -42,34 +42,25 @@ import {
 // =============================================================================
 
 /**
- * Create initializer hooks for testing.
+ * Create request setup for testing.
  */
 function createTestHooks(
   provider: ReturnType<typeof createMockProvider>,
   tools: IsomorphicTool[] = [],
   options: { retentionPolicy?: RetentionPolicy } = {}
-): InitializerHook[] {
+): ChatHandlerSetup {
   const bufferStore = createInMemoryBufferStore<string>()
   const registryStore = createInMemoryRegistryStore()
 
-  return [
-    // Set up durable streams infrastructure
-    function* setupDurable() {
-      yield* setupDurableStreams({
-        bufferStore,
-        registryStore,
-        ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
-      })
-    },
-    // Set up provider
-    function* setupProvider() {
-      yield* setupMockModelProvider(provider)
-    },
-    // Set up tools
-    function* setupTools() {
-      yield* setupMockTools(tools)
-    },
-  ]
+  return function* setup() {
+    yield* setupDurableStreams({
+      bufferStore,
+      registryStore,
+      ...(options.retentionPolicy ? { retentionPolicy: options.retentionPolicy } : {}),
+    })
+    yield* setupMockModelProvider(provider)
+    yield* setupMockTools(tools)
+  }
 }
 
 /**
@@ -101,7 +92,7 @@ describe('Durable Chat Handler', () => {
     it('should replay prior user and assistant state for conversationId GET', function* () {
       const provider = createMockProvider({ responses: 'Hello from durable world' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [], {
+        setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
       })
@@ -140,7 +131,7 @@ describe('Durable Chat Handler', () => {
     it('should reuse the same durable session for repeated conversationId requests', function* () {
       const provider = createMockProvider({ responses: ['First response', 'Second response'] })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [], {
+        setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
       })
@@ -178,7 +169,7 @@ describe('Durable Chat Handler', () => {
     it('should stream a simple text response with session info', function* () {
       const provider = createMockProvider({ responses: 'Hello, world!' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { result, sessionId } = yield* call(() =>
@@ -211,7 +202,7 @@ describe('Durable Chat Handler', () => {
     it('should include LSN in correct order', function* () {
       const provider = createMockProvider({ responses: 'One Two Three' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { result } = yield* call(() =>
@@ -230,7 +221,7 @@ describe('Durable Chat Handler', () => {
     it('should expose historical tool trace state in durable replay for completed client outputs', function* () {
       const provider = createMockProvider({ responses: ['First tool turn', 'Second tool turn'] })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [], {
+        setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
       })
@@ -385,7 +376,7 @@ describe('Durable Chat Handler', () => {
     it('does not retain stale handoff placeholders after a client tool completes', function* () {
       const provider = createMockProvider({ responses: 'Second tool turn' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [], {
+        setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
       })
@@ -487,7 +478,7 @@ describe('Durable Chat Handler', () => {
         toolCalls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [echoTool]),
+        setup: createTestHooks(provider, [echoTool]),
         maxToolIterations: 1,
       })
 
@@ -514,7 +505,7 @@ describe('Durable Chat Handler', () => {
         toolCalls: [{ id: 'call-1', name: 'book-flight', arguments: { input: 'NYC to LAX' } }],
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [generatedTool]),
+        setup: createTestHooks(provider, [generatedTool]),
         maxToolIterations: 1,
       })
 
@@ -536,7 +527,7 @@ describe('Durable Chat Handler', () => {
         toolCalls: [{ id: 'call-unsupported', name: 'unsupported_tool', arguments: { input: 'hello' } }],
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [echoTool]),
+        setup: createTestHooks(provider, [echoTool]),
         maxToolIterations: 1,
       })
 
@@ -559,7 +550,7 @@ describe('Durable Chat Handler', () => {
         toolCalls: [{ id: 'call-1', name: 'echo', arguments: { input: 'hello' } }],
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [echoTool]),
+        setup: createTestHooks(provider, [echoTool]),
         maxToolIterations: 1,
       })
 
@@ -628,7 +619,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [handoffTool], {
+        setup: createTestHooks(provider, [handoffTool], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
         maxToolIterations: 5,
@@ -713,7 +704,7 @@ describe('Durable Chat Handler', () => {
       })
 
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [handoffTool], {
+        setup: createTestHooks(provider, [handoffTool], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
         maxToolIterations: 5,
@@ -764,7 +755,7 @@ describe('Durable Chat Handler', () => {
         },
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { result } = yield* call(() =>
@@ -780,7 +771,7 @@ describe('Durable Chat Handler', () => {
       const echoTool = createMockTool('echo', 'Echoes input')
       const provider = createMockProvider({ responses: 'after mismatch' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [echoTool]),
+        setup: createTestHooks(provider, [echoTool]),
       })
 
       const request = new Request('http://localhost/chat', {
@@ -821,17 +812,13 @@ describe('Durable Chat Handler', () => {
 
     it('should emit error when provider is not configured', function* () {
       const handler = createDurableChatHandler({
-        initializerHooks: [
+        setup: function* () {
           // Only setup durable streams, no provider
-          function* () {
-            const bufferStore = createInMemoryBufferStore<string>()
-            const registryStore = createInMemoryRegistryStore()
-            yield* setupDurableStreams({ bufferStore, registryStore })
-          },
-          function* () {
-            yield* ToolRegistryContext.set([])
-          },
-        ],
+          const bufferStore = createInMemoryBufferStore<string>()
+          const registryStore = createInMemoryRegistryStore()
+          yield* setupDurableStreams({ bufferStore, registryStore })
+          yield* ToolRegistryContext.set([])
+        },
       })
 
       const { result } = yield* call(() =>
@@ -847,7 +834,7 @@ describe('Durable Chat Handler', () => {
     it('should return session ID in response headers', function* () {
       const provider = createMockProvider({ responses: 'Hello' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { sessionId } = yield* call(() =>
@@ -862,7 +849,7 @@ describe('Durable Chat Handler', () => {
     it('should return correct content type', function* () {
       const provider = createMockProvider({ responses: 'Hello' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request } = createChatRequest([{ id: 'user:hi', role: 'user', content: 'Hi' }])
@@ -879,7 +866,7 @@ describe('Durable Chat Handler', () => {
     it('should support reconnect via /sessions/{id}?offset=N', function* () {
       const provider = createMockProvider({ responses: 'one two three' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { sessionId, result: initial } = yield* call(() =>
@@ -902,7 +889,7 @@ describe('Durable Chat Handler', () => {
     it('should return metadata for HEAD /sessions/{id}', function* () {
       const provider = createMockProvider({ responses: 'head metadata' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -933,7 +920,7 @@ describe('Durable Chat Handler', () => {
     it('should return 304 for If-None-Match when up-to-date', function* () {
       const provider = createMockProvider({ responses: 'etag check' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -984,7 +971,7 @@ describe('Durable Chat Handler', () => {
         tokenDelayMs: 1_000,
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -1027,7 +1014,7 @@ describe('Durable Chat Handler', () => {
     it('should return 200 for long-poll when backlog data exists', function* () {
       const provider = createMockProvider({ responses: 'long poll backlog' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { sessionId } = yield* call(() =>
@@ -1052,7 +1039,7 @@ describe('Durable Chat Handler', () => {
     it('should stream SSE data and control events', function* () {
       const provider = createMockProvider({ responses: 'sse stream payload' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -1087,7 +1074,7 @@ describe('Durable Chat Handler', () => {
     it('should emit streamClosed control event for SSE at closed tail', function* () {
       const provider = createMockProvider({ responses: 'closed stream' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -1141,7 +1128,7 @@ describe('Durable Chat Handler', () => {
     it('should treat offset=-1 as stream beginning', function* () {
       const provider = createMockProvider({ responses: 'offset beginning' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -1174,7 +1161,7 @@ describe('Durable Chat Handler', () => {
         tokenDelayMs: 1_000,
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -1211,7 +1198,7 @@ describe('Durable Chat Handler', () => {
         tokenDelayMs: 1_000,
       })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request: initialRequest } = createChatRequest([
@@ -1245,7 +1232,7 @@ describe('Durable Chat Handler', () => {
     it('should return [] when caught up with JSON accept header', function* () {
       const provider = createMockProvider({ responses: 'already caught up' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider, [], {
+        setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: 'retain_forever' },
         }),
       })
@@ -1283,7 +1270,7 @@ describe('Durable Chat Handler', () => {
     it('should support protocol-native PUT/POST/DELETE lifecycle on /sessions/{id}', function* () {
       const provider = createMockProvider({ responses: 'unused' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const sessionId = 'protocol-native-1'
@@ -1341,7 +1328,7 @@ describe('Durable Chat Handler', () => {
     it('should emit events as NDJSON with LSN', function* () {
       const provider = createMockProvider({ responses: 'Test' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request } = createChatRequest([{ id: 'user:hi', role: 'user', content: 'Hi' }])
@@ -1363,7 +1350,7 @@ describe('Durable Chat Handler', () => {
     it('should emit ag_ui_checkpoint for durable thread hydration', function* () {
       const provider = createMockProvider({ responses: 'Test' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request } = createChatRequest([{ id: 'user:u1', role: 'user', content: 'Hi' }], {
@@ -1379,7 +1366,7 @@ describe('Durable Chat Handler', () => {
     it('should emit AG-UI run, message, and state events for threaded requests', function* () {
       const provider = createMockProvider({ responses: 'Hello there' })
       const handler = createDurableChatHandler({
-        initializerHooks: createTestHooks(provider),
+        setup: createTestHooks(provider),
       })
 
       const { request } = createChatRequest([{ id: 'user:u1', role: 'user', content: 'Hi' }], {

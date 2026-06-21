@@ -298,19 +298,17 @@ export interface SharedDurableStreamsConfig<T> {
 
 /**
  * Get or create stores from shared storage.
- * Use this in your handler's initializer hooks.
+ * Use this in your handler or application setup.
  *
  * @example
  * ```typescript
  * const sharedStorage = createSharedStorage<string>()
  *
  * createDurableChatHandler({
- *   initializerHooks: [
- *     function* () {
- *       const { bufferStore, registryStore } = getSharedStores(sharedStorage)
- *       yield* setupDurableStreams({ bufferStore, registryStore })
- *     }
- *   ]
+ *   setup: function* () {
+ *     const { bufferStore, registryStore } = getSharedStores(sharedStorage)
+ *     yield* setupDurableStreams({ bufferStore, registryStore })
+ *   }
  * })
  * ```
  */

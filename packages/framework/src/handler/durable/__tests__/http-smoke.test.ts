@@ -20,11 +20,19 @@ import type { RetentionPolicy } from '@sweatpants/durable-streams'
 import { createDurableChatHandler } from '../handler.ts'
 import { createMockProvider, consumeDurableResponse, setupMockModelProvider, setupMockTools } from './test-utils.ts'
 import { createHttpTestServer, type TestServerHandle } from './http-test-server.ts'
-import type { InitializerHook } from '../types.ts'
+import type { ChatHandlerSetup } from '../types.ts'
 
 // =============================================================================
 // TEST SETUP
 // =============================================================================
+
+function composeSetup(steps: ChatHandlerSetup[]): ChatHandlerSetup {
+  return function* setup(ctx) {
+    for (const step of steps) {
+      yield* step(ctx)
+    }
+  }
+}
 
 /**
  * Create a test handler with mock provider.
@@ -33,7 +41,7 @@ import type { InitializerHook } from '../types.ts'
 function createTestHandler(mockResponse: string) {
   const provider = createMockProvider({ responses: mockResponse })
 
-  const initializerHooks: InitializerHook[] = [
+  const setup: ChatHandlerSetup[] = [
     function* setupStreams() {
       yield* setupInMemoryDurableStreams<string>()
     },
@@ -45,7 +53,7 @@ function createTestHandler(mockResponse: string) {
     },
   ]
 
-  return createDurableChatHandler({ initializerHooks })
+  return createDurableChatHandler({ setup: composeSetup(setup) })
 }
 
 /**
@@ -62,7 +70,7 @@ function createTestHandlerWithSharedStorage(
     tokenDelayMs: options?.tokenDelayMs ?? 0,
   })
 
-  const initializerHooks: InitializerHook[] = [
+  const setup: ChatHandlerSetup[] = [
     function* setupSharedStreams() {
       const { bufferStore, registryStore } = getSharedStores(sharedStorage)
       yield* setupDurableStreams({
@@ -79,7 +87,7 @@ function createTestHandlerWithSharedStorage(
     },
   ]
 
-  return createDurableChatHandler({ initializerHooks })
+  return createDurableChatHandler({ setup: composeSetup(setup) })
 }
 
 
@@ -658,7 +666,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
   describe('Error Handling', () => {
     it('should return error event for invalid request', async () => {
       // Create handler without provider to trigger error
-      const initializerHooks: InitializerHook[] = [
+      const setup: ChatHandlerSetup[] = [
         function* setupDurableStreams() {
           yield* setupInMemoryDurableStreams<string>()
         },
@@ -668,7 +676,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
         // No provider setup - should cause error
       ]
 
-      const handler = createDurableChatHandler({ initializerHooks })
+      const handler = createDurableChatHandler({ setup: composeSetup(setup) })
       server = await createHttpTestServer(handler)
 
       const response = await fetch(server.url, {
@@ -885,7 +893,7 @@ async function isOllamaAvailable(): Promise<boolean> {
  * Create a handler with real Ollama provider.
  */
 function createOllamaHandler() {
-  const initializerHooks: InitializerHook[] = [
+  const setup: ChatHandlerSetup[] = [
     function* setupStreams() {
       yield* setupInMemoryDurableStreams<string>()
     },
@@ -897,14 +905,14 @@ function createOllamaHandler() {
     },
   ]
 
-  return createDurableChatHandler({ initializerHooks })
+  return createDurableChatHandler({ setup: composeSetup(setup) })
 }
 
 /**
  * Create a handler with real Ollama provider and shared storage.
  */
 function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<string>) {
-  const initializerHooks: InitializerHook[] = [
+  const setup: ChatHandlerSetup[] = [
     function* setupSharedStreams() {
       const { bufferStore, registryStore } = getSharedStores(sharedStorage)
       yield* setupDurableStreams({ bufferStore, registryStore })
@@ -917,7 +925,7 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
     },
   ]
 
-  return createDurableChatHandler({ initializerHooks })
+  return createDurableChatHandler({ setup: composeSetup(setup) })
 }
 
 describe.skip('Durable Chat Handler - Ollama Integration (moved to @sweatpants/model-provider-pi-ai)', () => {

@@ -9,17 +9,16 @@ import { LoggerFactoryContext } from './context.ts'
 import { createPinoLoggerFactory } from './pino-logger.ts'
 
 /**
- * Setup logger infrastructure as an initializer hook.
+ * Setup logger infrastructure as a chat setup operation.
  * Uses pino with debug level by default.
  *
- * This function conforms to the InitializerHook signature and can be used directly
- * in the initializerHooks array.
+ * This function can be used directly as a chat handler or application setup operation.
  *
  * @example
  * ```typescript
  * // Use default pino logger
  * createDurableChatHandler({
- *   initializerHooks: [setupLogger, ...otherHooks],
+ *   setup: setupLogger,
  * })
  * ```
  */
@@ -36,10 +35,7 @@ export function* setupLogger(_ctx?: unknown): Operation<void> {
  * @example
  * ```typescript
  * createDurableChatHandler({
- *   initializerHooks: [
- *     createLoggerSetup(myCustomLoggerFactory),
- *     ...otherHooks,
- *   ],
+ *   setup: createLoggerSetup(myCustomLoggerFactory),
  * })
  * ```
  */
