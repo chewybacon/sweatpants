@@ -16,3 +16,19 @@ like openapi client generators work
 
 /> `npx @sweatpants/cli generate-mcp-client -o some/path -i http://something.mcp/mcp.json`
 
+## Architecture cleanup
+
+### Split giant chat runtime state machines
+
+- Break `packages/framework/src/handler/durable/chat-engine.ts` into phase-specific modules.
+- Break `packages/framework/src/lib/chat/session/create-session.ts` into command-loop, continuation, elicit-response, and history-sync units.
+- Extract shared event/patch mapping helpers so direct stream events and AG-UI checkpoint events use the same code path.
+- Add targeted regression tests before each extraction to preserve behavior.
+
+### Choose one canonical durable chat protocol path
+
+- Decide whether `@sweatpants/durable-conversations` is the future public API, an internal experiment, or an archive candidate.
+- Document the canonical flow for durable chat sessions, reconnects, tool calls, and elicitation.
+- Remove or archive duplicate durable/session paths once the canonical path is selected.
+- Update README and app examples to use only the canonical public API.
+

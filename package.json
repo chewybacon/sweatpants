@@ -1,38 +1,39 @@
 {
-  "name": "sweatpants",
-  "packageManager": "pnpm@10.24.0",
-  "version": "0.1.0",
-  "description": "AI Chat Framework - Build interactive chat applications with streaming, tools, and durable sessions",
-  "license": "MIT",
-  "pnpm": {
-    "overrides": {
-      "@effectionx/signals": "^0.5.3",
-      "@effectionx/timebox": "^0.4.3",
-      "effection": "4.1.0-alpha.9"
+    "name": "sweatpants",
+    "version": "0.1.0",
+    "description": "AI Chat Framework - Build interactive chat applications with streaming, tools, and durable sessions",
+    "license": "MIT",
+    "scripts": {
+        "dev": "pnpm run -r --parallel --aggregate-output dev",
+        "dev:yo-chat": "pnpm -C packages/framework dev --watch & pnpm -C apps/yo-chat dev",
+        "build": "pnpm run -r build",
+        "test": "pnpm run -r --parallel test",
+        "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
+        "lint": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin . && pnpm run -r --parallel lint",
+        "lint:fix": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin --fix .",
+        "format": "./node_modules/.bin/oxfmt .",
+        "format:check": "files=$(git diff --name-only --diff-filter=ACMRTUXB -- . | grep -E '\\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|yml|yaml)$' || true); [ -z \"$files\" ] || ./node_modules/.bin/oxfmt --check $files",
+        "check": "tsc -b",
+        "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git"
+    },
+    "dependencies": {
+        "@effectionx/context-api": "catalog:",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "oxc-parser": "^0.123.0",
+        "oxfmt": "^0.43.0",
+        "oxlint": "^1.58.0",
+        "tsx": "catalog:",
+        "typescript": "catalog:"
+    },
+    "packageManager": "pnpm@10.24.0",
+    "pnpm": {
+        "overrides": {
+            "@effectionx/signals": "^0.5.3",
+            "@effectionx/timebox": "^0.4.3",
+            "effection": "4.1.0-alpha.9"
+        }
     }
-  },
-  "scripts": {
-    "dev": "pnpm run -r --parallel --aggregate-output dev",
-    "dev:yo-chat": "pnpm -C packages/framework dev --watch & pnpm -C apps/yo-chat dev",
-    "build": "pnpm run -r build",
-    "test": "pnpm run -r --parallel test",
-    "lint": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin . && pnpm run -r --parallel lint",
-    "lint:fix": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin --fix .",
-    "format": "./node_modules/.bin/oxfmt .",
-    "format:check": "./node_modules/.bin/oxfmt --check .",
-    "check": "tsc -b",
-    "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git"
-  },
-  "devDependencies": {
-    "@sweatpants/ts-config": "workspace:*",
-    "oxc-parser": "^0.123.0",
-    "oxfmt": "^0.43.0",
-    "oxlint": "^1.58.0",
-    "tsx": "catalog:",
-    "typescript": "catalog:"
-  },
-  "dependencies": {
-    "@effectionx/context-api": "catalog:",
-    "effection": "catalog:"
-  }
 }
