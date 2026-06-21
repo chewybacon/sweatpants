@@ -23,7 +23,7 @@ import {
   resource,
   each,
   createQueue,
-} from 'effection'
+} from "effection";
 import type {
   ToolSession,
   ToolSessionStatus,
@@ -37,15 +37,15 @@ import type {
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
-} from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat/mcp-tools";
 import type {
   RawElicitResult,
   RawSampleResult,
   ElicitsMap,
   ElicitId,
   FinalizedMcpToolWithElicits,
-} from '@sweatpants/framework/chat/mcp-tools'
-import { createBridgeHost, type ElicitResponse } from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat/mcp-tools";
+import { createBridgeHost, type ElicitResponse } from "@sweatpants/framework/chat/mcp-tools";
 
 // =============================================================================
 // INTERNAL TYPES
@@ -55,34 +55,35 @@ import { createBridgeHost, type ElicitResponse } from '@sweatpants/framework/cha
  * Pending elicit - stores the signal for responding.
  */
 interface PendingElicit {
-  id: string
-  elicitRequestId: ElicitId
-  signal: Signal<ElicitResponse, void>
+  id: string;
+  elicitRequestId: ElicitId;
+  signal: Signal<ElicitResponse, void>;
 }
 
 /**
  * Pending sample - stores the signal for responding.
  */
 interface LocalSampleResponse {
-  result: RawSampleResult
+  result: RawSampleResult;
 }
 
 interface PendingSample {
-  id: string
-  signal: Signal<LocalSampleResponse, void>
+  id: string;
+  signal: Signal<LocalSampleResponse, void>;
 }
 
 /**
  * Internal state for the session.
  */
 interface SessionState<TResult> {
-  status: ToolSessionStatus
-  lsn: number
-  pendingElicit: PendingElicit | null
-  pendingSample: PendingSample | null
-  result: TResult | null
-  error: Error | null
-  toolCompleted: boolean
+  status: ToolSessionStatus;
+  lsn: number;
+  pendingElicit: PendingElicit | null;
+  pendingSample: PendingSample | null;
+  result: TResult | null;
+  error: Error | null;
+  toolCompleted: boolean;
+  events: ToolSessionEvent<TResult>[];
 }
 
 // =============================================================================
@@ -114,25 +115,26 @@ export function createToolSession<
   tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>,
   params: TParams,
   _samplingProvider: ToolSessionSamplingProvider,
-  options: ToolSessionOptions = {}
+  options: ToolSessionOptions = {},
 ): Operation<ToolSession<TResult>> {
   return resource<ToolSession<TResult>>(function* (provide) {
-    const sessionId = options.sessionId ?? generateSessionId()
+    const sessionId = options.sessionId ?? generateSessionId();
 
     // Session state
     const state: SessionState<TResult> = {
-      status: 'initializing',
+      status: "initializing",
       lsn: 0,
       pendingElicit: null,
       pendingSample: null,
       result: null,
       error: null,
       toolCompleted: false,
-    }
+      events: [],
+    };
 
     // Queue for events - producer (tool execution) pushes, consumer pulls
     // createQueue returns a synchronous queue with add/close/next methods
-    const eventQueue = createQueue<ToolSessionEvent<TResult>, void>()
+    const eventQueue = createQueue<ToolSessionEvent<TResult>, void>();
 
     // Create the bridge host
     const hostConfig = {
@@ -142,112 +144,128 @@ export function createToolSession<
       ...(options.signal !== undefined && { signal: options.signal }),
       ...(options.parentMessages !== undefined && { parentMessages: options.parentMessages }),
       ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
-    }
-    const host = createBridgeHost(hostConfig)
+    };
+    const host = createBridgeHost(hostConfig);
 
     // Helper to create a full event with LSN and timestamp
-    function createEvent(event: Omit<ToolSessionEvent<TResult>, 'lsn' | 'timestamp'>): ToolSessionEvent<TResult> {
-      return {
+    function createEvent(
+      event: Omit<ToolSessionEvent<TResult>, "lsn" | "timestamp">,
+    ): ToolSessionEvent<TResult> {
+      const fullEvent = {
         ...event,
         lsn: ++state.lsn,
         timestamp: Date.now(),
-      } as ToolSessionEvent<TResult>
+      } as ToolSessionEvent<TResult>;
+      state.events.push(fullEvent);
+      return fullEvent;
     }
 
     // Start tool execution immediately - this runs in the session's scope
-    state.status = 'running'
+    state.status = "running";
 
     // Spawn event processor - converts bridge events to session events
     yield* spawn(function* () {
       for (const event of yield* each(host.events)) {
         switch (event.type) {
-          case 'elicit': {
-            const elicitId = `${sessionId}:elicit:${state.lsn}`
-            state.status = 'awaiting_elicit'
+          case "elicit": {
+            const elicitId = `${sessionId}:elicit:${state.lsn}`;
+            state.status = "awaiting_elicit";
             state.pendingElicit = {
               id: elicitId,
               elicitRequestId: event.request.id,
               signal: event.responseSignal,
-            }
+            };
 
-            eventQueue.add(createEvent({
-              type: 'elicit_request',
-              elicitId,
-              key: event.request.key,
-              message: event.request.message,
-              schema: event.request.schema.json,
-            } as Omit<ElicitRequestEvent, 'lsn' | 'timestamp'>))
-            break
+            eventQueue.add(
+              createEvent({
+                type: "elicit_request",
+                elicitId,
+                key: event.request.key,
+                message: event.request.message,
+                schema: event.request.schema.json,
+              } as Omit<ElicitRequestEvent, "lsn" | "timestamp">),
+            );
+            break;
           }
 
-          case 'sample': {
-            const sampleId = `${sessionId}:sample:${state.lsn}`
-            state.status = 'awaiting_sample'
-            state.pendingSample = { id: sampleId, signal: event.responseSignal }
+          case "sample": {
+            const sampleId = `${sessionId}:sample:${state.lsn}`;
+            state.status = "awaiting_sample";
+            state.pendingSample = { id: sampleId, signal: event.responseSignal };
 
-            eventQueue.add(createEvent({
-              type: 'sample_request',
-              sampleId,
-              messages: event.messages,
-              systemPrompt: event.options?.systemPrompt,
-              maxTokens: event.options?.maxTokens,
-              tools: event.options?.tools,
-              toolChoice: event.options?.toolChoice,
-              schema: event.options?.schema,
-            } as Omit<SampleRequestEvent, 'lsn' | 'timestamp'>))
-            break
+            eventQueue.add(
+              createEvent({
+                type: "sample_request",
+                sampleId,
+                messages: event.messages,
+                systemPrompt: event.options?.systemPrompt,
+                maxTokens: event.options?.maxTokens,
+                tools: event.options?.tools,
+                toolChoice: event.options?.toolChoice,
+                schema: event.options?.schema,
+              } as Omit<SampleRequestEvent, "lsn" | "timestamp">),
+            );
+            break;
           }
 
-          case 'log':
-            eventQueue.add(createEvent({
-              type: 'log',
-              level: event.level,
-              message: event.message,
-            } as Omit<LogEvent, 'lsn' | 'timestamp'>))
-            break
+          case "log":
+            eventQueue.add(
+              createEvent({
+                type: "log",
+                level: event.level,
+                message: event.message,
+              } as Omit<LogEvent, "lsn" | "timestamp">),
+            );
+            break;
 
-          case 'notify':
-            eventQueue.add(createEvent({
-              type: 'progress',
-              message: event.message,
-              progress: event.progress,
-            } as Omit<ProgressEvent, 'lsn' | 'timestamp'>))
-            break
+          case "notify":
+            eventQueue.add(
+              createEvent({
+                type: "progress",
+                message: event.message,
+                progress: event.progress,
+              } as Omit<ProgressEvent, "lsn" | "timestamp">),
+            );
+            break;
         }
-        yield* each.next()
+        yield* each.next();
       }
-    })
+    });
 
     // Spawn tool runner
     yield* spawn(function* () {
       try {
-        const result = yield* host.run()
-        state.status = 'completed'
-        state.result = result
-        state.toolCompleted = true
+        const result = yield* host.run();
+        state.status = "completed";
+        state.result = result;
+        state.toolCompleted = true;
 
-        eventQueue.add(createEvent({
-          type: 'result',
-          result,
-        } as Omit<ResultEvent<TResult>, 'lsn' | 'timestamp'>))
-        
+        eventQueue.add(
+          createEvent({
+            type: "result",
+            result,
+          } as Omit<ResultEvent<TResult>, "lsn" | "timestamp">),
+        );
+
         // Close the queue when tool completes
-        eventQueue.close()
+        eventQueue.close();
       } catch (error) {
-        state.status = 'failed'
-        state.error = error as Error
-        state.toolCompleted = true
+        state.status = "failed";
+        state.error = error as Error;
+        state.toolCompleted = true;
 
-        eventQueue.add(createEvent({
-          type: 'error',
-          name: (error as Error).name,
-          message: (error as Error).message,
-          stack: (error as Error).stack,
-        } as Omit<ErrorEvent, 'lsn' | 'timestamp'>))
-        
-        eventQueue.close()
+        eventQueue.add(
+          createEvent({
+            type: "error",
+            name: (error as Error).name,
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+          } as Omit<ErrorEvent, "lsn" | "timestamp">),
+        );
+
+        eventQueue.close();
       }
-    })
+    });
 
     // Spawned tasks are now active. Events are buffered by createQueue()
     // and will be available when the consumer calls eventQueue.next().
@@ -258,50 +276,72 @@ export function createToolSession<
       toolName: tool.name,
 
       *status(): Operation<ToolSessionStatus> {
-        return state.status
+        return state.status;
       },
 
-      // events() returns a Stream that pulls from the queue
-      // Each call to next() blocks until an event is available
-      events(_afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
+      // events() returns a Stream that pulls from the queue.
+      // When afterLSN is provided, buffered events after that offset are
+      // replayed first so resumed requests do not see already-answered
+      // elicitations.
+      events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
         return resource<Subscription<ToolSessionEvent<TResult>, void>>(function* (provide) {
+          let replayIndex = 0;
+
           yield* provide({
             *next(): Operation<IteratorResult<ToolSessionEvent<TResult>, void>> {
-              // Pull next event from queue - this blocks until available
-              return yield* eventQueue.next()
+              if (afterLSN !== undefined) {
+                while (replayIndex < state.events.length) {
+                  const event = state.events[replayIndex++]!;
+                  if (event.lsn > afterLSN) {
+                    return { done: false, value: event };
+                  }
+                }
+              }
+
+              // Pull next live event from queue - this blocks until available.
+              // If this resumed stream is reading from a queue with older
+              // buffered events still present, discard events at/before the
+              // requested offset.
+              while (true) {
+                const next = yield* eventQueue.next();
+                if (afterLSN !== undefined && !next.done && next.value.lsn <= afterLSN) {
+                  continue;
+                }
+                return next;
+              }
             },
-          })
-        })
+          });
+        });
       },
 
       *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
-        const pending = state.pendingElicit
+        const pending = state.pendingElicit;
         if (!pending) {
-          return
+          return;
         }
         if (pending.id !== elicitId) {
-          throw new Error(`Elicitation ID mismatch: expected ${pending.id}, got ${elicitId}`)
+          throw new Error(`Elicitation ID mismatch: expected ${pending.id}, got ${elicitId}`);
         }
 
         // Send response via the bridge's signal - this unblocks the tool execution
-        state.pendingElicit = null
-        state.status = 'running'
-        pending.signal.send({ id: pending.elicitRequestId, result: response })
+        state.pendingElicit = null;
+        state.status = "running";
+        pending.signal.send({ id: pending.elicitRequestId, result: response });
       },
 
       *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
-        const pending = state.pendingSample
+        const pending = state.pendingSample;
         if (!pending) {
-          return
+          return;
         }
         if (pending.id !== sampleId) {
-          throw new Error(`Sample ID mismatch: expected ${pending.id}, got ${sampleId}`)
+          throw new Error(`Sample ID mismatch: expected ${pending.id}, got ${sampleId}`);
         }
 
         // Send response via the bridge's signal
-        state.pendingSample = null
-        state.status = 'running'
-        pending.signal.send({ result: response })
+        state.pendingSample = null;
+        state.status = "running";
+        pending.signal.send({ result: response });
       },
 
       *emitWakeUp(): Operation<void> {
@@ -309,24 +349,30 @@ export function createToolSession<
       },
 
       *cancel(reason?: string): Operation<void> {
-        if (state.status === 'completed' || state.status === 'failed' || state.status === 'cancelled') {
-          return
+        if (
+          state.status === "completed" ||
+          state.status === "failed" ||
+          state.status === "cancelled"
+        ) {
+          return;
         }
 
-        state.status = 'cancelled'
-        state.toolCompleted = true
+        state.status = "cancelled";
+        state.toolCompleted = true;
 
-        eventQueue.add(createEvent({
-          type: 'cancelled',
-          reason,
-        } as Omit<CancelledEvent, 'lsn' | 'timestamp'>))
-        
-        eventQueue.close()
+        eventQueue.add(
+          createEvent({
+            type: "cancelled",
+            reason,
+          } as Omit<CancelledEvent, "lsn" | "timestamp">),
+        );
+
+        eventQueue.close();
       },
-    }
+    };
 
-    yield* provide(session)
-  })
+    yield* provide(session);
+  });
 }
 
 // =============================================================================
@@ -337,5 +383,5 @@ export function createToolSession<
  * Generate a unique session ID.
  */
 function generateSessionId(): string {
-  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+  return `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }

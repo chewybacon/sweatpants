@@ -13,105 +13,111 @@ A framework for building AI chat applications with React and Effection.
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@sweatpants/framework` | Core framework with chat, tools, and React integration |
-| `@sweatpants/cli` | CLI for generating TypeScript types from MCP manifests |
-| `@sweatpants/elicit-context` | Encode/decode elicit context for tool interactions |
+| Package                              | Description                                                                                  |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `@sweatpants/framework`              | Server/chat framework primitives, durable handlers, isomorphic tools, and MCP plugin support |
+| `@sweatpants/react-chat`             | React hooks and message derivation for chat UIs                                              |
+| `@sweatpants/durable-streams`        | Reconnectable token buffers and durable stream transports                                    |
+| `@sweatpants/stream-bridge`          | Effection/Web stream bridge helpers                                                          |
+| `@sweatpants/tool-runtime-local`     | Local/worker-backed tool runtime                                                             |
+| `@sweatpants/tool-runtime-agentcore` | AgentCore-backed remote tool runtime                                                         |
+| `@sweatpants/model-provider-pi-ai`   | Model provider adapter for `@earendil-works/pi-ai`                                           |
+| `@sweatpants/cli`                    | CLI for generating TypeScript types from MCP manifests                                       |
+| `@sweatpants/elicit-context`         | Encode/decode elicit context for tool interactions                                           |
 
 ## Quick Start
 
 ```bash
-pnpm add @sweatpants/framework
+pnpm add @sweatpants/framework @sweatpants/react-chat
 ```
 
 ### Basic Chat Session
 
 ```tsx
-import { useChat } from '@sweatpants/framework/react/chat'
+import { useChat } from "@sweatpants/react-chat";
 
 function Chat() {
-  const { messages, sendMessage, isStreaming } = useChat({
-    endpoint: '/api/chat',
-  })
+    const { messages, send, isStreaming } = useChat({
+        baseUrl: "/api/chat",
+    });
 
-  return (
-    <div>
-      {messages.map((msg) => (
-        <div key={msg.id}>{msg.content}</div>
-      ))}
-      <input
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            sendMessage(e.currentTarget.value)
-          }
-        }}
-      />
-    </div>
-  )
+    return (
+        <div>
+            {messages.map((msg) => (
+                <div key={msg.id}>{msg.content}</div>
+            ))}
+            <input
+                onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                        send(e.currentTarget.value);
+                    }
+                }}
+            />
+        </div>
+    );
 }
 ```
 
 ### Defining Tools
 
 ```ts
-import { defineTool } from '@sweatpants/framework/chat/isomorphic-tools'
-import { z } from 'zod'
+import { createIsomorphicTool } from "@sweatpants/framework/chat/isomorphic-tools";
+import { z } from "zod";
 
-export const calculator = defineTool({
-  name: 'calculator',
-  description: 'Perform mathematical calculations',
-  parameters: z.object({
-    expression: z.string().describe('Math expression to evaluate'),
-  }),
-  execute: async ({ expression }) => {
-    const result = eval(expression)
-    return { result }
-  },
-})
+export const calculator = createIsomorphicTool("calculator")
+    .description("Perform mathematical calculations")
+    .parameters(
+        z.object({
+            expression: z.string().describe("Math expression to evaluate"),
+        }),
+    )
+    .server(function* ({ expression }) {
+        const result = Number(expression);
+        return { result };
+    });
 ```
 
 ### MCP Tools with Elicit
 
 ```ts
-import { defineMcpTool } from '@sweatpants/framework/chat/mcp-tools'
-import { z } from 'zod'
+import { createMcpTool } from "@sweatpants/framework/chat/mcp-tools";
+import { z } from "zod";
 
-export const bookFlight = defineMcpTool({
-  name: 'book_flight',
-  description: 'Book a flight for the user',
-  parameters: z.object({
-    from: z.string(),
-    to: z.string(),
-    date: z.string(),
-  }),
-  elicits: {
-    confirm: z.object({
-      confirmed: z.boolean(),
-    }),
-  },
-  execute: async ({ from, to, date }, ctx) => {
-    // Request user confirmation
-    const response = await ctx.elicit('confirm', {
-      message: `Book flight from ${from} to ${to} on ${date}?`,
+export const bookFlight = createMcpTool("book_flight")
+    .description("Book a flight for the user")
+    .parameters(
+        z.object({
+            from: z.string(),
+            to: z.string(),
+            date: z.string(),
+        }),
+    )
+    .elicits({
+        confirm: {
+            response: z.object({ confirmed: z.boolean() }),
+        },
     })
+    .execute(function* ({ from, to, date }, ctx) {
+        // Request user confirmation
+        const response = yield* ctx.elicit("confirm", {
+            message: `Book flight from ${from} to ${to} on ${date}?`,
+        });
 
-    if (response.action === 'accept' && response.content.confirmed) {
-      return { status: 'booked', confirmation: 'ABC123' }
-    }
-    return { status: 'cancelled' }
-  },
-})
+        if (response.action === "accept" && response.content.confirmed) {
+            return { status: "booked", confirmation: "ABC123" };
+        }
+        return { status: "cancelled" };
+    });
 ```
 
 ## Apps
 
-| App | Description |
-|-----|-------------|
-| `yo-chat` | Reference web application with full chat UI |
-| `yo-agent` | CLI agent for terminal-based chat |
-| `yo-mcp` | MCP server demo |
-| `hydra` | Effection tutorial and examples |
+| App        | Description                                 |
+| ---------- | ------------------------------------------- |
+| `yo-chat`  | Reference web application with full chat UI |
+| `yo-agent` | CLI agent for terminal-based chat           |
+| `yo-mcp`   | MCP server demo                             |
+| `hydra`    | Effection tutorial and examples             |
 
 ## Development
 
@@ -158,13 +164,13 @@ Packages export TypeScript source files via the `development` condition:
 ### Workspace Structure
 
 - **tsc-buildable**: elicit-context, cli, framework, hydra
-  - Use `pnpm tsc -b` for builds
-  - Participate in incremental build chain
+    - Use `pnpm tsc -b` for builds
+    - Participate in incremental build chain
 
 - **Bundler-based**: yo-agent, yo-chat, yo-mcp
-  - Use tsup/vite for builds
-  - Type-check with `pnpm check`
-  - Not part of `tsc -b` chain
+    - Use tsup/vite for builds
+    - Type-check with `pnpm check`
+    - Not part of `tsc -b` chain
 
 ## Architecture
 
