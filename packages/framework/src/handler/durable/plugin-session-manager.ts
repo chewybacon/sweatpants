@@ -23,10 +23,8 @@
  *
  * ```typescript
  * // At handler initialization
- * const sessionManager = yield* createPluginSessionManager({
- *   store: yield* createInMemoryToolSessionStore(),
- *   samplingProvider: { sample: ... },
- * })
+ * const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+ * const sessionManager = yield* createPluginSessionManager({ registry, samplingProvider })
  *
  * // In chat-engine executing_tools phase
  * const session = yield* sessionManager.create({
@@ -56,8 +54,7 @@ import type {
   RawSampleResultWithToolCalls,
   ToolSessionSamplingProvider,
 } from '../../lib/chat/mcp-tools/session/types.ts'
-// Note: createToolSessionRegistry should be called at server startup, not here
-// import { createToolSessionRegistry } from '../../lib/chat/mcp-tools/session/session-registry.ts'
+// Note: concrete tool session registries should be created at server startup, not here.
 import type { ElicitsMap, RawElicitResult } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
@@ -223,6 +220,7 @@ export interface PluginSessionManagerOptions {
    *   const registry = yield* createToolSessionRegistry(store, { samplingProvider })
    *   return { registry }
    * })
+   * // createInMemoryToolSessionStore/createToolSessionRegistry are provided by the local tool runtime package.
    * ```
    */
   registry: ToolSessionRegistry

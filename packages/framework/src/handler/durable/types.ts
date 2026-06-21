@@ -11,6 +11,7 @@ import type { Operation, Stream, Channel } from 'effection'
 import type { ZodType } from 'zod'
 import type { Model, Runtime, StreamOptions } from '../../lib/chat/runtime/index.ts'
 import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
+import type { ToolInventoryEntry, ToolRuntime } from '../../lib/chat/index.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
@@ -204,6 +205,15 @@ export interface ChatEngineParams {
 
   /** Runtime stream options */
   streamOptions?: StreamOptions
+
+  /** Tool inventory snapshot captured before durable background execution. */
+  toolInventoryEntries?: ToolInventoryEntry[]
+
+  /** Active tool runtime captured before durable background execution. */
+  toolRuntime?: ToolRuntime
+
+  /** Active tool runtime id used to validate/resume pending tool executions. */
+  toolRuntimeId?: string
 
   /** Provider used for direct plugin-tool sampling when no PluginSessionManager is installed. */
   pluginSamplingProvider?: ToolSessionSamplingProvider

@@ -2,7 +2,7 @@
  * Test Utilities for Durable Chat Handler
  *
  * Provides:
- * - Mock ChatProvider that simulates LLM responses
+ * - Mock model provider that simulates LLM responses
  * - Test initializer hooks
  * - Response consumption helpers
  * - DI setup helpers
@@ -11,8 +11,17 @@ import { resource, sleep } from 'effection'
 import type { Operation, Stream } from 'effection'
 import { z } from 'zod'
 import type { ChatEvent, ChatResult, Message, ToolCall as ProviderToolCall } from '../../../lib/chat/types.ts'
-import type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from '../../../lib/chat/providers/types.ts'
-import { ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
+import {
+  ToolInventoryContext,
+  createToolInventory,
+  type ToolInventoryEntry,
+} from '../../../lib/chat/tool-inventory.ts'
+import {
+  ToolRuntimeContext,
+  createToolExecutionRef,
+  type ToolRuntime,
+} from '../../../lib/chat/tool-runtime.ts'
 import {
   ModelProviderContext,
   ModelProviderModelContext,
@@ -33,6 +42,26 @@ import type { StreamEvent } from '../../types.ts'
 // MOCK PROVIDER
 // =============================================================================
 
+export interface MockProviderStreamOptions {
+  model?: string
+  baseUri?: string
+  apiKey?: string
+  toolChoice?: 'auto' | 'none' | 'required'
+  schema?: Record<string, unknown>
+  isomorphicToolSchemas?: Array<Record<string, unknown>>
+}
+
+export interface MockProviderCapabilities {
+  thinking: boolean
+  toolCalling: boolean
+}
+
+export interface MockProvider {
+  readonly name: string
+  readonly capabilities: MockProviderCapabilities
+  stream(messages: Message[], options?: MockProviderStreamOptions): Stream<ChatEvent, ChatResult>
+}
+
 export interface MockProviderConfig {
   /** Response text (or sequence for multiple calls) */
   responses?: string | string[]
@@ -47,11 +76,11 @@ export interface MockProviderConfig {
   /** Whether to emit thinking events */
   emitThinking?: boolean
   /** Custom stream function for full control */
-  customStream?: (messages: Message[], options?: ChatStreamOptions) => Stream<ChatEvent, ChatResult>
+  customStream?: (messages: Message[], options?: MockProviderStreamOptions) => Stream<ChatEvent, ChatResult>
 }
 
 /**
- * Create a mock ChatProvider for testing.
+ * Create a mock model provider for testing.
  *
  * By default, responds with "Hello, world!" but can be configured with:
  * - Custom response text
@@ -59,7 +88,7 @@ export interface MockProviderConfig {
  * - Thinking events
  * - Custom timing
  */
-export function createMockProvider(config: MockProviderConfig = {}): ChatProvider {
+export function createMockProvider(config: MockProviderConfig = {}): MockProvider {
   const {
     responses = 'Hello, world!',
     toolCalls,
@@ -70,7 +99,7 @@ export function createMockProvider(config: MockProviderConfig = {}): ChatProvide
 
   let callCount = 0
 
-  const capabilities: ProviderCapabilities = {
+  const capabilities: MockProviderCapabilities = {
     thinking: emitThinking,
     toolCalling: !!toolCalls,
   }
@@ -79,7 +108,7 @@ export function createMockProvider(config: MockProviderConfig = {}): ChatProvide
     name: 'mock',
     capabilities,
 
-    stream(_messages: Message[], _options?: ChatStreamOptions): Stream<ChatEvent, ChatResult> {
+    stream(_messages: Message[], _options?: MockProviderStreamOptions): Stream<ChatEvent, ChatResult> {
       if (customStream) {
         return customStream(_messages, _options)
       }
@@ -256,7 +285,7 @@ function providerMessagesFromRuntimeContext(context: Parameters<Runtime['stream'
   return messages
 }
 
-export function createMockModelProviderDriver(provider: ChatProvider): ModelProviderDriver {
+export function createMockModelProviderDriver(provider: MockProvider): ModelProviderDriver {
   return {
     stream(request) {
       return resource(function* (provide) {
@@ -328,7 +357,7 @@ export function createMockModelProviderDriver(provider: ChatProvider): ModelProv
   }
 }
 
-export function* setupMockModelProvider(provider: ChatProvider): Operation<void> {
+export function* setupMockModelProvider(provider: MockProvider): Operation<void> {
   yield* ModelProviderContext.set(createMockModelProviderDriver(provider))
   yield* ModelProviderModelContext.set(testModel())
 }
@@ -375,11 +404,60 @@ export function createMockIsomorphicTool(name: string): IsomorphicTool {
 // INITIALIZER HOOKS
 // =============================================================================
 
+function toolEntry(tool: IsomorphicTool): ToolInventoryEntry<IsomorphicTool> {
+  return {
+    definition: {
+      name: tool.name,
+      description: tool.description,
+      parameters: z.toJSONSchema(tool.parameters),
+    },
+    implementation: tool,
+    capabilities: {
+      inline: !!tool.server,
+      client: !!tool.client,
+    },
+  }
+}
+
+function createTestToolRuntime(tools: IsomorphicTool[]): ToolRuntime {
+  const byName = new Map(tools.map((tool) => [tool.name, tool] as const))
+  return {
+    id: 'test',
+    *execute(request) {
+      const tool = byName.get(request.call.function.name)
+      const ref = createToolExecutionRef({ runtimeId: 'test', callId: request.call.id, toolName: request.call.function.name })
+      if (!tool) return { kind: 'failed', ref, error: { code: 'TOOL_NOT_FOUND', message: `Tool not found: ${request.call.function.name}` } }
+      const params = tool.parameters.parse(request.call.function.arguments)
+      if (!tool.server) {
+        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, usesHandoff: false } }
+        return { kind: 'failed', ref, error: { code: 'TOOL_NOT_EXECUTABLE', message: `Tool not executable: ${tool.name}` } }
+      }
+      try {
+        const serverOutput = yield* tool.server(params, { callId: request.call.id, signal: request.signal ?? new AbortController().signal })
+        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, serverOutput, usesHandoff: true } }
+        return { kind: 'completed', ref, result: serverOutput }
+      } catch (error) {
+        return { kind: 'failed', ref, error: { code: 'TOOL_ERROR', message: error instanceof Error ? error.message : String(error) } }
+      }
+    },
+    *resume(request) {
+      return { kind: 'failed', ref: request.ref, error: { code: 'EXECUTION_NOT_FOUND', message: `Execution not found: ${request.ref.executionId}` } }
+    },
+    *abort() {},
+  }
+}
+
+export function* setupMockTools(tools: IsomorphicTool[]): Operation<void> {
+  yield* ToolRegistryContext.set(tools)
+  yield* ToolInventoryContext.set(createToolInventory(tools.map(toolEntry)))
+  yield* ToolRuntimeContext.set(createTestToolRuntime(tools))
+}
+
 /**
  * Create initializer hooks for testing with a mock provider and tools.
  */
 export function createTestInitializerHooks(
-  provider: ChatProvider,
+  provider: MockProvider,
   tools: IsomorphicTool[] = []
 ): InitializerHook[] {
   return [
@@ -387,7 +465,7 @@ export function createTestInitializerHooks(
       yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set(tools)
+      yield* setupMockTools(tools)
     },
   ]
 }

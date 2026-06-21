@@ -40,6 +40,8 @@ import {
   McpToolRegistryContext,
   PluginSessionRegistryContext,
   PluginSessionManagerContext,
+  ToolInventoryContext,
+  createToolInventory,
 } from '@sweatpants/framework/chat'
 import {
   createPluginRegistryFrom,
@@ -48,17 +50,22 @@ import {
 } from '@sweatpants/framework/chat/mcp-tools'
 import {
   createInMemoryToolSessionStore,
+  createIsomorphicToolInventoryEntry,
+  createMcpToolInventoryEntry,
   createToolSessionRegistry,
+  installLocalToolRuntime,
   ToolSessionSamplingProviderContext,
 } from '@sweatpants/tool-runtime-local'
 import {
   createAgentCoreRemoteToolRuntimeClient,
+  createAgentCoreToolInventoryEntry,
   createAgentCoreToolSessionRegistry,
   createAwsSdkAgentCoreInvoker,
   createInMemoryAgentCoreToolSessionEventStore,
   createInMemoryAgentCoreToolSessionHandleStore,
   createRedisAgentCoreToolSessionEventStore,
   createRedisAgentCoreToolSessionHandleStore,
+  installAgentCoreToolRuntime,
   type AgentCoreToolRuntimeProfile,
   type AgentCoreToolSessionStores,
   type RedisLikeClient,
@@ -296,6 +303,11 @@ function activeMcpPluginTools(): Array<(typeof mcpPluginTools)[number]> {
 
 function activeAgentCoreToolNames(): string[] {
   return configuredAgentCoreToolNames()
+}
+
+function canonicalizeAgentCoreTool<T extends { name: string }>(tool: T): T {
+  const canonicalName = normalizeAgentCoreToolName(tool.name) ?? tool.name
+  return canonicalName === tool.name ? tool : { ...(tool as object), name: canonicalName } as T
 }
 
 const activePluginTools = activeMcpPluginTools()
@@ -593,6 +605,35 @@ const setupPlugins = function* (_ctx: InitializerContext): Operation<void> {
 
   yield* PluginSessionRegistryContext.set(sharedPluginSessionRegistry)
   yield* PluginSessionManagerContext.set(sharedPluginSessionManager)
+
+  const runtimePluginTools = env.MCP_TOOL_RUNTIME === 'agentcore'
+    ? activePluginTools.map(canonicalizeAgentCoreTool)
+    : activePluginTools
+
+  const pluginGeneratedNames = new Set(activePluginTools.map((tool) => tool.name))
+  const inventory = createToolInventory([
+    ...allTools
+      .filter((tool) => !pluginGeneratedNames.has(tool.name))
+      .map((tool) => createIsomorphicToolInventoryEntry(tool)),
+    ...(env.MCP_TOOL_RUNTIME === 'agentcore'
+      ? runtimePluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool))
+      : runtimePluginTools.map((tool) => createMcpToolInventoryEntry(tool))),
+  ])
+  yield* ToolInventoryContext.set(inventory)
+
+  if (env.MCP_TOOL_RUNTIME === 'agentcore') {
+    yield* installAgentCoreToolRuntime({
+      tools: runtimePluginTools,
+      registry: sharedPluginSessionRegistry,
+    })
+  } else {
+    yield* installLocalToolRuntime({
+      tools: runtimePluginTools,
+      isomorphicTools: allTools,
+      registry: sharedPluginSessionRegistry,
+      samplingProvider: pluginSamplingProvider,
+    })
+  }
 }
 
 // Create the handler with hook-based configuration

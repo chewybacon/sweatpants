@@ -209,6 +209,9 @@ importers:
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@sweatpants/tool-runtime-agentcore':
+        specifier: workspace:*
+        version: link:../../packages/tool-runtime-agentcore
       bedrock-agentcore:
         specifier: ^0.2.0
         version: 0.2.4(playwright@1.57.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -307,6 +310,9 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
+      '@sweatpants/tool-runtime-local':
+        specifier: workspace:*
+        version: link:../../packages/tool-runtime-local
       chalk:
         specifier: ^5.4.1
         version: 5.6.2

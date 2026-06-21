@@ -23,7 +23,7 @@ import {
   setupDurableStreams,
 } from '../../../lib/chat/durable-streams/index.ts'
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
-import { ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
 import type { InitializerHook, IsomorphicTool } from '../types.ts'
 import type { Message } from '../../../lib/chat/types.ts'
@@ -34,6 +34,7 @@ import {
   createChatRequest,
   getEventsByType,
   setupMockModelProvider,
+  setupMockTools,
 } from './test-utils.ts'
 
 // =============================================================================
@@ -66,7 +67,7 @@ function createTestHooks(
     },
     // Set up tools
     function* setupTools() {
-      yield* ToolRegistryContext.set(tools)
+      yield* setupMockTools(tools)
     },
   ]
 }

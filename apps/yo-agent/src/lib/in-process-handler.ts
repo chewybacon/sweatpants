@@ -20,13 +20,19 @@ import { createChatHandler } from '@sweatpants/framework/server'
 import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/server'
 import {
   MaxIterationsContext,
+  ToolInventoryContext,
   ToolRegistryContext,
+  createToolInventory,
 } from '@sweatpants/framework/chat'
 import {
   installPiAiModelProvider,
   resolveRuntimeModel,
 } from '@sweatpants/model-provider-pi-ai'
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
+import {
+  createIsomorphicToolInventoryEntry,
+  installLocalToolRuntime,
+} from '@sweatpants/tool-runtime-local'
 import type { Operation } from 'effection'
 
 // Re-export for convenience
@@ -65,6 +71,8 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
 
   const setupTools = function* (_ctx: InitializerContext): Operation<void> {
     yield* ToolRegistryContext.set(tools)
+    yield* ToolInventoryContext.set(createToolInventory(tools.map((tool) => createIsomorphicToolInventoryEntry(tool))))
+    yield* installLocalToolRuntime({ isomorphicTools: tools })
   }
 
   const setupMaxIterations = function* (_ctx: InitializerContext): Operation<void> {

@@ -1,3 +1,10 @@
+export {
+  createAgentCoreToolInventoryEntry,
+  createAgentCoreToolRuntimeDriver,
+  installAgentCoreToolRuntime,
+  type AgentCoreToolRuntimeDriverOptions,
+} from './driver.ts'
+
 export type {
   AgentCoreToolSessionHandle,
   AgentCoreToolSessionStatus,

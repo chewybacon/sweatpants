@@ -6,4 +6,29 @@
 // dynamic requires. App tools only need the MCP builder at runtime, so this shim
 // keeps the AgentCore bundle minimal and ESM-safe.
 export { createMcpTool } from '../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts'
+export {
+  ToolRuntimeContext,
+  ToolRuntimeError,
+  createToolExecutionRef,
+} from '../../../packages/framework/src/lib/chat/tool-runtime.ts'
 export type { ExtendedMessage } from '../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts'
+export type {
+  ClientToolRequest,
+  ElicitToolRequest,
+  StartToolCallRequest,
+  ToolCall,
+  ToolExecuteRequest,
+  ToolExecution,
+  ToolExecutionEvent,
+  ToolExecutionRef,
+  ToolResumeRequest,
+  ToolRuntime,
+  ToolRuntimeToolSchema,
+  ToolSession,
+  ToolSessionEvent,
+  ToolSessionRef,
+} from '../../../packages/framework/src/lib/chat/tool-runtime.ts'
+export type {
+  ToolDefinition,
+  ToolInventoryEntry,
+} from '../../../packages/framework/src/lib/chat/tool-inventory.ts'
