@@ -44,6 +44,16 @@ export interface ElicitResponseData {
   sessionId: string
   /** Original tool call ID for conversation correlation */
   callId: string
+  /** Canonical tool name for continuation validation */
+  toolName?: string
+  /** Optional runtime execution ref echoed from durable pending state */
+  ref?: {
+    runtimeId: string
+    executionId: string
+    callId: string
+    toolName: string
+    sessionId?: string
+  }
   /** Specific elicit request ID */
   elicitId: string
   /** The user's response */
@@ -312,6 +322,10 @@ export type ChatCommand =
       sessionId: string
       /** Original tool call ID for conversation correlation */
       callId: string
+      /** Canonical tool name for continuation validation */
+      toolName?: string
+      /** Optional runtime execution ref echoed from durable pending state */
+      ref?: ElicitResponseData['ref']
       /** Specific elicit request ID */
       elicitId: string
       /** The user's response */

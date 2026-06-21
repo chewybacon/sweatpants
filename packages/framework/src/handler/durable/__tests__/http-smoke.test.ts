@@ -17,10 +17,8 @@ import {
 } from '../../../lib/chat/durable-streams/index.ts'
 import { setupDurableStreams } from '../../../lib/chat/durable-streams/setup.ts'
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
-import { ollamaProvider } from '../../../lib/chat/providers/index.ts'
 import { createDurableChatHandler } from '../handler.ts'
-import { createMockProvider, consumeDurableResponse } from './test-utils.ts'
+import { createMockProvider, consumeDurableResponse, setupMockModelProvider, setupMockTools } from './test-utils.ts'
 import { createHttpTestServer, type TestServerHandle } from './http-test-server.ts'
 import type { InitializerHook } from '../types.ts'
 
@@ -40,10 +38,10 @@ function createTestHandler(mockResponse: string) {
       yield* setupInMemoryDurableStreams<string>()
     },
     function* setupProvider() {
-      yield* ProviderContext.set(provider)
+      yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
@@ -74,10 +72,10 @@ function createTestHandlerWithSharedStorage(
       })
     },
     function* setupProvider() {
-      yield* ProviderContext.set(provider)
+      yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
@@ -665,7 +663,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
           yield* setupInMemoryDurableStreams<string>()
         },
         function* setupTools() {
-          yield* ToolRegistryContext.set([])
+          yield* setupMockTools([])
         },
         // No provider setup - should cause error
       ]
@@ -686,7 +684,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
 
       const result = await consumeDurableResponse(response)
       expect(result.error).not.toBeNull()
-      expect(result.error?.message).toContain('Provider not configured')
+      expect(result.error?.message).toContain('Model provider not configured')
     })
   })
 
@@ -869,10 +867,15 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
 async function isOllamaAvailable(): Promise<boolean> {
   try {
     const ollamaUrl = process.env['OLLAMA_URL'] ?? 'http://localhost:11434'
+    const model = process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest'
     const response = await fetch(`${ollamaUrl}/api/tags`, {
       signal: AbortSignal.timeout(2000),
     })
-    return response.ok
+    if (!response.ok) {
+      return false
+    }
+    const body = await response.json() as { models?: Array<{ name?: string; model?: string }> }
+    return (body.models ?? []).some((entry) => entry.name === model || entry.model === model)
   } catch {
     return false
   }
@@ -887,10 +890,10 @@ function createOllamaHandler() {
       yield* setupInMemoryDurableStreams<string>()
     },
     function* setupProvider() {
-      yield* ProviderContext.set(ollamaProvider)
+      throw new Error('Live Ollama provider smoke tests moved to @sweatpants/model-provider-pi-ai')
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
@@ -907,24 +910,25 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
       yield* setupDurableStreams({ bufferStore, registryStore })
     },
     function* setupProvider() {
-      yield* ProviderContext.set(ollamaProvider)
+      throw new Error('Live Ollama provider smoke tests moved to @sweatpants/model-provider-pi-ai')
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set([])
+      yield* setupMockTools([])
     },
   ]
 
   return createDurableChatHandler({ initializerHooks })
 }
 
-describe('Durable Chat Handler - Ollama Integration', () => {
+describe.skip('Durable Chat Handler - Ollama Integration (moved to @sweatpants/model-provider-pi-ai)', () => {
   let server: TestServerHandle
   let ollamaAvailable: boolean
 
   beforeAll(async () => {
-    ollamaAvailable = await isOllamaAvailable()
+    const liveEnabled = process.env['RUN_LIVE_PROVIDER_TESTS'] === 'yes'
+    ollamaAvailable = liveEnabled && await isOllamaAvailable()
     if (!ollamaAvailable) {
-      console.log('Ollama not available, skipping LLM integration tests')
+      console.log('Live Ollama tests gated or unavailable, skipping LLM integration tests')
     }
   })
 

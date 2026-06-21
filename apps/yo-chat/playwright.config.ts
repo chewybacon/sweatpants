@@ -7,7 +7,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : 4,
+  // Local live-model tests share one Ollama/server process; parallel prompts can
+  // overload the provider and surface as transient network errors.
+  workers: 1,
   reporter: 'html',
   use: {
     baseURL: 'http://localhost:8000',

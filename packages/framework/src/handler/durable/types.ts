@@ -9,7 +9,9 @@
  */
 import type { Operation, Stream, Channel } from 'effection'
 import type { ZodType } from 'zod'
-import type { ChatProvider } from '../../lib/chat/providers/types.ts'
+import type { Model, Runtime, StreamOptions } from '../../lib/chat/runtime/index.ts'
+import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
+import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from '../../lib/chat/index.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
@@ -195,17 +197,32 @@ export interface ChatEngineParams {
   /** Client outputs from phase 1 handoffs */
   isomorphicClientOutputs: IsomorphicClientOutput[]
 
-  /** Chat provider for LLM calls */
-  provider: ChatProvider
+  /** AI runtime for LLM calls */
+  runtime: Runtime
+
+  /** Model for runtime LLM calls */
+  model: Model
+
+  /** Runtime stream options */
+  streamOptions?: StreamOptions
+
+  /** Tool inventory snapshot captured before durable background execution. */
+  toolInventoryEntries?: ToolInventoryEntry[]
+
+  /** Active tool runtime captured before durable background execution. */
+  toolRuntime?: ToolRuntime
+
+  /** Active tool runtime id used to validate/resume pending tool executions. */
+  toolRuntimeId?: string
+
+  /** Provider used for direct plugin-tool sampling when no PluginSessionManager is installed. */
+  pluginSamplingProvider?: ToolSessionSamplingProvider
 
   /** Maximum tool loop iterations */
   maxIterations: number
 
   /** Abort signal for cancellation */
   signal: AbortSignal
-
-  /** Optional model override */
-  model?: string
 
   /** Session info to emit at start */
   sessionInfo?: StreamEvent & { type: 'session_info' }
@@ -297,6 +314,12 @@ export interface ElicitResponse {
 
   /** Original tool call ID for conversation correlation */
   callId: string
+
+  /** Canonical tool name for continuation validation */
+  toolName?: string
+
+  /** Optional runtime execution ref echoed by clients; server validates it against pending state. */
+  ref?: ToolExecutionRef
 
   /** Specific elicit request ID */
   elicitId: string

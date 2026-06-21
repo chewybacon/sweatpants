@@ -7,7 +7,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useChat, type ChatMessage } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage } from '@sweatpants/react-chat'
 
 export const Route = createFileRoute('/chat/basic/')({
   component: BasicChatDemo,

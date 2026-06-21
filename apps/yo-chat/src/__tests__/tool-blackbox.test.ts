@@ -13,11 +13,11 @@ import {
 } from 'effection'
 import { describe, expect, it } from 'vitest'
 
-import { createChatHandler } from '@sweatpants/framework/handler'
+import { createChatHandler } from '@sweatpants/framework/server'
 import {
   createPluginSessionManager,
   type PluginSessionManager,
-} from '@sweatpants/framework/handler/durable'
+} from '@sweatpants/framework/server'
 
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 
@@ -25,8 +25,9 @@ import {
   McpToolRegistryContext,
   PluginRegistryContext,
   PluginSessionManagerContext,
-  ProviderContext,
+  ToolInventoryContext,
   ToolRegistryContext,
+  createToolInventory,
 } from '@sweatpants/framework/chat'
 
 import {
@@ -41,8 +42,13 @@ import type { ChatState } from '../../../../packages/framework/src/lib/chat/stat
 
 import { initialChatState, chatReducer } from '../../../../packages/framework/src/lib/chat/state/index.ts'
 
-import { createPluginRegistryFrom } from '@sweatpants/framework/chat/mcp-tools'
-import { createInMemoryToolSessionStore, createToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+import { createPluginRegistryFrom, type ToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+import {
+  createInMemoryToolSessionStore,
+  createMcpToolInventoryEntry,
+  createToolSessionRegistry,
+  installLocalToolRuntime,
+} from '@sweatpants/tool-runtime-local'
 
 import {
   executeClientPart,
@@ -53,7 +59,7 @@ import type { IsomorphicHandoffEvent } from '@sweatpants/framework/chat/isomorph
 import type { ApprovalSignalValue } from '../../../../packages/framework/src/lib/chat/isomorphic-tools/runtime/tool-runtime.ts'
 import type { PendingEmission } from '../../../../packages/framework/src/lib/chat/isomorphic-tools/runtime/emissions.ts'
 
-import { createMockProvider } from '../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts'
+import { createMockProvider, setupMockModelProvider } from '../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts'
 import { pickCard } from '../tools/pick-card'
 import { bookFlightTool, bookFlightPlugin } from '../tools/book-flight'
 
@@ -137,7 +143,7 @@ describe('yo-chat tool blackbox', () => {
         const mcpToolRegistry = createSingleToolMcpRegistry(bookFlightTool)
 
         const [serverScope, destroyServerScope] = createScope()
-        const ready = createChannel<PluginSessionManager, void>()
+        const ready = createChannel<{ registry: ToolSessionRegistry; manager: PluginSessionManager; samplingProvider: any }, void>()
 
         serverScope.run(function* () {
           const store = createInMemoryToolSessionStore()
@@ -150,7 +156,7 @@ describe('yo-chat tool blackbox', () => {
           const registry = yield* createToolSessionRegistry(store, { samplingProvider })
           const manager = yield* createPluginSessionManager({ registry })
 
-          yield* ready.send(manager)
+          yield* ready.send({ registry, manager, samplingProvider })
           yield* suspend()
         })
 
@@ -159,7 +165,7 @@ describe('yo-chat tool blackbox', () => {
         if (readyResult.done) {
           throw new Error('PluginSessionManager setup channel closed unexpectedly')
         }
-        const pluginSessionManager = readyResult.value
+        const { registry: toolSessionRegistry, manager: pluginSessionManager, samplingProvider } = readyResult.value
 
         let providerCalls = 0
         const provider = createMockProvider({
@@ -186,7 +192,7 @@ describe('yo-chat tool blackbox', () => {
             yield* setupInMemoryDurableStreams<string>()
           },
           function* setupProvider() {
-            yield* ProviderContext.set(provider)
+            yield* setupMockModelProvider(provider)
           },
           function* setupTools() {
             yield* ToolRegistryContext.set([])
@@ -195,6 +201,8 @@ describe('yo-chat tool blackbox', () => {
             yield* PluginRegistryContext.set(pluginRegistry)
             yield* McpToolRegistryContext.set(mcpToolRegistry)
             yield* PluginSessionManagerContext.set(pluginSessionManager)
+            yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
+            yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
           },
         ]
 
@@ -303,7 +311,7 @@ describe('yo-chat tool blackbox', () => {
         const mcpToolRegistry = createSingleToolMcpRegistry(bookFlightTool)
 
         const [serverScope, destroyServerScope] = createScope()
-        const ready = createChannel<PluginSessionManager, void>()
+        const ready = createChannel<{ registry: ToolSessionRegistry; manager: PluginSessionManager; samplingProvider: any }, void>()
 
         serverScope.run(function* () {
           const store = createInMemoryToolSessionStore()
@@ -316,7 +324,7 @@ describe('yo-chat tool blackbox', () => {
           const registry = yield* createToolSessionRegistry(store, { samplingProvider })
           const manager = yield* createPluginSessionManager({ registry })
 
-          yield* ready.send(manager)
+          yield* ready.send({ registry, manager, samplingProvider })
           yield* suspend()
         })
 
@@ -325,7 +333,7 @@ describe('yo-chat tool blackbox', () => {
         if (readyResult.done) {
           throw new Error('PluginSessionManager setup channel closed unexpectedly')
         }
-        const pluginSessionManager = readyResult.value
+        const { registry: toolSessionRegistry, manager: pluginSessionManager, samplingProvider } = readyResult.value
 
         const chatProviderMessages: Message[][] = []
         const provider = createMockProvider({
@@ -383,7 +391,7 @@ describe('yo-chat tool blackbox', () => {
             yield* setupInMemoryDurableStreams<string>()
           },
           function* setupProvider() {
-            yield* ProviderContext.set(provider)
+            yield* setupMockModelProvider(provider)
           },
           function* setupTools() {
             yield* ToolRegistryContext.set([])
@@ -392,6 +400,8 @@ describe('yo-chat tool blackbox', () => {
             yield* PluginRegistryContext.set(pluginRegistry)
             yield* McpToolRegistryContext.set(mcpToolRegistry)
             yield* PluginSessionManagerContext.set(pluginSessionManager)
+            yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
+            yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
           },
         ]
 

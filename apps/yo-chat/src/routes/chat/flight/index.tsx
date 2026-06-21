@@ -6,7 +6,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
 import { bookFlightPlugin } from '@/tools/book-flight/plugin'
 import { bookFlightTool } from '@/tools/book-flight/tool'
 
@@ -17,8 +17,17 @@ export const Route = createFileRoute('/chat/flight/')({
 /**
  * Renders a tool call part with its inline emissions.
  */
+function formatToolResult(result: unknown): string {
+  if (typeof result === 'string') return result
+  if (!result || typeof result !== 'object') return ''
+  const record = result as Record<string, unknown>
+  if (typeof record['message'] === 'string') return record['message']
+  return JSON.stringify(result)
+}
+
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
   const hasEmissions = toolCall.emissions.length > 0
+  const resultText = toolCall.state === 'complete' ? formatToolResult(toolCall.result) : ''
 
   return (
     <div className="my-2">
@@ -40,6 +49,12 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
       {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
         <div className="text-xs text-slate-500 animate-pulse">
           Running {toolCall.name}...
+        </div>
+      )}
+
+      {toolCall.state === 'complete' && resultText && (
+        <div className="mt-3 rounded border border-emerald-700/50 bg-emerald-950/20 p-3 text-sm text-emerald-100">
+          {resultText}
         </div>
       )}
 
@@ -134,8 +149,13 @@ function FlightChatDemo() {
     pipeline: 'markdown',
     // No isomorphic tools
     tools: [],
-    // Only bookFlight plugin - focused demo
-    plugins: [bookFlightPlugin.client],
+    // Only bookFlight plugin - focused demo. Register both the generated
+    // app-facing alias and the canonical AgentCore/runtime tool name so
+    // canonical `book_flight` elicitations can render the same UI handler.
+    plugins: [
+      bookFlightPlugin.client,
+      { ...bookFlightPlugin.client, toolName: 'book_flight' },
+    ],
     // Tell server to only enable bookFlight plugin
     enabledPlugins: [bookFlightTool.name],
   })

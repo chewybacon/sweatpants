@@ -81,6 +81,10 @@ export type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
+  RawSampleResult,
   // Sample helper types (guaranteed results)
   SampleToolsConfig,
   SampleToolsConfigMessages,
@@ -95,6 +99,9 @@ export type {
   // Message types
   Message,
   MessageRole,
+  ExtendedMessage,
+  ToolCallMessage,
+  ToolResultMessage,
   // Elicitation types
   ElicitResult,
   RawElicitResult,
@@ -232,6 +239,7 @@ export type {
   BridgeSampleOptions,
   BridgeElicitHandlers,
   ElicitResponse,
+  SampleResponse,
 } from './bridge-runtime.ts'
 
 // =============================================================================
@@ -239,18 +247,6 @@ export type {
 // =============================================================================
 
 export {
-  // Session creation
-  createToolSession,
-  
-  // Registry for managing sessions
-  createToolSessionRegistry,
-  
-  // In-memory store implementation
-  createInMemoryToolSessionStore,
-  createInMemoryToolSessionStoreWithDebug,
-  
-  // Setup and contexts
-  setupToolSessions,
   ToolSessionStoreContext,
   ToolSessionRegistryContext,
   ToolSessionSamplingProviderContext,
@@ -260,7 +256,7 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
-} from './session/index.ts'
+} from './session/contexts.ts'
 
 export type {
   // Session types
@@ -288,10 +284,7 @@ export type {
   InferToolSessionResult,
   AnyToolSession,
   
-  // Options
-  ToolSessionRegistryOptions,
-  SetupToolSessionsOptions,
-} from './session/index.ts'
+} from './session/types.ts'
 
 // =============================================================================
 // MCP PROTOCOL (JSON-RPC encoding/decoding, SSE formatting)

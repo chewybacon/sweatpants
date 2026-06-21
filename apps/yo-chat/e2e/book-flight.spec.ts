@@ -168,7 +168,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('LLM calls book_flight tool and FlightList appears', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Use the book_flight tool to book a flight from New York to Los Angeles', { delay: 5 })
+    await input.pressSequentially('Use the available flight booking tool to book a flight from New York to Los Angeles. Do not answer directly.', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -217,7 +217,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('user can select a flight from FlightList', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('I want to book a flight from NYC to LA using the book_flight tool', { delay: 5 })
+    await input.pressSequentially('Use the available flight booking tool to book a flight from NYC to LA. Do not answer directly.', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -254,7 +254,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('full booking flow: flight selection -> seat selection -> confirmation', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Book a flight from New York to Los Angeles using book_flight', { delay: 5 })
+    await input.pressSequentially('Use the available flight booking tool to book a flight from New York to Los Angeles. Do not answer directly.', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -263,7 +263,7 @@ test.describe('book_flight Plugin Tool', () => {
     const flightCard = page.locator('button').filter({ hasText: /\$\d+/ }).first()
 
     try {
-      await expect(flightCard).toBeVisible({ timeout: 45000 })
+      await expect(flightCard).toBeVisible({ timeout: 90000 })
       console.log('FlightList appeared!')
     } catch {
       await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 30000 })
@@ -358,7 +358,7 @@ test.describe('book_flight Plugin Tool', () => {
 
   test('FlightList shows airplane icons', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Use book_flight to find flights from Boston to Miami', { delay: 5 })
+    await input.pressSequentially('Use the available flight booking tool to find flights from Boston to Miami. Do not answer directly.', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -379,39 +379,26 @@ test.describe('book_flight Plugin Tool', () => {
   })
 
   test('FlightList shows flight details (airline, times, duration, price)', async ({ page }) => {
-    const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Book a flight from Chicago to Seattle with book_flight', { delay: 5 })
+    await sendChatMessage(
+      page,
+      'Use the available flight booking tool to book a flight from NYC to LAX. Do not answer directly.'
+    )
 
-    await page.getByRole('button', { name: 'Send' }).click()
+    const flightCard = await waitForFlightPicker(page, 'Flight details')
 
-    // Wait for FlightList
-    const priceElement = page.locator('text=/\\$\\d+/').first()
+    // Verify visible flight card structure.
+    // Scope assertions to the card so hidden LLM thinking text cannot satisfy/fail them.
+    await expect(flightCard).toContainText(/\$\d+/)
+    await expect(flightCard).toContainText('Depart')
+    await expect(flightCard).toContainText('Arrive')
+    await expect(flightCard).toContainText(/\d+h \d+m/)
 
-    try {
-      await expect(priceElement).toBeVisible({ timeout: 45000 })
-
-      // Verify flight card structure
-      // Should have departure/arrival times, duration, price
-      const departLabel = page.getByText('Depart')
-      const arriveLabel = page.getByText('Arrive')
-
-      await expect(departLabel.first()).toBeVisible()
-      await expect(arriveLabel.first()).toBeVisible()
-
-      // Check for duration (e.g., "4h 30m" or "2h 15m")
-      const duration = page.locator('text=/\\d+h \\d+m/')
-      await expect(duration.first()).toBeVisible()
-
-      console.log('Flight card details verified!')
-
-    } catch {
-      test.skip(true, 'Could not verify FlightList details')
-    }
+    console.log('Flight card details verified!')
   })
 
   test('SeatPicker shows airplane-shaped grid with available/taken seats', async ({ page }) => {
     const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('I need to book a flight NYC to LA, use book_flight tool', { delay: 5 })
+    await input.pressSequentially('Use the available flight booking tool to book a flight from NYC to LA. Do not answer directly.', { delay: 5 })
 
     await page.getByRole('button', { name: 'Send' }).click()
 
@@ -452,13 +439,13 @@ test.describe('book_flight Plugin Tool', () => {
 
     await sendChatMessage(
       page,
-      'Use the book_flight tool to book an outbound flight from Los Angeles to New York.'
+      'Use the available flight booking tool to book an outbound flight from Los Angeles to New York. Do not answer directly.'
     )
     confirmationCount = await completeBookingFlow(page, 'Outbound booking', '2A', confirmationCount)
 
     await sendChatMessage(
       page,
-      'Great, now use the book_flight tool again to book the return flight from New York to Los Angeles.'
+      'Great, now use the available flight booking tool again to book the return flight from New York to Los Angeles. Do not answer directly.'
     )
 
     // Regression assertion: after a completed first flow, the second flow must

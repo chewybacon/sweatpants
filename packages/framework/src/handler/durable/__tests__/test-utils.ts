@@ -2,7 +2,7 @@
  * Test Utilities for Durable Chat Handler
  *
  * Provides:
- * - Mock ChatProvider that simulates LLM responses
+ * - Mock model provider that simulates LLM responses
  * - Test initializer hooks
  * - Response consumption helpers
  * - DI setup helpers
@@ -10,9 +10,30 @@
 import { resource, sleep } from 'effection'
 import type { Operation, Stream } from 'effection'
 import { z } from 'zod'
-import type { ChatEvent, ChatResult, Message } from '../../../lib/chat/types.ts'
-import type { ChatProvider, ChatStreamOptions, ProviderCapabilities } from '../../../lib/chat/providers/types.ts'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import type { ChatEvent, ChatResult, Message, ToolCall as ProviderToolCall } from '../../../lib/chat/types.ts'
+import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
+import {
+  ToolInventoryContext,
+  createToolInventory,
+  type ToolInventoryEntry,
+} from '../../../lib/chat/tool-inventory.ts'
+import {
+  ToolRuntimeContext,
+  createToolExecutionRef,
+  type ToolRuntime,
+} from '../../../lib/chat/tool-runtime.ts'
+import {
+  ModelProviderContext,
+  ModelProviderModelContext,
+  type ModelProviderDriver,
+} from '../../../lib/chat/model-provider.ts'
+import type {
+  AssistantMessage,
+  Model,
+  Runtime,
+  StreamEvent as RuntimeStreamEvent,
+  Usage,
+} from '../../../lib/chat/runtime/index.ts'
 import { setupInMemoryDurableStreams, type DurableStreamsSetup } from '../../../lib/chat/durable-streams/index.ts'
 import type { IsomorphicTool, ToolSchema, InitializerHook, DurableStreamEvent } from '../types.ts'
 import type { StreamEvent } from '../../types.ts'
@@ -20,6 +41,26 @@ import type { StreamEvent } from '../../types.ts'
 // =============================================================================
 // MOCK PROVIDER
 // =============================================================================
+
+export interface MockProviderStreamOptions {
+  model?: string
+  baseUri?: string
+  apiKey?: string
+  toolChoice?: 'auto' | 'none' | 'required'
+  schema?: Record<string, unknown>
+  isomorphicToolSchemas?: Array<Record<string, unknown>>
+}
+
+export interface MockProviderCapabilities {
+  thinking: boolean
+  toolCalling: boolean
+}
+
+export interface MockProvider {
+  readonly name: string
+  readonly capabilities: MockProviderCapabilities
+  stream(messages: Message[], options?: MockProviderStreamOptions): Stream<ChatEvent, ChatResult>
+}
 
 export interface MockProviderConfig {
   /** Response text (or sequence for multiple calls) */
@@ -35,11 +76,11 @@ export interface MockProviderConfig {
   /** Whether to emit thinking events */
   emitThinking?: boolean
   /** Custom stream function for full control */
-  customStream?: (messages: Message[], options?: ChatStreamOptions) => Stream<ChatEvent, ChatResult>
+  customStream?: (messages: Message[], options?: MockProviderStreamOptions) => Stream<ChatEvent, ChatResult>
 }
 
 /**
- * Create a mock ChatProvider for testing.
+ * Create a mock model provider for testing.
  *
  * By default, responds with "Hello, world!" but can be configured with:
  * - Custom response text
@@ -47,7 +88,7 @@ export interface MockProviderConfig {
  * - Thinking events
  * - Custom timing
  */
-export function createMockProvider(config: MockProviderConfig = {}): ChatProvider {
+export function createMockProvider(config: MockProviderConfig = {}): MockProvider {
   const {
     responses = 'Hello, world!',
     toolCalls,
@@ -58,7 +99,7 @@ export function createMockProvider(config: MockProviderConfig = {}): ChatProvide
 
   let callCount = 0
 
-  const capabilities: ProviderCapabilities = {
+  const capabilities: MockProviderCapabilities = {
     thinking: emitThinking,
     toolCalling: !!toolCalls,
   }
@@ -67,7 +108,7 @@ export function createMockProvider(config: MockProviderConfig = {}): ChatProvide
     name: 'mock',
     capabilities,
 
-    stream(_messages: Message[], _options?: ChatStreamOptions): Stream<ChatEvent, ChatResult> {
+    stream(_messages: Message[], _options?: MockProviderStreamOptions): Stream<ChatEvent, ChatResult> {
       if (customStream) {
         return customStream(_messages, _options)
       }
@@ -159,6 +200,168 @@ export function createMockProvider(config: MockProviderConfig = {}): ChatProvide
   }
 }
 
+function testModel(): Model {
+  return {
+    id: 'mock-model',
+    name: 'Mock Model',
+    api: 'mock',
+    provider: 'mock',
+    reasoning: false,
+    input: ['text'],
+    contextWindow: 128000,
+    maxTokens: 4096,
+  }
+}
+
+function textFromRuntimeContent(content: string | Array<{ type: string; text?: string }>): string {
+  return typeof content === 'string'
+    ? content
+    : content.map((block) => block.type === 'text' ? block.text ?? '' : '').join('')
+}
+
+function usageFromProviderUsage(usage: ChatResult['usage']): Usage {
+  return {
+    input: usage.promptTokens,
+    output: usage.completionTokens,
+    total: usage.totalTokens,
+  }
+}
+
+function assistantFromProviderResult(result: ChatResult): AssistantMessage {
+  return {
+    role: 'assistant',
+    content: [
+      ...(result.text ? [{ type: 'text' as const, text: result.text }] : []),
+      ...(result.thinking ? [{ type: 'thinking' as const, text: result.thinking }] : []),
+      ...(result.toolCalls ?? []).map((toolCall) => ({
+        type: 'toolCall' as const,
+        id: toolCall.id,
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments,
+      })),
+    ],
+    usage: usageFromProviderUsage(result.usage),
+    stopReason: result.toolCalls && result.toolCalls.length > 0 ? 'toolUse' : 'stop',
+  }
+}
+
+function providerMessagesFromRuntimeContext(context: Parameters<Runtime['stream']>[1]): Message[] {
+  const messages: Message[] = []
+
+  if (context.systemPrompt) {
+    messages.push({ id: 'system:runtime', role: 'system', content: context.systemPrompt })
+  }
+
+  for (const message of context.messages) {
+    if (message.role === 'system') {
+      messages.push({ id: `system:${messages.length}`, role: 'system', content: message.content })
+    } else if (message.role === 'user') {
+      messages.push({ id: `user:${messages.length}`, role: 'user', content: textFromRuntimeContent(message.content) })
+    } else if (message.role === 'toolResult') {
+      messages.push({
+        id: `tool:${message.toolCallId}`,
+        role: 'tool',
+        content: textFromRuntimeContent(message.content),
+        tool_call_id: message.toolCallId,
+        replay: { toolName: message.toolName },
+      })
+    } else {
+      const toolCalls: ProviderToolCall[] = message.content
+        .filter((block): block is Extract<typeof message.content[number], { type: 'toolCall' }> => block.type === 'toolCall')
+        .map((block) => ({
+          id: block.id,
+          type: 'function',
+          function: { name: block.name, arguments: block.arguments },
+        }))
+      messages.push({
+        id: `assistant:${messages.length}`,
+        role: 'assistant',
+        content: textFromRuntimeContent(message.content),
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      })
+    }
+  }
+
+  return messages
+}
+
+export function createMockModelProviderDriver(provider: MockProvider): ModelProviderDriver {
+  return {
+    stream(request) {
+      return resource(function* (provide) {
+        const subscription = yield* provider.stream(providerMessagesFromRuntimeContext(request.context), {
+          model: request.model.id,
+          ...(request.model.baseUrl ? { baseUri: request.model.baseUrl } : {}),
+          ...(request.options?.apiKey ? { apiKey: request.options.apiKey } : {}),
+          ...(request.context.tools ? { isomorphicToolSchemas: request.context.tools.map((tool) => ({ ...tool, isIsomorphic: true as const })) } : {}),
+          ...(request.options?.toolChoice ? { toolChoice: request.options.toolChoice } : {}),
+          ...(request.options?.responseFormat?.schema ? { schema: request.options.responseFormat.schema } : {}),
+        })
+        const pending: RuntimeStreamEvent[] = []
+        let text = ''
+        let thinking = ''
+        let contentIndex = 0
+
+        yield* provide({
+          *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
+            if (pending.length > 0) return { done: false, value: pending.shift()! }
+
+            const next = yield* subscription.next()
+            if (next.done) return { done: true, value: assistantFromProviderResult(next.value) }
+
+            const event: ChatEvent = next.value
+            const partial: AssistantMessage = {
+              role: 'assistant',
+              content: [
+                ...(text ? [{ type: 'text' as const, text }] : []),
+                ...(thinking ? [{ type: 'thinking' as const, text: thinking }] : []),
+              ],
+            }
+
+            if (event.type === 'text') {
+              text += event.content
+              return { done: false, value: { type: 'text_delta', contentIndex: 0, delta: event.content, partial } }
+            }
+
+            if (event.type === 'thinking') {
+              thinking += event.content
+              return { done: false, value: { type: 'thinking_delta', contentIndex: 1, delta: event.content, partial } }
+            }
+
+            for (const toolCall of event.toolCalls) {
+              pending.push({
+                type: 'toolcall_end',
+                contentIndex: contentIndex++,
+                toolCall: {
+                  type: 'toolCall',
+                  id: toolCall.id,
+                  name: toolCall.function.name,
+                  arguments: toolCall.function.arguments,
+                },
+                partial,
+              })
+            }
+
+            return yield* this.next()
+          },
+        })
+      })
+    },
+    *sample(request): Operation<AssistantMessage> {
+      const subscription = yield* this.stream(request)
+      while (true) {
+        const next = yield* subscription.next()
+        if (next.done) return next.value
+      }
+    },
+  }
+}
+
+export function* setupMockModelProvider(provider: MockProvider): Operation<void> {
+  yield* ModelProviderContext.set(createMockModelProviderDriver(provider))
+  yield* ModelProviderModelContext.set(testModel())
+}
+
 // =============================================================================
 // MOCK TOOLS
 // =============================================================================
@@ -201,19 +404,68 @@ export function createMockIsomorphicTool(name: string): IsomorphicTool {
 // INITIALIZER HOOKS
 // =============================================================================
 
+function toolEntry(tool: IsomorphicTool): ToolInventoryEntry<IsomorphicTool> {
+  return {
+    definition: {
+      name: tool.name,
+      description: tool.description,
+      parameters: z.toJSONSchema(tool.parameters),
+    },
+    implementation: tool,
+    capabilities: {
+      inline: !!tool.server,
+      client: !!tool.client,
+    },
+  }
+}
+
+function createTestToolRuntime(tools: IsomorphicTool[]): ToolRuntime {
+  const byName = new Map(tools.map((tool) => [tool.name, tool] as const))
+  return {
+    id: 'test',
+    *execute(request) {
+      const tool = byName.get(request.call.function.name)
+      const ref = createToolExecutionRef({ runtimeId: 'test', callId: request.call.id, toolName: request.call.function.name })
+      if (!tool) return { kind: 'failed', ref, error: { code: 'TOOL_NOT_FOUND', message: `Tool not found: ${request.call.function.name}` } }
+      const params = tool.parameters.parse(request.call.function.arguments)
+      if (!tool.server) {
+        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, usesHandoff: false } }
+        return { kind: 'failed', ref, error: { code: 'TOOL_NOT_EXECUTABLE', message: `Tool not executable: ${tool.name}` } }
+      }
+      try {
+        const serverOutput = yield* tool.server(params, { callId: request.call.id, signal: request.signal ?? new AbortController().signal })
+        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, serverOutput, usesHandoff: true } }
+        return { kind: 'completed', ref, result: serverOutput }
+      } catch (error) {
+        return { kind: 'failed', ref, error: { code: 'TOOL_ERROR', message: error instanceof Error ? error.message : String(error) } }
+      }
+    },
+    *resume(request) {
+      return { kind: 'failed', ref: request.ref, error: { code: 'EXECUTION_NOT_FOUND', message: `Execution not found: ${request.ref.executionId}` } }
+    },
+    *abort() {},
+  }
+}
+
+export function* setupMockTools(tools: IsomorphicTool[]): Operation<void> {
+  yield* ToolRegistryContext.set(tools)
+  yield* ToolInventoryContext.set(createToolInventory(tools.map(toolEntry)))
+  yield* ToolRuntimeContext.set(createTestToolRuntime(tools))
+}
+
 /**
  * Create initializer hooks for testing with a mock provider and tools.
  */
 export function createTestInitializerHooks(
-  provider: ChatProvider,
+  provider: MockProvider,
   tools: IsomorphicTool[] = []
 ): InitializerHook[] {
   return [
     function* setupProvider() {
-      yield* ProviderContext.set(provider)
+      yield* setupMockModelProvider(provider)
     },
     function* setupTools() {
-      yield* ToolRegistryContext.set(tools)
+      yield* setupMockTools(tools)
     },
   ]
 }

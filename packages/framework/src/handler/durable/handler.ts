@@ -13,7 +13,6 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { call, resource, type Operation, type Stream } from "effection";
-import { z } from "zod";
 import type {
   SessionHandle,
   SessionRegistry,
@@ -30,9 +29,11 @@ import {
   PluginRegistryContext,
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
-  ProviderContext,
   ToolRegistryContext,
-} from "../../lib/chat/providers/contexts.ts";
+} from "../../lib/chat/contexts.ts";
+import { ModelProviderApi, ModelProviderContext, type ModelProviderDriver } from '../../lib/chat/model-provider.ts';
+import { ToolExposureApi, ToolInventoryApi, type ToolDefinition } from '../../lib/chat/tool-inventory.ts'
+import { ToolRuntimeContext } from '../../lib/chat/tool-runtime.ts'
 import { useLogger } from "../../lib/logger/index.ts";
 import {
   bindModel,
@@ -66,6 +67,8 @@ import type {
   ToolSchema,
 } from "./types.ts";
 import type { ConversationReplayState } from '../../lib/chat/session/streaming.ts'
+import type { Runtime } from '../../lib/chat/runtime/index.ts'
+import { ToolSessionSamplingProviderContext } from '../../lib/chat/mcp-tools/session/contexts.ts'
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -105,53 +108,13 @@ function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
   };
 }
 
-/**
- * Convert a tool to its schema representation.
- */
-function toToolSchema(tool: IsomorphicTool): ToolSchema {
+function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
   return {
-    name: tool.name,
-    description: tool.description,
-    parameters: z.toJSONSchema(tool.parameters),
-    isIsomorphic: true,
-  };
-}
-
-/**
- * Check if an object is an MCP tool (has name, description, parameters).
- */
-function isMcpToolLike(
-  tool: unknown,
-): tool is {
-  name: string;
-  description: string;
-  parameters: z.ZodType<unknown>;
-} {
-  return (
-    typeof tool === "object" &&
-    tool !== null &&
-    "name" in tool &&
-    "description" in tool &&
-    "parameters" in tool &&
-    typeof (tool as { name: unknown }).name === "string" &&
-    typeof (tool as { description: unknown }).description === "string"
-  );
-}
-
-/**
- * Convert an MCP tool to its schema representation.
- */
-function mcpToolToSchema(tool: {
-  name: string;
-  description: string;
-  parameters: z.ZodType<unknown>;
-}): ToolSchema {
-  return {
-    name: tool.name,
-    description: tool.description,
-    parameters: z.toJSONSchema(tool.parameters),
+    name: definition.name,
+    description: definition.description,
+    parameters: definition.parameters,
     isIsomorphic: false,
-  };
+  }
 }
 
 /**
@@ -206,6 +169,25 @@ function mergeReplayState(
   }
 
   return traces.size > 0 ? { toolTraces: Array.from(traces.values()) } : undefined
+}
+
+function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
+  return {
+    stream(model, context, options) {
+      return resource(function* (provide) {
+        const stream = driver.stream({
+          model,
+          context,
+          ...(options ? { options } : {}),
+        })
+        const subscription = yield* stream
+        yield* provide(subscription)
+      })
+    },
+    *generateImages() {
+      throw new Error('ModelProviderApi runtime adapter does not support image generation')
+    },
+  }
 }
 
 // =============================================================================
@@ -326,13 +308,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       // Get dependencies from contexts
-      const provider = yield* ProviderContext.get();
-      if (!provider) {
-        throw new Error(
-          "Provider not configured. Ensure a provider initializer hook sets ProviderContext.",
-        );
+      const modelProviderDriver = yield* ModelProviderContext.get();
+      if (!modelProviderDriver) {
+        throw new Error("Model provider not configured. Install a ModelProviderDriver in scope.");
       }
-      log.debug("provider configured");
+      const runtime = createRuntimeFromModelProviderDriver(modelProviderDriver);
+      const model = yield* ModelProviderApi.model();
+      const streamOptions = yield* ModelProviderApi.streamOptions();
+      log.debug({ provider: model.provider, model: model.id, api: model.api }, "model provider configured");
 
       const tools = yield* ToolRegistryContext.get();
       if (!tools) {
@@ -349,6 +332,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // Get optional plugin contexts for MCP plugin tools
       const pluginRegistry = yield* PluginRegistryContext.get();
       const mcpToolRegistry = yield* McpToolRegistryContext.get();
+      const pluginSamplingProvider = yield* ToolSessionSamplingProviderContext.get();
       if (pluginRegistry) {
         log.debug("plugin registry configured");
       }
@@ -373,6 +357,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           if (sharedRegistry) {
             pluginSessionManager = yield* createPluginSessionManager({
               registry: sharedRegistry,
+              ...(pluginSamplingProvider ? { samplingProvider: pluginSamplingProvider } : {}),
             });
             log.warn(
               "PluginSessionManagerContext not set - creating per-request manager (multi-step elicitation may not work)",
@@ -394,6 +379,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Create tool registry
       const toolRegistry = createToolRegistry(tools);
+      const inventoryEntries = yield* ToolInventoryApi.list();
+      const activeToolRuntime = yield* ToolRuntimeContext.get();
+      if (!activeToolRuntime) {
+        throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.');
+      }
 
       // Build tool schemas
       const clientToolNames = (body.isomorphicTools ?? []).map((t) => t.name);
@@ -480,36 +470,25 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         };
       }
 
-      // Build tool schemas
-      const serverEnabledSchemas = Array.from(enabledToolNames)
-        .map((name) => toolRegistry.get(name))
-        .filter((t): t is IsomorphicTool => t !== undefined)
-        .map(toToolSchema);
+      // Build model-facing tool schemas through inventory + exposure policy.
+      const exposedDefinitions = yield* ToolExposureApi.definitions({
+        phase: 'outer-chat',
+        entries: inventoryEntries,
+        request: body,
+        enabledTools: body.enabledTools === true ? true : Array.from(enabledToolNames),
+        enabledPlugins: body.enabledPlugins ?? [],
+        metadata: { sessionId, conversationId: requestedConversationId },
+      })
 
       const clientSchemas = body.isomorphicTools ?? [];
 
-      // Build MCP plugin tool schemas
-      // Filter based on enabledPlugins:
-      // - undefined or []: no plugin tools (explicit opt-in required)
-      // - string[]: only include specified tools by name
-      const mcpToolSchemas: ToolSchema[] = [];
-      if (mcpToolRegistry) {
-        const enabledPlugins = body.enabledPlugins ?? [];
-        for (const toolName of enabledPlugins) {
-          const tool = mcpToolRegistry.get(toolName);
-          if (tool && isMcpToolLike(tool)) {
-            mcpToolSchemas.push(mcpToolToSchema(tool));
-          }
-        }
-      }
-
-      // Dedupe schemas
+      // Dedupe schemas. Client-provided schemas are still included for browser-only
+      // tools, but executable outer calls must resolve through ToolInventory.
       const seenNames = new Set<string>();
       const toolSchemas: ToolSchema[] = [];
       for (const schema of [
-        ...serverEnabledSchemas,
+        ...exposedDefinitions.map(definitionToToolSchema),
         ...clientSchemas,
-        ...mcpToolSchemas,
       ]) {
         if (!seenNames.has(schema.name)) {
           seenNames.add(schema.name);
@@ -564,10 +543,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           toolRegistry,
           clientIsomorphicTools: clientSchemas,
           isomorphicClientOutputs: body.isomorphicClientOutputs ?? [],
-          provider,
+          runtime,
+          model,
+          ...(streamOptions ? { streamOptions } : {}),
+          toolInventoryEntries: inventoryEntries,
+          toolRuntime: activeToolRuntime,
+          toolRuntimeId: activeToolRuntime.id,
           maxIterations,
           signal: engineAbortController.signal,
-          ...(body.model !== undefined && { model: body.model }),
           sessionInfo,
           agUiRun: {
             threadId: requestedConversationId ?? sessionId,
@@ -577,6 +560,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(pluginRegistry && { pluginRegistry }),
           ...(mcpToolRegistry && { mcpToolRegistry }),
           ...(pluginSessionManager && { pluginSessionManager }),
+          ...(pluginSamplingProvider && { pluginSamplingProvider }),
           // Pass elicit responses if provided
           ...(body.elicitResponses && {
             elicitResponses: body.elicitResponses,

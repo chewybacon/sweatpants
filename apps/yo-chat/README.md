@@ -9,6 +9,60 @@ pnpm install
 pnpm start
 ```
 
+## MCP tool runtime mode
+
+yo-chat can run MCP plugin tool sessions in either local mode or AgentCore mode.
+The chat handler, UI, elicitation handling, sampling provider, and durable app state remain local in both modes.
+
+### Local mode
+
+This is the default. Tool generators run in the local Sweatpants worker/session runtime.
+
+```bash
+MCP_TOOL_RUNTIME=local pnpm dev
+```
+
+### AgentCore mode
+
+In this mode, the local app stores AgentCore `ToolSession` handles and invokes AWS Bedrock AgentCore Runtime for tool execution. The AgentCore runtime image packages the generated AgentCore tool registry from `src/tools`.
+
+> **Paid invocation warning:** `MCP_TOOL_RUNTIME=agentcore` with a real `AGENTCORE_RUNTIME_ARN` can invoke paid AWS Bedrock AgentCore Runtime services. Local/development app mode (`NODE_ENV` unset or not `production`) refuses to construct the AWS-backed invoker unless `APPROVE_AGENTCORE_PAID_INVOCATION=yes` is set. Production-like deployments are identified by `NODE_ENV=production` and may omit the local/development approval gate.
+
+```bash
+MCP_TOOL_RUNTIME=agentcore \
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:<region>:<account-id>:runtime/<runtime-id> \
+AGENTCORE_REGION=<region> \
+AGENTCORE_ENDPOINT_NAME=DEFAULT \
+APPROVE_AGENTCORE_PAID_INVOCATION=yes \
+pnpm dev
+```
+
+Use a real chat provider (`ollama` or `openai`) for both normal usage and manual testing. AgentCore mode only moves MCP tool execution remote; LLM sampling still uses the local app's configured provider.
+
+Batch 1 AgentCore remote execution supports only this explicit MCP bridge-compatible subset:
+
+- `book_flight`
+- `play_ttt`
+- `tictactoe`
+
+Old `createIsomorphicTool` tools, browser/rendering tools, `ctx.render()` flows, and arbitrary yo-chat TSX tools are out of scope for this AgentCore runtime prototype and remain local/unsupported for remote AgentCore execution.
+
+Optional settings:
+
+```bash
+# Optional override/allowlist. Canonical values are intrinsic MCP tool names.
+# Supported generated aliases such as book-flight_book_flight are accepted but
+# normalized to canonical names before local plugin filtering and remote profile construction.
+AGENTCORE_TOOL_NAMES=book_flight,tictactoe,play_ttt
+
+AGENTCORE_TOOL_SESSION_TTL_MS=900000
+AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
+REDIS_URL=redis://localhost:6379
+```
+
+Unsupported names in `AGENTCORE_TOOL_NAMES` are rejected with a configuration error that lists the supported canonical names. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
+
+
 # Building For Production
 
 To build this application for production:

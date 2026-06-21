@@ -2,16 +2,12 @@ import { defineConfig } from 'tsup'
 
 export default defineConfig({
   entry: {
-    vite: 'src/vite/index.ts',
-    handler: 'src/handler/index.ts',
-    'handler/durable': 'src/handler/durable/index.ts',
+    index: 'src/lib/chat/index.ts',
+    server: 'src/server/index.ts',
     chat: 'src/lib/chat/index.ts',
     'chat/durable-streams': 'src/lib/chat/durable-streams/index.ts',
     'chat/isomorphic-tools': 'src/lib/chat/isomorphic-tools/index.ts',
     'chat/mcp-tools': 'src/lib/chat/mcp-tools/index.ts',
-    'chat/mcp-tools/worker': 'src/lib/chat/mcp-tools/session/worker-exports.ts',
-    'react/chat': 'src/react/chat/index.ts',
-    'react/chat/pipeline': 'src/react/chat/pipeline/index.ts',
   },
   tsconfig: '../ts-config/tsconfig.tsup.json',
   format: ['cjs', 'esm'],

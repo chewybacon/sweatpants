@@ -10,7 +10,7 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
 import { playTttPlugin } from '@/tools/play-ttt/plugin'
 import { playTttTool } from '@/tools/play-ttt/tool'
 
@@ -137,7 +137,10 @@ function PlayTttDemo() {
   } = useChat({
     pipeline: 'markdown',
     tools: [],
-    plugins: [playTttPlugin.client],
+    plugins: [
+      playTttPlugin.client,
+      { ...playTttPlugin.client, toolName: 'play_ttt' },
+    ],
     enabledPlugins: [playTttTool.name],
     systemPrompt: `You can play tic-tac-toe with the user using the play_ttt tool.
 

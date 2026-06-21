@@ -53,7 +53,12 @@
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "catalog:",
     "vite-tsconfig-paths": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@sweatpants/react-chat": "workspace:*",
+    "@sweatpants/vite-plugin": "workspace:*",
+    "@sweatpants/model-provider-pi-ai": "workspace:*",
+    "@sweatpants/tool-runtime-agentcore": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*"
   },
   "devDependencies": {
     "@interactors/html": "^1.0.1",

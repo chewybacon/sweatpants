@@ -23,7 +23,7 @@ import {
   setupDurableStreams,
 } from '../../../lib/chat/durable-streams/index.ts'
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
-import { ProviderContext, ToolRegistryContext } from '../../../lib/chat/providers/contexts.ts'
+import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
 import type { InitializerHook, IsomorphicTool } from '../types.ts'
 import type { Message } from '../../../lib/chat/types.ts'
@@ -33,6 +33,8 @@ import {
   consumeDurableResponse,
   createChatRequest,
   getEventsByType,
+  setupMockModelProvider,
+  setupMockTools,
 } from './test-utils.ts'
 
 // =============================================================================
@@ -61,11 +63,11 @@ function createTestHooks(
     },
     // Set up provider
     function* setupProvider() {
-      yield* ProviderContext.set(provider)
+      yield* setupMockModelProvider(provider)
     },
     // Set up tools
     function* setupTools() {
-      yield* ToolRegistryContext.set(tools)
+      yield* setupMockTools(tools)
     },
   ]
 }
@@ -505,6 +507,51 @@ describe('Durable Chat Handler', () => {
       expect(result.toolResults?.[0]?.content).toContain('Mock result for: hello')
     })
 
+    it('should reconcile unique generated tool-name aliases before execution', function* () {
+      const generatedTool = createMockTool('book-flight_book_flight', 'Books a flight')
+      const provider = createMockProvider({
+        responses: 'I will book that',
+        toolCalls: [{ id: 'call-1', name: 'book-flight', arguments: { input: 'NYC to LAX' } }],
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [generatedTool]),
+        maxToolIterations: 1,
+      })
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: 'user:alias-tool', role: 'user', content: 'Book a flight' }], {
+          enabledTools: true,
+        })
+      )
+
+      expect(result.toolCalls?.[0]?.name).toBe('book-flight_book_flight')
+      expect(result.toolResults?.[0]?.name).toBe('book-flight_book_flight')
+      expect(result.toolResults?.[0]?.content).toContain('Mock result for: NYC to LAX')
+    })
+
+    it('should finish cleanly when provider tool calls do not match any supported tool', function* () {
+      const echoTool = createMockTool('echo', 'Echoes input')
+      const provider = createMockProvider({
+        responses: '',
+        toolCalls: [{ id: 'call-unsupported', name: 'unsupported_tool', arguments: { input: 'hello' } }],
+      })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [echoTool]),
+        maxToolIterations: 1,
+      })
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: 'user:unsupported-tool', role: 'user', content: 'Call an unsupported tool' }], {
+          enabledTools: true,
+        })
+      )
+
+      expect(result.error).toBeNull()
+      expect(result.toolCalls).toBeNull()
+      expect(result.toolResults).toBeNull()
+      expect(result.complete).not.toBeNull()
+    })
+
     it('should emit AG-UI tool lifecycle events for server-side tools', function* () {
       const echoTool = createMockTool('echo', 'Echoes input')
       const provider = createMockProvider({
@@ -729,6 +776,49 @@ describe('Durable Chat Handler', () => {
       expect(result.error?.message).toContain('Provider error')
     })
 
+    it('should reject mismatched continuation refs before runtime resume', function* () {
+      const echoTool = createMockTool('echo', 'Echoes input')
+      const provider = createMockProvider({ responses: 'after mismatch' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [echoTool]),
+      })
+
+      const request = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { id: 'user:1', role: 'user', content: 'run echo' },
+            {
+              id: 'assistant:1',
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                { id: 'call-1', type: 'function', function: { name: 'echo', arguments: { input: 'hello' } } },
+              ],
+            },
+          ],
+          elicitResponses: [
+            {
+              sessionId: 'call-1',
+              callId: 'call-1',
+              toolName: 'echo',
+              elicitId: 'elicit-1',
+              ref: { runtimeId: 'wrong', executionId: 'call-1', sessionId: 'call-1', callId: 'call-1', toolName: 'echo' },
+              result: { action: 'accept', content: { ok: true } },
+            },
+          ],
+        }),
+      })
+
+      const response = yield* call(() => handler(request))
+      const result = yield* call(() => consumeDurableResponse(response))
+      const sessionErrors = result.events
+        .map((entry) => entry.event)
+        .filter((event): event is { type: 'tool_session_error'; message: string } => (event as { type?: string }).type === 'tool_session_error')
+      expect(sessionErrors.some((event) => event.message.includes('Continuation ref mismatch: runtimeId'))).toBe(true)
+    })
+
     it('should emit error when provider is not configured', function* () {
       const handler = createDurableChatHandler({
         initializerHooks: [
@@ -749,7 +839,7 @@ describe('Durable Chat Handler', () => {
       )
 
       expect(result.error).not.toBeNull()
-      expect(result.error?.message).toContain('Provider not configured')
+      expect(result.error?.message).toContain('Model provider not configured')
     })
   })
 

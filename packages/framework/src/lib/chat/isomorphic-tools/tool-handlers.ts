@@ -63,7 +63,7 @@
  *
  * @packageDocumentation
  */
-import type { ReactNode } from 'react'
+type RenderNode = unknown
 import type { FinalizedIsomorphicTool } from './builder.ts'
 import type { AnyIsomorphicTool } from './types.ts'
 
@@ -152,7 +152,7 @@ export interface TypedHandler<TTool> {
   handler: (
     data: HandoffData<TTool>,
     respond: (output: ExtractClientOutput<TTool>) => void
-  ) => ReactNode
+  ) => RenderNode
 }
 
 /**
@@ -178,7 +178,7 @@ export function handler<TTool extends AnyToolDef>(
   handlerFn: (
     data: HandoffData<TTool>,
     respond: (output: ExtractClientOutput<TTool>) => void
-  ) => ReactNode
+  ) => RenderNode
 ): TypedHandler<TTool> {
   return { tool, handler: handlerFn }
 }
@@ -193,12 +193,12 @@ export function handler<TTool extends AnyToolDef>(
 export interface ToolHandlerRegistry {
   /**
    * Render all pending handoffs that have handlers.
-   * Returns an array of ReactNodes (one per handled handoff).
+   * Returns an array of RenderNodes (one per handled handoff).
    */
   render(
     handoffs: PendingHandoff[],
     respond: (callId: string, output: unknown) => void
-  ): ReactNode[]
+  ): RenderNode[]
 
   /**
    * Render a single handoff if we have a handler for it.
@@ -207,7 +207,7 @@ export interface ToolHandlerRegistry {
   renderOne(
     handoff: PendingHandoff,
     respond: (callId: string, output: unknown) => void
-  ): ReactNode | null
+  ): RenderNode | null
 
   /**
    * Check if a handler is registered for a tool.
@@ -228,7 +228,7 @@ export function createHandlerRegistry(
 ): ToolHandlerRegistry {
   const handlerMap = new Map<
     string,
-    (data: unknown, respond: (output: unknown) => void) => ReactNode
+    (data: unknown, respond: (output: unknown) => void) => RenderNode
   >()
 
   for (const { tool, handler: handlerFn } of handlers) {
@@ -242,7 +242,7 @@ export function createHandlerRegistry(
     render(handoffs, respond) {
       return handoffs
         .map((h) => this.renderOne(h, respond))
-        .filter((node): node is ReactNode => node !== null)
+        .filter((node): node is RenderNode => node !== null)
     },
 
     renderOne(handoff, respond) {
@@ -279,7 +279,7 @@ export interface ToolHandlerBuilder {
    * finalized tools (from createIsomorphicTool().build()).
    *
    * @param tool - The isomorphic tool to handle
-   * @param handlerFn - Function that receives typed data and respond callback, returns ReactNode
+   * @param handlerFn - Function that receives typed data and respond callback, returns RenderNode
    * @returns The builder for chaining
    */
   add<TTool extends AnyToolDef>(
@@ -287,7 +287,7 @@ export interface ToolHandlerBuilder {
     handlerFn: (
       data: HandoffData<TTool>,
       respond: (output: ExtractClientOutput<TTool>) => void
-    ) => ReactNode
+    ) => RenderNode
   ): ToolHandlerBuilder
 
   /**
@@ -326,7 +326,7 @@ export function createToolHandlers(): ToolHandlerBuilder {
       handlerFn: (
         data: HandoffData<TTool>,
         respond: (output: ExtractClientOutput<TTool>) => void
-      ) => ReactNode
+      ) => RenderNode
     ) {
       // Cast to any to allow heterogeneous handlers in array
       // Type safety is preserved at call site via TTool inference

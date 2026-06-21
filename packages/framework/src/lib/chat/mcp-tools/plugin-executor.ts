@@ -21,7 +21,6 @@
  * ```
  */
 import type { Operation, Channel } from 'effection'
-import type { ComponentType } from 'react'
 import type { z } from 'zod'
 import type { ElicitRequest, ElicitsMap, ExtractElicitResponse, RawElicitResult } from './mcp-tool-types.ts'
 import type { PluginClientContext, PluginClientRegistration } from './plugin.ts'
@@ -29,6 +28,7 @@ import {
   type RuntimePrimitive,
   type ComponentEmissionPayload,
   type PendingEmission,
+  type ComponentTypeLike,
   COMPONENT_EMISSION_TYPE,
   getComponentKey,
   createRuntime,
@@ -112,7 +112,7 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
 
     // render() implementation using emission runtime
     *render<TProps, TResponse = ExtractResponse<TProps>>(
-      Component: ComponentType<TProps>,
+      Component: ComponentTypeLike,
       props: UserProps<TProps>
     ): Operation<TResponse> {
       const componentKey = getComponentKey(Component)

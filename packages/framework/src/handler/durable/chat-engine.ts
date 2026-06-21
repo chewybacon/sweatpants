@@ -16,9 +16,7 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { resource, type Operation, type Subscription } from 'effection'
-import type { ChatEvent, ChatResult } from '../../lib/chat/types.ts'
-import type { IsomorphicToolSchema } from '../../lib/chat/isomorphic-tools/index.ts'
-import { HandoffReadyError } from '../../lib/chat/isomorphic-tools/types.ts'
+import type { AssistantMessage as RuntimeAssistantMessage, Context as RuntimeContext, Message as RuntimeMessage, StreamEvent as RuntimeStreamEvent } from '../../lib/chat/runtime/index.ts'
 import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types.ts'
 import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
@@ -33,11 +31,10 @@ import type {
   IsomorphicClientOutput,
 } from './types.ts'
 import {
-  getPluginForTool,
-  isPluginTool,
-  executePluginTool,
-  pluginResultToToolResult,
-} from './plugin-tool-executor.ts'
+  type ToolExecution,
+  type ToolExecutionEvent,
+  type ToolExecutionRef,
+} from '../../lib/chat/index.ts'
 import {
   appendAssistantToolCallMessage,
   appendSystemMessage,
@@ -49,22 +46,6 @@ import { buildAgUiCheckpoint, buildAgUiCustomState } from '../../lib/chat/sessio
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)
 // =============================================================================
-
-/**
- * Create a Phase 1 context for server-first tools.
- * 
- * When the tool calls ctx.handoff(), we throw HandoffReadyError
- * to capture the handoff data and return it as a handoff result.
- */
-function createPhase1Context(baseContext: ServerToolContext): ServerAuthorityContext {
-  return {
-    ...baseContext,
-    *handoff(config) {
-      const handoffData = yield* config.before()
-      throw new HandoffReadyError(handoffData)
-    },
-  }
-}
 
 /**
  * Create a Phase 2 context for server-first tools.
@@ -94,8 +75,8 @@ interface EngineState {
   iteration: number
   conversationMessages: ChatMessage[]
   pendingEvents: StreamEvent[]
-  providerSubscription: Subscription<ChatEvent, ChatResult> | null
-  providerResult: ChatResult | null
+  runtimeSubscription: Subscription<RuntimeStreamEvent, RuntimeAssistantMessage> | null
+  runtimeResult: RuntimeAssistantMessage | null
   toolCalls: ToolCall[] | null
   toolResults: ToolExecutionResult[] | null
   error: Error | null
@@ -124,23 +105,23 @@ function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
 }
 
 /**
- * Convert a ChatEvent from the provider to AG-UI StreamEvents.
+ * Convert a runtime stream event to AG-UI StreamEvents.
  *
  * Text tokens are emitted incrementally as `ag_ui_text_message_content` events.
  * The first text token also triggers `ag_ui_text_message_start`.
  * Thinking tokens are passed through as `thinking` events.
- * Tool call events are ignored here — tool lifecycle is emitted at `tools_complete`.
+ * Tool call lifecycle events are ignored here — durable tool lifecycle is emitted
+ * after a supported final tool-use result is reconciled.
  */
-function providerEventToAgUiStreamEvents(
-  event: ChatEvent,
+function runtimeEventToAgUiStreamEvents(
+  event: RuntimeStreamEvent,
   state: EngineState,
   agUiRun: { threadId: string; runId: string; parentRunId?: string },
 ): StreamEvent[] {
   switch (event.type) {
-    case 'text': {
+    case 'text_delta': {
       const events: StreamEvent[] = []
       if (!state.assistantTextOpen) {
-        // Assign a deterministic message ID for the streamed assistant message
         state.assistantMessageId ??= `assistant:final:${agUiRun.runId}`
         state.assistantTextOpen = true
         events.push({
@@ -152,12 +133,16 @@ function providerEventToAgUiStreamEvents(
       events.push({
         type: 'ag_ui_text_message_content',
         messageId: state.assistantMessageId!,
-        delta: event.content,
+        delta: event.delta,
       })
       return events
     }
-    case 'thinking':
-      return [{ type: 'thinking', content: event.content }]
+    case 'thinking_delta':
+      return [{ type: 'thinking', content: event.delta }]
+    case 'error':
+      return event.error.errorMessage
+        ? [{ type: 'error', message: event.error.errorMessage, recoverable: false }]
+        : []
     default:
       return []
   }
@@ -214,6 +199,144 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
   }
 }
 
+function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolExecutionResult {
+  const ref = execution.ref
+  const toolName = ref.toolName || call.function.name
+
+  switch (execution.kind) {
+    case 'completed':
+      return {
+        ok: true,
+        kind: 'result',
+        callId: ref.callId,
+        toolName,
+        serverOutput: execution.result,
+      }
+    case 'failed':
+      return {
+        ok: false,
+        error: {
+          callId: ref.callId,
+          toolName,
+          message: execution.error.message,
+        },
+      }
+    case 'awaiting_client':
+      return {
+        ok: true,
+        kind: 'handoff',
+        callId: ref.callId,
+        toolName,
+        handoff: {
+          type: 'isomorphic_handoff',
+          callId: ref.callId,
+          toolName,
+          params: execution.request.params ?? call.function.arguments,
+          serverOutput: execution.request.serverOutput,
+          ...(execution.request.usesHandoff !== undefined ? { usesHandoff: execution.request.usesHandoff } : {}),
+        },
+        serverOutput: execution.request.serverOutput,
+      }
+    case 'awaiting_elicit':
+      return {
+        ok: true,
+        kind: 'plugin_awaiting',
+        callId: ref.callId,
+        toolName,
+        sessionId: ref.sessionId ?? ref.executionId,
+        elicitRequest: {
+          sessionId: ref.sessionId ?? ref.executionId,
+          callId: ref.callId,
+          toolName,
+          elicitId: execution.request.elicitId,
+          key: execution.request.key,
+          message: execution.request.message,
+          schema: execution.request.schema,
+        },
+      }
+    case 'running':
+      return {
+        ok: true,
+        kind: 'plugin_awaiting',
+        callId: ref.callId,
+        toolName,
+        sessionId: ref.sessionId ?? ref.executionId,
+        elicitRequest: {
+          sessionId: ref.sessionId ?? ref.executionId,
+          callId: ref.callId,
+          toolName,
+          elicitId: 'running',
+          key: 'running',
+          message: 'Tool execution is still running.',
+          schema: { type: 'object', properties: {}, required: [] },
+        },
+      }
+  }
+}
+
+function toolExecutionEventToExecution(ref: ToolExecutionRef, event: ToolExecutionEvent): ToolExecution {
+  switch (event.type) {
+    case 'elicit_request':
+      return {
+        kind: 'awaiting_elicit',
+        ref,
+        request: {
+          elicitId: event.elicitId,
+          key: event.key,
+          message: event.message,
+          schema: event.schema,
+        },
+      }
+    case 'result':
+      return { kind: 'completed', ref, result: event.result }
+    case 'error':
+      return { kind: 'failed', ref, error: { ...(event.code ? { code: event.code } : {}), message: event.message } }
+    case 'cancelled':
+      return { kind: 'failed', ref, error: { code: 'TOOL_CANCELLED', message: event.reason ?? 'Tool execution was cancelled' } }
+    default:
+      return { kind: 'running', ref, events: undefined as never }
+  }
+}
+
+function* settleRunningExecution(execution: ToolExecution): Operation<ToolExecution> {
+  if (execution.kind !== 'running') return execution
+  const subscription = yield* execution.events
+  while (true) {
+    const next = yield* subscription.next()
+    if (next.done) {
+      return { kind: 'failed', ref: execution.ref, error: { code: 'SESSION_ENDED', message: 'Tool execution stream ended unexpectedly' } }
+    }
+    const settled = toolExecutionEventToExecution(execution.ref, next.value)
+    if (settled.kind !== 'running') return settled
+  }
+}
+
+function findToolNameForCall(messages: ChatMessage[], callId: string): string | undefined {
+  for (const message of [...messages].reverse()) {
+    for (const toolCall of message.tool_calls ?? []) {
+      if (toolCall.id === callId) return toolCall.function.name
+    }
+  }
+  return undefined
+}
+
+function validateContinuationRef(input: {
+  ref: ToolExecutionRef | undefined
+  runtimeId: string
+  executionId: string
+  sessionId: string
+  callId: string
+  toolName: string
+}): void {
+  const { ref, runtimeId, executionId, sessionId, callId, toolName } = input
+  if (!ref) return
+  if (ref.runtimeId !== runtimeId) throw new Error(`Continuation ref mismatch: runtimeId expected ${runtimeId}, received ${ref.runtimeId}`)
+  if (ref.executionId !== executionId) throw new Error(`Continuation ref mismatch: executionId expected ${executionId}, received ${ref.executionId}`)
+  if (ref.sessionId && ref.sessionId !== sessionId) throw new Error(`Continuation ref mismatch: sessionId expected ${sessionId}, received ${ref.sessionId}`)
+  if (ref.callId !== callId) throw new Error(`Continuation ref mismatch: callId expected ${callId}, received ${ref.callId}`)
+  if (ref.toolName !== toolName) throw new Error(`Continuation ref mismatch: toolName expected ${toolName}, received ${ref.toolName}`)
+}
+
 function agUiToolLifecycleEvents(toolCalls: ToolCall[]): StreamEvent[] {
   return toolCalls.flatMap((toolCall) => [
     {
@@ -255,142 +378,9 @@ function agUiTextLifecycleEvents(messageId: string, role: 'assistant' | 'user' |
   ]
 }
 
-/**
- * Convert ToolSchema to IsomorphicToolSchema for provider.
- */
-function toIsomorphicSchema(schema: ToolSchema): IsomorphicToolSchema {
-  return {
-    name: schema.name,
-    description: schema.description,
-    parameters: schema.parameters,
-    isIsomorphic: true,
-  }
-}
-
 // =============================================================================
 // TOOL EXECUTION
 // =============================================================================
-
-/**
- * Execute a single tool call.
- */
-function* executeToolCall(
-  toolCall: ToolCall,
-  registry: ToolRegistry,
-  signal: AbortSignal
-): Operation<ToolExecutionResult> {
-  const toolName = toolCall.function.name
-  const tool = registry.get(toolName)
-
-  // Check for missing tool
-  if (!tool) {
-    return {
-      ok: false,
-      error: {
-        callId: toolCall.id,
-        toolName,
-        message: `Tool not found: ${toolName}`,
-      },
-    }
-  }
-
-  // Execute server-side tool
-  try {
-    const validatedParams = validateToolParams(tool, toolCall.function.arguments)
-
-    if (!tool.server) {
-      if (tool.client) {
-        return {
-          ok: true,
-          kind: 'handoff',
-          callId: toolCall.id,
-          toolName,
-          handoff: {
-            type: 'isomorphic_handoff',
-            callId: toolCall.id,
-            toolName,
-            params: validatedParams,
-            serverOutput: undefined,
-            usesHandoff: false,
-          },
-          serverOutput: undefined,
-        }
-      }
-
-      return {
-        ok: false,
-        error: {
-          callId: toolCall.id,
-          toolName,
-          message: `Tool "${toolName}" has no server or client function`,
-        },
-      }
-    }
-
-    // Create the proper Phase 1 context with handoff() method
-    const baseContext: ServerToolContext = { callId: toolCall.id, signal }
-    const phase1Context = createPhase1Context(baseContext)
-
-    const serverOutput = yield* tool.server(validatedParams, phase1Context)
-
-    // If we get here without HandoffReadyError, tool completed without handoff
-    // Check if tool has client component (legacy handoff pattern)
-    if (tool.client) {
-      return {
-        ok: true,
-        kind: 'handoff',
-        callId: toolCall.id,
-        toolName,
-        handoff: {
-          type: 'isomorphic_handoff',
-          callId: toolCall.id,
-          toolName,
-          params: validatedParams,
-          serverOutput,
-          usesHandoff: true,
-        },
-        serverOutput,
-      }
-    }
-
-    return {
-      ok: true,
-      kind: 'result',
-      callId: toolCall.id,
-      toolName,
-      serverOutput,
-    }
-  } catch (error) {
-    // Handle handoff request from ctx.handoff()
-    if (error instanceof HandoffReadyError) {
-      const validatedParams = validateToolParams(tool, toolCall.function.arguments)
-      return {
-        ok: true,
-        kind: 'handoff',
-        callId: toolCall.id,
-        toolName,
-        handoff: {
-          type: 'isomorphic_handoff',
-          callId: toolCall.id,
-          toolName,
-          params: validatedParams,
-          serverOutput: error.handoffData,
-          usesHandoff: true,
-        },
-        serverOutput: error.handoffData,
-      }
-    }
-
-    return {
-      ok: false,
-      error: {
-        callId: toolCall.id,
-        toolName,
-        message: error instanceof Error ? error.message : String(error),
-      },
-    }
-  }
-}
 
 /**
  * Process client outputs from phase 1 handoffs (phase 2 execution).
@@ -489,15 +479,16 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     toolRegistry,
     clientIsomorphicTools,
     isomorphicClientOutputs,
-    provider,
+    runtime,
+    model,
+    streamOptions,
+    toolInventoryEntries = [],
+    toolRuntime,
+    toolRuntimeId = toolRuntime?.id ?? 'local',
     maxIterations,
     signal,
     sessionInfo,
     agUiRun,
-    pluginRegistry,
-    pluginEmissionChannel,
-    mcpToolRegistry,
-    pluginSessionManager,
     elicitResponses,
     pluginAbort,
   } = params
@@ -508,15 +499,19 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     schemaByName.set(schema.name, schema)
   }
 
-  // Build tool options for provider - convert to IsomorphicToolSchema
-  const allSchemas = [...toolSchemas, ...clientIsomorphicTools]
-  const combinedTools =
-    allSchemas.length > 0
-      ? { isomorphicToolSchemas: allSchemas.map(toIsomorphicSchema) }
-      : undefined
+  const allSchemaMap = new Map<string, ToolSchema>()
+  for (const schema of [...toolSchemas, ...clientIsomorphicTools]) {
+    if (!allSchemaMap.has(schema.name)) allSchemaMap.set(schema.name, schema)
+  }
+  const allSchemas = Array.from(allSchemaMap.values())
+  const inventoryByName = new Map(toolInventoryEntries.map((entry) => [entry.definition.name, entry] as const))
 
-  // Tool names set for filtering
+  // Tool names set for filtering. Some providers approximate generated tool
+  // names (for example, emitting `book-flight` or `book_flight` for
+  // `book-flight_book_flight`). Keep the ordered list for unique alias
+  // reconciliation before filtering unsupported calls.
   const toolNames = new Set(allSchemas.map((t) => t.name))
+  const toolNameList = allSchemas.map((t) => t.name)
 
   return resource(function* (provide) {
     // Initialize state
@@ -525,8 +520,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       iteration: 0,
       conversationMessages: [...messages],
       pendingEvents: [],
-      providerSubscription: null,
-      providerResult: null,
+      runtimeSubscription: null,
+      runtimeResult: null,
       toolCalls: null,
       toolResults: null,
       error: null,
@@ -571,13 +566,100 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       return ids
     }
 
+    const resolveProviderToolName = (name: string): string | undefined => {
+      if (toolNames.has(name)) return name
+
+      const candidates = toolNameList.filter((candidate) => {
+        if (candidate === name) return true
+        if (candidate.startsWith(`${name}_`)) return true
+        if (candidate.endsWith(`_${name}`)) return true
+
+        const splitAt = candidate.indexOf('_')
+        if (splitAt <= 0) return false
+        const namespacePart = candidate.slice(0, splitAt)
+        const intrinsicPart = candidate.slice(splitAt + 1)
+        return name === namespacePart || name === intrinsicPart
+      })
+
+      return candidates.length === 1 ? candidates[0] : undefined
+    }
+
     // Helper to convert provider tool calls to our format.
     // Some providers (notably Ollama-compatible APIs) can omit tool call IDs.
     // The rest of the chat/runtime stack keys plugin sessions, elicit state,
     // tool results, and UI parts by call ID, so synthesize a per-run ID when
     // the provider does not supply a usable unique one.
-    const convertToolCalls = (calls: ChatResult['toolCalls']): ToolCall[] => {
-      if (!calls) return []
+    const toRuntimeMessage = (message: ChatMessage): RuntimeMessage => {
+      if (message.role === 'system') {
+        return { role: 'system', content: message.content }
+      }
+
+      if (message.role === 'user') {
+        return { role: 'user', content: message.content }
+      }
+
+      if (message.role === 'tool') {
+        return {
+          role: 'toolResult',
+          toolCallId: message.tool_call_id ?? '',
+          toolName: message.replay?.toolName ?? '',
+          content: [{ type: 'text', text: message.content }],
+          isError: message.content.startsWith('Error:'),
+        }
+      }
+
+      const content: RuntimeAssistantMessage['content'] = []
+      if (message.content) {
+        content.push({ type: 'text', text: message.content })
+      }
+      for (const toolCall of message.tool_calls ?? []) {
+        content.push({
+          type: 'toolCall',
+          id: toolCall.id,
+          name: toolCall.function.name,
+          arguments: toolCall.function.arguments,
+        })
+      }
+
+      return { role: 'assistant', content }
+    }
+
+    const buildRuntimeContext = (): RuntimeContext => ({
+      ...(systemPrompt ? { systemPrompt } : {}),
+      messages: state.conversationMessages
+        .filter((message) => !(message.role === 'system' && message.content === systemPrompt))
+        .map(toRuntimeMessage),
+      ...(allSchemas.length > 0
+        ? {
+            tools: allSchemas.map((schema) => ({
+              name: schema.name,
+              description: schema.description,
+              parameters: schema.parameters,
+            })),
+          }
+        : {}),
+    })
+
+    const runtimeText = (message: RuntimeAssistantMessage): string =>
+      message.content
+        .filter((block): block is Extract<RuntimeAssistantMessage['content'][number], { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('')
+
+    const runtimeToolCalls = (message: RuntimeAssistantMessage): ToolCall[] =>
+      message.content
+        .filter((block): block is Extract<RuntimeAssistantMessage['content'][number], { type: 'toolCall' }> => block.type === 'toolCall')
+        .map((block) => ({
+          id: block.id,
+          type: 'function' as const,
+          function: {
+            name: block.name,
+            arguments: block.arguments,
+          },
+        }))
+
+    const convertToolCalls = (calls: ToolCall[]): ToolCall[] => {
+      if (calls.length === 0) return []
 
       const usedIds = collectUsedToolCallIds()
 
@@ -603,7 +685,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           id,
           type: 'function' as const,
           function: {
-            name: tc.function.name,
+            name: resolveProviderToolName(tc.function.name) ?? tc.function.name,
             arguments: tc.function.arguments,
           },
         }
@@ -655,33 +737,39 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           }
 
           case 'process_plugin_abort': {
-            // Handle explicit abort request
-            if (pluginAbort && pluginSessionManager) {
+            // Handle explicit abort request through the active ToolRuntime.
+            if (pluginAbort) {
               const { sessionId, reason } = pluginAbort
-              
+              const toolName = findToolNameForCall(state.conversationMessages, sessionId) ?? ''
+
               try {
-                yield* pluginSessionManager.abort(sessionId, reason)
-                
-                // Emit abort confirmation event
+                if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
+                yield* toolRuntime.abort({
+                  runtimeId: toolRuntimeId,
+                  executionId: sessionId,
+                  sessionId,
+                  callId: sessionId,
+                  toolName,
+                }, reason)
+
                 state.pendingEvents.push({
                   type: 'tool_session_status',
                   sessionId,
-                  callId: sessionId, // sessionId is the callId
-                  toolName: '', // We don't have this info readily available
+                  callId: sessionId,
+                  toolName,
                   status: 'aborted',
                 })
               } catch (_error) {
-                // Session might not exist - emit error
                 state.pendingEvents.push({
                   type: 'tool_session_error',
                   sessionId,
                   callId: sessionId,
                   error: 'SESSION_NOT_FOUND',
-                  message: `Plugin session ${sessionId} not found`,
+                  message: `Tool execution ${sessionId} not found`,
                 })
               }
             }
-            
+
             // Move to next phase
             if (elicitResponses && elicitResponses.length > 0) {
               state.phase = 'process_plugin_responses'
@@ -699,35 +787,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           }
 
           case 'process_plugin_responses': {
-            // Resume suspended plugin sessions with elicit responses
-            if (elicitResponses && pluginSessionManager) {
+            // Resume suspended tool executions with elicit responses through ToolRuntimeApi.
+            if (elicitResponses) {
               for (const response of elicitResponses) {
                 const { sessionId, callId, elicitId, result } = response
-                
-                // Look up the session (pass provider for session recovery)
-                const session = yield* pluginSessionManager.get(sessionId, provider)
-                
-                if (!session) {
-                  // Session not found - emit error
-                  state.pendingEvents.push({
-                    type: 'tool_session_error',
-                    sessionId,
-                    callId,
-                    error: 'SESSION_NOT_FOUND',
-                    message: `Plugin session ${sessionId} was lost. Please retry the operation.`,
-                  })
-                  
-                  // Add synthetic tool error to conversation
-                  appendToolMessage(
-                    state.conversationMessages,
-                    conversationTranscriptState,
-                    callId,
-                    'Error: Plugin session was lost. Please retry the operation.',
-                  )
-                  continue
-                }
-                
-                // Convert the result to proper ElicitResult type
+                const toolName = findToolNameForCall(state.conversationMessages, callId) ?? response.toolName ?? response.ref?.toolName ?? ''
+
                 let elicitResult: { action: 'accept'; content: unknown } | { action: 'decline' } | { action: 'cancel' }
                 if (result.action === 'accept') {
                   elicitResult = { action: 'accept', content: result.content }
@@ -736,107 +801,70 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 } else {
                   elicitResult = { action: 'cancel' }
                 }
-                
-                // Send the elicit response to the session
-                yield* session.respondToElicit(elicitId, elicitResult)
-                
-                // Wait for the next event from the session
-                const nextEvent = yield* session.nextEvent()
-                
-                if (!nextEvent) {
-                  // Session completed without returning an event (shouldn't happen)
-                  continue
-                }
-                
-                switch (nextEvent.type) {
-                  case 'elicit_request': {
-                    // Another elicitation needed - emit event and go to awaiting phase
-                    state.pendingEvents.push({
-                      type: 'elicit_request',
+
+                try {
+                  if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
+                  if (response.toolName && toolName && response.toolName !== toolName) {
+                    throw new Error(`Continuation toolName mismatch: expected ${toolName}, received ${response.toolName}`)
+                  }
+                  validateContinuationRef({
+                    ref: response.ref,
+                    runtimeId: toolRuntimeId,
+                    executionId: sessionId,
+                    sessionId,
+                    callId,
+                    toolName,
+                  })
+                  const resumed = yield* settleRunningExecution(yield* toolRuntime.resume({
+                    ref: {
+                      runtimeId: toolRuntimeId,
+                      executionId: sessionId,
                       sessionId,
                       callId,
-                      toolName: session.toolName,
-                      elicitId: nextEvent.elicitId,
-                      key: nextEvent.key,
-                      message: nextEvent.message,
-                      schema: nextEvent.schema,
-                    })
-                    // Track that we're awaiting
-                    state.awaitingElicitResult = {
-                      ok: true,
-                      kind: 'plugin_awaiting',
-                      callId,
-                      toolName: session.toolName,
-                      sessionId,
-                      elicitRequest: {
-                        sessionId,
-                        callId,
-                        toolName: session.toolName,
-                        elicitId: nextEvent.elicitId,
-                        key: nextEvent.key,
-                        message: nextEvent.message,
-                        schema: nextEvent.schema,
-                      },
-                    }
-                    break
+                      toolName,
+                    },
+                    input: {
+                      type: 'elicit_response',
+                      elicitId,
+                      result: elicitResult,
+                    },
+                    signal,
+                  }))
+                  const toolResult = toolExecutionToResult(resumed, {
+                    id: callId,
+                    type: 'function',
+                    function: { name: toolName, arguments: {} },
+                  })
+
+                  if (toolResult.ok && toolResult.kind === 'plugin_awaiting') {
+                    state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult))
+                    state.awaitingElicitResult = toolResult
+                    continue
                   }
-                  
-                  case 'result': {
-                    // Tool completed successfully
-                    const content = typeof nextEvent.result === 'string'
-                      ? nextEvent.result
-                      : JSON.stringify(nextEvent.result)
-                    
-                    state.pendingEvents.push({
-                      type: 'ag_ui_tool_call_result',
-                      toolCallId: callId,
-                      toolCallName: session.toolName,
-                      content,
-                    })
-                    
-                    // Add to conversation
-                    appendToolMessage(
-                      state.conversationMessages,
-                      conversationTranscriptState,
-                      callId,
-                      content,
-                    )
-                    break
+
+                  state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult))
+                  if (toolResult.ok && toolResult.kind === 'result') {
+                    const content = typeof toolResult.serverOutput === 'string'
+                      ? toolResult.serverOutput
+                      : JSON.stringify(toolResult.serverOutput)
+                    appendToolMessage(state.conversationMessages, conversationTranscriptState, callId, content, { toolName })
+                  } else if (!toolResult.ok) {
+                    appendToolMessage(state.conversationMessages, conversationTranscriptState, callId, `Error: ${toolResult.error.message}`, { toolName })
                   }
-                  
-                  case 'error': {
-                    // Tool failed
-                    state.pendingEvents.push({
-                      type: 'ag_ui_tool_call_error',
-                      toolCallId: callId,
-                      toolCallName: session.toolName,
-                      message: nextEvent.message,
-                    })
-                    
-                    // Add to conversation
-                    appendToolMessage(
-                      state.conversationMessages,
-                      conversationTranscriptState,
-                      callId,
-                      `Error: ${nextEvent.message}`,
-                    )
-                    break
-                  }
-                  
-                  case 'cancelled': {
-                    // Tool was cancelled
-                    state.pendingEvents.push({
-                      type: 'ag_ui_tool_call_error',
-                      toolCallId: callId,
-                      toolCallName: session.toolName,
-                      message: nextEvent.reason ?? 'Tool execution was cancelled',
-                    })
-                    break
-                  }
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : String(error)
+                  state.pendingEvents.push({
+                    type: 'tool_session_error',
+                    sessionId,
+                    callId,
+                    error: 'SESSION_NOT_FOUND',
+                    message,
+                  })
+                  appendToolMessage(state.conversationMessages, conversationTranscriptState, callId, `Error: ${message}`, { toolName })
                 }
               }
             }
-            
+
             // Check if we need to await more elicitation
             if (state.awaitingElicitResult) {
               state.phase = 'awaiting_elicit'
@@ -924,31 +952,49 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               return yield* this.next()
             }
 
-            // Start streaming from provider
-            const providerStream = provider.stream(state.conversationMessages, combinedTools)
-            state.providerSubscription = yield* providerStream
+            // Start streaming from runtime
+            const runtimeStream = runtime.stream(model, buildRuntimeContext(), {
+              ...streamOptions,
+              signal,
+            })
+            state.runtimeSubscription = yield* runtimeStream
             state.phase = 'streaming_provider'
             return yield* this.next()
           }
 
           case 'streaming_provider': {
-            if (!state.providerSubscription) {
+            if (!state.runtimeSubscription) {
               state.phase = 'error'
-              state.error = new Error('No provider subscription')
+              state.error = new Error('No runtime subscription')
               return yield* this.next()
             }
 
-            const result = yield* state.providerSubscription.next()
+            const result = yield* state.runtimeSubscription.next()
 
             if (result.done) {
-              // Provider finished - result.value is ChatResult
-              state.providerResult = result.value
+              state.runtimeResult = result.value
               state.phase = 'provider_complete'
               return yield* this.next()
             }
 
-            // Convert provider event to AG-UI stream events
-            const streamEvents = providerEventToAgUiStreamEvents(result.value, state, agUiRun)
+            if (result.value.type === 'error') {
+              if (state.assistantTextOpen) {
+                state.pendingEvents.push({
+                  type: 'ag_ui_text_message_end',
+                  messageId: state.assistantMessageId!,
+                })
+                state.assistantTextOpen = false
+              }
+              state.pendingEvents.push(...runtimeEventToAgUiStreamEvents(result.value, state, agUiRun))
+              state.phase = 'done'
+              if (state.pendingEvents.length > 0) {
+                return { done: false, value: state.pendingEvents.shift()! }
+              }
+              return { done: true, value: undefined }
+            }
+
+            // Convert runtime event to AG-UI stream events
+            const streamEvents = runtimeEventToAgUiStreamEvents(result.value, state, agUiRun)
             if (streamEvents.length > 0) {
               // Queue all events except the first, return the first immediately
               for (let i = 1; i < streamEvents.length; i++) {
@@ -962,14 +1008,32 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           }
 
           case 'provider_complete': {
-            const result = state.providerResult
+            const result = state.runtimeResult
             if (!result) {
               state.phase = 'error'
               state.error = new Error('No provider result')
               return yield* this.next()
             }
 
-            if (result.toolCalls && result.toolCalls.length > 0) {
+            if (result.stopReason === 'error' || result.stopReason === 'aborted') {
+              if (state.assistantTextOpen) {
+                state.pendingEvents.push({
+                  type: 'ag_ui_text_message_end',
+                  messageId: state.assistantMessageId!,
+                })
+                state.assistantTextOpen = false
+              }
+              state.pendingEvents.push({
+                type: 'error',
+                message: result.errorMessage ?? `Runtime generation ${result.stopReason}`,
+                recoverable: false,
+              })
+              state.phase = 'done'
+              return { done: false, value: state.pendingEvents.shift()! }
+            }
+
+            const finalToolCalls = runtimeToolCalls(result)
+            if (finalToolCalls.length > 0) {
               // Close the assistant text lifecycle if it was opened during streaming
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
@@ -978,15 +1042,20 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 })
                 state.assistantTextOpen = false
               }
-              // Filter to known tools and convert
-              const allCalls = convertToolCalls(result.toolCalls)
+              // Convert and filter to known tools. Some real providers can emit
+              // malformed or unsupported tool calls. If none reconcile to a
+              // supported tool, fall through to the normal no-tool completion
+              // path so the run lifecycle still finishes cleanly.
+              const allCalls = convertToolCalls(finalToolCalls)
               state.toolCalls = allCalls.filter((tc) => toolNames.has(tc.function.name))
-              state.toolResults = []
-              state.phase = 'executing_tools'
-              return yield* this.next()
+              if (state.toolCalls.length > 0) {
+                state.toolResults = []
+                state.phase = 'executing_tools'
+                return yield* this.next()
+              }
             }
 
-            // No tool calls - complete
+            // No supported tool calls - complete
             state.phase = 'complete'
 
             if (state.assistantTextOpen) {
@@ -1003,7 +1072,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 ...agUiTextLifecycleEvents(
                   `assistant:final:${agUiRun.runId}`,
                   'assistant',
-                  result.text,
+                  runtimeText(result),
                 ),
               )
             }
@@ -1023,129 +1092,34 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             const toolCalls = state.toolCalls || []
             const results: ToolExecutionResult[] = []
 
-            // Execute all tools and collect results
+            // Resolve every outer model tool call through ToolInventory and execute
+            // it through the active ToolRuntime.
             for (const tc of toolCalls) {
-              const toolName = tc.function.name
+              try {
+                const entry = inventoryByName.get(tc.function.name)
+                if (!entry) throw new Error(`Tool not found: ${tc.function.name}`)
+                if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
+                const execution = yield* settleRunningExecution(yield* toolRuntime.execute({
+                  entry,
+                  call: tc,
+                  signal,
+                }))
+                const result = toolExecutionToResult(execution, tc)
+                results.push(result)
 
-              // Check if this is a plugin tool
-              const plugin = getPluginForTool(toolName, pluginRegistry)
-              const mcpTool = mcpToolRegistry?.get(toolName)
-
-              if (plugin && mcpTool && isPluginTool(mcpTool)) {
-                // Execute as plugin tool
-                if (pluginSessionManager) {
-                  // Use session manager for durable execution
-                  const session = yield* pluginSessionManager.create({
-                    tool: mcpTool,
-                    params: tc.function.arguments,
-                    callId: tc.id,
-                    provider,
-                    emissionChannel: pluginEmissionChannel,
-                    signal,
-                  })
-                  
-                  // Track the session
-                  state.pendingPluginSessions.set(tc.id, {
-                    callId: tc.id,
-                    toolName: toolName,
-                  })
-                  
-                  // Wait for first event from the session
-                  const event = yield* session.nextEvent()
-                  
-                  if (!event) {
-                    // Session ended without event - shouldn't happen
-                    results.push({
-                      ok: false,
-                      error: {
-                        callId: tc.id,
-                        toolName,
-                        message: 'Plugin session ended unexpectedly',
-                      },
-                    })
-                  } else if (event.type === 'elicit_request') {
-                    // Tool needs elicitation
-                    const result: ToolExecutionResult = {
-                      ok: true,
-                      kind: 'plugin_awaiting',
-                      callId: tc.id,
-                      toolName,
-                      sessionId: session.id,
-                      elicitRequest: {
-                        sessionId: session.id,
-                        callId: tc.id,
-                        toolName,
-                        elicitId: event.elicitId,
-                        key: event.key,
-                        message: event.message,
-                        schema: event.schema,
-                      },
-                    }
-                    results.push(result)
-                    // Don't push to pendingEvents yet - will be handled in tools_complete
-                  } else if (event.type === 'result') {
-                    // Tool completed immediately (no elicitation needed)
-                    results.push({
-                      ok: true,
-                      kind: 'result',
-                      callId: tc.id,
-                      toolName,
-                      serverOutput: event.result,
-                    })
-                    state.pendingEvents.push({
-                      type: 'ag_ui_tool_call_result',
-                      toolCallId: tc.id,
-                      toolCallName: toolName,
-                      content: typeof event.result === 'string'
-                        ? event.result
-                        : JSON.stringify(event.result),
-                    })
-                    // Clean up session
-                    state.pendingPluginSessions.delete(tc.id)
-                  } else if (event.type === 'error') {
-                    results.push({
-                      ok: false,
-                      error: {
-                        callId: tc.id,
-                        toolName,
-                        message: event.message,
-                      },
-                    })
-                    state.pendingEvents.push({
-                      type: 'ag_ui_tool_call_error',
-                      toolCallId: tc.id,
-                      toolCallName: toolName,
-                      message: event.message,
-                    })
-                    state.pendingPluginSessions.delete(tc.id)
-                  } else if (event.type === 'cancelled') {
-                    results.push({
-                      ok: false,
-                      error: {
-                        callId: tc.id,
-                        toolName,
-                        message: event.reason ?? 'Tool execution was cancelled',
-                      },
-                    })
-                    state.pendingPluginSessions.delete(tc.id)
-                  }
-                } else {
-                  // No session manager - use direct execution (legacy path)
-                  const pluginResult = yield* executePluginTool({
-                    toolCall: tc,
-                    tool: mcpTool,
-                    plugin,
-                    provider,
-                    emissionChannel: pluginEmissionChannel,
-                    signal,
-                  })
-                  const result = pluginResultToToolResult(pluginResult)
-                  results.push(result)
+                if (!(result.ok && result.kind === 'plugin_awaiting')) {
                   state.pendingEvents.push(toolResultToAgUiStreamEvent(result))
                 }
-              } else {
-                // Execute as regular isomorphic tool
-                const result = yield* executeToolCall(tc, toolRegistry, signal)
+              } catch (error) {
+                const message = error instanceof Error ? error.message : String(error)
+                const result: ToolExecutionResult = {
+                  ok: false,
+                  error: {
+                    callId: tc.id,
+                    toolName: tc.function.name,
+                    message,
+                  },
+                }
                 results.push(result)
                 state.pendingEvents.push(toolResultToAgUiStreamEvent(result))
               }
@@ -1164,7 +1138,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           case 'tools_complete': {
             const toolCalls = state.toolCalls || []
             const results = state.toolResults || []
-            const providerResult = state.providerResult!
+            const providerResult = state.runtimeResult!
 
             // Check for plugin tools awaiting elicitation
             const pluginAwaitingResults = results.filter((r) => r.ok && r.kind === 'plugin_awaiting')
@@ -1180,7 +1154,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 state.conversationMessages,
                 conversationTranscriptState,
                 toolCalls,
-                providerResult.text,
+                runtimeText(providerResult),
               )
               state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
               
@@ -1269,7 +1243,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   runId: agUiRun.runId,
                   ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
                   messages: state.conversationMessages,
-                  assistantContent: providerResult.text,
+                  assistantContent: runtimeText(providerResult),
                   toolCalls,
                   serverToolResults,
                   ...(replayToolTraceMap.size > 0
@@ -1291,7 +1265,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               state.conversationMessages,
               conversationTranscriptState,
               toolCalls,
-              providerResult.text,
+              runtimeText(providerResult),
             )
             state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
 
@@ -1305,6 +1279,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   typeof r.serverOutput === 'string'
                     ? r.serverOutput
                     : JSON.stringify(r.serverOutput),
+                  { toolName: r.toolName },
                 )
               } else if (!r.ok) {
                 appendToolMessage(
@@ -1312,6 +1287,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   conversationTranscriptState,
                   r.error.callId,
                   `Error: ${r.error.message}`,
+                  { toolName: r.error.toolName },
                 )
               }
             }
@@ -1319,8 +1295,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Reset for next iteration
             state.toolCalls = null
             state.toolResults = null
-            state.providerResult = null
-            state.providerSubscription = null
+            state.runtimeResult = null
+            state.runtimeSubscription = null
             state.phase = 'start_iteration'
 
             return yield* this.next()
@@ -1331,7 +1307,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Emit conversation state for client to render UI and send response
             let toolCalls = state.toolCalls || []
             const results = state.toolResults || []
-            const providerResult = state.providerResult
+            const providerResult = state.runtimeResult
             
             // CRITICAL FIX: If toolCalls is empty but we have an awaiting elicit result,
             // extract the tool call info from conversationMessages. This happens when
@@ -1425,7 +1401,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 runId: agUiRun.runId,
                 ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
                 messages: state.conversationMessages,
-                assistantContent: providerResult?.text ?? '',
+                assistantContent: providerResult ? runtimeText(providerResult) : '',
                 toolCalls,
                 serverToolResults,
                 ...(replayToolTraceMap.size > 0

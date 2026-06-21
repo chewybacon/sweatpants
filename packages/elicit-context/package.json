@@ -19,7 +19,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && rm -f tsconfig.tsbuildinfo && tsc -p tsconfig.json --emitDeclarationOnly --declarationMap --declaration --outDir dist",
     "check": "tsc -b"
   },
   "peerDependencies": {

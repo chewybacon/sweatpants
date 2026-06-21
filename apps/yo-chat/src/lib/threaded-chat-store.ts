@@ -4,13 +4,14 @@ import {
   type TokenBuffer,
   type TokenBufferStore,
 } from '@sweatpants/framework/chat/durable-streams'
+import type { Message } from '@sweatpants/framework/chat'
 import {
-  ollamaProvider,
-  openaiProvider,
-  type ChatEvent,
-  type ChatResult,
-  type Message,
-} from '@sweatpants/framework/chat'
+  createPiAiModelProviderDriver,
+  resolveRuntimeModel,
+  type AssistantMessage as ModelAssistantMessage,
+  type Message as ModelMessage,
+  type StreamEvent as ModelStreamEvent,
+} from '@sweatpants/model-provider-pi-ai'
 import { call, race, resource, run, type Operation, type Stream, type Task } from 'effection'
 import type { RedisClientType } from 'redis'
 import type { ThreadEvent, ThreadFrame, ThreadMessageInput } from './threaded-chat-types'
@@ -36,10 +37,6 @@ interface RuntimeWorkItem {
 interface ThreadRuntime {
   queue: RuntimeWorkItem[]
   running: boolean
-}
-
-interface ChatProviderLike {
-  stream(messages: Message[], options?: unknown): Stream<ChatEvent, ChatResult>
 }
 
 export interface ThreadedChatEngine {
@@ -255,15 +252,35 @@ function createThreadStore(bufferStore: TokenBufferStore<ThreadEvent>): ThreadSt
   }
 }
 
-function parseProviderEvent(event: ChatEvent): string | null {
-  if (event.type === 'text') {
-    return event.content
-  }
-  return null
+function buildModelProviderMessages(events: ThreadEvent[], systemPrompt: string): ModelMessage[] {
+  return buildMessages(events, systemPrompt).map((message) => {
+    if (message.role === 'system') return { role: 'system', content: message.content }
+    if (message.role === 'user') return { role: 'user', content: message.content }
+    if (message.role === 'assistant') {
+      return {
+        role: 'assistant',
+        content: message.content ? [{ type: 'text' as const, text: message.content }] : [],
+      }
+    }
+    return {
+      role: 'toolResult',
+      toolCallId: message.tool_call_id ?? '',
+      toolName: message.replay?.toolName ?? '',
+      content: [{ type: 'text' as const, text: message.content }],
+      isError: message.content.startsWith('Error:'),
+    }
+  })
 }
 
-function selectProvider(name: 'ollama' | 'openai'): ChatProviderLike {
-  return name === 'openai' ? openaiProvider : ollamaProvider
+function parseModelProviderEvent(event: ModelStreamEvent): string | null {
+  return event.type === 'text_delta' ? event.delta : null
+}
+
+function modelAssistantText(message: ModelAssistantMessage): string {
+  return message.content
+    .filter((block): block is Extract<ModelAssistantMessage['content'][number], { type: 'text' }> => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
 }
 
 export function createThreadedChatEngine(params: {
@@ -273,7 +290,8 @@ export function createThreadedChatEngine(params: {
 }): ThreadedChatEngine {
   const { bufferStore, providerName, systemPrompt } = params
   const store = createThreadStore(bufferStore)
-  const provider = selectProvider(providerName)
+  const modelProvider = createPiAiModelProviderDriver()
+  const model = resolveRuntimeModel(providerName)
   const knownThreadIds = new Set<string>()
   const runtimes = new Map<string, ThreadRuntime>()
   const runOp = <T>(factory: () => Operation<T>): Promise<T> => run(factory)
@@ -291,23 +309,27 @@ export function createThreadedChatEngine(params: {
     }
 
     const history = yield* store.read(threadId, 0)
-    const messages = buildMessages(history, systemPrompt)
+    const messages = buildModelProviderMessages(history, systemPrompt)
     const assistantMessageId = crypto.randomUUID()
     let assistantText = ''
 
-    const stream = provider.stream(messages)
+    const stream = modelProvider.stream({
+      model,
+      context: { messages },
+    })
     const subscription = yield* stream
 
     while (true) {
       const next = yield* subscription.next()
       if (next.done) {
-        if (!assistantText.trim() && next.value.text.trim()) {
-          assistantText = next.value.text
+        const finalText = modelAssistantText(next.value)
+        if (!assistantText.trim() && finalText.trim()) {
+          assistantText = finalText
         }
         break
       }
 
-      const chunk = parseProviderEvent(next.value)
+      const chunk = parseModelProviderEvent(next.value)
       if (!chunk) {
         continue
       }
