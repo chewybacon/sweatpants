@@ -1,7 +1,9 @@
 export {
+  createAgentCoreToolExecutionStrategy,
   createAgentCoreToolInventoryEntry,
   createAgentCoreToolRuntimeDriver,
   installAgentCoreToolRuntime,
+  type AgentCoreToolExecutionStrategyOptions,
   type AgentCoreToolRuntimeDriverOptions,
 } from './driver.ts'
 

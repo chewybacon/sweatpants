@@ -776,6 +776,49 @@ describe('Durable Chat Handler', () => {
       expect(result.error?.message).toContain('Provider error')
     })
 
+    it('should reject mismatched continuation refs before runtime resume', function* () {
+      const echoTool = createMockTool('echo', 'Echoes input')
+      const provider = createMockProvider({ responses: 'after mismatch' })
+      const handler = createDurableChatHandler({
+        initializerHooks: createTestHooks(provider, [echoTool]),
+      })
+
+      const request = new Request('http://localhost/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            { id: 'user:1', role: 'user', content: 'run echo' },
+            {
+              id: 'assistant:1',
+              role: 'assistant',
+              content: '',
+              tool_calls: [
+                { id: 'call-1', type: 'function', function: { name: 'echo', arguments: { input: 'hello' } } },
+              ],
+            },
+          ],
+          elicitResponses: [
+            {
+              sessionId: 'call-1',
+              callId: 'call-1',
+              toolName: 'echo',
+              elicitId: 'elicit-1',
+              ref: { runtimeId: 'wrong', executionId: 'call-1', sessionId: 'call-1', callId: 'call-1', toolName: 'echo' },
+              result: { action: 'accept', content: { ok: true } },
+            },
+          ],
+        }),
+      })
+
+      const response = yield* call(() => handler(request))
+      const result = yield* call(() => consumeDurableResponse(response))
+      const sessionErrors = result.events
+        .map((entry) => entry.event)
+        .filter((event): event is { type: 'tool_session_error'; message: string } => (event as { type?: string }).type === 'tool_session_error')
+      expect(sessionErrors.some((event) => event.message.includes('Continuation ref mismatch: runtimeId'))).toBe(true)
+    })
+
     it('should emit error when provider is not configured', function* () {
       const handler = createDurableChatHandler({
         initializerHooks: [

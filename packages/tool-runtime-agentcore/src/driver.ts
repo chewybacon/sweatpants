@@ -9,8 +9,10 @@ import {
   type ToolDefinition,
   type ToolExecuteRequest,
   type ToolExecution,
+  type ToolExecutionContext,
   type ToolExecutionEvent,
   type ToolExecutionRef,
+  type ToolExecutionStrategy,
   type ToolInventoryEntry,
   type ToolResumeRequest,
   type ToolRuntime,
@@ -142,6 +144,59 @@ function sessionEventToExecution(runtimeId: string, call: ToolCall, session: Run
 
 function isAgentCoreImplementation(value: unknown): value is AgentCoreImplementation {
   return !!value && typeof value === 'object' && (value as { kind?: unknown }).kind === 'agentcore'
+}
+
+export interface AgentCoreToolExecutionStrategyOptions {
+  id?: string
+  registry: ToolSessionRegistry
+  tools: AgentCoreRuntimeTool[]
+}
+
+export function createAgentCoreToolExecutionStrategy(
+  options: AgentCoreToolExecutionStrategyOptions,
+): ToolExecutionStrategy {
+  const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool] as const))
+  return {
+    id: options.id ?? 'agentcore-session',
+    canExecute(entry, call) {
+      if (isAgentCoreImplementation(entry.implementation)) return true
+      return toolsByName.has(call.function.name)
+    },
+    *execute(entry, call, ctx: ToolExecutionContext): Operation<ToolExecution> {
+      const tool = isAgentCoreImplementation(entry.implementation)
+        ? entry.implementation.tool
+        : toolsByName.get(call.function.name)
+      if (!tool) throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `AgentCore strategy cannot execute tool: ${call.function.name}`)
+      const session = yield* options.registry.create(tool, call.function.arguments, {
+        sessionId: call.id,
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+      })
+      const runtimeSession = adaptSession(ctx.runtimeId, session)
+      const subscription = yield* runtimeSession.events()
+      const next = yield* subscription.next()
+      return sessionEventToExecution(ctx.runtimeId, call, runtimeSession, next.done ? null : next.value)
+    },
+    *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
+      const sessionId = ref.sessionId ?? ref.executionId
+      const session = yield* options.registry.get(sessionId)
+      if (!session) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${sessionId}`)
+      if (ref.toolName && session.toolName !== ref.toolName) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${sessionId}`)
+      if (input.type === 'elicit_response') {
+        if (!input.elicitId) throw new ToolRuntimeError('ELICIT_ID_REQUIRED', 'Elicit continuation requires elicitId')
+        yield* session.respondToElicit(input.elicitId, input.result as never)
+      }
+      const runtimeSession = adaptSession(ctx.runtimeId, session)
+      const subscription = yield* runtimeSession.events()
+      const next = yield* subscription.next()
+      return sessionEventToExecution(ctx.runtimeId, { id: ref.callId, type: 'function', function: { name: ref.toolName || session.toolName, arguments: {} } }, runtimeSession, next.done ? null : next.value)
+    },
+    *abort(ref, reason): Operation<void> {
+      const sessionId = ref.sessionId ?? ref.executionId
+      const session = yield* options.registry.get(sessionId)
+      if (!session) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${sessionId}`)
+      yield* session.cancel(reason)
+    },
+  }
 }
 
 export function createAgentCoreToolRuntimeDriver(
