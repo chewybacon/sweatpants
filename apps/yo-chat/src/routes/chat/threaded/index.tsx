@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from 'lucide-react'
-import { useChat, type ChatMessage, type ChatToolCall, type StreamEventEntry } from '@sweatpants/framework/react/chat'
+import { useChat, type ChatMessage, type ChatToolCall, type StreamEventEntry } from '@sweatpants/react-chat'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { tools } from '@/__generated__/tool-registry.gen'
 import { Button } from '@/components/ui/button'

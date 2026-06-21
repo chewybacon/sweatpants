@@ -4,46 +4,32 @@
   "description": "Framework utilities for TanStack-based AI apps - tool discovery, codegen, and more",
   "type": "module",
   "exports": {
-    "./vite": {
+    ".": {
       "development": {
-        "import": "./src/vite/index.ts",
-        "types": "./src/vite/index.ts"
+        "import": "./src/lib/chat/index.ts",
+        "types": "./src/lib/chat/index.ts"
       },
       "import": {
-        "types": "./dist/vite.d.ts",
-        "default": "./dist/vite.js"
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
       },
       "require": {
-        "types": "./dist/vite.d.cts",
-        "default": "./dist/vite.cjs"
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
       }
     },
-    "./handler": {
+    "./server": {
       "development": {
-        "import": "./src/handler/index.ts",
-        "types": "./src/handler/index.ts"
+        "import": "./src/server/index.ts",
+        "types": "./src/server/index.ts"
       },
       "import": {
-        "types": "./dist/handler.d.ts",
-        "default": "./dist/handler.js"
+        "types": "./dist/server.d.ts",
+        "default": "./dist/server.js"
       },
       "require": {
-        "types": "./dist/handler.d.cts",
-        "default": "./dist/handler.cjs"
-      }
-    },
-    "./handler/durable": {
-      "development": {
-        "import": "./src/handler/durable/index.ts",
-        "types": "./src/handler/durable/index.ts"
-      },
-      "import": {
-        "types": "./dist/handler/durable.d.ts",
-        "default": "./dist/handler/durable.js"
-      },
-      "require": {
-        "types": "./dist/handler/durable.d.cts",
-        "default": "./dist/handler/durable.cjs"
+        "types": "./dist/server.d.cts",
+        "default": "./dist/server.cjs"
       }
     },
     "./chat": {
@@ -74,34 +60,6 @@
         "default": "./dist/chat/durable-streams.cjs"
       }
     },
-    "./chat/runtime": {
-      "development": {
-        "import": "./src/lib/chat/runtime/index.ts",
-        "types": "./src/lib/chat/runtime/index.ts"
-      },
-      "import": {
-        "types": "./dist/chat/runtime.d.ts",
-        "default": "./dist/chat/runtime.js"
-      },
-      "require": {
-        "types": "./dist/chat/runtime.d.cts",
-        "default": "./dist/chat/runtime.cjs"
-      }
-    },
-    "./chat/providers": {
-      "development": {
-        "import": "./src/lib/chat/providers/index.ts",
-        "types": "./src/lib/chat/providers/index.ts"
-      },
-      "import": {
-        "types": "./dist/chat/providers.d.ts",
-        "default": "./dist/chat/providers.js"
-      },
-      "require": {
-        "types": "./dist/chat/providers.d.cts",
-        "default": "./dist/chat/providers.cjs"
-      }
-    },
     "./chat/isomorphic-tools": {
       "development": {
         "import": "./src/lib/chat/isomorphic-tools/index.ts",
@@ -130,34 +88,6 @@
         "default": "./dist/chat/mcp-tools.cjs"
       }
     },
-    "./chat/mcp-tools/worker": {
-      "development": {
-        "import": "./src/lib/chat/mcp-tools/session/worker-exports.ts",
-        "types": "./src/lib/chat/mcp-tools/session/worker-exports.ts"
-      },
-      "import": {
-        "types": "./dist/chat/mcp-tools/worker.d.ts",
-        "default": "./dist/chat/mcp-tools/worker.js"
-      },
-      "require": {
-        "types": "./dist/chat/mcp-tools/worker.d.cts",
-        "default": "./dist/chat/mcp-tools/worker.cjs"
-      }
-    },
-    "./chat/mcp-tools/agentcore": {
-      "development": {
-        "import": "./src/lib/chat/mcp-tools/session/agentcore-exports.ts",
-        "types": "./src/lib/chat/mcp-tools/session/agentcore-exports.ts"
-      },
-      "import": {
-        "types": "./dist/chat/mcp-tools/agentcore.d.ts",
-        "default": "./dist/chat/mcp-tools/agentcore.js"
-      },
-      "require": {
-        "types": "./dist/chat/mcp-tools/agentcore.d.cts",
-        "default": "./dist/chat/mcp-tools/agentcore.cjs"
-      }
-    },
     "./chat/core-tools": {
       "development": {
         "import": "./src/lib/chat/core-tools/index.ts",
@@ -170,62 +100,6 @@
       "require": {
         "types": "./dist/chat/core-tools.d.cts",
         "default": "./dist/chat/core-tools.cjs"
-      }
-    },
-    "./react/chat": {
-      "development": {
-        "import": "./src/react/chat/index.ts",
-        "types": "./src/react/chat/index.ts"
-      },
-      "import": {
-        "types": "./dist/react/chat.d.ts",
-        "default": "./dist/react/chat.js"
-      },
-      "require": {
-        "types": "./dist/react/chat.d.cts",
-        "default": "./dist/react/chat.cjs"
-      }
-    },
-    "./react/chat/plugins": {
-      "development": {
-        "import": "./src/react/chat/plugins/index.ts",
-        "types": "./src/react/chat/plugins/index.ts"
-      },
-      "import": {
-        "types": "./dist/react/chat/plugins.d.ts",
-        "default": "./dist/react/chat/plugins.js"
-      },
-      "require": {
-        "types": "./dist/react/chat/plugins.d.cts",
-        "default": "./dist/react/chat/plugins.cjs"
-      }
-    },
-    "./react/chat/pipeline": {
-      "development": {
-        "import": "./src/react/chat/pipeline/index.ts",
-        "types": "./src/react/chat/pipeline/index.ts"
-      },
-      "import": {
-        "types": "./dist/react/chat/pipeline.d.ts",
-        "default": "./dist/react/chat/pipeline.js"
-      },
-      "require": {
-        "types": "./dist/react/chat/pipeline.d.cts",
-        "default": "./dist/react/chat/pipeline.cjs"
-      }
-    },
-    "./ink/chat": {
-      "development": {
-        "import": "./src/ink/chat/index.ts",
-        "types": "./src/ink/chat/index.ts"
-      },
-      "import": {
-        "types": "./dist/ink/chat.d.ts",
-        "default": "./dist/ink/chat.js"
-      },
-      "require": {
-        "types": "./dist/ink/chat.d.cts",
-        "default": "./dist/ink/chat.cjs"
       }
     }
   },
@@ -244,15 +118,7 @@
   },
   "peerDependencies": {
     "@effectionx/context-api": "^0.2.1",
-    "@effectionx/raf": "^0.1.1",
     "effection": ">=4.1.0-alpha.9 <5.0.0",
-    "katex": "^0.16.27",
-    "marked": "^17.0.1",
-    "mermaid": "^11.12.2",
-    "react": "^19.0.0",
-    "shiki": "^3.20.0",
-    "tailwind-merge": "^2.5.2",
-    "vite": "^5.0.0 || ^6.0.0 || ^7.0.0",
     "zod": "^3.24.0 || ^4.0.0"
   },
   "peerDependenciesMeta": {
@@ -261,14 +127,10 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
-    "@earendil-works/pi-ai": "^0.79.8",
     "@sweatpants/core": "workspace:*",
     "@sweatpants/durable-streams": "workspace:*",
     "@sweatpants/elicit-context": "workspace:*",
     "@sweatpants/stream-bridge": "workspace:*",
-    "fast-glob": "^3.3.2",
-    "magic-string": "catalog:",
     "pg": "^8.13.1",
     "pino": "^9.6.0",
     "pino-pretty": "^13.0.0",
@@ -299,7 +161,9 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "fast-glob": "^3.3.2",
+    "magic-string": "catalog:"
   },
   "keywords": [
     "vite",

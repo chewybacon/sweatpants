@@ -46,7 +46,7 @@
  */
 import type { Operation, Channel, Signal } from 'effection'
 import { createSignal, createChannel } from 'effection'
-import type { ReactNode } from 'react'
+type RenderNode = unknown
 
 // =============================================================================
 // CORE TYPES
@@ -177,7 +177,7 @@ export function createUIRequestChannel(): Channel<PendingUIRequest, void> {
 export type UIHandler<TPayload = unknown, TResponse = unknown> = (
   payload: TPayload,
   respond: (response: TResponse) => void
-) => ReactNode
+) => RenderNode
 
 /**
  * Registry of UI handlers for different request types.
@@ -186,12 +186,12 @@ export interface UIHandlerRegistry {
   /**
    * Render all pending UI requests that have handlers.
    */
-  render(requests: PendingUIRequest[]): ReactNode[]
+  render(requests: PendingUIRequest[]): RenderNode[]
 
   /**
    * Render a single UI request if we have a handler for it.
    */
-  renderOne(request: PendingUIRequest): ReactNode | null
+  renderOne(request: PendingUIRequest): RenderNode | null
 
   /**
    * Check if a handler is registered for a request type.
@@ -267,7 +267,7 @@ export function createUIHandlers(): UIHandlerBuilder {
         render(requests) {
           return requests
             .map((req) => this.renderOne(req))
-            .filter((node): node is ReactNode => node !== null)
+            .filter((node): node is RenderNode => node !== null)
         },
 
         renderOne(request) {

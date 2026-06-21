@@ -1,0 +1,17 @@
+{
+  "extends": "@sweatpants/ts-config/tsconfig.package.json",
+  "compilerOptions": {
+    "composite": true,
+    "emitDeclarationOnly": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "ignoreDeprecations": "5.0"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "dist",
+    "node_modules"
+  ]
+}

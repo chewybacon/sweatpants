@@ -11,7 +11,7 @@
  * @packageDocumentation
  */
 import { spawn, each, type Operation, type Channel } from 'effection'
-import type { ChatProvider } from '../../lib/chat/providers/types.ts'
+import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
 import type { ElicitsMap } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
@@ -26,7 +26,6 @@ import {
   createPluginClientContext,
   executeElicitHandlerFromRequest,
 } from '../../lib/chat/mcp-tools/plugin-executor.ts'
-import { extendedMessageToProviderMessage } from '../../lib/chat/mcp-tools/message-conversion.ts'
 import type {
   ComponentEmissionPayload,
   PendingEmission,
@@ -51,8 +50,8 @@ export interface PluginToolExecutionConfig {
   /** The plugin client registration */
   plugin: PluginClientRegistration<ElicitsMap>
 
-  /** Chat provider for handling sample events */
-  provider: ChatProvider
+  /** Provider for handling sample events */
+  samplingProvider: ToolSessionSamplingProvider
 
   /** Emission channel for plugin UI rendering */
   emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined
@@ -114,7 +113,7 @@ export function getPluginForTool(
 export function* executePluginTool(
   config: PluginToolExecutionConfig
 ): Operation<PluginToolResult> {
-  const { toolCall, tool, plugin, provider, emissionChannel, signal } = config
+  const { toolCall, tool, plugin, samplingProvider, emissionChannel, signal } = config
   const callId = toolCall.id
   const toolName = toolCall.function.name
 
@@ -133,7 +132,7 @@ export function* executePluginTool(
     // Spawn event handler to process bridge events
     yield* spawn(function* () {
       for (const event of yield* each(host.events)) {
-        yield* handleBridgeEvent(event, plugin, provider, emissionChannel, callId, signal)
+        yield* handleBridgeEvent(event, plugin, samplingProvider, emissionChannel, callId, signal)
         yield* each.next()
       }
     })
@@ -163,7 +162,7 @@ export function* executePluginTool(
 function* handleBridgeEvent(
   event: BridgeEvent,
   plugin: PluginClientRegistration<ElicitsMap>,
-  provider: ChatProvider,
+  samplingProvider: ToolSessionSamplingProvider,
   emissionChannel: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined,
   callId: string,
   signal: AbortSignal
@@ -209,37 +208,16 @@ function* handleBridgeEvent(
     }
 
     case 'sample': {
-      // Use the chat provider to sample
       try {
-        // Convert ExtendedMessage variants to chat provider format
-        // Preserves tool_calls, tool_call_id, and MCP content blocks
-        const chatMessages = event.messages.map(extendedMessageToProviderMessage)
-
-        // Get the stream from provider
-        const stream = provider.stream(chatMessages, undefined)
-        const subscription = yield* stream
-
-        // Collect all text from the stream
-        let fullText = ''
-        let iteration = yield* subscription.next()
-        while (!iteration.done) {
-          const chatEvent = iteration.value
-          if (chatEvent.type === 'text') {
-            fullText += chatEvent.content
-          }
-          iteration = yield* subscription.next()
-        }
-
-        // The final result has the complete text
-        const chatResult = iteration.value
-        const responseText = chatResult?.text ?? fullText
-
-        // Send sample response
-        event.responseSignal.send({
-          result: { text: responseText },
-        } as SampleResponse)
+        const result = yield* samplingProvider.sample(event.messages, {
+          ...(event.options?.systemPrompt ? { systemPrompt: event.options.systemPrompt } : {}),
+          ...(event.options?.maxTokens !== undefined ? { maxTokens: event.options.maxTokens } : {}),
+          ...(event.options?.tools ? { tools: event.options.tools } : {}),
+          ...(event.options?.toolChoice ? { toolChoice: event.options.toolChoice } : {}),
+          ...(event.options?.schema ? { schema: event.options.schema } : {}),
+        })
+        event.responseSignal.send({ result } as SampleResponse)
       } catch (error) {
-        // Sampling failed
         event.responseSignal.send({
           result: { text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]` },
         } as SampleResponse)

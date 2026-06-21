@@ -12,7 +12,7 @@
  * - Response headers: X-Session-Id
  */
 import { createFileRoute } from '@tanstack/react-router'
-import { createChatHandler, type InitializerContext } from '@sweatpants/framework/handler'
+import { createChatHandler, type InitializerContext } from '@sweatpants/framework/server'
 import {
   createSharedStorage,
   getSharedStores,
@@ -25,15 +25,14 @@ import {
   resolvePersona,
   setupLogger,
 } from '@sweatpants/framework/chat'
-import { ollamaProvider, openaiProvider } from '@sweatpants/framework/chat/providers'
 import {
-  DefaultRuntime,
-  RuntimeContext,
-  RuntimeModelContext,
+  createPiAiModelProviderDriver,
+  installPiAiModelProvider,
   resolveRuntimeModel,
-} from '@sweatpants/framework/chat/runtime'
+  type AssistantMessage as ModelAssistantMessage,
+  type Message as ModelMessage,
+} from '@sweatpants/model-provider-pi-ai'
 import {
-  ProviderContext,
   ToolRegistryContext,
   PersonaResolverContext,
   MaxIterationsContext,
@@ -43,12 +42,15 @@ import {
   PluginSessionManagerContext,
 } from '@sweatpants/framework/chat'
 import {
-  createInMemoryToolSessionStore,
   createPluginRegistryFrom,
-  createToolSessionRegistry,
   type ToolSessionSamplingProvider,
   type ToolSessionRegistry,
 } from '@sweatpants/framework/chat/mcp-tools'
+import {
+  createInMemoryToolSessionStore,
+  createToolSessionRegistry,
+  ToolSessionSamplingProviderContext,
+} from '@sweatpants/tool-runtime-local'
 import {
   createAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolSessionRegistry,
@@ -60,18 +62,20 @@ import {
   type AgentCoreToolRuntimeProfile,
   type AgentCoreToolSessionStores,
   type RedisLikeClient,
-} from '@sweatpants/framework/chat/mcp-tools/agentcore'
-import { createPluginSessionManager, type PluginSessionManager } from '@sweatpants/framework/handler/durable'
-import type { McpToolRegistry } from '@sweatpants/framework/handler/durable'
-import type { 
-  ChatResult,
-  SampleResultBase,
-  SampleResultWithToolCalls,
-  SamplingToolCall,
-  SamplingToolDefinition,
+} from '@sweatpants/tool-runtime-agentcore'
+import { createPluginSessionManager, type PluginSessionManager } from '@sweatpants/framework/server'
+import type { McpToolRegistry } from '@sweatpants/framework/server'
+import type {
   ExtendedMessage,
   Message,
+  SamplingToolCall,
+  SamplingToolDefinition,
 } from '@sweatpants/framework/chat'
+import type {
+  RawSampleResultBase,
+  RawSampleResultWithParsed,
+  RawSampleResultWithToolCalls,
+} from '@sweatpants/framework/chat/mcp-tools'
 import { extendedMessageToProviderMessage } from '@sweatpants/framework/chat/mcp-tools'
 import type { Operation } from 'effection'
 import { run, call } from 'effection'
@@ -144,28 +148,10 @@ const setupDurableStreams = function* (): Operation<void> {
   }
 }
 
-function selectChatProvider(providerName: string): typeof ollamaProvider {
-  const providerMap = {
-    ollama: ollamaProvider,
-    openai: openaiProvider,
-  }
-
-  const selectedProvider = providerMap[providerName as keyof typeof providerMap]
-  if (!selectedProvider) {
-    throw new Error(`Unknown provider: ${providerName}`)
-  }
-  return selectedProvider
-}
-
 const setupProvider = function* (ctx: InitializerContext): Operation<void> {
-  // Dynamic runtime/provider selection based on request.
-  // ProviderContext remains available for plugin sampling compatibility; model
-  // execution is configured through RuntimeContext/RuntimeModelContext.
   const body = ctx.body as { provider?: string; model?: string }
   const providerName = body.provider || env.CHAT_PROVIDER
-  yield* RuntimeContext.set(DefaultRuntime)
-  yield* RuntimeModelContext.set(resolveRuntimeModel(providerName, body.model))
-  yield* ProviderContext.set(selectChatProvider(providerName))
+  yield* installPiAiModelProvider({ model: resolveRuntimeModel(providerName, body.model) })
 }
 
 const setupTools = function* (_ctx: InitializerContext): Operation<void> {
@@ -335,113 +321,129 @@ interface SamplingOptions {
   schema?: Record<string, unknown>
 }
 
-interface ProviderStreamOptions {
-  isomorphicToolSchemas?: Array<{
-    name: string
-    description: string
-    parameters: Record<string, unknown>
-    isIsomorphic: true
-  }>
-  toolChoice?: 'auto' | 'required' | 'none'
-  schema?: Record<string, unknown>
+function providerMessageToModelMessage(message: Message): ModelMessage {
+  if (message.role === 'system') {
+    return { role: 'system', content: message.content }
+  }
+
+  if (message.role === 'user') {
+    return { role: 'user', content: message.content }
+  }
+
+  if (message.role === 'tool') {
+    return {
+      role: 'toolResult',
+      toolCallId: message.tool_call_id ?? '',
+      toolName: message.replay?.toolName ?? '',
+      content: [{ type: 'text', text: message.content }],
+      isError: message.content.startsWith('Error:'),
+    }
+  }
+
+  return {
+    role: 'assistant',
+    content: [
+      ...(message.content ? [{ type: 'text' as const, text: message.content }] : []),
+      ...(message.tool_calls ?? []).map((toolCall) => ({
+        type: 'toolCall' as const,
+        id: toolCall.id,
+        name: toolCall.function.name,
+        arguments: toolCall.function.arguments,
+      })),
+    ],
+  }
 }
 
-/**
- * Real sampling provider for plugin tools.
- * 
- * This wraps the actual chat provider (Ollama/OpenAI) and:
- * 1. Converts SamplingToolDefinition[] to IsomorphicToolSchema[]
- * 2. Calls the provider's stream() method
- * 3. Collects the result and extracts toolCalls when present
- * 4. Returns properly typed SampleResultBase or SampleResultWithToolCalls
- */
+function assistantText(message: ModelAssistantMessage): string {
+  return message.content
+    .filter((block): block is Extract<ModelAssistantMessage['content'][number], { type: 'text' }> => block.type === 'text')
+    .map((block) => block.text)
+    .join('')
+}
+
+function assistantToolCalls(message: ModelAssistantMessage): SamplingToolCall[] {
+  return message.content
+    .filter((block): block is Extract<ModelAssistantMessage['content'][number], { type: 'toolCall' }> => block.type === 'toolCall')
+    .map((block) => ({
+      id: block.id,
+      name: block.name,
+      arguments: block.arguments,
+    }))
+}
+
+function samplingTools(tools: SamplingToolDefinition[] | undefined) {
+  return tools?.map((tool) => ({
+    name: tool.name,
+    description: tool.description ?? '',
+    parameters: typeof tool.inputSchema === 'object' && tool.inputSchema !== null
+      ? tool.inputSchema as Record<string, unknown>
+      : { type: 'object', properties: {}, required: [] },
+  }))
+}
+
+/** Real sampling provider for plugin tools, backed by the scoped pi-ai model provider driver. */
 function createPluginSamplingProvider(): ToolSessionSamplingProvider {
-  // Determine which provider to use based on env
-  const provider = selectChatProvider(env.CHAT_PROVIDER)
-  
+  const driver = createPiAiModelProviderDriver()
+  const model = resolveRuntimeModel(env.CHAT_PROVIDER)
+
   return {
     *sample(messages: ExtendedMessage[], options: SamplingOptions | undefined) {
-      // Convert SamplingToolDefinition[] to IsomorphicToolSchema[] format
-      const isomorphicToolSchemas = options?.tools?.map((tool: SamplingToolDefinition) => ({
-        name: tool.name,
-        description: tool.description ?? '',
-        parameters: typeof tool.inputSchema === 'object' && 'type' in tool.inputSchema
-          ? tool.inputSchema as Record<string, unknown>
-          : { type: 'object', properties: {}, required: [] }, // Fallback for Zod schemas (should be pre-converted)
-        isIsomorphic: true as const,
-      }))
+      const modelMessages = messages
+        .map(extendedMessageToProviderMessage)
+        .map(providerMessageToModelMessage)
 
-      // Build provider options - only include isomorphicToolSchemas if tools were provided
-      const streamOptions: ProviderStreamOptions = {}
-      
-      if (isomorphicToolSchemas && isomorphicToolSchemas.length > 0) {
-        streamOptions.isomorphicToolSchemas = isomorphicToolSchemas
-        // Pass through toolChoice if specified
-        if (options?.toolChoice) {
-          streamOptions.toolChoice = options.toolChoice
-        }
-      }
+      const assistant = yield* driver.sample({
+        model,
+        context: {
+          ...(options?.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
+          messages: modelMessages,
+          ...(options?.tools ? { tools: samplingTools(options.tools) } : {}),
+        },
+        options: {
+          ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
+          ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
+          ...(options?.schema ? { responseFormat: { type: 'json_schema', name: 'plugin_sample', schema: options.schema } } : {}),
+        },
+      })
 
-      // Pass through schema for structured output
-      if (options?.schema) {
-        streamOptions.schema = options.schema
-      }
-
-      // Convert ExtendedMessage[] to provider Message[] format
-      const providerMessages: Message[] = messages.map(extendedMessageToProviderMessage)
-
-      // Prepend system prompt as a system message if provided
-      const messagesWithSystem: Message[] = options?.systemPrompt
-        ? [{ id: 'system:plugin-sampling', role: 'system', content: options.systemPrompt }, ...providerMessages]
-        : providerMessages
-
-      // Call the provider's stream method and collect the result
-      const stream = provider.stream(messagesWithSystem, streamOptions)
-      
-      // Consume the stream to get the final result
-      let finalResult: ChatResult | undefined
-      
-      const subscription = yield* stream
-      for (;;) {
-        const next = yield* subscription.next()
-        if (next.done) {
-          finalResult = next.value
-          break
-        }
-        // Ignore streaming events, we just want the final result
-      }
-
-      if (!finalResult) {
+      const text = assistantText(assistant)
+      const toolCalls = assistantToolCalls(assistant)
+      if (toolCalls.length > 0) {
         return {
-          text: '',
-          model: provider.name,
-          stopReason: 'error',
-        } as SampleResultBase
-      }
-
-      // Check if the result has tool calls
-      if (finalResult.toolCalls && finalResult.toolCalls.length > 0) {
-        // Convert provider tool calls to SamplingToolCall format
-        const samplingToolCalls: SamplingToolCall[] = finalResult.toolCalls.map((tc: NonNullable<ChatResult['toolCalls']>[number]) => ({
-          id: tc.id,
-          name: tc.function.name,
-          arguments: tc.function.arguments,
-        }))
-
-        return {
-          text: finalResult.text,
-          model: provider.name,
+          text,
+          model: model.id,
           stopReason: 'toolUse',
-          toolCalls: samplingToolCalls,
-        } as SampleResultWithToolCalls
+          toolCalls,
+        } satisfies RawSampleResultWithToolCalls
       }
 
-      // Plain text result
+      if (options?.schema) {
+        try {
+          return {
+            text,
+            model: model.id,
+            stopReason: 'endTurn',
+            parsed: JSON.parse(text),
+          } satisfies RawSampleResultWithParsed<unknown>
+        } catch (error) {
+          return {
+            text,
+            model: model.id,
+            stopReason: 'endTurn',
+            parsed: null,
+            parseError: {
+              message: error instanceof Error ? error.message : 'Failed to parse JSON',
+              rawText: text,
+            },
+          } satisfies RawSampleResultWithParsed<unknown>
+        }
+      }
+
       return {
-        text: finalResult.text,
-        model: provider.name,
-        stopReason: 'endTurn',
-      } as SampleResultBase
+        text,
+        model: model.id,
+        stopReason: assistant.stopReason === 'maxTokens' ? 'maxTokens' : 'endTurn',
+      } satisfies RawSampleResultBase
     },
   }
 }
@@ -467,14 +469,15 @@ function createPluginSamplingProvider(): ToolSessionSamplingProvider {
 let sharedPluginSessionRegistry: ToolSessionRegistry | null = null
 let sharedPluginSessionManager: PluginSessionManager | null = null
 
+const pluginSamplingProvider = createPluginSamplingProvider()
+
 function* createLocalPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
   const store = createInMemoryToolSessionStore()
-  const samplingProvider = createPluginSamplingProvider()
   // Worker URL provided by vite-plugin-node-worker
   // In dev: transpiles TS and rewrites imports to file:// URLs
   // In build: emits as separate chunk with proper relative path
   return yield* createToolSessionRegistry(store, {
-    samplingProvider,
+    samplingProvider: pluginSamplingProvider,
     worker: {
       workerUrl: toolWorkerUrl,
       isDev: process.env['NODE_ENV'] !== 'production',
@@ -569,7 +572,7 @@ function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegi
 // This runs once when the module is first imported.
 const registryPromise = run(function* () {
   const registry = yield* createConfiguredPluginToolSessionRegistry()
-  const manager = yield* createPluginSessionManager({ registry })
+  const manager = yield* createPluginSessionManager({ registry, samplingProvider: pluginSamplingProvider })
   sharedPluginSessionRegistry = registry
   sharedPluginSessionManager = manager
   return { registry, manager }
@@ -578,6 +581,7 @@ const registryPromise = run(function* () {
 const setupPlugins = function* (_ctx: InitializerContext): Operation<void> {
   yield* PluginRegistryContext.set(pluginRegistry)
   yield* McpToolRegistryContext.set(mcpToolRegistry)
+  yield* ToolSessionSamplingProviderContext.set(pluginSamplingProvider)
 
   // Wait for registry and manager to be ready. They are created at module load,
   // but the first HTTP request can race initialization in dev/serverless mode.

@@ -30,15 +30,9 @@ import {
   PluginRegistryContext,
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
-  ProviderContext,
   ToolRegistryContext,
-} from "../../lib/chat/providers/contexts.ts";
-import {
-  RuntimeContext,
-  RuntimeModelContext,
-  RuntimeStreamConfigContext,
-  resolveRuntimeModel,
-} from '../../lib/chat/runtime/index.ts';
+} from "../../lib/chat/contexts.ts";
+import { ModelProviderApi, ModelProviderContext, type ModelProviderDriver } from '../../lib/chat/model-provider.ts';
 import { useLogger } from "../../lib/logger/index.ts";
 import {
   bindModel,
@@ -72,9 +66,8 @@ import type {
   ToolSchema,
 } from "./types.ts";
 import type { ConversationReplayState } from '../../lib/chat/session/streaming.ts'
-import type { ChatEvent, ChatResult, Message as ProviderMessage, ToolCall as ProviderToolCall } from '../../lib/chat/types.ts'
-import type { ChatProvider } from '../../lib/chat/providers/types.ts'
-import type { AssistantMessage, Runtime, StreamEvent as RuntimeStreamEvent, Usage } from '../../lib/chat/runtime/index.ts'
+import type { Runtime } from '../../lib/chat/runtime/index.ts'
+import { ToolSessionSamplingProviderContext } from '../../lib/chat/mcp-tools/session/contexts.ts'
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -217,142 +210,21 @@ function mergeReplayState(
   return traces.size > 0 ? { toolTraces: Array.from(traces.values()) } : undefined
 }
 
-function textFromRuntimeContent(content: string | Array<{ type: string; text?: string }>): string {
-  return typeof content === 'string'
-    ? content
-    : content.map((block) => block.type === 'text' ? block.text ?? '' : '').join('')
-}
-
-function usageFromProviderUsage(usage: ChatResult['usage']): Usage {
-  return {
-    input: usage.promptTokens,
-    output: usage.completionTokens,
-    total: usage.totalTokens,
-  }
-}
-
-function assistantFromProviderResult(result: ChatResult): AssistantMessage {
-  return {
-    role: 'assistant',
-    content: [
-      ...(result.text ? [{ type: 'text' as const, text: result.text }] : []),
-      ...(result.thinking ? [{ type: 'thinking' as const, text: result.thinking }] : []),
-      ...(result.toolCalls ?? []).map((toolCall) => ({
-        type: 'toolCall' as const,
-        id: toolCall.id,
-        name: toolCall.function.name,
-        arguments: toolCall.function.arguments,
-      })),
-    ],
-    usage: usageFromProviderUsage(result.usage),
-    stopReason: result.toolCalls && result.toolCalls.length > 0 ? 'toolUse' : 'stop',
-  }
-}
-
-function providerMessagesFromRuntimeContext(context: Parameters<Runtime['stream']>[1]): ProviderMessage[] {
-  const messages: ProviderMessage[] = []
-
-  if (context.systemPrompt) {
-    messages.push({ id: 'system:runtime', role: 'system', content: context.systemPrompt })
-  }
-
-  for (const message of context.messages) {
-    if (message.role === 'system') {
-      messages.push({ id: `system:${messages.length}`, role: 'system', content: message.content })
-    } else if (message.role === 'user') {
-      messages.push({ id: `user:${messages.length}`, role: 'user', content: textFromRuntimeContent(message.content) })
-    } else if (message.role === 'toolResult') {
-      messages.push({
-        id: `tool:${message.toolCallId}`,
-        role: 'tool',
-        content: textFromRuntimeContent(message.content),
-        tool_call_id: message.toolCallId,
-        replay: { toolName: message.toolName },
-      })
-    } else {
-      const toolCalls: ProviderToolCall[] = message.content
-        .filter((block): block is Extract<typeof message.content[number], { type: 'toolCall' }> => block.type === 'toolCall')
-        .map((block) => ({
-          id: block.id,
-          type: 'function',
-          function: { name: block.name, arguments: block.arguments },
-        }))
-      messages.push({
-        id: `assistant:${messages.length}`,
-        role: 'assistant',
-        content: textFromRuntimeContent(message.content),
-        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
-      })
-    }
-  }
-
-  return messages
-}
-
-function createRuntimeFromChatProvider(provider: ChatProvider): Runtime {
+function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
   return {
     stream(model, context, options) {
       return resource(function* (provide) {
-        const subscription = yield* provider.stream(providerMessagesFromRuntimeContext(context), {
-          model: model.id,
-          ...(model.baseUrl ? { baseUri: model.baseUrl } : {}),
-          ...(options?.apiKey ? { apiKey: options.apiKey } : {}),
-          ...(context.tools ? { isomorphicToolSchemas: context.tools.map((tool) => ({ ...tool, isIsomorphic: true as const })) } : {}),
-          ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
-          ...(options?.responseFormat?.schema ? { schema: options.responseFormat.schema } : {}),
+        const stream = driver.stream({
+          model,
+          context,
+          ...(options ? { options } : {}),
         })
-        const pending: RuntimeStreamEvent[] = []
-        let text = ''
-        let thinking = ''
-        let contentIndex = 0
-
-        yield* provide({
-          *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
-            if (pending.length > 0) return { done: false, value: pending.shift()! }
-
-            const next = yield* subscription.next()
-            if (next.done) return { done: true, value: assistantFromProviderResult(next.value) }
-
-            const event: ChatEvent = next.value
-            const partial: AssistantMessage = {
-              role: 'assistant',
-              content: [
-                ...(text ? [{ type: 'text' as const, text }] : []),
-                ...(thinking ? [{ type: 'thinking' as const, text: thinking }] : []),
-              ],
-            }
-
-            if (event.type === 'text') {
-              text += event.content
-              return { done: false, value: { type: 'text_delta', contentIndex: 0, delta: event.content, partial } }
-            }
-
-            if (event.type === 'thinking') {
-              thinking += event.content
-              return { done: false, value: { type: 'thinking_delta', contentIndex: 1, delta: event.content, partial } }
-            }
-
-            for (const toolCall of event.toolCalls) {
-              pending.push({
-                type: 'toolcall_end',
-                contentIndex: contentIndex++,
-                toolCall: {
-                  type: 'toolCall',
-                  id: toolCall.id,
-                  name: toolCall.function.name,
-                  arguments: toolCall.function.arguments,
-                },
-                partial,
-              })
-            }
-
-            return yield* this.next()
-          },
-        })
+        const subscription = yield* stream
+        yield* provide(subscription)
       })
     },
     *generateImages() {
-      throw new Error('Legacy ChatProvider runtime adapter does not support image generation')
+      throw new Error('ModelProviderApi runtime adapter does not support image generation')
     },
   }
 }
@@ -475,17 +347,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       // Get dependencies from contexts
-      const legacyProvider = yield* ProviderContext.get();
-      const configuredRuntime = yield* RuntimeContext.get();
-      const runtime = configuredRuntime ?? (legacyProvider ? createRuntimeFromChatProvider(legacyProvider) : undefined);
-      if (!runtime) {
-        throw new Error(
-          "Provider not configured. Ensure a runtime initializer hook sets RuntimeContext.",
-        );
+      const modelProviderDriver = yield* ModelProviderContext.get();
+      if (!modelProviderDriver) {
+        throw new Error("Model provider not configured. Install a ModelProviderDriver in scope.");
       }
-      const model = (yield* RuntimeModelContext.get()) ?? resolveRuntimeModel(body.provider ?? process.env['CHAT_PROVIDER'] ?? 'ollama', body.model);
-      const streamOptions = yield* RuntimeStreamConfigContext.get();
-      log.debug({ provider: model.provider, model: model.id, api: model.api }, "runtime configured");
+      const runtime = createRuntimeFromModelProviderDriver(modelProviderDriver);
+      const model = yield* ModelProviderApi.model();
+      const streamOptions = yield* ModelProviderApi.streamOptions();
+      log.debug({ provider: model.provider, model: model.id, api: model.api }, "model provider configured");
 
       const tools = yield* ToolRegistryContext.get();
       if (!tools) {
@@ -502,6 +371,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // Get optional plugin contexts for MCP plugin tools
       const pluginRegistry = yield* PluginRegistryContext.get();
       const mcpToolRegistry = yield* McpToolRegistryContext.get();
+      const pluginSamplingProvider = yield* ToolSessionSamplingProviderContext.get();
       if (pluginRegistry) {
         log.debug("plugin registry configured");
       }
@@ -526,6 +396,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           if (sharedRegistry) {
             pluginSessionManager = yield* createPluginSessionManager({
               registry: sharedRegistry,
+              ...(pluginSamplingProvider ? { samplingProvider: pluginSamplingProvider } : {}),
             });
             log.warn(
               "PluginSessionManagerContext not set - creating per-request manager (multi-step elicitation may not work)",
@@ -720,7 +591,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           runtime,
           model,
           ...(streamOptions ? { streamOptions } : {}),
-          ...(legacyProvider ? { provider: legacyProvider } : {}),
           maxIterations,
           signal: engineAbortController.signal,
           sessionInfo,
@@ -732,6 +602,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(pluginRegistry && { pluginRegistry }),
           ...(mcpToolRegistry && { mcpToolRegistry }),
           ...(pluginSessionManager && { pluginSessionManager }),
+          ...(pluginSamplingProvider && { pluginSamplingProvider }),
           // Pass elicit responses if provided
           ...(body.elicitResponses && {
             elicitResponses: body.elicitResponses,

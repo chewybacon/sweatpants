@@ -34,12 +34,12 @@
  * ```
  */
 import type { Operation } from 'effection'
-import type { ComponentType } from 'react'
 import type { BaseToolContext, BrowserToolContext, ApprovalResult, PermissionType } from '../contexts.ts'
 import {
   type RuntimePrimitive,
   type ComponentEmissionPayload,
   type Emission,
+  type ComponentTypeLike,
   COMPONENT_EMISSION_TYPE,
   getComponentKey,
 } from './emissions.ts'
@@ -116,7 +116,7 @@ export interface BrowserRenderContext extends BrowserToolContext {
    * ```
    */
   render<TProps, TResponse = ExtractResponse<TProps>>(
-    Component: ComponentType<TProps>,
+    Component: ComponentTypeLike<TProps>,
     props: UserProps<TProps>
   ): Operation<TResponse>
 }
@@ -222,7 +222,7 @@ export function createBrowserContext(
     // --- render() DSL ---
 
     *render<TProps, TResponse = ExtractResponse<TProps>>(
-      Component: ComponentType<TProps>,
+      Component: ComponentTypeLike<TProps>,
       props: UserProps<TProps>
     ): Operation<TResponse> {
       const componentKey = getComponentKey(Component)
@@ -268,13 +268,13 @@ export function createBrowserContext(
 /**
  * Infer the props type for a component minus RenderableProps.
  */
-export type ComponentUserProps<C extends ComponentType<any>> = C extends ComponentType<infer P>
+export type ComponentUserProps<C extends ComponentTypeLike<any>> = C extends ComponentTypeLike<infer P>
   ? UserProps<P>
   : never
 
 /**
  * Infer the response type for a component.
  */
-export type ComponentResponse<C extends ComponentType<any>> = C extends ComponentType<infer P>
+export type ComponentResponse<C extends ComponentTypeLike<any>> = C extends ComponentTypeLike<infer P>
   ? ExtractResponse<P>
   : void

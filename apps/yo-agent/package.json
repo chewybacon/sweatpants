@@ -25,7 +25,9 @@
     "marked": "^17.0.1",
     "react": "catalog:",
     "shiki": "^3.20.0",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@sweatpants/react-chat": "workspace:*",
+    "@sweatpants/model-provider-pi-ai": "workspace:*"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",

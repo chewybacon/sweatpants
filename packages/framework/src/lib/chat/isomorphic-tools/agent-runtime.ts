@@ -7,7 +7,7 @@
  * ## Key Concepts
  *
  * 1. **Agent Context**: A ClientToolContext extended with `prompt()` for LLM calls
- * 2. **LLM Client**: Wraps a ChatProvider to provide structured output via `prompt()`
+ * 2. **LLM Client**: Wraps a ModelProviderDriver to provide structured output via `prompt()`
  * 3. **runAsAgent**: Executes a tool's `*client()` as an agent instead of in browser
  *
  * ## Usage
@@ -15,8 +15,8 @@
  * ```typescript
  * import { runAsAgent, createAgentLLMClient } from './agent-runtime.ts'
  *
- * // Create LLM client from your chat provider
- * const llm = createAgentLLMClient({ provider: openaiProvider })
+ * // Create LLM client from your scoped model provider driver
+ * const llm = createAgentLLMClient({ driver, model })
  *
  * // Run a tool as an agent
  * const result = yield* runAsAgent({
@@ -28,13 +28,12 @@
  * })
  * ```
  */
-import type { Operation, Stream, Subscription } from 'effection'
+import type { Operation } from 'effection'
 import type { z } from 'zod'
 import type { AnyIsomorphicTool } from './types.ts'
 import { type AgentToolContext, type PromptOptions, type ApprovalResult, validateContextMode } from './contexts.ts'
-import type { ChatProvider, ChatStreamOptions } from '../providers/types.ts'
-import type { Message, ChatEvent, ChatResult } from '../types.ts'
-import { messageIdForSystem, messageIdForUser } from '../session/message-identity.ts'
+import type { ModelProviderDriver } from '../model-provider.ts'
+import type { Model, Message, StreamOptions } from '../runtime/index.ts'
 
 // --- LLM Client Types ---
 
@@ -57,17 +56,17 @@ export interface AgentLLMClient {
  * Options for creating an LLM client.
  */
 export interface CreateAgentLLMClientOptions {
-  /** The chat provider to use (e.g., openaiProvider) */
-  provider: ChatProvider
+  /** The model provider driver to use. */
+  driver: ModelProviderDriver
 
-  /** Default model to use if not specified in prompt options */
-  defaultModel?: string
+  /** Default model to use if not specified in prompt options. */
+  model: Model
 
   /** Default system prompt if not specified in prompt options */
   defaultSystem?: string
 
-  /** Options passed to the provider's stream() method */
-  streamOptions?: Partial<ChatStreamOptions>
+  /** Options passed to the model provider. */
+  streamOptions?: Partial<StreamOptions>
 }
 
 // --- LLM Client Implementation ---
@@ -75,47 +74,29 @@ export interface CreateAgentLLMClientOptions {
 /**
  * Create an LLM client for agent execution.
  *
- * Wraps a ChatProvider to provide structured output via Zod schemas.
- * Uses the provider's streaming API and accumulates the response.
+ * Wraps a ModelProviderDriver to provide structured output via Zod schemas.
+ * Uses the provider sample API and parses the response text.
  */
 export function createAgentLLMClient(options: CreateAgentLLMClientOptions): AgentLLMClient {
-  const { provider, defaultModel, defaultSystem, streamOptions } = options
+  const { driver, model, defaultSystem, streamOptions } = options
 
   return {
     *prompt<T extends z.ZodType>(opts: PromptOptions<T>): Operation<z.infer<T>> {
-      const messages: Message[] = []
+      const messages: Message[] = [{ role: 'user', content: opts.prompt }]
+      const selectedModel = opts.model ? { ...model, id: opts.model, name: opts.model } : model
+      const response = yield* driver.sample({
+        model: selectedModel,
+        context: {
+          ...(opts.system ?? defaultSystem ? { systemPrompt: opts.system ?? defaultSystem } : {}),
+          messages,
+        },
+        ...(streamOptions ? { options: streamOptions } : {}),
+      })
 
-      // Add system message if provided
-      const system = opts.system ?? defaultSystem
-      if (system) {
-        messages.push({ id: messageIdForSystem(0), role: 'system', content: system })
-      }
-
-      // Add user message with the prompt
-      messages.push({ id: messageIdForUser('u1'), role: 'user', content: opts.prompt })
-
-      // Create stream options with model override
-      const model = opts.model ?? defaultModel ?? streamOptions?.model
-      const finalOptions: ChatStreamOptions = {
-        ...streamOptions,
-        ...(model ? { model } : {}),
-      }
-
-      // Stream the response and accumulate text
-      const stream: Stream<ChatEvent, ChatResult> = provider.stream(messages, finalOptions)
-      const subscription: Subscription<ChatEvent, ChatResult> = yield* stream
-
-      let textBuffer = ''
-
-      // Consume the stream
-      let next = yield* subscription.next()
-      while (!next.done) {
-        const event = next.value
-        if (event.type === 'text') {
-          textBuffer += event.content
-        }
-        next = yield* subscription.next()
-      }
+      const textBuffer = response.content
+        .filter((block): block is Extract<typeof block, { type: 'text' }> => block.type === 'text')
+        .map((block) => block.text)
+        .join('')
 
       // Parse JSON from accumulated text
       let parsed: unknown
@@ -194,7 +175,7 @@ export interface RunAsAgentOptions {
  *   handoffData: phase1.serverOutput,
  *   params,
  *   signal,
- *   llm: createAgentLLMClient({ provider: openaiProvider }),
+ *   llm: createAgentLLMClient({ driver, model }),
  * })
  *
  * // Complete phase 2 with agent's result

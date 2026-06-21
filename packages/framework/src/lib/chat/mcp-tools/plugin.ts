@@ -59,8 +59,8 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
-import type { ComponentType } from 'react'
 import type { z } from 'zod'
+import type { ComponentTypeLike } from '../isomorphic-tools/runtime/emissions.ts'
 import type {
   ElicitRequest,
   ElicitsMap,
@@ -121,7 +121,7 @@ export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.Zo
    * ```
    */
   render<TProps, TResponse = ExtractResponse<TProps>>(
-    Component: ComponentType<TProps>,
+    Component: ComponentTypeLike,
     props: UserProps<TProps>
   ): Operation<TResponse>
 
