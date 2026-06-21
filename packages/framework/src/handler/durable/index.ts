@@ -50,8 +50,8 @@ export type {
 
   // Handler types
   DurableChatHandlerConfig,
-  InitializerContext,
-  InitializerHook,
+  ChatHandlerSetupContext,
+  ChatHandlerSetup,
   ChatRequestBody,
 
   // Elicit types

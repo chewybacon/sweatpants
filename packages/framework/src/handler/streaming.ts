@@ -12,7 +12,7 @@
  * 5. Cleanup on completion or cancel
  */
 import { createContext, createScope } from 'effection'
-import type { Operation, Subscription } from 'effection'
+import type { Operation, Scope, Subscription } from 'effection'
 
 // =============================================================================
 // TYPES
@@ -40,6 +40,8 @@ export const HandlerContext = createContext<HandlerContext>('handler-context')
  * Options for createStreamingHandler
  */
 export interface StreamingHandlerOptions {
+  /** Parent scope used for request scopes. */
+  parentScope?: Scope
   /** Default headers to include in response */
   defaultHeaders?: HeadersInit
   /** Default status code (default 200) */
@@ -65,6 +67,12 @@ export type SetupResult =
  * Setup function signature - receives nothing, gets context via yield* HandlerContext.expect()
  */
 export type SetupFn = () => Operation<SetupResult>
+
+export type FetchHandler = (request: Request) => Promise<Response>
+
+export interface ScopedFetchHandler extends FetchHandler {
+  withScope(parentScope: Scope): FetchHandler
+}
 
 // =============================================================================
 // HELPER: useHandlerContext
@@ -126,16 +134,17 @@ export function* useHandlerContext(): Operation<HandlerContext> {
 export function createStreamingHandler(
   setup: SetupFn,
   options: StreamingHandlerOptions = {}
-): (request: Request) => Promise<Response> {
-  const {
-    defaultHeaders = { 'Content-Type': 'application/x-ndjson' },
-    defaultStatus = 200,
-    serialize = (v: string) => v + '\n',
-    onSetupError,
-  } = options
+): ScopedFetchHandler {
+  const buildHandler = (parentScope: Scope | undefined): ScopedFetchHandler => {
+    const {
+      defaultHeaders = { 'Content-Type': 'application/x-ndjson' },
+      defaultStatus = 200,
+      serialize = (v: string) => v + '\n',
+      onSetupError,
+    } = options
 
-  return async function handler(request: Request): Promise<Response> {
-    const [scope, destroy] = createScope()
+    const handler = async function handler(request: Request): Promise<Response> {
+      const [scope, destroy] = parentScope ? createScope(parentScope) : createScope()
     const encoder = new TextEncoder()
 
     // Create mutable context for setup to modify
@@ -252,9 +261,15 @@ export function createStreamingHandler(
       },
     })
 
-    return new Response(stream, {
-      status: ctx.status,
-      headers: ctx.headers,
-    })
+      return new Response(stream, {
+        status: ctx.status,
+        headers: ctx.headers,
+      })
+    }
+
+    handler.withScope = (scope: Scope): FetchHandler => buildHandler(scope)
+    return handler
   }
+
+  return buildHandler(options.parentScope)
 }

@@ -3,7 +3,7 @@
  *
  * Creates a fetch-like interface that calls the chat handler directly
  * in-process, without going over HTTP. This allows yo-agent to use
- * the same hooks and patterns as yo-chat while running in a single process.
+ * the same setup patterns as yo-chat while running in a single process.
  *
  * ## Architecture
  *
@@ -17,7 +17,7 @@
  */
 
 import { createChatHandler } from '@sweatpants/framework/server'
-import type { InitializerContext, IsomorphicTool } from '@sweatpants/framework/server'
+import type { ChatHandlerSetupContext, IsomorphicTool } from '@sweatpants/framework/server'
 import {
   MaxIterationsContext,
   ToolInventoryContext,
@@ -60,28 +60,33 @@ export interface InProcessHandlerConfig {
 export function createInProcessHandler(config: InProcessHandlerConfig) {
   const { provider: providerName, tools, maxIterations = 10 } = config
 
-  // Create initializer hooks (same pattern as yo-chat)
-  const setupDurableStreams = function* (_ctx: InitializerContext): Operation<void> {
+  // Create request setup (same pattern as yo-chat)
+  const setupDurableStreams = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
     yield* setupInMemoryDurableStreams<string>()
   }
 
-  const setupProvider = function* (_ctx: InitializerContext): Operation<void> {
+  const setupProvider = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
     yield* installPiAiModelProvider({ model: resolveRuntimeModel(providerName) })
   }
 
-  const setupTools = function* (_ctx: InitializerContext): Operation<void> {
+  const setupTools = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
     yield* ToolRegistryContext.set(tools)
     yield* ToolInventoryContext.set(createToolInventory(tools.map((tool) => createIsomorphicToolInventoryEntry(tool))))
     yield* installLocalToolRuntime({ isomorphicTools: tools })
   }
 
-  const setupMaxIterations = function* (_ctx: InitializerContext): Operation<void> {
+  const setupMaxIterations = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
     yield* MaxIterationsContext.set(maxIterations)
   }
 
   // Create the handler
   const handler = createChatHandler({
-    initializerHooks: [setupDurableStreams, setupProvider, setupTools, setupMaxIterations],
+    setup: function* setup(ctx) {
+      yield* setupDurableStreams(ctx)
+      yield* setupProvider(ctx)
+      yield* setupTools(ctx)
+      yield* setupMaxIterations(ctx)
+    },
     maxToolIterations: maxIterations,
   })
 

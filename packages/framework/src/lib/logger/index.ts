@@ -8,11 +8,11 @@
  *
  * @example
  * ```typescript
- * // Setup in initializer hook
+ * // Setup in chat handler/application setup
  * import { setupLogger } from '@sweatpants/framework/chat'
  *
  * createDurableChatHandler({
- *   initializerHooks: [setupLogger, ...],
+ *   setup: setupLogger,
  * })
  *
  * // Use in operations

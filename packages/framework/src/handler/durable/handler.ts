@@ -199,7 +199,7 @@ function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runt
  *
  * The handler:
  * 1. Binds protocol params from request (sessionId, offset)
- * 2. Runs initializer hooks to set up DI contexts
+ * 2. Runs request setup to set up DI contexts
  * 3. Either reconnects to existing session or creates new one
  * 4. Streams events from buffer to response with LSN
  *
@@ -207,7 +207,7 @@ function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runt
  * @returns Fetch handler function
  */
 export function createDurableChatHandler(config: DurableChatHandlerConfig) {
-  const { initializerHooks, maxToolIterations = 10 } = config;
+  const { setup, maxToolIterations = 10 } = config;
 
   return createStreamingHandler(
     function* () {
@@ -237,9 +237,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const requestedConversationId =
         body.conversationId?.trim() || requestedConversationIdParam?.trim() || undefined;
 
-      // Run initializer hooks
-      for (const hook of initializerHooks) {
-        yield* hook({ request, body });
+      // Run request-scoped setup before resolving durable dependencies.
+      if (setup) {
+        yield* setup({ request, body });
       }
 
       const bufferStore = yield* useTokenBufferStore<string>();

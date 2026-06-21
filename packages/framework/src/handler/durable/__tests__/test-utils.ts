@@ -3,7 +3,7 @@
  *
  * Provides:
  * - Mock model provider that simulates LLM responses
- * - Test initializer hooks
+ * - Test request setup helpers
  * - Response consumption helpers
  * - DI setup helpers
  */
@@ -35,7 +35,7 @@ import type {
   Usage,
 } from '../../../lib/chat/runtime/index.ts'
 import { setupInMemoryDurableStreams, type DurableStreamsSetup } from '../../../lib/chat/durable-streams/index.ts'
-import type { IsomorphicTool, ToolSchema, InitializerHook, DurableStreamEvent } from '../types.ts'
+import type { IsomorphicTool, ToolSchema, ChatHandlerSetup, DurableStreamEvent } from '../types.ts'
 import type { StreamEvent } from '../../types.ts'
 
 // =============================================================================
@@ -454,20 +454,16 @@ export function* setupMockTools(tools: IsomorphicTool[]): Operation<void> {
 }
 
 /**
- * Create initializer hooks for testing with a mock provider and tools.
+ * Create request setup for testing with a mock provider and tools.
  */
-export function createTestInitializerHooks(
+export function createTestChatHandlerSetup(
   provider: MockProvider,
   tools: IsomorphicTool[] = []
-): InitializerHook[] {
-  return [
-    function* setupProvider() {
-      yield* setupMockModelProvider(provider)
-    },
-    function* setupTools() {
-      yield* setupMockTools(tools)
-    },
-  ]
+): ChatHandlerSetup {
+  return function* setup() {
+    yield* setupMockModelProvider(provider)
+    yield* setupMockTools(tools)
+  }
 }
 
 // =============================================================================

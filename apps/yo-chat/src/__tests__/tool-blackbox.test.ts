@@ -187,26 +187,18 @@ describe('yo-chat tool blackbox', () => {
           },
         })
 
-        const initializerHooks = [
-          function* setupDurableStreams() {
-            yield* setupInMemoryDurableStreams<string>()
-          },
-          function* setupProvider() {
-            yield* setupMockModelProvider(provider)
-          },
-          function* setupTools() {
-            yield* ToolRegistryContext.set([])
-          },
-          function* setupPlugins() {
-            yield* PluginRegistryContext.set(pluginRegistry)
-            yield* McpToolRegistryContext.set(mcpToolRegistry)
-            yield* PluginSessionManagerContext.set(pluginSessionManager)
-            yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
-            yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
-          },
-        ]
+        const setup = function* setup() {
+          yield* setupInMemoryDurableStreams<string>()
+          yield* setupMockModelProvider(provider)
+          yield* ToolRegistryContext.set([])
+          yield* PluginRegistryContext.set(pluginRegistry)
+          yield* McpToolRegistryContext.set(mcpToolRegistry)
+          yield* PluginSessionManagerContext.set(pluginSessionManager)
+          yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
+          yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
+        }
 
-        const handler = createChatHandler({ initializerHooks, maxToolIterations: 5 })
+        const handler = createChatHandler({ setup, maxToolIterations: 5 })
 
         const originalFetch = globalThis.fetch
         globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -386,26 +378,18 @@ describe('yo-chat tool blackbox', () => {
           },
         })
 
-        const initializerHooks = [
-          function* setupDurableStreams() {
-            yield* setupInMemoryDurableStreams<string>()
-          },
-          function* setupProvider() {
-            yield* setupMockModelProvider(provider)
-          },
-          function* setupTools() {
-            yield* ToolRegistryContext.set([])
-          },
-          function* setupPlugins() {
-            yield* PluginRegistryContext.set(pluginRegistry)
-            yield* McpToolRegistryContext.set(mcpToolRegistry)
-            yield* PluginSessionManagerContext.set(pluginSessionManager)
-            yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
-            yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
-          },
-        ]
+        const setup = function* setup() {
+          yield* setupInMemoryDurableStreams<string>()
+          yield* setupMockModelProvider(provider)
+          yield* ToolRegistryContext.set([])
+          yield* PluginRegistryContext.set(pluginRegistry)
+          yield* McpToolRegistryContext.set(mcpToolRegistry)
+          yield* PluginSessionManagerContext.set(pluginSessionManager)
+          yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
+          yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
+        }
 
-        const handler = createChatHandler({ initializerHooks, maxToolIterations: 5 })
+        const handler = createChatHandler({ setup, maxToolIterations: 5 })
 
         const originalFetch = globalThis.fetch
         globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
