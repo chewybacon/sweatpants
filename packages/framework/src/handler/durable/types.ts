@@ -11,7 +11,7 @@ import type { Operation, Stream, Channel } from 'effection'
 import type { ZodType } from 'zod'
 import type { Model, Runtime, StreamOptions } from '../../lib/chat/runtime/index.ts'
 import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
-import type { ToolInventoryEntry, ToolRuntime } from '../../lib/chat/index.ts'
+import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from '../../lib/chat/index.ts'
 import type { StreamEvent, ChatMessage } from '../types.ts'
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
@@ -314,6 +314,12 @@ export interface ElicitResponse {
 
   /** Original tool call ID for conversation correlation */
   callId: string
+
+  /** Canonical tool name for continuation validation */
+  toolName?: string
+
+  /** Optional runtime execution ref echoed by clients; server validates it against pending state. */
+  ref?: ToolExecutionRef
 
   /** Specific elicit request ID */
   elicitId: string

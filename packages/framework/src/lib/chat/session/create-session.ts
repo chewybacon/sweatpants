@@ -1080,6 +1080,8 @@ export function* runChatSession(
         pendingElicitResponses.push({
           sessionId: cmd.sessionId,
           callId: cmd.callId,
+          ...(cmd.toolName ? { toolName: cmd.toolName } : {}),
+          ...(cmd.ref ? { ref: cmd.ref } : {}),
           elicitId: cmd.elicitId,
           result: cmd.result,
         })

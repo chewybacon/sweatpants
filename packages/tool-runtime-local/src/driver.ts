@@ -9,8 +9,10 @@ import {
   type ToolDefinition,
   type ToolExecuteRequest,
   type ToolExecution,
+  type ToolExecutionContext,
   type ToolExecutionEvent,
   type ToolExecutionRef,
+  type ToolExecutionStrategy,
   type ToolInventoryEntry,
   type ToolResumeRequest,
   type ToolRuntime,
@@ -238,6 +240,91 @@ function* nextMcpExecution(
     }
 
     return mcpEventToExecution(runtimeId, call, runtimeSession, next.value as unknown as RuntimeToolSessionEvent)
+  }
+}
+
+export interface LocalInlineToolExecutionStrategyOptions {
+  id?: string
+}
+
+export function createLocalInlineToolExecutionStrategy(
+  options: LocalInlineToolExecutionStrategyOptions = {},
+): ToolExecutionStrategy {
+  return {
+    id: options.id ?? 'local-inline',
+    canExecute(entry) {
+      return isLocalImplementation(entry.implementation) && entry.implementation.kind === 'isomorphic'
+    },
+    *execute(entry, call, ctx: ToolExecutionContext): Operation<ToolExecution> {
+      if (!isLocalImplementation(entry.implementation) || entry.implementation.kind !== 'isomorphic') {
+        throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `Local inline strategy cannot execute tool: ${call.function.name}`)
+      }
+      const tool = entry.implementation.tool
+      const ref = createToolExecutionRef({ runtimeId: ctx.runtimeId, callId: call.id, toolName: call.function.name })
+      const params = validateParams(tool, call.function.arguments)
+      if (!tool.server) {
+        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, usesHandoff: false } }
+        return { kind: 'failed', ref, error: { code: 'TOOL_NOT_EXECUTABLE', message: `Tool "${call.function.name}" has no server or client function` } }
+      }
+      try {
+        const serverOutput = yield* tool.server(params, createPhase1Context({ callId: call.id, signal: ctx.signal ?? new AbortController().signal }))
+        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, serverOutput, usesHandoff: true } }
+        return { kind: 'completed', ref, result: serverOutput }
+      } catch (error) {
+        if (error instanceof HandoffReadyError) {
+          return { kind: 'awaiting_client', ref, request: { params, serverOutput: error.handoffData, usesHandoff: true } }
+        }
+        return { kind: 'failed', ref, error: { code: 'TOOL_ERROR', message: error instanceof Error ? error.message : String(error) } }
+      }
+    },
+  }
+}
+
+export interface LocalSessionToolExecutionStrategyOptions {
+  id?: string
+  registry: ToolSessionRegistry
+  samplingProvider: ToolSessionSamplingProvider
+  tools?: LocalRuntimeTool[]
+}
+
+export function createLocalSessionToolExecutionStrategy(
+  options: LocalSessionToolExecutionStrategyOptions,
+): ToolExecutionStrategy {
+  const toolsByName = new Map((options.tools ?? []).map((tool) => [tool.name, tool] as const))
+  return {
+    id: options.id ?? 'local-session',
+    canExecute(entry, call) {
+      if (isLocalImplementation(entry.implementation) && entry.implementation.kind === 'mcp') return true
+      return toolsByName.has(call.function.name)
+    },
+    *execute(entry, call, ctx: ToolExecutionContext): Operation<ToolExecution> {
+      const tool = isLocalImplementation(entry.implementation) && entry.implementation.kind === 'mcp'
+        ? entry.implementation.tool
+        : toolsByName.get(call.function.name)
+      if (!tool) throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `Local session strategy cannot execute tool: ${call.function.name}`)
+      const session = yield* options.registry.create(tool, call.function.arguments, {
+        sessionId: call.id,
+        ...(ctx.signal ? { signal: ctx.signal } : {}),
+      })
+      return yield* nextMcpExecution(ctx.runtimeId, call, session, options.samplingProvider)
+    },
+    *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
+      const sessionId = ref.sessionId ?? ref.executionId
+      const session = yield* options.registry.get(sessionId)
+      if (!session) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `Local tool session not found: ${sessionId}`)
+      if (ref.toolName && session.toolName !== ref.toolName) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `Local tool session not found: ${sessionId}`)
+      if (input.type === 'elicit_response') {
+        if (!input.elicitId) throw new ToolRuntimeError('ELICIT_ID_REQUIRED', 'Elicit continuation requires elicitId')
+        yield* session.respondToElicit(input.elicitId, input.result as never)
+      }
+      return yield* nextMcpExecution(ctx.runtimeId, { id: ref.callId, type: 'function', function: { name: ref.toolName || session.toolName, arguments: {} } }, session, options.samplingProvider)
+    },
+    *abort(ref, reason): Operation<void> {
+      const sessionId = ref.sessionId ?? ref.executionId
+      const session = yield* options.registry.get(sessionId)
+      if (!session) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `Local tool session not found: ${sessionId}`)
+      yield* session.cancel(reason)
+    },
   }
 }
 

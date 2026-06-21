@@ -1,9 +1,13 @@
 export {
   createIsomorphicToolInventoryEntry,
+  createLocalInlineToolExecutionStrategy,
+  createLocalSessionToolExecutionStrategy,
   createLocalToolRuntimeDriver,
   createMcpToolInventoryEntry,
   installLocalToolRuntime,
+  type LocalInlineToolExecutionStrategyOptions,
   type LocalIsomorphicTool,
+  type LocalSessionToolExecutionStrategyOptions,
   type LocalToolRuntimeDriverOptions,
 } from './driver.ts'
 

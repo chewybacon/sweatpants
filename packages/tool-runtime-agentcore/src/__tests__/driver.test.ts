@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest'
 import { run, resource, type Operation } from 'effection'
 import { z } from 'zod'
 import { createMcpTool, type ToolSessionRegistry, type ToolSession } from '@sweatpants/framework/chat/mcp-tools'
-import { ToolRuntimeApi } from '@sweatpants/framework/chat'
-import { createAgentCoreToolRuntimeDriver, installAgentCoreToolRuntime } from '../index.ts'
+import { ToolRuntimeApi, createToolInventory } from '@sweatpants/framework/chat'
+import {
+  createAgentCoreToolExecutionStrategy,
+  createAgentCoreToolInventoryEntry,
+  createAgentCoreToolRuntimeDriver,
+  installAgentCoreToolRuntime,
+} from '../index.ts'
 
 const remoteTool = createMcpTool('remote_echo')
   .description('Remote echo')
@@ -78,6 +83,54 @@ describe('AgentCore ToolRuntimeDriver', () => {
       if (!next.done) {
         expect(next.value.type).toBe('result')
       }
+    })
+  })
+
+  it('creates AgentCore inventory entries and normalized executions', async () => {
+    const entry = createAgentCoreToolInventoryEntry(remoteTool, { profile: 'test' })
+    expect(entry.definition).toMatchObject({ name: 'remote_echo', description: 'Remote echo' })
+    expect('implementation' in entry.definition).toBe(false)
+    expect(entry.capabilities).toMatchObject({ remote: true, session: true, elicits: true, samples: true })
+    expect(() => createToolInventory([entry, entry])).toThrow('Duplicate tool name')
+
+    await run(function* () {
+      const driver = createAgentCoreToolRuntimeDriver({ tools: [remoteTool], registry: createFakeRegistry() })
+      const result = yield* driver.execute({
+        entry,
+        call: { id: 'call-remote', type: 'function', function: { name: 'remote_echo', arguments: { message: 'hello' } } },
+      })
+      expect(result).toMatchObject({ kind: 'completed', result: { ok: true } })
+      expect(result.ref).toMatchObject({ runtimeId: 'agentcore', callId: 'call-remote', toolName: 'remote_echo', sessionId: 'call-remote' })
+
+      try {
+        yield* driver.execute({
+          entry: { definition: { name: 'unsupported', description: 'nope', parameters: {} } },
+          call: { id: 'call-bad', type: 'function', function: { name: 'unsupported', arguments: {} } },
+        })
+        throw new Error('expected unsupported tool')
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'NO_MATCHING_TOOL_STRATEGY' })
+      }
+
+      try {
+        yield* driver.resume({
+          ref: { runtimeId: 'agentcore', executionId: 'call-remote', sessionId: 'call-remote', callId: 'call-remote', toolName: 'other_tool' },
+          input: { type: 'elicit_response', elicitId: 'elicit', result: { action: 'accept' } },
+        })
+        throw new Error('expected wrong tool')
+      } catch (error) {
+        expect(error).toMatchObject({ code: 'EXECUTION_NOT_FOUND' })
+      }
+    })
+  })
+
+  it('exports an executable AgentCore strategy object', async () => {
+    await run(function* () {
+      const strategy = createAgentCoreToolExecutionStrategy({ registry: createFakeRegistry(), tools: [remoteTool] })
+      const entry = createAgentCoreToolInventoryEntry(remoteTool)
+      expect(strategy.canExecute(entry, { id: 'call-remote', type: 'function', function: { name: 'remote_echo', arguments: {} } }, { runtimeId: 'agentcore' })).toBe(true)
+      const result = yield* strategy.execute(entry, { id: 'call-remote', type: 'function', function: { name: 'remote_echo', arguments: { message: 'hello' } } }, { runtimeId: 'agentcore' })
+      expect(result).toMatchObject({ kind: 'completed', result: { ok: true } })
     })
   })
 

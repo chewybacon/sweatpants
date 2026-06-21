@@ -73,6 +73,36 @@ export type ToolExecution =
   | { kind: 'awaiting_elicit'; ref: ToolExecutionRef; request: ElicitToolRequest }
   | { kind: 'running'; ref: ToolExecutionRef; events: Stream<ToolExecutionEvent, void> }
 
+export type PendingToolRequest =
+  | ({ type: 'elicit' } & ElicitToolRequest)
+  | ({ type: 'client' } & ClientToolRequest)
+
+export interface PendingToolExecution {
+  ref: ToolExecutionRef
+  status: 'awaiting_client' | 'awaiting_elicit' | 'running' | 'stale'
+  request?: PendingToolRequest
+  lastEventLSN?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type ToolContinuationPayload =
+  | {
+      type: 'elicit_response'
+      callId: string
+      toolName: string
+      ref?: ToolExecutionRef
+      elicitId: string
+      result: unknown
+    }
+  | {
+      type: 'client_handoff_response'
+      callId: string
+      toolName: string
+      ref?: ToolExecutionRef
+      result: unknown
+    }
+
 export interface ToolRuntime {
   readonly id: string
   execute(request: ToolExecuteRequest): Operation<ToolExecution>

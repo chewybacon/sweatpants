@@ -320,6 +320,23 @@ function findToolNameForCall(messages: ChatMessage[], callId: string): string | 
   return undefined
 }
 
+function validateContinuationRef(input: {
+  ref: ToolExecutionRef | undefined
+  runtimeId: string
+  executionId: string
+  sessionId: string
+  callId: string
+  toolName: string
+}): void {
+  const { ref, runtimeId, executionId, sessionId, callId, toolName } = input
+  if (!ref) return
+  if (ref.runtimeId !== runtimeId) throw new Error(`Continuation ref mismatch: runtimeId expected ${runtimeId}, received ${ref.runtimeId}`)
+  if (ref.executionId !== executionId) throw new Error(`Continuation ref mismatch: executionId expected ${executionId}, received ${ref.executionId}`)
+  if (ref.sessionId && ref.sessionId !== sessionId) throw new Error(`Continuation ref mismatch: sessionId expected ${sessionId}, received ${ref.sessionId}`)
+  if (ref.callId !== callId) throw new Error(`Continuation ref mismatch: callId expected ${callId}, received ${ref.callId}`)
+  if (ref.toolName !== toolName) throw new Error(`Continuation ref mismatch: toolName expected ${toolName}, received ${ref.toolName}`)
+}
+
 function agUiToolLifecycleEvents(toolCalls: ToolCall[]): StreamEvent[] {
   return toolCalls.flatMap((toolCall) => [
     {
@@ -774,7 +791,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             if (elicitResponses) {
               for (const response of elicitResponses) {
                 const { sessionId, callId, elicitId, result } = response
-                const toolName = findToolNameForCall(state.conversationMessages, callId) ?? ''
+                const toolName = findToolNameForCall(state.conversationMessages, callId) ?? response.toolName ?? response.ref?.toolName ?? ''
 
                 let elicitResult: { action: 'accept'; content: unknown } | { action: 'decline' } | { action: 'cancel' }
                 if (result.action === 'accept') {
@@ -787,6 +804,17 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
                 try {
                   if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
+                  if (response.toolName && toolName && response.toolName !== toolName) {
+                    throw new Error(`Continuation toolName mismatch: expected ${toolName}, received ${response.toolName}`)
+                  }
+                  validateContinuationRef({
+                    ref: response.ref,
+                    runtimeId: toolRuntimeId,
+                    executionId: sessionId,
+                    sessionId,
+                    callId,
+                    toolName,
+                  })
                   const resumed = yield* settleRunningExecution(yield* toolRuntime.resume({
                     ref: {
                       runtimeId: toolRuntimeId,
