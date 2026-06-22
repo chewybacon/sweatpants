@@ -40,6 +40,27 @@ describe('yo-chat chat application composition', () => {
     }
   })
 
+  it('uses structured model configuration without the removed provider split', () => {
+    const envSchema = read('src/env.schema.ts')
+    const modelProvider = read('src/server/model-provider.ts')
+
+    expect(envSchema).toContain('DEFAULT_CHAT_MODEL_PROVIDER')
+    expect(envSchema).toContain('DEFAULT_CHAT_MODEL_ID')
+    expect(envSchema).toContain('ALLOWED_CHAT_MODELS_JSON')
+    expect(modelProvider).toContain('parseRequestModelSelection')
+    expect(modelProvider).toContain('resolveModelSelection')
+    expect(modelProvider).toContain('resolvePiAiModel')
+
+    const removedProviderEnv = ['CHAT', 'PROVIDER'].join('_')
+    const removedOllamaEnv = ['OLLAMA', 'MODEL'].join('_')
+    const removedOpenAiEnv = ['OPENAI', 'MODEL'].join('_')
+    const removedResolver = ['resolve', 'Runtime', 'Model'].join('')
+    for (const removed of [removedProviderEnv, removedOllamaEnv, removedOpenAiEnv, removedResolver]) {
+      expect(envSchema).not.toContain(removed)
+      expect(modelProvider).not.toContain(removed)
+    }
+  })
+
   it('keeps production chat wiring in app-owned server modules', () => {
     const serverFiles = listFiles('src/server')
     expect(serverFiles).toContain('src/server/chat-application.ts')
@@ -62,7 +83,7 @@ describe('yo-chat chat application composition', () => {
     const serverSources = serverFiles.map((file) => read(file)).join('\n')
     expect(serverSources).toContain('installPiAiModelProvider')
     expect(serverSources).toContain('installLocalToolRuntime')
-    expect(serverSources).toContain('installAgentCoreToolRuntime')
+    expect(serverSources).toContain('createAgentCoreToolExecutionStrategy')
     expect(serverSources).toContain('withDefaultSystemPrompt')
   })
 })

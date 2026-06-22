@@ -263,6 +263,7 @@ export type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionOptions,
+  ToolSessionModelSelection,
   ToolSessionEntry,
   
   // Event types

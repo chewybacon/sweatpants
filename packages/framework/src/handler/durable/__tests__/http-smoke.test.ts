@@ -875,7 +875,7 @@ describe('Durable Chat Handler HTTP Smoke Tests', () => {
 async function isOllamaAvailable(): Promise<boolean> {
   try {
     const ollamaUrl = process.env['OLLAMA_URL'] ?? 'http://localhost:11434'
-    const model = process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest'
+    const model = process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'qwen3:30b'
     const response = await fetch(`${ollamaUrl}/api/tags`, {
       signal: AbortSignal.timeout(2000),
     })

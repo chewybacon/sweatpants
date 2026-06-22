@@ -265,6 +265,11 @@ export interface ToolSession<TResult = unknown> {
 /**
  * Options for creating a tool session.
  */
+export interface ToolSessionModelSelection {
+  provider: string
+  id: string
+}
+
 export interface ToolSessionOptions {
   /** Custom session ID (auto-generated if not provided) */
   sessionId?: string
@@ -277,6 +282,9 @@ export interface ToolSessionOptions {
 
   /** System prompt */
   systemPrompt?: string
+
+  /** Selected chat model identity for runtimes that support inherited sampling. */
+  model?: ToolSessionModelSelection
 
   /** Abort signal for external cancellation */
   signal?: AbortSignal

@@ -21,6 +21,7 @@
 import { resource, call, spawn, each, createSignal } from 'effection'
 import type { Operation, Stream } from 'effection'
 import { useVite, type ViteHandle, type HmrEvent } from './vite-resource.ts'
+import type { ModelSelection } from '@sweatpants/model-provider-pi-ai'
 
 /**
  * Options for the dev server
@@ -30,8 +31,8 @@ export interface DevServerOptions {
   root?: string
   /** Path to tools directory (relative to root) */
   toolsPath?: string
-  /** LLM provider: 'ollama' | 'openai' */
-  provider?: 'ollama' | 'openai'
+  /** Primary chat model. */
+  model?: ModelSelection
 }
 
 /**
@@ -71,7 +72,7 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
     const {
       root = process.cwd(),
       toolsPath = './src/tools',
-      provider = 'ollama',
+      model = { provider: 'ollama', id: 'qwen3:30b' },
     } = options
 
     // Start Vite in middleware mode for HMR
@@ -100,7 +101,7 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
 
       // Create new handler with loaded tools
       currentHandler = createInProcessHandler({
-        provider,
+        model,
         tools: tools as any[],
       })
     }

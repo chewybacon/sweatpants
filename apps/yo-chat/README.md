@@ -6,7 +6,7 @@ To run this application:
 
 ```bash
 pnpm install
-pnpm dev
+DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=qwen3:30b pnpm dev
 ```
 
 ## MCP tool runtime mode
@@ -19,6 +19,8 @@ The chat handler, UI, elicitation handling, sampling provider, and durable app s
 This is the default. Tool generators run in the local Sweatpants worker/session runtime.
 
 ```bash
+DEFAULT_CHAT_MODEL_PROVIDER=ollama \
+DEFAULT_CHAT_MODEL_ID=qwen3:30b \
 MCP_TOOL_RUNTIME=local pnpm dev
 ```
 
@@ -29,6 +31,9 @@ In this mode, the local app stores AgentCore `ToolSession` handles and invokes A
 > **Paid invocation warning:** `MCP_TOOL_RUNTIME=agentcore` with a real `AGENTCORE_RUNTIME_ARN` can invoke paid AWS Bedrock AgentCore Runtime services. Selecting AgentCore as the configured runtime is the approval boundary; there is no separate app-mode approval environment variable.
 
 ```bash
+DEFAULT_CHAT_MODEL_PROVIDER=amazon-bedrock \
+DEFAULT_CHAT_MODEL_ID=zai.glm-5 \
+AWS_REGION=<region> \
 MCP_TOOL_RUNTIME=agentcore \
 AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:<region>:<account-id>:runtime/<runtime-id> \
 AGENTCORE_REGION=<region> \
@@ -36,7 +41,7 @@ AGENTCORE_ENDPOINT_NAME=DEFAULT \
 pnpm dev
 ```
 
-Use a real chat provider (`ollama` or `openai`) for both normal usage and manual testing. AgentCore mode only moves MCP tool execution remote; LLM sampling still uses the local app's configured provider. For local Ollama tool-calling demos, use a tool-capable model such as `qwen3:30b`; smaller/default chat models may answer with JSON text instead of making native tool calls.
+Configure the default chat model with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID` (for example `ollama`/`qwen3:30b`, `openai`/`gpt-5-chat-latest`, or `amazon-bedrock`/`zai.glm-5`). AgentCore mode only moves MCP tool execution remote; primary chat inference still runs in the local app server through pi-ai. For local Ollama tool-calling demos, use a tool-capable model such as `qwen3:30b`; smaller/default chat models may answer with JSON text instead of making native tool calls.
 
 Batch 1 AgentCore remote execution supports only this explicit MCP bridge-compatible subset:
 
@@ -57,6 +62,18 @@ AGENTCORE_TOOL_NAMES=book_flight,tictactoe,play_ttt
 AGENTCORE_TOOL_SESSION_TTL_MS=900000
 AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
+
+# Optional chat model allow-list. When unset, only the configured default is allowed.
+ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"ollama","id":"qwen3:30b"}]'
+
+# Developer-only opt-out from allow-list checks. Resolution still must succeed.
+UNSAFE_ALLOW_ANY_CHAT_MODEL=yes
+
+# AgentCore-hosted tools default to host-mediated ctx.sample(). Enable internal
+# AgentCore sampling only when the runtime has credentials/network access for the sample model.
+AGENTCORE_TOOL_SAMPLE_MODE=host # host | internal
+AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER=amazon-bedrock
+AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 ```
 
 Unsupported names in `AGENTCORE_TOOL_NAMES` are rejected with a configuration error that lists the supported canonical names. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.

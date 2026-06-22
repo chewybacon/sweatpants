@@ -8,6 +8,7 @@ export {
 } from './driver.ts'
 
 export type {
+  AgentCoreModelSelection,
   AgentCoreToolSessionHandle,
   AgentCoreToolSessionStatus,
   AgentCoreToolSessionTerminalStatus,

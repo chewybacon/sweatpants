@@ -1,10 +1,14 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PROTOCOL_VERSION, type RuntimeRequest, type RuntimeResponse } from './protocol.ts'
 import { RuntimeSessionRegistry } from './runtime-session-registry.ts'
 
 const contextA = { runtimeSessionId: 'runtime-A' }
 const contextB = { runtimeSessionId: 'runtime-B' }
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 function startRequest(overrides: Partial<Extract<RuntimeRequest, { op: 'start_tool_session' }>> = {}): Extract<RuntimeRequest, { op: 'start_tool_session' }> {
   return {
@@ -63,6 +67,22 @@ describe('RuntimeSessionRegistry protocol safety', () => {
     expect(duplicate[0]).toMatchObject({ type: 'command_duplicate', commandId: 'cmd-start' })
     expect(conflict).toEqual([{ type: 'command_conflict', toolSessionId: 'ts-dup', commandId: 'cmd-start-conflict', message: 'toolSessionId already exists with different start command' }])
     expect(status(inspect)).toMatchObject({ type: 'session_status', status: 'completed', lastRuntimeEventSeq: 2 })
+  })
+
+  it('internal sampling rejects inherited local models without emitting host sample_request', async () => {
+    vi.stubEnv('AGENTCORE_TOOL_SAMPLE_MODE', 'internal')
+    const registry = new RuntimeSessionRegistry()
+    const responses = await registry.handle(startRequest({
+      commandId: 'cmd-internal-local-sample',
+      toolSessionId: 'ts-internal-local-sample',
+      toolName: 'sample_then_result',
+      context: { model: { provider: 'ollama', id: 'qwen3:30b' } },
+    }), contextA)
+
+    const events = responses.filter((response) => response.type === 'tool_event').map((response) => response.type === 'tool_event' ? response.event : null).filter(Boolean)
+    expect(events.map((event) => event?.type)).not.toContain('sample_request')
+    expect(events.some((event) => event?.type === 'error' && /local-only model ollama\/qwen3:30b/.test(event.message))).toBe(true)
+    expect(status(responses)).toMatchObject({ type: 'session_status', status: 'failed' })
   })
 
   it('keeps terminal sessions immutable for late cancel and late responses', async () => {

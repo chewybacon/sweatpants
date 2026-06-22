@@ -1,9 +1,10 @@
 import type { Operation } from 'effection'
-import type {
-  ExtendedMessage,
-  Message,
-  SamplingToolCall,
-  SamplingToolDefinition,
+import {
+  ModelProviderApi,
+  type ExtendedMessage,
+  type Message,
+  type SamplingToolCall,
+  type SamplingToolDefinition,
 } from '@sweatpants/framework/chat'
 import type {
   RawSampleResult,
@@ -14,14 +15,11 @@ import type {
 } from '@sweatpants/framework/chat/mcp-tools'
 import { extendedMessageToProviderMessage } from '@sweatpants/framework/chat/mcp-tools'
 import {
-  createPiAiModelProviderDriver,
-  resolveRuntimeModel,
   type AssistantMessage as ModelAssistantMessage,
   type Context as ModelContext,
   type Message as ModelMessage,
   type Tool as ModelTool,
 } from '@sweatpants/model-provider-pi-ai'
-import { env } from '@/env'
 
 interface SamplingOptions {
   systemPrompt?: string
@@ -108,16 +106,14 @@ function modelContext(messages: ModelMessage[], options: SamplingOptions | undef
 }
 
 export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
-  const driver = createPiAiModelProviderDriver()
-  const model = resolveRuntimeModel(env.CHAT_PROVIDER)
-
   return {
     *sample(messages: ExtendedMessage[], options: SamplingOptions | undefined): Operation<RawSampleResult> {
       const modelMessages = messages
         .map(extendedMessageToProviderMessage)
         .map(providerMessageToModelMessage)
 
-      const assistant = yield* driver.sample({
+      const model = yield* ModelProviderApi.model()
+      const assistant = yield* ModelProviderApi.sample({
         model,
         context: modelContext(modelMessages, options),
         options: {

@@ -1,5 +1,6 @@
 import { call, resource, useAbortSignal, type Operation } from 'effection'
 import { generateImages as piGenerateImages, stream as piStream } from '@earendil-works/pi-ai'
+import { toProviderJsonSchema } from './schema-normalization.ts'
 import type {
   AssistantImages as PiAssistantImages,
   AssistantMessage as PiAssistantMessage,
@@ -92,6 +93,11 @@ function toPiContentBlock(block: ContentBlock): unknown {
         ...(block.thinkingSignature ? { thinkingSignature: block.thinkingSignature } : {}),
         ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
       }
+    case 'toolCall':
+      return {
+        ...block,
+        arguments: normalizeToolArguments(block.arguments),
+      }
     default:
       return block
   }
@@ -131,7 +137,7 @@ function fromPiContentBlock(block: unknown): ContentBlock {
       type: 'toolCall',
       id: typeof candidate['id'] === 'string' ? candidate['id'] : '',
       name: typeof candidate['name'] === 'string' ? candidate['name'] : '',
-      arguments: isRecord(candidate['arguments']) ? candidate['arguments'] : {},
+      arguments: normalizeToolArguments(candidate['arguments']),
       ...(typeof candidate['thoughtSignature'] === 'string' ? { thoughtSignature: candidate['thoughtSignature'] } : {}),
     }
   }
@@ -162,12 +168,25 @@ function safeMetadata(metadata: Record<string, unknown>): Record<string, unknown
   return result
 }
 
+function normalizeToolArguments(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return isRecord(parsed) ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+  return {}
+}
+
 function fromPiToolCall(toolCall: PiToolCall): ToolCallBlock {
   return {
     type: 'toolCall',
     id: toolCall.id,
     name: toolCall.name,
-    arguments: toolCall.arguments,
+    arguments: normalizeToolArguments(toolCall.arguments),
     ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
   }
 }
@@ -256,7 +275,12 @@ function toPiContext(context: Context): PiContext {
     ...(systemPrompt ? { systemPrompt } : {}),
     messages,
   }
-  if (context.tools) piContext.tools = context.tools as NonNullable<PiContext['tools']>
+  if (context.tools) {
+    piContext.tools = context.tools.map((tool) => ({
+      ...tool,
+      parameters: toProviderJsonSchema(tool.parameters),
+    })) as NonNullable<PiContext['tools']>
+  }
   return piContext
 }
 
@@ -304,7 +328,14 @@ function toPiStreamOptions(model: Model, options: StreamOptions | undefined, sig
     ...(options?.onPayload ? { onPayload: (payload: unknown) => options.onPayload?.(payload) } : {}),
     ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
     ...(options?.reasoning && options.reasoning !== 'off' ? { reasoningEffort: options.reasoning } : {}),
-    ...(options?.responseFormat ? { responseFormat: options.responseFormat } : {}),
+    ...(options?.responseFormat
+      ? {
+          responseFormat: {
+            ...options.responseFormat,
+            schema: toProviderJsonSchema(options.responseFormat.schema),
+          },
+        }
+      : {}),
   }
 }
 

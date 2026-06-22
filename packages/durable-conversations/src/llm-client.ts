@@ -8,9 +8,10 @@ import type {
 } from '@sweatpants/framework/chat'
 import {
   createPiAiModelProviderDriver,
-  resolveRuntimeModel,
+  resolvePiAiModel,
   type AssistantMessage as ModelAssistantMessage,
   type Message as ModelMessage,
+  type ModelSelection,
   type StreamEvent as ModelStreamEvent,
 } from '@sweatpants/model-provider-pi-ai'
 
@@ -76,6 +77,13 @@ function usageFromAssistant(message: ModelAssistantMessage): ChatResult['usage']
   }
 }
 
+function defaultModelSelection(): ModelSelection {
+  return {
+    provider: process.env['DEFAULT_CHAT_MODEL_PROVIDER'] ?? 'ollama',
+    id: process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'qwen3:30b',
+  }
+}
+
 function eventFromModelEvent(event: ModelStreamEvent): ChatEvent | null {
   if (event.type === 'text_delta') {
     return { type: 'text', content: event.delta }
@@ -109,7 +117,7 @@ export function runLLMTurnOperation(
   return {
     *[Symbol.iterator]() {
       const modelProvider = createPiAiModelProviderDriver()
-      const model = resolveRuntimeModel('ollama', process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest')
+      const model = resolvePiAiModel(defaultModelSelection())
       const stream = modelProvider.stream({
         model,
         context: {
@@ -189,8 +197,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 export async function isOllamaAvailable(options: { requireToolCalling?: boolean } = {}): Promise<boolean> {
-  const base = process.env['OLLAMA_URL'] ?? 'http://localhost:11434'
-  const model = process.env['OLLAMA_MODEL'] ?? 'lfm2.5:latest'
+  const base = process.env['OLLAMA_URL'] ?? process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
+  const model = process.env['DEFAULT_CHAT_MODEL_PROVIDER'] === 'ollama'
+    ? process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'qwen3:30b'
+    : 'qwen3:30b'
   try {
     const response = await fetch(`${base}/api/tags`, {
       method: 'GET',

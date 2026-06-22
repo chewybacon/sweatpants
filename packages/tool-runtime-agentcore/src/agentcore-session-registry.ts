@@ -15,7 +15,7 @@ import {
   type AgentCoreToolSessionStores,
   type RemoteToolRuntimeClient,
 } from './agentcore-types.ts'
-import { createAgentCoreToolSession, statusFromAgentCoreToolEvent } from './agentcore-tool-session.ts'
+import { createAgentCoreToolSession, statusFromAgentCoreToolEvent, stopRuntimeSessionIfTerminal } from './agentcore-tool-session.ts'
 
 export interface AgentCoreToolSessionRegistryOptions {
   stores: AgentCoreToolSessionStores
@@ -74,14 +74,17 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         lastRuntimeEventSeq: monotonicSeq(current, response.runtimeEventSeq),
         updatedAt: now().toISOString(),
       })
-      if (terminal(response.event)) yield* stores.events.markTerminal(handle.sessionId)
+      if (terminal(response.event)) {
+        yield* stores.events.markTerminal(handle.sessionId)
+        return yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated, now })
+      }
       return updated
     }
 
     if (response.type === 'session_status') {
       const current = (yield* stores.handles.get(handle.sessionId)) ?? handle
       const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0)
-      return yield* stores.handles.update(handle.sessionId, {
+      const updated = yield* stores.handles.update(handle.sessionId, {
         ...(!terminalStatus(current.status) && isNewerOrEqual ? {
           status: response.status,
           pendingRequest: response.pendingRequest,
@@ -89,6 +92,10 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         lastRuntimeEventSeq: monotonicSeq(current, response.lastRuntimeEventSeq),
         updatedAt: now().toISOString(),
       })
+      if (terminalStatus(updated.status)) {
+        return yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated, now })
+      }
+      return updated
     }
 
     if (response.type === 'session_not_found') {
@@ -100,12 +107,13 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         message: `AgentCore runtime session did not contain tool session ${response.toolSessionId}`,
       })
       yield* stores.events.markTerminal(handle.sessionId)
-      return yield* stores.handles.update(handle.sessionId, {
+      const updated = yield* stores.handles.update(handle.sessionId, {
         status: 'orphaned',
         pendingRequest: undefined,
         lastEventLsn: lsn,
         updatedAt: now().toISOString(),
       })
+      return yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated, now })
     }
 
     if (response.type === 'protocol_error' || response.type === 'command_conflict') {
@@ -117,12 +125,13 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         message: response.message,
       })
       yield* stores.events.markTerminal(handle.sessionId)
-      return yield* stores.handles.update(handle.sessionId, {
+      const updated = yield* stores.handles.update(handle.sessionId, {
         status: 'failed',
         pendingRequest: undefined,
         lastEventLsn: lsn,
         updatedAt: now().toISOString(),
       })
+      return yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated, now })
     }
 
     if (response.type === 'command_duplicate') {
@@ -185,6 +194,7 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         createdAt: startedAt.toISOString(),
         updatedAt: startedAt.toISOString(),
         expiresAt: expiresAt.toISOString(),
+        ...(sessionOptions?.model ? { metadata: { selectedModel: sessionOptions.model } } : {}),
       }
       yield* stores.handles.create(handle)
 
@@ -199,6 +209,7 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
           ...(sessionOptions?.sessionId !== undefined && { callId: sessionOptions.sessionId }),
           ...(sessionOptions?.parentMessages !== undefined && { parentMessages: sessionOptions.parentMessages }),
           ...(sessionOptions?.systemPrompt !== undefined && { systemPrompt: sessionOptions.systemPrompt }),
+          ...(sessionOptions?.model !== undefined && { model: sessionOptions.model }),
         },
       })
       const updated = yield* ingestStream(handle, stream)

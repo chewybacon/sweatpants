@@ -1,9 +1,11 @@
+import { existsSync, readFileSync } from 'node:fs'
 import { SpanStatusCode, type Span } from '@opentelemetry/api'
 import { each, run, sleep as effectionSleep, spawn, type Signal } from 'effection'
 import { createBridgeHost, type BridgeEvent, type ElicitResponse, type SampleResponse } from '../../../packages/framework/src/lib/chat/mcp-tools/bridge-runtime.ts'
 import { getRuntimeMcpTool, runtimeMcpToolNames } from './tool-registry.ts'
-import type { RuntimeEvent, RuntimeRequest, RuntimeResponse, ToolStatus } from './protocol.ts'
+import type { ModelSelection, RuntimeDiagnostics, RuntimeEvent, RuntimeRequest, RuntimeResponse, ToolStatus } from './protocol.ts'
 import { log, summarizeEvent } from './observability.ts'
+import { readAgentCoreToolSampleConfig, sampleInsideAgentCore, type InternalSampleRequest } from './internal-sampling.ts'
 import { startSpan } from './telemetry.ts'
 
 interface Deferred<T> {
@@ -63,6 +65,7 @@ interface RuntimeToolSession {
   abortController?: AbortController | undefined
   backgroundTask?: Promise<void> | undefined
   span?: Span | undefined
+  selectedModel?: ModelSelection | undefined
   createdAt: number
   updatedAt: number
 }
@@ -167,6 +170,58 @@ function isTerminalStatus(status: ToolStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
 }
 
+function readNumberFile(path: string): number | undefined {
+  if (!existsSync(path)) return undefined
+  const raw = readFileSync(path, 'utf8').trim()
+  if (!raw || raw === 'max') return undefined
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : undefined
+}
+
+function readMaxFile(path: string): number | 'max' | undefined {
+  if (!existsSync(path)) return undefined
+  const raw = readFileSync(path, 'utf8').trim()
+  if (raw === 'max') return 'max'
+  const value = Number(raw)
+  return Number.isFinite(value) ? value : undefined
+}
+
+function readMemoryStat(path: string): Record<string, number> | undefined {
+  if (!existsSync(path)) return undefined
+  const stat: Record<string, number> = {}
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const [key, rawValue] = line.trim().split(/\s+/)
+    if (!key || !rawValue) continue
+    const value = Number(rawValue)
+    if (Number.isFinite(value)) stat[key] = value
+  }
+  return stat
+}
+
+function cgroupMemorySnapshot(): RuntimeDiagnostics['cgroup'] {
+  if (existsSync('/sys/fs/cgroup/memory.current')) {
+    return {
+      version: 'v2',
+      memoryCurrentBytes: readNumberFile('/sys/fs/cgroup/memory.current'),
+      memoryPeakBytes: readNumberFile('/sys/fs/cgroup/memory.peak'),
+      memoryMaxBytes: readMaxFile('/sys/fs/cgroup/memory.max'),
+      memoryStat: readMemoryStat('/sys/fs/cgroup/memory.stat'),
+    }
+  }
+
+  if (existsSync('/sys/fs/cgroup/memory/memory.usage_in_bytes')) {
+    return {
+      version: 'v1',
+      memoryCurrentBytes: readNumberFile('/sys/fs/cgroup/memory/memory.usage_in_bytes'),
+      memoryPeakBytes: readNumberFile('/sys/fs/cgroup/memory/memory.max_usage_in_bytes'),
+      memoryMaxBytes: readMaxFile('/sys/fs/cgroup/memory/memory.limit_in_bytes'),
+      memoryStat: readMemoryStat('/sys/fs/cgroup/memory/memory.stat'),
+    }
+  }
+
+  return { version: 'unknown' }
+}
+
 export class RuntimeSessionRegistry {
   private readonly sessions = new Map<string, RuntimeToolSession>()
 
@@ -194,6 +249,8 @@ export class RuntimeSessionRegistry {
         return [this.inspect(request.toolSessionId, context)]
       case 'drain_tool_session_events':
         return this.drain(request.toolSessionId, request.afterRuntimeEventSeq, context)
+      case 'runtime_diagnostics':
+        return [{ type: 'runtime_diagnostics', toolSessionId: request.toolSessionId, diagnostics: this.diagnostics(context) }]
       default:
         return [{ type: 'protocol_error', message: `unsupported op ${(request as { op?: string }).op}` }]
     }
@@ -201,6 +258,45 @@ export class RuntimeSessionRegistry {
 
   private getSession(toolSessionId: string, context: RuntimeSessionContext): RuntimeToolSession | undefined {
     return this.sessions.get(sessionKey(context.runtimeSessionId, toolSessionId))
+  }
+
+  private diagnostics(context: RuntimeSessionContext): RuntimeDiagnostics {
+    const byStatus = {
+      initializing: 0,
+      running: 0,
+      awaiting_elicit: 0,
+      awaiting_sample: 0,
+      completed: 0,
+      failed: 0,
+      cancelled: 0,
+      orphaned: 0,
+    } satisfies Record<ToolStatus, number>
+    let total = 0
+    let terminal = 0
+
+    for (const session of this.sessions.values()) {
+      if (session.runtimeSessionId !== context.runtimeSessionId) continue
+      total += 1
+      byStatus[session.status] += 1
+      if (isTerminalStatus(session.status)) terminal += 1
+    }
+
+    return {
+      runtimeSessionId: context.runtimeSessionId,
+      process: {
+        pid: process.pid,
+        uptimeSeconds: process.uptime(),
+        memory: process.memoryUsage(),
+        resourceUsage: process.resourceUsage(),
+      },
+      cgroup: cgroupMemorySnapshot(),
+      sessions: {
+        total,
+        terminal,
+        nonTerminal: total - terminal,
+        byStatus,
+      },
+    }
   }
 
   private checkDuplicate(request: RuntimeRequest, context: RuntimeSessionContext): RuntimeResponse[] | null {
@@ -287,6 +383,38 @@ export class RuntimeSessionRegistry {
     }
   }
 
+  private failSession(session: RuntimeToolSession, name: string, error: unknown): void {
+    if (isTerminalStatus(session.status)) return
+    session.pending = undefined
+    session.status = 'failed'
+    const duration = Date.now() - session.createdAt
+    session.span?.recordException(error as Error)
+    session.span?.setAttributes({
+      'agentcore.tool.status': 'failed',
+      'agentcore.tool.duration_ms': duration,
+      'agentcore.runtime_event.count': session.events.length,
+    })
+    session.span?.setStatus({ code: SpanStatusCode.ERROR, message: error instanceof Error ? error.message : String(error) })
+    session.span?.end()
+    session.span = undefined
+    log('error', 'agentcore.tool_session.failed', {
+      toolSessionId: session.toolSessionId,
+      toolName: session.toolName,
+      durationMs: duration,
+      errorName: error instanceof Error ? error.name : name,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+    this.emit(session, errorEvent(name, error))
+    session.abortController?.abort(error)
+  }
+
+  private async internalSample(session: RuntimeToolSession, request: Omit<InternalSampleRequest, 'inheritedModel'>): Promise<RawSampleResponse> {
+    return await sampleInsideAgentCore({
+      ...request,
+      inheritedModel: session.selectedModel,
+    }) as RawSampleResponse
+  }
+
   private async start(request: Extract<RuntimeRequest, { op: 'start_tool_session' }>, context: RuntimeSessionContext): Promise<RuntimeResponse[]> {
     const existing = this.getSession(request.toolSessionId, context)
     if (existing) {
@@ -318,6 +446,7 @@ export class RuntimeSessionRegistry {
       commandFingerprints: new Map(),
       startFingerprint: fingerprint(request),
       waiters: [],
+      ...(request.context?.model ? { selectedModel: request.context.model } : {}),
       createdAt: Date.now(),
       updatedAt: Date.now(),
     }
@@ -327,6 +456,8 @@ export class RuntimeSessionRegistry {
       'agentcore.command.id': request.commandId,
       'agentcore.call.id': request.context?.callId ?? '',
       'agentcore.conversation.id': request.context?.conversationId ?? '',
+      'gen_ai.request.model.provider': request.context?.model?.provider ?? '',
+      'gen_ai.request.model.id': request.context?.model?.id ?? '',
       'gen_ai.operation.name': 'tool.execute',
       'gen_ai.tool.name': request.toolName,
     })
@@ -338,6 +469,7 @@ export class RuntimeSessionRegistry {
       commandId: request.commandId,
       callId: request.context?.callId,
       conversationId: request.context?.conversationId,
+      model: request.context?.model,
     })
 
     const immediate: RuntimeResponse[] = []
@@ -361,6 +493,13 @@ export class RuntimeSessionRegistry {
     }
 
     if (request.toolName === 'sample_then_result') {
+      const sampleRequest = { messages: [{ role: 'user', content: 'Say deterministic hello' }] }
+      if (readAgentCoreToolSampleConfig().mode === 'internal') {
+        void this.runInternalSampleTool(session, sampleRequest)
+        await this.waitForPauseOrTerminal(session)
+        return this.drain(session.toolSessionId, 0, { runtimeSessionId: session.runtimeSessionId })
+      }
+
       const pending = deferred<{ text: string; model?: string | undefined; stopReason?: string | undefined; parsed?: unknown; parseError?: unknown; toolCalls?: unknown[] | undefined }>()
       const sampleId = `${request.toolSessionId}:sample:1`
       session.status = 'awaiting_sample'
@@ -368,7 +507,7 @@ export class RuntimeSessionRegistry {
       immediate.push(this.emit(session, {
         type: 'sample_request',
         sampleId,
-        messages: [{ role: 'user', content: 'Say deterministic hello' }],
+        messages: sampleRequest.messages,
       }))
       void this.runSampleTool(session, pending)
       immediate.push(statusResponse(session))
@@ -434,6 +573,27 @@ export class RuntimeSessionRegistry {
       }
 
       case 'sample': {
+        const sampleRequest = {
+          messages: event.messages,
+          ...(event.options?.systemPrompt !== undefined ? { systemPrompt: event.options.systemPrompt } : {}),
+          ...(event.options?.maxTokens !== undefined ? { maxTokens: event.options.maxTokens } : {}),
+          ...(event.options?.tools !== undefined ? { tools: event.options.tools } : {}),
+          ...(event.options?.toolChoice !== undefined ? { toolChoice: event.options.toolChoice } : {}),
+          ...(event.options?.schema !== undefined ? { schema: event.options.schema } : {}),
+        }
+
+        if (readAgentCoreToolSampleConfig().mode === 'internal') {
+          this.emit(session, { type: 'progress', message: 'satisfying sample inside AgentCore runtime' })
+          void this.internalSample(session, sampleRequest).then(
+            (response) => {
+              if (isTerminalStatus(session.status)) return
+              event.responseSignal.send({ result: toBridgeSampleResult(response) })
+            },
+            (error: unknown) => this.failSession(session, 'InternalSamplingError', error),
+          )
+          return
+        }
+
         const sampleId = `${session.toolSessionId}:sample:${session.nextSeq}`
         session.status = 'awaiting_sample'
         session.pending = {
@@ -444,12 +604,7 @@ export class RuntimeSessionRegistry {
         this.emit(session, {
           type: 'sample_request',
           sampleId,
-          messages: event.messages,
-          ...(event.options?.systemPrompt !== undefined ? { systemPrompt: event.options.systemPrompt } : {}),
-          ...(event.options?.maxTokens !== undefined ? { maxTokens: event.options.maxTokens } : {}),
-          ...(event.options?.tools !== undefined ? { tools: event.options.tools } : {}),
-          ...(event.options?.toolChoice !== undefined ? { toolChoice: event.options.toolChoice } : {}),
-          ...(event.options?.schema !== undefined ? { schema: event.options.schema } : {}),
+          ...sampleRequest,
         })
       }
     }
@@ -588,6 +743,21 @@ export class RuntimeSessionRegistry {
       if (isTerminalStatus(session.status)) return
       session.status = 'failed'
       this.emit(session, { type: 'error', name: 'ToolError', message: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  private async runInternalSampleTool(session: RuntimeToolSession, request: Omit<InternalSampleRequest, 'inheritedModel'>): Promise<void> {
+    try {
+      const response = await this.internalSample(session, request)
+      if (isTerminalStatus(session.status)) return
+      session.pending = undefined
+      session.status = 'running'
+      this.emit(session, { type: 'progress', message: 'completed internal sample', progress: 0.75 })
+      if (isTerminalStatus(session.status)) return
+      session.status = 'completed'
+      this.emit(session, { type: 'result', result: { sampleText: response.text, model: response.model ?? null } })
+    } catch (error) {
+      this.failSession(session, 'InternalSamplingError', error)
     }
   }
 

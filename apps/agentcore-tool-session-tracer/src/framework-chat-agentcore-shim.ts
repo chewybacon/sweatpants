@@ -7,16 +7,21 @@
 // keeps the AgentCore bundle minimal and ESM-safe.
 export { createMcpTool } from '../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts'
 export {
+  ModelProviderContext,
+  ModelProviderModelContext,
+  ModelProviderStreamOptionsContext,
+} from '../../../packages/framework/src/lib/chat/model-provider.ts'
+export {
   ToolRuntimeContext,
   ToolRuntimeError,
   createToolExecutionRef,
 } from '../../../packages/framework/src/lib/chat/tool-runtime.ts'
 export type { ExtendedMessage } from '../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts'
+export type { ModelProviderDriver } from '../../../packages/framework/src/lib/chat/model-provider.ts'
 export type {
   ClientToolRequest,
   ElicitToolRequest,
   StartToolCallRequest,
-  ToolCall,
   ToolExecuteRequest,
   ToolExecution,
   ToolExecutionEvent,
@@ -28,6 +33,7 @@ export type {
   ToolSessionEvent,
   ToolSessionRef,
 } from '../../../packages/framework/src/lib/chat/tool-runtime.ts'
+export type { ToolCall } from '../../../packages/framework/src/lib/chat/types.ts'
 export type {
   ToolDefinition,
   ToolInventoryEntry,

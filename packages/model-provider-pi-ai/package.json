@@ -35,7 +35,8 @@
     "@sweatpants/framework": "workspace:*"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "^0.79.8"
+    "@earendil-works/pi-ai": "^0.79.8",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",

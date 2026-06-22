@@ -7,9 +7,10 @@ import {
 import type { Message } from '@sweatpants/framework/chat'
 import {
   createPiAiModelProviderDriver,
-  resolveRuntimeModel,
+  resolvePiAiModel,
   type AssistantMessage as ModelAssistantMessage,
   type Message as ModelMessage,
+  type ModelSelection,
   type StreamEvent as ModelStreamEvent,
 } from '@sweatpants/model-provider-pi-ai'
 import { call, race, resource, run, type Operation, type Stream, type Task } from 'effection'
@@ -285,13 +286,13 @@ function modelAssistantText(message: ModelAssistantMessage): string {
 
 export function createThreadedChatEngine(params: {
   bufferStore: TokenBufferStore<ThreadEvent>
-  providerName: 'ollama' | 'openai'
+  model: ModelSelection
   systemPrompt: string
 }): ThreadedChatEngine {
-  const { bufferStore, providerName, systemPrompt } = params
+  const { bufferStore, model: modelSelection, systemPrompt } = params
   const store = createThreadStore(bufferStore)
   const modelProvider = createPiAiModelProviderDriver()
-  const model = resolveRuntimeModel(providerName)
+  const model = resolvePiAiModel(modelSelection)
   const knownThreadIds = new Set<string>()
   const runtimes = new Map<string, ThreadRuntime>()
   const runOp = <T>(factory: () => Operation<T>): Promise<T> => run(factory)

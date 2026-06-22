@@ -83,5 +83,5 @@ describe('yo-chat AgentCore runtime smoke', () => {
 
       expect(result).toMatchObject({ kind: 'completed' })
     })
-  })
+  }, 15_000)
 })

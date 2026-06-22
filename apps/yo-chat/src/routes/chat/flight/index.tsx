@@ -156,8 +156,10 @@ function FlightChatDemo() {
       bookFlightPlugin.client,
       { ...bookFlightPlugin.client, toolName: 'book_flight' },
     ],
-    // Tell server to only enable bookFlight plugin
-    enabledPlugins: [bookFlightTool.name],
+    // Tell server to only enable bookFlight plugin. Include both the generated
+    // app-facing alias and canonical AgentCore name so local and remote runtime
+    // modes expose the same model-facing tool.
+    enabledPlugins: Array.from(new Set([bookFlightTool.name, 'book_flight'])),
   })
 
   const [input, setInput] = useState('')

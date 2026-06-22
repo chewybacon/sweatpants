@@ -347,6 +347,11 @@ export interface PluginAbortRequest {
 /**
  * Request body for chat requests.
  */
+export interface ModelSelection {
+  provider: string
+  id: string
+}
+
 export interface ChatRequestBody {
   messages: ChatMessage[]
   systemPrompt?: string
@@ -364,8 +369,7 @@ export interface ChatRequestBody {
   enabledPlugins?: string[]
   isomorphicTools?: ToolSchema[]
   isomorphicClientOutputs?: IsomorphicClientOutput[]
-  model?: string
-  provider?: 'ollama' | 'openai'
+  model?: ModelSelection
 
   /**
    * Responses to pending elicitation requests.

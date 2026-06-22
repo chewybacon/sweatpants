@@ -3,18 +3,37 @@ import { z } from 'zod'
 
 export const appEnv = createEnv({
   server: {
-    // Chat provider selection (defaults to 'ollama' for local development)
-    CHAT_PROVIDER: z.enum(['ollama', 'openai']).default('ollama'),
+    // Canonical default chat model identity. Requests may override this with
+    // nested { model: { provider, id } } when allowed by server policy.
+    DEFAULT_CHAT_MODEL_PROVIDER: z.string().min(1),
+    DEFAULT_CHAT_MODEL_ID: z.string().min(1),
 
-    // Ollama configuration
+    // Optional structured allow-list. When unset, only the configured default
+    // model is allowed unless UNSAFE_ALLOW_ANY_CHAT_MODEL=yes.
+    ALLOWED_CHAT_MODELS_JSON: z.string().optional().refine((value) => {
+      if (value === undefined) return true
+      try {
+        const parsed = JSON.parse(value)
+        return Array.isArray(parsed)
+          && parsed.every((entry) => typeof entry === 'object'
+            && entry !== null
+            && !Array.isArray(entry)
+            && typeof (entry as { provider?: unknown }).provider === 'string'
+            && (entry as { provider: string }).provider.trim().length > 0
+            && typeof (entry as { id?: unknown }).id === 'string'
+            && (entry as { id: string }).id.trim().length > 0)
+      } catch {
+        return false
+      }
+    }, 'ALLOWED_CHAT_MODELS_JSON must be a JSON array of { provider, id } objects'),
+    UNSAFE_ALLOW_ANY_CHAT_MODEL: z.string().optional(),
+
+    // Provider option configuration. These do not select model identity.
     OLLAMA_URL: z.string().default('http://localhost:11434'),
-    OLLAMA_MODEL: z.string().default('lfm2.5:latest'),
-    //OLLAMA_MODEL: z.string().default('deepseek-r1:70b'),
-
-    // OpenAI configuration (required when CHAT_PROVIDER=openai)
+    OLLAMA_BASE_URL: z.string().optional(),
     OPENAI_API_KEY: z.string().optional(),
-    OPENAI_MODEL: z.string().default('gpt-5-chat-latest'),
     OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
+    AWS_REGION: z.string().optional(),
 
     // Default system prompt for manual chat mode. Individual requests/personas may override it.
     CHAT_SYSTEM_PROMPT: z.string().default(`You are yo-chat, a tool-using assistant. Use the available tools whenever the user asks you to use a tool, book a flight, calculate something, pick a card, or play a game. When the user says not to answer directly, you must call the appropriate tool instead of explaining. Use the provider's native tool-calling mechanism; do not print tool-call JSON as text. After a tool returns a result, treat that result as authoritative. If the result completes the user's request, confirms success, or includes a ticket/confirmation/reservation, do not call the same tool again for that request; summarize the completed result to the user.`),

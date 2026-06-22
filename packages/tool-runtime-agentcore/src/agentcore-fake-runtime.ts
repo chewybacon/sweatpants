@@ -70,6 +70,7 @@ function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean
 export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeClient<AgentCoreToolSessionHandle> {
   readonly sessions = new Map<string, FakeSession>()
   readonly invocations: Array<{ op: string; runtimeSessionId: string; request: unknown }> = []
+  readonly stoppedRuntimeSessionIds: string[] = []
 
   start: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['start'] = function* (
     this: FakeAgentCoreRemoteToolRuntimeClient,
@@ -247,8 +248,13 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
       })))
   }
 
-  stopRuntimeSession: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['stopRuntimeSession'] = function* () {
-    // no-op for fake runtime
+  stopRuntimeSession: RemoteToolRuntimeClient<AgentCoreToolSessionHandle>['stopRuntimeSession'] = function* (
+    this: FakeAgentCoreRemoteToolRuntimeClient,
+    handle: AgentCoreToolSessionHandle,
+    _options?: RuntimeInvokeOptions
+  ) {
+    this.invocations.push({ op: 'stop_runtime_session', runtimeSessionId: handle.runtimeSessionId, request: { op: 'stop_runtime_session', sessionId: handle.sessionId } })
+    this.stoppedRuntimeSessionIds.push(handle.runtimeSessionId)
   }
 
   private checkDuplicate(session: FakeSession, commandId: string, request: object): AgentCoreToolRuntimeResponse | null {
