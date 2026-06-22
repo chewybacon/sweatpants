@@ -44,13 +44,25 @@ describe('yo-chat chat application composition', () => {
     const serverFiles = listFiles('src/server')
     expect(serverFiles).toContain('src/server/chat-application.ts')
 
+    expect(serverFiles).toEqual(expect.arrayContaining([
+      'src/server/default-system-prompt.ts',
+      'src/server/durable-streams.ts',
+      'src/server/model-provider.ts',
+      'src/server/plugin-sampling-provider.ts',
+      'src/server/tool-runtime.ts',
+      'src/server/tools.ts',
+    ]))
+
     const composition = read('src/server/chat-application.ts')
     expect(composition).toContain('createYoChatApplication')
     expect(composition).toContain('createChatApplication')
     expect(composition).toContain('createChatHandler')
-    expect(composition).toContain('installPiAiModelProvider')
-    expect(composition).toContain('installLocalToolRuntime')
-    expect(composition).toContain('installAgentCoreToolRuntime')
-    expect(composition).toContain('withDefaultSystemPrompt')
+    expect(composition.split('\n').length).toBeLessThanOrEqual(60)
+
+    const serverSources = serverFiles.map((file) => read(file)).join('\n')
+    expect(serverSources).toContain('installPiAiModelProvider')
+    expect(serverSources).toContain('installLocalToolRuntime')
+    expect(serverSources).toContain('installAgentCoreToolRuntime')
+    expect(serverSources).toContain('withDefaultSystemPrompt')
   })
 })
