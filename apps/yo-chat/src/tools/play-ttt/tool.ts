@@ -20,7 +20,7 @@ import {
   checkWinner,
   applyMove,
   formatBoard,
-} from '../tictactoe/types'
+} from '../tictactoe/types.ts'
 
 // =============================================================================
 // SCHEMAS

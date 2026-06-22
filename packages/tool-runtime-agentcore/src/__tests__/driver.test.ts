@@ -4,10 +4,16 @@ import { z } from 'zod'
 import { createMcpTool, type ToolSessionRegistry, type ToolSession } from '@sweatpants/framework/chat/mcp-tools'
 import { ToolRuntimeApi, createToolInventory } from '@sweatpants/framework/chat'
 import {
+  FakeAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolExecutionStrategy,
   createAgentCoreToolInventoryEntry,
   createAgentCoreToolRuntimeDriver,
+  createAgentCoreToolSessionRegistry,
+  createInMemoryAgentCoreToolSessionEventStore,
+  createInMemoryAgentCoreToolSessionHandleStore,
   installAgentCoreToolRuntime,
+  type AgentCoreToolRuntimeProfile,
+  type AgentCoreToolSessionStores,
 } from '../index.ts'
 
 const remoteTool = createMcpTool('remote_echo')
@@ -17,6 +23,46 @@ const remoteTool = createMcpTool('remote_echo')
   .execute(function* () {
     return { unreachable: true }
   })
+
+const remoteElicitTool = createMcpTool('remote_elicit')
+  .description('Remote elicit')
+  .parameters(z.object({}))
+  .elicits({})
+  .execute(function* () {
+    return { unreachable: true }
+  })
+
+const remoteSampleTool = createMcpTool('remote_sample')
+  .description('Remote sample')
+  .parameters(z.object({}))
+  .elicits({})
+  .execute(function* () {
+    return { unreachable: true }
+  })
+
+const samplingProvider = {
+  *sample() {
+    return { text: 'hello from sample provider' }
+  },
+}
+
+function createStores(): AgentCoreToolSessionStores {
+  return {
+    handles: createInMemoryAgentCoreToolSessionHandleStore(),
+    events: createInMemoryAgentCoreToolSessionEventStore(),
+  }
+}
+
+function createProfile(toolNames: string[]): AgentCoreToolRuntimeProfile {
+  return {
+    name: 'test-profile',
+    runtimeArn: 'arn:aws:bedrock-agentcore:us-east-1:123:runtime/test',
+    endpointName: 'DEFAULT',
+    region: 'us-east-1',
+    toolNames,
+    maxSessionTtlMs: 60_000,
+  }
+}
 
 function createFakeSession(): ToolSession {
   return {
@@ -65,6 +111,7 @@ describe('AgentCore ToolRuntimeDriver', () => {
       const driver = createAgentCoreToolRuntimeDriver({
         tools: [remoteTool],
         registry: createFakeRegistry(),
+        samplingProvider,
       })
 
       const tools = yield* driver.listTools()
@@ -86,6 +133,71 @@ describe('AgentCore ToolRuntimeDriver', () => {
     })
   })
 
+  it('resumes AgentCore elicitation from the response boundary instead of replaying stale state', async () => {
+    const stores = createStores()
+    const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
+    const registry = createAgentCoreToolSessionRegistry({
+      stores,
+      runtimeClient: runtime,
+      profiles: [createProfile(['remote_elicit'])],
+      createRuntimeSessionId: () => 'runtime-elicit',
+    })
+
+    await run(function* () {
+      const driver = createAgentCoreToolRuntimeDriver({
+        tools: [remoteElicitTool],
+        registry,
+        samplingProvider,
+      })
+      const entry = createAgentCoreToolInventoryEntry(remoteElicitTool)
+
+      const initial = yield* driver.execute({
+        entry,
+        call: { id: 'call-elicit', type: 'function', function: { name: 'remote_elicit', arguments: {} } },
+      })
+      expect(initial).toMatchObject({ kind: 'awaiting_elicit' })
+      if (initial.kind !== 'awaiting_elicit') return
+
+      const resumed = yield* driver.resume({
+        ref: initial.ref,
+        input: {
+          type: 'elicit_response',
+          elicitId: initial.request.elicitId,
+          result: { action: 'accept', content: { confirmed: true } },
+        },
+      })
+
+      expect(resumed).toMatchObject({ kind: 'completed', result: { confirmed: true } })
+    })
+  })
+
+  it('handles AgentCore sample_request events via the sampling provider', async () => {
+    const stores = createStores()
+    const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
+    const registry = createAgentCoreToolSessionRegistry({
+      stores,
+      runtimeClient: runtime,
+      profiles: [createProfile(['remote_sample'])],
+      createRuntimeSessionId: () => 'runtime-sample',
+    })
+
+    await run(function* () {
+      const driver = createAgentCoreToolRuntimeDriver({
+        tools: [remoteSampleTool],
+        registry,
+        samplingProvider,
+      })
+      const entry = createAgentCoreToolInventoryEntry(remoteSampleTool, { profile: 'test' })
+
+      const result = yield* driver.execute({
+        entry,
+        call: { id: 'call-sample', type: 'function', function: { name: 'remote_sample', arguments: {} } },
+      })
+
+      expect(result).toMatchObject({ kind: 'completed', result: { text: 'hello from sample provider' } })
+    })
+  })
+
   it('creates AgentCore inventory entries and normalized executions', async () => {
     const entry = createAgentCoreToolInventoryEntry(remoteTool, { profile: 'test' })
     expect(entry.definition).toMatchObject({ name: 'remote_echo', description: 'Remote echo' })
@@ -94,7 +206,7 @@ describe('AgentCore ToolRuntimeDriver', () => {
     expect(() => createToolInventory([entry, entry])).toThrow('Duplicate tool name')
 
     await run(function* () {
-      const driver = createAgentCoreToolRuntimeDriver({ tools: [remoteTool], registry: createFakeRegistry() })
+      const driver = createAgentCoreToolRuntimeDriver({ tools: [remoteTool], registry: createFakeRegistry(), samplingProvider })
       const result = yield* driver.execute({
         entry,
         call: { id: 'call-remote', type: 'function', function: { name: 'remote_echo', arguments: { message: 'hello' } } },
@@ -126,7 +238,7 @@ describe('AgentCore ToolRuntimeDriver', () => {
 
   it('exports an executable AgentCore strategy object', async () => {
     await run(function* () {
-      const strategy = createAgentCoreToolExecutionStrategy({ registry: createFakeRegistry(), tools: [remoteTool] })
+      const strategy = createAgentCoreToolExecutionStrategy({ registry: createFakeRegistry(), samplingProvider, tools: [remoteTool] })
       const entry = createAgentCoreToolInventoryEntry(remoteTool)
       expect(strategy.canExecute(entry, { id: 'call-remote', type: 'function', function: { name: 'remote_echo', arguments: {} } }, { runtimeId: 'agentcore' })).toBe(true)
       const result = yield* strategy.execute(entry, { id: 'call-remote', type: 'function', function: { name: 'remote_echo', arguments: { message: 'hello' } } }, { runtimeId: 'agentcore' })
@@ -139,9 +251,11 @@ describe('AgentCore ToolRuntimeDriver', () => {
       yield* installAgentCoreToolRuntime({
         tools: [remoteTool],
         registry: createFakeRegistry(),
+        samplingProvider,
       })
       const tools = yield* ToolRuntimeApi.listTools()
       expect(tools.map((tool) => tool.name)).toEqual(['remote_echo'])
     })
   })
+
 })

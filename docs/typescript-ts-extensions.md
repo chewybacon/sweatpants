@@ -308,7 +308,7 @@ import { Foo } from './bar.js'
 // ✅ Correct - package imports don't use extensions
 import { z } from 'zod'
 import { createSignal } from 'effection'
-import { ChatProvider } from '@sweatpants/framework/react/chat'
+import { ChatProvider } from '@sweatpants/react-chat'
 ```
 
 ## Benefits

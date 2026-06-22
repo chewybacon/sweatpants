@@ -19,11 +19,6 @@ import type {
   AgentCoreToolSessionStores,
 } from '@sweatpants/tool-runtime-agentcore'
 
-if (process.env['APPROVE_AGENTCORE_PAID_INVOCATION'] !== 'yes') {
-  console.error('Refusing live AgentCore book-flight smoke without APPROVE_AGENTCORE_PAID_INVOCATION=yes')
-  process.exit(2)
-}
-
 const runtimeArnEnv = process.env['AGENTCORE_RUNTIME_ARN']
 if (!runtimeArnEnv) throw new Error('AGENTCORE_RUNTIME_ARN is required')
 const runtimeArn: string = runtimeArnEnv

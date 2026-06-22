@@ -22,7 +22,6 @@ describe('framework package boundaries', () => {
     expect(Object.keys(pkg.exports).sort()).toEqual([
       '.',
       './chat',
-      './chat/core-tools',
       './chat/durable-streams',
       './chat/isomorphic-tools',
       './chat/mcp-tools',

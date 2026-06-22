@@ -31,7 +31,6 @@ import {
 } from '@sweatpants/tool-runtime-agentcore'
 import { env } from '@/env'
 import { getSharedRedisClient } from '@/lib/shared-redis'
-import toolWorkerUrl from '../__generated__/tool-worker.gen.ts?modulePath'
 import {
   activeAgentCoreToolNames,
   activePluginTools,
@@ -47,13 +46,17 @@ type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0]
 let sharedPluginSessionRegistry: ToolSessionRegistry | null = null
 let sharedPluginSessionManager: PluginSessionManager | null = null
 
+const toolWorkerUrl = new URL('../__generated__/tool-worker.gen.ts', import.meta.url)
+
 function* createLocalPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
   const store = createInMemoryToolSessionStore()
+  const isDev = process.env['NODE_ENV'] !== 'production'
   return yield* createToolSessionRegistry(store, {
     samplingProvider: pluginSamplingProvider,
     worker: {
       workerUrl: toolWorkerUrl,
-      isDev: process.env['NODE_ENV'] !== 'production',
+      isDev,
+      ...(isDev ? { execArgv: ['--import', 'tsx'] } : {}),
     },
   })
 }
@@ -78,21 +81,10 @@ function* createAgentCoreStores(): Operation<AgentCoreToolSessionStores> {
   }
 }
 
-function requireAgentCorePaidInvocationApproval(): void {
-  if (process.env['APPROVE_AGENTCORE_PAID_INVOCATION'] !== 'yes') {
-    throw new Error(
-      'MCP_TOOL_RUNTIME=agentcore with AGENTCORE_RUNTIME_ARN may invoke paid AWS Bedrock AgentCore Runtime services. '
-      + 'Set APPROVE_AGENTCORE_PAID_INVOCATION=yes for local/development app-mode AgentCore invocation.'
-    )
-  }
-}
-
 function* createAgentCorePluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
   if (!env.AGENTCORE_RUNTIME_ARN) {
     throw new Error('AGENTCORE_RUNTIME_ARN is required when MCP_TOOL_RUNTIME=agentcore')
   }
-
-  requireAgentCorePaidInvocationApproval()
 
   const toolNames = activeAgentCoreToolNames()
   if (toolNames.length === 0) {
@@ -176,6 +168,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
     yield* installAgentCoreToolRuntime({
       tools: pluginTools as AgentCoreMcpTool[],
       registry: sharedPluginSessionRegistry,
+      samplingProvider: pluginSamplingProvider,
     })
     return
   }

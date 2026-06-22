@@ -6,7 +6,7 @@ To run this application:
 
 ```bash
 pnpm install
-pnpm start
+pnpm dev
 ```
 
 ## MCP tool runtime mode
@@ -26,18 +26,17 @@ MCP_TOOL_RUNTIME=local pnpm dev
 
 In this mode, the local app stores AgentCore `ToolSession` handles and invokes AWS Bedrock AgentCore Runtime for tool execution. The AgentCore runtime image packages the generated AgentCore tool registry from `src/tools`.
 
-> **Paid invocation warning:** `MCP_TOOL_RUNTIME=agentcore` with a real `AGENTCORE_RUNTIME_ARN` can invoke paid AWS Bedrock AgentCore Runtime services. Local/development app mode (`NODE_ENV` unset or not `production`) refuses to construct the AWS-backed invoker unless `APPROVE_AGENTCORE_PAID_INVOCATION=yes` is set. Production-like deployments are identified by `NODE_ENV=production` and may omit the local/development approval gate.
+> **Paid invocation warning:** `MCP_TOOL_RUNTIME=agentcore` with a real `AGENTCORE_RUNTIME_ARN` can invoke paid AWS Bedrock AgentCore Runtime services. Selecting AgentCore as the configured runtime is the approval boundary; there is no separate app-mode approval environment variable.
 
 ```bash
 MCP_TOOL_RUNTIME=agentcore \
 AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:<region>:<account-id>:runtime/<runtime-id> \
 AGENTCORE_REGION=<region> \
 AGENTCORE_ENDPOINT_NAME=DEFAULT \
-APPROVE_AGENTCORE_PAID_INVOCATION=yes \
 pnpm dev
 ```
 
-Use a real chat provider (`ollama` or `openai`) for both normal usage and manual testing. AgentCore mode only moves MCP tool execution remote; LLM sampling still uses the local app's configured provider.
+Use a real chat provider (`ollama` or `openai`) for both normal usage and manual testing. AgentCore mode only moves MCP tool execution remote; LLM sampling still uses the local app's configured provider. For local Ollama tool-calling demos, use a tool-capable model such as `qwen3:30b`; smaller/default chat models may answer with JSON text instead of making native tool calls.
 
 Batch 1 AgentCore remote execution supports only this explicit MCP bridge-compatible subset:
 

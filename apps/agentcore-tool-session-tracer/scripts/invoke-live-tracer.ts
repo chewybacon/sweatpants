@@ -3,11 +3,6 @@ import crypto from 'node:crypto'
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore'
 import { PROTOCOL_VERSION, type RuntimeRequest, type RuntimeResponse } from '../src/protocol.ts'
 
-if (process.env['APPROVE_AGENTCORE_PAID_INVOCATION'] !== 'yes') {
-  console.error('Refusing live AgentCore tracer without APPROVE_AGENTCORE_PAID_INVOCATION=yes')
-  process.exit(2)
-}
-
 const runtimeArn = process.env['AGENTCORE_RUNTIME_ARN']
 if (!runtimeArn) throw new Error('AGENTCORE_RUNTIME_ARN is required')
 

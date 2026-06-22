@@ -15,6 +15,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { run, each, createSignal } from 'effection'
 import {
   createChatSession,
+  type ChatCommand,
   type ChatSession,
   type ClientToolSessionOptions,
 } from '@sweatpants/framework/chat'
@@ -353,8 +354,10 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     optionsRef.current = mergedOptions
   }, [mergedOptions])
 
-  // Store the dispatch function from the session
+  // Store the dispatch function from the session. Commands sent before
+  // Effection finishes mounting are buffered so early user clicks do not no-op.
   const dispatchRef = useRef<ChatSession['dispatch'] | null>(null)
+  const pendingCommandsRef = useRef<ChatCommand[]>([])
   
   // Store the approval callback function
   const sendApprovalRef = useRef<((value: { callId: string, approved: boolean, reason?: string }) => void) | null>(null)
@@ -384,8 +387,12 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         handoffResponseSignal,
       });
       
-      // Expose dispatch to React
+      // Expose dispatch to React and flush commands that arrived during mount.
       dispatchRef.current = dispatch
+      const pendingCommands = pendingCommandsRef.current.splice(0)
+      for (const pending of pendingCommands) {
+        dispatch(pending)
+      }
 
       // Subscribe to state updates
       for (const s of yield* each(stateStream)) {
@@ -405,10 +412,19 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     }
   }, [sessionIdentity])
 
+  const dispatchCommand = useCallback((command: ChatCommand) => {
+    const dispatch = dispatchRef.current
+    if (dispatch) {
+      dispatch(command)
+      return
+    }
+    pendingCommandsRef.current.push(command)
+  }, [])
+
   // Stable command callbacks
   const send = useCallback((content: string) => {
-    dispatchRef.current?.({ type: 'send', content })
-  }, [])
+    dispatchCommand({ type: 'send', content })
+  }, [dispatchCommand])
 
   const abort = useCallback(() => {
     const currentState = stateRef.current
@@ -422,15 +438,15 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
       .map(p => p.content)
       .join('')
     
-    dispatchRef.current?.({ 
+    dispatchCommand({ 
       type: 'abort',
       partialContent,
     })
-  }, [])
+  }, [dispatchCommand])
 
   const reset = useCallback(() => {
-    dispatchRef.current?.({ type: 'reset' })
-  }, [])
+    dispatchCommand({ type: 'reset' })
+  }, [dispatchCommand])
 
   // Client tool approval callbacks
   const approve = useCallback((callId: string) => {
@@ -514,14 +530,14 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }
   ) => {
     // Dispatch an elicit_response command to the session
-    dispatchRef.current?.({
+    dispatchCommand({
       type: 'elicit_response',
       sessionId: elicit.sessionId,
       callId: elicit.callId,
       elicitId: elicit.elicitId,
       result,
     })
-  }, [])
+  }, [dispatchCommand])
 
   // Build plugin registry from options
   const pluginRegistry = useMemo(
