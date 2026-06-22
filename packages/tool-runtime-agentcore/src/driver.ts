@@ -34,6 +34,7 @@ import { createAgentCoreToolSessionRegistry, type AgentCoreToolSessionRegistryOp
 type AgentCoreRuntimeTool = FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>
 
 type AgentCoreImplementation = { kind: 'agentcore'; tool: AgentCoreRuntimeTool }
+type AgentCoreContextModelSelection = { provider: string; id: string }
 
 export interface AgentCoreToolRuntimeDriverOptions {
   /** Stable runtime identifier stored on all execution refs. */
@@ -149,6 +150,16 @@ function isAgentCoreImplementation(value: unknown): value is AgentCoreImplementa
   return !!value && typeof value === 'object' && (value as { kind?: unknown }).kind === 'agentcore'
 }
 
+function modelSelectionFromMetadata(metadata: Record<string, unknown> | undefined): AgentCoreContextModelSelection | undefined {
+  const model = metadata?.['model']
+  if (!model || typeof model !== 'object' || Array.isArray(model)) return undefined
+  const provider = (model as { provider?: unknown }).provider
+  const id = (model as { id?: unknown }).id
+  if (typeof provider !== 'string' || provider.trim().length === 0) return undefined
+  if (typeof id !== 'string' || id.trim().length === 0) return undefined
+  return { provider: provider.trim(), id: id.trim() }
+}
+
 function afterLsnFromPendingId(id: string | undefined): number | undefined {
   if (!id) return undefined
 
@@ -162,6 +173,19 @@ function afterLsnFromPendingId(id: string | undefined): number | undefined {
   if (sampleMatch?.[1]) return Number(sampleMatch[1]) + 1
 
   return undefined
+}
+
+function* findPendingRequestLsn(session: McpToolSession, pendingId: string | undefined): Operation<number | undefined> {
+  if (!pendingId) return undefined
+
+  const subscription = yield* session.events()
+  while (true) {
+    const next = yield* subscription.next()
+    if (next.done) return undefined
+    const event = next.value
+    if (event.type === 'elicit_request' && String(event.elicitId) === pendingId) return event.lsn
+    if (event.type === 'sample_request' && String(event.sampleId) === pendingId) return event.lsn
+  }
 }
 
 function* nextAgentCoreExecution(
@@ -220,9 +244,11 @@ export function createAgentCoreToolExecutionStrategy(
         ? entry.implementation.tool
         : toolsByName.get(call.function.name)
       if (!tool) throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `AgentCore strategy cannot execute tool: ${call.function.name}`)
+      const selectedModel = modelSelectionFromMetadata(ctx.metadata)
       const session = yield* options.registry.create(tool, call.function.arguments, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
+        ...(selectedModel ? { model: selectedModel } : {}),
       })
       return yield* nextAgentCoreExecution(ctx.runtimeId, call, session, options.samplingProvider)
     },
@@ -232,6 +258,7 @@ export function createAgentCoreToolExecutionStrategy(
       if (!session) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${sessionId}`)
       if (ref.toolName && session.toolName !== ref.toolName) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${sessionId}`)
       const pendingId = input.type === 'elicit_response' ? input.elicitId : undefined
+      const pendingLsn = yield* findPendingRequestLsn(session, pendingId)
       if (input.type === 'elicit_response') {
         if (!input.elicitId) throw new ToolRuntimeError('ELICIT_ID_REQUIRED', 'Elicit continuation requires elicitId')
         yield* session.respondToElicit(input.elicitId, input.result as never)
@@ -241,7 +268,7 @@ export function createAgentCoreToolExecutionStrategy(
         { id: ref.callId, type: 'function', function: { name: ref.toolName || session.toolName, arguments: {} } },
         session,
         options.samplingProvider,
-        afterLsnFromPendingId(pendingId),
+        pendingLsn ?? afterLsnFromPendingId(pendingId),
       )
     },
     *abort(ref, reason): Operation<void> {
@@ -322,9 +349,11 @@ export function createAgentCoreToolRuntimeDriver(
       if (!tool) {
         throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `AgentCore runtime cannot execute tool: ${request.call.function.name}`)
       }
+      const selectedModel = modelSelectionFromMetadata(request.metadata)
       const session = yield* registry.create(tool, request.call.function.arguments, {
         sessionId: request.call.id,
         ...(request.signal ? { signal: request.signal } : {}),
+        ...(selectedModel ? { model: selectedModel } : {}),
       })
       return yield* nextAgentCoreExecution(runtimeId, request.call, session, options.samplingProvider)
     },
@@ -336,6 +365,7 @@ export function createAgentCoreToolRuntimeDriver(
       if (request.ref.toolName && session.toolName !== request.ref.toolName) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${sessionId}`)
 
       const pendingId = request.input.type === 'elicit_response' ? request.input.elicitId : undefined
+      const pendingLsn = yield* findPendingRequestLsn(session, pendingId)
       if (request.input.type === 'elicit_response') {
         if (!request.input.elicitId) throw new ToolRuntimeError('ELICIT_ID_REQUIRED', 'Elicit continuation requires elicitId')
         yield* session.respondToElicit(request.input.elicitId, request.input.result as never)
@@ -346,7 +376,7 @@ export function createAgentCoreToolRuntimeDriver(
         { id: request.ref.callId, type: 'function', function: { name: request.ref.toolName || session.toolName, arguments: {} } },
         session,
         options.samplingProvider,
-        afterLsnFromPendingId(pendingId),
+        pendingLsn ?? afterLsnFromPendingId(pendingId),
       )
     },
 

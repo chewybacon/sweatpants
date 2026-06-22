@@ -38,10 +38,12 @@
     "src"
   ],
   "scripts": {
-    "build": "tsup && pnpm build:types",
+    "build": "pnpm build:deps && tsup && pnpm build:types",
+    "build:deps": "pnpm --filter @sweatpants/framework build:types",
     "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest run --passWithNoTests",
+    "check": "pnpm build:deps && tsc -b",
+    "test": "vitest run src --passWithNoTests",
+    "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",
     "build:types": "tsc -b tsconfig.json --force"
   },
   "peerDependencies": {

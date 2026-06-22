@@ -9,7 +9,7 @@ import { resource, call, ensure } from 'effection';
 // --- Configuration ---
 
 export const OLLAMA_API_URL = 'http://localhost:11434/api/chat';
-export const DEFAULT_MODEL = process.env.OLLAMA_MODEL ?? 'qwen3:30b';
+export const DEFAULT_MODEL = process.env.DEFAULT_CHAT_MODEL_ID ?? 'qwen3:30b';
 
 // --- Token Usage ---
 

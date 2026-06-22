@@ -14,8 +14,41 @@ function stableCommandId(operation: 'respond_to_elicit' | 'respond_to_sample' | 
   return parts.map((part) => encodeURIComponent(part)).join(':')
 }
 
-function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
+export function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+}
+
+export function* stopRuntimeSessionIfTerminal(options: {
+  stores: AgentCoreToolSessionFactoryOptions['stores']
+  runtimeClient: AgentCoreToolSessionFactoryOptions['runtimeClient']
+  handle: AgentCoreToolSessionHandle
+  now?: () => Date
+}): Operation<AgentCoreToolSessionHandle> {
+  const { stores, runtimeClient } = options
+  const now = options.now ?? (() => new Date())
+  const current = (yield* stores.handles.get(options.handle.sessionId)) ?? options.handle
+
+  if (!isTerminalStatus(current.status)) return current
+  if (current.stopRequestedAt || current.stoppedAt) return current
+
+  const stopRequestedAt = now().toISOString()
+  const requested = yield* stores.handles.update(current.sessionId, {
+    stopRequestedAt,
+    updatedAt: stopRequestedAt,
+  })
+
+  try {
+    yield* runtimeClient.stopRuntimeSession(requested)
+    const stoppedAt = now().toISOString()
+    return yield* stores.handles.update(requested.sessionId, {
+      stoppedAt,
+      updatedAt: stoppedAt,
+    })
+  } catch {
+    // Stop is best-effort cleanup. Terminal tool results/errors are already
+    // persisted locally, so cleanup failure must not hide the terminal outcome.
+    return requested
+  }
 }
 
 function monotonicSeq(current: AgentCoreToolSessionHandle, incoming: number): number {
@@ -114,6 +147,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       })
       if (response.event.type === 'result' || response.event.type === 'error' || response.event.type === 'cancelled') {
         yield* stores.events.markTerminal(sessionId)
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() })
       }
       return
     }
@@ -121,7 +155,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
     if (response.type === 'session_status') {
       const current = yield* getHandle()
       const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0)
-      yield* stores.handles.update(sessionId, {
+      const updated = yield* stores.handles.update(sessionId, {
         ...(!isTerminalStatus(current.status) && isNewerOrEqual ? {
           status: response.status,
           pendingRequest: response.pendingRequest,
@@ -129,6 +163,9 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
         lastRuntimeEventSeq: monotonicSeq(current, response.lastRuntimeEventSeq),
         updatedAt: new Date().toISOString(),
       })
+      if (isTerminalStatus(updated.status)) {
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated })
+      }
       return
     }
 
@@ -136,6 +173,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       const current = yield* getHandle()
       if (!isTerminalStatus(current.status)) {
         yield* markOrphan(`AgentCore runtime session did not contain tool session ${response.toolSessionId}`)
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() })
       }
       return
     }
@@ -152,12 +190,13 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       const event: AgentCoreToolEvent = { type: 'error', name: response.type, message }
       const lsn = yield* stores.events.append(sessionId, event)
       yield* stores.events.markTerminal(sessionId)
-      yield* stores.handles.update(sessionId, {
+      const updated = yield* stores.handles.update(sessionId, {
         status: 'failed',
         pendingRequest: undefined,
         lastEventLsn: lsn,
         updatedAt: new Date().toISOString(),
       })
+      yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated })
     }
   }
 

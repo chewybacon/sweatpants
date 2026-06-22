@@ -17,6 +17,11 @@ export type AgentCoreToolSessionTerminalStatus =
 
 export type AgentCoreToolSessionStatus = ToolSessionStatus | 'orphaned'
 
+export interface AgentCoreModelSelection {
+  provider: string
+  id: string
+}
+
 export interface AgentCoreToolSessionHandle {
   kind: 'agentcore-tool-session'
   version: 1
@@ -53,6 +58,7 @@ export interface AgentCoreToolSessionHandle {
     userId?: string | undefined
     toolPackageVersion?: string | undefined
     imageDigest?: string | undefined
+    selectedModel?: AgentCoreModelSelection | undefined
   } | undefined
 }
 
@@ -86,6 +92,7 @@ export interface StartToolSessionRequest extends AgentCoreToolRuntimeRequestBase
     callId?: string
     parentMessages?: ExtendedMessage[]
     systemPrompt?: string
+    model?: AgentCoreModelSelection
   }
 }
 

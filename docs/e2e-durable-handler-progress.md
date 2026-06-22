@@ -46,17 +46,17 @@ cd packages/framework && pnpm vitest run --config vitest.config.ts src/handler/d
 cd packages/framework && pnpm vitest run --config vitest.config.ts src/lib/effection/__tests__/
 
 # Start yo-chat dev server
-cd apps/yo-chat && pnpm dev
+cd apps/yo-chat && DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=qwen3:30b pnpm dev
 
 # Test durable endpoint (HANGS)
 curl -X POST http://localhost:8000/api/chat-durable \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hi"}],"provider":"ollama"}'
+  -d '{"messages":[{"role":"user","content":"Hi"}],"model":{"provider":"ollama","id":"qwen3:30b"}}'
 
 # Test regular endpoint (WORKS)
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hi"}],"provider":"ollama"}'
+  -d '{"messages":[{"role":"user","content":"Hi"}],"model":{"provider":"ollama","id":"qwen3:30b"}}'
 ```
 
 ## Investigation Areas

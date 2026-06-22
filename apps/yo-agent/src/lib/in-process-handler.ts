@@ -26,7 +26,8 @@ import {
 } from '@sweatpants/framework/chat'
 import {
   installPiAiModelProvider,
-  resolveRuntimeModel,
+  resolvePiAiModel,
+  type ModelSelection,
 } from '@sweatpants/model-provider-pi-ai'
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 import {
@@ -42,8 +43,8 @@ export type { IsomorphicTool }
  * Configuration for creating an in-process handler.
  */
 export interface InProcessHandlerConfig {
-  /** Provider to use: 'ollama' | 'openai' */
-  provider: 'ollama' | 'openai'
+  /** Model to use for primary chat inference. */
+  model: ModelSelection
   
   /** Tools to register */
   tools: IsomorphicTool[]
@@ -58,7 +59,7 @@ export interface InProcessHandlerConfig {
  * Returns a fetch-like function that can be used with the framework's hooks.
  */
 export function createInProcessHandler(config: InProcessHandlerConfig) {
-  const { provider: providerName, tools, maxIterations = 10 } = config
+  const { model: modelSelection, tools, maxIterations = 10 } = config
 
   // Create request setup (same pattern as yo-chat)
   const setupDurableStreams = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
@@ -66,7 +67,7 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   }
 
   const setupProvider = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
-    yield* installPiAiModelProvider({ model: resolveRuntimeModel(providerName) })
+    yield* installPiAiModelProvider({ model: resolvePiAiModel(modelSelection) })
   }
 
   const setupTools = function* (_ctx: ChatHandlerSetupContext): Operation<void> {

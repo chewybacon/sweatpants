@@ -317,7 +317,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Hi' }],
-        provider: 'ollama',
+        model: { provider: 'ollama', id: 'qwen3:30b' },
       },
     })
     
@@ -335,7 +335,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Say hi' }],
-        provider: 'ollama',
+        model: { provider: 'ollama', id: 'qwen3:30b' },
       },
     })
     
@@ -368,7 +368,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Say hello' }],
-        provider: 'ollama',
+        model: { provider: 'ollama', id: 'qwen3:30b' },
       },
     })
     
@@ -404,7 +404,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Count to 5' }],
-        provider: 'ollama',
+        model: { provider: 'ollama', id: 'qwen3:30b' },
       },
     })
     
@@ -432,7 +432,7 @@ test.describe('Durable Chat - Reconnection', () => {
     const response1 = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
-        provider: 'ollama',
+        model: { provider: 'ollama', id: 'qwen3:30b' },
       },
     })
     
@@ -455,7 +455,7 @@ test.describe('Durable Chat - Reconnection', () => {
     const response2 = await request.post(reconnectUrl, {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
-        provider: 'ollama',
+        model: { provider: 'ollama', id: 'qwen3:30b' },
       },
     })
     

@@ -90,6 +90,98 @@ describe('AgentCore ToolSession facade', () => {
     expect(result.events.events.map(({ event }) => event.type)).toEqual(['progress', 'result'])
   })
 
+  it('stops the AgentCore runtime session after immediate terminal completion', async () => {
+    const stores = createStores()
+    const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
+    const registry = createAgentCoreToolSessionRegistry({
+      stores,
+      runtimeClient: runtime,
+      profiles: [createProfile(['simple_tool'])],
+      createRuntimeSessionId: () => 'runtime-complete',
+    })
+
+    const result = await run(function* () {
+      const session = yield* registry.create(simpleTool, { input: 'hello' }, { sessionId: 'call_complete_stop' })
+      return {
+        status: yield* session.status(),
+        handle: yield* stores.handles.get('call_complete_stop'),
+        stopInvocations: runtime.invocations.filter((entry) => entry.op === 'stop_runtime_session'),
+        stoppedRuntimeSessionIds: runtime.stoppedRuntimeSessionIds,
+      }
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.stoppedRuntimeSessionIds).toEqual(['runtime-complete'])
+    expect(result.stopInvocations).toHaveLength(1)
+    expect(result.handle?.stopRequestedAt).toEqual(expect.any(String))
+    expect(result.handle?.stoppedAt).toEqual(expect.any(String))
+  })
+
+  it('does not stop the AgentCore runtime while a tool is awaiting elicitation, then stops after resume completes', async () => {
+    const stores = createStores()
+    const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
+    const registry = createAgentCoreToolSessionRegistry({
+      stores,
+      runtimeClient: runtime,
+      profiles: [createProfile(['elicit_tool'])],
+      createRuntimeSessionId: () => 'runtime-idle-then-complete',
+    })
+
+    const result = await run(function* () {
+      const session = yield* registry.create(elicitTool, {}, { sessionId: 'call_idle_then_complete' })
+      const awaitingStatus = yield* session.status()
+      const stopsWhileAwaiting = [...runtime.stoppedRuntimeSessionIds]
+
+      yield* session.respondToElicit('call_idle_then_complete:elicit:1', {
+        action: 'accept',
+        content: { confirmed: true },
+      })
+
+      return {
+        awaitingStatus,
+        finalStatus: yield* session.status(),
+        stopsWhileAwaiting,
+        stoppedRuntimeSessionIds: runtime.stoppedRuntimeSessionIds,
+        handle: yield* stores.handles.get('call_idle_then_complete'),
+      }
+    })
+
+    expect(result.awaitingStatus).toBe('awaiting_elicit')
+    expect(result.stopsWhileAwaiting).toEqual([])
+    expect(result.finalStatus).toBe('completed')
+    expect(result.stoppedRuntimeSessionIds).toEqual(['runtime-idle-then-complete'])
+    expect(result.handle?.stopRequestedAt).toEqual(expect.any(String))
+    expect(result.handle?.stoppedAt).toEqual(expect.any(String))
+  })
+
+  it('treats runtime session stop as best-effort cleanup after terminal completion', async () => {
+    const stores = createStores()
+    const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
+    runtime.stopRuntimeSession = function* () {
+      throw new Error('stop failed')
+    }
+    const registry = createAgentCoreToolSessionRegistry({
+      stores,
+      runtimeClient: runtime,
+      profiles: [createProfile(['simple_tool'])],
+      createRuntimeSessionId: () => 'runtime-stop-fails',
+    })
+
+    const result = await run(function* () {
+      const session = yield* registry.create(simpleTool, { input: 'hello' }, { sessionId: 'call_stop_failure' })
+      return {
+        status: yield* session.status(),
+        handle: yield* stores.handles.get('call_stop_failure'),
+        events: yield* stores.events.readAfter('call_stop_failure', 0),
+      }
+    })
+
+    expect(result.status).toBe('completed')
+    expect(result.events.events.map(({ event }) => event.type)).toEqual(['progress', 'result'])
+    expect(result.handle?.stopRequestedAt).toEqual(expect.any(String))
+    expect(result.handle?.stoppedAt).toBeUndefined()
+  })
+
   it('pauses for elicit and resumes via respondToElicit using the same runtimeSessionId', async () => {
     const stores = createStores()
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient()

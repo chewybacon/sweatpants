@@ -1103,6 +1103,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   entry,
                   call: tc,
                   signal,
+                  metadata: {
+                    model: { provider: model.provider, id: model.id },
+                  },
                 }))
                 const result = toolExecutionToResult(execution, tc)
                 results.push(result)

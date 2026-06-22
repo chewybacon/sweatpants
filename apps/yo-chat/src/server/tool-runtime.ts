@@ -3,6 +3,8 @@ import {
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
   ToolInventoryContext,
+  ToolRuntimeContext,
+  createStrategyToolRuntime,
   createToolInventory,
 } from '@sweatpants/framework/chat'
 import { createPluginSessionManager, type PluginSessionManager } from '@sweatpants/framework/server'
@@ -11,12 +13,14 @@ import {
   ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
   createIsomorphicToolInventoryEntry,
+  createLocalInlineToolExecutionStrategy,
   createMcpToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from '@sweatpants/tool-runtime-local'
 import {
   createAgentCoreRemoteToolRuntimeClient,
+  createAgentCoreToolExecutionStrategy,
   createAgentCoreToolInventoryEntry,
   createAgentCoreToolSessionRegistry,
   createAwsSdkAgentCoreInvoker,
@@ -24,7 +28,6 @@ import {
   createInMemoryAgentCoreToolSessionHandleStore,
   createRedisAgentCoreToolSessionEventStore,
   createRedisAgentCoreToolSessionHandleStore,
-  installAgentCoreToolRuntime,
   type AgentCoreToolRuntimeProfile,
   type AgentCoreToolSessionStores,
   type RedisLikeClient,
@@ -139,6 +142,12 @@ function runtimePluginTools(): LocalMcpTool[] {
     : activePluginTools as LocalMcpTool[]
 }
 
+function parametersToSchema(parameters: unknown): Record<string, unknown> {
+  return parameters && typeof parameters === 'object'
+    ? parameters as Record<string, unknown>
+    : { type: 'object', properties: {}, required: [] }
+}
+
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   yield* ToolSessionSamplingProviderContext.set(pluginSamplingProvider)
 
@@ -165,11 +174,36 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   ]))
 
   if (env.MCP_TOOL_RUNTIME === 'agentcore') {
-    yield* installAgentCoreToolRuntime({
-      tools: pluginTools as AgentCoreMcpTool[],
-      registry: sharedPluginSessionRegistry,
-      samplingProvider: pluginSamplingProvider,
+    const runtime = createStrategyToolRuntime({
+      id: 'agentcore',
+      strategies: [
+        createAgentCoreToolExecutionStrategy({
+          tools: pluginTools as AgentCoreMcpTool[],
+          registry: sharedPluginSessionRegistry,
+          samplingProvider: pluginSamplingProvider,
+        }),
+        createLocalInlineToolExecutionStrategy(),
+      ],
     })
+
+    const runtimeWithListTools = {
+      ...runtime,
+      *listTools() {
+        return [
+          ...pluginTools.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            parameters: parametersToSchema(tool.parameters),
+          })),
+          ...allTools.map((tool) => ({
+            name: (tool as LocalIsomorphicRuntimeTool).name,
+            description: (tool as LocalIsomorphicRuntimeTool).description,
+            parameters: parametersToSchema((tool as LocalIsomorphicRuntimeTool).parameters),
+          })),
+        ]
+      },
+    }
+    yield* ToolRuntimeContext.set(runtimeWithListTools)
     return
   }
 

@@ -171,6 +171,38 @@ describe('AgentCore ToolRuntimeDriver', () => {
     })
   })
 
+  it('passes selected chat model into AgentCore start context and handle metadata', async () => {
+    const stores = createStores()
+    const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
+    const registry = createAgentCoreToolSessionRegistry({
+      stores,
+      runtimeClient: runtime,
+      profiles: [createProfile(['remote_echo'])],
+      createRuntimeSessionId: () => 'runtime-model-context',
+    })
+
+    await run(function* () {
+      const driver = createAgentCoreToolRuntimeDriver({
+        tools: [remoteTool],
+        registry,
+        samplingProvider,
+      })
+      const entry = createAgentCoreToolInventoryEntry(remoteTool)
+      yield* driver.execute({
+        entry,
+        call: { id: 'call-model-context', type: 'function', function: { name: 'remote_echo', arguments: { message: 'hello' } } },
+        metadata: { model: { provider: 'amazon-bedrock', id: 'zai.glm-5' } },
+      })
+
+      const startInvocation = runtime.invocations.find((entry) => entry.op === 'start_tool_session')
+      expect(startInvocation?.request).toMatchObject({
+        context: { model: { provider: 'amazon-bedrock', id: 'zai.glm-5' } },
+      })
+      const handle = yield* stores.handles.get('call-model-context')
+      expect(handle?.metadata?.selectedModel).toEqual({ provider: 'amazon-bedrock', id: 'zai.glm-5' })
+    })
+  })
+
   it('handles AgentCore sample_request events via the sampling provider', async () => {
     const stores = createStores()
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient()

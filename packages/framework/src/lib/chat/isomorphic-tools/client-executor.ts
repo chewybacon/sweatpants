@@ -26,6 +26,7 @@ import {
   createBrowserContext,
   type BrowserRenderContext,
   createExecutionState,
+  type ExecutionState,
 } from './runtime/browser-context.ts'
 
 export function* executeClientPart(
@@ -99,7 +100,7 @@ export function* executeClientPart(
   )
 
   let executionContext: BaseToolContext | BrowserRenderContext = baseContext
-  let executionState = undefined
+  let executionState: ExecutionState | undefined = undefined
 
   if (emissionChannel) {
     executionState = createExecutionState(callId, tool.name)

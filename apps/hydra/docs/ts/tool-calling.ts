@@ -310,7 +310,7 @@ function* consumeAsync<T, R>(
 // --- Chat Stream ---
 
 const OLLAMA_API_URL = 'http://localhost:11434/api/chat';
-const MODEL_NAME = process.env.OLLAMA_MODEL ?? 'qwen3:30b';
+const MODEL_NAME = process.env.DEFAULT_CHAT_MODEL_ID ?? 'qwen3:30b';
 
 /**
  * Stream chat events from Ollama.

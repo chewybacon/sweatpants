@@ -15,10 +15,19 @@ function parseArgs(argv: string[]) {
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    if (arg === '--name') result.name = argv[++i]
-    else if (arg === '--region') result.region = argv[++i]
-    else if (arg === '--endpoint') result.endpointName = argv[++i]
-    else if (arg === '--format') result.format = argv[++i] as 'text' | 'json' | 'env'
+    if (arg === '--name') {
+      const value = argv[++i]
+      if (value !== undefined) result.name = value
+    } else if (arg === '--region') {
+      const value = argv[++i]
+      if (value !== undefined) result.region = value
+    } else if (arg === '--endpoint') {
+      const value = argv[++i]
+      if (value !== undefined) result.endpointName = value
+    } else if (arg === '--format') {
+      const value = argv[++i]
+      if (value === 'text' || value === 'json' || value === 'env') result.format = value
+    }
   }
 
   return result

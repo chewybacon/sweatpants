@@ -8,6 +8,11 @@ const BaseRequestSchema = z.object({
   toolSessionId: z.string().min(1),
 })
 
+const ModelSelectionSchema = z.object({
+  provider: z.string().min(1),
+  id: z.string().min(1),
+})
+
 export const RuntimeRequestSchema = z.discriminatedUnion('op', [
   BaseRequestSchema.extend({
     op: z.literal('start_tool_session'),
@@ -18,6 +23,7 @@ export const RuntimeRequestSchema = z.discriminatedUnion('op', [
       callId: z.string().optional(),
       parentMessages: z.array(z.unknown()).optional(),
       systemPrompt: z.string().optional(),
+      model: ModelSelectionSchema.optional(),
     }).optional(),
   }),
   BaseRequestSchema.extend({
@@ -51,7 +57,12 @@ export const RuntimeRequestSchema = z.discriminatedUnion('op', [
     op: z.literal('drain_tool_session_events'),
     afterRuntimeEventSeq: z.number().int().min(0),
   }),
+  BaseRequestSchema.extend({
+    op: z.literal('runtime_diagnostics'),
+  }),
 ])
+
+export type ModelSelection = z.infer<typeof ModelSelectionSchema>
 
 export type RuntimeRequest = z.infer<typeof RuntimeRequestSchema>
 
@@ -74,9 +85,33 @@ export type RuntimeEvent =
   | { type: 'error'; name: string; message: string; stack?: string }
   | { type: 'cancelled'; reason?: string }
 
+export type RuntimeDiagnostics = {
+  runtimeSessionId: string
+  process: {
+    pid: number
+    uptimeSeconds: number
+    memory: NodeJS.MemoryUsage
+    resourceUsage: NodeJS.ResourceUsage
+  }
+  cgroup: {
+    version: 'v1' | 'v2' | 'unknown'
+    memoryCurrentBytes?: number | undefined
+    memoryPeakBytes?: number | undefined
+    memoryMaxBytes?: number | 'max' | undefined
+    memoryStat?: Record<string, number> | undefined
+  }
+  sessions: {
+    total: number
+    nonTerminal: number
+    terminal: number
+    byStatus: Record<ToolStatus, number>
+  }
+}
+
 export type RuntimeResponse =
   | { type: 'tool_event'; toolSessionId: string; runtimeEventSeq: number; runtimeEventId: string; event: RuntimeEvent }
   | { type: 'session_status'; toolSessionId: string; status: ToolStatus; pendingRequest?: { type: 'elicit'; elicitId: string } | { type: 'sample'; sampleId: string }; lastRuntimeEventSeq: number }
+  | { type: 'runtime_diagnostics'; toolSessionId: string; diagnostics: RuntimeDiagnostics }
   | { type: 'session_not_found'; toolSessionId: string }
   | { type: 'command_duplicate'; toolSessionId: string; commandId: string; originalStatus: 'accepted' | 'rejected' }
   | { type: 'command_conflict'; toolSessionId: string; commandId: string; message: string }

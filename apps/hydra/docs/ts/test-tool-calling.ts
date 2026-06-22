@@ -146,7 +146,7 @@ function* consumeAsync<T, R>(stream: Stream<T, R>, handler: (value: T) => Operat
 
 // --- Chat Stream ---
 const OLLAMA_API_URL = 'http://localhost:11434/api/chat';
-const MODEL_NAME = process.env.OLLAMA_MODEL ?? 'qwen3:30b';
+const MODEL_NAME = process.env.DEFAULT_CHAT_MODEL_ID ?? 'qwen3:30b';
 
 function useChatStream(messages: OllamaMessage[], options?: { tools?: ToolRegistry }): Stream<ChatEvent, ChatResult> {
   return resource(function* (provide) {
