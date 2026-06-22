@@ -181,16 +181,16 @@ async function createStreamingNDJSONResponse(
 }
 
 function buildMessages(events: ThreadEvent[], systemPrompt: string): Message[] {
-  const messages: Message[] = [{ role: 'system', content: systemPrompt }]
+  const messages: Message[] = [{ id: 'system:threaded-chat', role: 'system', content: systemPrompt }]
 
   for (const event of events) {
     if (event.type === 'user_message') {
-      messages.push({ role: 'user', content: event.content })
+      messages.push({ id: event.id, role: 'user', content: event.content })
       continue
     }
 
     if (event.type === 'assistant_message_complete') {
-      messages.push({ role: 'assistant', content: event.content })
+      messages.push({ id: event.id, role: 'assistant', content: event.content })
     }
   }
 

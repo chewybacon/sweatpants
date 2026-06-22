@@ -235,19 +235,20 @@ export const bookFlightTool = createMcpTool("book_flight")
       }),
     },
   })
-  .execute(function* (rawParams: Partial<BookFlightParams> = {}, ctx: BookFlightContext) {
-    const params = normalizeBookFlightParams(rawParams, ctx);
+  .execute(function* (rawParams: Partial<BookFlightParams> = {}, ctx: unknown) {
+    const bookFlightCtx = ctx as BookFlightContext;
+    const params = normalizeBookFlightParams(rawParams, bookFlightCtx);
 
     // 1. Search for flights
-    yield* ctx.notify("Searching for flights...", 0.1);
+    yield* bookFlightCtx.notify("Searching for flights...", 0.1);
     const flights = mockFlightSearch(params.from, params.destination);
 
     // 2. Elicit: Pick a flight
-    yield* ctx.notify("Found available flights", 0.2);
+    yield* bookFlightCtx.notify("Found available flights", 0.2);
 
     yield* sleep(900); // mock request
 
-    const flightResult = yield* ctx.elicit("pickFlight", {
+    const flightResult = yield* bookFlightCtx.elicit("pickFlight", {
       message: `Select a flight from ${params.from} to ${params.destination}`,
       flights,
     });
@@ -278,14 +279,14 @@ export const bookFlightTool = createMcpTool("book_flight")
       };
     }
 
-    yield* ctx.notify("Flight selected, loading seat map...", 0.4);
+    yield* bookFlightCtx.notify("Flight selected, loading seat map...", 0.4);
 
     // 3. Elicit: Pick a seat
     const seatMap = mockSeatMap();
 
     yield* sleep(900); // mock request
 
-    const seatResult = yield* ctx.elicit("pickSeat", {
+    const seatResult = yield* bookFlightCtx.elicit("pickSeat", {
       message: `Select your seat on ${selectedFlight.airline} ${selectedFlight.flightNumber}`,
       seatMap,
       flightInfo: {
@@ -311,20 +312,20 @@ export const bookFlightTool = createMcpTool("book_flight")
     }
 
     const seatCode = `${seatResult.content.row}${seatResult.content.seat}`;
-    yield* ctx.notify("Seat selected, finalizing booking...", 0.7);
+    yield* bookFlightCtx.notify("Seat selected, finalizing booking...", 0.7);
 
     // 4. Sample: Get travel tip
-    yield* ctx.notify("Getting travel tips...", 0.8);
-    const tip = yield* ctx.sample({
+    yield* bookFlightCtx.notify("Getting travel tips...", 0.8);
+    const tip = yield* bookFlightCtx.sample({
       prompt: `Give a brief, helpful travel tip for someone arriving at ${params.destination} airport. Keep it to 1-2 sentences.`,
       maxTokens: 100,
     });
 
     // 5. Create booking
-    yield* ctx.notify("Creating your booking...", 0.9);
+    yield* bookFlightCtx.notify("Creating your booking...", 0.9);
     const ticketNumber = generateTicketNumber();
 
-    yield* ctx.notify("Booking complete!", 1.0);
+    yield* bookFlightCtx.notify("Booking complete!", 1.0);
 
     return {
       success: true,

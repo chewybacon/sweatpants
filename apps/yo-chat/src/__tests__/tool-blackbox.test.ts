@@ -50,6 +50,8 @@ import {
   installLocalToolRuntime,
 } from '@sweatpants/tool-runtime-local'
 
+type LocalMcpTool = Parameters<typeof createMcpToolInventoryEntry>[0]
+
 import {
   executeClientPart,
   executeServerPart,
@@ -194,8 +196,9 @@ describe('yo-chat tool blackbox', () => {
           yield* PluginRegistryContext.set(pluginRegistry)
           yield* McpToolRegistryContext.set(mcpToolRegistry)
           yield* PluginSessionManagerContext.set(pluginSessionManager)
-          yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
-          yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
+          const localBookFlightTool = bookFlightTool as LocalMcpTool
+          yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(localBookFlightTool)]))
+          yield* installLocalToolRuntime({ tools: [localBookFlightTool], registry: toolSessionRegistry, samplingProvider })
         }
 
         const handler = createChatHandler({ setup, maxToolIterations: 5 })
@@ -222,7 +225,7 @@ describe('yo-chat tool blackbox', () => {
             }
           })
 
-          const messages: Message[] = [{ role: 'user', content: 'Book a flight' }]
+          const messages: Message[] = [{ id: 'user:book-flight', role: 'user', content: 'Book a flight' }]
 
           const r1 = yield* withTimeout(
             'initial request (expect pickFlight)',
@@ -385,8 +388,9 @@ describe('yo-chat tool blackbox', () => {
           yield* PluginRegistryContext.set(pluginRegistry)
           yield* McpToolRegistryContext.set(mcpToolRegistry)
           yield* PluginSessionManagerContext.set(pluginSessionManager)
-          yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(bookFlightTool)]))
-          yield* installLocalToolRuntime({ tools: [bookFlightTool], registry: toolSessionRegistry, samplingProvider })
+          const localBookFlightTool = bookFlightTool as LocalMcpTool
+          yield* ToolInventoryContext.set(createToolInventory([createMcpToolInventoryEntry(localBookFlightTool)]))
+          yield* installLocalToolRuntime({ tools: [localBookFlightTool], registry: toolSessionRegistry, samplingProvider })
         }
 
         const handler = createChatHandler({ setup, maxToolIterations: 5 })

@@ -11,15 +11,11 @@ export default defineConfig({
   },
   tsconfig: '../ts-config/tsconfig.tsup.json',
   format: ['cjs', 'esm'],
-  dts: {
-    resolve: true,
-  },
+  dts: false,
   clean: true,
   sourcemap: true,
   minify: false,
   external: ['vite', 'effection', 'zod'],
   treeshake: true,
   skipNodeModulesBundle: true,
-  // After bundling, emit unbundled .d.ts with maps for go-to-source
-  onSuccess: 'tsc --emitDeclarationOnly --declarationMap --declaration --outDir dist',
 })
