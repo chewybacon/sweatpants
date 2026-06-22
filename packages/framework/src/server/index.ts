@@ -86,6 +86,7 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         if (closed || error instanceof Error && error.message === closedApplicationErrorMessage) {
           throw new Error(closedApplicationErrorMessage)
         }
+        console.error('[ChatApplication] setup failed', error)
         return new Response(JSON.stringify({ type: 'error', message: 'Chat application setup failed' }), {
           status: 500,
           headers: { 'content-type': 'application/json' },

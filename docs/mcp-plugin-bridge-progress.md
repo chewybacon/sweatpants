@@ -359,7 +359,7 @@ The session registry needs to be managed in a long-lived scope that survives HTT
 ## Notes
 
 - The existing `samplingProvider` errors in tests indicate the bridge-runtime API may have changed. Need to investigate.
-- yo-chat uses TanStack Router and the `useChat` hook from `@sweatpants/framework/react/chat`
+- yo-chat uses TanStack Router and the `useChat` hook from `@sweatpants/react-chat`
 - Tool registry is auto-generated but we'll manually add the plugin for now
 - The pick_card tool is a good reference for the component/emission pattern
 

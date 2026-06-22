@@ -36,10 +36,13 @@ test.describe('Ollama chat integration', () => {
   test('can send a simple message and receive a response', async ({ page }) => {
     // Type a simple message
     const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Say exactly: Hello World', { delay: 10 })
+    await input.click()
+    await input.fill('Say exactly: Hello World')
     
-    // Send the message
-    await page.getByRole('button', { name: 'Send' }).click()
+    // Send the message after React state enables the button
+    const sendButton = page.getByRole('button', { name: 'Send' })
+    await expect(sendButton).toBeEnabled({ timeout: 5000 })
+    await sendButton.click()
     
     // Wait for streaming to start
     await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })

@@ -87,20 +87,6 @@
         "types": "./dist/lib/chat/mcp-tools/index.d.ts",
         "default": "./dist/chat/mcp-tools.cjs"
       }
-    },
-    "./chat/core-tools": {
-      "development": {
-        "import": "./src/lib/chat/core-tools/index.ts",
-        "types": "./src/lib/chat/core-tools/index.ts"
-      },
-      "import": {
-        "types": "./dist/lib/chat/core-tools/index.d.ts",
-        "default": "./dist/chat/core-tools.js"
-      },
-      "require": {
-        "types": "./dist/lib/chat/core-tools/index.d.ts",
-        "default": "./dist/chat/core-tools.cjs"
-      }
     }
   },
   "files": [

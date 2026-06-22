@@ -7,7 +7,7 @@
 import { makePlugin, getElicitContext } from '@sweatpants/framework/chat'
 import { playTttTool } from './tool'
 import { GameChatView, type GameMove } from './components/GameChatView'
-import type { Board, Player } from '../tictactoe/types'
+import type { Board, Player } from '../tictactoe/types.ts'
 
 // =============================================================================
 // CONTEXT TYPES

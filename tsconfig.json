@@ -16,6 +16,21 @@
     },
     {
       "path": "./packages/framework"
+    },
+    {
+      "path": "./packages/model-provider-pi-ai"
+    },
+    {
+      "path": "./packages/react-chat"
+    },
+    {
+      "path": "./packages/tool-runtime-agentcore"
+    },
+    {
+      "path": "./packages/tool-runtime-local"
+    },
+    {
+      "path": "./packages/vite-plugin"
     }
   ],
   "files": []

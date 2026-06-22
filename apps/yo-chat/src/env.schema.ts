@@ -40,8 +40,6 @@ export const appEnv = createEnv({
     AGENTCORE_TOOL_NAMES: z.string().optional(),
     AGENTCORE_TOOL_SESSION_TTL_MS: z.coerce.number().default(15 * 60 * 1000),
     AGENTCORE_REDIS_KEY_PREFIX: z.string().default('sp:yo-chat:agentcore:'),
-    // Local/development safety gate for paid app-mode AgentCore invocation.
-    APPROVE_AGENTCORE_PAID_INVOCATION: z.string().optional(),
   },
 
   /**
