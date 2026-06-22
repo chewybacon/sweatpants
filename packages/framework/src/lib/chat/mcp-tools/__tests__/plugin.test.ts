@@ -3,10 +3,11 @@
  *
  * Tests for makePlugin() and type-safe elicitation.
  */
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, expectTypeOf } from 'vitest'
 import { z } from 'zod'
 import { createMcpTool, makePlugin } from '../index.ts'
 import type { RawElicitResult } from '../types.ts'
+import type { RenderableProps } from '../plugin.ts'
 
 describe('makePlugin', () => {
   describe('type safety', () => {
@@ -57,6 +58,37 @@ describe('makePlugin', () => {
       expect(plugin.client.handlers).toHaveProperty('confirm')
       expect(plugin.client.handlers).toHaveProperty('selectItem')
       expect(plugin.client.schemas).toBe(tool.elicits)
+    })
+
+    it('should infer ctx.render response type from component props', () => {
+      type PickerResponse = { itemId: string }
+      type PickerProps = {
+        label: string
+      } & RenderableProps<PickerResponse>
+      const Picker = (_props: PickerProps) => null
+
+      const tool = createMcpTool('render_inference_tool')
+        .description('Render inference tool')
+        .parameters(z.object({}))
+        .elicits({
+          selectItem: z.object({ itemId: z.string() }),
+        })
+        .execute(function* (_params, ctx) {
+          const selected = yield* ctx.elicit('selectItem', { message: 'Pick' })
+          return selected.action === 'accept' ? selected.content : { itemId: 'none' }
+        })
+
+      const plugin = makePlugin(tool)
+        .onElicit({
+          selectItem: function* (_req, ctx) {
+            const result = yield* ctx.render(Picker, { label: 'Pick one' })
+            expectTypeOf(result).toEqualTypeOf<PickerResponse>()
+            return { action: 'accept', content: result }
+          },
+        })
+        .build()
+
+      expect(plugin.client.toolName).toBe('render_inference_tool')
     })
 
     it('should preserve tool types through plugin', () => {

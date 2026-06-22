@@ -121,7 +121,7 @@ export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.Zo
    * ```
    */
   render<TProps, TResponse = ExtractResponse<TProps>>(
-    Component: ComponentTypeLike,
+    Component: ComponentTypeLike<TProps>,
     props: UserProps<TProps>
   ): Operation<TResponse>
 

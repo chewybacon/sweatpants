@@ -40,6 +40,10 @@ import {
 } from './tools'
 import { pluginSamplingProvider } from './plugin-sampling-provider'
 
+type LocalMcpTool = Parameters<typeof createMcpToolInventoryEntry>[0]
+type LocalIsomorphicRuntimeTool = Parameters<typeof createIsomorphicToolInventoryEntry>[0]
+type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0]
+
 let sharedPluginSessionRegistry: ToolSessionRegistry | null = null
 let sharedPluginSessionManager: PluginSessionManager | null = null
 
@@ -137,10 +141,10 @@ function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegi
   return yield* createLocalPluginToolSessionRegistry()
 }
 
-function runtimePluginTools() {
+function runtimePluginTools(): LocalMcpTool[] {
   return env.MCP_TOOL_RUNTIME === 'agentcore'
-    ? activePluginTools.map(canonicalizeAgentCoreTool)
-    : activePluginTools
+    ? activePluginTools.map(canonicalizeAgentCoreTool) as LocalMcpTool[]
+    : activePluginTools as LocalMcpTool[]
 }
 
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
@@ -158,19 +162,19 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   yield* PluginSessionManagerContext.set(sharedPluginSessionManager)
 
   const pluginTools = runtimePluginTools()
-  const pluginGeneratedNames = new Set(activePluginTools.map((tool) => tool.name))
+  const pluginGeneratedNames = new Set<string>(activePluginTools.map((tool) => tool.name))
   yield* ToolInventoryContext.set(createToolInventory([
     ...allTools
       .filter((tool) => !pluginGeneratedNames.has(tool.name))
-      .map((tool) => createIsomorphicToolInventoryEntry(tool)),
+      .map((tool) => createIsomorphicToolInventoryEntry(tool as LocalIsomorphicRuntimeTool)),
     ...(env.MCP_TOOL_RUNTIME === 'agentcore'
-      ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool))
+      ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool as AgentCoreMcpTool))
       : pluginTools.map((tool) => createMcpToolInventoryEntry(tool))),
   ]))
 
   if (env.MCP_TOOL_RUNTIME === 'agentcore') {
     yield* installAgentCoreToolRuntime({
-      tools: pluginTools,
+      tools: pluginTools as AgentCoreMcpTool[],
       registry: sharedPluginSessionRegistry,
     })
     return
@@ -178,7 +182,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
 
   yield* installLocalToolRuntime({
     tools: pluginTools,
-    isomorphicTools: allTools,
+    isomorphicTools: allTools as LocalIsomorphicRuntimeTool[],
     registry: sharedPluginSessionRegistry,
     samplingProvider: pluginSamplingProvider,
   })

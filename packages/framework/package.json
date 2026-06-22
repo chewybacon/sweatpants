@@ -10,11 +10,11 @@
         "types": "./src/lib/chat/index.ts"
       },
       "import": {
-        "types": "./dist/index.d.ts",
+        "types": "./dist/lib/chat/index.d.ts",
         "default": "./dist/index.js"
       },
       "require": {
-        "types": "./dist/index.d.cts",
+        "types": "./dist/lib/chat/index.d.ts",
         "default": "./dist/index.cjs"
       }
     },
@@ -24,11 +24,11 @@
         "types": "./src/server/index.ts"
       },
       "import": {
-        "types": "./dist/server.d.ts",
+        "types": "./dist/server/index.d.ts",
         "default": "./dist/server.js"
       },
       "require": {
-        "types": "./dist/server.d.cts",
+        "types": "./dist/server/index.d.ts",
         "default": "./dist/server.cjs"
       }
     },
@@ -38,11 +38,11 @@
         "types": "./src/lib/chat/index.ts"
       },
       "import": {
-        "types": "./dist/chat.d.ts",
+        "types": "./dist/lib/chat/index.d.ts",
         "default": "./dist/chat.js"
       },
       "require": {
-        "types": "./dist/chat.d.cts",
+        "types": "./dist/lib/chat/index.d.ts",
         "default": "./dist/chat.cjs"
       }
     },
@@ -52,11 +52,11 @@
         "types": "./src/lib/chat/durable-streams/index.ts"
       },
       "import": {
-        "types": "./dist/chat/durable-streams.d.ts",
+        "types": "./dist/lib/chat/durable-streams/index.d.ts",
         "default": "./dist/chat/durable-streams.js"
       },
       "require": {
-        "types": "./dist/chat/durable-streams.d.cts",
+        "types": "./dist/lib/chat/durable-streams/index.d.ts",
         "default": "./dist/chat/durable-streams.cjs"
       }
     },
@@ -66,11 +66,11 @@
         "types": "./src/lib/chat/isomorphic-tools/index.ts"
       },
       "import": {
-        "types": "./dist/chat/isomorphic-tools.d.ts",
+        "types": "./dist/lib/chat/isomorphic-tools/index.d.ts",
         "default": "./dist/chat/isomorphic-tools.js"
       },
       "require": {
-        "types": "./dist/chat/isomorphic-tools.d.cts",
+        "types": "./dist/lib/chat/isomorphic-tools/index.d.ts",
         "default": "./dist/chat/isomorphic-tools.cjs"
       }
     },
@@ -80,11 +80,11 @@
         "types": "./src/lib/chat/mcp-tools/index.ts"
       },
       "import": {
-        "types": "./dist/chat/mcp-tools.d.ts",
+        "types": "./dist/lib/chat/mcp-tools/index.d.ts",
         "default": "./dist/chat/mcp-tools.js"
       },
       "require": {
-        "types": "./dist/chat/mcp-tools.d.cts",
+        "types": "./dist/lib/chat/mcp-tools/index.d.ts",
         "default": "./dist/chat/mcp-tools.cjs"
       }
     },
@@ -94,11 +94,11 @@
         "types": "./src/lib/chat/core-tools/index.ts"
       },
       "import": {
-        "types": "./dist/chat/core-tools.d.ts",
+        "types": "./dist/lib/chat/core-tools/index.d.ts",
         "default": "./dist/chat/core-tools.js"
       },
       "require": {
-        "types": "./dist/chat/core-tools.d.cts",
+        "types": "./dist/lib/chat/core-tools/index.d.ts",
         "default": "./dist/chat/core-tools.cjs"
       }
     }
@@ -111,10 +111,11 @@
     "node": ">=22.19.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && pnpm build:types",
     "dev": "tsup --watch",
     "check": "tsc -b",
-    "test": "vitest"
+    "test": "vitest",
+    "build:types": "tsc -b tsconfig.lib.json --force"
   },
   "peerDependencies": {
     "@effectionx/context-api": "^0.2.1",

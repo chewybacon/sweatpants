@@ -20,9 +20,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && pnpm build:types",
     "check": "tsc -b",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "build:types": "tsc -b tsconfig.json --force"
   },
   "dependencies": {
     "citty": "^0.1.6"

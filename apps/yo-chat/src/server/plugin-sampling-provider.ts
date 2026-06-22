@@ -6,6 +6,7 @@ import type {
   SamplingToolDefinition,
 } from '@sweatpants/framework/chat'
 import type {
+  RawSampleResult,
   RawSampleResultBase,
   RawSampleResultWithParsed,
   RawSampleResultWithToolCalls,
@@ -30,7 +31,7 @@ interface SamplingOptions {
   schema?: Record<string, unknown>
 }
 
-type ProviderAssistantToolCall = NonNullable<Extract<Message, { role: 'assistant' }>['tool_calls']>[number]
+type ProviderAssistantToolCall = NonNullable<Message['tool_calls']>[number]
 
 function providerMessageToModelMessage(message: Message): ModelMessage {
   if (message.role === 'system') {
@@ -111,7 +112,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
   const model = resolveRuntimeModel(env.CHAT_PROVIDER)
 
   return {
-    *sample(messages: ExtendedMessage[], options: SamplingOptions | undefined): Operation<RawSampleResultBase> {
+    *sample(messages: ExtendedMessage[], options: SamplingOptions | undefined): Operation<RawSampleResult> {
       const modelMessages = messages
         .map(extendedMessageToProviderMessage)
         .map(providerMessageToModelMessage)
