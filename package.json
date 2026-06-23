@@ -38,6 +38,9 @@
             "@effectionx/signals": "^0.5.3",
             "@effectionx/timebox": "^0.4.3",
             "effection": "4.1.0-alpha.9"
+        },
+        "patchedDependencies": {
+            "@earendil-works/pi-ai@0.80.1": "patches/@earendil-works__pi-ai@0.80.1.patch"
         }
     }
 }

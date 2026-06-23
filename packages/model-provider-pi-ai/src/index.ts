@@ -1,5 +1,5 @@
 import { type Operation, type Subscription } from 'effection'
-import { getModel as getPiAiRegistryModel, type Model as PiAiRegistryModel } from '@earendil-works/pi-ai'
+import { getModel as getPiAiRegistryModel, type Model as PiAiRegistryModel } from '@earendil-works/pi-ai/compat'
 import type { AssistantMessage, Model, Runtime, StreamEvent, StreamOptions } from './runtime/index.ts'
 import { createOllamaModel, createOpenAiResponsesModel, piAiRuntime } from './runtime/index.ts'
 import {
@@ -154,6 +154,7 @@ function fromPiAiModel(model: PiAiRegistryModel<string>): Model {
     ...(model.baseUrl ? { baseUrl: model.baseUrl } : {}),
     ...(model.headers ? { headers: model.headers } : {}),
     reasoning: model.reasoning,
+    ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
     input: model.input,
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,

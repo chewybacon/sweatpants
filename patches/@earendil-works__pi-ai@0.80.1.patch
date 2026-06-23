@@ -1,0 +1,139 @@
+diff --git a/dist/api/anthropic-messages.js b/dist/api/anthropic-messages.js
+index e93cabcb8be7011afdef1b03ebc0e073933373a5..3f2c498610f0515cad60bc7cc748f7d0604fa7cc 100644
+--- a/dist/api/anthropic-messages.js
++++ b/dist/api/anthropic-messages.js
+@@ -741,7 +741,7 @@ function buildParams(model, context, isOAuthToken, options) {
+     }
+     if (options?.toolChoice) {
+         if (typeof options.toolChoice === "string") {
+-            params.tool_choice = { type: options.toolChoice };
++            params.tool_choice = { type: options.toolChoice === "required" ? "any" : options.toolChoice };
+         }
+         else {
+             params.tool_choice = options.toolChoice;
+diff --git a/dist/api/azure-openai-responses.js b/dist/api/azure-openai-responses.js
+index 89ca87f84a6a3f448170959447e2db0eee40820f..535f83f61b3a4b2c8a4ad0ca87d299cd78fb709e 100644
+--- a/dist/api/azure-openai-responses.js
++++ b/dist/api/azure-openai-responses.js
+@@ -203,6 +203,9 @@ function buildParams(model, context, options, deploymentName) {
+     if (context.tools && context.tools.length > 0) {
+         params.tools = convertResponsesTools(context.tools);
+     }
++    if (options?.toolChoice) {
++        params.tool_choice = options.toolChoice;
++    }
+     if (model.reasoning) {
+         if (options?.reasoningEffort || options?.reasoningSummary) {
+             const effort = options?.reasoningEffort
+diff --git a/dist/api/bedrock-converse-stream.js b/dist/api/bedrock-converse-stream.js
+index d66743efc79cbcd5b975b9a9db27ba85c7f51b48..d24501771cdf698121be8d40b62b17376375719b 100644
+--- a/dist/api/bedrock-converse-stream.js
++++ b/dist/api/bedrock-converse-stream.js
+@@ -725,6 +725,7 @@ function convertToolConfig(tools, toolChoice) {
+             bedrockToolChoice = { auto: {} };
+             break;
+         case "any":
++        case "required":
+             bedrockToolChoice = { any: {} };
+             break;
+         default:
+diff --git a/dist/api/google-shared.js b/dist/api/google-shared.js
+index beb510594073ba3a18cb4668eb50de642916173e..c758c235f80be55b2ef911bd8417c3050f75863d 100644
+--- a/dist/api/google-shared.js
++++ b/dist/api/google-shared.js
+@@ -277,6 +277,7 @@ export function mapToolChoice(choice) {
+         case "none":
+             return FunctionCallingConfigMode.NONE;
+         case "any":
++        case "required":
+             return FunctionCallingConfigMode.ANY;
+         default:
+             return FunctionCallingConfigMode.AUTO;
+diff --git a/dist/api/openai-codex-responses.js b/dist/api/openai-codex-responses.js
+index 3d51a9f2a4166d0905070f61a4978812601abfcf..31815f00c315c957e848d05dbb67e89523a570c2 100644
+--- a/dist/api/openai-codex-responses.js
++++ b/dist/api/openai-codex-responses.js
+@@ -348,6 +348,9 @@ function buildRequestBody(model, context, options) {
+     if (context.tools && context.tools.length > 0) {
+         body.tools = convertResponsesTools(context.tools, { strict: null });
+     }
++    if (options?.toolChoice) {
++        body.tool_choice = options.toolChoice;
++    }
+     if (options?.reasoningEffort !== undefined) {
+         const effort = options.reasoningEffort === "none"
+             ? (model.thinkingLevelMap?.off ?? "none")
+diff --git a/dist/api/openai-responses.js b/dist/api/openai-responses.js
+index f9ab581d330f754f16f40a83e810ec47e6418d82..e820c2c6a14ceb4eb961f72968357d24bf32bcc9 100644
+--- a/dist/api/openai-responses.js
++++ b/dist/api/openai-responses.js
+@@ -196,6 +196,9 @@ function buildParams(model, context, options) {
+     if (context.tools && context.tools.length > 0) {
+         params.tools = convertResponsesTools(context.tools);
+     }
++    if (options?.toolChoice) {
++        params.tool_choice = options.toolChoice;
++    }
+     if (model.reasoning) {
+         if (options?.reasoningEffort || options?.reasoningSummary) {
+             const effort = options?.reasoningEffort
+diff --git a/dist/api/simple-options.d.ts b/dist/api/simple-options.d.ts
+index e605b65439e6ede73ec208061934207b52aee45a..1354862eeb37a91fe88f52df585c0886feada746 100644
+--- a/dist/api/simple-options.d.ts
++++ b/dist/api/simple-options.d.ts
+@@ -1,5 +1,5 @@
+-import type { Api, Model, SimpleStreamOptions, StreamOptions, ThinkingBudgets, ThinkingLevel } from "../types.ts";
+-export declare function buildBaseOptions(_model: Model<Api>, options?: SimpleStreamOptions, apiKey?: string): StreamOptions;
++import type { Api, Model, ProviderStreamOptions, SimpleStreamOptions, ThinkingBudgets, ThinkingLevel } from "../types.ts";
++export declare function buildBaseOptions(_model: Model<Api>, options?: SimpleStreamOptions, apiKey?: string): ProviderStreamOptions;
+ export declare function clampReasoning(effort: ThinkingLevel | undefined): Exclude<ThinkingLevel, "xhigh"> | undefined;
+ export declare function adjustMaxTokensForThinking(baseMaxTokens: number | undefined, modelMaxTokens: number, reasoningLevel: ThinkingLevel, customBudgets?: ThinkingBudgets): {
+     maxTokens: number;
+diff --git a/dist/api/simple-options.js b/dist/api/simple-options.js
+index 45d8e55726d5faf424d53d1ad43ed0b44891e49e..9ddb7a8c816976830432af3b145c95c350be4187 100644
+--- a/dist/api/simple-options.js
++++ b/dist/api/simple-options.js
+@@ -1,21 +1,14 @@
+ export function buildBaseOptions(_model, options, apiKey) {
++    if (!options) {
++        return apiKey ? { apiKey } : {};
++    }
++    // Preserve provider-specific and shared provider options for the provider-specific
++    // stream implementation. `streamSimple` owns only the abstract reasoning controls;
++    // those must not leak into lower-level provider option payloads.
++    const { reasoning: _reasoning, thinkingBudgets: _thinkingBudgets, ...baseOptions } = options;
+     return {
+-        temperature: options?.temperature,
+-        maxTokens: options?.maxTokens,
+-        signal: options?.signal,
+-        apiKey: apiKey || options?.apiKey,
+-        transport: options?.transport,
+-        cacheRetention: options?.cacheRetention,
+-        sessionId: options?.sessionId,
+-        headers: options?.headers,
+-        onPayload: options?.onPayload,
+-        onResponse: options?.onResponse,
+-        timeoutMs: options?.timeoutMs,
+-        websocketConnectTimeoutMs: options?.websocketConnectTimeoutMs,
+-        maxRetries: options?.maxRetries,
+-        maxRetryDelayMs: options?.maxRetryDelayMs,
+-        metadata: options?.metadata,
+-        env: options?.env,
++        ...baseOptions,
++        apiKey: apiKey || options.apiKey,
+     };
+ }
+ export function clampReasoning(effort) {
+diff --git a/dist/types.d.ts b/dist/types.d.ts
+index 1998bcf9e9be23eb35a9a5c4b0e8c8a5197b135a..7c90e4e45460293339ea27f4233eef481f4d3b2e 100644
+--- a/dist/types.d.ts
++++ b/dist/types.d.ts
+@@ -207,7 +207,7 @@ export interface ImagesOptions {
+     metadata?: Record<string, unknown>;
+ }
+ export type ProviderImagesOptions = ImagesOptions & Record<string, unknown>;
+-export interface SimpleStreamOptions extends StreamOptions {
++export interface SimpleStreamOptions extends ProviderStreamOptions {
+     reasoning?: ThinkingLevel;
+     /** Custom token budgets for thinking levels (token-based providers only) */
+     thinkingBudgets?: ThinkingBudgets;
