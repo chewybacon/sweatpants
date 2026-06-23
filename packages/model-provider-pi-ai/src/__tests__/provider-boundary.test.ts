@@ -114,6 +114,138 @@ describe('pi-ai provider boundary normalization', () => {
     expect(() => structuredClone({ tools: piContext.tools, responseFormat: piOptions.responseFormat })).not.toThrow()
   })
 
+  it('drops empty assistant and pending tool-result replay messages before calling pi-ai', async () => {
+    const runtime = createPiAiRuntime()
+
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [
+          { role: 'user', content: 'Book a flight' },
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'toolCall',
+                id: 'call-1',
+                name: 'book_flight',
+                arguments: { from: 'LAX', destination: 'NYC' },
+              },
+            ],
+          },
+          {
+            role: 'toolResult',
+            toolCallId: 'call-1',
+            toolName: 'book_flight',
+            content: [{ type: 'text', text: '' }],
+            isError: false,
+          },
+          { role: 'assistant', content: [] },
+          {
+            role: 'toolResult',
+            toolCallId: 'call-1',
+            toolName: 'book_flight',
+            content: [{ type: 'text', text: '{"success":true,"ticketNumber":"TKT-123"}' }],
+            isError: false,
+          },
+        ],
+      })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+
+    const [, piContext] = piAiMocks.stream.mock.calls[0]!
+    expect(piContext.messages.map((message: { role: string }) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'toolResult',
+    ])
+    expect(piContext.messages[2]).toMatchObject({
+      role: 'toolResult',
+      toolCallId: 'call-1',
+      content: [{ type: 'text', text: '{"success":true,"ticketNumber":"TKT-123"}' }],
+    })
+  })
+
+  it('omits historical completed tool protocol once an assistant summary exists', async () => {
+    const runtime = createPiAiRuntime()
+
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [
+          { role: 'user', content: 'Book an outbound flight' },
+          {
+            role: 'assistant',
+            content: [
+              {
+                type: 'toolCall',
+                id: 'call-1',
+                name: 'book_flight',
+                arguments: { from: 'LAX', destination: 'NYC' },
+              },
+            ],
+          },
+          {
+            role: 'toolResult',
+            toolCallId: 'call-1',
+            toolName: 'book_flight',
+            content: [{ type: 'text', text: '{"success":true,"ticketNumber":"TKT-123"}' }],
+            isError: false,
+          },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Your outbound flight is confirmed. Ticket TKT-123.' }],
+          },
+          { role: 'user', content: 'Now book the return flight' },
+        ],
+      })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+
+    const [, piContext] = piAiMocks.stream.mock.calls[0]!
+    expect(piContext.messages).toMatchObject([
+      { role: 'user' },
+      { role: 'assistant', content: [{ type: 'text', text: 'Your outbound flight is confirmed. Ticket TKT-123.' }] },
+      { role: 'user' },
+    ])
+    expect(JSON.stringify(piContext.messages)).not.toContain('toolResult')
+    expect(JSON.stringify(piContext.messages)).not.toContain('toolCall')
+  })
+
+  it('omits orphan historical tool results before calling pi-ai', async () => {
+    const runtime = createPiAiRuntime()
+
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [
+          { role: 'user', content: 'Book an outbound flight' },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Your outbound flight is confirmed. Ticket TKT-123.' }],
+          },
+          {
+            role: 'toolResult',
+            toolCallId: 'call-1',
+            toolName: 'book_flight',
+            content: [{ type: 'text', text: '{"success":true,"ticketNumber":"TKT-123"}' }],
+            isError: false,
+          },
+          { role: 'user', content: 'Now book the return flight' },
+        ],
+      })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+
+    const [, piContext] = piAiMocks.stream.mock.calls[0]!
+    expect(piContext.messages.map((message: { role: string }) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+    ])
+    expect(JSON.stringify(piContext.messages)).not.toContain('toolResult')
+  })
+
   it('normalizes provider tool-call arguments that arrive as JSON strings', async () => {
     const runtime = createPiAiRuntime()
     const partial = {

@@ -23,6 +23,7 @@ import type {
   ImageGenerationOptions,
   ImageModel,
   Model,
+  Message,
   Runtime,
   StreamEvent,
   StreamOptions,
@@ -149,6 +150,62 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function contentBlockHasProviderPayload(block: ContentBlock): boolean {
+  if (block.type === 'text' || block.type === 'thinking') return block.text.trim().length > 0
+  if (block.type === 'image') return block.data.length > 0
+  if (block.type === 'toolCall') return block.name.trim().length > 0
+  return false
+}
+
+function assistantHasToolCall(message: AssistantMessage): boolean {
+  return message.content.some((block) => block.type === 'toolCall' && contentBlockHasProviderPayload(block))
+}
+
+function providerMessageHasPayload(message: Message): boolean {
+  if (message.role === 'assistant') return message.content.some(contentBlockHasProviderPayload)
+  if (message.role === 'toolResult') return message.content.some(contentBlockHasProviderPayload)
+  return true
+}
+
+function normalizeProviderMessages(messages: Message[]): Message[] {
+  const filtered = messages.filter(providerMessageHasPayload)
+  const normalized: Message[] = []
+
+  for (let index = 0; index < filtered.length; index++) {
+    const message = filtered[index]!
+
+    if (message.role === 'toolResult') {
+      continue
+    }
+
+    if (message.role !== 'assistant' || !assistantHasToolCall(message)) {
+      normalized.push(message)
+      continue
+    }
+
+    let toolResultEnd = index + 1
+    while (toolResultEnd < filtered.length && filtered[toolResultEnd]!.role === 'toolResult') {
+      toolResultEnd++
+    }
+
+    const hasImmediateToolResult = toolResultEnd > index + 1
+    if (!hasImmediateToolResult) {
+      continue
+    }
+
+    const toolPairIsHistorical = toolResultEnd < filtered.length
+    if (toolPairIsHistorical) {
+      index = toolResultEnd - 1
+      continue
+    }
+
+    normalized.push(message, ...filtered.slice(index + 1, toolResultEnd))
+    index = toolResultEnd - 1
+  }
+
+  return normalized
+}
+
 function safeErrorMessage(message: string | undefined): string | undefined {
   if (!message) return undefined
   return message
@@ -235,7 +292,7 @@ function toPiContext(context: Context): PiContext {
     .filter((message) => message.role === 'system')
     .map((message) => message.content)
 
-  for (const message of context.messages) {
+  for (const message of normalizeProviderMessages(context.messages)) {
     if (message.role === 'system') {
       continue
     }
@@ -254,7 +311,17 @@ function toPiContext(context: Context): PiContext {
     }
 
     if (message.role === 'assistant') {
-      messages.push(toPiAssistantMessage(message))
+      if (message.content.some(contentBlockHasProviderPayload)) {
+        messages.push(toPiAssistantMessage(message))
+      }
+      continue
+    }
+
+    const toolResultContent = message.content
+      .filter((block) => (block.type === 'text' || block.type === 'image') && contentBlockHasProviderPayload(block))
+      .map(toPiContentBlock) as Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
+
+    if (toolResultContent.length === 0) {
       continue
     }
 
@@ -262,9 +329,7 @@ function toPiContext(context: Context): PiContext {
       role: 'toolResult',
       toolCallId: message.toolCallId,
       toolName: message.toolName,
-      content: message.content
-        .filter((block) => block.type === 'text' || block.type === 'image')
-        .map(toPiContentBlock) as Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>,
+      content: toolResultContent,
       isError: message.isError,
       timestamp: message.timestamp ?? Date.now(),
     })
