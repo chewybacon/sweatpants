@@ -6,7 +6,7 @@ To run this application:
 
 ```bash
 pnpm install
-DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=qwen3:30b pnpm dev
+DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx pnpm dev
 ```
 
 ## MCP tool runtime mode
@@ -20,7 +20,7 @@ This is the default. Tool generators run in the local Sweatpants worker/session 
 
 ```bash
 DEFAULT_CHAT_MODEL_PROVIDER=ollama \
-DEFAULT_CHAT_MODEL_ID=qwen3:30b \
+DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx \
 MCP_TOOL_RUNTIME=local pnpm dev
 ```
 
@@ -41,7 +41,7 @@ AGENTCORE_ENDPOINT_NAME=DEFAULT \
 pnpm dev
 ```
 
-Configure the default chat model with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID` (for example `ollama`/`qwen3:30b`, `openai`/`gpt-5-chat-latest`, or `amazon-bedrock`/`zai.glm-5`). AgentCore mode only moves MCP tool execution remote; primary chat inference still runs in the local app server through pi-ai. For local Ollama tool-calling demos, use a tool-capable model such as `qwen3:30b`; smaller/default chat models may answer with JSON text instead of making native tool calls.
+Configure the default chat model with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID` (for example `ollama`/`gemma4:12b-mlx`, `openai`/`gpt-5-chat-latest`, or `amazon-bedrock`/`zai.glm-5`). AgentCore mode only moves MCP tool execution remote; primary chat inference still runs in the local app server through pi-ai. For local Ollama tool-calling demos, use a tool-capable model such as `gemma4:12b-mlx`; smaller/default chat models may answer with JSON text instead of making native tool calls.
 
 Batch 1 AgentCore remote execution supports only this explicit MCP bridge-compatible subset:
 
@@ -64,7 +64,7 @@ AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
 
 # Optional chat model allow-list. When unset, only the configured default is allowed.
-ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"ollama","id":"qwen3:30b"}]'
+ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"ollama","id":"gemma4:12b-mlx"}]'
 
 # Developer-only opt-out from allow-list checks. Resolution still must succeed.
 UNSAFE_ALLOW_ANY_CHAT_MODEL=yes

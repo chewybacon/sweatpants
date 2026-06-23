@@ -72,7 +72,7 @@ const config = defineConfig({
     environment: 'jsdom',
     env: {
       DEFAULT_CHAT_MODEL_PROVIDER: 'ollama',
-      DEFAULT_CHAT_MODEL_ID: 'qwen3:30b',
+      DEFAULT_CHAT_MODEL_ID: 'gemma4:12b-mlx',
     },
     // Exclude Playwright e2e tests from Vitest
     exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],

@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test'
  * 
  * Tests require:
  * - Ollama running locally at http://localhost:11434
- * - A model that supports tool calling (e.g., qwen3:30b)
+ * - A model that supports tool calling (e.g., gemma4:12b-mlx)
  * 
  * Run with: pnpm test:e2e --grep "Durable"
  */
@@ -317,7 +317,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Hi' }],
-        model: { provider: 'ollama', id: 'qwen3:30b' },
+        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
       },
     })
     
@@ -335,7 +335,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Say hi' }],
-        model: { provider: 'ollama', id: 'qwen3:30b' },
+        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
       },
     })
     
@@ -368,7 +368,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Say hello' }],
-        model: { provider: 'ollama', id: 'qwen3:30b' },
+        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
       },
     })
     
@@ -404,7 +404,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Count to 5' }],
-        model: { provider: 'ollama', id: 'qwen3:30b' },
+        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
       },
     })
     
@@ -432,7 +432,7 @@ test.describe('Durable Chat - Reconnection', () => {
     const response1 = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
-        model: { provider: 'ollama', id: 'qwen3:30b' },
+        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
       },
     })
     
@@ -455,7 +455,7 @@ test.describe('Durable Chat - Reconnection', () => {
     const response2 = await request.post(reconnectUrl, {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
-        model: { provider: 'ollama', id: 'qwen3:30b' },
+        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
       },
     })
     

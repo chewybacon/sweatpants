@@ -16,7 +16,7 @@ import { test, expect, type Locator, type Page } from '@playwright/test'
  *
  * Tests require:
  * - Ollama running locally at http://localhost:11434
- * - A model that supports tool calling (e.g., qwen3:30b)
+ * - A model that supports tool calling (e.g., gemma4:12b-mlx)
  *
  * Run with: pnpm test:e2e --grep "book_flight"
  */

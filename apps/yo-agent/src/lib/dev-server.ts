@@ -72,7 +72,7 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
     const {
       root = process.cwd(),
       toolsPath = './src/tools',
-      model = { provider: 'ollama', id: 'qwen3:30b' },
+      model = { provider: 'ollama', id: 'gemma4:12b-mlx' },
     } = options
 
     // Start Vite in middleware mode for HMR
