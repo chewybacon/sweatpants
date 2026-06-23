@@ -161,17 +161,17 @@ After all unit tests pass, test in TanStack Start:
 
 ```bash
 # Start yo-chat dev server
-cd apps/yo-chat && DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=qwen3:30b pnpm dev
+cd apps/yo-chat && DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx pnpm dev
 
 # Test durable endpoint (should NOT hang anymore)
 curl -X POST http://localhost:8000/api/chat-durable \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hi"}],"model":{"provider":"ollama","id":"qwen3:30b"}}'
+  -d '{"messages":[{"role":"user","content":"Hi"}],"model":{"provider":"ollama","id":"gemma4:12b-mlx"}}'
 
 # Test regular endpoint (should still work)
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"Hi"}],"model":{"provider":"ollama","id":"qwen3:30b"}}'
+  -d '{"messages":[{"role":"user","content":"Hi"}],"model":{"provider":"ollama","id":"gemma4:12b-mlx"}}'
 ```
 
 ## Future Work

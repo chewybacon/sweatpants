@@ -136,7 +136,7 @@ const cell = move.parsed.cell  // Guaranteed!
 
 ```bash
 # Start the dev server
-cd apps/yo-chat && DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=qwen3:30b pnpm dev
+cd apps/yo-chat && DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx pnpm dev
 
 # Run unit tests
 cd packages/framework && pnpm test src/lib/chat/mcp-tools

@@ -90,7 +90,7 @@ await main(function* () {
   const devServer = yield* useDevServer({
     root: process.cwd(),
     toolsPath: './src/tools',
-    model: { provider: 'ollama', id: 'qwen3:30b' },
+    model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
   })
 
   console.log('Dev server ready!')

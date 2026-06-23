@@ -80,7 +80,7 @@ function usageFromAssistant(message: ModelAssistantMessage): ChatResult['usage']
 function defaultModelSelection(): ModelSelection {
   return {
     provider: process.env['DEFAULT_CHAT_MODEL_PROVIDER'] ?? 'ollama',
-    id: process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'qwen3:30b',
+    id: process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'gemma4:12b-mlx',
   }
 }
 
@@ -199,8 +199,8 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 export async function isOllamaAvailable(options: { requireToolCalling?: boolean } = {}): Promise<boolean> {
   const base = process.env['OLLAMA_URL'] ?? process.env['OLLAMA_BASE_URL'] ?? 'http://localhost:11434'
   const model = process.env['DEFAULT_CHAT_MODEL_PROVIDER'] === 'ollama'
-    ? process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'qwen3:30b'
-    : 'qwen3:30b'
+    ? process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'gemma4:12b-mlx'
+    : 'gemma4:12b-mlx'
   try {
     const response = await fetch(`${base}/api/tags`, {
       method: 'GET',

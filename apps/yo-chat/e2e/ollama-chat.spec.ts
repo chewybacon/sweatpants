@@ -5,9 +5,9 @@ import { test, expect } from '@playwright/test'
  * 
  * These tests require:
  * - Ollama running locally at http://localhost:11434
- * - A model that supports tool calling (e.g., qwen3:30b, llama3.1)
+ * - A model that supports tool calling (e.g., gemma4:12b-mlx, llama3.1)
  * 
- * The tests use qwen3:30b by default which has good tool calling support.
+ * The tests use gemma4:12b-mlx by default which has good tool calling support.
  * 
  * Run with: pnpm test:e2e
  */

@@ -105,7 +105,7 @@ export function useAgentChat({ mode }: UseAgentChatOptions): UseAgentChatReturn 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: allMessages,
-          model: { provider: 'ollama', id: 'qwen3:30b' },
+          model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
           enabledTools: true,  // Enable all registered tools
         }),
         signal: abortControllerRef.current.signal,
