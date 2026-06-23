@@ -8,7 +8,7 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ['effection', '@earendil-works/pi-ai'],
+  external: ['effection', /^@earendil-works\/pi-ai/],
   treeshake: true,
   skipNodeModulesBundle: true,
 })

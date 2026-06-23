@@ -1,5 +1,5 @@
 import { call, resource, useAbortSignal, type Operation } from 'effection'
-import { generateImages as piGenerateImages, stream as piStream } from '@earendil-works/pi-ai'
+import { generateImages as piGenerateImages, streamSimple as piStreamSimple } from '@earendil-works/pi-ai/compat'
 import { toProviderJsonSchema } from './schema-normalization.ts'
 import type {
   AssistantImages as PiAssistantImages,
@@ -10,10 +10,10 @@ import type {
   ImagesModel as PiImagesModel,
   Model as PiModel,
   ProviderImagesOptions as PiProviderImagesOptions,
-  ProviderStreamOptions as PiProviderStreamOptions,
+  SimpleStreamOptions as PiSimpleStreamOptions,
   ToolCall as PiToolCall,
   Usage as PiUsage,
-} from '@earendil-works/pi-ai'
+} from '@earendil-works/pi-ai/compat'
 import type {
   AssistantImages,
   AssistantMessage,
@@ -27,9 +27,12 @@ import type {
   Runtime,
   StreamEvent,
   StreamOptions,
+  ThinkingLevel,
   ToolCallBlock,
   Usage,
 } from './types.ts'
+
+const SCHEMA_TOOL_NAME = '__schema__'
 
 interface CombinedAbortController {
   controller: AbortController
@@ -286,6 +289,34 @@ function fromPiAssistantMessage(message: PiAssistantMessage): AssistantMessage {
   }
 }
 
+function unwrapSchemaResponseMessage(message: AssistantMessage): AssistantMessage {
+  let consumedSchemaTool = false
+  const content: ContentBlock[] = []
+
+  for (const block of message.content) {
+    if (block.type === 'toolCall' && block.name === SCHEMA_TOOL_NAME) {
+      consumedSchemaTool = true
+      content.push({ type: 'text', text: JSON.stringify(block.arguments) })
+      continue
+    }
+    content.push(block)
+  }
+
+  if (!consumedSchemaTool) return message
+  const { stopReason: currentStopReason, ...rest } = message
+  const stopReason = currentStopReason === 'toolUse' ? 'stop' : currentStopReason
+  return {
+    ...rest,
+    content,
+    ...(stopReason !== undefined ? { stopReason } : {}),
+  }
+}
+
+function fromPiAssistantMessageForOptions(message: PiAssistantMessage, options: StreamOptions | undefined): AssistantMessage {
+  const assistant = fromPiAssistantMessage(message)
+  return options?.responseFormat ? unwrapSchemaResponseMessage(assistant) : assistant
+}
+
 function toPiContext(context: Context): PiContext {
   const messages: PiContext['messages'] = []
   const systemMessages = context.messages
@@ -357,6 +388,7 @@ function toPiModel(model: Model): PiModel<string> {
     provider: model.provider,
     baseUrl: model.baseUrl ?? '',
     reasoning: model.reasoning,
+    ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
     input: model.input.filter((input): input is 'text' | 'image' => input === 'text' || input === 'image'),
     contextWindow: model.contextWindow,
     maxTokens: model.maxTokens,
@@ -380,8 +412,38 @@ function toPiImageModel(model: ImageModel): PiImagesModel<string> {
   }
 }
 
-function toPiStreamOptions(model: Model, options: StreamOptions | undefined, signal: AbortSignal): PiProviderStreamOptions {
+function toPiReasoning(options: StreamOptions | undefined): ThinkingLevel | undefined {
+  const setting = options?.thinking ?? options?.reasoning
+  return setting === 'off' ? undefined : setting
+}
+
+function assertResponseFormatToolPolicy(context: Context, options: StreamOptions | undefined): void {
+  if (!options?.responseFormat || !context.tools?.length) return
+  if (context.tools.some((tool) => tool.name === SCHEMA_TOOL_NAME)) {
+    throw new Error(`Tool name "${SCHEMA_TOOL_NAME}" is reserved for structured response output`)
+  }
+  throw new Error('responseFormat cannot be combined with application tools in a single provider request')
+}
+
+function toPiContextWithResponseFormat(context: Context, options: StreamOptions | undefined): PiContext {
+  const piContext = toPiContext(context)
+  if (!options?.responseFormat) return piContext
+
+  const schemaTool = {
+    name: SCHEMA_TOOL_NAME,
+    description: 'Respond with structured data matching this schema.',
+    parameters: toProviderJsonSchema(options.responseFormat.schema),
+  }
+
+  return {
+    ...piContext,
+    tools: [schemaTool, ...(piContext.tools ?? [])] as NonNullable<PiContext['tools']>,
+  }
+}
+
+function toPiStreamOptions(model: Model, options: StreamOptions | undefined, signal: AbortSignal): PiSimpleStreamOptions & Record<string, unknown> {
   const apiKey = options?.apiKey ?? (model.provider === 'ollama' ? 'ollama' : undefined)
+  const reasoning = toPiReasoning(options)
   return {
     ...(options?.providerOptions ?? {}),
     signal,
@@ -390,17 +452,12 @@ function toPiStreamOptions(model: Model, options: StreamOptions | undefined, sig
     ...(options?.sessionId ? { sessionId: options.sessionId } : {}),
     ...(options?.maxTokens !== undefined ? { maxTokens: options.maxTokens } : {}),
     ...(options?.temperature !== undefined ? { temperature: options.temperature } : {}),
+    ...(options?.topP !== undefined ? { topP: options.topP } : {}),
+    ...(options?.topK !== undefined ? { topK: options.topK } : {}),
     ...(options?.onPayload ? { onPayload: (payload: unknown) => options.onPayload?.(payload) } : {}),
-    ...(options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
-    ...(options?.reasoning && options.reasoning !== 'off' ? { reasoningEffort: options.reasoning } : {}),
-    ...(options?.responseFormat
-      ? {
-          responseFormat: {
-            ...options.responseFormat,
-            schema: toProviderJsonSchema(options.responseFormat.schema),
-          },
-        }
-      : {}),
+    ...(options?.responseFormat ? { toolChoice: 'required' } : options?.toolChoice ? { toolChoice: options.toolChoice } : {}),
+    ...(reasoning ? { reasoning } : {}),
+    ...(options?.thinkingBudgets ? { thinkingBudgets: options.thinkingBudgets } : {}),
   }
 }
 
@@ -467,6 +524,34 @@ function fromPiEvent(event: PiAssistantMessageEvent): StreamEvent {
   }
 }
 
+function unwrapSchemaResponseEvent(event: StreamEvent): StreamEvent {
+  switch (event.type) {
+    case 'done': {
+      const message = unwrapSchemaResponseMessage(event.message)
+      return { ...event, reason: message.stopReason ?? event.reason, message }
+    }
+    case 'error':
+      return { ...event, error: unwrapSchemaResponseMessage(event.error) }
+    case 'start':
+    case 'text_start':
+    case 'text_delta':
+    case 'text_end':
+    case 'thinking_start':
+    case 'thinking_delta':
+    case 'thinking_end':
+    case 'toolcall_start':
+    case 'toolcall_delta':
+    case 'toolcall_end':
+      return { ...event, partial: unwrapSchemaResponseMessage(event.partial) }
+  }
+}
+
+function fromPiEventForOptions(event: PiAssistantMessageEvent, options: StreamOptions | undefined): StreamEvent | undefined {
+  if (options?.responseFormat && event.type.startsWith('toolcall_')) return undefined
+  const converted = fromPiEvent(event)
+  return options?.responseFormat ? unwrapSchemaResponseEvent(converted) : converted
+}
+
 function toPiImagesContext(context: ImageGenerationContext): PiImagesContext {
   return {
     input: context.input.map(toPiContentBlock) as PiImagesContext['input'],
@@ -495,20 +580,29 @@ export function createPiAiRuntime(): Runtime {
   return {
     stream(model, context, options) {
       return resource(function* (provide) {
+        assertResponseFormatToolPolicy(context, options)
         const scopeSignal = yield* useAbortSignal()
         const combined = combineAbortSignals(scopeSignal, options?.signal)
-        const stream = piStream(toPiModel(model), toPiContext(context), toPiStreamOptions(model, options, combined.controller.signal))
+        const stream = piStreamSimple(
+          toPiModel(model),
+          toPiContextWithResponseFormat(context, options),
+          toPiStreamOptions(model, options, combined.controller.signal),
+        )
         const iterator = stream[Symbol.asyncIterator]()
 
         try {
           yield* provide({
             *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
-              const next = yield* call(() => iterator.next())
-              if (!next.done) {
-                return { done: false, value: fromPiEvent(next.value) }
+              while (true) {
+                const next = yield* call(() => iterator.next())
+                if (!next.done) {
+                  const event = fromPiEventForOptions(next.value, options)
+                  if (event) return { done: false, value: event }
+                  continue
+                }
+                const finalMessage = yield* call(() => stream.result())
+                return { done: true, value: fromPiAssistantMessageForOptions(finalMessage, options) }
               }
-              const finalMessage = yield* call(() => stream.result())
-              return { done: true, value: fromPiAssistantMessage(finalMessage) }
             },
           })
         } finally {

@@ -65,6 +65,11 @@ describe('pi-ai model resolution', () => {
     expect(model.contextWindow).toBeGreaterThan(0)
   })
 
+  it('preserves thinkingLevelMap from pi-ai registry models', () => {
+    const model = resolvePiAiModel({ provider: 'amazon-bedrock', id: 'anthropic.claude-opus-4-6-v1' })
+    expect(model.thinkingLevelMap).toEqual({ xhigh: 'max' })
+  })
+
   it('synthesizes dynamic Ollama descriptors with normalized base URL', () => {
     vi.stubEnv('OLLAMA_BASE_URL', 'http://localhost:11434')
     expect(resolvePiAiModel({ provider: 'ollama', id: 'qwen3:30b' })).toMatchObject({

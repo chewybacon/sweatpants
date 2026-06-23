@@ -5,12 +5,12 @@ import { createPiAiRuntime } from '../runtime/pi-ai.ts'
 import type { AssistantMessage, Context, Model } from '../runtime/types.ts'
 
 const piAiMocks = vi.hoisted(() => ({
-  stream: vi.fn(),
+  streamSimple: vi.fn(),
   generateImages: vi.fn(),
 }))
 
-vi.mock('@earendil-works/pi-ai', () => ({
-  stream: piAiMocks.stream,
+vi.mock('@earendil-works/pi-ai/compat', () => ({
+  streamSimple: piAiMocks.streamSimple,
   generateImages: piAiMocks.generateImages,
 }))
 
@@ -37,7 +37,7 @@ const finalPiMessage = {
 }
 
 function mockPiStream(events: unknown[], finalMessage: unknown = finalPiMessage): void {
-  piAiMocks.stream.mockReturnValue({
+  piAiMocks.streamSimple.mockReturnValue({
     [Symbol.asyncIterator]() {
       let index = 0
       return {
@@ -57,13 +57,13 @@ function mockPiStream(events: unknown[], finalMessage: unknown = finalPiMessage)
 }
 
 beforeEach(() => {
-  piAiMocks.stream.mockReset()
+  piAiMocks.streamSimple.mockReset()
   piAiMocks.generateImages.mockReset()
   mockPiStream([])
 })
 
 describe('pi-ai provider boundary normalization', () => {
-  it('converts Zod tool and response schemas to clone-safe JSON Schema before calling pi-ai', async () => {
+  it('converts Zod tool schemas to clone-safe JSON Schema before calling pi-ai', async () => {
     const runtime = createPiAiRuntime()
     const context: Context = {
       messages: [{ role: 'user', content: 'Book a flight from NYC to LA' }],
@@ -80,7 +80,34 @@ describe('pi-ai provider boundary normalization', () => {
     }
 
     await run(function* () {
-      const subscription = yield* runtime.stream(testModel, context, {
+      const subscription = yield* runtime.stream(testModel, context)
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+
+    expect(piAiMocks.streamSimple).toHaveBeenCalledTimes(1)
+    const [, piContext] = piAiMocks.streamSimple.mock.calls[0]!
+    const toolSchema = piContext.tools[0].parameters
+
+    expect(toolSchema).toMatchObject({
+      type: 'object',
+      properties: {
+        origin: { type: 'string' },
+        destination: { type: 'string' },
+      },
+      required: ['origin', 'destination'],
+    })
+    expect((toolSchema as { safeParse?: unknown }).safeParse).toBeUndefined()
+    expect(() => structuredClone({ tools: piContext.tools })).not.toThrow()
+  })
+
+  it('converts Zod response schemas to clone-safe __schema__ JSON Schema before calling pi-ai', async () => {
+    const runtime = createPiAiRuntime()
+
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: 'user', content: 'Book a flight from NYC to LA' }],
+      }, {
         responseFormat: {
           type: 'json_schema',
           name: 'booking_result',
@@ -91,27 +118,21 @@ describe('pi-ai provider boundary normalization', () => {
       expect(next.done).toBe(true)
     })
 
-    expect(piAiMocks.stream).toHaveBeenCalledTimes(1)
-    const [, piContext, piOptions] = piAiMocks.stream.mock.calls[0]!
-    const toolSchema = piContext.tools[0].parameters
-    const responseSchema = piOptions.responseFormat.schema
+    expect(piAiMocks.streamSimple).toHaveBeenCalledTimes(1)
+    const [, piContext] = piAiMocks.streamSimple.mock.calls[0]!
+    const responseSchema = piContext.tools[0].parameters
 
-    expect(toolSchema).toMatchObject({
-      type: 'object',
-      properties: {
-        origin: { type: 'string' },
-        destination: { type: 'string' },
-      },
-      required: ['origin', 'destination'],
-    })
     expect(responseSchema).toMatchObject({
       type: 'object',
       properties: { confirmation: { type: 'string' } },
       required: ['confirmation'],
     })
-    expect((toolSchema as { safeParse?: unknown }).safeParse).toBeUndefined()
     expect((responseSchema as { safeParse?: unknown }).safeParse).toBeUndefined()
-    expect(() => structuredClone({ tools: piContext.tools, responseFormat: piOptions.responseFormat })).not.toThrow()
+    expect(piContext.tools[0]).toMatchObject({
+      name: '__schema__',
+      description: 'Respond with structured data matching this schema.',
+    })
+    expect(() => structuredClone({ tools: piContext.tools })).not.toThrow()
   })
 
   it('drops empty assistant and pending tool-result replay messages before calling pi-ai', async () => {
@@ -153,7 +174,7 @@ describe('pi-ai provider boundary normalization', () => {
       expect(next.done).toBe(true)
     })
 
-    const [, piContext] = piAiMocks.stream.mock.calls[0]!
+    const [, piContext] = piAiMocks.streamSimple.mock.calls[0]!
     expect(piContext.messages.map((message: { role: string }) => message.role)).toEqual([
       'user',
       'assistant',
@@ -202,7 +223,7 @@ describe('pi-ai provider boundary normalization', () => {
       expect(next.done).toBe(true)
     })
 
-    const [, piContext] = piAiMocks.stream.mock.calls[0]!
+    const [, piContext] = piAiMocks.streamSimple.mock.calls[0]!
     expect(piContext.messages).toMatchObject([
       { role: 'user' },
       { role: 'assistant', content: [{ type: 'text', text: 'Your outbound flight is confirmed. Ticket TKT-123.' }] },
@@ -237,7 +258,7 @@ describe('pi-ai provider boundary normalization', () => {
       expect(next.done).toBe(true)
     })
 
-    const [, piContext] = piAiMocks.stream.mock.calls[0]!
+    const [, piContext] = piAiMocks.streamSimple.mock.calls[0]!
     expect(piContext.messages.map((message: { role: string }) => message.role)).toEqual([
       'user',
       'assistant',
@@ -303,5 +324,211 @@ describe('pi-ai provider boundary normalization', () => {
     })
 
     expect(assistant).toMatchObject({ role: 'assistant', content: [{ type: 'text', text: 'done' }] })
+  })
+
+  it('passes every non-off thinking level as pi-ai simple reasoning without provider-specific reasoning effort', async () => {
+    const runtime = createPiAiRuntime()
+    const levels = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const
+
+    for (const level of levels) {
+      piAiMocks.streamSimple.mockClear()
+      mockPiStream([])
+      await run(function* () {
+        const subscription = yield* runtime.stream(testModel, {
+          messages: [{ role: 'user', content: 'Think hard' }],
+        }, {
+          thinking: level,
+          ...(level === 'high' ? { thinkingBudgets: { high: 1234 } } : {}),
+        })
+        const next = yield* subscription.next()
+        expect(next.done).toBe(true)
+      })
+
+      const [, , piOptions] = piAiMocks.streamSimple.mock.calls[0]!
+      expect(piOptions).toMatchObject({ reasoning: level })
+      if (level === 'high') expect(piOptions).toMatchObject({ thinkingBudgets: { high: 1234 } })
+      expect(piOptions).not.toHaveProperty('reasoningEffort')
+      expect(piOptions).not.toHaveProperty('thinkingEnabled')
+      expect(piOptions).not.toHaveProperty('thinkingBudgetTokens')
+    }
+  })
+
+  it('normalizes default, off, alias-only, and precedence reasoning cases', async () => {
+    const runtime = createPiAiRuntime()
+
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, { messages: [{ role: 'user', content: 'Default' }] })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+    expect(piAiMocks.streamSimple.mock.calls[0]![2]).not.toHaveProperty('reasoning')
+
+    piAiMocks.streamSimple.mockClear()
+    mockPiStream([])
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: 'user', content: 'Alias' }],
+      }, { reasoning: 'medium' })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+    expect(piAiMocks.streamSimple.mock.calls[0]![2]).toMatchObject({ reasoning: 'medium' })
+
+    piAiMocks.streamSimple.mockClear()
+    mockPiStream([])
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: 'user', content: 'No thinking' }],
+      }, {
+        thinking: 'off',
+        reasoning: 'high',
+      })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+    expect(piAiMocks.streamSimple.mock.calls[0]![2]).not.toHaveProperty('reasoning')
+    expect(piAiMocks.streamSimple.mock.calls[0]![2]).not.toHaveProperty('reasoningEffort')
+
+    piAiMocks.streamSimple.mockClear()
+    mockPiStream([])
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: 'user', content: 'Precedence' }],
+      }, {
+        thinking: 'low',
+        reasoning: 'high',
+      })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+    expect(piAiMocks.streamSimple.mock.calls[0]![2]).toMatchObject({ reasoning: 'low' })
+  })
+
+  it('preserves thinkingLevelMap when converting Sweatpants models to pi-ai models', async () => {
+    const runtime = createPiAiRuntime()
+    const model: Model = {
+      ...testModel,
+      thinkingLevelMap: {
+        minimal: null,
+        low: 'low',
+        high: 'high',
+        xhigh: null,
+      },
+    }
+
+    await run(function* () {
+      const subscription = yield* runtime.stream(model, {
+        messages: [{ role: 'user', content: 'Use model map' }],
+      }, { thinking: 'high' })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+    })
+
+    const [piModel] = piAiMocks.streamSimple.mock.calls[0]!
+    expect(piModel.thinkingLevelMap).toEqual(model.thinkingLevelMap)
+  })
+
+  it('unwraps responseFormat __schema__ tool calls into JSON text', async () => {
+    const runtime = createPiAiRuntime()
+    const finalMessage = {
+      ...finalPiMessage,
+      stopReason: 'toolUse' as const,
+      content: [
+        {
+          type: 'toolCall' as const,
+          id: 'call-schema',
+          name: '__schema__',
+          arguments: { cell: 4 },
+        },
+      ],
+    }
+    mockPiStream([
+      {
+        type: 'toolcall_end',
+        contentIndex: 0,
+        toolCall: {
+          id: 'call-schema',
+          name: '__schema__',
+          arguments: { cell: 4 },
+        },
+        partial: finalMessage,
+      },
+    ], finalMessage)
+
+    let assistant: AssistantMessage | undefined
+    await run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: 'user', content: 'Pick a cell' }],
+      }, {
+        responseFormat: {
+          type: 'json_schema',
+          name: 'move',
+          schema: { type: 'object', properties: { cell: { type: 'number' } }, required: ['cell'] },
+        },
+      })
+      const next = yield* subscription.next()
+      expect(next.done).toBe(true)
+      if (next.done) assistant = next.value
+    })
+
+    const [, piContext, piOptions] = piAiMocks.streamSimple.mock.calls[0]!
+    expect(piContext.tools[0]).toMatchObject({ name: '__schema__' })
+    expect(piOptions).toMatchObject({ toolChoice: 'required' })
+    expect(piOptions).not.toHaveProperty('responseFormat')
+    expect(assistant).toMatchObject({
+      role: 'assistant',
+      stopReason: 'stop',
+      content: [{ type: 'text', text: '{"cell":4}' }],
+    })
+  })
+
+  it('rejects responseFormat requests that collide with the reserved __schema__ tool name without leaking secrets', async () => {
+    const runtime = createPiAiRuntime()
+
+    let error: unknown
+    try {
+      await run(function* () {
+        const subscription = yield* runtime.stream(testModel, {
+          messages: [{ role: 'user', content: 'Pick a cell' }],
+          tools: [{ name: '__schema__', description: 'user tool', parameters: { type: 'object' } }],
+        }, {
+          responseFormat: {
+            type: 'json_schema',
+            schema: { type: 'object' },
+          },
+          apiKey: 'sk-secret-test-value',
+          providerOptions: { Authorization: 'Bearer very-secret-token' },
+        })
+        yield* subscription.next()
+      })
+    } catch (caught) {
+      error = caught
+    }
+
+    expect(error).toBeInstanceOf(Error)
+    const message = (error as Error).message
+    expect(message).toContain('reserved for structured response output')
+    expect(message).not.toContain('sk-secret-test-value')
+    expect(message).not.toContain('very-secret-token')
+    expect(piAiMocks.streamSimple).not.toHaveBeenCalled()
+  })
+
+  it('rejects responseFormat requests with application tools to keep schema output deterministic', async () => {
+    const runtime = createPiAiRuntime()
+
+    await expect(run(function* () {
+      const subscription = yield* runtime.stream(testModel, {
+        messages: [{ role: 'user', content: 'Pick a cell' }],
+        tools: [{ name: 'echo', description: 'echo', parameters: { type: 'object' } }],
+      }, {
+        responseFormat: {
+          type: 'json_schema',
+          schema: { type: 'object' },
+        },
+      })
+      yield* subscription.next()
+    })).rejects.toThrow('responseFormat cannot be combined with application tools')
+
+    expect(piAiMocks.streamSimple).not.toHaveBeenCalled()
   })
 })

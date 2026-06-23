@@ -5,6 +5,18 @@ export interface Runtime {
   generateImages(model: ImageModel, context: ImageGenerationContext, options?: ImageGenerationOptions): Operation<AssistantImages>
 }
 
+export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ThinkingSetting = 'off' | ThinkingLevel
+export type ModelThinkingLevel = 'off' | ThinkingLevel
+export type ThinkingLevelMap = Partial<Record<ModelThinkingLevel, string | null>>
+
+export interface ThinkingBudgets {
+  minimal?: number
+  low?: number
+  medium?: number
+  high?: number
+}
+
 export interface Model {
   id: string
   name: string
@@ -13,6 +25,7 @@ export interface Model {
   baseUrl?: string
   headers?: Record<string, string>
   reasoning: boolean
+  thinkingLevelMap?: ThinkingLevelMap
   input: InputModality[]
   contextWindow: number
   maxTokens: number
@@ -155,7 +168,11 @@ export interface StreamOptions {
   temperature?: number
   topP?: number
   topK?: number
-  reasoning?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  /** User-facing thinking setting. `off` is normalized to no provider reasoning request. */
+  thinking?: ThinkingSetting
+  /** Compatibility alias aligned with pi-ai's simple `reasoning` option. */
+  reasoning?: ThinkingLevel | 'off'
+  thinkingBudgets?: ThinkingBudgets
   responseFormat?: { type: 'json_schema'; name?: string; schema: Record<string, unknown> }
   providerOptions?: Record<string, unknown>
   onPayload?: (payload: unknown) => void
