@@ -12,11 +12,10 @@
  * Compare this to play-ttt which uses MCP++ extensions (sampleTools, sampleSchema)
  * for guaranteed structured responses and strategic decision making.
  *
- * NEW: Demonstrates exchange accumulation - the model now sees the full game
- * progression through accumulated conversation history (elicit exchanges + samples).
+ * Keeps sampling deliberately simple so the standard MCP flow remains easy to inspect.
  */
-import { z } from 'zod'
-import { createMcpTool, type ExtendedMessage } from '@sweatpants/framework/chat'
+import { z } from "zod";
+import { createMcpTool } from "@sweatpants/framework/chat";
 import {
   type Board,
   type Player,
@@ -24,37 +23,37 @@ import {
   checkWinner,
   applyMove,
   formatBoard,
-} from './types.ts'
+} from "./types.ts";
 
 // =============================================================================
 // SCHEMAS
 // =============================================================================
 
-const CellSchema = z.union([z.literal('X'), z.literal('O'), z.null()])
-const BoardSchema = z.array(CellSchema).length(9).describe('Board state: 9 cells')
+const CellSchema = z.union([z.literal("X"), z.literal("O"), z.null()]);
+const BoardSchema = z.array(CellSchema).length(9).describe("Board state: 9 cells");
 
 const LastMoveSchema = z.object({
   position: z.number().min(0).max(8),
-  player: z.enum(['X', 'O']),
-})
+  player: z.enum(["X", "O"]),
+});
 
 /** Schema for a single move in history */
 const GameMoveSchema = z.object({
   position: z.number().min(0).max(8),
-  player: z.enum(['X', 'O']),
+  player: z.enum(["X", "O"]),
   isModel: z.boolean(),
   boardAfter: BoardSchema,
   moveNumber: z.number(),
-})
+});
 
 /** Type for a single move in history */
-type GameMove = z.infer<typeof GameMoveSchema>
+type GameMove = z.infer<typeof GameMoveSchema>;
 
 // =============================================================================
 // TOOL DEFINITION
 // =============================================================================
 
-export const tictactoeTool = createMcpTool('tictactoe')
+export const tictactoeTool = createMcpTool("tictactoe")
   .description(
     `Play a complete game of tic-tac-toe against the user.
 
@@ -70,23 +69,23 @@ Board positions:
 ---------
 3 | 4 | 5
 ---------
-6 | 7 | 8`
+6 | 7 | 8`,
   )
   .parameters(z.object({}))
   .elicits({
     pickMove: {
       response: z.object({
-        position: z.number().min(0).max(8).describe('Cell position user clicked'),
+        position: z.number().min(0).max(8).describe("Cell position user clicked"),
       }),
       context: z.object({
         board: BoardSchema,
-        moveHistory: z.array(GameMoveSchema).describe('History of all moves'),
+        moveHistory: z.array(GameMoveSchema).describe("History of all moves"),
         lastMove: LastMoveSchema.optional(),
         winningLine: z.array(z.number()).optional(),
         gameOver: z.boolean().optional(),
         resultMessage: z.string().optional(),
-        modelSymbol: z.enum(['X', 'O']),
-        userSymbol: z.enum(['X', 'O']),
+        modelSymbol: z.enum(["X", "O"]),
+        userSymbol: z.enum(["X", "O"]),
       }),
     },
   })
@@ -97,57 +96,52 @@ Board positions:
      * X always goes first.
      */
     *before(_params, _ctx) {
-      const modelPlaysX = Math.random() < 0.5
+      const modelPlaysX = Math.random() < 0.5;
       return {
-        modelSymbol: modelPlaysX ? 'X' as Player : 'O' as Player,
-        userSymbol: modelPlaysX ? 'O' as Player : 'X' as Player,
+        modelSymbol: modelPlaysX ? ("X" as Player) : ("O" as Player),
+        userSymbol: modelPlaysX ? ("O" as Player) : ("X" as Player),
         modelGoesFirst: modelPlaysX, // X goes first
-      }
+      };
     },
 
     /**
      * Client phase: Main game loop
      * Alternates between model and user moves until game ends.
-     * 
+     *
      * KEY DIFFERENCE FROM play-ttt:
      * - Uses plain ctx.sample() - just free-form text response
      * - No structured output (schema), no tool forcing
      * - Must parse the response and hope for the best
      * - Falls back to random if parsing fails
      *
-     * NEW: Implements exchange accumulation
-     * - Captures each elicit exchange using result.exchange.withArguments()
-     * - Captures model sampling turns as user/assistant messages
-     * - Passes accumulated history to subsequent ctx.sample() calls
-     * - Model now sees full game progression for better context
+     * Keeps each model turn independent:
+     * - Prompt contains the complete current board
+     * - No tool-result exchange history is fed back into plain sampling
+     * - This keeps the standard MCP demo stable across providers
      */
     *client(handoff, ctx) {
-      const { modelSymbol, userSymbol, modelGoesFirst } = handoff
-      let board: Board = [...EMPTY_BOARD]
-      let currentPlayer: Player = 'X' // X always goes first
-      const moveHistory: GameMove[] = []
+      const { modelSymbol, userSymbol, modelGoesFirst } = handoff;
+      let board: Board = [...EMPTY_BOARD];
+      let currentPlayer: Player = "X"; // X always goes first
+      const moveHistory: GameMove[] = [];
 
-      // Accumulate conversation history for model context
-      // This enables the model to see the full game progression
-      const conversationHistory: ExtendedMessage[] = []
-
-      yield* ctx.log('info', `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`)
+      yield* ctx.log("info", `Game started! Model plays ${modelSymbol}, User plays ${userSymbol}`);
 
       // Game loop
       while (true) {
-        const isModelTurn = currentPlayer === modelSymbol
+        const isModelTurn = currentPlayer === modelSymbol;
 
         if (isModelTurn) {
           // =================================================================
           // MODEL'S TURN: Plain MCP Sampling (no structured output)
           // With conversation history accumulation for context
           // =================================================================
-          yield* ctx.notify(`Model is thinking...`, 0.5)
+          yield* ctx.notify(`Model is thinking...`, 0.5);
 
-          const boardStr = formatBoard(board)
+          const boardStr = formatBoard(board);
           const emptyPositions = board
             .map((cell, i) => (cell === null ? i : null))
-            .filter((i): i is number => i !== null)
+            .filter((i): i is number => i !== null);
 
           // Build the prompt for this turn
           const prompt = `You are playing tic-tac-toe as ${modelSymbol}.
@@ -155,49 +149,44 @@ Board positions:
 Current board:
 ${boardStr}
 
-Empty positions: ${emptyPositions.join(', ')}
+Empty positions: ${emptyPositions.join(", ")}
 
-Reply with ONLY a single digit (0-8) for your move. Nothing else.`
+Reply with ONLY a single digit (0-8) for your move. Nothing else.`;
 
-          // Sample with accumulated conversation history
-          // This gives the model context of the entire game progression
           const response = yield* ctx.sample({
-            messages: [
-              ...conversationHistory,
-              { role: 'user', content: prompt },
-            ],
-          })
+            messages: [{ role: "user", content: prompt }],
+          });
 
-          // Add this exchange to conversation history
-          conversationHistory.push(
-            { role: 'user', content: prompt },
-            { role: 'assistant', content: response.text }
-          )
-
-          yield* ctx.log('info', `Model response: "${response.text}"`)
+          yield* ctx.log("info", `Model response: "${response.text}"`);
 
           // Parse the response - best effort regex for a digit
-          const match = response.text.match(/\b([0-8])\b/)
-          let playedCell: number
+          const match = response.text.match(/\b([0-8])\b/);
+          let playedCell: number;
 
           if (match) {
-            const parsed = parseInt(match[1]!, 10)
+            const parsed = parseInt(match[1]!, 10);
             if (emptyPositions.includes(parsed)) {
-              playedCell = parsed
-              yield* ctx.log('info', `Parsed valid move: ${playedCell}`)
+              playedCell = parsed;
+              yield* ctx.log("info", `Parsed valid move: ${playedCell}`);
             } else {
               // Model picked an occupied cell - fallback to random
-              yield* ctx.log('warning', `Model chose occupied cell ${parsed}, falling back to random`)
-              playedCell = emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!
+              yield* ctx.log(
+                "warning",
+                `Model chose occupied cell ${parsed}, falling back to random`,
+              );
+              playedCell = emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!;
             }
           } else {
             // Couldn't parse a number - fallback to random
-            yield* ctx.log('warning', `Could not parse move from "${response.text}", falling back to random`)
-            playedCell = emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!
+            yield* ctx.log(
+              "warning",
+              `Could not parse move from "${response.text}", falling back to random`,
+            );
+            playedCell = emptyPositions[Math.floor(Math.random() * emptyPositions.length)]!;
           }
 
-          board = applyMove(board, playedCell, modelSymbol)
-          yield* ctx.log('info', `Model plays cell ${playedCell}`)
+          board = applyMove(board, playedCell, modelSymbol);
+          yield* ctx.log("info", `Model plays cell ${playedCell}`);
 
           // Add model's move to history (no strategy - that's the point!)
           moveHistory.push({
@@ -206,51 +195,39 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
             isModel: true,
             boardAfter: [...board],
             moveNumber: moveHistory.length + 1,
-          })
+          });
         } else {
           // =================================================================
           // USER'S TURN: Elicitation with exchange accumulation
           // =================================================================
-          const lastEntry = moveHistory[moveHistory.length - 1]
+          const lastEntry = moveHistory[moveHistory.length - 1];
           const lastMove = lastEntry
             ? { position: lastEntry.position, player: lastEntry.player }
-            : undefined
+            : undefined;
 
-          const result = yield* ctx.elicit('pickMove', {
-            message: modelGoesFirst && board.filter(c => c !== null).length === 1
-              ? `I'm ${modelSymbol}! I made the first move. Your turn as ${userSymbol}!`
-              : `Your turn! You're playing as ${userSymbol}.`,
+          const result = yield* ctx.elicit("pickMove", {
+            message:
+              modelGoesFirst && board.filter((c) => c !== null).length === 1
+                ? `I'm ${modelSymbol}! I made the first move. Your turn as ${userSymbol}!`
+                : `Your turn! You're playing as ${userSymbol}.`,
             board,
             moveHistory,
             lastMove,
             modelSymbol,
             userSymbol,
-          })
+          });
 
-          if (result.action === 'decline' || result.action === 'cancel') {
+          if (result.action === "decline" || result.action === "cancel") {
             return {
               cancelled: true,
               board,
               boardDisplay: formatBoard(board),
-            }
+            };
           }
 
-          // Capture the elicit exchange with enriched arguments
-          // This adds the user's move to conversation history so the model
-          // can see the progression of user moves
-          const exchangeMsgs = result.exchange.withArguments((context) => ({
-            // Include human-readable board state for model context
-            // Cast context.board since Zod arrays don't infer as tuples
-            boardState: formatBoard(context.board as Board),
-            userSymbol: context.userSymbol,
-            userMove: result.content.position,
-            moveNumber: context.moveHistory.length + 1,
-          }))
-          conversationHistory.push(...exchangeMsgs)
-
-          const userPosition = result.content.position
-          board = applyMove(board, userPosition, userSymbol)
-          yield* ctx.log('info', `User plays cell ${userPosition}`)
+          const userPosition = result.content.position;
+          board = applyMove(board, userPosition, userSymbol);
+          yield* ctx.log("info", `User plays cell ${userPosition}`);
 
           // Add user's move to history
           moveHistory.push({
@@ -259,20 +236,25 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
             isModel: false,
             boardAfter: [...board],
             moveNumber: moveHistory.length + 1,
-          })
+          });
         }
 
         // Check for game end
-        const { status, winningLine } = checkWinner(board)
-        if (status !== 'ongoing') {
-          const resultMessage = status === 'draw'
-            ? "It's a draw! Good game!"
-            : status === 'x_wins'
-              ? modelSymbol === 'X' ? 'I win! Good game!' : 'You win! Well played!'
-              : modelSymbol === 'O' ? 'I win! Good game!' : 'You win! Well played!'
+        const { status, winningLine } = checkWinner(board);
+        if (status !== "ongoing") {
+          const resultMessage =
+            status === "draw"
+              ? "It's a draw! Good game!"
+              : status === "x_wins"
+                ? modelSymbol === "X"
+                  ? "I win! Good game!"
+                  : "You win! Well played!"
+                : modelSymbol === "O"
+                  ? "I win! Good game!"
+                  : "You win! Well played!";
 
           // Show final board to user
-          yield* ctx.elicit('pickMove', {
+          yield* ctx.elicit("pickMove", {
             message: resultMessage,
             board,
             moveHistory,
@@ -281,22 +263,23 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
             resultMessage,
             modelSymbol,
             userSymbol,
-          })
+          });
 
           return {
             status,
-            winner: status === 'draw' ? null : (status === 'x_wins' ? 'X' : 'O'),
-            modelWon: status !== 'draw' &&
-              ((status === 'x_wins' && modelSymbol === 'X') ||
-               (status === 'o_wins' && modelSymbol === 'O')),
+            winner: status === "draw" ? null : status === "x_wins" ? "X" : "O",
+            modelWon:
+              status !== "draw" &&
+              ((status === "x_wins" && modelSymbol === "X") ||
+                (status === "o_wins" && modelSymbol === "O")),
             board,
             boardDisplay: formatBoard(board),
             winningLine,
-          }
+          };
         }
 
         // Switch turns
-        currentPlayer = currentPlayer === 'X' ? 'O' : 'X'
+        currentPlayer = currentPlayer === "X" ? "O" : "X";
       }
     },
 
@@ -305,57 +288,59 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
      * Format the final result for the LLM.
      */
     *after(handoff, clientResult, _ctx, _params) {
-      const { modelSymbol, userSymbol } = handoff
+      const { modelSymbol, userSymbol } = handoff;
 
       if (clientResult.cancelled) {
         return {
           success: false,
           cancelled: true,
-          message: 'Game was cancelled by the user.',
+          message: "Game was cancelled by the user.",
           board: clientResult.board,
           boardDisplay: clientResult.boardDisplay,
-        }
+        };
       }
 
       return {
         success: true,
         modelSymbol,
         userSymbol,
-        result: clientResult.status === 'draw'
-          ? 'draw'
-          : clientResult.modelWon
-            ? 'model_wins'
-            : 'user_wins',
+        result:
+          clientResult.status === "draw"
+            ? "draw"
+            : clientResult.modelWon
+              ? "model_wins"
+              : "user_wins",
         winner: clientResult.winner,
         board: clientResult.board,
         boardDisplay: clientResult.boardDisplay,
         winningLine: clientResult.winningLine,
-        message: clientResult.status === 'draw'
-          ? "The game ended in a draw!"
-          : clientResult.modelWon
-            ? "I won the game!"
-            : "The user won the game!",
-      }
+        message:
+          clientResult.status === "draw"
+            ? "The game ended in a draw!"
+            : clientResult.modelWon
+              ? "I won the game!"
+              : "The user won the game!",
+      };
     },
-  })
+  });
 
 // Result type for external consumers
 export type TicTacToeResult =
   | {
-      success: true
-      modelSymbol: Player
-      userSymbol: Player
-      result: 'model_wins' | 'user_wins' | 'draw'
-      winner: Player | null
-      board: Board
-      boardDisplay: string
-      winningLine?: number[]
-      message: string
+      success: true;
+      modelSymbol: Player;
+      userSymbol: Player;
+      result: "model_wins" | "user_wins" | "draw";
+      winner: Player | null;
+      board: Board;
+      boardDisplay: string;
+      winningLine?: number[];
+      message: string;
     }
   | {
-      success: false
-      cancelled: true
-      message: string
-      board?: Board
-      boardDisplay?: string
-    }
+      success: false;
+      cancelled: true;
+      message: string;
+      board?: Board;
+      boardDisplay?: string;
+    };
