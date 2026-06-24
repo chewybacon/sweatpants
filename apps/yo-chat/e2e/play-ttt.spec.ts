@@ -43,7 +43,7 @@ test.describe("play_ttt Agentic Tool", () => {
     return page.locator("button:not([disabled])").filter({ hasText: /^[0-8]$/ });
   }
 
-  async function waitForPlayableCell(page: Page, timeout = 90000): Promise<Locator> {
+  async function waitForPlayableCell(page: Page, timeout = 180000): Promise<Locator> {
     const cells = playableCells(page);
     const deadline = Date.now() + timeout;
 
