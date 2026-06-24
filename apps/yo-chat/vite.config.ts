@@ -1,31 +1,28 @@
-import { defineConfig } from 'vite'
-import { devtools } from '@tanstack/devtools-vite'
-import { tanstackStart } from '@tanstack/react-start/plugin/vite'
-import viteReact from '@vitejs/plugin-react'
-import viteTsConfigPaths from 'vite-tsconfig-paths'
-import tailwindcss from '@tailwindcss/vite'
-import { frameworkPlugin, nodeWorkerPlugin } from '@sweatpants/vite-plugin'
+import { builtinModules } from "node:module";
+import { defineConfig } from "vite";
+import { devtools } from "@tanstack/devtools-vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import viteTsConfigPaths from "vite-tsconfig-paths";
+import tailwindcss from "@tailwindcss/vite";
+import { frameworkPlugin, nodeWorkerPlugin } from "@sweatpants/vite-plugin";
 import { imagetools } from "vite-imagetools";
-const isProd = process.env['NODE_ENV'] === 'production'
+const isProd = process.env["NODE_ENV"] === "production";
+const nodeBuiltins = Array.from(new Set(builtinModules.flatMap((name) => [name, `node:${name}`])));
+const externalPackages = ["marked", "shiki", "katex", "mermaid", "@earendil-works/pi-ai"];
 
 const agentCoreToolDiscovery = {
-  dir: 'src/tools',
-  outFile: 'src/__generated__/tool-registry.gen.ts',
-  pattern: '**/*.{ts,tsx}',
+  dir: "src/tools",
+  outFile: "src/__generated__/tool-registry.gen.ts",
+  pattern: "**/*.{ts,tsx}",
   generateWorker: true,
-  workerOutFile: 'src/__generated__/tool-worker.gen.ts',
-  generateAgentCoreRegistry: true,
-  agentCoreOutFile: 'src/__generated__/agentcore-tool-registry.gen.ts',
-  // Batch-1 AgentCore Runtime support is deliberately narrow and explicit:
-  // only MCP bridge-compatible tools in this allowlist are imported into
-  // the generated AgentCore registry.
-  agentCoreSupportedToolNames: ['book_flight', 'play_ttt', 'tictactoe'],
-}
+  workerOutFile: "src/__generated__/tool-worker.gen.ts",
+};
 
 // Workspace packages that should hot-reload in dev
 // Note: No resolve.alias needed - framework package.json exports have
 // "development" condition that Vite uses automatically in dev mode
-const workspacePackages = ['@sweatpants/framework']
+const workspacePackages = ["@sweatpants/framework"];
 
 const config = defineConfig({
   // Prevent Vite from pre-bundling workspace packages (allows HMR)
@@ -36,7 +33,7 @@ const config = defineConfig({
   // SSR: Don't externalize workspace packages so they get processed
   ssr: {
     noExternal: isProd ? [] : workspacePackages,
-    external: ['@earendil-works/pi-ai'],
+    external: [...externalPackages, ...nodeBuiltins],
   },
 
   plugins: [
@@ -44,7 +41,7 @@ const config = defineConfig({
     nodeWorkerPlugin(),
     devtools(),
     viteTsConfigPaths({
-      projects: ['./tsconfig.json'],
+      projects: ["./tsconfig.json"],
     }),
     tailwindcss(),
     imagetools(),
@@ -58,8 +55,8 @@ const config = defineConfig({
 
   build: {
     rollupOptions: {
-      external: ['marked', 'shiki', 'katex', 'mermaid', '@earendil-works/pi-ai']
-    }
+      external: [...externalPackages, ...nodeBuiltins],
+    },
   },
 
   // Enable nodeWorkerPlugin in dev mode for worker HMR
@@ -69,14 +66,14 @@ const config = defineConfig({
 
   test: {
     // Use jsdom for DOM testing with Interactors
-    environment: 'jsdom',
+    environment: "jsdom",
     env: {
-      DEFAULT_CHAT_MODEL_PROVIDER: 'ollama',
-      DEFAULT_CHAT_MODEL_ID: 'gemma4:12b-mlx',
+      DEFAULT_CHAT_MODEL_PROVIDER: "ollama",
+      DEFAULT_CHAT_MODEL_ID: "gemma4:12b-mlx",
     },
     // Exclude Playwright e2e tests from Vitest
-    exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
-  }
-})
+    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
+  },
+});
 
-export default config
+export default config;

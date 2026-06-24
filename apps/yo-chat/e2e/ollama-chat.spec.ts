@@ -1,336 +1,379 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from "@playwright/test";
 
 /**
  * E2E tests that use the local Ollama API.
- * 
+ *
  * These tests require:
  * - Ollama running locally at http://localhost:11434
  * - A model that supports tool calling (e.g., gemma4:12b-mlx, llama3.1)
- * 
+ *
  * The tests use gemma4:12b-mlx by default which has good tool calling support.
- * 
+ *
  * Run with: pnpm test:e2e
  */
 
 // Increase timeout for LLM responses (models can be slow)
-test.setTimeout(180000)
+test.setTimeout(180000);
 
-test.describe('Ollama chat integration', () => {
+test.describe("Ollama chat integration", () => {
   test.beforeEach(async ({ page }) => {
     // Capture console logs
-    page.on('console', (msg) => {
-      const text = msg.text()
-      if (text.includes('[stream-chat]') || text.includes('[create-session]') || 
-          text.includes('[pipeline-runner]') || text.includes('[reducer]')) {
-        console.log('BROWSER:', text)
+    page.on("console", (msg) => {
+      const text = msg.text();
+      if (
+        text.includes("[stream-chat]") ||
+        text.includes("[create-session]") ||
+        text.includes("[pipeline-runner]") ||
+        text.includes("[reducer]")
+      ) {
+        console.log("BROWSER:", text);
       }
-    })
-    
-    await page.goto('/chat/basic/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Basic Chat' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
+    });
+
+    await page.goto("/chat/basic/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Basic Chat" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
     // Click input to ensure React is hydrated
-    await page.getByPlaceholder('Type a message...').click()
-  })
+    await page.getByPlaceholder("Type a message...").click();
+  });
 
-  test('can send a simple message and receive a response', async ({ page }) => {
+  test("can send a simple message and receive a response", async ({ page }) => {
     // Type a simple message
-    const input = page.getByPlaceholder('Type a message...')
-    await input.click()
-    await input.fill('Say exactly: Hello World')
-    
-    // Send the message after React state enables the button
-    const sendButton = page.getByRole('button', { name: 'Send' })
-    await expect(sendButton).toBeEnabled({ timeout: 5000 })
-    await sendButton.click()
-    
-    // Wait for streaming to start
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    
-    // Wait for the response to complete (streaming indicator disappears)
-    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
-    
-    // Should have both user message and assistant response
-    await expect(page.getByText('Say exactly: Hello World').first()).toBeVisible()
-    
-    // Should show 2 messages (user + assistant)
-    await expect(page.getByText('2 messages')).toBeVisible({ timeout: 5000 })
-  })
+    const input = page.getByPlaceholder("Type a message...");
+    await input.click();
+    await input.fill("Say exactly: Hello World");
 
-  test('can abort a streaming response', async ({ page }) => {
-    // Type a message that will generate a long response
-    const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Count from 1 to 1000 slowly, one number per line', { delay: 5 })
-    
-    // Send the message
-    await page.getByRole('button', { name: 'Send' }).click()
-    
+    // Send the message after React state enables the button
+    const sendButton = page.getByRole("button", { name: "Send" });
+    await expect(sendButton).toBeEnabled({ timeout: 5000 });
+    await sendButton.click();
+
     // Wait for streaming to start
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+
+    // Wait for the response to complete (streaming indicator disappears)
+    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+
+    // Should have both user message and assistant response
+    await expect(page.getByText("Say exactly: Hello World").first()).toBeVisible();
+
+    // Should show 2 messages (user + assistant)
+    await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
+  });
+
+  test("can abort a streaming response", async ({ page }) => {
+    // Type a message that will generate a long response
+    const input = page.getByPlaceholder("Type a message...");
+    await input.pressSequentially("Count from 1 to 1000 slowly, one number per line", { delay: 5 });
+
+    // Send the message
+    await page.getByRole("button", { name: "Send" }).click();
+
+    // Wait for streaming to start
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
 
     // If the model responds too quickly, the Stop button may never become clickable.
     // Only abort if Stop is actually visible.
-    const stopButton = page.getByRole('button', { name: 'Stop' })
-    const stopVisible = await stopButton.isVisible()
+    const stopButton = page.getByRole("button", { name: "Stop" });
+    const stopVisible = await stopButton.isVisible();
     if (stopVisible) {
-      await stopButton.click()
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 10000 })
+      await stopButton.click();
+      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 10000 });
     } else {
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
+      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
     }
-    
+
     // Should show messages were received (at least user message)
-    await expect(page.locator('text=/[12] messages/')).toBeVisible({ timeout: 5000 })
-  })
+    await expect(page.locator("text=/[12] messages/")).toBeVisible({ timeout: 5000 });
+  });
 
-  test('renders markdown in responses', async ({ page }) => {
-    const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Say "testing *italics* and **bold**"', { delay: 5 })
-    
-    await page.getByRole('button', { name: 'Send' }).click()
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    const completed = await page.getByText('streaming...').isHidden({ timeout: 120000 }).catch(() => false)
+  test("renders markdown in responses", async ({ page }) => {
+    const input = page.getByPlaceholder("Type a message...");
+    await input.pressSequentially('Say "testing *italics* and **bold**"', { delay: 5 });
+
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    const completed = await page
+      .getByText("streaming...")
+      .isHidden({ timeout: 120000 })
+      .catch(() => false);
     if (!completed) {
-      test.skip(true, 'LLM did not finalize markdown response in time')
-      return
+      test.skip(true, "LLM did not finalize markdown response in time");
+      return;
     }
-    
-    const response = await page.locator('.prose').last().textContent()
-    expect(response?.trim().length ?? 0).toBeGreaterThan(0)
-  })
 
-  test('rendered markdown persists after streaming completes', async ({ page }) => {
+    const response = await page.locator(".prose").last().textContent();
+    expect(response?.trim().length ?? 0).toBeGreaterThan(0);
+  });
+
+  test("rendered markdown persists after streaming completes", async ({ page }) => {
     // This test verifies that the pipeline-rendered HTML (with syntax highlighting)
     // persists after streaming ends. Previously, frames were lost when streaming
     // completed, causing the content to revert to raw markdown.
-    
-    const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Write a Python hello world in a code block', { delay: 5 })
-    
+
+    const input = page.getByPlaceholder("Type a message...");
+    await input.pressSequentially("Write a Python hello world in a code block", { delay: 5 });
+
     // Send and wait for streaming to start
-    await page.getByRole('button', { name: 'Send' }).click()
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    
+    await page.getByRole("button", { name: "Send" }).click();
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+
     // Wait for either a rendered code block or assistant content. Real models may
     // answer without a fenced code block even when requested.
-    const codeBlockDuringStreaming = page.locator('pre code')
-    const assistantContent = page.locator('.prose').last()
-    await expect(codeBlockDuringStreaming.or(assistantContent)).toBeVisible({ timeout: 30000 })
-    
+    const codeBlockDuringStreaming = page.locator("pre code");
+    const assistantContent = page.locator(".prose").last();
+    await expect(codeBlockDuringStreaming.or(assistantContent)).toBeVisible({ timeout: 30000 });
+
     // Wait for streaming to complete
-    const completed = await page.getByText('streaming...').isHidden({ timeout: 120000 }).catch(() => false)
+    const completed = await page
+      .getByText("streaming...")
+      .isHidden({ timeout: 120000 })
+      .catch(() => false);
     if (!completed) {
-      test.skip(true, 'LLM did not finalize markdown response in time')
-      return
+      test.skip(true, "LLM did not finalize markdown response in time");
+      return;
     }
-    
+
     // CRITICAL: If a code block was produced, it should STILL be rendered after
     // streaming completes. If the model did not produce one, require non-empty
     // assistant content instead.
-    if (await page.locator('pre code').first().isVisible().catch(() => false)) {
-      await expect(page.locator('pre code').first()).toBeVisible({ timeout: 5000 })
+    if (
+      await page
+        .locator("pre code")
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await expect(page.locator("pre code").first()).toBeVisible({ timeout: 5000 });
     } else {
-      const response = await assistantContent.textContent()
-      expect(response?.trim().length ?? 0).toBeGreaterThan(0)
+      const response = await assistantContent.textContent();
+      expect(response?.trim().length ?? 0).toBeGreaterThan(0);
     }
-    
+
     // Verify it's not showing raw markdown (```python should not be visible as text)
     // The backticks should be parsed, not displayed
-    const rawMarkdownVisible = await page.locator('text=/```python/').count()
-    expect(rawMarkdownVisible).toBe(0)
-    
-    // The message should show as completed (not streaming)
-    await expect(page.getByText('2 messages')).toBeVisible()
-  })
+    const rawMarkdownVisible = await page.locator("text=/```python/").count();
+    expect(rawMarkdownVisible).toBe(0);
 
-  test('rendered markdown persists across multiple messages', async ({ page }) => {
+    // The message should show as completed (not streaming)
+    await expect(page.getByText("2 messages")).toBeVisible();
+  });
+
+  test("rendered markdown persists across multiple messages", async ({ page }) => {
     // Capture console logs
-    const logs: string[] = []
-    page.on('console', msg => {
-      if (msg.text().includes('[deriveMessages]') || msg.text().includes('[reducer')) {
-        logs.push(msg.text())
+    const logs: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.text().includes("[deriveMessages]") || msg.text().includes("[reducer")) {
+        logs.push(msg.text());
       }
-    })
-    
+    });
+
     // This test verifies that when multiple messages are sent, each message
     // retains its rendered HTML after subsequent messages complete.
-    
-    const input = page.getByPlaceholder('Type a message...')
-    
+
+    const input = page.getByPlaceholder("Type a message...");
+
     // First message: ask for a code block
-    await input.pressSequentially('Write a Python hello world in a code block', { delay: 5 })
-    await page.getByRole('button', { name: 'Send' }).click()
-    
+    await input.pressSequentially("Write a Python hello world in a code block", { delay: 5 });
+    await page.getByRole("button", { name: "Send" }).click();
+
     // Wait for first response to complete
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    const firstCompleted = await page.getByText('streaming...').isHidden({ timeout: 120000 }).catch(() => false)
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    const firstCompleted = await page
+      .getByText("streaming...")
+      .isHidden({ timeout: 120000 })
+      .catch(() => false);
     if (!firstCompleted) {
-      test.skip(true, 'LLM did not finalize first markdown response in time')
-      return
+      test.skip(true, "LLM did not finalize first markdown response in time");
+      return;
     }
-    
+
     // First message should have rendered content; code block rendering is checked
     // when the real model actually produces a fenced block.
-    const firstCodeBlock = page.locator('pre code').first()
-    const firstAssistant = page.locator('.prose').last()
-    await expect(firstCodeBlock.or(firstAssistant)).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText('2 messages')).toBeVisible()
-    
-    console.log('=== After first message ===')
-    console.log(`Total logs: ${logs.length}`)
+    const firstCodeBlock = page.locator("pre code").first();
+    const firstAssistant = page.locator(".prose").last();
+    await expect(firstCodeBlock.or(firstAssistant)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("2 messages")).toBeVisible();
+
+    console.log("=== After first message ===");
+    console.log(`Total logs: ${logs.length}`);
     // Don't clear - keep accumulating
-    
+
     // Second message: ask for something with markdown
-    await input.pressSequentially('List the planets in a markdown bullet list', { delay: 5 })
-    await page.getByRole('button', { name: 'Send' }).click()
-    
+    await input.pressSequentially("List the planets in a markdown bullet list", { delay: 5 });
+    await page.getByRole("button", { name: "Send" }).click();
+
     // Wait for second response to complete
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    const secondCompleted = await page.getByText('streaming...').isHidden({ timeout: 120000 }).catch(() => false)
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    const secondCompleted = await page
+      .getByText("streaming...")
+      .isHidden({ timeout: 120000 })
+      .catch(() => false);
     if (!secondCompleted) {
-      test.skip(true, 'LLM did not finalize second markdown response in time')
-      return
+      test.skip(true, "LLM did not finalize second markdown response in time");
+      return;
     }
-    
+
     // Should now have 4 messages
-    await expect(page.getByText('4 messages')).toBeVisible({ timeout: 5000 })
-    
-    console.log('=== After second message ===')
-    console.log(`Total logs: ${logs.length}`)
+    await expect(page.getByText("4 messages")).toBeVisible({ timeout: 5000 });
+
+    console.log("=== After second message ===");
+    console.log(`Total logs: ${logs.length}`);
     // Print all logs at the end
-    logs.forEach((l, i) => console.log(`[${i}] ${l}`))
-    
+    logs.forEach((l, i) => console.log(`[${i}] ${l}`));
+
     // CRITICAL: If the first message had a code block, it should STILL be
     // rendered. Otherwise, require the first assistant message content to remain.
-    if (await page.locator('pre code').first().isVisible().catch(() => false)) {
-      await expect(page.locator('pre code').first()).toBeVisible({ timeout: 5000 })
+    if (
+      await page
+        .locator("pre code")
+        .first()
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await expect(page.locator("pre code").first()).toBeVisible({ timeout: 5000 });
     } else {
-      await expect(page.locator('.prose').first()).toBeVisible({ timeout: 5000 })
+      await expect(page.locator(".prose").first()).toBeVisible({ timeout: 5000 });
     }
-    
+
     // Second message should have rendered markdown (bullet list)
     // Look for list items in the second assistant message
-    const assistantMessages = page.locator('[class*="bg-slate-800"]')
-    await expect(assistantMessages).toHaveCount(2, { timeout: 5000 })
-    
+    const assistantMessages = page.locator('[class*="bg-slate-800"]');
+    await expect(assistantMessages).toHaveCount(2, { timeout: 5000 });
+
     // Check that no raw markdown is showing (no visible ``` or - at start of content)
-    const rawBackticks = await page.locator('text=/^```/').count()
-    expect(rawBackticks).toBe(0)
-  })
+    const rawBackticks = await page.locator("text=/^```/").count();
+    expect(rawBackticks).toBe(0);
+  });
 
-  test('can reset the conversation', async ({ page }) => {
+  test("can reset the conversation", async ({ page }) => {
     // Send a message
-    const input = page.getByPlaceholder('Type a message...')
-    await input.pressSequentially('Say hi', { delay: 10 })
-    await page.getByRole('button', { name: 'Send' }).click()
-    
-    // Wait for response
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 120000 })
-    await expect(page.getByText('2 messages')).toBeVisible({ timeout: 5000 })
-    
-    // Reset the conversation
-    await page.getByRole('button', { name: 'Clear History' }).click()
-    
-    // Should show empty state
-    await expect(page.getByText('Send a message to start chatting')).toBeVisible()
-    await expect(page.getByText('0 messages')).toBeVisible()
-  })
-})
+    const input = page.getByPlaceholder("Type a message...");
+    await input.pressSequentially("Say hi", { delay: 10 });
+    await page.getByRole("button", { name: "Send" }).click();
 
-test.describe('Ollama tool calling', () => {
+    // Wait for response. Local models can occasionally generate slowly; abort
+    // after the long wait because this test verifies reset behavior, not model
+    // completion quality.
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+    try {
+      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 120000 });
+      await expect(page.getByText("2 messages")).toBeVisible({ timeout: 5000 });
+    } catch {
+      await page.getByRole("button", { name: "Stop" }).click();
+      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 30000 });
+    }
+
+    // Reset the conversation
+    await page.getByRole("button", { name: "Clear History" }).click();
+
+    // Should show empty state
+    await expect(page.getByText("Send a message to start chatting")).toBeVisible();
+    await expect(page.getByText("0 messages")).toBeVisible();
+  });
+});
+
+test.describe("Ollama tool calling", () => {
   // Note: Tool calling requires the model to support tools and correct server configuration.
   // These tests verify the full flow when tools are working.
-  
-  test('LLM can call the calculator tool', async ({ page }) => {
-    await page.goto('/chat/math/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-    
+
+  test("LLM can call the calculator tool", async ({ page }) => {
+    await page.goto("/chat/math/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Math Assistant" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+
     // Ask a math question that should trigger the calculator tool
-    const input = page.getByPlaceholder('Type a math problem...')
-    await input.click() // Ensure hydration
-    await input.pressSequentially('Use the calculator tool to compute 42 * 17. What is the result?', { delay: 5 })
-    
+    const input = page.getByPlaceholder("Type a math problem...");
+    await input.click(); // Ensure hydration
+    await input.pressSequentially(
+      "Use the calculator tool to compute 42 * 17. What is the result?",
+      { delay: 5 },
+    );
+
     // Send the message
-    await page.getByRole('button', { name: 'Solve', exact: true }).click()
+    await page.getByRole("button", { name: "Solve", exact: true }).click();
 
     // Wait for response to complete. Prefer stable UI signals over ambiguous text.
-    const stopButton = page.getByRole('button', { name: 'Stop' })
-    const messagesCount = page.getByText('2 messages')
+    const stopButton = page.getByRole("button", { name: "Stop" });
+    const messagesCount = page.getByText("2 messages");
 
     // Either we see the Stop button (streaming) or we finish quickly.
     await Promise.race([
       expect(stopButton).toBeVisible({ timeout: 60000 }),
       expect(messagesCount).toBeVisible({ timeout: 60000 }),
-    ])
+    ]);
 
     // If we were streaming, wait for it to finish.
-    await expect(stopButton).not.toBeVisible({ timeout: 120000 })
-    await expect(messagesCount).toBeVisible({ timeout: 120000 })
-    
+    await expect(stopButton).not.toBeVisible({ timeout: 120000 });
+    await expect(messagesCount).toBeVisible({ timeout: 120000 });
+
     // Check if the response contains either the answer or an error message
     // The LLM may or may not successfully call the tool depending on model/config
-    const responseText = await page.locator('.prose').last().textContent()
-    
-    // The response should contain either 714 (success) or some text about calculator/tools
-    expect(responseText).toBeTruthy()
-    console.log('Calculator response:', responseText?.slice(0, 200))
-  })
+    const responseText = await page.locator(".prose").last().textContent();
 
-  test('LLM can call the pick_card tool and user can interact', async ({ page }) => {
-    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-    
+    // The response should contain either 714 (success) or some text about calculator/tools
+    expect(responseText).toBeTruthy();
+    console.log("Calculator response:", responseText?.slice(0, 200));
+  });
+
+  test("LLM can call the pick_card tool and user can interact", async ({ page }) => {
+    await page.goto("/chat/cards/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+
     // Ask to pick a card - this should trigger the pick_card isomorphic tool
-    const input = page.getByPlaceholder('Type a message...')
-    await input.click() // Ensure hydration
-    await input.pressSequentially('Use the pick_card tool with count=3 to let me pick a card', { delay: 5 })
-    
+    const input = page.getByPlaceholder("Type a message...");
+    await input.click(); // Ensure hydration
+    await input.pressSequentially("Use the pick_card tool with count=3 to let me pick a card", {
+      delay: 5,
+    });
+
     // Send the message
-    await page.getByRole('button', { name: 'Send' }).click()
-    
+    await page.getByRole("button", { name: "Send" }).click();
+
     // Wait for response - could be card picker UI or an error message
-    await expect(page.getByText('streaming...')).toBeVisible({ timeout: 60000 })
-    
+    await expect(page.getByText("streaming...")).toBeVisible({ timeout: 60000 });
+
     // Try to wait for card picker UI, but don't fail if it doesn't appear
     // The CardPicker component renders buttons with card symbols
-    const cardButton = page.locator('button').filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ }).first()
-    
+    const cardButton = page
+      .locator("button")
+      .filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ })
+      .first();
+
     try {
-      await expect(cardButton).toBeVisible({ timeout: 60000 })
-      
+      await expect(cardButton).toBeVisible({ timeout: 60000 });
+
       // Get the card text before clicking
-      const cardText = await cardButton.textContent()
-      console.log(`Found card picker! Clicking card: ${cardText}`)
-      
+      const cardText = await cardButton.textContent();
+      console.log(`Found card picker! Clicking card: ${cardText}`);
+
       // Click on a card
-      await cardButton.click()
-      
+      await cardButton.click();
+
       // After clicking, should show the selection confirmation
-      await expect(page.getByText(/You picked:/)).toBeVisible({ timeout: 15000 })
-      
-      console.log('Card selection successful!')
+      await expect(page.getByText(/You picked:/)).toBeVisible({ timeout: 15000 });
+
+      console.log("Card selection successful!");
     } catch {
       // Card picker didn't appear - check if there's an error or just text response
-      await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
-      const responseText = await page.locator('.prose').last().textContent()
-      console.log('No card picker appeared. Response:', responseText?.slice(0, 300))
-      
-      // Test should still pass - we're testing that the flow doesn't crash
-      expect(responseText).toBeTruthy()
-    }
-  })
+      await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+      const responseText = await page.locator(".prose").last().textContent();
+      console.log("No card picker appeared. Response:", responseText?.slice(0, 300));
 
-  test('pick_card tool: LLM response reflects the card user picked', async ({ page }) => {
-    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-    
+      // Test should still pass - we're testing that the flow doesn't crash
+      expect(responseText).toBeTruthy();
+    }
+  });
+
+  test("pick_card tool: LLM response reflects the card user picked", async ({ page }) => {
+    await page.goto("/chat/cards/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+
     /**
      * This test verifies the complete pick_card flow:
-     * 
+     *
      * 1. User asks to pick a card
      * 2. Server runs *before() - draws random cards
      * 3. Client renders CardPicker via ctx.render()
@@ -339,117 +382,132 @@ test.describe('Ollama tool calling', () => {
      * 6. Server runs *after(handoff, clientOutput) - returns "You selected the 5 of Hearts!"
      * 7. LLM sees the *after() result and responds accordingly
      * 8. LLM's final message should acknowledge the SELECTION, not just list the cards
-     * 
+     *
      * This tests that the handoff pattern works correctly end-to-end.
      */
-    
-    const input = page.getByPlaceholder('Type a message...')
-    await input.click() // Ensure hydration
-    await input.pressSequentially('Use pick_card with count=3. After I pick, tell me which card I chose.', { delay: 5 })
-    
-    await page.getByRole('button', { name: 'Send' }).click()
-    
+
+    const input = page.getByPlaceholder("Type a message...");
+    await input.click(); // Ensure hydration
+    await input.pressSequentially(
+      "Use pick_card with count=3. After I pick, tell me which card I chose.",
+      { delay: 5 },
+    );
+
+    await page.getByRole("button", { name: "Send" }).click();
+
     // Wait for card picker to appear
-    const cardButton = page.locator('button').filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ }).first()
-    await expect(cardButton).toBeVisible({ timeout: 60000 })
-    
+    const cardButton = page
+      .locator("button")
+      .filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ })
+      .first();
+    await expect(cardButton).toBeVisible({ timeout: 60000 });
+
     // Remember which card we're clicking
-    const cardText = await cardButton.textContent()
-    console.log(`Clicking card: ${cardText}`)
-    
+    const cardText = await cardButton.textContent();
+    console.log(`Clicking card: ${cardText}`);
+
     // Click the card
-    await cardButton.click()
-    
+    await cardButton.click();
+
     // Wait for the "You picked:" confirmation in the CardPicker component
-    await expect(page.getByText(/You picked:/)).toBeVisible({ timeout: 15000 })
-    
+    await expect(page.getByText(/You picked:/)).toBeVisible({ timeout: 15000 });
+
     // Now wait for the LLM to respond with a message about the card we picked
     // The streaming should complete
-    await expect(page.getByText('streaming...')).not.toBeVisible({ timeout: 60000 })
-    
+    await expect(page.getByText("streaming...")).not.toBeVisible({ timeout: 60000 });
+
     // The final assistant message should mention the card we picked
     // Get the last .prose element which is the final assistant response
-    const assistantMessages = page.locator('.prose').last()
-    const finalResponse = await assistantMessages.textContent()
-    
-    console.log(`Final LLM response: ${finalResponse?.slice(0, 500)}`)
-    
+    const assistantMessages = page.locator(".prose").last();
+    const finalResponse = await assistantMessages.textContent();
+
+    console.log(`Final LLM response: ${finalResponse?.slice(0, 500)}`);
+
     // The LLM should acknowledge the selection, not just list cards
     // The *after() returns: { message: "You selected the ${rank} of ${suit}!", ... }
     // The LLM sees this result and should respond with something like:
     // "You chose the 6 of Diamonds" or "You picked the 6 of Diamonds"
-    
+
     // The final response from LLM
-    const cleanResponse = finalResponse?.trim()
-    console.log(`LLM response: ${cleanResponse?.slice(0, 200)}`)
-    
+    const cleanResponse = finalResponse?.trim();
+    console.log(`LLM response: ${cleanResponse?.slice(0, 200)}`);
+
     // CRITICAL: The response should indicate a SELECTION was made
     // Not just list the available cards (which is what *before() returns)
     // AND should NOT be prompting for a selection
-    const positiveIndicators = ['selected', 'chose', 'picked', 'your choice', 'chosen']
-    const negativeIndicators = ['please pick', 'pick one', 'choose one', 'which card', 'please choose']
-    
-    const hasPositive = positiveIndicators.some(
-      indicator => cleanResponse?.toLowerCase().includes(indicator)
-    )
-    const hasNegative = negativeIndicators.some(
-      indicator => cleanResponse?.toLowerCase().includes(indicator)
-    )
-    
+    const positiveIndicators = ["selected", "chose", "picked", "your choice", "chosen"];
+    const negativeIndicators = [
+      "please pick",
+      "pick one",
+      "choose one",
+      "which card",
+      "please choose",
+    ];
+
+    const hasPositive = positiveIndicators.some((indicator) =>
+      cleanResponse?.toLowerCase().includes(indicator),
+    );
+    const hasNegative = negativeIndicators.some((indicator) =>
+      cleanResponse?.toLowerCase().includes(indicator),
+    );
+
     // Must have positive indicators AND no negative prompts
-    const hasSelectionLanguage = hasPositive && !hasNegative
-    
-    console.log(`Has selection language: ${hasSelectionLanguage}`)
-    
+    const hasSelectionLanguage = hasPositive && !hasNegative;
+
+    console.log(`Has selection language: ${hasSelectionLanguage}`);
+
     // This assertion should FAIL until we fix the bug
     // Currently the LLM only sees the *before() result (card list)
     // not the *after() result (selection confirmation)
-    expect(hasSelectionLanguage).toBe(true)
-  })
+    expect(hasSelectionLanguage).toBe(true);
+  });
 
-  test('pick_card tool: CardPicker appears inline in chat timeline', async ({ page }) => {
-    await page.goto('/chat/cards/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Card Picker' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-    
+  test("pick_card tool: CardPicker appears inline in chat timeline", async ({ page }) => {
+    await page.goto("/chat/cards/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+
     /**
-     * This test verifies that the CardPicker component appears in the 
+     * This test verifies that the CardPicker component appears in the
      * correct position in the chat timeline:
-     * 
+     *
      * Expected order:
      * 1. User message: "Use pick_card..."
      * 2. Assistant thinking/streaming indicator
      * 3. CardPicker component (interactive)
      * 4. After picking: Assistant's final response
-     * 
+     *
      * The CardPicker should NOT appear in a separate area - it should
      * be part of the natural conversation flow.
      */
-    
-    const input = page.getByPlaceholder('Type a message...')
-    await input.click() // Ensure hydration
-    await input.pressSequentially('Use pick_card with count=3', { delay: 10 })
-    
-    await page.getByRole('button', { name: 'Send' }).click()
-    
+
+    const input = page.getByPlaceholder("Type a message...");
+    await input.click(); // Ensure hydration
+    await input.pressSequentially("Use pick_card with count=3", { delay: 10 });
+
+    await page.getByRole("button", { name: "Send" }).click();
+
     // Wait for card picker
-    const cardPicker = page.locator('button').filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ }).first()
-    await expect(cardPicker).toBeVisible({ timeout: 60000 })
-    
+    const cardPicker = page
+      .locator("button")
+      .filter({ hasText: /[AKQJ\d]+[\u2665\u2666\u2663\u2660]/ })
+      .first();
+    await expect(cardPicker).toBeVisible({ timeout: 60000 });
+
     // The card picker should appear AFTER the user message
     // Check the DOM order: user message should come before card picker
-    const userMessage = page.getByText('Use pick_card with count=3').first()
-    
+    const userMessage = page.getByText("Use pick_card with count=3").first();
+
     // Get bounding boxes to verify visual order
-    const userMessageBox = await userMessage.boundingBox()
-    const cardPickerBox = await cardPicker.boundingBox()
-    
-    expect(userMessageBox).toBeTruthy()
-    expect(cardPickerBox).toBeTruthy()
-    
+    const userMessageBox = await userMessage.boundingBox();
+    const cardPickerBox = await cardPicker.boundingBox();
+
+    expect(userMessageBox).toBeTruthy();
+    expect(cardPickerBox).toBeTruthy();
+
     // Card picker should be below user message (higher Y coordinate)
-    expect(cardPickerBox!.y).toBeGreaterThan(userMessageBox!.y)
-    
-    console.log('CardPicker appears inline after user message ✓')
-  })
-})
+    expect(cardPickerBox!.y).toBeGreaterThan(userMessageBox!.y);
+
+    console.log("CardPicker appears inline after user message ✓");
+  });
+});

@@ -13,10 +13,7 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { call, resource, type Operation, type Stream } from "effection";
-import type {
-  SessionHandle,
-  SessionRegistry,
-} from "../../lib/chat/durable-streams/index.ts";
+import type { SessionHandle, SessionRegistry } from "../../lib/chat/durable-streams/index.ts";
 import {
   useSessionRegistryStore,
   useSessionRegistry,
@@ -31,24 +28,31 @@ import {
   PluginSessionRegistryContext,
   ToolRegistryContext,
 } from "../../lib/chat/contexts.ts";
-import { ModelProviderApi, ModelProviderContext, type ModelProviderDriver } from '../../lib/chat/model-provider.ts';
-import { ToolExposureApi, ToolInventoryApi, type ToolDefinition } from '../../lib/chat/tool-inventory.ts'
-import { ToolRuntimeContext } from '../../lib/chat/tool-runtime.ts'
-import { useLogger } from "../../lib/logger/index.ts";
 import {
-  bindModel,
-  createBindingSource,
-  stringParam,
-} from "../model-binder.ts";
+  ModelProviderApi,
+  ModelProviderContext,
+  type ModelProviderDriver,
+} from "../../lib/chat/model-provider.ts";
+import {
+  ToolExposureApi,
+  ToolInventoryApi,
+  type ToolDefinition,
+} from "../../lib/chat/tool-inventory.ts";
+import { ToolRuntimeContext } from "../../lib/chat/tool-runtime.ts";
+import { useLogger } from "../../lib/logger/index.ts";
+import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
-import { buildAgUiCheckpoint, buildAgUiCustomState } from '../../lib/chat/session/ag-ui-checkpoint.ts';
+import {
+  buildAgUiCheckpoint,
+  buildAgUiCustomState,
+} from "../../lib/chat/session/ag-ui-checkpoint.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
   recordConversationSession,
   resolveLatestConversationSession,
-} from './conversation-index.ts';
+} from "./conversation-index.ts";
 import {
   createEmptyStream,
   createHeadMetadataResponse,
@@ -58,7 +62,7 @@ import {
   parseOffsetParam,
   parseSessionIdFromPath,
   parseTimeoutMs,
-} from '@sweatpants/durable-streams';
+} from "@sweatpants/durable-streams";
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
@@ -66,9 +70,9 @@ import type {
   ToolRegistry,
   ToolSchema,
 } from "./types.ts";
-import type { ConversationReplayState } from '../../lib/chat/session/streaming.ts'
-import type { Runtime } from '../../lib/chat/runtime/index.ts'
-import { ToolSessionSamplingProviderContext } from '../../lib/chat/mcp-tools/session/contexts.ts'
+import type { ConversationReplayState } from "../../lib/chat/session/streaming.ts";
+import type { Runtime } from "../../lib/chat/runtime/index.ts";
+import { ToolSessionSamplingProviderContext } from "../../lib/chat/mcp-tools/session/contexts.ts";
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -79,9 +83,8 @@ import { ToolSessionSamplingProviderContext } from '../../lib/chat/mcp-tools/ses
  */
 const durableParamsBinder = bindModel({
   sessionId: stringParam("x-unused-session-id", "sessionId"),
-  conversationId: stringParam('x-conversation-id', 'conversationId'),
+  conversationId: stringParam("x-conversation-id", "conversationId"),
 });
-
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -114,7 +117,7 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
     description: definition.description,
     parameters: definition.parameters,
     isIsomorphic: false,
-  }
+  };
 }
 
 /**
@@ -127,13 +130,13 @@ function createSerializedEventStream(
 ): Stream<string, void> {
   return resource(function* (provide) {
     const subscription = yield* engine;
-    let initialIndex = 0
+    let initialIndex = 0;
 
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
         if (initialIndex < initialEvents.length) {
-          const event = initialEvents[initialIndex++]!
-          return { done: false, value: JSON.stringify(event) }
+          const event = initialEvents[initialIndex++]!;
+          return { done: false, value: JSON.stringify(event) };
         }
 
         const result = yield* subscription.next();
@@ -150,25 +153,25 @@ function mergeReplayState(
   base: ConversationReplayState | undefined,
   body: ChatRequestBody,
 ): ConversationReplayState | undefined {
-  const traces = new Map<string, ConversationReplayState['toolTraces'][number]>()
+  const traces = new Map<string, ConversationReplayState["toolTraces"][number]>();
 
   for (const trace of base?.toolTraces ?? []) {
-    traces.set(trace.callId, trace)
+    traces.set(trace.callId, trace);
   }
 
   for (const output of body.isomorphicClientOutputs ?? []) {
     if (!output.trace) {
-      continue
+      continue;
     }
 
     traces.set(output.callId, {
       callId: output.callId,
       toolName: output.toolName,
       trace: output.trace,
-    })
+    });
   }
 
-  return traces.size > 0 ? { toolTraces: Array.from(traces.values()) } : undefined
+  return traces.size > 0 ? { toolTraces: Array.from(traces.values()) } : undefined;
 }
 
 function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
@@ -179,15 +182,15 @@ function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runt
           model,
           context,
           ...(options ? { options } : {}),
-        })
-        const subscription = yield* stream
-        yield* provide(subscription)
-      })
+        });
+        const subscription = yield* stream;
+        yield* provide(subscription);
+      });
     },
     *generateImages() {
-      throw new Error('ModelProviderApi runtime adapter does not support image generation')
+      throw new Error("ModelProviderApi runtime adapter does not support image generation");
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -215,24 +218,21 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const request = ctx.request;
       const bindingSource = createBindingSource(request);
       const pathSessionId = parseSessionIdFromPath(new URL(request.url).pathname);
-      const {
-        sessionId: requestedSessionId,
-        conversationId: requestedConversationIdParam,
-      } = durableParamsBinder(bindingSource);
-      const parsedOffset = parseOffsetParam(
-        bindingSource.searchParams.get("offset"),
-      );
+      const { sessionId: requestedSessionId, conversationId: requestedConversationIdParam } =
+        durableParamsBinder(bindingSource);
+      const parsedOffset = parseOffsetParam(bindingSource.searchParams.get("offset"));
       const liveMode = parseLiveMode(bindingSource.searchParams.get("live"));
       const timeoutMs = parseTimeoutMs(bindingSource.searchParams.get("timeout"));
       const method = request.method.toUpperCase();
       const isProtocolMutation =
         pathSessionId !== undefined &&
-        (method === 'PUT' || method === 'POST' || method === 'DELETE');
+        (method === "PUT" || method === "POST" || method === "DELETE");
 
       // Parse request body for mutating requests only.
-      const body = request.method === "POST" && !isProtocolMutation
-        ? ((yield* call(() => request.json())) as ChatRequestBody)
-        : ({ messages: [] } as ChatRequestBody);
+      const body =
+        request.method === "POST" && !isProtocolMutation
+          ? ((yield* call(() => request.json())) as ChatRequestBody)
+          : ({ messages: [] } as ChatRequestBody);
 
       const requestedConversationId =
         body.conversationId?.trim() || requestedConversationIdParam?.trim() || undefined;
@@ -247,12 +247,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         requestedConversationId !== undefined &&
         pathSessionId === undefined &&
         requestedSessionId === undefined &&
-        method !== 'POST';
+        method !== "POST";
       const resolvedConversationSessionId = shouldResolveConversation
-        ? yield* resolveLatestConversationSession(
-            bufferStore,
-            requestedConversationId,
-          )
+        ? yield* resolveLatestConversationSession(bufferStore, requestedConversationId)
         : null;
 
       if (shouldResolveConversation && !resolvedConversationSessionId) {
@@ -262,16 +259,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Determine session ID
       const sessionId =
-        pathSessionId ??
-        requestedSessionId ??
-        resolvedConversationSessionId ??
-        crypto.randomUUID();
+        pathSessionId ?? requestedSessionId ?? resolvedConversationSessionId ?? crypto.randomUUID();
       const isReconnect =
-        (
-          pathSessionId !== undefined ||
+        (pathSessionId !== undefined ||
           requestedSessionId !== undefined ||
-          requestedConversationId !== undefined
-        ) &&
+          requestedConversationId !== undefined) &&
         (parsedOffset.value !== null || parsedOffset.isNow);
       let startLSN = parsedOffset.value ?? 0;
 
@@ -300,7 +292,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         return yield* createProtocolMutationResponse({
           ctx,
           sessionId,
-          method: method as 'PUT' | 'POST' | 'DELETE',
+          method: method as "PUT" | "POST" | "DELETE",
           bufferStore,
           registryStore,
           log,
@@ -315,7 +307,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const runtime = createRuntimeFromModelProviderDriver(modelProviderDriver);
       const model = yield* ModelProviderApi.model();
       const streamOptions = yield* ModelProviderApi.streamOptions();
-      log.debug({ provider: model.provider, model: model.id, api: model.api }, "model provider configured");
+      log.debug(
+        { provider: model.provider, model: model.id, api: model.api },
+        "model provider configured",
+      );
 
       const tools = yield* ToolRegistryContext.get();
       if (!tools) {
@@ -326,8 +321,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       log.debug({ toolCount: tools.length }, "tools configured");
 
       const resolvePersona = yield* PersonaResolverContext.get();
-      const maxIterations =
-        (yield* MaxIterationsContext.get()) ?? maxToolIterations;
+      const maxIterations = (yield* MaxIterationsContext.get()) ?? maxToolIterations;
 
       // Get optional plugin contexts for MCP plugin tools
       const pluginRegistry = yield* PluginRegistryContext.get();
@@ -363,9 +357,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               "PluginSessionManagerContext not set - creating per-request manager (multi-step elicitation may not work)",
             );
           } else {
-            log.error(
-              "Neither PluginSessionManagerContext nor PluginSessionRegistryContext set!",
-            );
+            log.error("Neither PluginSessionManagerContext nor PluginSessionRegistryContext set!");
             log.error("Multi-step elicitation will not work.");
           }
         }
@@ -373,8 +365,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Get session registry from durable streams context
       log.debug("getting session registry");
-      const registry: SessionRegistry<string> =
-        yield* useSessionRegistry<string>();
+      const registry: SessionRegistry<string> = yield* useSessionRegistry<string>();
       log.debug("session registry acquired");
 
       // Create tool registry
@@ -382,7 +373,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const inventoryEntries = yield* ToolInventoryApi.list();
       const activeToolRuntime = yield* ToolRuntimeContext.get();
       if (!activeToolRuntime) {
-        throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.');
+        throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
       }
 
       // Build tool schemas
@@ -394,9 +385,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // Handle persona mode vs manual mode
       if (body.persona) {
         if (!resolvePersona) {
-          throw new Error(
-            "Persona mode not supported - no resolver configured",
-          );
+          throw new Error("Persona mode not supported - no resolver configured");
         }
 
         const resolved = resolvePersona(
@@ -423,8 +412,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             tools: Array.from(
               new Set([
                 ...resolved.capabilities.tools.filter(
-                  (name) =>
-                    toolRegistry.has(name) || clientToolNames.includes(name),
+                  (name) => toolRegistry.has(name) || clientToolNames.includes(name),
                 ),
                 ...clientToolNames,
               ]),
@@ -471,14 +459,16 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       // Build model-facing tool schemas through inventory + exposure policy.
+      // `enabledPlugins` names match inventory `definition.name` directly because
+      // both use the same final tool name from the single generated registry.
       const exposedDefinitions = yield* ToolExposureApi.definitions({
-        phase: 'outer-chat',
+        phase: "outer-chat",
         entries: inventoryEntries,
         request: body,
         enabledTools: body.enabledTools === true ? true : Array.from(enabledToolNames),
         enabledPlugins: body.enabledPlugins ?? [],
         metadata: { sessionId, conversationId: requestedConversationId },
-      })
+      });
 
       const clientSchemas = body.isomorphicTools ?? [];
 
@@ -486,10 +476,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // tools, but executable outer calls must resolve through ToolInventory.
       const seenNames = new Set<string>();
       const toolSchemas: ToolSchema[] = [];
-      for (const schema of [
-        ...exposedDefinitions.map(definitionToToolSchema),
-        ...clientSchemas,
-      ]) {
+      for (const schema of [...exposedDefinitions.map(definitionToToolSchema), ...clientSchemas]) {
         if (!seenNames.has(schema.name)) {
           seenNames.add(schema.name);
           toolSchemas.push(schema);
@@ -516,10 +503,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       if (isReconnect) {
         // RECONNECT PATH: Acquire existing session, stream from buffer at offset
-        log.debug(
-          { sessionId, startLSN },
-          "reconnect path: acquiring existing session",
-        );
+        log.debug({ sessionId, startLSN }, "reconnect path: acquiring existing session");
         session = yield* registry.acquire(sessionId);
         log.debug({ sessionId }, "reconnect path: session acquired");
       } else {
@@ -570,62 +554,62 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events
-        const initialReplayState = mergeReplayState(body.replayState, body)
-        const initialEvents: StreamEvent[] = body.messages.length > 0
-          ? [
-              ...(requestedConversationId
-                ? [{
-                    type: 'ag_ui_run_started',
-                    run: {
-                      threadId: requestedConversationId,
-                      runId: sessionId,
-                    },
-                    input: {
-                      messages: body.messages,
-                    },
-                  } satisfies StreamEvent,
-                  {
-                    type: 'ag_ui_messages_snapshot',
-                    run: {
-                      threadId: requestedConversationId,
-                      runId: sessionId,
-                    },
-                    messages: body.messages,
-                  } satisfies StreamEvent,
-                  {
-                    type: 'ag_ui_state_snapshot',
-                    run: {
-                      threadId: requestedConversationId,
-                      runId: sessionId,
-                    },
-                    state: buildAgUiCustomState({
-                      ...(initialReplayState ? { replay: initialReplayState } : {}),
-                    }),
-                  } satisfies StreamEvent,
-              {
-                type: 'ag_ui_checkpoint',
-                checkpoint: buildAgUiCheckpoint({
-                  threadId: requestedConversationId,
-                  runId: sessionId,
-                  messages: body.messages,
-                  assistantContent: '',
-                  toolCalls: [],
-                  serverToolResults: [],
-                  ...(initialReplayState ? { replay: initialReplayState } : {}),
-                }),
-              } satisfies StreamEvent]
-            : []),
-          ]
-        : []
+        const initialReplayState = mergeReplayState(body.replayState, body);
+        const initialEvents: StreamEvent[] =
+          body.messages.length > 0
+            ? [
+                ...(requestedConversationId
+                  ? [
+                      {
+                        type: "ag_ui_run_started",
+                        run: {
+                          threadId: requestedConversationId,
+                          runId: sessionId,
+                        },
+                        input: {
+                          messages: body.messages,
+                        },
+                      } satisfies StreamEvent,
+                      {
+                        type: "ag_ui_messages_snapshot",
+                        run: {
+                          threadId: requestedConversationId,
+                          runId: sessionId,
+                        },
+                        messages: body.messages,
+                      } satisfies StreamEvent,
+                      {
+                        type: "ag_ui_state_snapshot",
+                        run: {
+                          threadId: requestedConversationId,
+                          runId: sessionId,
+                        },
+                        state: buildAgUiCustomState({
+                          ...(initialReplayState ? { replay: initialReplayState } : {}),
+                        }),
+                      } satisfies StreamEvent,
+                      {
+                        type: "ag_ui_checkpoint",
+                        checkpoint: buildAgUiCheckpoint({
+                          threadId: requestedConversationId,
+                          runId: sessionId,
+                          messages: body.messages,
+                          assistantContent: "",
+                          toolCalls: [],
+                          serverToolResults: [],
+                          ...(initialReplayState ? { replay: initialReplayState } : {}),
+                        }),
+                      } satisfies StreamEvent,
+                    ]
+                  : []),
+              ]
+            : [];
         const serializedStream = createSerializedEventStream(engine, initialEvents);
         log.debug({ sessionId }, "new session path: serialized stream created");
 
         // Acquire session with the engine as source
         // The registry manages the writer task lifecycle internally via useBackgroundTask
-        log.debug(
-          { sessionId },
-          "new session path: acquiring session with source",
-        );
+        log.debug({ sessionId }, "new session path: acquiring session with source");
         session = yield* registry.acquire(sessionId, {
           source: serializedStream,
         });
@@ -633,11 +617,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       if (requestedConversationId) {
-        yield* recordConversationSession(
-          bufferStore,
-          requestedConversationId,
-          sessionId,
-        );
+        yield* recordConversationSession(bufferStore, requestedConversationId, sessionId);
       }
 
       return yield* createProtocolReadResponse({

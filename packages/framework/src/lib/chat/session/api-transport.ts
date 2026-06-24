@@ -1,25 +1,34 @@
 /**
  * lib/chat/session/api-transport.ts
  */
-import type { Operation } from 'effection'
-import { call } from 'effection'
-import type { Message } from '../types.ts'
-import type { StreamChatOptions } from './options.ts'
+import type { Operation } from "effection";
+import { call } from "effection";
+import type { Message } from "../types.ts";
+import type { StreamChatOptions } from "./options.ts";
+
+/**
+ * Derive the server-side `enabledPlugins` list from the plugin handles passed
+ * to the session. Each plugin's `client.toolName` is the canonical tool name
+ * the server should expose. Authors never specify `enabledPlugins` directly.
+ */
+function deriveEnabledPlugins(options: StreamChatOptions): string[] {
+  return (options.plugins ?? []).map((plugin) => plugin.client.toolName);
+}
 
 export function* executeChatFetch(
   baseUrl: string,
   messages: Message[],
   options: StreamChatOptions,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Operation<Response> {
   const response = yield* call(() =>
     fetch(baseUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages,
         enabledTools: options.enabledTools,
-        enabledPlugins: options.enabledPlugins,
+        enabledPlugins: deriveEnabledPlugins(options),
         systemPrompt: options.systemPrompt,
         persona: options.persona,
         personaConfig: options.personaConfig,
@@ -32,24 +41,24 @@ export function* executeChatFetch(
         ...(options.conversationId && { conversationId: options.conversationId }),
       }),
       signal,
-    })
-  )
+    }),
+  );
 
   if (!response.ok) {
-    const errorText = yield* call(() => response.text())
-    let errorMessage = `Chat API error: ${response.status}`
+    const errorText = yield* call(() => response.text());
+    let errorMessage = `Chat API error: ${response.status}`;
     try {
-      const json = JSON.parse(errorText)
-      if (json.error) errorMessage = json.error
+      const json = JSON.parse(errorText);
+      if (json.error) errorMessage = json.error;
     } catch {
-      errorMessage += ` - ${errorText}`
+      errorMessage += ` - ${errorText}`;
     }
-    throw new Error(errorMessage)
+    throw new Error(errorMessage);
   }
 
   if (!response.body) {
-    throw new Error('No response body from chat API')
+    throw new Error("No response body from chat API");
   }
 
-  return response
+  return response;
 }

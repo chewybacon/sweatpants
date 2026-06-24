@@ -11,7 +11,7 @@ import { playTttTool } from '../tools/play-ttt/tool.ts'
 import { tictactoeTool } from '../tools/tictactoe/tool.ts'
 
 const registry = createWorkerToolRegistry([
-  { name: 'book-flight_book_flight', handler: function* (params, ctx) {
+  { name: 'book_flight', handler: function* (params, ctx) {
     const tool = bookFlightTool
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {
@@ -47,7 +47,7 @@ const registry = createWorkerToolRegistry([
     }
     return yield* (tool as any)(params, ctx)
   } },
-  { name: 'play-ttt_play_ttt', handler: function* (params, ctx) {
+  { name: 'play_ttt', handler: function* (params, ctx) {
     const tool = playTttTool
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {
@@ -65,7 +65,7 @@ const registry = createWorkerToolRegistry([
     }
     return yield* (tool as any)(params, ctx)
   } },
-  { name: 'tictactoe_tictactoe', handler: function* (params, ctx) {
+  { name: 'tictactoe', handler: function* (params, ctx) {
     const tool = tictactoeTool
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {

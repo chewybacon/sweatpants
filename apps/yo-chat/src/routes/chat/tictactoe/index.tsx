@@ -9,69 +9,64 @@
  * Compare this to /chat/play-ttt which uses MCP++ extensions
  * (sampleTools, sampleSchema) and wins much more often.
  */
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
-import { tictactoePlugin } from '@/tools/tictactoe/plugin.ts'
-import { tictactoeTool } from '@/tools/tictactoe/tool'
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
+import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
+import { tictactoePlugin } from "@/tools/tictactoe/plugin.ts";
 
-export const Route = createFileRoute('/chat/tictactoe/')({
+export const Route = createFileRoute("/chat/tictactoe/")({
   component: TicTacToeDemo,
-})
+});
 
 /**
  * Renders a tool call part with its inline emissions.
  */
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0
+  const hasEmissions = toolCall.emissions.length > 0;
 
   return (
     <div className="my-2">
       {toolCall.emissions.map((emission) => {
-        const Component = emission.component
-        if (!Component) return null
+        const Component = emission.component;
+        if (!Component) return null;
 
         return (
           <Component
             key={emission.id}
             {...emission.props}
             onRespond={emission.onRespond}
-            disabled={emission.status !== 'pending'}
+            disabled={emission.status !== "pending"}
             response={emission.response}
           />
-        )
+        );
       })}
 
-      {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
-        <div className="text-xs text-slate-500 animate-pulse">
-          Running {toolCall.name}...
-        </div>
+      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
+        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
       )}
 
-      {toolCall.state === 'error' && toolCall.error && (
-        <div className="text-xs text-red-400">
-          Error: {toolCall.error}
-        </div>
+      {toolCall.state === "error" && toolCall.error && (
+        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
       )}
     </div>
-  )
+  );
 }
 
 /**
  * Renders a single message with its parts.
  */
 function Message({ message }: { message: ChatMessage }) {
-  const isUser = message.role === 'user'
+  const isUser = message.role === "user";
 
   return (
-    <div className={`mb-6 ${isUser ? 'text-right' : ''}`}>
-      <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
+    <div className={`mb-6 ${isUser ? "text-right" : ""}`}>
+      <div className={`inline-block max-w-[85%] ${isUser ? "" : "w-full"}`}>
         <div
           className={`text-xs mb-1 font-bold tracking-wider uppercase ${
-            isUser ? 'text-purple-400' : 'text-cyan-400'
+            isUser ? "text-purple-400" : "text-cyan-400"
           }`}
         >
-          {isUser ? 'You' : 'Model'}
+          {isUser ? "You" : "Model"}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>
           )}
@@ -80,12 +75,12 @@ function Message({ message }: { message: ChatMessage }) {
         <div
           className={`p-4 rounded-lg ${
             isUser
-              ? 'bg-purple-950/30 border border-purple-900/50 text-purple-100'
-              : 'bg-slate-800/50 text-slate-200'
+              ? "bg-purple-950/30 border border-purple-900/50 text-purple-100"
+              : "bg-slate-800/50 text-slate-200"
           }`}
         >
           {message.parts.map((part) => {
-            if (part.type === 'reasoning') {
+            if (part.type === "reasoning") {
               return (
                 <details key={part.id} className="mb-3 text-xs">
                   <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
@@ -96,24 +91,24 @@ function Message({ message }: { message: ChatMessage }) {
                     dangerouslySetInnerHTML={{ __html: part.rendered }}
                   />
                 </details>
-              )
+              );
             }
 
-            if (part.type === 'tool-call') {
-              return <ToolCallBlock key={part.id} toolCall={part} />
+            if (part.type === "tool-call") {
+              return <ToolCallBlock key={part.id} toolCall={part} />;
             }
 
-            if (part.type === 'text') {
+            if (part.type === "text") {
               return (
                 <div
                   key={part.id}
                   className="prose prose-invert prose-sm max-w-none leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: part.rendered }}
                 />
-              )
+              );
             }
 
-            return null
+            return null;
           })}
 
           {message.isStreaming && (
@@ -122,32 +117,20 @@ function Message({ message }: { message: ChatMessage }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function TicTacToeDemo() {
-  const {
-    messages,
-    streamingMessage,
-    isStreaming,
-    pipelineReady,
-    send,
-    abort,
-    reset,
-    error,
-  } = useChat({
-    pipeline: 'markdown',
-    // No isomorphic tools - using plugin instead
-    tools: [],
-    // TicTacToe plugin. Register canonical runtime name for AgentCore mode.
-    plugins: [
-      tictactoePlugin.client,
-      { ...tictactoePlugin.client, toolName: 'tictactoe' },
-    ],
-    // Tell server to only enable tictactoe plugin
-    enabledPlugins: [tictactoeTool.name],
-    // System prompt for the game
-    systemPrompt: `You are playing tic-tac-toe against the user.
+  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
+    useChat({
+      pipeline: "markdown",
+      // No isomorphic tools - using plugin instead
+      tools: [],
+      // TicTacToe plugin handle. enabledPlugins is derived automatically from
+      // the plugin's tool name.
+      plugins: [tictactoePlugin],
+      // System prompt for the game
+      systemPrompt: `You are playing tic-tac-toe against the user.
 
 CRITICAL: You MUST use the tictactoe tool to play. Just call it once - it handles the entire game.
 Do NOT draw ASCII boards or describe moves in text. Just call the tool.
@@ -166,22 +149,22 @@ Board positions:
 6 | 7 | 8
 
 When asked for a move, respond with ONLY a single digit (0-8). Nothing else.`,
-  })
+    });
 
-  const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingMessage?.parts.length])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, streamingMessage?.parts.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-    send(input.trim())
-    setInput('')
-  }
+    e.preventDefault();
+    if (!input.trim() || isStreaming) return;
+    send(input.trim());
+    setInput("");
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
@@ -245,7 +228,7 @@ When asked for a move, respond with ONLY a single digit (0-8). Nothing else.`,
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               isStreaming
-                ? 'Waiting for response...'
+                ? "Waiting for response..."
                 : "Type a message... (try: Let's play tic-tac-toe!)"
             }
             disabled={isStreaming}
@@ -284,12 +267,12 @@ When asked for a move, respond with ONLY a single digit (0-8). Nothing else.`,
           <div className="flex items-center gap-4">
             <span>
               <span className="text-amber-600">MCP Standard</span>
-              {' (no structured output)'}
+              {" (no structured output)"}
             </span>
             <span className="text-cyan-400">{messages.length} messages</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

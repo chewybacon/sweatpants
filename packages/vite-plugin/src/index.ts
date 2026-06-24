@@ -9,34 +9,35 @@
  *
  * Inspired by TanStack Start's approach to type-safe, low-ceremony APIs.
  */
-import type { Plugin } from 'vite'
-import { toolDiscoveryPlugin } from './tool-discovery.ts'
-import type { ToolDiscoveryOptions } from './types.ts'
+import type { Plugin } from "vite";
+import { toolDiscoveryPlugin } from "./tool-discovery.ts";
+import type { ToolDiscoveryOptions } from "./types.ts";
 
-export type { ToolDiscoveryOptions }
-export { toolDiscoveryPlugin }
-export { nodeWorkerPlugin } from './node-worker-plugin.ts'
+export type { ToolDiscoveryOptions };
+export { toolDiscoveryPlugin };
+export { nodeWorkerPlugin } from "./node-worker-plugin.ts";
 
 // Test utilities - exported for testing discovery logic without file I/O
 export {
   discoverToolsInContent,
   generateRegistryContent,
   generateWorkerContent,
-  generateAgentCoreRegistryContent,
   calculateImportPath,
   calculateWorkerImportPath,
   toCamelCase,
-} from './tool-discovery.ts'
+  deriveNameFromExportName,
+  deriveNameFromFilePath,
+} from "./tool-discovery.ts";
 
-export { resolveToolDiscoveryOptions } from './types.ts'
-export type { DiscoveredTool, ResolvedToolDiscoveryOptions } from './types.ts'
+export { resolveToolDiscoveryOptions } from "./types.ts";
+export type { DiscoveredTool, ResolvedToolDiscoveryOptions } from "./types.ts";
 
 export interface FrameworkOptions {
   /**
    * Tool discovery options.
    * Set to false to disable tool discovery.
    */
-  tools?: ToolDiscoveryOptions | false
+  tools?: ToolDiscoveryOptions | false;
 }
 
 /**
@@ -60,13 +61,13 @@ export interface FrameworkOptions {
  * ```
  */
 export function frameworkPlugin(options: FrameworkOptions = {}): Plugin[] {
-  const plugins: Plugin[] = []
+  const plugins: Plugin[] = [];
 
   if (options.tools !== false) {
-    plugins.push(toolDiscoveryPlugin(options.tools))
+    plugins.push(toolDiscoveryPlugin(options.tools));
   }
 
-  return plugins
+  return plugins;
 }
 
-export default frameworkPlugin
+export default frameworkPlugin;

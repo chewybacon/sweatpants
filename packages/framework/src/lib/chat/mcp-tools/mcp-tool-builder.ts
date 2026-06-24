@@ -63,8 +63,8 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
-import type { z } from 'zod'
+import type { Operation } from "effection";
+import type { z } from "zod";
 import type {
   McpToolContext,
   McpToolContextWithElicits,
@@ -72,7 +72,7 @@ import type {
   McpToolHandoffConfigWithElicits,
   McpToolLimits,
   ElicitsMap,
-} from './mcp-tool-types.ts'
+} from "./mcp-tool-types.ts";
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -81,16 +81,11 @@ import type {
 /**
  * Phantom type carrier for builder state.
  */
-export interface McpToolTypes<
-  in out TParams,
-  in out THandoff,
-  in out TClient,
-  in out TResult,
-> {
-  params: TParams
-  handoff: THandoff
-  client: TClient
-  result: TResult
+export interface McpToolTypes<in out TParams, in out THandoff, in out TClient, in out TResult> {
+  params: TParams;
+  handoff: THandoff;
+  client: TClient;
+  result: TResult;
 }
 
 // =============================================================================
@@ -101,54 +96,54 @@ export interface McpToolTypes<
  * Base builder - has name, needs everything else.
  */
 export interface McpToolBuilderBase<TName extends string> {
-  _types: McpToolTypes<undefined, undefined, undefined, undefined>
-  _name: TName
+  _types: McpToolTypes<undefined, undefined, undefined, undefined>;
+  _name: TName;
 
   /** Set the description shown to the LLM */
-  description(desc: string): McpToolBuilderWithDescription<TName>
+  description(desc: string): McpToolBuilderWithDescription<TName>;
 }
 
 /**
  * Has name + description, needs parameters.
  */
 export interface McpToolBuilderWithDescription<TName extends string> {
-  _types: McpToolTypes<undefined, undefined, undefined, undefined>
-  _name: TName
-  _description: string
+  _types: McpToolTypes<undefined, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
 
   /** Set the Zod schema for tool parameters */
   parameters<TSchema extends z.ZodType>(
-    schema: TSchema
-  ): McpToolBuilderWithParams<TName, z.infer<TSchema>>
+    schema: TSchema,
+  ): McpToolBuilderWithParams<TName, z.infer<TSchema>>;
 }
 
 /**
  * Has name + description + params. Must call `.elicits()` next.
- * 
+ *
  * All MCP tools must declare their elicitation surface, even if empty.
  * This ensures type-safe `ctx.elicit()` calls and enables plugin detection.
  */
 export interface McpToolBuilderWithParams<TName extends string, TParams> {
-  _types: McpToolTypes<TParams, undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
+  _types: McpToolTypes<TParams, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
+  _parameters: z.ZodType<TParams>;
 
   /**
    * Declare required MCP client capabilities.
    * Tool won't be listed if client doesn't have these.
    */
-  requires(caps: { elicitation?: boolean; sampling?: boolean }): this
+  requires(caps: { elicitation?: boolean; sampling?: boolean }): this;
 
   /**
    * Set default limits for branch execution.
    * Can be overridden at runtime or per-branch.
    */
-  limits(limits: McpToolLimits): this
+  limits(limits: McpToolLimits): this;
 
   /**
    * Declare the elicitation surface for type-safe UI bridging.
-   * 
+   *
    * **This is required** - all MCP tools must call `.elicits()`.
    * For tools that don't need elicitation, pass an empty object: `.elicits({})`.
    *
@@ -171,7 +166,7 @@ export interface McpToolBuilderWithParams<TName extends string, TParams> {
    *     const picked = yield* ctx.elicit('pickFlight', { message: 'Pick' })
    *     // ...
    *   })
-   * 
+   *
    * // Tool without elicitation (still must call .elicits())
    * const calculator = createMcpTool('calculate')
    *   .description('Do math')
@@ -184,8 +179,8 @@ export interface McpToolBuilderWithParams<TName extends string, TParams> {
    * ```
    */
   elicits<TElicits extends ElicitsMap>(
-    schemas: TElicits
-  ): McpToolBuilderWithElicits<TName, TParams, TElicits>
+    schemas: TElicits,
+  ): McpToolBuilderWithElicits<TName, TParams, TElicits>;
 }
 
 /**
@@ -196,35 +191,35 @@ export interface McpToolBuilderWithElicits<
   TParams,
   TElicits extends ElicitsMap,
 > {
-  _types: McpToolTypes<TParams, undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
-  _elicits: TElicits
+  _types: McpToolTypes<TParams, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
+  _parameters: z.ZodType<TParams>;
+  _elicits: TElicits;
 
   /**
    * Declare required MCP client capabilities.
    */
-  requires(caps: { elicitation?: boolean; sampling?: boolean }): this
+  requires(caps: { elicitation?: boolean; sampling?: boolean }): this;
 
   /**
    * Set default limits for branch execution.
    */
-  limits(limits: McpToolLimits): this
+  limits(limits: McpToolLimits): this;
 
   /**
    * Define a simple execute function with keyed elicitation.
    */
   execute<TResult>(
-    fn: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>
-  ): FinalizedMcpToolWithElicits<TName, TParams, undefined, undefined, TResult, TElicits>
+    fn: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>,
+  ): FinalizedMcpToolWithElicits<TName, TParams, undefined, undefined, TResult, TElicits>;
 
   /**
    * Define handoff pattern with keyed elicitation.
    */
   handoff<THandoff, TClient, TResult>(
-    config: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
-  ): FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+    config: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>,
+  ): FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>;
 }
 
 // =============================================================================
@@ -234,36 +229,30 @@ export interface McpToolBuilderWithElicits<
 /**
  * A fully configured MCP tool.
  */
-export interface FinalizedMcpTool<
-  TName extends string,
-  TParams,
-  THandoff,
-  TClient,
-  TResult,
-> {
+export interface FinalizedMcpTool<TName extends string, TParams, THandoff, TClient, TResult> {
   /** Phantom type carrier */
-  _types: McpToolTypes<TParams, THandoff, TClient, TResult>
+  _types: McpToolTypes<TParams, THandoff, TClient, TResult>;
 
   /** Tool name (used by LLM) */
-  name: TName
+  name: TName;
 
   /** Description (shown to LLM) */
-  description: string
+  description: string;
 
   /** Zod parameter schema */
-  parameters: z.ZodType<TParams>
+  parameters: z.ZodType<TParams>;
 
   /** Required MCP capabilities */
-  requires?: { elicitation?: boolean; sampling?: boolean }
+  requires?: { elicitation?: boolean; sampling?: boolean };
 
   /** Default limits for branch execution */
-  limits?: McpToolLimits
+  limits?: McpToolLimits;
 
   /** Handoff config (if using handoff pattern) */
-  handoffConfig?: McpToolHandoffConfig<TParams, THandoff, TClient, TResult>
+  handoffConfig?: McpToolHandoffConfig<TParams, THandoff, TClient, TResult>;
 
   /** Execute function (if not using handoff) */
-  execute?: (params: TParams, ctx: McpToolContext) => Operation<TResult>
+  execute?: (params: TParams, ctx: McpToolContext) => Operation<TResult>;
 }
 
 /**
@@ -281,31 +270,31 @@ export interface FinalizedMcpToolWithElicits<
   TElicits extends ElicitsMap,
 > {
   /** Phantom type carrier */
-  _types: McpToolTypes<TParams, THandoff, TClient, TResult>
+  _types: McpToolTypes<TParams, THandoff, TClient, TResult>;
 
   /** Tool name (used by LLM) */
-  name: TName
+  name: TName;
 
   /** Description (shown to LLM) */
-  description: string
+  description: string;
 
   /** Zod parameter schema */
-  parameters: z.ZodType<TParams>
+  parameters: z.ZodType<TParams>;
 
   /** Elicitation schemas map (finite surface for UI bridging) */
-  elicits: TElicits
+  elicits: TElicits;
 
   /** Required MCP capabilities */
-  requires?: { elicitation?: boolean; sampling?: boolean }
+  requires?: { elicitation?: boolean; sampling?: boolean };
 
   /** Default limits for branch execution */
-  limits?: McpToolLimits
+  limits?: McpToolLimits;
 
   /** Handoff config with keyed elicitation */
-  handoffConfig?: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>
+  handoffConfig?: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>;
 
   /** Execute function with keyed elicitation */
-  execute?: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>
+  execute?: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>;
 }
 
 // =============================================================================
@@ -315,61 +304,63 @@ export interface FinalizedMcpToolWithElicits<
 /**
  * Extract the result type from a finalized tool.
  */
-export type InferMcpToolResult<T> = T extends FinalizedMcpTool<any, any, any, any, infer R>
-  ? R
-  : never
+export type InferMcpToolResult<T> =
+  T extends FinalizedMcpTool<any, any, any, any, infer R> ? R : never;
 
 /**
  * Extract the params type from a finalized tool.
  */
-export type InferMcpToolParams<T> = T extends FinalizedMcpTool<any, infer P, any, any, any>
-  ? P
-  : never
+export type InferMcpToolParams<T> =
+  T extends FinalizedMcpTool<any, infer P, any, any, any> ? P : never;
 
 /**
  * Extract the handoff type from a finalized tool.
  */
-export type InferMcpToolHandoff<T> = T extends FinalizedMcpTool<any, any, infer H, any, any>
-  ? H
-  : never
+export type InferMcpToolHandoff<T> =
+  T extends FinalizedMcpTool<any, any, infer H, any, any> ? H : never;
 
 /**
  * Extract the client output type from a finalized tool.
  */
-export type InferMcpToolClient<T> = T extends FinalizedMcpTool<any, any, any, infer C, any>
-  ? C
-  : never
+export type InferMcpToolClient<T> =
+  T extends FinalizedMcpTool<any, any, any, infer C, any> ? C : never;
 
 /**
  * Any MCP tool (for arrays/registries).
  */
-export type AnyMcpTool = FinalizedMcpTool<string, any, any, any, any>
+export type AnyMcpTool = FinalizedMcpTool<string, any, any, any, any>;
 
 /**
  * Any bridgeable MCP tool (has `.elicits()`).
  */
-export type AnyBridgeableMcpTool = FinalizedMcpToolWithElicits<string, any, any, any, any, ElicitsMap>
+export type AnyBridgeableMcpTool = FinalizedMcpToolWithElicits<
+  string,
+  any,
+  any,
+  any,
+  any,
+  ElicitsMap
+>;
 
 /**
  * Extract the elicits map from a bridgeable tool.
  */
-export type InferMcpToolElicits<T> = T extends FinalizedMcpToolWithElicits<any, any, any, any, any, infer E>
-  ? E
-  : never
+export type InferMcpToolElicits<T> =
+  T extends FinalizedMcpToolWithElicits<any, any, any, any, any, infer E> ? E : never;
 
 // =============================================================================
 // BUILDER IMPLEMENTATION
 // =============================================================================
 
 interface BuilderState {
-  name: string
-  description?: string
-  parameters?: z.ZodType
-  elicits?: ElicitsMap
-  requires?: { elicitation?: boolean; sampling?: boolean }
-  limits?: McpToolLimits
-  handoffConfig?: McpToolHandoffConfig<any, any, any, any>
-  executeFn?: (params: any, ctx: McpToolContext) => Operation<any>
+  name: string;
+  description?: string;
+  parameters?: z.ZodType;
+  elicits?: ElicitsMap;
+  requires?: { elicitation?: boolean; sampling?: boolean };
+  limits?: McpToolLimits;
+  handoffConfig?: McpToolHandoffConfig<any, any, any, any>;
+  executeFn?: (params: any, ctx: McpToolContext) => Operation<any>;
 }
 
 function createBuilder(state: BuilderState): any {
@@ -381,37 +372,39 @@ function createBuilder(state: BuilderState): any {
     _elicits: state.elicits,
 
     description(desc: string) {
-      return createBuilder({ ...state, description: desc })
+      return createBuilder({ ...state, description: desc });
     },
 
     parameters(schema: z.ZodType) {
-      return createBuilder({ ...state, parameters: schema })
+      return createBuilder({ ...state, parameters: schema });
     },
 
     elicits(schemas: ElicitsMap) {
       if (!state.parameters) {
-        throw new Error(`Tool "${state.name}": .parameters() must be called before .elicits()`)
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .elicits()`);
       }
-      return createBuilder({ ...state, elicits: schemas })
+      return createBuilder({ ...state, elicits: schemas });
     },
 
     requires(caps: { elicitation?: boolean; sampling?: boolean }) {
-      return createBuilder({ ...state, requires: caps })
+      return createBuilder({ ...state, requires: caps });
     },
 
     limits(limits: McpToolLimits) {
-      return createBuilder({ ...state, limits })
+      return createBuilder({ ...state, limits });
     },
 
     execute(fn: (params: any, ctx: any) => Operation<any>) {
       if (!state.description) {
-        throw new Error(`Tool "${state.name}": .description() must be called before .execute()`)
+        throw new Error(`Tool "${state.name}": .description() must be called before .execute()`);
       }
       if (!state.parameters) {
-        throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`)
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`);
       }
       if (!state.elicits) {
-        throw new Error(`Tool "${state.name}": .elicits() must be called before .execute(). Use .elicits({}) if no elicitation is needed.`)
+        throw new Error(
+          `Tool "${state.name}": .elicits() must be called before .execute(). Use .elicits({}) if no elicitation is needed.`,
+        );
       }
 
       return {
@@ -423,18 +416,20 @@ function createBuilder(state: BuilderState): any {
         requires: state.requires,
         limits: state.limits,
         execute: fn,
-      } as FinalizedMcpToolWithElicits<any, any, undefined, undefined, any, any>
+      } as FinalizedMcpToolWithElicits<any, any, undefined, undefined, any, any>;
     },
 
     handoff(config: McpToolHandoffConfig<any, any, any, any>) {
       if (!state.description) {
-        throw new Error(`Tool "${state.name}": .description() must be called before .handoff()`)
+        throw new Error(`Tool "${state.name}": .description() must be called before .handoff()`);
       }
       if (!state.parameters) {
-        throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`)
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`);
       }
       if (!state.elicits) {
-        throw new Error(`Tool "${state.name}": .elicits() must be called before .handoff(). Use .elicits({}) if no elicitation is needed.`)
+        throw new Error(
+          `Tool "${state.name}": .elicits() must be called before .handoff(). Use .elicits({}) if no elicitation is needed.`,
+        );
       }
 
       return {
@@ -446,22 +441,33 @@ function createBuilder(state: BuilderState): any {
         requires: state.requires,
         limits: state.limits,
         handoffConfig: config,
-      } as FinalizedMcpToolWithElicits<any, any, any, any, any, any>
+      } as FinalizedMcpToolWithElicits<any, any, any, any, any, any>;
     },
-  }
+  };
 
-  return builder
+  return builder;
 }
 
 /**
  * Create a type-safe MCP tool using the builder pattern.
  *
- * @param name - Unique tool name (used by LLM to invoke)
+ * @param name - Unique tool name (used by LLM to invoke). When omitted, the
+ *   vite plugin derives the name from the export identifier at build time.
+ *   When provided, the name is used as-is and is not rewritten.
  * @returns Builder for configuring the tool
  *
- * @example
+ * @example Name derived from export identifier (requires vite plugin)
  * ```typescript
- * const myTool = createMcpTool('my_tool')
+ * export const myTool = createMcpTool()
+ *   .description('Does something with branches')
+ *   .parameters(z.object({ input: z.string() }))
+ *   .execute(function*(params, ctx) { ... })
+ * // tool.name === 'my' (after 'Tool' suffix is stripped by the vite plugin)
+ * ```
+ *
+ * @example Explicit name override
+ * ```typescript
+ * export const myTool = createMcpTool('my_tool')
  *   .description('Does something with branches')
  *   .parameters(z.object({ input: z.string() }))
  *   .execute(function*(params, ctx) {
@@ -476,9 +482,13 @@ function createBuilder(state: BuilderState): any {
  *     return { first: first.text, detail: detail.text }
  *   })
  * ```
+ *
+ * When called without an argument and without the vite plugin, the tool name
+ * is an empty string placeholder. The vite plugin inserts the derived name at
+ * build time.
  */
-export function createMcpTool<TName extends string>(
-  name: TName
+export function createMcpTool<TName extends string = string>(
+  name?: TName,
 ): McpToolBuilderBase<TName> {
-  return createBuilder({ name }) as McpToolBuilderBase<TName>
+  return createBuilder({ name: name ?? ("" as string) }) as McpToolBuilderBase<TName>;
 }
