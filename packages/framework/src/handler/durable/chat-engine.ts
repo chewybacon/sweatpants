@@ -15,11 +15,19 @@
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
-import { resource, type Operation, type Subscription } from 'effection'
-import type { AssistantMessage as RuntimeAssistantMessage, Context as RuntimeContext, Message as RuntimeMessage, StreamEvent as RuntimeStreamEvent } from '../../lib/chat/runtime/index.ts'
-import type { ServerToolContext, ServerAuthorityContext } from '../../lib/chat/isomorphic-tools/types.ts'
-import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
-import type { StreamEvent, ChatMessage } from '../types.ts'
+import { resource, type Operation, type Subscription } from "effection";
+import type {
+  AssistantMessage as RuntimeAssistantMessage,
+  Context as RuntimeContext,
+  Message as RuntimeMessage,
+  StreamEvent as RuntimeStreamEvent,
+} from "../../lib/chat/runtime/index.ts";
+import type {
+  ServerToolContext,
+  ServerAuthorityContext,
+} from "../../lib/chat/isomorphic-tools/types.ts";
+import type { ToolExecutionTrace } from "../../lib/chat/isomorphic-tools/runtime/emissions.ts";
+import type { StreamEvent, ChatMessage } from "../types.ts";
 import type {
   ChatEngineParams,
   ChatEngine,
@@ -29,19 +37,22 @@ import type {
   IsomorphicTool,
   ToolExecutionResult,
   IsomorphicClientOutput,
-} from './types.ts'
+} from "./types.ts";
 import {
   type ToolExecution,
   type ToolExecutionEvent,
   type ToolExecutionRef,
-} from '../../lib/chat/index.ts'
+} from "../../lib/chat/index.ts";
 import {
   appendAssistantToolCallMessage,
   appendSystemMessage,
   appendToolMessage,
   createTranscriptState,
-} from '../../lib/chat/session/transcript.ts'
-import { buildAgUiCheckpoint, buildAgUiCustomState } from '../../lib/chat/session/ag-ui-checkpoint.ts'
+} from "../../lib/chat/session/transcript.ts";
+import {
+  buildAgUiCheckpoint,
+  buildAgUiCustomState,
+} from "../../lib/chat/session/ag-ui-checkpoint.ts";
 
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)
@@ -49,21 +60,21 @@ import { buildAgUiCheckpoint, buildAgUiCustomState } from '../../lib/chat/sessio
 
 /**
  * Create a Phase 2 context for server-first tools.
- * 
+ *
  * After client execution, we resume the server's handoff with
  * the cached handoff data and client output.
  */
 function createPhase2Context(
   baseContext: ServerToolContext,
   cachedHandoff: unknown,
-  clientOutput: unknown
+  clientOutput: unknown,
 ): ServerAuthorityContext {
   return {
     ...baseContext,
     *handoff(config) {
-      return yield* config.after(cachedHandoff as never, clientOutput as never)
+      return yield* config.after(cachedHandoff as never, clientOutput as never);
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -71,21 +82,21 @@ function createPhase2Context(
 // =============================================================================
 
 interface EngineState {
-  phase: string
-  iteration: number
-  conversationMessages: ChatMessage[]
-  pendingEvents: StreamEvent[]
-  runtimeSubscription: Subscription<RuntimeStreamEvent, RuntimeAssistantMessage> | null
-  runtimeResult: RuntimeAssistantMessage | null
-  toolCalls: ToolCall[] | null
-  toolResults: ToolExecutionResult[] | null
-  error: Error | null
+  phase: string;
+  iteration: number;
+  conversationMessages: ChatMessage[];
+  pendingEvents: StreamEvent[];
+  runtimeSubscription: Subscription<RuntimeStreamEvent, RuntimeAssistantMessage> | null;
+  runtimeResult: RuntimeAssistantMessage | null;
+  toolCalls: ToolCall[] | null;
+  toolResults: ToolExecutionResult[] | null;
+  error: Error | null;
   // Plugin session state
-  pendingPluginSessions: Map<string, { callId: string; toolName: string }>
-  awaitingElicitResult: ToolExecutionResult | null
-  assistantMessageId: string | null
-  assistantTextOpen: boolean
-  toolLifecycleEmitted: boolean
+  pendingPluginSessions: Map<string, { callId: string; toolName: string }>;
+  awaitingElicitResult: ToolExecutionResult | null;
+  assistantMessageId: string | null;
+  assistantTextOpen: boolean;
+  toolLifecycleEmitted: boolean;
 }
 
 // =============================================================================
@@ -97,10 +108,10 @@ interface EngineState {
  */
 function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
   try {
-    return tool.parameters.parse(params)
+    return tool.parameters.parse(params);
   } catch {
     // Return as-is if validation fails - let the tool handle it
-    return params
+    return params;
   }
 }
 
@@ -119,32 +130,32 @@ function runtimeEventToAgUiStreamEvents(
   agUiRun: { threadId: string; runId: string; parentRunId?: string },
 ): StreamEvent[] {
   switch (event.type) {
-    case 'text_delta': {
-      const events: StreamEvent[] = []
+    case "text_delta": {
+      const events: StreamEvent[] = [];
       if (!state.assistantTextOpen) {
-        state.assistantMessageId ??= `assistant:final:${agUiRun.runId}`
-        state.assistantTextOpen = true
+        state.assistantMessageId ??= `assistant:final:${agUiRun.runId}`;
+        state.assistantTextOpen = true;
         events.push({
-          type: 'ag_ui_text_message_start',
+          type: "ag_ui_text_message_start",
           messageId: state.assistantMessageId,
-          role: 'assistant' as const,
-        })
+          role: "assistant" as const,
+        });
       }
       events.push({
-        type: 'ag_ui_text_message_content',
+        type: "ag_ui_text_message_content",
         messageId: state.assistantMessageId!,
         delta: event.delta,
-      })
-      return events
+      });
+      return events;
     }
-    case 'thinking_delta':
-      return [{ type: 'thinking', content: event.delta }]
-    case 'error':
+    case "thinking_delta":
+      return [{ type: "thinking", content: event.delta }];
+    case "error":
       return event.error.errorMessage
-        ? [{ type: 'error', message: event.error.errorMessage, recoverable: false }]
-        : []
+        ? [{ type: "error", message: event.error.errorMessage, recoverable: false }]
+        : [];
     default:
-      return []
+      return [];
   }
 }
 
@@ -158,21 +169,21 @@ function runtimeEventToAgUiStreamEvents(
 function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
   if (!result.ok) {
     return {
-      type: 'ag_ui_tool_call_error',
+      type: "ag_ui_tool_call_error",
       toolCallId: result.error.callId,
       toolCallName: result.error.toolName,
       message: result.error.message,
-    }
+    };
   }
 
-  if (result.kind === 'handoff') {
-    return result.handoff
+  if (result.kind === "handoff") {
+    return result.handoff;
   }
 
-  if (result.kind === 'plugin_awaiting') {
+  if (result.kind === "plugin_awaiting") {
     // Plugin tool is waiting for elicitation - emit elicit request
     return {
-      type: 'elicit_request',
+      type: "elicit_request",
       sessionId: result.sessionId,
       callId: result.callId,
       toolName: result.toolName,
@@ -180,39 +191,39 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
       key: result.elicitRequest.key,
       message: result.elicitRequest.message,
       schema: result.elicitRequest.schema,
-    }
+    };
   }
 
   const content =
-    typeof result.serverOutput === 'string'
+    typeof result.serverOutput === "string"
       ? result.serverOutput
-      : JSON.stringify(result.serverOutput)
+      : JSON.stringify(result.serverOutput);
 
-  const trace: ToolExecutionTrace | undefined = 'trace' in result ? result.trace : undefined
+  const trace: ToolExecutionTrace | undefined = "trace" in result ? result.trace : undefined;
 
   return {
-    type: 'ag_ui_tool_call_result',
+    type: "ag_ui_tool_call_result",
     toolCallId: result.callId,
     toolCallName: result.toolName,
     content,
     ...(trace ? { trace } : {}),
-  }
+  };
 }
 
 function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolExecutionResult {
-  const ref = execution.ref
-  const toolName = ref.toolName || call.function.name
+  const ref = execution.ref;
+  const toolName = ref.toolName || call.function.name;
 
   switch (execution.kind) {
-    case 'completed':
+    case "completed":
       return {
         ok: true,
-        kind: 'result',
+        kind: "result",
         callId: ref.callId,
         toolName,
         serverOutput: execution.result,
-      }
-    case 'failed':
+      };
+    case "failed":
       return {
         ok: false,
         error: {
@@ -220,27 +231,29 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
           toolName,
           message: execution.error.message,
         },
-      }
-    case 'awaiting_client':
+      };
+    case "awaiting_client":
       return {
         ok: true,
-        kind: 'handoff',
+        kind: "handoff",
         callId: ref.callId,
         toolName,
         handoff: {
-          type: 'isomorphic_handoff',
+          type: "isomorphic_handoff",
           callId: ref.callId,
           toolName,
           params: execution.request.params ?? call.function.arguments,
           serverOutput: execution.request.serverOutput,
-          ...(execution.request.usesHandoff !== undefined ? { usesHandoff: execution.request.usesHandoff } : {}),
+          ...(execution.request.usesHandoff !== undefined
+            ? { usesHandoff: execution.request.usesHandoff }
+            : {}),
         },
         serverOutput: execution.request.serverOutput,
-      }
-    case 'awaiting_elicit':
+      };
+    case "awaiting_elicit":
       return {
         ok: true,
-        kind: 'plugin_awaiting',
+        kind: "plugin_awaiting",
         callId: ref.callId,
         toolName,
         sessionId: ref.sessionId ?? ref.executionId,
@@ -253,11 +266,11 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
           message: execution.request.message,
           schema: execution.request.schema,
         },
-      }
-    case 'running':
+      };
+    case "running":
       return {
         ok: true,
-        kind: 'plugin_awaiting',
+        kind: "plugin_awaiting",
         callId: ref.callId,
         toolName,
         sessionId: ref.sessionId ?? ref.executionId,
@@ -265,20 +278,23 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
           sessionId: ref.sessionId ?? ref.executionId,
           callId: ref.callId,
           toolName,
-          elicitId: 'running',
-          key: 'running',
-          message: 'Tool execution is still running.',
-          schema: { type: 'object', properties: {}, required: [] },
+          elicitId: "running",
+          key: "running",
+          message: "Tool execution is still running.",
+          schema: { type: "object", properties: {}, required: [] },
         },
-      }
+      };
   }
 }
 
-function toolExecutionEventToExecution(ref: ToolExecutionRef, event: ToolExecutionEvent): ToolExecution {
+function toolExecutionEventToExecution(
+  ref: ToolExecutionRef,
+  event: ToolExecutionEvent,
+): ToolExecution {
   switch (event.type) {
-    case 'elicit_request':
+    case "elicit_request":
       return {
-        kind: 'awaiting_elicit',
+        kind: "awaiting_elicit",
         ref,
         request: {
           elicitId: event.elicitId,
@@ -286,96 +302,127 @@ function toolExecutionEventToExecution(ref: ToolExecutionRef, event: ToolExecuti
           message: event.message,
           schema: event.schema,
         },
-      }
-    case 'result':
-      return { kind: 'completed', ref, result: event.result }
-    case 'error':
-      return { kind: 'failed', ref, error: { ...(event.code ? { code: event.code } : {}), message: event.message } }
-    case 'cancelled':
-      return { kind: 'failed', ref, error: { code: 'TOOL_CANCELLED', message: event.reason ?? 'Tool execution was cancelled' } }
+      };
+    case "result":
+      return { kind: "completed", ref, result: event.result };
+    case "error":
+      return {
+        kind: "failed",
+        ref,
+        error: { ...(event.code ? { code: event.code } : {}), message: event.message },
+      };
+    case "cancelled":
+      return {
+        kind: "failed",
+        ref,
+        error: { code: "TOOL_CANCELLED", message: event.reason ?? "Tool execution was cancelled" },
+      };
     default:
-      return { kind: 'running', ref, events: undefined as never }
+      return { kind: "running", ref, events: undefined as never };
   }
 }
 
 function* settleRunningExecution(execution: ToolExecution): Operation<ToolExecution> {
-  if (execution.kind !== 'running') return execution
-  const subscription = yield* execution.events
+  if (execution.kind !== "running") return execution;
+  const subscription = yield* execution.events;
   while (true) {
-    const next = yield* subscription.next()
+    const next = yield* subscription.next();
     if (next.done) {
-      return { kind: 'failed', ref: execution.ref, error: { code: 'SESSION_ENDED', message: 'Tool execution stream ended unexpectedly' } }
+      return {
+        kind: "failed",
+        ref: execution.ref,
+        error: { code: "SESSION_ENDED", message: "Tool execution stream ended unexpectedly" },
+      };
     }
-    const settled = toolExecutionEventToExecution(execution.ref, next.value)
-    if (settled.kind !== 'running') return settled
+    const settled = toolExecutionEventToExecution(execution.ref, next.value);
+    if (settled.kind !== "running") return settled;
   }
 }
 
 function findToolNameForCall(messages: ChatMessage[], callId: string): string | undefined {
   for (const message of [...messages].reverse()) {
     for (const toolCall of message.tool_calls ?? []) {
-      if (toolCall.id === callId) return toolCall.function.name
+      if (toolCall.id === callId) return toolCall.function.name;
     }
   }
-  return undefined
+  return undefined;
 }
 
 function validateContinuationRef(input: {
-  ref: ToolExecutionRef | undefined
-  runtimeId: string
-  executionId: string
-  sessionId: string
-  callId: string
-  toolName: string
+  ref: ToolExecutionRef | undefined;
+  runtimeId: string;
+  executionId: string;
+  sessionId: string;
+  callId: string;
+  toolName: string;
 }): void {
-  const { ref, runtimeId, executionId, sessionId, callId, toolName } = input
-  if (!ref) return
-  if (ref.runtimeId !== runtimeId) throw new Error(`Continuation ref mismatch: runtimeId expected ${runtimeId}, received ${ref.runtimeId}`)
-  if (ref.executionId !== executionId) throw new Error(`Continuation ref mismatch: executionId expected ${executionId}, received ${ref.executionId}`)
-  if (ref.sessionId && ref.sessionId !== sessionId) throw new Error(`Continuation ref mismatch: sessionId expected ${sessionId}, received ${ref.sessionId}`)
-  if (ref.callId !== callId) throw new Error(`Continuation ref mismatch: callId expected ${callId}, received ${ref.callId}`)
-  if (ref.toolName !== toolName) throw new Error(`Continuation ref mismatch: toolName expected ${toolName}, received ${ref.toolName}`)
+  const { ref, runtimeId, executionId, sessionId, callId, toolName } = input;
+  if (!ref) return;
+  if (ref.runtimeId !== runtimeId)
+    throw new Error(
+      `Continuation ref mismatch: runtimeId expected ${runtimeId}, received ${ref.runtimeId}`,
+    );
+  if (ref.executionId !== executionId)
+    throw new Error(
+      `Continuation ref mismatch: executionId expected ${executionId}, received ${ref.executionId}`,
+    );
+  if (ref.sessionId && ref.sessionId !== sessionId)
+    throw new Error(
+      `Continuation ref mismatch: sessionId expected ${sessionId}, received ${ref.sessionId}`,
+    );
+  if (ref.callId !== callId)
+    throw new Error(`Continuation ref mismatch: callId expected ${callId}, received ${ref.callId}`);
+  if (ref.toolName !== toolName)
+    throw new Error(
+      `Continuation ref mismatch: toolName expected ${toolName}, received ${ref.toolName}`,
+    );
 }
 
 function agUiToolLifecycleEvents(toolCalls: ToolCall[]): StreamEvent[] {
   return toolCalls.flatMap((toolCall) => [
     {
-      type: 'ag_ui_tool_call_start' as const,
+      type: "ag_ui_tool_call_start" as const,
       toolCallId: toolCall.id,
       toolCallName: toolCall.function.name,
       parentMessageId: `assistant:tools:${toolCall.id}`,
     },
     {
-      type: 'ag_ui_tool_call_args' as const,
+      type: "ag_ui_tool_call_args" as const,
       toolCallId: toolCall.id,
       delta: JSON.stringify(toolCall.function.arguments),
     },
     {
-      type: 'ag_ui_tool_call_end' as const,
+      type: "ag_ui_tool_call_end" as const,
       toolCallId: toolCall.id,
     },
-  ])
+  ]);
 }
 
-function agUiTextLifecycleEvents(messageId: string, role: 'assistant' | 'user' | 'system', text: string): StreamEvent[] {
+function agUiTextLifecycleEvents(
+  messageId: string,
+  role: "assistant" | "user" | "system",
+  text: string,
+): StreamEvent[] {
   return [
     {
-      type: 'ag_ui_text_message_start',
+      type: "ag_ui_text_message_start",
       messageId,
       role,
     },
     ...(text.length > 0
-      ? [{
-          type: 'ag_ui_text_message_content' as const,
-          messageId,
-          delta: text,
-        }]
+      ? [
+          {
+            type: "ag_ui_text_message_content" as const,
+            messageId,
+            delta: text,
+          },
+        ]
       : []),
     {
-      type: 'ag_ui_text_message_end',
+      type: "ag_ui_text_message_end",
       messageId,
     },
-  ]
+  ];
 }
 
 // =============================================================================
@@ -389,17 +436,17 @@ function agUiTextLifecycleEvents(messageId: string, role: 'assistant' | 'user' |
 function* processClientOutput(
   output: IsomorphicClientOutput,
   registry: ToolRegistry,
-  _signal: AbortSignal
+  _signal: AbortSignal,
 ): Operation<StreamEvent> {
-  const tool = registry.get(output.toolName)
+  const tool = registry.get(output.toolName);
 
   if (!tool) {
     return {
-      type: 'ag_ui_tool_call_error',
+      type: "ag_ui_tool_call_error",
       toolCallId: output.callId,
       toolCallName: output.toolName,
       message: `Tool not found: ${output.toolName}`,
-    }
+    };
   }
 
   // Phase 2: Execute server's after() with client output
@@ -408,52 +455,50 @@ function* processClientOutput(
     // This re-enters the tool's server function with handoff() configured
     // to call config.after() instead of config.before()
     if (tool.server && output.usesHandoff) {
-      const baseContext: ServerToolContext = { callId: output.callId, signal: _signal }
+      const baseContext: ServerToolContext = { callId: output.callId, signal: _signal };
       const phase2Context = createPhase2Context(
         baseContext,
         output.cachedHandoff,
-        output.clientOutput
-      )
-      
+        output.clientOutput,
+      );
+
       // Re-run the server function - it will call ctx.handoff() which now
       // returns the result of config.after(cachedHandoff, clientOutput)
-      const validatedParams = validateToolParams(tool, output.params)
-      const serverResult = yield* tool.server(validatedParams, phase2Context)
-      
+      const validatedParams = validateToolParams(tool, output.params);
+      const serverResult = yield* tool.server(validatedParams, phase2Context);
+
       const content =
-        typeof serverResult === 'string'
-          ? serverResult
-          : JSON.stringify(serverResult)
+        typeof serverResult === "string" ? serverResult : JSON.stringify(serverResult);
 
       return {
-        type: 'ag_ui_tool_call_result',
+        type: "ag_ui_tool_call_result",
         toolCallId: output.callId,
         toolCallName: output.toolName,
         content,
         ...(output.trace && { trace: output.trace }),
-      }
+      };
     }
 
     // Fallback: just use client output as the result
     const content =
-      typeof output.clientOutput === 'string'
+      typeof output.clientOutput === "string"
         ? output.clientOutput
-        : JSON.stringify(output.clientOutput)
+        : JSON.stringify(output.clientOutput);
 
     return {
-      type: 'ag_ui_tool_call_result',
+      type: "ag_ui_tool_call_result",
       toolCallId: output.callId,
       toolCallName: output.toolName,
       content,
       ...(output.trace && { trace: output.trace }),
-    }
+    };
   } catch (error) {
     return {
-      type: 'ag_ui_tool_call_error',
+      type: "ag_ui_tool_call_error",
       toolCallId: output.callId,
       toolCallName: output.toolName,
       message: error instanceof Error ? error.message : String(error),
-    }
+    };
   }
 }
 
@@ -482,41 +527,44 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     runtime,
     model,
     streamOptions,
+    initialToolChoice,
     toolInventoryEntries = [],
     toolRuntime,
-    toolRuntimeId = toolRuntime?.id ?? 'local',
+    toolRuntimeId = toolRuntime?.id ?? "local",
     maxIterations,
     signal,
     sessionInfo,
     agUiRun,
     elicitResponses,
     pluginAbort,
-  } = params
+  } = params;
 
   // Build schema lookup map
-  const schemaByName = new Map<string, ToolSchema>()
+  const schemaByName = new Map<string, ToolSchema>();
   for (const schema of [...toolSchemas, ...clientIsomorphicTools]) {
-    schemaByName.set(schema.name, schema)
+    schemaByName.set(schema.name, schema);
   }
 
-  const allSchemaMap = new Map<string, ToolSchema>()
+  const allSchemaMap = new Map<string, ToolSchema>();
   for (const schema of [...toolSchemas, ...clientIsomorphicTools]) {
-    if (!allSchemaMap.has(schema.name)) allSchemaMap.set(schema.name, schema)
+    if (!allSchemaMap.has(schema.name)) allSchemaMap.set(schema.name, schema);
   }
-  const allSchemas = Array.from(allSchemaMap.values())
-  const inventoryByName = new Map(toolInventoryEntries.map((entry) => [entry.definition.name, entry] as const))
+  const allSchemas = Array.from(allSchemaMap.values());
+  const inventoryByName = new Map(
+    toolInventoryEntries.map((entry) => [entry.definition.name, entry] as const),
+  );
 
   // Tool names set for filtering. Some providers approximate generated tool
   // names (for example, emitting `book-flight` or `book_flight` for
   // `book-flight_book_flight`). Keep the ordered list for unique alias
   // reconciliation before filtering unsupported calls.
-  const toolNames = new Set(allSchemas.map((t) => t.name))
-  const toolNameList = allSchemas.map((t) => t.name)
+  const toolNames = new Set(allSchemas.map((t) => t.name));
+  const toolNameList = allSchemas.map((t) => t.name);
 
   return resource(function* (provide) {
     // Initialize state
     const state: EngineState = {
-      phase: 'init',
+      phase: "init",
       iteration: 0,
       conversationMessages: [...messages],
       pendingEvents: [],
@@ -530,59 +578,59 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       assistantMessageId: null,
       assistantTextOpen: false,
       toolLifecycleEmitted: false,
-    }
-    const conversationTranscriptState = createTranscriptState(state.conversationMessages)
+    };
+    const conversationTranscriptState = createTranscriptState(state.conversationMessages);
 
     // Prepend system prompt if provided
     if (systemPrompt) {
-      appendSystemMessage(state.conversationMessages, conversationTranscriptState, systemPrompt)
+      appendSystemMessage(state.conversationMessages, conversationTranscriptState, systemPrompt);
     }
 
     const replayToolTraceMap = new Map(
       (replayState?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
-    )
+    );
 
     function sanitizeToolCallIdPart(value: string): string {
-      return value.replace(/[^A-Za-z0-9_-]/g, '_') || 'tool'
+      return value.replace(/[^A-Za-z0-9_-]/g, "_") || "tool";
     }
 
     function collectUsedToolCallIds(): Set<string> {
-      const ids = new Set<string>()
+      const ids = new Set<string>();
 
       for (const message of state.conversationMessages) {
         for (const toolCall of message.tool_calls ?? []) {
-          const id = (toolCall as { id?: unknown }).id
-          if (typeof id === 'string' && id.trim().length > 0) {
-            ids.add(id)
+          const id = (toolCall as { id?: unknown }).id;
+          if (typeof id === "string" && id.trim().length > 0) {
+            ids.add(id);
           }
         }
 
-        const toolCallId = (message as { tool_call_id?: unknown }).tool_call_id
-        if (typeof toolCallId === 'string' && toolCallId.trim().length > 0) {
-          ids.add(toolCallId)
+        const toolCallId = (message as { tool_call_id?: unknown }).tool_call_id;
+        if (typeof toolCallId === "string" && toolCallId.trim().length > 0) {
+          ids.add(toolCallId);
         }
       }
 
-      return ids
+      return ids;
     }
 
     const resolveProviderToolName = (name: string): string | undefined => {
-      if (toolNames.has(name)) return name
+      if (toolNames.has(name)) return name;
 
       const candidates = toolNameList.filter((candidate) => {
-        if (candidate === name) return true
-        if (candidate.startsWith(`${name}_`)) return true
-        if (candidate.endsWith(`_${name}`)) return true
+        if (candidate === name) return true;
+        if (candidate.startsWith(`${name}_`)) return true;
+        if (candidate.endsWith(`_${name}`)) return true;
 
-        const splitAt = candidate.indexOf('_')
-        if (splitAt <= 0) return false
-        const namespacePart = candidate.slice(0, splitAt)
-        const intrinsicPart = candidate.slice(splitAt + 1)
-        return name === namespacePart || name === intrinsicPart
-      })
+        const splitAt = candidate.indexOf("_");
+        if (splitAt <= 0) return false;
+        const namespacePart = candidate.slice(0, splitAt);
+        const intrinsicPart = candidate.slice(splitAt + 1);
+        return name === namespacePart || name === intrinsicPart;
+      });
 
-      return candidates.length === 1 ? candidates[0] : undefined
-    }
+      return candidates.length === 1 ? candidates[0] : undefined;
+    };
 
     // Helper to convert provider tool calls to our format.
     // Some providers (notably Ollama-compatible APIs) can omit tool call IDs.
@@ -590,44 +638,44 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     // tool results, and UI parts by call ID, so synthesize a per-run ID when
     // the provider does not supply a usable unique one.
     const toRuntimeMessage = (message: ChatMessage): RuntimeMessage => {
-      if (message.role === 'system') {
-        return { role: 'system', content: message.content }
+      if (message.role === "system") {
+        return { role: "system", content: message.content };
       }
 
-      if (message.role === 'user') {
-        return { role: 'user', content: message.content }
+      if (message.role === "user") {
+        return { role: "user", content: message.content };
       }
 
-      if (message.role === 'tool') {
+      if (message.role === "tool") {
         return {
-          role: 'toolResult',
-          toolCallId: message.tool_call_id ?? '',
-          toolName: message.replay?.toolName ?? '',
-          content: [{ type: 'text', text: message.content }],
-          isError: message.content.startsWith('Error:'),
-        }
+          role: "toolResult",
+          toolCallId: message.tool_call_id ?? "",
+          toolName: message.replay?.toolName ?? "",
+          content: [{ type: "text", text: message.content }],
+          isError: message.content.startsWith("Error:"),
+        };
       }
 
-      const content: RuntimeAssistantMessage['content'] = []
+      const content: RuntimeAssistantMessage["content"] = [];
       if (message.content) {
-        content.push({ type: 'text', text: message.content })
+        content.push({ type: "text", text: message.content });
       }
       for (const toolCall of message.tool_calls ?? []) {
         content.push({
-          type: 'toolCall',
+          type: "toolCall",
           id: toolCall.id,
           name: toolCall.function.name,
           arguments: toolCall.function.arguments,
-        })
+        });
       }
 
-      return { role: 'assistant', content }
-    }
+      return { role: "assistant", content };
+    };
 
     const buildRuntimeContext = (): RuntimeContext => ({
       ...(systemPrompt ? { systemPrompt } : {}),
       messages: state.conversationMessages
-        .filter((message) => !(message.role === 'system' && message.content === systemPrompt))
+        .filter((message) => !(message.role === "system" && message.content === systemPrompt))
         .map(toRuntimeMessage),
       ...(allSchemas.length > 0
         ? {
@@ -638,174 +686,194 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             })),
           }
         : {}),
-    })
+    });
 
     const runtimeText = (message: RuntimeAssistantMessage): string =>
       message.content
-        .filter((block): block is Extract<RuntimeAssistantMessage['content'][number], { type: 'text' }> => block.type === 'text')
+        .filter(
+          (block): block is Extract<RuntimeAssistantMessage["content"][number], { type: "text" }> =>
+            block.type === "text",
+        )
         .map((block) => block.text)
-        .join('')
+        .join("");
 
     const runtimeToolCalls = (message: RuntimeAssistantMessage): ToolCall[] =>
       message.content
-        .filter((block): block is Extract<RuntimeAssistantMessage['content'][number], { type: 'toolCall' }> => block.type === 'toolCall')
+        .filter(
+          (
+            block,
+          ): block is Extract<RuntimeAssistantMessage["content"][number], { type: "toolCall" }> =>
+            block.type === "toolCall",
+        )
         .map((block) => ({
           id: block.id,
-          type: 'function' as const,
+          type: "function" as const,
           function: {
             name: block.name,
             arguments: block.arguments,
           },
-        }))
+        }));
 
     const convertToolCalls = (calls: ToolCall[]): ToolCall[] => {
-      if (calls.length === 0) return []
+      if (calls.length === 0) return [];
 
-      const usedIds = collectUsedToolCallIds()
+      const usedIds = collectUsedToolCallIds();
 
       return calls.map((tc, index) => {
-        const rawId = (tc as { id?: unknown }).id
-        let id = typeof rawId === 'string' && rawId.trim().length > 0
-          ? rawId
-          : ''
+        const rawId = (tc as { id?: unknown }).id;
+        let id = typeof rawId === "string" && rawId.trim().length > 0 ? rawId : "";
 
         if (!id || usedIds.has(id)) {
-          const toolName = sanitizeToolCallIdPart(tc.function.name)
-          let suffix = 0
+          const toolName = sanitizeToolCallIdPart(tc.function.name);
+          let suffix = 0;
           do {
-            const suffixPart = suffix === 0 ? '' : `:${suffix}`
-            id = `call:${agUiRun.runId}:${state.iteration}:${index}:${toolName}${suffixPart}`
-            suffix++
-          } while (usedIds.has(id))
+            const suffixPart = suffix === 0 ? "" : `:${suffix}`;
+            id = `call:${agUiRun.runId}:${state.iteration}:${index}:${toolName}${suffixPart}`;
+            suffix++;
+          } while (usedIds.has(id));
         }
 
-        usedIds.add(id)
+        usedIds.add(id);
 
         return {
           id,
-          type: 'function' as const,
+          type: "function" as const,
           function: {
             name: resolveProviderToolName(tc.function.name) ?? tc.function.name,
             arguments: tc.function.arguments,
           },
-        }
-      })
-    }
+        };
+      });
+    };
 
     // The subscription we provide to consumers
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
         // Check abort signal - only set error if not already in done/error state
-        if (signal.aborted && state.phase !== 'done' && state.phase !== 'error') {
-          state.phase = 'error'
-          state.error = new Error('Aborted')
+        if (signal.aborted && state.phase !== "done" && state.phase !== "error") {
+          state.phase = "error";
+          state.error = new Error("Aborted");
         }
 
         // Drain pending events first
         if (state.pendingEvents.length > 0) {
-          return { done: false, value: state.pendingEvents.shift()! }
+          return { done: false, value: state.pendingEvents.shift()! };
         }
 
         // State machine
         switch (state.phase) {
-          case 'init': {
+          case "init": {
             // Emit session info if provided
             if (sessionInfo) {
               // Determine next phase based on what needs processing
               if (pluginAbort) {
-                state.phase = 'process_plugin_abort'
+                state.phase = "process_plugin_abort";
               } else if (elicitResponses && elicitResponses.length > 0) {
-                state.phase = 'process_plugin_responses'
+                state.phase = "process_plugin_responses";
               } else if (isomorphicClientOutputs.length > 0) {
-                state.phase = 'process_client_outputs'
+                state.phase = "process_client_outputs";
               } else {
-                state.phase = 'start_iteration'
+                state.phase = "start_iteration";
               }
-              return { done: false, value: sessionInfo }
+              return { done: false, value: sessionInfo };
             }
             // Same logic without session info
             if (pluginAbort) {
-              state.phase = 'process_plugin_abort'
+              state.phase = "process_plugin_abort";
             } else if (elicitResponses && elicitResponses.length > 0) {
-              state.phase = 'process_plugin_responses'
+              state.phase = "process_plugin_responses";
             } else if (isomorphicClientOutputs.length > 0) {
-              state.phase = 'process_client_outputs'
+              state.phase = "process_client_outputs";
             } else {
-              state.phase = 'start_iteration'
+              state.phase = "start_iteration";
             }
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'process_plugin_abort': {
+          case "process_plugin_abort": {
             // Handle explicit abort request through the active ToolRuntime.
             if (pluginAbort) {
-              const { sessionId, reason } = pluginAbort
-              const toolName = findToolNameForCall(state.conversationMessages, sessionId) ?? ''
+              const { sessionId, reason } = pluginAbort;
+              const toolName = findToolNameForCall(state.conversationMessages, sessionId) ?? "";
 
               try {
-                if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
-                yield* toolRuntime.abort({
-                  runtimeId: toolRuntimeId,
-                  executionId: sessionId,
-                  sessionId,
-                  callId: sessionId,
-                  toolName,
-                }, reason)
+                if (!toolRuntime)
+                  throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
+                yield* toolRuntime.abort(
+                  {
+                    runtimeId: toolRuntimeId,
+                    executionId: sessionId,
+                    sessionId,
+                    callId: sessionId,
+                    toolName,
+                  },
+                  reason,
+                );
 
                 state.pendingEvents.push({
-                  type: 'tool_session_status',
+                  type: "tool_session_status",
                   sessionId,
                   callId: sessionId,
                   toolName,
-                  status: 'aborted',
-                })
+                  status: "aborted",
+                });
               } catch (_error) {
                 state.pendingEvents.push({
-                  type: 'tool_session_error',
+                  type: "tool_session_error",
                   sessionId,
                   callId: sessionId,
-                  error: 'SESSION_NOT_FOUND',
+                  error: "SESSION_NOT_FOUND",
                   message: `Tool execution ${sessionId} not found`,
-                })
+                });
               }
             }
 
             // Move to next phase
             if (elicitResponses && elicitResponses.length > 0) {
-              state.phase = 'process_plugin_responses'
+              state.phase = "process_plugin_responses";
             } else if (isomorphicClientOutputs.length > 0) {
-              state.phase = 'process_client_outputs'
+              state.phase = "process_client_outputs";
             } else {
-              state.phase = 'start_iteration'
+              state.phase = "start_iteration";
             }
-            
+
             // Return first pending event if any
             if (state.pendingEvents.length > 0) {
-              return { done: false, value: state.pendingEvents.shift()! }
+              return { done: false, value: state.pendingEvents.shift()! };
             }
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'process_plugin_responses': {
+          case "process_plugin_responses": {
             // Resume suspended tool executions with elicit responses through ToolRuntimeApi.
             if (elicitResponses) {
               for (const response of elicitResponses) {
-                const { sessionId, callId, elicitId, result } = response
-                const toolName = findToolNameForCall(state.conversationMessages, callId) ?? response.toolName ?? response.ref?.toolName ?? ''
+                const { sessionId, callId, elicitId, result } = response;
+                const toolName =
+                  findToolNameForCall(state.conversationMessages, callId) ??
+                  response.toolName ??
+                  response.ref?.toolName ??
+                  "";
 
-                let elicitResult: { action: 'accept'; content: unknown } | { action: 'decline' } | { action: 'cancel' }
-                if (result.action === 'accept') {
-                  elicitResult = { action: 'accept', content: result.content }
-                } else if (result.action === 'decline') {
-                  elicitResult = { action: 'decline' }
+                let elicitResult:
+                  | { action: "accept"; content: unknown }
+                  | { action: "decline" }
+                  | { action: "cancel" };
+                if (result.action === "accept") {
+                  elicitResult = { action: "accept", content: result.content };
+                } else if (result.action === "decline") {
+                  elicitResult = { action: "decline" };
                 } else {
-                  elicitResult = { action: 'cancel' }
+                  elicitResult = { action: "cancel" };
                 }
 
                 try {
-                  if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
+                  if (!toolRuntime)
+                    throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
                   if (response.toolName && toolName && response.toolName !== toolName) {
-                    throw new Error(`Continuation toolName mismatch: expected ${toolName}, received ${response.toolName}`)
+                    throw new Error(
+                      `Continuation toolName mismatch: expected ${toolName}, received ${response.toolName}`,
+                    );
                   }
                   validateContinuationRef({
                     ref: response.ref,
@@ -814,107 +882,130 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     sessionId,
                     callId,
                     toolName,
-                  })
-                  const resumed = yield* settleRunningExecution(yield* toolRuntime.resume({
-                    ref: {
-                      runtimeId: toolRuntimeId,
-                      executionId: sessionId,
-                      sessionId,
-                      callId,
-                      toolName,
-                    },
-                    input: {
-                      type: 'elicit_response',
-                      elicitId,
-                      result: elicitResult,
-                    },
-                    signal,
-                  }))
+                  });
+                  const resumed = yield* settleRunningExecution(
+                    yield* toolRuntime.resume({
+                      ref: {
+                        runtimeId: toolRuntimeId,
+                        executionId: sessionId,
+                        sessionId,
+                        callId,
+                        toolName,
+                      },
+                      input: {
+                        type: "elicit_response",
+                        elicitId,
+                        result: elicitResult,
+                      },
+                      signal,
+                    }),
+                  );
                   const toolResult = toolExecutionToResult(resumed, {
                     id: callId,
-                    type: 'function',
+                    type: "function",
                     function: { name: toolName, arguments: {} },
-                  })
+                  });
 
-                  if (toolResult.ok && toolResult.kind === 'plugin_awaiting') {
-                    state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult))
-                    state.awaitingElicitResult = toolResult
-                    continue
+                  if (toolResult.ok && toolResult.kind === "plugin_awaiting") {
+                    state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult));
+                    state.awaitingElicitResult = toolResult;
+                    continue;
                   }
 
-                  state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult))
-                  if (toolResult.ok && toolResult.kind === 'result') {
-                    const content = typeof toolResult.serverOutput === 'string'
-                      ? toolResult.serverOutput
-                      : JSON.stringify(toolResult.serverOutput)
-                    appendToolMessage(state.conversationMessages, conversationTranscriptState, callId, content, { toolName })
+                  state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult));
+                  if (toolResult.ok && toolResult.kind === "result") {
+                    const content =
+                      typeof toolResult.serverOutput === "string"
+                        ? toolResult.serverOutput
+                        : JSON.stringify(toolResult.serverOutput);
+                    appendToolMessage(
+                      state.conversationMessages,
+                      conversationTranscriptState,
+                      callId,
+                      content,
+                      { toolName },
+                    );
                   } else if (!toolResult.ok) {
-                    appendToolMessage(state.conversationMessages, conversationTranscriptState, callId, `Error: ${toolResult.error.message}`, { toolName })
+                    appendToolMessage(
+                      state.conversationMessages,
+                      conversationTranscriptState,
+                      callId,
+                      `Error: ${toolResult.error.message}`,
+                      { toolName },
+                    );
                   }
                 } catch (error) {
-                  const message = error instanceof Error ? error.message : String(error)
+                  const message = error instanceof Error ? error.message : String(error);
                   state.pendingEvents.push({
-                    type: 'tool_session_error',
+                    type: "tool_session_error",
                     sessionId,
                     callId,
-                    error: 'SESSION_NOT_FOUND',
+                    error: "SESSION_NOT_FOUND",
                     message,
-                  })
-                  appendToolMessage(state.conversationMessages, conversationTranscriptState, callId, `Error: ${message}`, { toolName })
+                  });
+                  appendToolMessage(
+                    state.conversationMessages,
+                    conversationTranscriptState,
+                    callId,
+                    `Error: ${message}`,
+                    { toolName },
+                  );
                 }
               }
             }
 
             // Check if we need to await more elicitation
             if (state.awaitingElicitResult) {
-              state.phase = 'awaiting_elicit'
+              state.phase = "awaiting_elicit";
             } else if (isomorphicClientOutputs.length > 0) {
-              state.phase = 'process_client_outputs'
+              state.phase = "process_client_outputs";
             } else {
-              state.phase = 'start_iteration'
+              state.phase = "start_iteration";
             }
-            
+
             // Return first pending event if any
             if (state.pendingEvents.length > 0) {
-              return { done: false, value: state.pendingEvents.shift()! }
+              return { done: false, value: state.pendingEvents.shift()! };
             }
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'process_client_outputs': {
+          case "process_client_outputs": {
             // Process all client outputs and buffer the events
             for (const output of isomorphicClientOutputs) {
-              const event = yield* processClientOutput(output, toolRegistry, signal)
-              state.pendingEvents.push(event)
+              const event = yield* processClientOutput(output, toolRegistry, signal);
+              state.pendingEvents.push(event);
 
               if (output.trace) {
                 replayToolTraceMap.set(output.callId, {
                   callId: output.callId,
                   toolName: output.toolName,
                   trace: output.trace,
-                })
+                });
               }
 
               // Also add to conversation messages if it's a result
-              if (event.type === 'ag_ui_tool_call_result') {
+              if (event.type === "ag_ui_tool_call_result") {
                 // Find existing tool message or add new one
-                let found = false
+                let found = false;
                 for (const msg of state.conversationMessages) {
-                  if (msg.role === 'tool' && msg.tool_call_id === output.callId) {
-                    msg.content = event.content
+                  if (msg.role === "tool" && msg.tool_call_id === output.callId) {
+                    msg.content = event.content;
                     if (output.trace) {
-                      ;(msg as typeof msg & {
-                        replay?: {
-                          toolName: string
-                          trace: ToolExecutionTrace
+                      (
+                        msg as typeof msg & {
+                          replay?: {
+                            toolName: string;
+                            trace: ToolExecutionTrace;
+                          };
                         }
-                      }).replay = {
+                      ).replay = {
                         toolName: output.toolName,
                         trace: output.trace,
-                      }
+                      };
                     }
-                    found = true
-                    break
+                    found = true;
+                    break;
                   }
                 }
                 if (!found) {
@@ -929,192 +1020,208 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                           trace: output.trace,
                         }
                       : undefined,
-                  )
+                  );
                 }
               }
             }
 
-            state.phase = 'start_iteration'
+            state.phase = "start_iteration";
 
             // Return first pending event
             if (state.pendingEvents.length > 0) {
-              return { done: false, value: state.pendingEvents.shift()! }
+              return { done: false, value: state.pendingEvents.shift()! };
             }
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'start_iteration': {
-            state.iteration++
+          case "start_iteration": {
+            state.iteration++;
 
             if (state.iteration > maxIterations) {
-              state.phase = 'error'
-              state.error = new Error('Max tool iterations reached')
-              return yield* this.next()
+              state.phase = "error";
+              state.error = new Error("Max tool iterations reached");
+              return yield* this.next();
             }
 
-            // Start streaming from runtime
-            const runtimeStream = runtime.stream(model, buildRuntimeContext(), {
+            // Start streaming from runtime. initialToolChoice applies only to
+            // the first provider call for a new request; subsequent calls after
+            // tool results use the normal stream options so the model can finish
+            // with prose instead of being forced into another tool call.
+            const runtimeStreamOptions = {
               ...streamOptions,
+              ...(state.iteration === 1 && initialToolChoice
+                ? { toolChoice: initialToolChoice }
+                : {}),
               signal,
-            })
-            state.runtimeSubscription = yield* runtimeStream
-            state.phase = 'streaming_provider'
-            return yield* this.next()
+            };
+            const runtimeStream = runtime.stream(
+              model,
+              buildRuntimeContext(),
+              runtimeStreamOptions,
+            );
+            state.runtimeSubscription = yield* runtimeStream;
+            state.phase = "streaming_provider";
+            return yield* this.next();
           }
 
-          case 'streaming_provider': {
+          case "streaming_provider": {
             if (!state.runtimeSubscription) {
-              state.phase = 'error'
-              state.error = new Error('No runtime subscription')
-              return yield* this.next()
+              state.phase = "error";
+              state.error = new Error("No runtime subscription");
+              return yield* this.next();
             }
 
-            const result = yield* state.runtimeSubscription.next()
+            const result = yield* state.runtimeSubscription.next();
 
             if (result.done) {
-              state.runtimeResult = result.value
-              state.phase = 'provider_complete'
-              return yield* this.next()
+              state.runtimeResult = result.value;
+              state.phase = "provider_complete";
+              return yield* this.next();
             }
 
-            if (result.value.type === 'error') {
+            if (result.value.type === "error") {
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
-                  type: 'ag_ui_text_message_end',
+                  type: "ag_ui_text_message_end",
                   messageId: state.assistantMessageId!,
-                })
-                state.assistantTextOpen = false
+                });
+                state.assistantTextOpen = false;
               }
-              state.pendingEvents.push(...runtimeEventToAgUiStreamEvents(result.value, state, agUiRun))
-              state.phase = 'done'
+              state.pendingEvents.push(
+                ...runtimeEventToAgUiStreamEvents(result.value, state, agUiRun),
+              );
+              state.phase = "done";
               if (state.pendingEvents.length > 0) {
-                return { done: false, value: state.pendingEvents.shift()! }
+                return { done: false, value: state.pendingEvents.shift()! };
               }
-              return { done: true, value: undefined }
+              return { done: true, value: undefined };
             }
 
             // Convert runtime event to AG-UI stream events
-            const streamEvents = runtimeEventToAgUiStreamEvents(result.value, state, agUiRun)
+            const streamEvents = runtimeEventToAgUiStreamEvents(result.value, state, agUiRun);
             if (streamEvents.length > 0) {
               // Queue all events except the first, return the first immediately
               for (let i = 1; i < streamEvents.length; i++) {
-                state.pendingEvents.push(streamEvents[i]!)
+                state.pendingEvents.push(streamEvents[i]!);
               }
-              return { done: false, value: streamEvents[0]! }
+              return { done: false, value: streamEvents[0]! };
             }
 
             // Unknown event type, continue
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'provider_complete': {
-            const result = state.runtimeResult
+          case "provider_complete": {
+            const result = state.runtimeResult;
             if (!result) {
-              state.phase = 'error'
-              state.error = new Error('No provider result')
-              return yield* this.next()
+              state.phase = "error";
+              state.error = new Error("No provider result");
+              return yield* this.next();
             }
 
-            if (result.stopReason === 'error' || result.stopReason === 'aborted') {
+            if (result.stopReason === "error" || result.stopReason === "aborted") {
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
-                  type: 'ag_ui_text_message_end',
+                  type: "ag_ui_text_message_end",
                   messageId: state.assistantMessageId!,
-                })
-                state.assistantTextOpen = false
+                });
+                state.assistantTextOpen = false;
               }
               state.pendingEvents.push({
-                type: 'error',
+                type: "error",
                 message: result.errorMessage ?? `Runtime generation ${result.stopReason}`,
                 recoverable: false,
-              })
-              state.phase = 'done'
-              return { done: false, value: state.pendingEvents.shift()! }
+              });
+              state.phase = "done";
+              return { done: false, value: state.pendingEvents.shift()! };
             }
 
-            const finalToolCalls = runtimeToolCalls(result)
+            const finalToolCalls = runtimeToolCalls(result);
             if (finalToolCalls.length > 0) {
               // Close the assistant text lifecycle if it was opened during streaming
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
-                  type: 'ag_ui_text_message_end',
+                  type: "ag_ui_text_message_end",
                   messageId: state.assistantMessageId!,
-                })
-                state.assistantTextOpen = false
+                });
+                state.assistantTextOpen = false;
               }
               // Convert and filter to known tools. Some real providers can emit
               // malformed or unsupported tool calls. If none reconcile to a
               // supported tool, fall through to the normal no-tool completion
               // path so the run lifecycle still finishes cleanly.
-              const allCalls = convertToolCalls(finalToolCalls)
-              state.toolCalls = allCalls.filter((tc) => toolNames.has(tc.function.name))
+              const allCalls = convertToolCalls(finalToolCalls);
+              state.toolCalls = allCalls.filter((tc) => toolNames.has(tc.function.name));
               if (state.toolCalls.length > 0) {
-                state.toolResults = []
-                state.phase = 'executing_tools'
-                return yield* this.next()
+                state.toolResults = [];
+                state.phase = "executing_tools";
+                return yield* this.next();
               }
             }
 
             // No supported tool calls - complete
-            state.phase = 'complete'
+            state.phase = "complete";
 
             if (state.assistantTextOpen) {
               // Text was streamed incrementally — just close the lifecycle
               state.pendingEvents.push({
-                type: 'ag_ui_text_message_end',
+                type: "ag_ui_text_message_end",
                 messageId: state.assistantMessageId!,
-              })
-              state.assistantTextOpen = false
+              });
+              state.assistantTextOpen = false;
             } else {
               // No text was streamed (edge case: empty response or provider gave no text events)
               // Emit the full text lifecycle as a batch
               state.pendingEvents.push(
                 ...agUiTextLifecycleEvents(
                   `assistant:final:${agUiRun.runId}`,
-                  'assistant',
+                  "assistant",
                   runtimeText(result),
                 ),
-              )
+              );
             }
 
             state.pendingEvents.push({
-              type: 'ag_ui_run_finished',
+              type: "ag_ui_run_finished",
               run: {
                 threadId: agUiRun.threadId,
                 runId: agUiRun.runId,
                 ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
               },
-            })
-            return { done: false, value: state.pendingEvents.shift()! }
+            });
+            return { done: false, value: state.pendingEvents.shift()! };
           }
 
-          case 'executing_tools': {
-            const toolCalls = state.toolCalls || []
-            const results: ToolExecutionResult[] = []
+          case "executing_tools": {
+            const toolCalls = state.toolCalls || [];
+            const results: ToolExecutionResult[] = [];
 
             // Resolve every outer model tool call through ToolInventory and execute
             // it through the active ToolRuntime.
             for (const tc of toolCalls) {
               try {
-                const entry = inventoryByName.get(tc.function.name)
-                if (!entry) throw new Error(`Tool not found: ${tc.function.name}`)
-                if (!toolRuntime) throw new Error('Tool runtime not configured. Install a ToolRuntime in scope.')
-                const execution = yield* settleRunningExecution(yield* toolRuntime.execute({
-                  entry,
-                  call: tc,
-                  signal,
-                  metadata: {
-                    model: { provider: model.provider, id: model.id },
-                  },
-                }))
-                const result = toolExecutionToResult(execution, tc)
-                results.push(result)
+                const entry = inventoryByName.get(tc.function.name);
+                if (!entry) throw new Error(`Tool not found: ${tc.function.name}`);
+                if (!toolRuntime)
+                  throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
+                const execution = yield* settleRunningExecution(
+                  yield* toolRuntime.execute({
+                    entry,
+                    call: tc,
+                    signal,
+                    metadata: {
+                      model: { provider: model.provider, id: model.id },
+                    },
+                  }),
+                );
+                const result = toolExecutionToResult(execution, tc);
+                results.push(result);
 
-                if (!(result.ok && result.kind === 'plugin_awaiting')) {
-                  state.pendingEvents.push(toolResultToAgUiStreamEvent(result))
+                if (!(result.ok && result.kind === "plugin_awaiting")) {
+                  state.pendingEvents.push(toolResultToAgUiStreamEvent(result));
                 }
               } catch (error) {
-                const message = error instanceof Error ? error.message : String(error)
+                const message = error instanceof Error ? error.message : String(error);
                 const result: ToolExecutionResult = {
                   ok: false,
                   error: {
@@ -1122,30 +1229,32 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     toolName: tc.function.name,
                     message,
                   },
-                }
-                results.push(result)
-                state.pendingEvents.push(toolResultToAgUiStreamEvent(result))
+                };
+                results.push(result);
+                state.pendingEvents.push(toolResultToAgUiStreamEvent(result));
               }
             }
 
-            state.toolResults = results
-            state.phase = 'tools_complete'
+            state.toolResults = results;
+            state.phase = "tools_complete";
 
             // Return first pending event
             if (state.pendingEvents.length > 0) {
-              return { done: false, value: state.pendingEvents.shift()! }
+              return { done: false, value: state.pendingEvents.shift()! };
             }
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'tools_complete': {
-            const toolCalls = state.toolCalls || []
-            const results = state.toolResults || []
-            const providerResult = state.runtimeResult!
+          case "tools_complete": {
+            const toolCalls = state.toolCalls || [];
+            const results = state.toolResults || [];
+            const providerResult = state.runtimeResult!;
 
             // Check for plugin tools awaiting elicitation
-            const pluginAwaitingResults = results.filter((r) => r.ok && r.kind === 'plugin_awaiting')
-            
+            const pluginAwaitingResults = results.filter(
+              (r) => r.ok && r.kind === "plugin_awaiting",
+            );
+
             if (pluginAwaitingResults.length > 0) {
               // CRITICAL: Add assistant message with tool_calls to conversationMessages
               // BEFORE going to awaiting_elicit. This ensures the conversation
@@ -1158,14 +1267,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 conversationTranscriptState,
                 toolCalls,
                 runtimeText(providerResult),
-              )
-              state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
-              
+              );
+              state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls));
+
               // Plugin tool(s) need elicitation - emit elicit events and transition
               for (const r of pluginAwaitingResults) {
-                if (r.ok && r.kind === 'plugin_awaiting') {
+                if (r.ok && r.kind === "plugin_awaiting") {
                   state.pendingEvents.push({
-                    type: 'elicit_request',
+                    type: "elicit_request",
                     sessionId: r.sessionId,
                     callId: r.callId,
                     toolName: r.toolName,
@@ -1173,54 +1282,54 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     key: r.elicitRequest.key,
                     message: r.elicitRequest.message,
                     schema: r.elicitRequest.schema,
-                  })
-                  state.awaitingElicitResult = r
+                  });
+                  state.awaitingElicitResult = r;
                 }
               }
-              state.phase = 'awaiting_elicit'
-              
+              state.phase = "awaiting_elicit";
+
               // Return first pending event
               if (state.pendingEvents.length > 0) {
-                return { done: false, value: state.pendingEvents.shift()! }
+                return { done: false, value: state.pendingEvents.shift()! };
               }
-              return yield* this.next()
+              return yield* this.next();
             }
 
             // Check for handoffs
-            const handoffResults = results.filter((r) => r.ok && r.kind === 'handoff')
+            const handoffResults = results.filter((r) => r.ok && r.kind === "handoff");
 
             if (handoffResults.length > 0) {
               // Hand off to client - emit AG-UI checkpoint and stop
-              state.phase = 'handoff_pending'
+              state.phase = "handoff_pending";
 
               const serverToolResults = results.map((r) => {
                 if (r.ok) {
-                  if (r.kind === 'handoff') {
-                    return { id: r.callId, name: r.toolName, content: '', isError: false }
+                  if (r.kind === "handoff") {
+                    return { id: r.callId, name: r.toolName, content: "", isError: false };
                   }
-                  if (r.kind === 'plugin_awaiting') {
-                    return { id: r.callId, name: r.toolName, content: '', isError: false }
+                  if (r.kind === "plugin_awaiting") {
+                    return { id: r.callId, name: r.toolName, content: "", isError: false };
                   }
                   return {
                     id: r.callId,
                     name: r.toolName,
                     content:
-                      typeof r.serverOutput === 'string'
+                      typeof r.serverOutput === "string"
                         ? r.serverOutput
                         : JSON.stringify(r.serverOutput),
                     isError: false,
-                  }
+                  };
                 }
                 return {
                   id: r.error.callId,
                   name: r.error.toolName,
                   content: `Error: ${r.error.message}`,
                   isError: true,
-                }
-              })
+                };
+              });
 
               state.pendingEvents.push({
-                type: 'ag_ui_state_snapshot',
+                type: "ag_ui_state_snapshot",
                 run: {
                   threadId: agUiRun.threadId,
                   runId: agUiRun.runId,
@@ -1235,12 +1344,19 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       }
                     : {}),
                   handoffs: handoffResults
-                    .filter((r): r is Extract<typeof handoffResults[number], { ok: true; kind: 'handoff' }> => r.ok && r.kind === 'handoff')
+                    .filter(
+                      (
+                        r,
+                      ): r is Extract<
+                        (typeof handoffResults)[number],
+                        { ok: true; kind: "handoff" }
+                      > => r.ok && r.kind === "handoff",
+                    )
                     .map((r) => r.handoff),
                 }),
-              })
+              });
               state.pendingEvents.push({
-                type: 'ag_ui_checkpoint',
+                type: "ag_ui_checkpoint",
                 checkpoint: buildAgUiCheckpoint({
                   threadId: agUiRun.threadId,
                   runId: agUiRun.runId,
@@ -1257,9 +1373,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       }
                     : {}),
                 }),
-              })
+              });
 
-              return { done: false, value: state.pendingEvents.shift()! }
+              return { done: false, value: state.pendingEvents.shift()! };
             }
 
             // No handoffs - update messages and continue loop
@@ -1269,21 +1385,21 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               conversationTranscriptState,
               toolCalls,
               runtimeText(providerResult),
-            )
-            state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls))
+            );
+            state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls));
 
             // Add tool result messages
             for (const r of results) {
-              if (r.ok && r.kind === 'result') {
+              if (r.ok && r.kind === "result") {
                 appendToolMessage(
                   state.conversationMessages,
                   conversationTranscriptState,
                   r.callId,
-                  typeof r.serverOutput === 'string'
+                  typeof r.serverOutput === "string"
                     ? r.serverOutput
                     : JSON.stringify(r.serverOutput),
                   { toolName: r.toolName },
-                )
+                );
               } else if (!r.ok) {
                 appendToolMessage(
                   state.conversationMessages,
@@ -1291,27 +1407,27 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   r.error.callId,
                   `Error: ${r.error.message}`,
                   { toolName: r.error.toolName },
-                )
+                );
               }
             }
 
             // Reset for next iteration
-            state.toolCalls = null
-            state.toolResults = null
-            state.runtimeResult = null
-            state.runtimeSubscription = null
-            state.phase = 'start_iteration'
+            state.toolCalls = null;
+            state.toolResults = null;
+            state.runtimeResult = null;
+            state.runtimeSubscription = null;
+            state.phase = "start_iteration";
 
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'awaiting_elicit': {
+          case "awaiting_elicit": {
             // A tool is awaiting elicitation
             // Emit conversation state for client to render UI and send response
-            let toolCalls = state.toolCalls || []
-            const results = state.toolResults || []
-            const providerResult = state.runtimeResult
-            
+            let toolCalls = state.toolCalls || [];
+            const results = state.toolResults || [];
+            const providerResult = state.runtimeResult;
+
             // CRITICAL FIX: If toolCalls is empty but we have an awaiting elicit result,
             // extract the tool call info from conversationMessages. This happens when
             // resuming from elicitation - the original state.toolCalls was set during
@@ -1320,56 +1436,64 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             if (
               toolCalls.length === 0 &&
               state.awaitingElicitResult?.ok &&
-              state.awaitingElicitResult.kind === 'plugin_awaiting'
+              state.awaitingElicitResult.kind === "plugin_awaiting"
             ) {
               // Find the assistant message that owns the currently awaited tool call.
               // Conversation history can contain prior completed plugin calls; using
               // the first assistant with tool calls can attach the new elicitation UI
               // to stale tool-call parts from an earlier turn.
-              const awaitedCallId = state.awaitingElicitResult.callId
-              const assistantWithToolCalls = [...state.conversationMessages].reverse().find(
-                msg => msg.role === 'assistant' &&
-                  msg.tool_calls?.some((toolCall) => toolCall.id === awaitedCallId)
-              ) ?? [...state.conversationMessages].reverse().find(
-                msg => msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0
-              )
+              const awaitedCallId = state.awaitingElicitResult.callId;
+              const assistantWithToolCalls =
+                [...state.conversationMessages]
+                  .reverse()
+                  .find(
+                    (msg) =>
+                      msg.role === "assistant" &&
+                      msg.tool_calls?.some((toolCall) => toolCall.id === awaitedCallId),
+                  ) ??
+                [...state.conversationMessages]
+                  .reverse()
+                  .find(
+                    (msg) =>
+                      msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0,
+                  );
               if (assistantWithToolCalls && assistantWithToolCalls.tool_calls) {
-                toolCalls = assistantWithToolCalls.tool_calls.map(tc => ({
+                toolCalls = assistantWithToolCalls.tool_calls.map((tc) => ({
                   id: tc.id,
-                  type: 'function' as const,
+                  type: "function" as const,
                   function: {
                     name: tc.function.name,
                     arguments: tc.function.arguments,
                   },
-                }))
+                }));
               }
             }
-            
+
             const serverToolResults = results.map((r) => {
-                if (r.ok) {
-                  if (r.kind === 'handoff' || r.kind === 'plugin_awaiting') {
-                    return { id: r.callId, name: r.toolName, content: '', isError: false }
-                  }
-                  return {
-                    id: r.callId,
-                    name: r.toolName,
-                    content:
-                      typeof r.serverOutput === 'string'
-                        ? r.serverOutput
-                        : JSON.stringify(r.serverOutput),
-                    isError: false,
-                  }
+              if (r.ok) {
+                if (r.kind === "handoff" || r.kind === "plugin_awaiting") {
+                  return { id: r.callId, name: r.toolName, content: "", isError: false };
                 }
                 return {
-                  id: r.error.callId,
-                  name: r.error.toolName,
-                  content: `Error: ${r.error.message}`,
-                  isError: true,
-                }
-              })
+                  id: r.callId,
+                  name: r.toolName,
+                  content:
+                    typeof r.serverOutput === "string"
+                      ? r.serverOutput
+                      : JSON.stringify(r.serverOutput),
+                  isError: false,
+                };
+              }
+              return {
+                id: r.error.callId,
+                name: r.error.toolName,
+                content: `Error: ${r.error.message}`,
+                isError: true,
+              };
+            });
 
             state.pendingEvents.push({
-              type: 'ag_ui_state_snapshot',
+              type: "ag_ui_state_snapshot",
               run: {
                 threadId: agUiRun.threadId,
                 runId: agUiRun.runId,
@@ -1383,28 +1507,33 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       },
                     }
                   : {}),
-                elicits: state.awaitingElicitResult && state.awaitingElicitResult.ok && state.awaitingElicitResult.kind === 'plugin_awaiting'
-                  ? [{
-                      type: 'elicit_request' as const,
-                      sessionId: state.awaitingElicitResult.sessionId,
-                      callId: state.awaitingElicitResult.callId,
-                      toolName: state.awaitingElicitResult.toolName,
-                      elicitId: state.awaitingElicitResult.elicitRequest.elicitId,
-                      key: state.awaitingElicitResult.elicitRequest.key,
-                      message: state.awaitingElicitResult.elicitRequest.message,
-                      schema: state.awaitingElicitResult.elicitRequest.schema,
-                    }]
-                  : [],
+                elicits:
+                  state.awaitingElicitResult &&
+                  state.awaitingElicitResult.ok &&
+                  state.awaitingElicitResult.kind === "plugin_awaiting"
+                    ? [
+                        {
+                          type: "elicit_request" as const,
+                          sessionId: state.awaitingElicitResult.sessionId,
+                          callId: state.awaitingElicitResult.callId,
+                          toolName: state.awaitingElicitResult.toolName,
+                          elicitId: state.awaitingElicitResult.elicitRequest.elicitId,
+                          key: state.awaitingElicitResult.elicitRequest.key,
+                          message: state.awaitingElicitResult.elicitRequest.message,
+                          schema: state.awaitingElicitResult.elicitRequest.schema,
+                        },
+                      ]
+                    : [],
               }),
-            })
+            });
             state.pendingEvents.push({
-              type: 'ag_ui_checkpoint',
+              type: "ag_ui_checkpoint",
               checkpoint: buildAgUiCheckpoint({
                 threadId: agUiRun.threadId,
                 runId: agUiRun.runId,
                 ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
                 messages: state.conversationMessages,
-                assistantContent: providerResult ? runtimeText(providerResult) : '',
+                assistantContent: providerResult ? runtimeText(providerResult) : "",
                 toolCalls,
                 serverToolResults,
                 ...(replayToolTraceMap.size > 0
@@ -1415,49 +1544,49 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     }
                   : {}),
               }),
-            })
-            
-            state.phase = 'handoff_pending'
-            
+            });
+
+            state.phase = "handoff_pending";
+
             // Return first pending event
             if (state.pendingEvents.length > 0) {
-              return { done: false, value: state.pendingEvents.shift()! }
+              return { done: false, value: state.pendingEvents.shift()! };
             }
-            return yield* this.next()
+            return yield* this.next();
           }
 
-          case 'handoff_pending': {
+          case "handoff_pending": {
             // After emitting AG-UI checkpoint, we're done
-            state.phase = 'done'
-            return { done: true, value: undefined }
+            state.phase = "done";
+            return { done: true, value: undefined };
           }
 
-          case 'complete': {
-            state.phase = 'done'
-            return { done: true, value: undefined }
+          case "complete": {
+            state.phase = "done";
+            return { done: true, value: undefined };
           }
 
-          case 'error': {
+          case "error": {
             const errorEvent: StreamEvent = {
-              type: 'error',
-              message: state.error?.message ?? 'Unknown error',
+              type: "error",
+              message: state.error?.message ?? "Unknown error",
               recoverable: false,
-            }
-            state.phase = 'done'
-            return { done: false, value: errorEvent }
+            };
+            state.phase = "done";
+            return { done: false, value: errorEvent };
           }
 
-          case 'done': {
-            return { done: true, value: undefined }
+          case "done": {
+            return { done: true, value: undefined };
           }
 
           default: {
-            state.phase = 'error'
-            state.error = new Error(`Unknown phase: ${state.phase}`)
-            return yield* this.next()
+            state.phase = "error";
+            state.error = new Error(`Unknown phase: ${state.phase}`);
+            return yield* this.next();
           }
         }
       },
-    })
-  })
+    });
+  });
 }

@@ -7,17 +7,20 @@
  * - Durable stream events (with LSN)
  * - Handler configuration
  */
-import type { Operation, Stream, Channel } from 'effection'
-import type { ZodType } from 'zod'
-import type { Model, Runtime, StreamOptions } from '../../lib/chat/runtime/index.ts'
-import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
-import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from '../../lib/chat/index.ts'
-import type { StreamEvent, ChatMessage } from '../types.ts'
-import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
-import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
-import type { ToolExecutionTrace } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
-import type { PluginSessionManager } from './plugin-session-manager.ts'
-import type { ConversationReplayState, AgUiRunMetadata } from '../../lib/chat/session/streaming.ts'
+import type { Operation, Stream, Channel } from "effection";
+import type { ZodType } from "zod";
+import type { Model, Runtime, StreamOptions } from "../../lib/chat/runtime/index.ts";
+import type { ToolSessionSamplingProvider } from "../../lib/chat/mcp-tools/session/types.ts";
+import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
+import type { StreamEvent, ChatMessage } from "../types.ts";
+import type { PluginRegistry } from "../../lib/chat/mcp-tools/plugin-registry.ts";
+import type {
+  ComponentEmissionPayload,
+  PendingEmission,
+} from "../../lib/chat/isomorphic-tools/runtime/emissions.ts";
+import type { ToolExecutionTrace } from "../../lib/chat/isomorphic-tools/runtime/emissions.ts";
+import type { PluginSessionManager } from "./plugin-session-manager.ts";
+import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
 
 // =============================================================================
 // ENGINE STATE PHASES
@@ -27,20 +30,20 @@ import type { ConversationReplayState, AgUiRunMetadata } from '../../lib/chat/se
  * Phases of the chat engine state machine.
  */
 export type EnginePhase =
-  | 'init'
-  | 'process_plugin_abort'      // Handle explicit abort requests
-  | 'process_plugin_responses'  // Resume suspended plugin sessions
-  | 'process_client_outputs'
-  | 'start_iteration'
-  | 'streaming_provider'
-  | 'provider_complete'
-  | 'executing_tools'
-  | 'tools_complete'
-  | 'awaiting_elicit'           // Tool waiting for elicitation
-  | 'complete'
-  | 'error'
-  | 'handoff_pending'
-  | 'done'
+  | "init"
+  | "process_plugin_abort" // Handle explicit abort requests
+  | "process_plugin_responses" // Resume suspended plugin sessions
+  | "process_client_outputs"
+  | "start_iteration"
+  | "streaming_provider"
+  | "provider_complete"
+  | "executing_tools"
+  | "tools_complete"
+  | "awaiting_elicit" // Tool waiting for elicitation
+  | "complete"
+  | "error"
+  | "handoff_pending"
+  | "done";
 
 // =============================================================================
 // TOOL TYPES
@@ -50,43 +53,43 @@ export type EnginePhase =
  * Tool call from the LLM.
  */
 export interface ToolCall {
-  id: string
-  type: 'function'
+  id: string;
+  type: "function";
   function: {
-    name: string
-    arguments: Record<string, unknown>
-  }
+    name: string;
+    arguments: Record<string, unknown>;
+  };
 }
 
 /**
  * Schema for a tool exposed to the LLM.
  */
 export interface ToolSchema {
-  name: string
-  description: string
-  parameters: Record<string, unknown>
-  isIsomorphic?: boolean
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  isIsomorphic?: boolean;
 }
 
 /**
  * An isomorphic tool definition.
  */
 export interface IsomorphicTool {
-  name: string
-  description: string
-  parameters: ZodType<unknown>
-  server?: (params: unknown, ctx: unknown) => Operation<unknown>
-  client?: (input: unknown, ctx: unknown, params: unknown) => Operation<unknown>
-  replayTrace?: (trace: ToolExecutionTrace) => Operation<unknown>
+  name: string;
+  description: string;
+  parameters: ZodType<unknown>;
+  server?: (params: unknown, ctx: unknown) => Operation<unknown>;
+  client?: (input: unknown, ctx: unknown, params: unknown) => Operation<unknown>;
+  replayTrace?: (trace: ToolExecutionTrace) => Operation<unknown>;
 }
 
 /**
  * Tool registry interface.
  */
 export interface ToolRegistry {
-  get(name: string): IsomorphicTool | undefined
-  has(name: string): boolean
-  names(): string[]
+  get(name: string): IsomorphicTool | undefined;
+  has(name: string): boolean;
+  names(): string[];
 }
 
 /**
@@ -94,62 +97,60 @@ export interface ToolRegistry {
  * Used for looking up MCP tool definitions (with .elicits) for plugin execution.
  */
 export interface McpToolRegistry {
-  get(name: string): unknown | undefined
-  has(name: string): boolean
-  names(): string[]
+  get(name: string): unknown | undefined;
+  has(name: string): boolean;
+  names(): string[];
 }
 
 /**
  * Elicitation request from server to client.
  */
 export interface ElicitRequestData {
-  sessionId: string
-  callId: string
-  toolName: string
-  elicitId: string
-  key: string
-  message: string
-  schema: Record<string, unknown>
+  sessionId: string;
+  callId: string;
+  toolName: string;
+  elicitId: string;
+  key: string;
+  message: string;
+  schema: Record<string, unknown>;
 }
-
-
 
 /**
  * Result of tool execution.
  */
 export type ToolExecutionResult =
   | {
-      ok: true
-      kind: 'result'
-      callId: string
-      toolName: string
-      serverOutput: unknown
-      trace?: ToolExecutionTrace
+      ok: true;
+      kind: "result";
+      callId: string;
+      toolName: string;
+      serverOutput: unknown;
+      trace?: ToolExecutionTrace;
     }
   | {
-      ok: true
-      kind: 'handoff'
-      callId: string
-      toolName: string
-      handoff: StreamEvent & { type: 'isomorphic_handoff' }
-      serverOutput?: unknown
+      ok: true;
+      kind: "handoff";
+      callId: string;
+      toolName: string;
+      handoff: StreamEvent & { type: "isomorphic_handoff" };
+      serverOutput?: unknown;
     }
   | {
-      ok: true
-      kind: 'plugin_awaiting'
-      callId: string
-      toolName: string
-      sessionId: string
-      elicitRequest: ElicitRequestData
+      ok: true;
+      kind: "plugin_awaiting";
+      callId: string;
+      toolName: string;
+      sessionId: string;
+      elicitRequest: ElicitRequestData;
     }
   | {
-      ok: false
+      ok: false;
       error: {
-        callId: string
-        toolName: string
-        message: string
-      }
-    }
+        callId: string;
+        toolName: string;
+        message: string;
+      };
+    };
 
 // =============================================================================
 // CLIENT OUTPUT TYPES
@@ -159,13 +160,13 @@ export type ToolExecutionResult =
  * Client output for isomorphic tool phase 2.
  */
 export interface IsomorphicClientOutput {
-  callId: string
-  toolName: string
-  params: unknown
-  clientOutput: unknown
-  cachedHandoff?: unknown
-  usesHandoff?: boolean
-  trace?: ToolExecutionTrace
+  callId: string;
+  toolName: string;
+  params: unknown;
+  clientOutput: unknown;
+  cachedHandoff?: unknown;
+  usesHandoff?: boolean;
+  trace?: ToolExecutionTrace;
 }
 
 // =============================================================================
@@ -177,58 +178,61 @@ export interface IsomorphicClientOutput {
  */
 export interface ChatEngineParams {
   /** Conversation messages */
-  messages: ChatMessage[]
+  messages: ChatMessage[];
 
   /** Replay metadata from prior turns for durable restoration */
-  replayState?: ConversationReplayState
+  replayState?: ConversationReplayState;
 
   /** System prompt to prepend */
-  systemPrompt?: string
+  systemPrompt?: string;
 
   /** Tool schemas to expose to LLM */
-  toolSchemas: ToolSchema[]
+  toolSchemas: ToolSchema[];
 
   /** Tool registry for server-side execution */
-  toolRegistry: ToolRegistry
+  toolRegistry: ToolRegistry;
 
   /** Client-provided isomorphic tool schemas */
-  clientIsomorphicTools: ToolSchema[]
+  clientIsomorphicTools: ToolSchema[];
 
   /** Client outputs from phase 1 handoffs */
-  isomorphicClientOutputs: IsomorphicClientOutput[]
+  isomorphicClientOutputs: IsomorphicClientOutput[];
 
   /** AI runtime for LLM calls */
-  runtime: Runtime
+  runtime: Runtime;
 
   /** Model for runtime LLM calls */
-  model: Model
+  model: Model;
 
   /** Runtime stream options */
-  streamOptions?: StreamOptions
+  streamOptions?: StreamOptions;
+
+  /** Tool choice override for only the first provider call in a new engine. */
+  initialToolChoice?: StreamOptions["toolChoice"];
 
   /** Tool inventory snapshot captured before durable background execution. */
-  toolInventoryEntries?: ToolInventoryEntry[]
+  toolInventoryEntries?: ToolInventoryEntry[];
 
   /** Active tool runtime captured before durable background execution. */
-  toolRuntime?: ToolRuntime
+  toolRuntime?: ToolRuntime;
 
   /** Active tool runtime id used to validate/resume pending tool executions. */
-  toolRuntimeId?: string
+  toolRuntimeId?: string;
 
   /** Provider used for direct plugin-tool sampling when no PluginSessionManager is installed. */
-  pluginSamplingProvider?: ToolSessionSamplingProvider
+  pluginSamplingProvider?: ToolSessionSamplingProvider;
 
   /** Maximum tool loop iterations */
-  maxIterations: number
+  maxIterations: number;
 
   /** Abort signal for cancellation */
-  signal: AbortSignal
+  signal: AbortSignal;
 
   /** Session info to emit at start */
-  sessionInfo?: StreamEvent & { type: 'session_info' }
+  sessionInfo?: StreamEvent & { type: "session_info" };
 
   /** AG-UI run metadata for durable emission */
-  agUiRun: AgUiRunMetadata
+  agUiRun: AgUiRunMetadata;
 
   /**
    * Plugin registry for MCP plugin tools.
@@ -237,39 +241,39 @@ export interface ChatEngineParams {
    * 2. Handle elicit events by dispatching to plugin handlers
    * 3. Handle sample events using the chat provider
    */
-  pluginRegistry?: PluginRegistry
+  pluginRegistry?: PluginRegistry;
 
   /**
    * Emission channel for plugin elicitation UI.
    * When a plugin handler calls ctx.render(), the emission is sent through this channel.
    * The React layer subscribes to this channel to render components.
    */
-  pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>
+  pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>;
 
   /**
    * MCP tool registry for looking up MCP tool definitions.
    * When a tool call matches a registered plugin, we need the tool definition
    * to create a BridgeHost for execution.
    */
-  mcpToolRegistry?: McpToolRegistry
+  mcpToolRegistry?: McpToolRegistry;
 
   /**
    * Plugin session manager for creating/resuming plugin tool sessions.
    * Sessions persist across HTTP request boundaries, allowing tools to
    * suspend for elicitation and resume when the user responds.
    */
-  pluginSessionManager?: PluginSessionManager
+  pluginSessionManager?: PluginSessionManager;
 
   /**
    * Responses to pending elicitation requests.
    * When resuming a session, these are processed first.
    */
-  elicitResponses?: ElicitResponse[]
+  elicitResponses?: ElicitResponse[];
 
   /**
    * Request to abort a specific plugin session.
    */
-  pluginAbort?: PluginAbortRequest
+  pluginAbort?: PluginAbortRequest;
 }
 
 // =============================================================================
@@ -282,9 +286,9 @@ export interface ChatEngineParams {
  */
 export interface DurableStreamEvent {
   /** Log Sequence Number - position in the stream */
-  lsn: number
+  lsn: number;
   /** The actual event payload */
-  event: StreamEvent
+  event: StreamEvent;
 }
 
 // =============================================================================
@@ -295,14 +299,14 @@ export interface DurableStreamEvent {
  * Request setup context for chat handlers.
  */
 export interface ChatHandlerSetupContext {
-  request: Request
-  body: ChatRequestBody
+  request: Request;
+  body: ChatRequestBody;
 }
 
 /**
  * Request setup operation for chat handlers.
  */
-export type ChatHandlerSetup = (ctx: ChatHandlerSetupContext) => Operation<void>
+export type ChatHandlerSetup = (ctx: ChatHandlerSetupContext) => Operation<void>;
 
 /**
  * Response to an elicitation request.
@@ -310,88 +314,88 @@ export type ChatHandlerSetup = (ctx: ChatHandlerSetupContext) => Operation<void>
  */
 export interface ElicitResponse {
   /** Session ID (same as callId from the original tool call) */
-  sessionId: string
+  sessionId: string;
 
   /** Original tool call ID for conversation correlation */
-  callId: string
+  callId: string;
 
   /** Canonical tool name for continuation validation */
-  toolName?: string
+  toolName?: string;
 
   /** Optional runtime execution ref echoed by clients; server validates it against pending state. */
-  ref?: ToolExecutionRef
+  ref?: ToolExecutionRef;
 
   /** Specific elicit request ID */
-  elicitId: string
+  elicitId: string;
 
   /** The user's response */
   result: {
-    action: 'accept' | 'decline' | 'cancel'
-    content?: unknown
-  }
+    action: "accept" | "decline" | "cancel";
+    content?: unknown;
+  };
 }
-
-
 
 /**
  * Request to abort a plugin session.
  */
 export interface PluginAbortRequest {
   /** Session ID to abort */
-  sessionId: string
+  sessionId: string;
 
   /** Optional abort reason */
-  reason?: string
+  reason?: string;
 }
 
 /**
  * Request body for chat requests.
  */
 export interface ModelSelection {
-  provider: string
-  id: string
+  provider: string;
+  id: string;
 }
 
 export interface ChatRequestBody {
-  messages: ChatMessage[]
-  systemPrompt?: string
-  persona?: string
-  personaConfig?: unknown
-  enableOptionalTools?: string[]
-  effort?: string
-  enabledTools?: boolean | string[]
+  messages: ChatMessage[];
+  systemPrompt?: string;
+  persona?: string;
+  personaConfig?: unknown;
+  enableOptionalTools?: string[];
+  effort?: string;
+  streamOptions?: StreamOptions;
+  initialToolChoice?: StreamOptions["toolChoice"];
+  enabledTools?: boolean | string[];
   /**
    * Plugin tools to enable for this request.
    * Must explicitly specify which plugins to enable - no plugins are enabled by default.
    * - undefined or []: No plugin tools enabled
    * - string[]: Enable only the specified plugin tools by name
    */
-  enabledPlugins?: string[]
-  isomorphicTools?: ToolSchema[]
-  isomorphicClientOutputs?: IsomorphicClientOutput[]
-  model?: ModelSelection
+  enabledPlugins?: string[];
+  isomorphicTools?: ToolSchema[];
+  isomorphicClientOutputs?: IsomorphicClientOutput[];
+  model?: ModelSelection;
 
   /**
    * Responses to pending elicitation requests.
    * When a tool emits elicit_request, the client renders UI,
    * collects the user's response, and sends it back here.
    */
-  elicitResponses?: ElicitResponse[]
+  elicitResponses?: ElicitResponse[];
 
-  replayState?: ConversationReplayState
+  replayState?: ConversationReplayState;
 
   /**
    * Conversation ID for durable streaming.
    * When provided, the server loads history from the durable stream
    * and appends new messages to it. Enables reconnect after refresh.
    */
-  conversationId?: string
+  conversationId?: string;
 
   /**
    * Request to abort a tool session.
    * Used when the user cancels an in-progress tool.
    */
-  pluginAbort?: PluginAbortRequest
+  pluginAbort?: PluginAbortRequest;
 }
 
 /**
@@ -399,10 +403,10 @@ export interface ChatRequestBody {
  */
 export interface DurableChatHandlerConfig {
   /** Request-scoped setup operation for configuring DI contexts before durable dependency resolution. */
-  setup?: ChatHandlerSetup
+  setup?: ChatHandlerSetup;
 
   /** Maximum tool loop iterations (default: 10) */
-  maxToolIterations?: number
+  maxToolIterations?: number;
 }
 
 // =============================================================================
@@ -414,10 +418,10 @@ export interface DurableChatHandlerConfig {
  */
 export interface DurableStreamParams {
   /** Session ID for reconnection */
-  sessionId?: string
+  sessionId?: string;
 
   /** Last LSN received - resume from this point */
-  lastLSN?: number
+  lastLSN?: number;
 }
 
 // =============================================================================
@@ -427,4 +431,4 @@ export interface DurableStreamParams {
 /**
  * The chat engine - a pull-based stream of events.
  */
-export type ChatEngine = Stream<StreamEvent, void>
+export type ChatEngine = Stream<StreamEvent, void>;

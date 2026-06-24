@@ -11,6 +11,7 @@ import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { IsomorphicToolSchema } from "../isomorphic-tools/index.ts";
 import type { ConversationReplayState } from "./streaming.ts";
 import type { PluginHandleInput } from "../mcp-tools/plugin.ts";
+import type { StreamOptions } from "../runtime/index.ts";
 
 // =============================================================================
 // STREAM EVENT OBSERVATION
@@ -193,6 +194,19 @@ export interface SessionOptions {
    * Effort level for the persona.
    */
   effort?: "auto" | "low" | "medium" | "high";
+
+  /**
+   * Provider stream options for this session.
+   */
+  streamOptions?: StreamOptions;
+
+  /**
+   * Tool choice override for only the first model call in a new chat request.
+   * This is useful for acceptance/demo routes that expose exactly one tool and
+   * require the model to start by calling it, without forcing follow-up turns
+   * after tool completion to call another tool.
+   */
+  initialToolChoice?: StreamOptions["toolChoice"];
 
   /**
    * Stream transforms - process patches before they reach React state.
