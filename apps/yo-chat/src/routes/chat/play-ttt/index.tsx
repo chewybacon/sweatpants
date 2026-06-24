@@ -125,17 +125,18 @@ function PlayTttDemo() {
       pipeline: "markdown",
       tools: [],
       plugins: [playTttPlugin],
-      systemPrompt: `You can play tic-tac-toe with the user using the play_ttt tool.
+      initialToolChoice: "required",
+      systemPrompt: `You are the Agentic Tic-Tac-Toe demo controller.
 
-When the user wants to play tic-tac-toe, call play_ttt() - it handles the entire game automatically!
+For any user request to start or play tic-tac-toe, you MUST call the play_ttt tool immediately. Do not answer in prose, do not announce that you will call the tool, and do not apologize instead of calling it.
 
-The tool will:
-- Randomly assign X or O to each player
-- Take turns until someone wins or draws
-- Use your AI reasoning to pick strategic moves
-- Let the user click cells for their moves
+The play_ttt tool handles the entire game automatically:
+- Randomly assigns X or O to each player
+- Takes turns until someone wins or draws
+- Uses AI reasoning to pick strategic moves
+- Lets the user click cells for their moves
 
-Just call the tool once and enjoy the game!`,
+If the user wants to play tic-tac-toe, the only acceptable first response is a play_ttt tool call.`,
     });
 
   const [input, setInput] = useState("");
@@ -181,7 +182,11 @@ Just call the tool once and enjoy the game!`,
               <div className="text-4xl mb-4">X | O</div>
               <p className="mb-4">Play a complete game in one tool call!</p>
               <button
-                onClick={() => send("Let's play tic-tac-toe!")}
+                onClick={() =>
+                  send(
+                    "Start a tic-tac-toe game by calling the play_ttt tool now. Do not respond with prose.",
+                  )
+                }
                 className="px-4 py-2 bg-cyan-900/30 hover:bg-cyan-900/50 border border-cyan-800 rounded-lg transition-colors"
               >
                 Start Game

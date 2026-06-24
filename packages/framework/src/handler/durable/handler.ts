@@ -306,7 +306,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
       const runtime = createRuntimeFromModelProviderDriver(modelProviderDriver);
       const model = yield* ModelProviderApi.model();
-      const streamOptions = yield* ModelProviderApi.streamOptions();
+      const contextStreamOptions = yield* ModelProviderApi.streamOptions();
+      const streamOptions =
+        contextStreamOptions || body.streamOptions
+          ? { ...(contextStreamOptions ?? {}), ...(body.streamOptions ?? {}) }
+          : undefined;
+      const initialToolChoice =
+        body.elicitResponses?.length || body.isomorphicClientOutputs?.length
+          ? undefined
+          : body.initialToolChoice;
       log.debug(
         { provider: model.provider, model: model.id, api: model.api },
         "model provider configured",
@@ -530,6 +538,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           runtime,
           model,
           ...(streamOptions ? { streamOptions } : {}),
+          ...(initialToolChoice ? { initialToolChoice } : {}),
           toolInventoryEntries: inventoryEntries,
           toolRuntime: activeToolRuntime,
           toolRuntimeId: activeToolRuntime.id,

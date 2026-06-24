@@ -34,6 +34,8 @@ export function* executeChatFetch(
         personaConfig: options.personaConfig,
         enableOptionalTools: options.enableOptionalTools,
         effort: options.effort,
+        streamOptions: options.streamOptions,
+        initialToolChoice: options.initialToolChoice,
         isomorphicTools: options.isomorphicToolSchemas,
         isomorphicClientOutputs: options.isomorphicClientOutputs,
         elicitResponses: options.elicitResponses,
