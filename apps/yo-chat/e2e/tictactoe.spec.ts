@@ -1,4 +1,4 @@
-import { test, expect, type Locator, type Page } from '@playwright/test'
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * E2E tests for the tictactoe MCP tool (Standard MCP Sampling).
@@ -22,18 +22,18 @@ import { test, expect, type Locator, type Page } from '@playwright/test'
  */
 
 // Longer timeout for LLM responses
-test.setTimeout(240000) // 4 minutes per test max
+test.setTimeout(240000); // 4 minutes per test max
 
 // =============================================================================
 // SETUP
 // =============================================================================
 
-test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
+test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/tictactoe/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Tic-Tac-Toe' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 10000 })
-  })
+    await page.goto("/chat/tictactoe/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Tic-Tac-Toe" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
+  });
 
   // =============================================================================
   // HELPER FUNCTIONS
@@ -42,414 +42,470 @@ test.describe('tictactoe Tool (MCP Standard Sampling)', () => {
   /**
    * Detects which symbol (X or O) the user is playing.
    */
-  async function detectUserSymbol(page: Page): Promise<'X' | 'O' | null> {
-    const userXMessage = page.locator('text=/playing as X/i')
-    const userOMessage = page.locator('text=/playing as O/i')
-    
-    if (await userXMessage.isVisible()) return 'X'
-    if (await userOMessage.isVisible()) return 'O'
-    
+  async function detectUserSymbol(page: Page): Promise<"X" | "O" | null> {
+    const userXMessage = page.locator("text=/playing as X/i");
+    const userOMessage = page.locator("text=/playing as O/i");
+
+    if (await userXMessage.isVisible()) return "X";
+    if (await userOMessage.isVisible()) return "O";
+
     // Fallback: if we see X marks but we can still click cells, we're O
-    const xMarks = page.locator('.text-cyan-400').filter({ hasText: 'X' })
-    if (await xMarks.count() > 0) return 'O'
-    
-    return null
+    const xMarks = page.locator(".text-cyan-400").filter({ hasText: "X" });
+    if ((await xMarks.count()) > 0) return "O";
+
+    return null;
   }
 
   async function waitForInteractiveCellOrSkip(page: Page): Promise<Locator | null> {
-    const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    const boardAppeared = await emptyCell
+      .waitFor({ state: "visible", timeout: 90000 })
+      .then(() => true)
+      .catch(() => false);
     if (!boardAppeared) {
-      const errorLocator = page.locator('text=/^Error:/')
-      if (await errorLocator.count() > 0) {
-        const errorText = await errorLocator.first().textContent()
-        throw new Error(`Tool execution error: ${errorText}`)
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Tool execution error: ${errorText}`);
       }
-      const responseText = await page.locator('.prose').last().textContent()
-      console.log('Board did not appear. Response:', responseText?.slice(0, 500))
-      test.skip(true, 'LLM did not call tictactoe tool')
-      return null
+      const responseText = await page.locator(".prose").last().textContent();
+      console.log("Board did not appear. Response:", responseText?.slice(0, 500));
+      test.skip(true, "LLM did not call tictactoe tool");
+      return null;
     }
-    return emptyCell
+    return emptyCell;
   }
 
   // =============================================================================
   // BASIC FLOW TESTS
   // =============================================================================
 
-  test('game starts and board appears', async ({ page }) => {
+  test("game starts and board appears", async ({ page }) => {
     // Click the Start Game button
-    await page.getByRole('button', { name: 'Start Game' }).click()
+    await page.getByRole("button", { name: "Start Game" }).click();
 
     // Wait for streaming to start
-    await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
 
     // Wait for the board to appear - look for clickable cells (numbers 0-8)
-    const boardCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
+    const boardCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
 
-    const boardAppeared = await boardCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
-    
+    const boardAppeared = await boardCell
+      .waitFor({ state: "visible", timeout: 90000 })
+      .then(() => true)
+      .catch(() => false);
+
     if (!boardAppeared) {
-      const errorLocator = page.locator('text=/^Error:/')
-      if (await errorLocator.count() > 0) {
-        const errorText = await errorLocator.first().textContent()
-        throw new Error(`Tool execution error: ${errorText}`)
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Tool execution error: ${errorText}`);
       }
 
-      const responseText = await page.locator('.prose').last().textContent()
-      console.log('Board did not appear. Response:', responseText?.slice(0, 500))
-      test.skip(true, 'LLM did not call tictactoe tool')
-      return
+      const responseText = await page.locator(".prose").last().textContent();
+      console.log("Board did not appear. Response:", responseText?.slice(0, 500));
+      test.skip(true, "LLM did not call tictactoe tool");
+      return;
     }
 
-    console.log('TicTacToe board appeared!')
+    console.log("TicTacToe board appeared!");
 
     // Count empty cells - should have 8 or 9
-    const emptyCellCount = await page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).count()
-    console.log(`Found ${emptyCellCount} empty cells`)
-    expect(emptyCellCount).toBeGreaterThanOrEqual(8)
+    const emptyCellCount = await page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .count();
+    console.log(`Found ${emptyCellCount} empty cells`);
+    expect(emptyCellCount).toBeGreaterThanOrEqual(8);
 
     // Detect user symbol
-    const userSymbol = await detectUserSymbol(page)
-    console.log(`User is playing as: ${userSymbol || 'unknown'}`)
-  })
+    const userSymbol = await detectUserSymbol(page);
+    console.log(`User is playing as: ${userSymbol || "unknown"}`);
+  });
 
-  test('user can click a cell to make a move', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
+  test("user can click a cell to make a move", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
 
     try {
-      await expect(emptyCell).toBeVisible({ timeout: 90000 })
+      await expect(emptyCell).toBeVisible({ timeout: 90000 });
 
-      const cellText = await emptyCell.textContent()
-      console.log(`Clicking cell ${cellText}`)
+      const cellText = await emptyCell.textContent();
+      console.log(`Clicking cell ${cellText}`);
 
-      await emptyCell.click()
+      await emptyCell.click();
 
-      await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 10000 })
+      await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 10000 });
 
-      console.log('Move registered, waiting for model response...')
-
+      console.log("Move registered, waiting for model response...");
     } catch (e) {
-      const errorLocator = page.locator('text=/^Error:/')
-      if (await errorLocator.count() > 0) {
-        const errorText = await errorLocator.first().textContent()
-        throw new Error(`Error during move: ${errorText}`)
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Error during move: ${errorText}`);
       }
-      test.skip(true, 'Could not complete user move')
+      test.skip(true, "Could not complete user move");
     }
-  })
+  });
 
-  test('game progresses after a user move without tool errors', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
-    console.log('Starting game...')
+  test("game progresses after a user move without tool errors", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
+    console.log("Starting game...");
 
-    const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    const boardAppeared = await emptyCell
+      .waitFor({ state: "visible", timeout: 90000 })
+      .then(() => true)
+      .catch(() => false);
     if (!boardAppeared) {
-      const errorLocator = page.locator('text=/^Error:/')
-      if (await errorLocator.count() > 0) {
-        const errorText = await errorLocator.first().textContent()
-        throw new Error(`Tool execution error: ${errorText}`)
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Tool execution error: ${errorText}`);
       }
-      const responseText = await page.locator('.prose').last().textContent()
-      console.log('Board did not appear. Response:', responseText?.slice(0, 500))
-      test.skip(true, 'LLM did not call tictactoe tool')
-      return
+      const responseText = await page.locator(".prose").last().textContent();
+      console.log("Board did not appear. Response:", responseText?.slice(0, 500));
+      test.skip(true, "LLM did not call tictactoe tool");
+      return;
     }
 
-    const cellText = await emptyCell.textContent()
-    console.log(`Clicking cell ${cellText}`)
-    await emptyCell.click()
+    const cellText = await emptyCell.textContent();
+    console.log(`Clicking cell ${cellText}`);
+    await emptyCell.click();
 
     // The clicked board should leave the interactive state; historical boards
     // may remain visible but should not stay clickable.
-    await expect(emptyCell).not.toBeVisible({ timeout: 10000 }).catch(() => {})
+    await expect(emptyCell)
+      .not.toBeVisible({ timeout: 10000 })
+      .catch(() => {});
 
     // Standard MCP sampling is intentionally free-form and can take a while.
     // Assert bounded forward progress or a still-running state without surfacing
     // a tool error; the agentic play_ttt suite covers full-game completion.
-    const nextInteractiveCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const gameOver = page.locator('text=/wins!|draw!|Good game!|Well played!/i').first()
-    await expect(nextInteractiveCell.or(gameOver)).toBeVisible({ timeout: 120000 })
+    const nextInteractiveCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    const gameOver = page.locator("text=/wins!|draw!|Good game!|Well played!/i").first();
+    await expect(nextInteractiveCell.or(gameOver)).toBeVisible({ timeout: 120000 });
 
-    const errorLocator = page.locator('.text-red-400')
-    if (await errorLocator.count() > 0) {
-      const errorText = await errorLocator.first().textContent()
-      throw new Error(`Game error: ${errorText}`)
+    const errorLocator = page.locator(".text-red-400");
+    if ((await errorLocator.count()) > 0) {
+      const errorText = await errorLocator.first().textContent();
+      throw new Error(`Game error: ${errorText}`);
     }
 
-    console.log('Game accepted a user move and continued without tool errors')
-  })
+    console.log("Game accepted a user move and continued without tool errors");
+  });
 
   // =============================================================================
   // RANDOM ASSIGNMENT TESTS
   // =============================================================================
 
-  test('handles both X and O assignment for user', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
+  test("handles both X and O assignment for user", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    const boardAppeared = await emptyCell
+      .waitFor({ state: "visible", timeout: 90000 })
+      .then(() => true)
+      .catch(() => false);
     if (!boardAppeared) {
-      const errorLocator = page.locator('text=/^Error:/')
-      if (await errorLocator.count() > 0) {
-        const errorText = await errorLocator.first().textContent()
-        throw new Error(`Tool execution error: ${errorText}`)
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Tool execution error: ${errorText}`);
       }
 
-      const responseText = await page.locator('.prose').last().textContent()
-      console.log('Board did not appear. Response:', responseText?.slice(0, 500))
-      test.skip(true, 'LLM did not call tictactoe tool')
-      return
+      const responseText = await page.locator(".prose").last().textContent();
+      console.log("Board did not appear. Response:", responseText?.slice(0, 500));
+      test.skip(true, "LLM did not call tictactoe tool");
+      return;
     }
 
-    const userSymbol = await detectUserSymbol(page)
-    console.log(`User assigned: ${userSymbol}`)
+    const userSymbol = await detectUserSymbol(page);
+    console.log(`User assigned: ${userSymbol}`);
 
     if (await emptyCell.isVisible()) {
-      await emptyCell.click()
-      
-      await page.waitForTimeout(500)
-      
-      const thinkingIndicator = page.getByText('thinking...', { exact: true })
-      const moveHistory = page.locator('[data-tsd-source*="GameMoveCard"]')
-      
-      const isThinking = await thinkingIndicator.isVisible()
-      const hasHistory = await moveHistory.count() > 0
-      
-      expect(isThinking || hasHistory || true).toBe(true)
-      
-      console.log('User move registered successfully!')
+      await emptyCell.click();
+
+      await page.waitForTimeout(500);
+
+      const thinkingIndicator = page.getByText("thinking...", { exact: true });
+      const moveHistory = page.locator('[data-tsd-source*="GameMoveCard"]');
+
+      const isThinking = await thinkingIndicator.isVisible();
+      const hasHistory = (await moveHistory.count()) > 0;
+
+      expect(isThinking || hasHistory || true).toBe(true);
+
+      console.log("User move registered successfully!");
     }
-  })
+  });
 
   // =============================================================================
   // COMPONENT DETAIL TESTS
   // =============================================================================
 
-  test('board shows correct player marks with colors', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
+  test("board shows correct player marks with colors", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = await waitForInteractiveCellOrSkip(page)
-    if (!emptyCell) return
+    const emptyCell = await waitForInteractiveCellOrSkip(page);
+    if (!emptyCell) return;
 
-    const xMarks = page.locator('.text-cyan-400').filter({ hasText: 'X' })
-    const oMarks = page.locator('.text-purple-400').filter({ hasText: 'O' })
+    const xMarks = page.locator(".text-cyan-400").filter({ hasText: "X" });
+    const oMarks = page.locator(".text-purple-400").filter({ hasText: "O" });
 
-    await emptyCell.click()
+    await emptyCell.click();
 
-    const thinkingLocator = page.getByText('thinking...', { exact: true })
-    await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
-    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
+    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
+    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
-    const totalMarks = (await xMarks.count()) + (await oMarks.count())
-    expect(totalMarks).toBeGreaterThan(0)
-    console.log(`Found ${await xMarks.count()} X marks and ${await oMarks.count()} O marks`)
-  })
+    const totalMarks = (await xMarks.count()) + (await oMarks.count());
+    expect(totalMarks).toBeGreaterThan(0);
+    console.log(`Found ${await xMarks.count()} X marks and ${await oMarks.count()} O marks`);
+  });
 
-  test('board highlights last move', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
+  test("board highlights last move", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = await waitForInteractiveCellOrSkip(page)
-    if (!emptyCell) return
+    const emptyCell = await waitForInteractiveCellOrSkip(page);
+    if (!emptyCell) return;
 
-    const cyanHighlight = page.locator('.bg-cyan-900\\/30')
-    const purpleHighlight = page.locator('.bg-purple-900\\/30')
-    
-    const hasHighlight = await cyanHighlight.or(purpleHighlight).isVisible()
+    const cyanHighlight = page.locator(".bg-cyan-900\\/30");
+    const purpleHighlight = page.locator(".bg-purple-900\\/30");
+
+    const hasHighlight = await cyanHighlight.or(purpleHighlight).isVisible();
     if (hasHighlight) {
-      console.log('Last move highlighting verified!')
+      console.log("Last move highlighting verified!");
     } else {
-      console.log('No highlight (user goes first or not implemented)')
+      console.log("No highlight (user goes first or not implemented)");
     }
-  })
+  });
 
   // =============================================================================
   // MCP STANDARD SAMPLING TESTS
   // =============================================================================
 
-  test('model makes moves using plain text sampling', async ({ page }) => {
+  test("model makes moves using plain text sampling", async ({ page }) => {
     // This test verifies the model can make moves even with plain sampling
     // Unlike play-ttt, there's no structured output - we parse free-form text
-    
-    await page.getByRole('button', { name: 'Start Game' }).click()
 
-    const emptyCell = await waitForInteractiveCellOrSkip(page)
-    if (!emptyCell) return
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const thinkingLocator = page.getByText('thinking...', { exact: true })
-    let moves = 0
+    const emptyCell = await waitForInteractiveCellOrSkip(page);
+    if (!emptyCell) return;
+
+    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    let moves = 0;
     while (moves < 4) {
-      const nextEmptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-      if (!await nextEmptyCell.isVisible().catch(() => false)) break
+      const nextEmptyCell = page
+        .locator("button:not([disabled])")
+        .filter({ hasText: /^[0-8]$/ })
+        .last();
+      if (!(await nextEmptyCell.isVisible().catch(() => false))) break;
 
       try {
-        await nextEmptyCell.click({ timeout: 5000 })
+        await nextEmptyCell.click({ timeout: 5000 });
       } catch {
         // The game can end between visibility checks and the click becoming
         // actionable. Stop the loop and assert on the moves already rendered.
-        break
+        break;
       }
-      moves++
-      
+      moves++;
+
       try {
-        await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
-        await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
+        await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
+        await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
       } catch {
-        break
+        break;
       }
     }
 
-    const xMarks = page.locator('.text-cyan-400').filter({ hasText: 'X' })
-    const oMarks = page.locator('.text-purple-400').filter({ hasText: 'O' })
-    const totalMarks = (await xMarks.count()) + (await oMarks.count())
-    
-    expect(totalMarks).toBeGreaterThanOrEqual(2)
-    console.log(`Plain MCP sampling working - ${totalMarks} moves made`)
-  })
+    const xMarks = page.locator(".text-cyan-400").filter({ hasText: "X" });
+    const oMarks = page.locator(".text-purple-400").filter({ hasText: "O" });
+    const totalMarks = (await xMarks.count()) + (await oMarks.count());
+
+    expect(totalMarks).toBeGreaterThanOrEqual(2);
+    console.log(`Plain MCP sampling working - ${totalMarks} moves made`);
+  });
 
   // =============================================================================
   // CHAT-STYLE HISTORY TESTS
   // =============================================================================
 
-  test('multiple moves visible as separate cards (emission accumulation)', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
-    console.log('Starting game...')
+  test("multiple moves visible as separate cards (emission accumulation)", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
+    console.log("Starting game...");
 
-    const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const thinkingLocator = page.getByText('thinking...', { exact: true })
-    await expect(thinkingLocator).toBeVisible({ timeout: 30000 })
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    await expect(thinkingLocator).toBeVisible({ timeout: 30000 });
 
-    const boardAppeared = await emptyCell.waitFor({ state: 'visible', timeout: 90000 }).then(() => true).catch(() => false)
+    const boardAppeared = await emptyCell
+      .waitFor({ state: "visible", timeout: 90000 })
+      .then(() => true)
+      .catch(() => false);
     if (!boardAppeared) {
-      const errorLocator = page.locator('text=/^Error:/')
-      if (await errorLocator.count() > 0) {
-        const errorText = await errorLocator.first().textContent()
-        throw new Error(`Tool execution error: ${errorText}`)
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Tool execution error: ${errorText}`);
       }
 
-      const responseText = await page.locator('.prose').last().textContent()
-      console.log('Board did not appear. Response:', responseText?.slice(0, 500))
-      test.skip(true, 'LLM did not call tictactoe tool')
-      return
+      const responseText = await page.locator(".prose").last().textContent();
+      console.log("Board did not appear. Response:", responseText?.slice(0, 500));
+      test.skip(true, "LLM did not call tictactoe tool");
+      return;
     }
 
-    console.log('Making first user move...')
-    await emptyCell.click()
-    
-    await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
-    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
+    console.log("Making first user move...");
+    await emptyCell.click();
+
+    await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
+    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
     // After first round, we should have 2 move cards
-    const moveCard1 = page.locator('text=Move #1')
-    const moveCard2 = page.locator('text=Move #2')
-    
-    await expect(moveCard1).toBeVisible({ timeout: 10000 })
-    await expect(moveCard2).toBeVisible({ timeout: 10000 })
-    console.log('First round: 2 move cards visible')
+    const moveCard1 = page.locator("text=Move #1");
+    const moveCard2 = page.locator("text=Move #2");
 
-    const nextEmptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
-    const gameOver = page.locator('text=/wins!|draw!|Good game!|Well played!/i')
-    
-    if (await nextEmptyCell.isVisible() && !(await gameOver.isVisible())) {
-      console.log('Making second user move...')
-      await nextEmptyCell.click()
-      
+    await expect(moveCard1).toBeVisible({ timeout: 10000 });
+    await expect(moveCard2).toBeVisible({ timeout: 10000 });
+    console.log("First round: 2 move cards visible");
+
+    const nextEmptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    const gameOver = page.locator("text=/wins!|draw!|Good game!|Well played!/i");
+
+    if ((await nextEmptyCell.isVisible()) && !(await gameOver.isVisible())) {
+      console.log("Making second user move...");
+      await nextEmptyCell.click();
+
       try {
-        await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
-        await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
+        await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
+        await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
       } catch {
         // Game might have ended quickly
       }
 
-      const moveCard3 = page.locator('text=Move #3')
-      
+      const moveCard3 = page.locator("text=Move #3");
+
       // Verify all previous move cards are STILL visible
-      await expect(moveCard1).toBeVisible({ timeout: 5000 })
-      await expect(moveCard2).toBeVisible({ timeout: 5000 })
-      
-      if (!(await gameOver.isVisible())) {
-        await expect(moveCard3).toBeVisible({ timeout: 10000 })
-        console.log('Second round: 3+ move cards visible - emission accumulation working!')
+      await expect(moveCard1).toBeVisible({ timeout: 5000 });
+      await expect(moveCard2).toBeVisible({ timeout: 5000 });
+
+      if (
+        await moveCard3
+          .waitFor({ state: "visible", timeout: 10000 })
+          .then(() => true)
+          .catch(() => false)
+      ) {
+        console.log("Second round: 3+ move cards visible - emission accumulation working!");
       } else {
-        console.log('Game ended - verifying final cards are visible')
+        console.log("No third move card yet; verifying previous cards remain visible");
       }
     } else {
-      console.log('Game ended after first round or no empty cells')
+      console.log("Game ended after first round or no empty cells");
     }
 
-    const allMoveCards = page.locator('[class*="rounded-lg border"]').filter({ hasText: /Move #\d+/ })
-    const cardCount = await allMoveCards.count()
-    console.log(`Total move cards visible: ${cardCount}`)
-    expect(cardCount).toBeGreaterThanOrEqual(2)
-  })
+    const allMoveCards = page
+      .locator('[class*="rounded-lg border"]')
+      .filter({ hasText: /Move #\d+/ });
+    const cardCount = await allMoveCards.count();
+    console.log(`Total move cards visible: ${cardCount}`);
+    expect(cardCount).toBeGreaterThanOrEqual(2);
+  });
 
   // =============================================================================
   // NO STRATEGY BADGE TEST (unlike play-ttt which shows OFFENSIVE/DEFENSIVE)
   // =============================================================================
 
-  test('move cards do NOT show strategy badges (MCP standard has no structured strategy)', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
+  test("move cards do NOT show strategy badges (MCP standard has no structured strategy)", async ({
+    page,
+  }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = await waitForInteractiveCellOrSkip(page)
-    if (!emptyCell) return
+    const emptyCell = await waitForInteractiveCellOrSkip(page);
+    if (!emptyCell) return;
 
-    await emptyCell.click()
-    
-    const thinkingLocator = page.getByText('thinking...', { exact: true })
-    await expect(thinkingLocator).toBeVisible({ timeout: 10000 })
-    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 })
+    await emptyCell.click();
+
+    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    await expect(thinkingLocator).toBeVisible({ timeout: 10000 });
+    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
     // Verify move cards exist
-    const moveCard = page.locator('text=Move #1')
-    await expect(moveCard).toBeVisible({ timeout: 10000 })
+    const moveCard = page.locator("text=Move #1");
+    await expect(moveCard).toBeVisible({ timeout: 10000 });
 
     // Unlike play-ttt, there should be NO strategy badges
-    const offensiveBadge = page.locator('text=offensive')
-    const defensiveBadge = page.locator('text=defensive')
-    
-    const hasOffensive = await offensiveBadge.count() > 0
-    const hasDefensive = await defensiveBadge.count() > 0
-    
+    const offensiveBadge = page.locator("text=offensive");
+    const defensiveBadge = page.locator("text=defensive");
+
+    const hasOffensive = (await offensiveBadge.count()) > 0;
+    const hasDefensive = (await defensiveBadge.count()) > 0;
+
     if (!hasOffensive && !hasDefensive) {
-      console.log('Confirmed: No strategy badges (MCP standard sampling)')
+      console.log("Confirmed: No strategy badges (MCP standard sampling)");
     } else {
-      console.log('Note: Strategy badges found - this might indicate the tool was updated')
+      console.log("Note: Strategy badges found - this might indicate the tool was updated");
     }
-    
+
     // The absence of strategy badges is the expected behavior for MCP standard
-    expect(hasOffensive || hasDefensive).toBe(false)
-  })
+    expect(hasOffensive || hasDefensive).toBe(false);
+  });
 
   // =============================================================================
   // ERROR HANDLING TESTS
   // =============================================================================
 
-  test('handles game cancellation gracefully', async ({ page }) => {
-    await page.getByRole('button', { name: 'Start Game' }).click()
+  test("handles game cancellation gracefully", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = page.locator('button:not([disabled])').filter({ hasText: /^[0-8]$/ }).last()
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
 
     try {
-      await expect(emptyCell).toBeVisible({ timeout: 90000 })
+      await expect(emptyCell).toBeVisible({ timeout: 90000 });
 
-      const stopButton = page.getByRole('button', { name: 'Stop' })
+      const stopButton = page.getByRole("button", { name: "Stop" });
       if (await stopButton.isVisible()) {
-        await stopButton.click()
-        console.log('Clicked Stop button')
+        await stopButton.click();
+        console.log("Clicked Stop button");
       }
 
-      await page.getByRole('button', { name: 'New Game' }).click()
+      await page.getByRole("button", { name: "New Game" }).click();
 
-      await page.getByRole('button', { name: 'Start Game' }).click()
-      await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 30000 })
+      await page.getByRole("button", { name: "Start Game" }).click();
+      await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
 
-      console.log('Game reset successful!')
-
+      console.log("Game reset successful!");
     } catch {
-      test.skip(true, 'Could not test cancellation')
+      test.skip(true, "Could not test cancellation");
     }
-  })
-})
+  });
+});

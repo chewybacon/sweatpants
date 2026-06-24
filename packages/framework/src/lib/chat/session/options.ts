@@ -4,12 +4,13 @@
  * Session configuration types.
  */
 
-import type { Operation, Channel } from 'effection'
-import type { ChatPatch } from '../patches/index.ts'
-import type { Message } from '../types.ts'
-import type { StreamEvent, StreamResult } from './streaming.ts'
-import type { IsomorphicToolSchema } from '../isomorphic-tools/index.ts'
-import type { ConversationReplayState } from './streaming.ts'
+import type { Operation, Channel } from "effection";
+import type { ChatPatch } from "../patches/index.ts";
+import type { Message } from "../types.ts";
+import type { StreamEvent, StreamResult } from "./streaming.ts";
+import type { IsomorphicToolSchema } from "../isomorphic-tools/index.ts";
+import type { ConversationReplayState } from "./streaming.ts";
+import type { PluginHandleInput } from "../mcp-tools/plugin.ts";
 
 // =============================================================================
 // STREAM EVENT OBSERVATION
@@ -23,13 +24,13 @@ import type { ConversationReplayState } from './streaming.ts'
  */
 export interface StreamEventEntry {
   /** Log sequence number from the durable frame */
-  lsn: number
+  lsn: number;
   /** The raw stream event */
-  event: StreamEvent
+  event: StreamEvent;
   /** Whether the event was received live or replayed from history */
-  phase: 'live' | 'replay'
+  phase: "live" | "replay";
   /** Timestamp (Date.now()) when the event was observed */
-  receivedAt: number
+  receivedAt: number;
 }
 
 // =============================================================================
@@ -41,26 +42,26 @@ export interface StreamEventEntry {
  */
 export interface ElicitResponseData {
   /** Session ID (same as callId from the original tool call) */
-  sessionId: string
+  sessionId: string;
   /** Original tool call ID for conversation correlation */
-  callId: string
+  callId: string;
   /** Canonical tool name for continuation validation */
-  toolName?: string
+  toolName?: string;
   /** Optional runtime execution ref echoed from durable pending state */
   ref?: {
-    runtimeId: string
-    executionId: string
-    callId: string
-    toolName: string
-    sessionId?: string
-  }
+    runtimeId: string;
+    executionId: string;
+    callId: string;
+    toolName: string;
+    sessionId?: string;
+  };
   /** Specific elicit request ID */
-  elicitId: string
+  elicitId: string;
   /** The user's response */
   result: {
-    action: 'accept' | 'decline' | 'cancel'
-    content?: unknown
-  }
+    action: "accept" | "decline" | "cancel";
+    content?: unknown;
+  };
 }
 
 // =============================================================================
@@ -76,8 +77,8 @@ export interface ElicitResponseData {
 export type Streamer = (
   messages: Message[],
   patches: Channel<ChatPatch, void>,
-  options: Omit<StreamChatOptions, 'streamer'>
-) => Operation<StreamResult>
+  options: Omit<StreamChatOptions, "streamer">,
+) => Operation<StreamResult>;
 
 // =============================================================================
 // MESSAGE RENDERER
@@ -92,7 +93,7 @@ export type Streamer = (
  * @param content - The raw message content
  * @returns HTML string, or undefined to skip rendering
  */
-export type MessageRenderer = (content: string) => string | undefined
+export type MessageRenderer = (content: string) => string | undefined;
 
 // =============================================================================
 // PATCH TRANSFORM
@@ -104,8 +105,8 @@ export type MessageRenderer = (content: string) => string | undefined
  */
 export type PatchTransform = (
   input: Channel<ChatPatch, void>,
-  output: Channel<ChatPatch, void>
-) => Operation<void>
+  output: Channel<ChatPatch, void>,
+) => Operation<void>;
 
 // =============================================================================
 // SESSION OPTIONS
@@ -119,7 +120,7 @@ export interface SessionOptions {
    * Base URL for the chat API.
    * Defaults to '/api/chat'.
    */
-  baseUrl?: string
+  baseUrl?: string;
 
   /**
    * Tools to enable for this session.
@@ -135,94 +136,98 @@ export interface SessionOptions {
    *
    * Only these tools will be available to the LLM.
    */
-  tools?: unknown[] // Will be typed as AnyIsomorphicTool[] in the hooks
+  tools?: unknown[]; // Will be typed as AnyIsomorphicTool[] in the hooks
 
   /**
-   * Plugin tools to enable for this session.
-   * Must explicitly specify which plugins to enable - no plugins are enabled by default.
+   * Plugin handles to enable for this session.
+   *
+   * Pass concrete plugin objects (the return value of
+   * `makePlugin(tool).onElicit({...}).build()`). The framework derives the
+   * server-side `enabledPlugins` list automatically from each plugin's
+   * `client.toolName` and registers client-side elicitation handlers from
+   * `plugin.client`.
    *
    * ```typescript
    * useChat({
-   *   plugins: [bookFlightPlugin.client],
-   *   enabledPlugins: ['book_flight'],  // Tell server which plugins to enable
+   *   plugins: [bookFlightPlugin, tictactoePlugin],
    * })
    * ```
    *
-   * - undefined or []: No plugin tools enabled on server
-   * - string[]: Enable only the specified plugins by name
+   * The old `enabledPlugins` string array option is removed — plugin tool
+   * exposure is derived from the `plugins` array.
    */
-  enabledPlugins?: string[]
+  plugins?: PluginHandleInput[];
 
   /**
    * Tools to enable by name (for server-side tool selection).
    * Can be an array of tool names or `true` to enable all tools.
-   * 
+   *
    * For client-side tool configuration, prefer using `tools` instead
    * which takes tool objects directly.
    */
-  enabledTools?: string[] | boolean
+  enabledTools?: string[] | boolean;
 
   /**
    * System prompt for manual mode.
    * Only used when `persona` is not set.
    */
-  systemPrompt?: string
+  systemPrompt?: string;
 
   /**
    * Persona name (persona mode).
    * Mutually exclusive with tools/enabledTools.
    */
-  persona?: string
+  persona?: string;
 
   /**
    * Configuration for the persona.
    */
-  personaConfig?: Record<string, boolean | number | string>
+  personaConfig?: Record<string, boolean | number | string>;
 
   /**
    * Optional tools to enable for the persona.
    */
-  enableOptionalTools?: string[]
+  enableOptionalTools?: string[];
 
   /**
    * Effort level for the persona.
    */
-  effort?: 'auto' | 'low' | 'medium' | 'high'
+  effort?: "auto" | "low" | "medium" | "high";
 
   /**
    * Stream transforms - process patches before they reach React state.
    */
-  transforms?: PatchTransform[]
+  transforms?: PatchTransform[];
 
   /**
    * Renderer for completed messages.
    */
-  renderer?: MessageRenderer
+  renderer?: MessageRenderer;
 
   /**
    * Custom streamer for dependency injection (primarily for testing).
    */
-  streamer?: Streamer
+  streamer?: Streamer;
 
   /**
    * Whether to preserve partial responses when the user aborts.
    * @default true
    */
-  preservePartialOnAbort?: boolean
+  preservePartialOnAbort?: boolean;
 
   /**
    * Suffix to append to aborted message content.
    * Only applies if preservePartialOnAbort is true.
    * @default ''
    */
-  abortSuffix?: string
+  abortSuffix?: string;
 
   /**
    * Conversation ID for durable streaming.
    * When provided, the server loads history from the durable stream
    * and appends new messages to it. Enables reconnect after refresh.
    */
-  conversationId?: string
+  conversationId?: string;
 
   /**
    * Callback invoked for every raw durable stream event.
@@ -241,7 +246,7 @@ export interface SessionOptions {
    * })
    * ```
    */
-  onStreamEvent?: (entry: StreamEventEntry) => void
+  onStreamEvent?: (entry: StreamEventEntry) => void;
 }
 
 // =============================================================================
@@ -256,36 +261,36 @@ export interface StreamChatOptions extends SessionOptions {
    * Isomorphic tool schemas to send to the server.
    * Server will execute server parts and hand off for client-side execution.
    */
-  isomorphicToolSchemas?: IsomorphicToolSchema[]
+  isomorphicToolSchemas?: IsomorphicToolSchema[];
 
   /**
    * Client outputs from isomorphic tool execution that need server validation.
    * Sent when re-initiating after executing isomorphic tools that need phase 2.
    */
   isomorphicClientOutputs?: Array<{
-    callId: string
-    toolName: string
-    params: unknown
-    clientOutput: unknown
-    cachedHandoff?: unknown
-    usesHandoff?: boolean
-    trace?: ToolExecutionTrace
-  }>
+    callId: string;
+    toolName: string;
+    params: unknown;
+    clientOutput: unknown;
+    cachedHandoff?: unknown;
+    usesHandoff?: boolean;
+    trace?: ToolExecutionTrace;
+  }>;
 
-  replayState?: ConversationReplayState
+  replayState?: ConversationReplayState;
 
   /**
    * Elicit responses to pending elicitation requests.
    * Sent when resuming a conversation with tool elicitations.
    */
-  elicitResponses?: ElicitResponseData[]
+  elicitResponses?: ElicitResponseData[];
 
   /**
    * Conversation ID for durable streaming.
    * When provided, the server loads history from the durable stream
    * and appends new messages to it. Enables reconnect after refresh.
    */
-  conversationId?: string
+  conversationId?: string;
 }
 
 // =============================================================================
@@ -296,48 +301,48 @@ export interface StreamChatOptions extends SessionOptions {
  * Commands that can be sent to a chat session.
  */
 export type ChatCommand =
-  | { type: 'send'; content: string }
+  | { type: "send"; content: string }
   | {
-      type: 'abort'
+      type: "abort";
       /** Raw text from UI buffer (settled + pending) */
-      partialContent?: string
+      partialContent?: string;
       /** Rendered HTML (settled only, for display) */
-      partialHtml?: string
+      partialHtml?: string;
     }
-  | { type: 'reset' }
+  | { type: "reset" }
   | {
       /**
        * Continue the conversation without adding a user message.
        * Used for resuming after plugin elicitation responses.
        */
-      type: 'continue'
+      type: "continue";
     }
   | {
       /**
        * Respond to a pending elicitation.
        * The response is stored and sent with the next message.
        */
-      type: 'elicit_response'
+      type: "elicit_response";
       /** Session ID (same as callId from the original tool call) */
-      sessionId: string
+      sessionId: string;
       /** Original tool call ID for conversation correlation */
-      callId: string
+      callId: string;
       /** Canonical tool name for continuation validation */
-      toolName?: string
+      toolName?: string;
       /** Optional runtime execution ref echoed from durable pending state */
-      ref?: ElicitResponseData['ref']
+      ref?: ElicitResponseData["ref"];
       /** Specific elicit request ID */
-      elicitId: string
+      elicitId: string;
       /** The user's response */
       result: {
-        action: 'accept' | 'decline' | 'cancel'
-        content?: unknown
-      }
+        action: "accept" | "decline" | "cancel";
+        content?: unknown;
+      };
       /**
        * If true, automatically send a continuation request after storing the response.
        * This allows multi-step elicitation flows to progress without user intervention.
        * @default true
        */
-      autoContinue?: boolean
-    }
-import type { ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'
+      autoContinue?: boolean;
+    };
+import type { ToolExecutionTrace } from "../isomorphic-tools/runtime/emissions.ts";

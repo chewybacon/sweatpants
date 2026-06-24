@@ -39,7 +39,7 @@
 // PRIMARY API (NEW UNIFIED TYPES AND BUILDER)
 // =============================================================================
 
-export { createMcpTool } from './mcp-tool-builder.ts'
+export { createMcpTool } from "./mcp-tool-builder.ts";
 export type {
   // Builder interfaces
   McpToolBuilderBase,
@@ -58,7 +58,7 @@ export type {
   // Union types
   AnyMcpTool,
   AnyBridgeableMcpTool,
-} from './mcp-tool-builder.ts'
+} from "./mcp-tool-builder.ts";
 
 // Types from unified types file
 export type {
@@ -112,7 +112,7 @@ export type {
   // Logging
   LogLevel,
   ModelPreferences,
-} from './mcp-tool-types.ts'
+} from "./mcp-tool-types.ts";
 
 // Errors from unified types file
 export {
@@ -128,13 +128,13 @@ export {
   SCHEMA_TOOL_NAME,
   createRawSampleExchange,
   createStructuredSampleExchange,
-} from './mcp-tool-types.ts'
+} from "./mcp-tool-types.ts";
 
 // =============================================================================
 // ORIGINAL MCP BUILDER (simpler, no sub-branching)
 // =============================================================================
 
-export { createMCPTool } from './builder.ts'
+export { createMCPTool } from "./builder.ts";
 export type {
   MCPToolBuilderBase,
   MCPToolBuilderWithDescription,
@@ -145,7 +145,7 @@ export type {
   InferMCPParams,
   InferMCPHandoff,
   InferMCPClient,
-} from './builder.ts'
+} from "./builder.ts";
 
 // Original types
 export type {
@@ -159,31 +159,24 @@ export type {
   InferMCPToolResult,
   InferMCPToolHandoff,
   InferMCPToolClient,
-} from './types.ts'
+} from "./types.ts";
 
 // Legacy errors (shared) - keep for compatibility
 export {
   McpCapabilityError as MCPCapabilityError,
   McpToolTimeoutError as MCPTimeoutError,
   McpDisconnectError as MCPDisconnectError,
-} from './mcp-tool-types.ts'
+} from "./mcp-tool-types.ts";
 
 // Original mock runtime
-export {
-  createMockMCPClient,
-  runMCPTool,
-} from './mock-runtime.ts'
-export type {
-  MockMCPClient,
-  MockMCPClientConfig,
-  RunMCPToolOptions,
-} from './mock-runtime.ts'
+export { createMockMCPClient, runMCPTool } from "./mock-runtime.ts";
+export type { MockMCPClient, MockMCPClientConfig, RunMCPToolOptions } from "./mock-runtime.ts";
 
 // =============================================================================
 // PLUGIN SYSTEM (bridgeable tools -> framework-native plugins)
 // =============================================================================
 
-export { makePlugin } from './plugin.ts'
+export { makePlugin } from "./plugin.ts";
 export type {
   McpPlugin,
   PluginBuilder,
@@ -196,41 +189,30 @@ export type {
   InferElicits,
   InferPluginTool,
   AnyMcpPlugin,
+  PluginHandleInput,
   // Re-export renderable types for plugin authors
   RenderableProps,
   UserProps,
   ExtractResponse,
-} from './plugin.ts'
+} from "./plugin.ts";
 
 // Plugin execution
 export {
   createPluginClientContext,
   executeElicitHandler,
   executeElicitHandlerFromRequest,
-} from './plugin-executor.ts'
-export type {
-  CreatePluginClientContextOptions,
-  PluginContextForKey,
-} from './plugin-executor.ts'
+} from "./plugin-executor.ts";
+export type { CreatePluginClientContextOptions, PluginContextForKey } from "./plugin-executor.ts";
 
 // Plugin registry
-export {
-  createPluginRegistry,
-  createPluginRegistryFrom,
-} from './plugin-registry.ts'
-export type {
-  PluginRegistry,
-} from './plugin-registry.ts'
+export { createPluginRegistry, createPluginRegistryFrom } from "./plugin-registry.ts";
+export type { PluginRegistry } from "./plugin-registry.ts";
 
 // =============================================================================
 // BRIDGE RUNTIME (in-app tool execution with UI elicitation)
 // =============================================================================
 
-export {
-  createBridgeHost,
-  runBridgeTool,
-  BranchElicitNotAllowedError,
-} from './bridge-runtime.ts'
+export { createBridgeHost, runBridgeTool, BranchElicitNotAllowedError } from "./bridge-runtime.ts";
 export type {
   BridgeHost,
   BridgeHostConfig,
@@ -240,7 +222,7 @@ export type {
   BridgeElicitHandlers,
   ElicitResponse,
   SampleResponse,
-} from './bridge-runtime.ts'
+} from "./bridge-runtime.ts";
 
 // =============================================================================
 // DURABLE TOOL SESSIONS (HTTP-friendly, survives request boundaries)
@@ -256,7 +238,7 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
-} from './session/contexts.ts'
+} from "./session/contexts.ts";
 
 export type {
   // Session types
@@ -265,7 +247,7 @@ export type {
   ToolSessionOptions,
   ToolSessionModelSelection,
   ToolSessionEntry,
-  
+
   // Event types
   ToolSessionEvent,
   ProgressEvent,
@@ -275,17 +257,16 @@ export type {
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
-  
+
   // Registry and store
   ToolSessionRegistry,
   ToolSessionStore,
   ToolSessionSamplingProvider,
-  
+
   // Type helpers
   InferToolSessionResult,
   AnyToolSession,
-  
-} from './session/types.ts'
+} from "./session/types.ts";
 
 // =============================================================================
 // MCP PROTOCOL (JSON-RPC encoding/decoding, SSE formatting)
@@ -336,13 +317,13 @@ export {
   // Error codes
   JSON_RPC_ERROR_CODES,
   MCP_ERROR_CODES,
-} from './protocol/index.ts'
+} from "./protocol/index.ts";
 
 export {
   extendedMessageToProviderMessage,
   isToolCallMessage,
   isToolResultMessage,
-} from './message-conversion.ts'
+} from "./message-conversion.ts";
 
 export type {
   // JSON-RPC types
@@ -402,7 +383,7 @@ export type {
   DecoderContext,
   PendingRequest,
   ParsedJsonRpcMessage,
-} from './protocol/index.ts'
+} from "./protocol/index.ts";
 
 // =============================================================================
 // MODEL CONTEXT TRANSPORT (x-model-context for elicitation context data)
@@ -414,21 +395,21 @@ export {
   extractModelContext,
   parseMessageContext,
   stripMessageContext,
-  
+
   // Helper for plugin authors
   getElicitContext,
-  
+
   // Constants
   MODEL_CONTEXT_SCHEMA_KEY,
   MODEL_CONTEXT_BOUNDARY,
   MODEL_CONTEXT_MIME_TYPE,
-} from './model-context.ts'
+} from "./model-context.ts";
 
 export type {
   EncodeElicitContextOptions,
   EncodedElicitContext,
   ExtractedModelContext,
-} from './model-context.ts'
+} from "./model-context.ts";
 
 // =============================================================================
 // MCP HTTP HANDLER (Streamable HTTP transport)
@@ -437,12 +418,12 @@ export type {
 export {
   // Main factory
   createMcpHandler,
-  
+
   // Session manager
   createSessionManager,
   McpSessionManager,
   McpSessionManagerContext,
-  
+
   // Request parsing
   parseHeaders,
   validatePostHeaders,
@@ -450,29 +431,29 @@ export {
   parseRequest,
   classifyRequest,
   parseAndClassify,
-  
+
   // POST handling
   handleToolsCall,
   handleElicitResponse,
   handleSampleResponse,
   handlePost,
-  
+
   // SSE streaming
   createSseEventStream,
   createSseStreamSetup,
   handleGet,
-  
+
   // Error handling
   McpHandlerError,
   MCP_HANDLER_ERRORS,
-} from './handler/index.ts'
+} from "./handler/index.ts";
 
 export type {
   // Config
   McpHandlerConfig,
   McpHandlerOptions,
   McpHttpHandler,
-  
+
   // Request types
   McpHttpMethod,
   McpRequestHeaders,
@@ -484,20 +465,20 @@ export type {
   McpSampleResponse,
   McpSseStreamRequest,
   McpTerminateRequest,
-  
+
   // Response types
   McpPostResult,
-  
+
   // Session state
   McpSessionState,
   PendingElicitation,
   PendingSample,
   McpSessionManagerOptions,
-  
+
   // Handler options
   PostHandlerOptions,
   SseStreamOptions,
-  
+
   // Error types
   McpHandlerErrorCode,
-} from './handler/index.ts'
+} from "./handler/index.ts";

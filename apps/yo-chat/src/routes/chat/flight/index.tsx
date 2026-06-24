@@ -4,84 +4,79 @@
  * Demonstrates the bookFlight MCP plugin for multi-step booking flow.
  * Uses markdown pipeline for rendering.
  */
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
-import { bookFlightPlugin } from '@/tools/book-flight/plugin'
-import { bookFlightTool } from '@/tools/book-flight/tool'
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
+import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
+import { bookFlightPlugin } from "@/tools/book-flight/plugin";
 
-export const Route = createFileRoute('/chat/flight/')({
+export const Route = createFileRoute("/chat/flight/")({
   component: FlightChatDemo,
-})
+});
 
 /**
  * Renders a tool call part with its inline emissions.
  */
 function formatToolResult(result: unknown): string {
-  if (typeof result === 'string') return result
-  if (!result || typeof result !== 'object') return ''
-  const record = result as Record<string, unknown>
-  if (typeof record['message'] === 'string') return record['message']
-  return JSON.stringify(result)
+  if (typeof result === "string") return result;
+  if (!result || typeof result !== "object") return "";
+  const record = result as Record<string, unknown>;
+  if (typeof record["message"] === "string") return record["message"];
+  return JSON.stringify(result);
 }
 
 function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
-  const hasEmissions = toolCall.emissions.length > 0
-  const resultText = toolCall.state === 'complete' ? formatToolResult(toolCall.result) : ''
+  const hasEmissions = toolCall.emissions.length > 0;
+  const resultText = toolCall.state === "complete" ? formatToolResult(toolCall.result) : "";
 
   return (
     <div className="my-2">
       {toolCall.emissions.map((emission) => {
-        const Component = emission.component
-        if (!Component) return null
+        const Component = emission.component;
+        if (!Component) return null;
 
         return (
           <Component
             key={emission.id}
             {...emission.props}
             onRespond={emission.onRespond}
-            disabled={emission.status !== 'pending'}
+            disabled={emission.status !== "pending"}
             response={emission.response}
           />
-        )
+        );
       })}
 
-      {!hasEmissions && (toolCall.state === 'running' || toolCall.state === 'pending') && (
-        <div className="text-xs text-slate-500 animate-pulse">
-          Running {toolCall.name}...
-        </div>
+      {!hasEmissions && (toolCall.state === "running" || toolCall.state === "pending") && (
+        <div className="text-xs text-slate-500 animate-pulse">Running {toolCall.name}...</div>
       )}
 
-      {toolCall.state === 'complete' && resultText && (
+      {toolCall.state === "complete" && resultText && (
         <div className="mt-3 rounded border border-emerald-700/50 bg-emerald-950/20 p-3 text-sm text-emerald-100">
           {resultText}
         </div>
       )}
 
-      {toolCall.state === 'error' && toolCall.error && (
-        <div className="text-xs text-red-400">
-          Error: {toolCall.error}
-        </div>
+      {toolCall.state === "error" && toolCall.error && (
+        <div className="text-xs text-red-400">Error: {toolCall.error}</div>
       )}
     </div>
-  )
+  );
 }
 
 /**
  * Renders a single message with its parts.
  */
 function Message({ message }: { message: ChatMessage }) {
-  const isUser = message.role === 'user'
+  const isUser = message.role === "user";
 
   return (
-    <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
-      <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
+    <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
+      <div className={`inline-block max-w-[85%] ${isUser ? "" : "w-full"}`}>
         <div
           className={`text-xs mb-1 font-bold tracking-wider uppercase ${
-            isUser ? 'text-cyan-500' : 'text-purple-500'
+            isUser ? "text-cyan-500" : "text-purple-500"
           }`}
         >
-          {isUser ? 'You' : 'Assistant'}
+          {isUser ? "You" : "Assistant"}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
           )}
@@ -90,12 +85,12 @@ function Message({ message }: { message: ChatMessage }) {
         <div
           className={`p-4 rounded-lg ${
             isUser
-              ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
-              : 'bg-slate-800/50 text-slate-200'
+              ? "bg-cyan-950/30 border border-cyan-900/50 text-cyan-100"
+              : "bg-slate-800/50 text-slate-200"
           }`}
         >
           {message.parts.map((part) => {
-            if (part.type === 'reasoning') {
+            if (part.type === "reasoning") {
               return (
                 <details key={part.id} className="mb-3 text-xs">
                   <summary className="text-slate-500 cursor-pointer hover:text-slate-400">
@@ -106,24 +101,24 @@ function Message({ message }: { message: ChatMessage }) {
                     dangerouslySetInnerHTML={{ __html: part.rendered }}
                   />
                 </details>
-              )
+              );
             }
 
-            if (part.type === 'tool-call') {
-              return <ToolCallBlock key={part.id} toolCall={part} />
+            if (part.type === "tool-call") {
+              return <ToolCallBlock key={part.id} toolCall={part} />;
             }
 
-            if (part.type === 'text') {
+            if (part.type === "text") {
               return (
                 <div
                   key={part.id}
                   className="prose prose-invert prose-sm max-w-none leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: part.rendered }}
                 />
-              )
+              );
             }
 
-            return null
+            return null;
           })}
 
           {message.isStreaming && (
@@ -132,49 +127,33 @@ function Message({ message }: { message: ChatMessage }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 function FlightChatDemo() {
-  const {
-    messages,
-    streamingMessage,
-    isStreaming,
-    pipelineReady,
-    send,
-    abort,
-    reset,
-    error,
-  } = useChat({
-    pipeline: 'markdown',
-    // No isomorphic tools
-    tools: [],
-    // Only bookFlight plugin - focused demo. Register both the generated
-    // app-facing alias and the canonical AgentCore/runtime tool name so
-    // canonical `book_flight` elicitations can render the same UI handler.
-    plugins: [
-      bookFlightPlugin.client,
-      { ...bookFlightPlugin.client, toolName: 'book_flight' },
-    ],
-    // Tell server to only enable bookFlight plugin. Include both the generated
-    // app-facing alias and canonical AgentCore name so local and remote runtime
-    // modes expose the same model-facing tool.
-    enabledPlugins: Array.from(new Set([bookFlightTool.name, 'book_flight'])),
-  })
+  const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
+    useChat({
+      pipeline: "markdown",
+      // No isomorphic tools
+      tools: [],
+      // Only bookFlight plugin handle. enabledPlugins is derived automatically
+      // from the plugin's tool name.
+      plugins: [bookFlightPlugin],
+    });
 
-  const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingMessage?.parts.length])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, streamingMessage?.parts.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-    send(input.trim())
-    setInput('')
-  }
+    e.preventDefault();
+    if (!input.trim() || isStreaming) return;
+    send(input.trim());
+    setInput("");
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
@@ -182,12 +161,8 @@ function FlightChatDemo() {
         {/* Header */}
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Flight Booking
-            </h1>
-            <p className="text-slate-400 text-sm">
-              Multi-step booking flow with MCP plugin
-            </p>
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Flight Booking</h1>
+            <p className="text-slate-400 text-sm">Multi-step booking flow with MCP plugin</p>
           </div>
           <div className="text-xs">
             {pipelineReady ? (
@@ -206,13 +181,13 @@ function FlightChatDemo() {
               <p>Book a flight to your destination!</p>
               <div className="flex gap-2 text-xs flex-wrap justify-center">
                 <button
-                  onClick={() => setInput('Book a flight from NYC to Los Angeles')}
+                  onClick={() => setInput("Book a flight from NYC to Los Angeles")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "NYC to LA"
                 </button>
                 <button
-                  onClick={() => setInput('I need to fly from San Francisco to Seattle')}
+                  onClick={() => setInput("I need to fly from San Francisco to Seattle")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "SFO to Seattle"
@@ -246,11 +221,7 @@ function FlightChatDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isStreaming
-                ? 'Waiting for response...'
-                : 'Type a message...'
-            }
+            placeholder={isStreaming ? "Waiting for response..." : "Type a message..."}
             disabled={isStreaming}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
@@ -287,14 +258,12 @@ function FlightChatDemo() {
           <div className="flex items-center gap-4">
             <span>
               <span className="text-emerald-600">plugin:</span>
-              {' bookFlight'}
+              {" bookFlight"}
             </span>
-            <span className="text-cyan-400">
-              {messages.length} messages
-            </span>
+            <span className="text-cyan-400">{messages.length} messages</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

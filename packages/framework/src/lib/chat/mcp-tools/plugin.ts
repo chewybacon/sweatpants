@@ -58,26 +58,30 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
-import type { z } from 'zod'
-import type { ComponentTypeLike } from '../isomorphic-tools/runtime/emissions.ts'
+import type { Operation } from "effection";
+import type { z } from "zod";
+import type { ComponentTypeLike } from "../isomorphic-tools/runtime/emissions.ts";
 import type {
   ElicitRequest,
   ElicitsMap,
   ExtractElicitResponse,
   RawElicitResult,
-} from './mcp-tool-types.ts'
-import type { ElicitDefinition } from '@sweatpants/elicit-context'
-import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
+} from "./mcp-tool-types.ts";
+import type { ElicitDefinition } from "@sweatpants/elicit-context";
+import type { FinalizedMcpToolWithElicits } from "./mcp-tool-builder.ts";
 
 // Re-export renderable types for plugin authors
-export type { RenderableProps, UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
+export type {
+  RenderableProps,
+  UserProps,
+  ExtractResponse,
+} from "../isomorphic-tools/runtime/browser-context.ts";
 
 // =============================================================================
 // CLIENT CONTEXT (what onElicit handlers receive)
 // =============================================================================
 
-import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
+import type { UserProps, ExtractResponse } from "../isomorphic-tools/runtime/browser-context.ts";
 
 /**
  * Context available to onElicit handlers.
@@ -89,13 +93,13 @@ import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/bro
  */
 export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.ZodType>> {
   /** Tool call ID */
-  callId: string
+  callId: string;
 
   /** Abort signal for cancellation */
-  signal: AbortSignal
+  signal: AbortSignal;
 
   /** The current elicitation request */
-  elicitRequest: TElicitRequest
+  elicitRequest: TElicitRequest;
 
   /**
    * Render a React component and wait for user response.
@@ -122,13 +126,13 @@ export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.Zo
    */
   render<TProps, TResponse = ExtractResponse<TProps>>(
     Component: ComponentTypeLike<TProps>,
-    props: UserProps<TProps>
-  ): Operation<TResponse>
+    props: UserProps<TProps>,
+  ): Operation<TResponse>;
 
   /**
    * Report progress to the UI.
    */
-  reportProgress?(message: string): Operation<void>
+  reportProgress?(message: string): Operation<void>;
 }
 
 // =============================================================================
@@ -148,8 +152,8 @@ export type ElicitHandler<TKey extends string, TDef extends ElicitDefinition> = 
   // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
   // The actual response type is correctly inferred from the definition
   req: ElicitRequest<TKey, any>,
-  ctx: PluginClientContext<ElicitRequest<TKey, any>>
-) => Operation<RawElicitResult<ExtractElicitResponse<TDef>>>
+  ctx: PluginClientContext<ElicitRequest<TKey, any>>,
+) => Operation<RawElicitResult<ExtractElicitResponse<TDef>>>;
 
 /**
  * Map of elicitation handlers for all keys in a tool.
@@ -160,8 +164,8 @@ export type ElicitHandler<TKey extends string, TDef extends ElicitDefinition> = 
  * @template TElicits - The tool's elicitation map
  */
 export type ElicitHandlers<TElicits extends ElicitsMap> = {
-  [K in keyof TElicits & string]: ElicitHandler<K, TElicits[K]>
-}
+  [K in keyof TElicits & string]: ElicitHandler<K, TElicits[K]>;
+};
 
 // =============================================================================
 // PLUGIN TYPES
@@ -179,10 +183,10 @@ export interface PluginServerRegistration<
   TElicits extends ElicitsMap,
 > {
   /** Tools to register with the chat handler */
-  tools: [FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>]
+  tools: [FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>];
 
   /** Tool name (for lookup) */
-  toolName: TName
+  toolName: TName;
 }
 
 /**
@@ -190,13 +194,13 @@ export interface PluginServerRegistration<
  */
 export interface PluginClientRegistration<TElicits extends ElicitsMap> {
   /** Tool name (for matching incoming elicitation requests) */
-  toolName: string
+  toolName: string;
 
   /** Elicitation handlers (exhaustive map) */
-  handlers: ElicitHandlers<TElicits>
+  handlers: ElicitHandlers<TElicits>;
 
   /** Elicitation schemas (for validation) */
-  schemas: TElicits
+  schemas: TElicits;
 }
 
 /**
@@ -211,13 +215,13 @@ export interface McpPlugin<
   TElicits extends ElicitsMap,
 > {
   /** Server-side registration */
-  server: PluginServerRegistration<TName, TParams, THandoff, TClient, TResult, TElicits>
+  server: PluginServerRegistration<TName, TParams, THandoff, TClient, TResult, TElicits>;
 
   /** Client-side registration */
-  client: PluginClientRegistration<TElicits>
+  client: PluginClientRegistration<TElicits>;
 
   /** Original tool (for advanced use cases) */
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>;
 }
 
 // =============================================================================
@@ -265,8 +269,8 @@ export interface PluginBuilder<
    * ```
    */
   onElicit(
-    handlers: ElicitHandlers<TElicits>
-  ): PluginBuilderWithHandlers<TName, TParams, THandoff, TClient, TResult, TElicits>
+    handlers: ElicitHandlers<TElicits>,
+  ): PluginBuilderWithHandlers<TName, TParams, THandoff, TClient, TResult, TElicits>;
 }
 
 /**
@@ -285,7 +289,7 @@ export interface PluginBuilderWithHandlers<
    *
    * @returns A plugin with `server` and `client` registrations
    */
-  build(): McpPlugin<TName, TParams, THandoff, TClient, TResult, TElicits>
+  build(): McpPlugin<TName, TParams, THandoff, TClient, TResult, TElicits>;
 }
 
 // =============================================================================
@@ -300,8 +304,8 @@ interface PluginBuilderState<
   TResult,
   TElicits extends ElicitsMap,
 > {
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
-  handlers?: ElicitHandlers<TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>;
+  handlers?: ElicitHandlers<TElicits>;
 }
 
 function createPluginBuilder<
@@ -312,13 +316,13 @@ function createPluginBuilder<
   TResult,
   TElicits extends ElicitsMap,
 >(
-  state: PluginBuilderState<TName, TParams, THandoff, TClient, TResult, TElicits>
+  state: PluginBuilderState<TName, TParams, THandoff, TClient, TResult, TElicits>,
 ): PluginBuilder<TName, TParams, THandoff, TClient, TResult, TElicits> {
   return {
     onElicit(handlers: ElicitHandlers<TElicits>) {
       return {
         build(): McpPlugin<TName, TParams, THandoff, TClient, TResult, TElicits> {
-          const { tool } = state
+          const { tool } = state;
 
           return {
             tool,
@@ -333,11 +337,11 @@ function createPluginBuilder<
               handlers,
               schemas: tool.elicits,
             },
-          }
+          };
         },
-      }
+      };
     },
-  }
+  };
 }
 
 /**
@@ -368,9 +372,9 @@ export function makePlugin<
   TResult,
   TElicits extends ElicitsMap,
 >(
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>,
 ): PluginBuilder<TName, TParams, THandoff, TClient, TResult, TElicits> {
-  return createPluginBuilder({ tool })
+  return createPluginBuilder({ tool });
 }
 
 // =============================================================================
@@ -380,28 +384,40 @@ export function makePlugin<
 /**
  * Extract the elicits map from a plugin.
  */
-export type InferElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E>
-  ? E
-  : never
+export type InferElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E> ? E : never;
 
 /**
  * Extract the tool type from a plugin.
  */
-export type InferPluginTool<T> = T extends McpPlugin<
-  infer N,
-  infer P,
-  infer H,
-  infer C,
-  infer R,
-  infer E
->
-  ? FinalizedMcpToolWithElicits<N, P, H, C, R, E>
-  : never
+export type InferPluginTool<T> =
+  T extends McpPlugin<infer N, infer P, infer H, infer C, infer R, infer E>
+    ? FinalizedMcpToolWithElicits<N, P, H, C, R, E>
+    : never;
 
 /**
  * Any plugin (for arrays/registries).
  */
-export type AnyMcpPlugin = McpPlugin<string, any, any, any, any, ElicitsMap>
+export type AnyMcpPlugin = McpPlugin<string, any, any, any, any, ElicitsMap>;
+
+/**
+ * Structural type for accepting full plugin handles in arrays.
+ *
+ * This is the handle-based API: `useChat` receives concrete plugin objects
+ * (the return value of `makePlugin(tool).onElicit({...}).build()`) and derives
+ * both the client-side elicitation handlers and the server-side `enabledPlugins`
+ * list from them.
+ *
+ * Each `McpPlugin<...>` satisfies this interface, allowing heterogeneous
+ * plugins with different elicit maps to be collected.
+ */
+export interface PluginHandleInput {
+  /** The tool definition */
+  tool: unknown;
+  /** Server-side registration */
+  server: { tools: unknown[]; toolName: string };
+  /** Client-side registration (handlers + tool name) */
+  client: PluginClientRegistrationInput;
+}
 
 /**
  * Structural type for accepting plugin client registrations in arrays.
@@ -414,8 +430,8 @@ export type AnyMcpPlugin = McpPlugin<string, any, any, any, any, ElicitsMap>
  * and `unknown` for return, allowing any specific handler to be assigned.
  */
 export interface PluginClientRegistrationInput {
-  toolName: string
+  toolName: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handlers: Record<string, (req: any, ctx: any) => Operation<RawElicitResult<unknown>>>
-  schemas: ElicitsMap
+  handlers: Record<string, (req: any, ctx: any) => Operation<RawElicitResult<unknown>>>;
+  schemas: ElicitsMap;
 }

@@ -1,18 +1,18 @@
 // Types
-export * from './types.ts'
-export * from './types/index.ts'
-export * from './frame.ts'
-export type { IsomorphicTool, PersonaResolver, ResolvedPersona } from './setup-types.ts'
+export * from "./types.ts";
+export * from "./types/index.ts";
+export * from "./frame.ts";
+export type { IsomorphicTool, PersonaResolver, ResolvedPersona } from "./setup-types.ts";
 
 // Stream utilities
-export * from './ndjson.ts'
-export * from './stream.ts'
-export * from './sse.ts'
+export * from "./ndjson.ts";
+export * from "./stream.ts";
+export * from "./sse.ts";
 
 // Scope-driven driver contracts and APIs.
-export * from './model-provider.ts'
-export * from './tool-inventory.ts'
-export * from './tool-runtime.ts'
+export * from "./model-provider.ts";
+export * from "./tool-inventory.ts";
+export * from "./tool-runtime.ts";
 
 // Scope-driven chat setup contexts.
 export {
@@ -24,9 +24,9 @@ export {
   PluginSessionStoreContext,
   PluginSessionRegistryContext,
   PluginSessionManagerContext,
-} from './contexts.ts'
+} from "./contexts.ts";
 
-export * from './personas/index.ts'
+export * from "./personas/index.ts";
 
 // Browser-safe session/state/patch contracts used by UI adapters.
 export {
@@ -41,7 +41,7 @@ export {
   BaseUrlContext,
   StreamerContext,
   ToolRegistryContext as ClientToolRegistryContext,
-} from './session/index.ts'
+} from "./session/index.ts";
 export type {
   ChatSession,
   ClientToolSessionOptions,
@@ -70,14 +70,14 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from './session/index.ts'
+} from "./session/index.ts";
 export {
   initialChatState,
   chatReducer,
   groupTimelineByToolCall,
   deriveMessages,
   deriveStreamingMessage,
-} from './state/index.ts'
+} from "./state/index.ts";
 export type {
   ChatState,
   PendingClientToolState,
@@ -86,11 +86,8 @@ export type {
   ToolEmissionTrackingState,
   ElicitState,
   ElicitTrackingState,
-} from './state/index.ts'
-export {
-  isEmissionPatch,
-  isElicitPatch,
-} from './patches/index.ts'
+} from "./state/index.ts";
+export { isEmissionPatch, isElicitPatch } from "./patches/index.ts";
 export type {
   ChatPatch,
   ContentPartType,
@@ -106,22 +103,23 @@ export type {
   ElicitResponsePatch,
   ElicitCompletePatch,
   ElicitPatchUnion,
-} from './patches/index.ts'
-export {
-  createPluginRegistry,
-  createPluginRegistryFrom,
-} from './mcp-tools/plugin-registry.ts'
-export type { PluginRegistry } from './mcp-tools/plugin-registry.ts'
-export { executeElicitHandlerFromRequest } from './mcp-tools/plugin-executor.ts'
-export type { PendingHandoff, ToolHandlerRegistry } from './isomorphic-tools/index.ts'
+} from "./patches/index.ts";
+export { createPluginRegistry, createPluginRegistryFrom } from "./mcp-tools/plugin-registry.ts";
+export type { PluginRegistry } from "./mcp-tools/plugin-registry.ts";
+export { executeElicitHandlerFromRequest } from "./mcp-tools/plugin-executor.ts";
+export type { PendingHandoff, ToolHandlerRegistry } from "./isomorphic-tools/index.ts";
 
 // Model context utilities (browser-safe subset of mcp-tools)
-export { stripMessageContext, getElicitContext, MODEL_CONTEXT_SCHEMA_KEY } from './mcp-tools/model-context.ts'
+export {
+  stripMessageContext,
+  getElicitContext,
+  MODEL_CONTEXT_SCHEMA_KEY,
+} from "./mcp-tools/model-context.ts";
 
 // MCP tool builder (browser-safe - only types, no Node.js deps)
-export { createMcpTool } from './mcp-tools/mcp-tool-builder.ts'
+export { createMcpTool } from "./mcp-tools/mcp-tool-builder.ts";
 
-export type { IsomorphicToolSchema } from './isomorphic-tools/index.ts'
+export type { IsomorphicToolSchema } from "./isomorphic-tools/index.ts";
 
 // Sample result types for structured output and tool calling
 export type {
@@ -144,10 +142,10 @@ export type {
   SampleExchange,
   ElicitRequest,
   ElicitId,
-} from './mcp-tools/mcp-tool-types.ts'
+} from "./mcp-tools/mcp-tool-types.ts";
 
 // Plugin builder (browser-safe)
-export { makePlugin } from './mcp-tools/plugin.ts'
+export { makePlugin } from "./mcp-tools/plugin.ts";
 export type {
   McpPlugin,
   PluginBuilder,
@@ -161,10 +159,11 @@ export type {
   InferElicits,
   InferPluginTool,
   AnyMcpPlugin,
+  PluginHandleInput,
   RenderableProps,
   UserProps,
   ExtractResponse,
-} from './mcp-tools/plugin.ts'
+} from "./mcp-tools/plugin.ts";
 
 // Logger
 export {
@@ -176,5 +175,4 @@ export {
   createNoopLogger,
   LoggerFactoryContext,
   type PinoLoggerOptions,
-} from '../logger/index.ts'
-
+} from "../logger/index.ts";

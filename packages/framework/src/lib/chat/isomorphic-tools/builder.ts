@@ -51,14 +51,15 @@
  *   })
  * ```
  */
-import type { Operation } from 'effection'
-import type { z } from 'zod'
+import type { Operation } from "effection";
+import type { z } from "zod";
+import type { ContextMode, ContextForMode } from "./contexts.ts";
 import type {
-  ContextMode,
-  ContextForMode,
-} from './contexts.ts'
-import type { IsomorphicApprovalConfig, ServerToolContext, ServerAuthorityContext } from './types.ts'
-import type { ToolExecutionTrace, HydratedToolExecutionTrace } from './runtime/emissions.ts'
+  IsomorphicApprovalConfig,
+  ServerToolContext,
+  ServerAuthorityContext,
+} from "./types.ts";
+import type { ToolExecutionTrace, HydratedToolExecutionTrace } from "./runtime/emissions.ts";
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -75,11 +76,11 @@ export interface IsomorphicToolTypes<
   in out TClient,
   in out TResult,
 > {
-  params: TParams
-  context: TContext
-  handoff: THandoff
-  client: TClient
-  result: TResult
+  params: TParams;
+  context: TContext;
+  handoff: THandoff;
+  client: TClient;
+  result: TResult;
 }
 
 // =============================================================================
@@ -111,18 +112,14 @@ export interface TypedHandoffConfig<
    * Phase 1: Compute state (runs ONCE).
    * Return value is cached and sent to client.
    */
-  before: (params: TParams, ctx: ServerToolContext) => Operation<THandoff>
+  before: (params: TParams, ctx: ServerToolContext) => Operation<THandoff>;
 
   /**
    * Client execution: Show UI or run agent logic.
    * Receives handoff data from before().
    * Context type is determined by TContext.
    */
-  client: (
-    handoff: THandoff,
-    ctx: ContextForMode<TContext>,
-    params: TParams
-  ) => Operation<TClient>
+  client: (handoff: THandoff, ctx: ContextForMode<TContext>, params: TParams) => Operation<TClient>;
 
   /**
    * Phase 2: Validate and return (runs ONCE after client).
@@ -132,8 +129,8 @@ export interface TypedHandoffConfig<
     handoff: THandoff,
     client: TClient,
     ctx: ServerToolContext,
-    params: TParams
-  ) => Operation<TResult>
+    params: TParams,
+  ) => Operation<TResult>;
 }
 
 // =============================================================================
@@ -144,39 +141,39 @@ export interface TypedHandoffConfig<
  * Base builder - has name, needs everything else.
  */
 export interface IsomorphicToolBuilderBase<TName extends string> {
-  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined>
-  _name: TName
+  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined>;
+  _name: TName;
 
   /**
    * Set the description shown to the LLM.
    */
-  description(desc: string): IsomorphicToolBuilderWithDescription<TName>
+  description(desc: string): IsomorphicToolBuilderWithDescription<TName>;
 }
 
 /**
  * Has name + description, needs parameters.
  */
 export interface IsomorphicToolBuilderWithDescription<TName extends string> {
-  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined>
-  _name: TName
-  _description: string
+  _types: IsomorphicToolTypes<undefined, undefined, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
 
   /**
    * Set the Zod schema for tool parameters.
    */
   parameters<TSchema extends z.ZodType>(
-    schema: TSchema
-  ): IsomorphicToolBuilderWithParams<TName, z.infer<TSchema>>
+    schema: TSchema,
+  ): IsomorphicToolBuilderWithParams<TName, z.infer<TSchema>>;
 }
 
 /**
  * Has name + description + params, needs context.
  */
 export interface IsomorphicToolBuilderWithParams<TName extends string, TParams> {
-  _types: IsomorphicToolTypes<TParams, undefined, undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
+  _types: IsomorphicToolTypes<TParams, undefined, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
+  _parameters: z.ZodType<TParams>;
 
   /**
    * Set the execution context mode.
@@ -186,8 +183,8 @@ export interface IsomorphicToolBuilderWithParams<TName extends string, TParams> 
    * - `agent`: Requires LLM access via prompt
    */
   context<TCtx extends ContextMode>(
-    mode: TCtx
-  ): IsomorphicToolBuilderWithContext<TName, TParams, TCtx>
+    mode: TCtx,
+  ): IsomorphicToolBuilderWithContext<TName, TParams, TCtx>;
 }
 
 /**
@@ -198,11 +195,11 @@ export interface IsomorphicToolBuilderWithContext<
   TParams,
   TContext extends ContextMode,
 > {
-  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
-  _context: TContext
+  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
+  _parameters: z.ZodType<TParams>;
+  _context: TContext;
 
   /**
    * V7 handoff pattern - server picks state, client interacts, server validates.
@@ -214,16 +211,16 @@ export interface IsomorphicToolBuilderWithContext<
    * - `ctx` in `client()` is properly typed based on context mode
    */
   handoff<THandoff, TClient, TResult>(
-    config: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, THandoff, TClient, TResult>
+    config: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>,
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, THandoff, TClient, TResult>;
 
   /**
    * Simple server-only execution (no handoff).
    * Server runs, returns result, optionally client does side effects.
    */
   server<TServerOutput>(
-    fn: (params: TParams, ctx: ServerAuthorityContext) => Operation<TServerOutput>
-  ): IsomorphicToolBuilderServerOnly<TName, TParams, TContext, TServerOutput>
+    fn: (params: TParams, ctx: ServerAuthorityContext) => Operation<TServerOutput>,
+  ): IsomorphicToolBuilderServerOnly<TName, TParams, TContext, TServerOutput>;
 
   /**
    * Client-only execution.
@@ -233,14 +230,14 @@ export interface IsomorphicToolBuilderWithContext<
     fn: (
       input: undefined,
       ctx: ContextForMode<TContext>,
-      params: TParams
-    ) => Operation<TClientOutput>
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput>
+      params: TParams,
+    ) => Operation<TClientOutput>,
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput>;
 
   /**
    * Set approval configuration.
    */
-  approval(config: IsomorphicApprovalConfig): this
+  approval(config: IsomorphicApprovalConfig): this;
 }
 
 /**
@@ -252,11 +249,11 @@ export interface IsomorphicToolBuilderServerOnly<
   TContext extends ContextMode,
   TServerOutput,
 > {
-  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, TServerOutput>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
-  _context: TContext
+  _types: IsomorphicToolTypes<TParams, TContext, undefined, undefined, TServerOutput>;
+  _name: TName;
+  _description: string;
+  _parameters: z.ZodType<TParams>;
+  _context: TContext;
 
   /**
    * Add client-side presentation (receives server output).
@@ -265,14 +262,14 @@ export interface IsomorphicToolBuilderServerOnly<
     fn: (
       serverOutput: TServerOutput,
       ctx: ContextForMode<TContext>,
-      params: TParams
-    ) => Operation<TClientOutput>
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput>
+      params: TParams,
+    ) => Operation<TClientOutput>,
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput>;
 
   /**
    * Finalize without client (server-only tool).
    */
-  build(): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, undefined, TServerOutput>
+  build(): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, undefined, TServerOutput>;
 }
 
 // =============================================================================
@@ -299,28 +296,28 @@ export interface FinalizedIsomorphicTool<
    * Phantom type carrier - no runtime cost.
    * Access with `tool._types.result` etc. for type-level operations.
    */
-  _types: IsomorphicToolTypes<TParams, TContext, THandoff, TClient, TResult>
+  _types: IsomorphicToolTypes<TParams, TContext, THandoff, TClient, TResult>;
 
   /** Tool name (used by LLM) */
-  name: TName
+  name: TName;
 
   /** Description (shown to LLM) */
-  description: string
+  description: string;
 
   /** Zod parameter schema */
-  parameters: z.ZodType<TParams>
+  parameters: z.ZodType<TParams>;
 
   /** Execution context mode */
-  contextMode: TContext
+  contextMode: TContext;
 
   /** Approval configuration */
-  approval?: IsomorphicApprovalConfig
+  approval?: IsomorphicApprovalConfig;
 
   /**
    * For handoff tools: the typed handoff config.
    * Allows executor to access before/client/after with types.
    */
-  handoffConfig?: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>
+  handoffConfig?: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>;
 
   /**
    * Server-side execution (for non-handoff tools).
@@ -328,8 +325,8 @@ export interface FinalizedIsomorphicTool<
   server?: (
     params: TParams,
     ctx: ServerToolContext | ServerAuthorityContext,
-    clientOutput?: TClient
-  ) => Operation<TResult>
+    clientOutput?: TClient,
+  ) => Operation<TResult>;
 
   /**
    * Client-side execution (for non-handoff tools).
@@ -337,13 +334,13 @@ export interface FinalizedIsomorphicTool<
   client?: (
     input: TResult | THandoff,
     ctx: ContextForMode<TContext>,
-    params: TParams
-  ) => Operation<TClient>
+    params: TParams,
+  ) => Operation<TClient>;
 
   /**
    * Rebuild a durable execution trace for hydration replay.
    */
-  replayTrace?: (trace: ToolExecutionTrace) => Operation<HydratedToolExecutionTrace>
+  replayTrace?: (trace: ToolExecutionTrace) => Operation<HydratedToolExecutionTrace>;
 }
 
 // =============================================================================
@@ -353,86 +350,46 @@ export interface FinalizedIsomorphicTool<
 /**
  * Extract the result type from a finalized tool.
  */
-export type InferToolResult<T> = T extends FinalizedIsomorphicTool<
-  any,
-  any,
-  any,
-  any,
-  any,
-  infer TResult
->
-  ? TResult
-  : never
+export type InferToolResult<T> =
+  T extends FinalizedIsomorphicTool<any, any, any, any, any, infer TResult> ? TResult : never;
 
 /**
  * Extract the params type from a finalized tool.
  */
-export type InferToolParams<T> = T extends FinalizedIsomorphicTool<
-  any,
-  infer TParams,
-  any,
-  any,
-  any,
-  any
->
-  ? TParams
-  : never
+export type InferToolParams<T> =
+  T extends FinalizedIsomorphicTool<any, infer TParams, any, any, any, any> ? TParams : never;
 
 /**
  * Extract the context mode from a finalized tool.
  */
-export type InferToolContext<T> = T extends FinalizedIsomorphicTool<
-  any,
-  any,
-  infer TContext,
-  any,
-  any,
-  any
->
-  ? TContext
-  : never
+export type InferToolContext<T> =
+  T extends FinalizedIsomorphicTool<any, any, infer TContext, any, any, any> ? TContext : never;
 
 /**
  * Extract the handoff type from a finalized tool.
  */
-export type InferToolHandoff<T> = T extends FinalizedIsomorphicTool<
-  any,
-  any,
-  any,
-  infer THandoff,
-  any,
-  any
->
-  ? THandoff
-  : never
+export type InferToolHandoff<T> =
+  T extends FinalizedIsomorphicTool<any, any, any, infer THandoff, any, any> ? THandoff : never;
 
 /**
  * Extract the client output type from a finalized tool.
  */
-export type InferToolClientOutput<T> = T extends FinalizedIsomorphicTool<
-  any,
-  any,
-  any,
-  any,
-  infer TClient,
-  any
->
-  ? TClient
-  : never
+export type InferToolClientOutput<T> =
+  T extends FinalizedIsomorphicTool<any, any, any, any, infer TClient, any> ? TClient : never;
 
 // =============================================================================
 // BUILDER IMPLEMENTATION
 // =============================================================================
 
 interface BuilderState {
-  name: string
-  description?: string
-  parameters?: z.ZodType
-  contextMode?: ContextMode
-  approval?: IsomorphicApprovalConfig
-  handoffConfig?: TypedHandoffConfig<any, any, any, any, any>
-  serverFn?: (params: any, ctx: any, clientOutput?: any) => Operation<any>
-  clientFn?: (input: any, ctx: any, params: any) => Operation<any>
+  name: string;
+  description?: string;
+  parameters?: z.ZodType;
+  contextMode?: ContextMode;
+  approval?: IsomorphicApprovalConfig;
+  handoffConfig?: TypedHandoffConfig<any, any, any, any, any>;
+  serverFn?: (params: any, ctx: any, clientOutput?: any) => Operation<any>;
+  clientFn?: (input: any, ctx: any, params: any) => Operation<any>;
 }
 
 function createBuilder(state: BuilderState): any {
@@ -444,25 +401,25 @@ function createBuilder(state: BuilderState): any {
     _context: state.contextMode,
 
     description(desc: string) {
-      return createBuilder({ ...state, description: desc })
+      return createBuilder({ ...state, description: desc });
     },
 
     parameters(schema: z.ZodType) {
-      return createBuilder({ ...state, parameters: schema })
+      return createBuilder({ ...state, parameters: schema });
     },
 
     context(mode: ContextMode) {
-      return createBuilder({ ...state, contextMode: mode })
+      return createBuilder({ ...state, contextMode: mode });
     },
 
     approval(config: IsomorphicApprovalConfig) {
-      return createBuilder({ ...state, approval: config })
+      return createBuilder({ ...state, approval: config });
     },
 
     handoff(config: TypedHandoffConfig<any, any, any, any, any>) {
       // Validate required fields
       if (!state.contextMode) {
-        throw new Error(`Tool "${state.name}": .context() must be called before .handoff()`)
+        throw new Error(`Tool "${state.name}": .context() must be called before .handoff()`);
       }
 
       // Finalize with handoff config
@@ -475,30 +432,32 @@ function createBuilder(state: BuilderState): any {
         approval: state.approval,
         handoffConfig: config,
         replayTrace: function* (trace: ToolExecutionTrace) {
-          return trace as HydratedToolExecutionTrace
+          return trace as HydratedToolExecutionTrace;
         },
         // For compatibility, also set server/client that use the handoff
-        server: function*(params: any, ctx: ServerAuthorityContext) {
+        server: function* (params: any, ctx: ServerAuthorityContext) {
           // This wrapper is for the executor - it uses handoff() internally
           return yield* ctx.handoff({
-            *before() { return yield* config.before(params, ctx) },
-            *after(handoff: any, client: any) {
-              return yield* config.after(handoff, client, ctx, params)
+            *before() {
+              return yield* config.before(params, ctx);
             },
-          })
+            *after(handoff: any, client: any) {
+              return yield* config.after(handoff, client, ctx, params);
+            },
+          });
         },
         client: config.client,
-      } as FinalizedIsomorphicTool<any, any, any, any, any, any>
+      } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
     },
 
     server(fn: (params: any, ctx: any, clientOutput?: any) => Operation<any>) {
-      const newState = { ...state, serverFn: fn }
+      const newState = { ...state, serverFn: fn };
 
       return {
         ...createBuilder(newState),
         client(clientFn: (input: any, ctx: any, params: any) => Operation<any>) {
           if (!state.contextMode) {
-            throw new Error(`Tool "${state.name}": .context() must be called before .client()`)
+            throw new Error(`Tool "${state.name}": .context() must be called before .client()`);
           }
           return {
             _types: undefined as any,
@@ -508,15 +467,15 @@ function createBuilder(state: BuilderState): any {
             contextMode: state.contextMode,
             approval: state.approval,
             replayTrace: function* (trace: ToolExecutionTrace) {
-              return trace as HydratedToolExecutionTrace
+              return trace as HydratedToolExecutionTrace;
             },
             server: fn,
             client: clientFn,
-          } as FinalizedIsomorphicTool<any, any, any, any, any, any>
+          } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
         },
         build() {
           if (!state.contextMode) {
-            throw new Error(`Tool "${state.name}": .context() must be called before .build()`)
+            throw new Error(`Tool "${state.name}": .context() must be called before .build()`);
           }
           return {
             _types: undefined as any,
@@ -526,17 +485,17 @@ function createBuilder(state: BuilderState): any {
             contextMode: state.contextMode,
             approval: state.approval,
             replayTrace: function* (trace: ToolExecutionTrace) {
-              return trace as HydratedToolExecutionTrace
+              return trace as HydratedToolExecutionTrace;
             },
             server: fn,
-          } as FinalizedIsomorphicTool<any, any, any, any, any, any>
+          } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
         },
-      }
+      };
     },
 
     client(fn: (input: any, ctx: any, params?: any) => Operation<any>) {
       if (!state.contextMode) {
-        throw new Error(`Tool "${state.name}": .context() must be called before .client()`)
+        throw new Error(`Tool "${state.name}": .context() must be called before .client()`);
       }
       return {
         _types: undefined as any,
@@ -546,14 +505,14 @@ function createBuilder(state: BuilderState): any {
         contextMode: state.contextMode,
         approval: state.approval,
         replayTrace: function* (trace: ToolExecutionTrace) {
-          return trace as HydratedToolExecutionTrace
+          return trace as HydratedToolExecutionTrace;
         },
         client: fn,
-      } as FinalizedIsomorphicTool<any, any, any, any, any, any>
+      } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
     },
-  }
+  };
 
-  return builder
+  return builder;
 }
 
 /**
@@ -578,8 +537,8 @@ function createBuilder(state: BuilderState): any {
  *   })
  * ```
  */
-export function createIsomorphicTool<TName extends string>(
-  name: TName
+export function createIsomorphicTool<TName extends string = string>(
+  name?: TName,
 ): IsomorphicToolBuilderBase<TName> {
-  return createBuilder({ name }) as IsomorphicToolBuilderBase<TName>
+  return createBuilder({ name: name ?? ("" as string) }) as IsomorphicToolBuilderBase<TName>;
 }

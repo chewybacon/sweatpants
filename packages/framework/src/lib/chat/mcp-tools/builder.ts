@@ -48,12 +48,9 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
-import type { z } from 'zod'
-import type {
-  MCPClientContext,
-  MCPHandoffConfig,
-} from './types.ts'
+import type { Operation } from "effection";
+import type { z } from "zod";
+import type { MCPClientContext, MCPHandoffConfig } from "./types.ts";
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -63,16 +60,11 @@ import type {
  * Phantom type carrier for builder state.
  * Uses `in out` variance for bidirectional type flow.
  */
-export interface MCPToolTypes<
-  in out TParams,
-  in out THandoff,
-  in out TClient,
-  in out TResult,
-> {
-  params: TParams
-  handoff: THandoff
-  client: TClient
-  result: TResult
+export interface MCPToolTypes<in out TParams, in out THandoff, in out TClient, in out TResult> {
+  params: TParams;
+  handoff: THandoff;
+  client: TClient;
+  result: TResult;
 }
 
 // =============================================================================
@@ -83,56 +75,56 @@ export interface MCPToolTypes<
  * Base builder - has name, needs everything else.
  */
 export interface MCPToolBuilderBase<TName extends string> {
-  _types: MCPToolTypes<undefined, undefined, undefined, undefined>
-  _name: TName
+  _types: MCPToolTypes<undefined, undefined, undefined, undefined>;
+  _name: TName;
 
   /** Set the description shown to the LLM */
-  description(desc: string): MCPToolBuilderWithDescription<TName>
+  description(desc: string): MCPToolBuilderWithDescription<TName>;
 }
 
 /**
  * Has name + description, needs parameters.
  */
 export interface MCPToolBuilderWithDescription<TName extends string> {
-  _types: MCPToolTypes<undefined, undefined, undefined, undefined>
-  _name: TName
-  _description: string
+  _types: MCPToolTypes<undefined, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
 
   /** Set the Zod schema for tool parameters */
   parameters<TSchema extends z.ZodType>(
-    schema: TSchema
-  ): MCPToolBuilderWithParams<TName, z.infer<TSchema>>
+    schema: TSchema,
+  ): MCPToolBuilderWithParams<TName, z.infer<TSchema>>;
 }
 
 /**
  * Has name + description + params, can set requires or define execution.
  */
 export interface MCPToolBuilderWithParams<TName extends string, TParams> {
-  _types: MCPToolTypes<TParams, undefined, undefined, undefined>
-  _name: TName
-  _description: string
-  _parameters: z.ZodType<TParams>
+  _types: MCPToolTypes<TParams, undefined, undefined, undefined>;
+  _name: TName;
+  _description: string;
+  _parameters: z.ZodType<TParams>;
 
   /**
    * Declare required MCP client capabilities.
    * Tool won't be listed if client doesn't have these.
    */
-  requires(caps: { elicitation?: boolean; sampling?: boolean }): this
+  requires(caps: { elicitation?: boolean; sampling?: boolean }): this;
 
   /**
    * Define a simple execute function (no handoff).
    * For tools that don't need the before/client/after pattern.
    */
   execute<TResult>(
-    fn: (params: TParams, ctx: MCPClientContext) => Operation<TResult>
-  ): FinalizedMCPTool<TName, TParams, undefined, undefined, TResult>
+    fn: (params: TParams, ctx: MCPClientContext) => Operation<TResult>,
+  ): FinalizedMCPTool<TName, TParams, undefined, undefined, TResult>;
 
   /**
    * Define handoff pattern for multi-turn interaction.
    */
   handoff<THandoff, TClient, TResult>(
-    config: MCPHandoffConfig<TParams, THandoff, TClient, TResult>
-  ): FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult>
+    config: MCPHandoffConfig<TParams, THandoff, TClient, TResult>,
+  ): FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult>;
 }
 
 // =============================================================================
@@ -142,33 +134,27 @@ export interface MCPToolBuilderWithParams<TName extends string, TParams> {
 /**
  * A fully configured MCP tool.
  */
-export interface FinalizedMCPTool<
-  TName extends string,
-  TParams,
-  THandoff,
-  TClient,
-  TResult,
-> {
+export interface FinalizedMCPTool<TName extends string, TParams, THandoff, TClient, TResult> {
   /** Phantom type carrier */
-  _types: MCPToolTypes<TParams, THandoff, TClient, TResult>
+  _types: MCPToolTypes<TParams, THandoff, TClient, TResult>;
 
   /** Tool name (used by LLM) */
-  name: TName
+  name: TName;
 
   /** Description (shown to LLM) */
-  description: string
+  description: string;
 
   /** Zod parameter schema */
-  parameters: z.ZodType<TParams>
+  parameters: z.ZodType<TParams>;
 
   /** Required MCP capabilities */
-  requires?: { elicitation?: boolean; sampling?: boolean }
+  requires?: { elicitation?: boolean; sampling?: boolean };
 
   /** Handoff config (if using handoff pattern) */
-  handoffConfig?: MCPHandoffConfig<TParams, THandoff, TClient, TResult>
+  handoffConfig?: MCPHandoffConfig<TParams, THandoff, TClient, TResult>;
 
   /** Execute function (if not using handoff) */
-  execute?: (params: TParams, ctx: MCPClientContext) => Operation<TResult>
+  execute?: (params: TParams, ctx: MCPClientContext) => Operation<TResult>;
 }
 
 // =============================================================================
@@ -178,42 +164,35 @@ export interface FinalizedMCPTool<
 /**
  * Extract the result type from a finalized tool.
  */
-export type InferMCPResult<T> = T extends FinalizedMCPTool<any, any, any, any, infer R>
-  ? R
-  : never
+export type InferMCPResult<T> = T extends FinalizedMCPTool<any, any, any, any, infer R> ? R : never;
 
 /**
  * Extract the params type from a finalized tool.
  */
-export type InferMCPParams<T> = T extends FinalizedMCPTool<any, infer P, any, any, any>
-  ? P
-  : never
+export type InferMCPParams<T> = T extends FinalizedMCPTool<any, infer P, any, any, any> ? P : never;
 
 /**
  * Extract the handoff type from a finalized tool.
  */
-export type InferMCPHandoff<T> = T extends FinalizedMCPTool<any, any, infer H, any, any>
-  ? H
-  : never
+export type InferMCPHandoff<T> =
+  T extends FinalizedMCPTool<any, any, infer H, any, any> ? H : never;
 
 /**
  * Extract the client output type from a finalized tool.
  */
-export type InferMCPClient<T> = T extends FinalizedMCPTool<any, any, any, infer C, any>
-  ? C
-  : never
+export type InferMCPClient<T> = T extends FinalizedMCPTool<any, any, any, infer C, any> ? C : never;
 
 // =============================================================================
 // BUILDER IMPLEMENTATION
 // =============================================================================
 
 interface BuilderState {
-  name: string
-  description?: string
-  parameters?: z.ZodType
-  requires?: { elicitation?: boolean; sampling?: boolean }
-  handoffConfig?: MCPHandoffConfig<any, any, any, any>
-  executeFn?: (params: any, ctx: MCPClientContext) => Operation<any>
+  name: string;
+  description?: string;
+  parameters?: z.ZodType;
+  requires?: { elicitation?: boolean; sampling?: boolean };
+  handoffConfig?: MCPHandoffConfig<any, any, any, any>;
+  executeFn?: (params: any, ctx: MCPClientContext) => Operation<any>;
 }
 
 function createBuilder(state: BuilderState): any {
@@ -224,23 +203,23 @@ function createBuilder(state: BuilderState): any {
     _parameters: state.parameters,
 
     description(desc: string) {
-      return createBuilder({ ...state, description: desc })
+      return createBuilder({ ...state, description: desc });
     },
 
     parameters(schema: z.ZodType) {
-      return createBuilder({ ...state, parameters: schema })
+      return createBuilder({ ...state, parameters: schema });
     },
 
     requires(caps: { elicitation?: boolean; sampling?: boolean }) {
-      return createBuilder({ ...state, requires: caps })
+      return createBuilder({ ...state, requires: caps });
     },
 
     execute(fn: (params: any, ctx: MCPClientContext) => Operation<any>) {
       if (!state.description) {
-        throw new Error(`Tool "${state.name}": .description() must be called before .execute()`)
+        throw new Error(`Tool "${state.name}": .description() must be called before .execute()`);
       }
       if (!state.parameters) {
-        throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`)
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`);
       }
 
       return {
@@ -250,15 +229,15 @@ function createBuilder(state: BuilderState): any {
         parameters: state.parameters,
         requires: state.requires,
         execute: fn,
-      } as FinalizedMCPTool<any, any, undefined, undefined, any>
+      } as FinalizedMCPTool<any, any, undefined, undefined, any>;
     },
 
     handoff(config: MCPHandoffConfig<any, any, any, any>) {
       if (!state.description) {
-        throw new Error(`Tool "${state.name}": .description() must be called before .handoff()`)
+        throw new Error(`Tool "${state.name}": .description() must be called before .handoff()`);
       }
       if (!state.parameters) {
-        throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`)
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`);
       }
 
       return {
@@ -268,11 +247,11 @@ function createBuilder(state: BuilderState): any {
         parameters: state.parameters,
         requires: state.requires,
         handoffConfig: config,
-      } as FinalizedMCPTool<any, any, any, any, any>
+      } as FinalizedMCPTool<any, any, any, any, any>;
     },
-  }
+  };
 
-  return builder
+  return builder;
 }
 
 /**
@@ -295,8 +274,8 @@ function createBuilder(state: BuilderState): any {
  *   })
  * ```
  */
-export function createMCPTool<TName extends string>(
-  name: TName
+export function createMCPTool<TName extends string = string>(
+  name?: TName,
 ): MCPToolBuilderBase<TName> {
-  return createBuilder({ name }) as MCPToolBuilderBase<TName>
+  return createBuilder({ name: name ?? ("" as string) }) as MCPToolBuilderBase<TName>;
 }
