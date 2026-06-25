@@ -1,4 +1,4 @@
-import { createSignal, each } from 'effection'
+import { createSignal, spawn } from 'effection'
 import type { Operation, Signal } from 'effection'
 
 import type {
@@ -49,9 +49,24 @@ export function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
         return
       }
 
-      for (const _ of yield* each(changeSignal)) {
-        break
-      }
+      // Subscribe-then-recheck inside a child task, and wait for that task to
+      // complete. Race-free (the recheck closes the dropped-signal window) and
+      // leak-free (the task tears down its own subscription on return; if this
+      // operation is halted externally, structured concurrency halts the child
+      // task too). Review B-2: avoid `resolve()`+`task.halt()` re-entrancy —
+      // resolving synchronously resumes a waiter that halts the task we're
+      // inside of, which corrupts the subscription cleanup.
+      const task = yield* spawn(function* () {
+        const sub = yield* changeSignal
+        if (tokens.length > afterLSN || completed || error) {
+          return
+        }
+        const result = yield* sub.next()
+        if (result.done) {
+          return
+        }
+      })
+      yield* task
     },
   }
 }
