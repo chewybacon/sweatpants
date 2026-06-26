@@ -634,6 +634,9 @@ importers:
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../durable-streams
+      '@sweatpants/framework':
+        specifier: workspace:*
+        version: link:../framework
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9

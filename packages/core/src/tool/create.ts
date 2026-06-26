@@ -9,9 +9,21 @@ import type {
   ToolFactoryWithImpl,
   ToolFactoryWithoutImpl,
   ContextBinding,
+  CreateToolBuilderBase,
+  CoreToolCtx,
+  UnifiedToolFactory,
 } from "./types.ts";
+import type { ElicitDefinition, ElicitsMap } from "../types/unified-tool.ts";
 import { TransportContext } from "../context/transport.ts";
 import type { ElicitResponse } from "../types/transport.ts";
+
+/**
+ * Creates a unified tool with the builder chain: createTool(name) →
+ * .description() → .parameters() → .elicits() → .execute()/.handoff().
+ */
+export function createTool<TName extends string>(
+  name: TName,
+): CreateToolBuilderBase<TName>;
 
 /**
  * Creates a tool with implementation provided in config.
@@ -76,8 +88,16 @@ export function createTool<
   TProgress extends ZodSchema | undefined,
   TOutput extends ZodSchema,
 >(
-  config: ToolConfig<TInput, TProgress, TOutput>,
-): ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput> {
+  configOrName: ToolConfig<TInput, TProgress, TOutput> | string,
+):
+  | CreateToolBuilderBase<string>
+  | ToolFactoryWithImpl<TInput, TOutput>
+  | ToolFactoryWithoutImpl<TInput, TProgress, TOutput> {
+  if (typeof configOrName === "string") {
+    return createUnifiedToolBuilder({ name: configOrName }) as CreateToolBuilderBase<string>;
+  }
+
+  const config = configOrName;
   type Input = z.infer<TInput>;
   type Output = z.infer<TOutput>;
 
@@ -392,4 +412,168 @@ function createToolWithBindings<
   });
 
   return factory as ToolFactoryWithImpl<TInput, TOutput> | ToolFactoryWithoutImpl<TInput, TProgress, TOutput>;
+}
+
+// =============================================================================
+// Unified createTool(name) builder implementation
+// =============================================================================
+
+interface UnifiedBuilderState {
+  name: string;
+  description?: string;
+  parameters?: ZodSchema;
+  elicits?: ElicitsMap;
+  capabilities?: { elicitation?: boolean; sampling?: boolean };
+}
+
+function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
+  return {
+    description(desc: string) {
+      return createUnifiedToolBuilder({ ...state, description: desc });
+    },
+    parameters(schema: ZodSchema) {
+      if (!state.description) {
+        throw new Error(`Tool "${state.name}": .description() must be called before .parameters()`);
+      }
+      return createUnifiedToolBuilder({ ...state, parameters: schema });
+    },
+    elicits(elicits: ElicitsMap) {
+      if (!state.parameters) {
+        throw new Error(`Tool "${state.name}": .parameters() must be called before .elicits()`);
+      }
+      normalizeCoreElicits(elicits);
+      return createUnifiedToolBuilder({ ...state, elicits });
+    },
+    requires(caps: { elicitation?: boolean; sampling?: boolean }) {
+      if (!state.elicits) {
+        throw new Error(`Tool "${state.name}": .elicits() must be called before .requires()`);
+      }
+      return createUnifiedToolBuilder({ ...state, capabilities: caps });
+    },
+    execute(fn: (input: unknown, ctx: CoreToolCtx) => Operation<unknown>) {
+      assertUnifiedReady(state, ".execute()");
+      return finalizeCoreUnifiedTool({
+        name: state.name,
+        description: state.description!,
+        parameters: state.parameters!,
+        elicits: state.elicits!,
+        capabilities: state.capabilities,
+        impl: fn,
+      });
+    },
+    handoff(config: {
+      before?: (input: unknown, ctx: { callId: string; signal: AbortSignal }) => Operation<unknown>;
+      client: (handoff: unknown, ctx: CoreToolCtx, input: unknown) => Operation<unknown>;
+      after: (
+        handoff: unknown,
+        client: unknown,
+        ctx: { callId: string; signal: AbortSignal },
+        input: unknown,
+      ) => Operation<unknown>;
+    }) {
+      assertUnifiedReady(state, ".handoff()");
+      const impl = function* (input: unknown, ctx: CoreToolCtx): Operation<unknown> {
+        const serverCtx = {
+          callId: `handoff-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+          signal: new AbortController().signal,
+        };
+        const handoff = config.before ? yield* config.before(input, serverCtx) : input;
+        const client = yield* config.client(handoff, ctx, input);
+        return yield* config.after(handoff, client, serverCtx, input);
+      };
+      return finalizeCoreUnifiedTool({
+        name: state.name,
+        description: state.description!,
+        parameters: state.parameters!,
+        elicits: state.elicits!,
+        capabilities: state.capabilities ?? { elicitation: true, sampling: true },
+        impl,
+      });
+    },
+  };
+}
+
+function assertUnifiedReady(state: UnifiedBuilderState, terminal: string): void {
+  if (!state.description) {
+    throw new Error(`Tool "${state.name}": .description() must be called before ${terminal}`);
+  }
+  if (!state.parameters) {
+    throw new Error(`Tool "${state.name}": .parameters() must be called before ${terminal}`);
+  }
+  if (!state.elicits) {
+    throw new Error(`Tool "${state.name}": .elicits() must be called before ${terminal}. Use .elicits({}) if no elicitation is needed.`);
+  }
+}
+
+function finalizeCoreUnifiedTool(options: {
+  name: string;
+  description: string;
+  parameters: ZodSchema;
+  elicits: ElicitsMap;
+  capabilities?: { elicitation?: boolean; sampling?: boolean } | undefined;
+  impl: (input: unknown, ctx: CoreToolCtx) => Operation<unknown>;
+}): UnifiedToolFactory {
+  const normalized = normalizeCoreElicits(options.elicits);
+  const factory = function unifiedToolFactory(ctx: CoreToolCtx): Operation<(input: unknown) => Operation<unknown>> {
+    return {
+      *[Symbol.iterator]() {
+        const invoke = (input: unknown): Operation<unknown> =>
+          (function* (): Operation<unknown> {
+            const parsed = options.parameters.safeParse(input);
+            if (!parsed.success || parsed.data === undefined) {
+              throw new Error(`Invalid input for tool "${options.name}": ${parsed.error?.message ?? "validation failed"}`);
+            }
+            return yield* options.impl(parsed.data, ctx);
+          })();
+        return invoke;
+      },
+    };
+  };
+
+  Object.defineProperties(factory, {
+    name: { value: options.name, enumerable: true, writable: false, configurable: true },
+    description: { value: options.description, enumerable: true, writable: false, configurable: true },
+    parameters: { value: options.parameters, enumerable: true, writable: false, configurable: true },
+    elicits: { value: normalized, enumerable: true, writable: false, configurable: true },
+    schemas: { value: { input: options.parameters, output: undefined }, enumerable: true, writable: false, configurable: true },
+    capabilities: {
+      value: options.capabilities ?? { elicitation: Object.keys(normalized).length > 0, sampling: false },
+      enumerable: true,
+      writable: false,
+      configurable: true,
+    },
+  });
+
+  return factory as unknown as UnifiedToolFactory;
+}
+
+function normalizeCoreElicits(elicits: ElicitsMap): Record<string, ElicitDefinition> {
+  const normalized: Record<string, ElicitDefinition> = {};
+  for (const [key, entry] of Object.entries(elicits)) {
+    const def: ElicitDefinition = isElicitDefinitionLike(entry)
+      ? { ...(entry as ElicitDefinition) }
+      : { response: entry };
+    def.mode = def.mode ?? "form";
+    if (def.mode === "form" && def.response === undefined) {
+      throw new Error(`Elicit "${key}" uses form mode but has no response schema`);
+    }
+    if (def.ttlMs !== undefined && (!Number.isFinite(def.ttlMs) || def.ttlMs < 0)) {
+      throw new Error(`Elicit "${key}" has invalid ttlMs`);
+    }
+    normalized[key] = def;
+  }
+  return normalized;
+}
+
+function isElicitDefinitionLike(value: unknown): value is ElicitDefinition {
+  if (!value || typeof value !== "object") return false;
+  if (typeof (value as { safeParse?: unknown }).safeParse === "function") return false;
+  return (
+    "response" in value ||
+    "context" in value ||
+    "reason" in value ||
+    "ttlMs" in value ||
+    "metadata" in value ||
+    "mode" in value
+  );
 }

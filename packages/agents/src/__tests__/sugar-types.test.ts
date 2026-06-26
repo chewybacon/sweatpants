@@ -65,10 +65,10 @@ describe('CB-1 sub-agent sugar (REQ-004)', () => {
     const result = events.find((e) => e.type === 'result') as
       | {
           type: 'result'
-          value: { hotel: { hotel: string }; car: { car: string } }
+          value: { hotel: { result: { hotel: string } }; car: { result: { car: string } } }
         }
       | undefined
-    expect(result?.value.hotel.hotel).toBe('Hilton Tokyo')
-    expect(result?.value.car.car).toBe('Rent at NRT')
+    expect(result?.value.hotel.result.hotel).toBe('Hilton Tokyo')
+    expect(result?.value.car.result.car).toBe('Rent at NRT')
   })
 })

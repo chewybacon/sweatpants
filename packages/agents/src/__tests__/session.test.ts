@@ -3,6 +3,7 @@ import { createAgent } from '../create-agent.ts'
 import { createAgentSession } from '../session.ts'
 import { createInMemoryAgentStreamStore } from '../stream.ts'
 import { createMockSampleProvider, collectUntil } from './helpers.ts'
+import { messageText } from '../events.ts'
 
 describe('AgentSession harness (REQ-007/009/011/012/013)', () => {
   it('sendMessage runs the entry harness (TC-026) and ctx.sample streams a text_delta (TC-027)', function* () {
@@ -79,7 +80,7 @@ describe('AgentSession harness (REQ-007/009/011/012/013)', () => {
       systemPrompt: 'travel',
       tools: {},
       entry: function* (input, ctx) {
-        seenMessages = ctx.messages.map((m) => m.content)
+        seenMessages = ctx.messages.map((m) => messageText(m))
         return { echo: input }
       },
       model: { provider: 'mock', id: 'm1' },

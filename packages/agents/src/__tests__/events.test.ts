@@ -1,5 +1,4 @@
 import { describe, it, expect } from '@effectionx/vitest'
-import type { Operation } from 'effection'
 
 import { createAgentStream, createInMemoryAgentStreamStore } from '../stream.ts'
 import { isAgentEvent, isCommand } from '../log.ts'

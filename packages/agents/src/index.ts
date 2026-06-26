@@ -45,6 +45,7 @@ export type {
   TextDeltaEvent,
   ProgressEvent,
   ToolCallStartEvent,
+  ToolCallResultEvent,
   ToolCallEndEvent,
   SubSessionStartEvent,
   SubSessionEndEvent,
@@ -54,16 +55,40 @@ export type {
   ResultEvent,
   ErrorEvent,
   CancelledEvent,
+  AbortedEvent,
+  LogEvent,
   AgentMessage,
   AgentState,
   AgentCheckpoint,
   PendingSubSessionRef,
   PendingRequestRef,
+  Role,
+  LogLevel,
+  Message,
+  ContentPart,
+  ElicitExchange,
+  SampleExchange,
+  ToolCallExchange,
+  AgentCallExchange,
+  ToolCallResult,
+  AgentCallResult,
+  InterruptDescriptor,
+  Checkpoint,
   SampleOptions,
   SampleResult,
   ElicitRequest,
   ElicitResult,
   ElicitStatus,
+  RawElicitResult,
+  IncomingElicitResponse,
+  PerCallInterruptOptions,
+  DynamicElicitOptions,
+} from './events.ts'
+export {
+  createMessage,
+  normalizeContent,
+  messageText,
+  nextMessageId,
 } from './events.ts'
 export { isAgentEvent } from './log.ts'
 
@@ -102,6 +127,20 @@ export {
 // parallel composition
 export { parallel, type ParallelOptions } from './parallel.ts'
 
+// protocol projections
+export {
+  toAGUIInterrupt,
+  elicitResultToAGUIResume,
+  aguiResumeToElicitResult,
+  toA2AInterruptedTaskStatus,
+  toA2ACancelTaskProjection,
+  type AGUIInterrupt,
+  type AGUIResume,
+  type A2ATaskState,
+  type A2AInterruptedTaskStatus,
+  type A2ACancelTaskProjection,
+} from './projections.ts'
+
 // re-export core tool types for authoring convenience
 export type {
   AnyToolFactory,
@@ -109,3 +148,38 @@ export type {
   InputFromFactory,
   OutputFromFactory,
 } from '@sweatpants/core'
+
+// unified tool model (native builder, migration wrapper, adapters)
+export {
+  createTool,
+  finalizeUnifiedTool,
+  normalizeElicits,
+  type CreateToolBuilderBase,
+  type CreateToolBuilderWithDescription,
+  type CreateToolBuilderWithParams,
+  type CreateToolBuilderWithElicits,
+  type ToolCapabilities,
+} from './create-tool.ts'
+export { adaptMCPTool, type MCPToolLike, type MCPClientCtxLike, type MCPServerCtxLike } from './adapt-mcp.ts'
+export {
+  adaptIsomorphicTool,
+  type IsomorphicToolLike,
+  type IsomorphicClientCtxLike,
+  type IsomorphicServerCtxLike,
+} from './adapt-isomorphic.ts'
+export {
+  type ToolCtx,
+  type ToolImpl,
+  type UnifiedToolFactory,
+  type ElicitDefinition,
+  type ElicitEntry,
+  type ElicitsMap,
+  type ExtractElicitResponse,
+  type ExtractElicitContext,
+  type ExtractElicitResponseSchema,
+  type ExtractElicitContextSchema,
+  type NormalizedElicitDefinition,
+  type NormalizedElicitsMap,
+  projectToToolCtx,
+} from './tool-ctx.ts'
+export { createTool2, type UnifiedToolConfig } from './create-tool2.ts'

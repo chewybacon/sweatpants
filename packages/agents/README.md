@@ -1,87 +1,104 @@
 # @sweatpants/agents
 
-Unified agent model: **agents as callable coroutines on a shared durable stream with isomorphic fulfillment.**
+Unified agent model: **agents as callable coroutines on a shared durable stream with unified tool, interrupt, and exchange semantics.**
 
-This package implements the foundation of the A2A Protocol Support & Core Unification spec (`.pi/specs/a2a-protocol-support-spec.md`). It is built **alongside** the existing `@sweatpants/core` `createAgent` and the framework chat engine per the NFR-004 migration strategy — nothing existing is deleted.
+This package implements the local/in-process foundation for the A2A protocol support work and the unified tool model described in `.pi/specs/unified-tool-model-spec.md`. It is built **alongside** the existing `@sweatpants/core` and framework chat runtimes during migration.
 
-## Implementation notes
+## Unified tool model
 
-- **`createAgent` uses `createApi` from `effection/experimental`** (same as `createTool`) — the agent's invocation surface is a `createApi` whose `invoke` runs the `entry` harness; the per-run `AgentCtx` is delivered through an Effection `Context`. `decorate` composes agent-level middleware via `api.around`.
-- **Sub-agent sugar uses `M[K]` per key** (not `infer V`) so each `ctx.agents.X` accessor is typed by its own target's input/output. See the `SugarMap` comment in `ctx.ts` (review CB-1).
-- **`waitForChange` race fix** (`@sweatpants/durable-streams`): subscribe-then-recheck inside a spawned child task, awaited via `yield* task`. Race-free (recheck closes the dropped-signal window) and leak-free (the child task tears down its own subscription on return; structured concurrency handles external halt). Avoids `resolve()`+`task.halt()` re-entrancy and `scoped`'s scope-rewrite interaction with dual-tail `each` consumers (review B-2).
+Implemented surfaces:
 
-## Stage 1 (this package)
-
-The core skeleton the rest of the spec builds on:
-
-| Spec requirement | Status | Where |
-| --- | --- | --- |
-| REQ-001 Agent as a callable coroutine (`createAgent` with `entry`/`subAgents`/`model`/`maxIterations`/`goal`) | ✅ | `create-agent.ts`, `types.ts` |
-| REQ-002 Tool authoring API unchanged (re-exports `createTool`) | ✅ | `index.ts` |
-| REQ-003 `ctx.call` single composition primitive; isomorphic local fulfillment | ✅ (local) | `ctx.ts`, `driver.ts` |
-| REQ-004 Generated typed `ctx.agents`/`ctx.tools` sugar | ✅ | `ctx.ts` |
-| REQ-005 Parallel composition (`all()` + `parallel()` helper) | ✅ | `parallel.ts` |
-| REQ-006 Sub-agents are imports (no server) | ✅ | `driver.ts`, `ctx.ts` |
-| REQ-007 Durable stream as shared medium; commands are appends | ✅ | `stream.ts`, `session.ts` |
-| REQ-009 Harness as the `entry` tool (`ctx.sample`/`call`/`elicit`/`notify`) | ✅ | `ctx.ts`, `driver.ts` |
-| REQ-010 Harness pure-function discipline (`ctx.state`/`messages`) | ✅ (mechanism) | `ctx.ts` |
-| REQ-011 Snapshot+delta restoration (checkpoint) | ✅ (basic) | `driver.ts` |
-| REQ-012 `sendMessage` with `contextId` OR `snapshot` | ✅ | `session.ts` |
-| REQ-013 Checkpoint emission + O(1) LSN index | ✅ | `driver.ts`, `stream.ts` |
-| REQ-014 Eliciting via `ctx.elicit` (parks on a substrate) | ✅ (long-lived scope) | `ctx.ts`, `session.ts` |
-| REQ-015 Elicit/sample propagation through nesting + requestId routing | ✅ | `ctx.ts` (router) |
-| REQ-020 `AgentEvent` canonical LSN-tagged vocabulary | ✅ | `events.ts`, `log.ts` |
-
-## Remaining stages (not yet implemented)
-
-- **REQ-016/017** `createA2AHandler` (A2A server, per-agent) and A2A client delegation — the HTTP handler, Agent Card, JSON-RPC `SendMessage`/`SendStreamingMessage`, SSE task/artifact updates, `input-required`↔elicit mapping. The `RemoteHandle` seam exists in `ctx.ts`; transports are stage 2.
-- **REQ-018** Agent-aware `createMcpHandler` overload (generalize the existing framework MCP handler).
-- **REQ-019** AG-UI as a configured event projection (no `bindAGUI`).
-- **REQ-021** Eliminate `replayState` from the framework chat handler (migration).
-- **REQ-022** agentcore tool-session → agent-session generalization.
-- Full snapshot+**delta** replay (REQ-011 currently restores from the latest checkpoint; bounded delta replay lands with the chat-engine migration).
-- Redis/Durable-Object backing for true stateless-server (NFR-002).
+- **Content-part `Message` model** — agent history, checkpoints, and exchanges use normalized `ContentPart[]` messages (`text`, `tool_use`, `tool_result`, `image`, `audio`, `resource`).
+- **Native `createTool` builder** — `createTool(name).description(...).parameters(...).elicits(...).requires(...).execute((input, ctx) => ...)` produces a `UnifiedToolFactory` directly.
+- **Declared keyed elicits** — `ToolCtx<TElicits>.elicit(key, { message, ...context, interrupt })` is typed from `.elicits({...})`; `ctx.elicitDynamic(...)` remains the dynamic escape hatch.
+- **Tool-local history** — `ToolCtx.history` is a per-invocation accumulator. Tools may append `result.exchange.messages`; `ctx.call` includes that local history between the outer `tool_use` and `tool_result`.
+- **Exchange return shape** — tool calls return `{ result, exchange }` from `ctx.call(...)` and `ctx.tools.X(...)`; agent sub-calls return `{ result, exchange? }` from `ctx.agents.X(...)`.
+- **Migration helper** — use `ctx.callResult(target, input)` at old result-only call sites.
+- **Interrupt descriptors** — `elicit_request` and host-fulfilled `sample_request` events carry `interrupt: { id, key, seq, reason, message, responseSchema?, contextSchema?, context?, toolCallId?, expiresAt?, metadata? }`; `requestId` remains as a migration alias.
+- **Checkpoint before park** — the runtime emits a checkpoint with `pendingInterruptIds` before parking on elicit or host-fulfilled sample.
+- **Server vs host sampling** — server-resolved samples use the configured `sampleProvider`, stream progress, and do not park; host-fulfilled samples emit `sample_request` and resume through `respondSample`.
+- **Structured notifications** — tools get both `ctx.notify(message, fraction?, level?)` and `ctx.log(level, message)`.
+- **Legacy interop** — `createTool2`, `adaptMCPTool`, and `adaptIsomorphicTool` remain as migration shims. Framework `createMCPTool` / `createIsomorphicTool` finalized values are callable as unified tools while preserving their legacy metadata.
 
 ## Usage
 
 ```ts
-import { createAgent, createAgentSession, createInMemoryAgentStreamStore } from '@sweatpants/agents'
-import { createTool } from '@sweatpants/core'
+import {
+  createAgent,
+  createAgentSession,
+  createInMemoryAgentStreamStore,
+  createTool,
+} from '@sweatpants/agents'
 import { z } from 'zod'
 
-const Book = createTool({
-  name: 'book',
-  description: 'book a flight',
-  input: z.object({ destination: z.string() }),
-  output: z.object({ confirmed: z.boolean(), destination: z.string() }),
-  progress: z.object({}),
-  impl: function* ({ destination }) { return { confirmed: true, destination } },
-})
+const BookFlight = createTool('book_flight')
+  .description('Book a flight after user confirmation')
+  .parameters(z.object({ destination: z.string() }))
+  .elicits({
+    confirm: {
+      response: z.object({ confirmed: z.boolean() }),
+      reason: 'confirmation',
+    },
+  })
+  .requires({ elicitation: true })
+  .execute(function* (input, ctx) {
+    const confirmation = yield* ctx.elicit('confirm', {
+      message: `Book a flight to ${input.destination}?`,
+    })
 
-const Hotel = createAgent({
-  name: 'hotel', description: 'hotel agent', systemPrompt: 'book hotels',
-  tools: {}, model: { provider: 'mock', id: 'm1' }, maxIterations: 1,
-  entry: function* (input: { city: string }) { return { hotel: `Hilton ${input.city}` } },
-})
+    if (confirmation.action !== 'accept' || !confirmation.content.confirmed) {
+      return { confirmed: false, destination: input.destination }
+    }
+
+    ctx.history.push(...confirmation.exchange.messages)
+    yield* ctx.notify('Booking flight', 0.8)
+    return { confirmed: true, destination: input.destination }
+  })
 
 const Travel = createAgent({
-  name: 'travel', description: 'travel planner', systemPrompt: 'you plan trips',
-  tools: { book: Book },
-  subAgents: { hotel: Hotel },
-  model: { provider: 'mock', id: 'm1' }, maxIterations: 10,
-  entry: function* (_goal, ctx) {
-    const flight = yield* ctx.tools.book({ destination: 'Tokyo' })
-    const hotel = yield* ctx.agents.hotel({ city: 'Tokyo' })
-    const confirm = yield* ctx.elicit('confirm', { message: 'Book it?' })
-    return { flight, hotel, confirm }
+  name: 'travel',
+  description: 'travel planner',
+  systemPrompt: 'you plan trips',
+  tools: { book_flight: BookFlight },
+  model: { provider: 'mock', id: 'm1' },
+  maxIterations: 10,
+  entry: function* (_goal: string, ctx) {
+    const { result, exchange } = yield* ctx.tools.book_flight({ destination: 'Tokyo' })
+    ctx.history.push(...exchange.messages) // explicit append; runtime does not auto-append
+    return result
   },
 })
 
-// Compose in-process — no server:
 const session = yield* createAgentSession(Travel, {
   contextId: 'trip-1',
   store: createInMemoryAgentStreamStore(),
 })
+
 yield* session.send({ type: 'sendMessage', message: 'plan a trip to Japan' })
-// …subscribe to session.events(0); respond to elicits via session.send({ type: 'respondElicit', … })
+// Subscribe to session.events(0); respond to elicits with respondElicit(requestId, result).
 ```
+
+## Migration notes
+
+- New tools should use `(input, ctx: ToolCtx)`; legacy `(args, send)` core tools still run during migration.
+- Existing `const result = yield* ctx.call(...)` / `ctx.tools.X(...)` sites must either destructure `{ result, exchange }` or switch to `ctx.callResult(...)`.
+- The runtime does **not** auto-append elicit, sample, or tool-call exchanges to agent history. Append explicitly when the harness wants the model to see them.
+- MCP/A2A/AG-UI do not require upfront `.elicits()` declarations; `.elicits()` is a Sweatpants authoring and local-bridge contract.
+
+## Implementation notes
+
+- `createAgent` uses `createApi` from `effection/experimental`; the per-run `AgentCtx` is delivered through an Effection `Context`.
+- Sub-agent/tool sugar maps index by `M[K]` per key so each accessor preserves its own input/output inference.
+- The in-memory session substrate keeps parked coroutines live. If a parked substrate is lost, resume must fail rather than replaying JS generator frames from logs.
+
+## Test coverage
+
+Primary local proofs live under `src/__tests__/`:
+
+- `ctx-call.test.ts` — `{ result, exchange }` return shape and migration helper behavior.
+- `elicit.test.ts` — elicit routing, nested/sub-agent propagation, parallel cover-all behavior.
+- `create-tool2-e2e.test.ts` — migration wrapper for native unified tools.
+- `book-flight-e2e.test.ts` — framework MCP handoff through unified `ToolCtx`.
+- `isomorphic-e2e.test.ts` — isomorphic server-only and handoff tools through unified `ToolCtx`.
+
+Framework and core compatibility suites remain green during migration.

@@ -17,12 +17,12 @@ import { createApi } from 'effection/experimental'
 import type { Operation } from 'effection'
 
 import type {
-  AnyToolFactory,
   AgentConfig,
   AgentFactory,
   AgentInstance,
   AgentMiddleware,
   ModelSelection,
+  ToolTarget,
 } from './types.ts'
 import { buildAgentCtx, createRequestRouter, generateId } from './ctx.ts'
 import { driveEntry } from './driver.ts'
@@ -36,7 +36,7 @@ import { AGENT_RUN, getRun, type RunOptions } from './internal.ts'
 export function createAgent<
   I,
   O,
-  TTools extends Record<string, AnyToolFactory>,
+  TTools extends Record<string, ToolTarget>,
   TSub extends
     | Record<string, AgentFactory<any, any, any, any>>
     | undefined = undefined,

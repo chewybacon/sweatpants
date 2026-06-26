@@ -68,7 +68,8 @@ export function* emitCheckpointOp(
   const checkpoint: AgentCheckpoint = {
     contextId,
     atLsn: -1,
-    messages: [...messages],
+    messages: messages.map((m) => ({ ...m, content: [...m.content] })),
+    pendingInterruptIds: [],
     pendingSubSessions: [],
     pendingRequests: [],
     state: { ...state },

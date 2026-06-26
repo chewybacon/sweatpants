@@ -29,6 +29,14 @@ export {
   type ToolFactoryWithImpl,
   type ToolFactoryWithoutImpl,
   type ContextBinding,
+  type CoreToolCtx,
+  type CoreElicitResult,
+  type UnifiedToolFactory,
+  type CreateToolBuilderBase,
+  type CreateToolBuilderWithDescription,
+  type CreateToolBuilderWithParams,
+  type CreateToolBuilderWithElicits,
+  type PerCallInterruptOptions,
 } from "./tool/index.ts";
 
 // Re-export context utilities
