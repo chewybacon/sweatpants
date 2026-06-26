@@ -14,6 +14,7 @@ import { spawn, each, type Operation, type Task, type Stream } from 'effection'
 
 import type { AgentFactory } from './types.ts'
 import type { AgentEvent, AgentMessage, AgentState } from './events.ts'
+import { createMessage, normalizeContent } from './events.ts'
 import type { AgentCommand, SendMessageCommand } from './commands.ts'
 import {
   createAgentStream,
@@ -44,7 +45,7 @@ export interface AgentSession {
 export type SessionStatus = 'idle' | 'running' | 'error'
 
 export function* createAgentSession(
-  agent: AgentFactory,
+  agent: AgentFactory<any, any, any, any>,
   options: CreateAgentSessionOptions,
 ): Operation<AgentSession> {
   const store = options.store ?? createInMemoryAgentStreamStore()
@@ -78,25 +79,30 @@ export function* createAgentSession(
             }
           })
         } else if (cmd.type === 'respondElicit') {
-          if (!router.resolveElicit(cmd.requestId, cmd.result)) {
+          const resolved = router.resolveElicit(cmd.requestId, cmd.result)
+          if (!resolved.ok) {
             yield* stream.append({
               type: 'error',
-              message: `respondElicit: unknown requestId "${cmd.requestId}"`,
-              code: 'not_found',
+              message: resolved.message,
+              code: resolved.code,
             } as AgentEvent)
           }
         } else if (cmd.type === 'respondSample') {
-          if (!router.resolveSample(cmd.requestId, cmd.result)) {
+          const resolved = router.resolveSample(cmd.requestId, cmd.result)
+          if (!resolved.ok) {
             yield* stream.append({
               type: 'error',
-              message: `respondSample: unknown requestId "${cmd.requestId}"`,
-              code: 'not_found',
+              message: resolved.message,
+              code: resolved.code,
             } as AgentEvent)
           }
         } else if (cmd.type === 'cancel') {
+          router.abort(cmd.reason)
           if (currentRun) {
             yield* currentRun.halt()
           }
+          yield* stream.append({ type: 'aborted', reason: cmd.reason } as AgentEvent)
+          // Migration alias for parent-spec consumers.
           yield* stream.append({ type: 'cancelled', reason: cmd.reason } as AgentEvent)
           status = 'idle'
         }
@@ -112,7 +118,7 @@ export function* createAgentSession(
   })
 
   function* handleSendMessage(
-    agent: AgentFactory,
+    agent: AgentFactory<any, any, any, any>,
     stream: AgentStream,
     router: ReturnType<typeof createRequestRouter>,
     sampleProvider: SampleProvider | undefined,
@@ -121,6 +127,15 @@ export function* createAgentSession(
     cmd: SendMessageCommand,
     onSupersede: () => void,
   ): Operation<void> {
+    if (router.pendingCount() > 0) {
+      yield* stream.append({
+        type: 'error',
+        message: 'Cannot accept new input while interrupts are pending',
+        code: 'pending_interrupts',
+      } as AgentEvent)
+      return
+    }
+
     // REQ-012: validate — need contextId or snapshot (this session always has
     // a contextId, so the command is valid; a bare snapshot-only send is also
     // accepted and seeds state).
@@ -146,9 +161,7 @@ export function* createAgentSession(
 
     // Append the user message.
     messages.push({
-      id: cmd.messageId ?? `msg-${generateId()}`,
-      role: 'user',
-      content: cmd.message,
+      ...createMessage('user', cmd.message, cmd.messageId ?? `msg-${generateId()}`),
     })
 
     onSupersede()
@@ -201,7 +214,14 @@ export function* createAgentSession(
 function seedFromSnapshot(messages: AgentMessage[], state: AgentState, snapshot: unknown) {
   if (snapshot && typeof snapshot === 'object' && 'messages' in snapshot) {
     const sm = (snapshot as { messages?: AgentMessage[] }).messages
-    if (Array.isArray(sm)) messages.push(...sm.map((m) => ({ ...m })))
+    if (Array.isArray(sm)) {
+      messages.push(
+        ...sm.map((m) => ({
+          ...m,
+          content: normalizeContent((m as { content: unknown }).content as never),
+        } as AgentMessage)),
+      )
+    }
     const ss = (snapshot as { state?: AgentState }).state
     if (ss && typeof ss === 'object') Object.assign(state, ss)
   }

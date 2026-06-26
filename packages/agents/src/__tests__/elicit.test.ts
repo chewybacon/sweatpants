@@ -126,7 +126,7 @@ describe('ctx.elicit (REQ-014/015)', () => {
     const result = after.find((e) => e.type === 'result') as
       | { type: 'result'; value: unknown }
       | undefined
-    expect(result?.value).toEqual({ answered: 'option-A' })
+    expect(result?.value).toMatchObject({ result: { answered: 'option-A' } })
   })
 
   it('parallel sub-agents each receive their elicit response by requestId (TC-015)', function* () {
@@ -198,8 +198,8 @@ describe('ctx.elicit (REQ-014/015)', () => {
     const result = after.find((e) => e.type === 'result') as
       | { type: 'result'; value: { a: unknown; b: unknown } }
       | undefined
-    expect(result?.value.a).toEqual({ tag: 'A', value: 'A-val' })
-    expect(result?.value.b).toEqual({ tag: 'B', value: 'B-val' })
+    expect(result?.value.a).toMatchObject({ result: { tag: 'A', value: 'A-val' } })
+    expect(result?.value.b).toMatchObject({ result: { tag: 'B', value: 'B-val' } })
   })
 
   it('parallel() helper runs sub-calls concurrently like all() (TC-016)', function* () {
@@ -244,6 +244,6 @@ describe('ctx.elicit (REQ-014/015)', () => {
     const result = events.find((e) => e.type === 'result') as
       | { type: 'result'; value: { r1: number; r2: number } }
       | undefined
-    expect(result?.value).toEqual({ r1: 10, r2: 14 })
+    expect(result?.value).toMatchObject({ r1: { result: 10 }, r2: { result: 14 } })
   })
 })

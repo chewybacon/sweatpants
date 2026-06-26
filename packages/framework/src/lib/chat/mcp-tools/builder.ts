@@ -50,7 +50,42 @@
  */
 import type { Operation } from "effection";
 import type { z } from "zod";
-import type { MCPClientContext, MCPHandoffConfig } from "./types.ts";
+import type { MCPClientContext, MCPHandoffConfig, ElicitConfig, SampleConfig, LogLevel } from "./types.ts";
+
+// =============================================================================
+// UNIFIED TOOL CTX (structural — no import from @sweatpants/agents)
+// =============================================================================
+//
+// The finalized MCP tool is callable as a `UnifiedToolFactory`: `(ctx) =>
+// Operation<(input) => Operation<out>>` where `ctx` is this structural shape.
+// `@sweatpants/agents`' `ToolCtx` is structurally compatible, so `ctx.call`
+// duck-types the finalized tool (by `capabilities`) and projects `AgentCtx`→
+// `ToolCtx` at call time. No adapter (`adaptMCPTool`) needed.
+
+export interface UnifiedToolCtxShape {
+  elicit(key: string, request: { message: string; schema?: unknown }): Operation<{
+    action?: "accept" | "decline" | "cancel"
+    content?: unknown
+    status?: "accepted" | "declined" | "cancelled"
+    value?: unknown
+    reason?: string
+  }>
+  elicitDynamic?(options: { key: string; message: string; responseSchema?: unknown }): Operation<{
+    action?: "accept" | "decline" | "cancel"
+    content?: unknown
+    status?: "accepted" | "declined" | "cancelled"
+    value?: unknown
+    reason?: string
+  }>
+  sample(options: { prompt: string; maxTokens?: number; schema?: unknown }): Operation<{ content: string }>
+  notify(message: string, fraction?: number): Operation<void>
+  log?(level: LogLevel, message: string): Operation<void>
+}
+
+/** A finalized MCP tool is both the legacy metadata object AND a callable. */
+export type UnifiedCallable<I = unknown, O = unknown> = {
+  (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>>
+}
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -117,14 +152,18 @@ export interface MCPToolBuilderWithParams<TName extends string, TParams> {
    */
   execute<TResult>(
     fn: (params: TParams, ctx: MCPClientContext) => Operation<TResult>,
-  ): FinalizedMCPTool<TName, TParams, undefined, undefined, TResult>;
+  ): FinalizedMCPTool<TName, TParams, undefined, undefined, TResult> & {
+    (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>
+  };
 
   /**
    * Define handoff pattern for multi-turn interaction.
    */
   handoff<THandoff, TClient, TResult>(
     config: MCPHandoffConfig<TParams, THandoff, TClient, TResult>,
-  ): FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult>;
+  ): FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult> & {
+    (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>
+  };
 }
 
 // =============================================================================
@@ -155,6 +194,11 @@ export interface FinalizedMCPTool<TName extends string, TParams, THandoff, TClie
 
   /** Execute function (if not using handoff) */
   execute?: (params: TParams, ctx: MCPClientContext) => Operation<TResult>;
+
+  /** Unified tool schemas (attached by the builder for UnifiedToolFactory compat). */
+  schemas?: { input: unknown; output: unknown };
+  /** Unified tool capabilities (MCP `requires`; used for detection + projection). */
+  capabilities?: { elicitation?: boolean; sampling?: boolean };
 }
 
 // =============================================================================
@@ -195,6 +239,112 @@ interface BuilderState {
   executeFn?: (params: any, ctx: MCPClientContext) => Operation<any>;
 }
 
+// =============================================================================
+// UNIFIED CALLABLE FACTORY — the finalized tool is callable as a UnifiedToolFactory
+// =============================================================================
+
+/** Shim a structural UnifiedToolCtxShape into the MCPClientContext the impls expect. */
+function shimClientCtx(ctx: UnifiedToolCtxShape): MCPClientContext {
+  return {
+    elicit<T>(config: ElicitConfig<T>): Operation<any> {
+      return (function* (): Operation<any> {
+        const res = ctx.elicitDynamic
+          ? yield* ctx.elicitDynamic({
+              key: "elicit",
+              message: config.message,
+              responseSchema: config.schema,
+            })
+          : yield* ctx.elicit("elicit", {
+              message: config.message,
+              schema: config.schema,
+            })
+        const action = res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel")
+        if (action === "accept") {
+          return { action: "accept", content: res.content ?? res.value, exchange: undefined }
+        }
+        return {
+          action,
+          reason: res.reason,
+          content: undefined,
+          exchange: undefined,
+        }
+      })()
+    },
+    sample<T = string>(config: SampleConfig<T>): Operation<T> {
+      return (function* (): Operation<T> {
+        const opts: { prompt: string; maxTokens?: number; schema?: unknown } = { prompt: config.prompt }
+        if (config.maxTokens !== undefined) {
+          opts.maxTokens = config.maxTokens
+        }
+        if (config.schema !== undefined) {
+          opts.schema = config.schema
+        }
+        const res = yield* ctx.sample(opts)
+        return res.content as T
+      })()
+    },
+    log(level: LogLevel, message: string): Operation<void> {
+      return ctx.log ? ctx.log(level, message) : ctx.notify(message)
+    },
+    notify(message: string, progress?: number): Operation<void> {
+      return ctx.notify(message, progress)
+    },
+  } as unknown as MCPClientContext
+}
+
+/** Minimal server ctx for before/after. */
+function makeServerCtx() {
+  return {
+    callId: `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    signal: new AbortController().signal,
+  }
+}
+
+/**
+ * Build the unified callable for a finalized MCP tool. The returned function is
+ * `(ctx: UnifiedToolCtxShape) => Operation<(input) => Operation<out>>`. Legacy
+ * metadata (name/description/parameters/requires/handoffConfig/execute) is
+ * attached as properties so existing consumers (mock-runtime, MCP handler) keep
+ * working.
+ */
+function makeUnifiedCallable<I, O>(meta: {
+  name: string
+  parameters: z.ZodType
+  execute?: (params: I, ctx: MCPClientContext) => Operation<O>
+  handoffConfig?: MCPHandoffConfig<I, unknown, unknown, O>
+}): UnifiedCallable<I, O> {
+  const activate = function (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>> {
+    return {
+      *[Symbol.iterator]() {
+        const clientCtx = shimClientCtx(ctx)
+        const serverCtx = makeServerCtx()
+        const invoke = (input: I): Operation<O> =>
+          (function* (): Operation<O> {
+            const parsed = meta.parameters.safeParse(input)
+            if (!parsed.success || parsed.data === undefined) {
+              throw new Error(
+                `Invalid params for tool "${meta.name}": ${parsed.error?.message ?? "validation failed"}`,
+              )
+            }
+            const params = parsed.data as I
+            if (meta.handoffConfig) {
+              const { before, client: clientFn, after } = meta.handoffConfig
+              const handoff = yield* before(params, serverCtx as never)
+              const clientResult = yield* clientFn(handoff, clientCtx)
+              return yield* after(handoff, clientResult, serverCtx as never, params)
+            }
+            if (meta.execute) {
+              return yield* meta.execute(params, clientCtx)
+            }
+            throw new Error(`Tool "${meta.name}" has no execute or handoffConfig`)
+          })()
+        return invoke
+      },
+    }
+  }
+  return activate as UnifiedCallable<I, O>
+}
+
 function createBuilder(state: BuilderState): any {
   const builder = {
     _types: undefined as any,
@@ -222,14 +372,23 @@ function createBuilder(state: BuilderState): any {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .execute()`);
       }
 
-      return {
-        _types: undefined as any,
+      const callable = makeUnifiedCallable<any, any>({
         name: state.name,
-        description: state.description,
         parameters: state.parameters,
-        requires: state.requires,
         execute: fn,
-      } as FinalizedMCPTool<any, any, undefined, undefined, any>;
+      });
+      const finalized = callable as FinalizedMCPTool<any, any, undefined, undefined, any> & UnifiedCallable<any, any>;
+      Object.defineProperties(finalized, {
+        _types: { value: undefined as any, enumerable: true, writable: true, configurable: true },
+        name: { value: state.name, enumerable: true, writable: true, configurable: true },
+        description: { value: state.description, enumerable: true, writable: true, configurable: true },
+        parameters: { value: state.parameters, enumerable: true, writable: true, configurable: true },
+        requires: { value: state.requires, enumerable: true, writable: true, configurable: true },
+        execute: { value: fn, enumerable: true, writable: true, configurable: true },
+        schemas: { value: { input: state.parameters, output: undefined }, enumerable: true, writable: true, configurable: true },
+        capabilities: { value: state.requires ?? { elicitation: false, sampling: false }, enumerable: true, writable: true, configurable: true },
+      });
+      return finalized;
     },
 
     handoff(config: MCPHandoffConfig<any, any, any, any>) {
@@ -240,14 +399,23 @@ function createBuilder(state: BuilderState): any {
         throw new Error(`Tool "${state.name}": .parameters() must be called before .handoff()`);
       }
 
-      return {
-        _types: undefined as any,
+      const callable = makeUnifiedCallable<any, any>({
         name: state.name,
-        description: state.description,
         parameters: state.parameters,
-        requires: state.requires,
         handoffConfig: config,
-      } as FinalizedMCPTool<any, any, any, any, any>;
+      });
+      const finalized = callable as FinalizedMCPTool<any, any, any, any, any> & UnifiedCallable<any, any>;
+      Object.defineProperties(finalized, {
+        _types: { value: undefined as any, enumerable: true, writable: true, configurable: true },
+        name: { value: state.name, enumerable: true, writable: true, configurable: true },
+        description: { value: state.description, enumerable: true, writable: true, configurable: true },
+        parameters: { value: state.parameters, enumerable: true, writable: true, configurable: true },
+        requires: { value: state.requires, enumerable: true, writable: true, configurable: true },
+        handoffConfig: { value: config, enumerable: true, writable: true, configurable: true },
+        schemas: { value: { input: state.parameters, output: undefined }, enumerable: true, writable: true, configurable: true },
+        capabilities: { value: state.requires ?? { elicitation: true, sampling: true }, enumerable: true, writable: true, configurable: true },
+      });
+      return finalized;
     },
   };
 

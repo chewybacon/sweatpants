@@ -340,7 +340,9 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         baseUrl: mergedOptions.baseUrl,
         conversationId: mergedOptions.conversationId ?? null,
         toolNames: (mergedOptions.tools ?? []).map((tool) =>
-          typeof tool === "object" && tool !== null && "name" in tool
+          // Tools may be plain objects (legacy) or callable functions (unified
+          // createMCPTool/createIsomorphicTool outputs); both carry a `name`.
+          (typeof tool === "function" || (typeof tool === "object" && tool !== null)) && "name" in tool
             ? String((tool as { name: unknown }).name)
             : "unknown",
         ),

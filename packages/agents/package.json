@@ -25,6 +25,7 @@
   "dependencies": {
     "@sweatpants/core": "workspace:*",
     "@sweatpants/durable-streams": "workspace:*",
+    "@sweatpants/framework": "workspace:*",
     "effection": "catalog:",
     "zod": "catalog:"
   },

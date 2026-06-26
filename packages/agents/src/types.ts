@@ -17,10 +17,33 @@ import type {
 } from '@sweatpants/core'
 
 import type { AgentCtx, AgentInstance } from './ctx.ts'
+import type { UnifiedToolFactory } from './tool-ctx.ts'
 
 // ============================================================================
-// Model selection
+// Tool target — core ToolFactory OR UnifiedToolFactory (design DD5/REQ-3/REQ-4)
 // ============================================================================
+
+/**
+ * A tool that can be registered on an agent and invoked via `ctx.tools.X` /
+ * `ctx.call`. Either a core `AnyToolFactory` (zero-arg activation, `(args, send)`
+ * impl) or a `UnifiedToolFactory` (activated with a `ToolCtx`, `(input, ctx)`
+ * impl). The runtime detects which via `isUnifiedToolFactory`.
+ */
+export type ToolTarget = AnyToolFactory | UnifiedToolFactory<any, any>
+
+/** Extract the input type from either factory shape. */
+export type TargetInput<T> = T extends UnifiedToolFactory<infer I, any>
+  ? I
+  : T extends AnyToolFactory
+    ? InputFromFactory<T>
+    : never
+
+/** Extract the output type from either factory shape. */
+export type TargetOutput<T> = T extends UnifiedToolFactory<any, infer O>
+  ? O
+  : T extends AnyToolFactory
+    ? OutputFromFactory<T>
+    : never
 
 export interface ModelSelection {
   provider: string
@@ -59,7 +82,7 @@ export type AgentMiddleware<I, O> = (
 export interface AgentConfig<
   I,
   O,
-  TTools extends Record<string, AnyToolFactory>,
+  TTools extends Record<string, ToolTarget>,
   TSub extends Record<string, AgentFactory<any, any, any, any>> | undefined,
 > {
   name: string
@@ -83,7 +106,7 @@ export interface AgentConfig<
 export interface AgentFactory<
   I = unknown,
   O = unknown,
-  TTools extends Record<string, AnyToolFactory> = Record<string, AnyToolFactory>,
+  TTools extends Record<string, ToolTarget> = Record<string, ToolTarget>,
   TSub extends
     | Record<string, AgentFactory<any, any, any, any>>
     | undefined = undefined,

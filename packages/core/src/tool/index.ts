@@ -7,4 +7,12 @@ export type {
   ToolFactoryWithImpl,
   ToolFactoryWithoutImpl,
   ContextBinding,
+  CoreToolCtx,
+  CoreElicitResult,
+  UnifiedToolFactory,
+  CreateToolBuilderBase,
+  CreateToolBuilderWithDescription,
+  CreateToolBuilderWithParams,
+  CreateToolBuilderWithElicits,
+  PerCallInterruptOptions,
 } from "./types.ts";

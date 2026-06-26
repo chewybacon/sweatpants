@@ -54,6 +54,31 @@
 import type { Operation } from "effection";
 import type { z } from "zod";
 import type { ContextMode, ContextForMode } from "./contexts.ts";
+// Unified tool ctx (structural — no import from @sweatpants/agents). Same shape
+// as the MCP builder's UnifiedToolCtxShape; the finalized isomorphic tool is
+// callable as a UnifiedToolFactory.
+export interface UnifiedToolCtxShape {
+  elicit(key: string, request: { message: string; schema?: unknown }): Operation<{
+    action?: "accept" | "decline" | "cancel"
+    content?: unknown
+    status?: "accepted" | "declined" | "cancelled"
+    value?: unknown
+    reason?: string
+  }>
+  elicitDynamic?(options: { key: string; message: string; responseSchema?: unknown; context?: unknown }): Operation<{
+    action?: "accept" | "decline" | "cancel"
+    content?: unknown
+    status?: "accepted" | "declined" | "cancelled"
+    value?: unknown
+    reason?: string
+  }>
+  sample(options: { prompt: string; schema?: unknown }): Operation<{ content: string }>
+  notify(message: string, fraction?: number): Operation<void>
+}
+export type UnifiedCallable<I = unknown, O = unknown> = {
+  (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>>
+};
+
 import type {
   IsomorphicApprovalConfig,
   ServerToolContext,
@@ -212,7 +237,7 @@ export interface IsomorphicToolBuilderWithContext<
    */
   handoff<THandoff, TClient, TResult>(
     config: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>,
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, THandoff, TClient, TResult>;
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, THandoff, TClient, TResult> & UnifiedCallable<TParams, TResult>;
 
   /**
    * Simple server-only execution (no handoff).
@@ -232,7 +257,7 @@ export interface IsomorphicToolBuilderWithContext<
       ctx: ContextForMode<TContext>,
       params: TParams,
     ) => Operation<TClientOutput>,
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput>;
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput> & UnifiedCallable<TParams, TClientOutput>;
 
   /**
    * Set approval configuration.
@@ -264,12 +289,12 @@ export interface IsomorphicToolBuilderServerOnly<
       ctx: ContextForMode<TContext>,
       params: TParams,
     ) => Operation<TClientOutput>,
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput>;
+  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput> & UnifiedCallable<TParams, TServerOutput>;
 
   /**
    * Finalize without client (server-only tool).
    */
-  build(): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, undefined, TServerOutput>;
+  build(): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, undefined, TServerOutput> & UnifiedCallable<TParams, TServerOutput>;
 }
 
 // =============================================================================
@@ -392,6 +417,103 @@ interface BuilderState {
   clientFn?: (input: any, ctx: any, params: any) => Operation<any>;
 }
 
+// =============================================================================
+// UNIFIED CALLABLE FACTORY
+// =============================================================================
+
+function makeServerCtx() {
+  return {
+    callId: `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    signal: new AbortController().signal,
+  };
+}
+
+/** Shim the structural unified ctx into the isomorphic client ctx shape. */
+function shimClientCtx(ctx: UnifiedToolCtxShape, callId: string) {
+  return {
+    callId,
+    signal: new AbortController().signal,
+    *waitFor<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse> {
+      const res = ctx.elicitDynamic
+        ? yield* ctx.elicitDynamic({ key: type, message: `UI request: ${type}`, context: payload })
+        : yield* ctx.elicit(type, { message: `UI request: ${type}` });
+      const action = res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel");
+      if (action !== "accept") throw new Error(`waitFor("${type}") was ${action}`);
+      return (res.content ?? res.value) as TResponse;
+    },
+    *prompt<T>(opts: { prompt: string; schema?: unknown }): Operation<T> {
+      const sampleOptions: { prompt: string; schema?: unknown } = { prompt: opts.prompt };
+      if (opts.schema !== undefined) sampleOptions.schema = opts.schema;
+      const res = yield* ctx.sample(sampleOptions);
+      return res.content as T;
+    },
+    *requestApproval(message: string): Operation<{ approved: true } | { approved: false; reason?: string }> {
+      const res = ctx.elicitDynamic
+        ? yield* ctx.elicitDynamic({ key: "approval", message })
+        : yield* ctx.elicit("approval", { message });
+      const action = res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel");
+      if (action === "accept") return { approved: true as const };
+      const declined: { approved: false; reason?: string } = { approved: false };
+      if (res.reason !== undefined) declined.reason = res.reason;
+      return declined;
+    },
+    *emit(event: unknown): Operation<void> {
+      yield* ctx.notify(typeof event === "string" ? event : JSON.stringify(event));
+    },
+  };
+}
+
+function makeIsomorphicUnifiedCallable<I, O>(meta: {
+  name: string;
+  parameters: z.ZodType;
+  serverFn?: (params: I, ctx: any) => Operation<O>;
+  handoffConfig?: TypedHandoffConfig<I, any, any, any, O>;
+}): UnifiedCallable<I, O> {
+  const activate = function (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>> {
+    return {
+      *[Symbol.iterator]() {
+        const serverCtx = makeServerCtx();
+        const clientCtx = shimClientCtx(ctx, serverCtx.callId);
+        const invoke = (input: I): Operation<O> =>
+          (function* (): Operation<O> {
+            const parsed = meta.parameters.safeParse(input);
+            if (!parsed.success || parsed.data === undefined) {
+              throw new Error(`Invalid params for tool "${meta.name}": ${parsed.error?.message ?? "validation failed"}`);
+            }
+            const params = parsed.data as I;
+            if (meta.handoffConfig) {
+              const { before, client: clientFn, after } = meta.handoffConfig;
+              const handoff = yield* before(params, serverCtx as never);
+              const clientResult = yield* clientFn(handoff, clientCtx as never, params);
+              return yield* after(handoff, clientResult, serverCtx as never, params);
+            }
+            if (meta.serverFn) {
+              return yield* meta.serverFn(params, serverCtx);
+            }
+            throw new Error(`Tool "${meta.name}" has no server or handoffConfig`);
+          })();
+        return invoke;
+      },
+    };
+  };
+  return activate as UnifiedCallable<I, O>;
+}
+
+/** Attach legacy metadata to a callable via defineProperties (functions have read-only `name`). */
+function attachMeta(
+  callable: UnifiedCallable,
+  meta: Record<string, unknown>,
+): UnifiedCallable & Record<string, unknown> {
+  const defs: PropertyDescriptorMap = {};
+  for (const [k, v] of Object.entries(meta)) {
+    // writable: true so consumers can override post-finalization (e.g. the
+    // yo-chat app assigns a custom `replayTrace` after `.build()`). Review CB-2.
+    defs[k] = { value: v, enumerable: true, writable: true, configurable: true };
+  }
+  Object.defineProperties(callable, defs);
+  return callable as UnifiedCallable & Record<string, unknown>;
+}
+
 function createBuilder(state: BuilderState): any {
   const builder = {
     _types: undefined as any, // Phantom - no runtime cost
@@ -422,8 +544,12 @@ function createBuilder(state: BuilderState): any {
         throw new Error(`Tool "${state.name}": .context() must be called before .handoff()`);
       }
 
-      // Finalize with handoff config
-      return {
+      const callable = makeIsomorphicUnifiedCallable<any, any>({
+        name: state.name,
+        parameters: state.parameters!,
+        handoffConfig: config,
+      });
+      return attachMeta(callable, {
         _types: undefined as any,
         name: state.name,
         description: state.description!,
@@ -431,23 +557,19 @@ function createBuilder(state: BuilderState): any {
         contextMode: state.contextMode,
         approval: state.approval,
         handoffConfig: config,
+        client: config.client,
+        schemas: { input: state.parameters!, output: undefined },
+        capabilities: { elicitation: true, sampling: state.contextMode === 'agent' },
         replayTrace: function* (trace: ToolExecutionTrace) {
           return trace as HydratedToolExecutionTrace;
         },
-        // For compatibility, also set server/client that use the handoff
         server: function* (params: any, ctx: ServerAuthorityContext) {
-          // This wrapper is for the executor - it uses handoff() internally
           return yield* ctx.handoff({
-            *before() {
-              return yield* config.before(params, ctx);
-            },
-            *after(handoff: any, client: any) {
-              return yield* config.after(handoff, client, ctx, params);
-            },
+            *before() { return yield* config.before(params, ctx); },
+            *after(handoff: any, client: any) { return yield* config.after(handoff, client, ctx, params); },
           });
         },
-        client: config.client,
-      } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+      }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
     },
 
     server(fn: (params: any, ctx: any, clientOutput?: any) => Operation<any>) {
@@ -459,36 +581,50 @@ function createBuilder(state: BuilderState): any {
           if (!state.contextMode) {
             throw new Error(`Tool "${state.name}": .context() must be called before .client()`);
           }
-          return {
+          const callable = makeIsomorphicUnifiedCallable<any, any>({
+            name: state.name,
+            parameters: state.parameters!,
+            serverFn: fn,
+          });
+          return attachMeta(callable, {
             _types: undefined as any,
             name: state.name,
             description: state.description!,
             parameters: state.parameters!,
             contextMode: state.contextMode,
             approval: state.approval,
+            server: fn,
+            client: clientFn,
+            schemas: { input: state.parameters!, output: undefined },
+            capabilities: { elicitation: true, sampling: state.contextMode === 'agent' },
             replayTrace: function* (trace: ToolExecutionTrace) {
               return trace as HydratedToolExecutionTrace;
             },
-            server: fn,
-            client: clientFn,
-          } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+          }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
         },
         build() {
           if (!state.contextMode) {
             throw new Error(`Tool "${state.name}": .context() must be called before .build()`);
           }
-          return {
+          const callable = makeIsomorphicUnifiedCallable<any, any>({
+            name: state.name,
+            parameters: state.parameters!,
+            serverFn: fn,
+          });
+          return attachMeta(callable, {
             _types: undefined as any,
             name: state.name,
             description: state.description!,
             parameters: state.parameters!,
             contextMode: state.contextMode,
             approval: state.approval,
+            server: fn,
+            schemas: { input: state.parameters!, output: undefined },
+            capabilities: { elicitation: false, sampling: state.contextMode === 'agent' },
             replayTrace: function* (trace: ToolExecutionTrace) {
               return trace as HydratedToolExecutionTrace;
             },
-            server: fn,
-          } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+          }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
         },
       };
     },
@@ -497,18 +633,24 @@ function createBuilder(state: BuilderState): any {
       if (!state.contextMode) {
         throw new Error(`Tool "${state.name}": .context() must be called before .client()`);
       }
-      return {
+      const callable = makeIsomorphicUnifiedCallable<any, any>({
+        name: state.name,
+        parameters: state.parameters!,
+      });
+      return attachMeta(callable, {
         _types: undefined as any,
         name: state.name,
         description: state.description!,
         parameters: state.parameters!,
         contextMode: state.contextMode,
         approval: state.approval,
+        client: fn,
+        schemas: { input: state.parameters!, output: undefined },
+        capabilities: { elicitation: true, sampling: state.contextMode === 'agent' },
         replayTrace: function* (trace: ToolExecutionTrace) {
           return trace as HydratedToolExecutionTrace;
         },
-        client: fn,
-      } as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+      }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
     },
   };
 

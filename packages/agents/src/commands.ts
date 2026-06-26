@@ -6,7 +6,7 @@
  */
 
 import type { AgentLogEntryTag } from './log.ts'
-import type { ElicitResult, SampleResult } from './events.ts'
+import type { IncomingElicitResponse, SampleResult } from './events.ts'
 
 export interface SendMessageCommand {
   type: 'sendMessage'
@@ -30,7 +30,7 @@ export interface SendMessageCommand {
 export interface RespondElicitCommand {
   type: 'respondElicit'
   requestId: string
-  result: ElicitResult
+  result: IncomingElicitResponse
 }
 
 export interface RespondSampleCommand {
