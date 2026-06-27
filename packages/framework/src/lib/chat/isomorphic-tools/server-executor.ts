@@ -59,7 +59,7 @@ export function* executeServerPart(
     signal,
   }
 
-  const validatedParams = validateToolParams(tool, params)
+  const validatedParams = validateToolParams(tool, params, callId)
 
   if (!tool.server) {
     throw new Error(`Isomorphic tool "${tool.name}" has no server function`)
@@ -119,7 +119,7 @@ export function* executeServerPhase2(
   signal: AbortSignal,
   usesHandoff: boolean
 ): Operation<unknown> {
-  const validatedParams = validateToolParams(tool, params)
+  const validatedParams = validateToolParams(tool, params, callId)
 
   if (!usesHandoff) {
     return cachedHandoff

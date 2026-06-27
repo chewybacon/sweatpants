@@ -21,6 +21,7 @@ import type {
 import type { ToolExecutionTrace } from "../../lib/chat/isomorphic-tools/runtime/emissions.ts";
 import type { PluginSessionManager } from "./plugin-session-manager.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
+import type { ToolParameterValidationErrorPayload, ToolParameterValidationIssue } from "../../lib/chat/tool-parameters.ts";
 
 // =============================================================================
 // ENGINE STATE PHASES
@@ -149,6 +150,9 @@ export type ToolExecutionResult =
         callId: string;
         toolName: string;
         message: string;
+        code?: string;
+        issues?: ToolParameterValidationIssue[];
+        validation?: ToolParameterValidationErrorPayload;
       };
     };
 

@@ -57,9 +57,83 @@ describe('local ToolRuntimeDriver', () => {
     })
   })
 
+  it('rejects invalid MCP params before creating a local session', async () => {
+    await run(function* () {
+      let executeCalls = 0
+      const strictTool = createMcpTool('strict_echo')
+        .description('Strict echo input')
+        .parameters(z.object({ message: z.string() }))
+        .elicits({})
+        .execute(function* (params) {
+          executeCalls++
+          return { echoed: params.message }
+        })
+
+      const driver = yield* createLocalToolRuntimeDriver({
+        tools: [strictTool],
+        samplingProvider: { *sample() { return { text: 'unused' } } },
+      })
+
+      try {
+        yield* driver.startToolCall({
+          toolName: 'strict_echo',
+          callId: 'call-invalid-session',
+          arguments: {},
+        })
+        throw new Error('expected validation failure')
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: 'TOOL_PARAMETER_VALIDATION_FAILED',
+          payload: {
+            toolName: 'strict_echo',
+            callId: 'call-invalid-session',
+          },
+        })
+      }
+
+      expect(executeCalls).toBe(0)
+    })
+  })
+
+  it('rejects invalid inline params before server execution', async () => {
+    await run(function* () {
+      let serverCalls = 0
+      const inlineTool = {
+        name: 'strict_inline',
+        description: 'Strict inline echo',
+        parameters: z.object({ message: z.string() }),
+        server: function* (params: unknown) {
+          serverCalls++
+          return { echoed: (params as { message: string }).message }
+        },
+      }
+      const driver = yield* createLocalToolRuntimeDriver({ isomorphicTools: [inlineTool] })
+
+      try {
+        yield* driver.execute({
+          entry: createIsomorphicToolInventoryEntry(inlineTool),
+          call: { id: 'call-invalid-inline', type: 'function', function: { name: 'strict_inline', arguments: {} } },
+        })
+        throw new Error('expected validation failure')
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: 'TOOL_PARAMETER_VALIDATION_FAILED',
+          payload: {
+            toolName: 'strict_inline',
+            callId: 'call-invalid-inline',
+          },
+        })
+      }
+
+      expect(serverCalls).toBe(0)
+    })
+  })
+
   it('creates inventory entries with model-safe definitions and hidden implementation payloads', () => {
     const mcpEntry = createMcpToolInventoryEntry(echoTool, { runtime: 'local' })
     expect(mcpEntry.definition).toMatchObject({ name: 'echo', description: 'Echo input' })
+    expect(mcpEntry.definition.parameters).toMatchObject({ required: ['message'] })
+    expect((mcpEntry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
     expect('implementation' in mcpEntry.definition).toBe(false)
     expect(mcpEntry.implementation).toBeDefined()
     expect(mcpEntry.capabilities).toMatchObject({ session: true, worker: true, elicits: true, samples: true })

@@ -22,6 +22,7 @@
 import { type Operation, type Channel, type Signal, createChannel, createSignal, spawn, each, call } from 'effection'
 import { z } from 'zod'
 import { encodeElicitContext } from '@sweatpants/elicit-context'
+import { validateToolParameters } from '../tool-parameters.ts'
 import type {
   McpToolContextWithElicits,
   McpToolHandoffConfigWithElicits,
@@ -1222,12 +1223,12 @@ export function createBridgeHost<
           const { tool, params, limits: overrideLimits, parentMessages, systemPrompt } = config
           const signal = config.signal ?? new AbortController().signal
 
-          // Validate params
-          const parseResult = tool.parameters.safeParse(params)
-          if (!parseResult.success) {
-            throw new Error(`Invalid params for tool "${tool.name}": ${parseResult.error.message}`)
-          }
-          const validatedParams = parseResult.data as TParams
+          const validatedParams = validateToolParameters<TParams>({
+            schema: tool.parameters,
+            params,
+            toolName: tool.name,
+            callId,
+          })
 
           // Merge limits
           const limits: McpToolLimits = {
@@ -1369,20 +1370,26 @@ export function runBridgeTool<
 }): Operation<TResult> {
   return {
     *[Symbol.iterator]() {
+      const callId = config.callId ?? config.tool.name
+      const params = validateToolParameters<TParams>({
+        schema: config.tool.parameters,
+        params: config.params,
+        toolName: config.tool.name,
+        callId,
+      })
+
       // createBridgeHost now uses a buffered channel internally,
       // so no sleep(0) hacks are needed. Events are queued until subscriber is ready.
       const hostConfig: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits> = {
         tool: config.tool,
-        params: config.params,
+        params,
       }
 
       // Only add optional properties if defined
       if (config.signal !== undefined) {
         hostConfig.signal = config.signal
       }
-      if (config.callId !== undefined) {
-        hostConfig.callId = config.callId
-      }
+      hostConfig.callId = callId
       if (config.limits !== undefined) {
         hostConfig.limits = config.limits
       }

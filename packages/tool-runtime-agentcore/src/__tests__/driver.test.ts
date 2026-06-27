@@ -133,6 +133,44 @@ describe('AgentCore ToolRuntimeDriver', () => {
     })
   })
 
+  it('rejects invalid params before AgentCore session creation', async () => {
+    await run(function* () {
+      let createCalls = 0
+      const registry: ToolSessionRegistry = {
+        *create(): Operation<ToolSession> {
+          createCalls++
+          return createFakeSession()
+        },
+        *get(): Operation<ToolSession | null> { return null },
+        *acquire(): Operation<ToolSession> { return createFakeSession() },
+        *release(): Operation<void> {},
+      }
+      const driver = createAgentCoreToolRuntimeDriver({
+        tools: [remoteTool],
+        registry,
+        samplingProvider,
+      })
+
+      try {
+        yield* driver.execute({
+          entry: createAgentCoreToolInventoryEntry(remoteTool),
+          call: { id: 'call-invalid-agentcore', type: 'function', function: { name: 'remote_echo', arguments: {} } },
+        })
+        throw new Error('expected validation failure')
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: 'TOOL_PARAMETER_VALIDATION_FAILED',
+          payload: {
+            toolName: 'remote_echo',
+            callId: 'call-invalid-agentcore',
+          },
+        })
+      }
+
+      expect(createCalls).toBe(0)
+    })
+  })
+
   it('resumes AgentCore elicitation from the response boundary instead of replaying stale state', async () => {
     const stores = createStores()
     const runtime = new FakeAgentCoreRemoteToolRuntimeClient()
@@ -233,6 +271,8 @@ describe('AgentCore ToolRuntimeDriver', () => {
   it('creates AgentCore inventory entries and normalized executions', async () => {
     const entry = createAgentCoreToolInventoryEntry(remoteTool, { profile: 'test' })
     expect(entry.definition).toMatchObject({ name: 'remote_echo', description: 'Remote echo' })
+    expect(entry.definition.parameters).toMatchObject({ required: ['message'] })
+    expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
     expect('implementation' in entry.definition).toBe(false)
     expect(entry.capabilities).toMatchObject({ remote: true, session: true, elicits: true, samples: true })
     expect(() => createToolInventory([entry, entry])).toThrow('Duplicate tool name')

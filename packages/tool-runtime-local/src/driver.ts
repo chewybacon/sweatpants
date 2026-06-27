@@ -3,6 +3,8 @@ import {
   ToolRuntimeContext,
   ToolRuntimeError,
   createToolExecutionRef,
+  toToolParameterJsonSchema,
+  validateToolParameters,
   type ClientToolRequest,
   type StartToolCallRequest,
   type ToolCall,
@@ -77,16 +79,7 @@ export interface LocalToolRuntimeDriverOptions {
 }
 
 function parametersToSchema(parameters: unknown): Record<string, unknown> {
-  if (
-    parameters &&
-    typeof parameters === "object" &&
-    typeof (parameters as { toJSONSchema?: unknown }).toJSONSchema === "function"
-  ) {
-    return (parameters as { toJSONSchema: () => Record<string, unknown> }).toJSONSchema();
-  }
-  return parameters && typeof parameters === "object"
-    ? (parameters as Record<string, unknown>)
-    : { type: "object", properties: {}, required: [] };
+  return toToolParameterJsonSchema(parameters);
 }
 
 function mcpToolDefinition(tool: LocalRuntimeTool): ToolDefinition {
@@ -171,14 +164,17 @@ function createPhase1Context(baseContext: ServerToolContext): ServerAuthorityCon
   };
 }
 
-function validateParams(tool: LocalIsomorphicTool, params: unknown): unknown {
-  const parser = tool.parameters as { parse?: (input: unknown) => unknown };
-  if (typeof parser.parse !== "function") return params;
-  try {
-    return parser.parse(params);
-  } catch {
-    return params;
-  }
+function validateParams(
+  tool: LocalIsomorphicTool | LocalRuntimeTool,
+  params: unknown,
+  callId: string,
+): unknown {
+  return validateToolParameters({
+    schema: tool.parameters,
+    params,
+    toolName: tool.name,
+    callId,
+  });
 }
 
 function isLocalImplementation(value: unknown): value is LocalImplementation {
@@ -343,7 +339,7 @@ export function createLocalInlineToolExecutionStrategy(
         callId: call.id,
         toolName: call.function.name,
       });
-      const params = validateParams(tool, call.function.arguments);
+      const params = validateParams(tool, call.function.arguments, call.id);
       if (!tool.server) {
         if (tool.client)
           return { kind: "awaiting_client", ref, request: { params, usesHandoff: false } };
@@ -420,7 +416,8 @@ export function createLocalSessionToolExecutionStrategy(
           "NO_MATCHING_TOOL_STRATEGY",
           `Local session strategy cannot execute tool: ${call.function.name}`,
         );
-      const session = yield* options.registry.create(tool, call.function.arguments, {
+      const params = validateParams(tool, call.function.arguments, call.id);
+      const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
       });
@@ -504,7 +501,8 @@ export function* createLocalToolRuntimeDriver(options: LocalToolRuntimeDriverOpt
       );
     }
 
-    const session = yield* registry.create(tool, request.arguments, {
+    const params = validateParams(tool, request.arguments, request.callId);
+    const session = yield* registry.create(tool, params, {
       sessionId: request.callId,
       ...(request.signal ? { signal: request.signal } : {}),
     });
@@ -559,7 +557,7 @@ export function* createLocalToolRuntimeDriver(options: LocalToolRuntimeDriverOpt
       if (isLocalImplementation(implementation) && implementation.kind === "isomorphic") {
         const tool = implementation.tool;
         const ref = createToolExecutionRef({ runtimeId, callId: request.call.id, toolName });
-        const params = validateParams(tool, request.call.function.arguments);
+        const params = validateParams(tool, request.call.function.arguments, request.call.id);
         if (!tool.server) {
           if (tool.client) {
             return {
@@ -626,7 +624,8 @@ export function* createLocalToolRuntimeDriver(options: LocalToolRuntimeDriverOpt
         );
       }
 
-      const session = yield* registry.create(mcpTool, request.call.function.arguments, {
+      const params = validateParams(mcpTool, request.call.function.arguments, request.call.id);
+      const session = yield* registry.create(mcpTool, params, {
         sessionId: request.call.id,
         ...(request.signal ? { signal: request.signal } : {}),
       });

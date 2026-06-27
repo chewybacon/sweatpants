@@ -32,6 +32,11 @@ import type {
 } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 import type { StreamEvent } from '../types.ts'
 import type { ToolCall, ToolExecutionResult } from './types.ts'
+import {
+  getToolParameterValidationErrorPayload,
+  validateToolParameters,
+  type ToolParameterValidationErrorPayload,
+} from '../../lib/chat/tool-parameters.ts'
 
 // =============================================================================
 // TYPES
@@ -65,7 +70,14 @@ export interface PluginToolExecutionConfig {
  */
 export type PluginToolResult =
   | { ok: true; callId: string; toolName: string; result: unknown }
-  | { ok: false; callId: string; toolName: string; error: string }
+  | {
+      ok: false
+      callId: string
+      toolName: string
+      error: string
+      code?: string
+      validation?: ToolParameterValidationErrorPayload
+    }
 
 // =============================================================================
 // PLUGIN TOOL DETECTION
@@ -118,8 +130,12 @@ export function* executePluginTool(
   const toolName = toolCall.function.name
 
   try {
-    // Parse params
-    const params = toolCall.function.arguments
+    const params = validateToolParameters({
+      schema: tool.parameters,
+      params: toolCall.function.arguments,
+      toolName,
+      callId,
+    })
 
     // Create the bridge host
     const host = createBridgeHost({
@@ -147,11 +163,13 @@ export function* executePluginTool(
       result,
     }
   } catch (error) {
+    const validation = getToolParameterValidationErrorPayload(error)
     return {
       ok: false,
       callId,
       toolName,
-      error: error instanceof Error ? error.message : String(error),
+      error: validation?.message ?? (error instanceof Error ? error.message : String(error)),
+      ...(validation ? { code: validation.code, validation } : {}),
     }
   }
 }
@@ -266,6 +284,10 @@ export function pluginResultToToolResult(result: PluginToolResult): ToolExecutio
       callId: result.callId,
       toolName: result.toolName,
       message: result.error,
+      ...(result.code ? { code: result.code } : {}),
+      ...(result.validation
+        ? { issues: result.validation.issues, validation: result.validation }
+        : {}),
     },
   }
 }
@@ -293,5 +315,6 @@ export function pluginResultToStreamEvent(result: PluginToolResult): StreamEvent
     toolCallId: result.callId,
     toolCallName: result.toolName,
     message: result.error,
+    ...(result.validation ? { error: result.validation } : {}),
   }
 }

@@ -6,6 +6,7 @@
 import { describe, it, expect, expectTypeOf } from 'vitest'
 import { z } from 'zod'
 import { createMcpTool, makePlugin } from '../index.ts'
+import type { InferMcpToolResult } from '../index.ts'
 import type { RawElicitResult } from '../types.ts'
 import type { RenderableProps } from '../plugin.ts'
 
@@ -58,6 +59,60 @@ describe('makePlugin', () => {
       expect(plugin.client.handlers).toHaveProperty('confirm')
       expect(plugin.client.handlers).toHaveProperty('selectItem')
       expect(plugin.client.schemas).toBe(tool.elicits)
+    })
+
+    it('should preserve execute parameter, elicit context, elicit response, and result inference', () => {
+      const tool = createMcpTool('book_like_tool')
+        .description('Book-like typed tool')
+        .parameters(
+          z.object({
+            from: z.string(),
+            destination: z.string(),
+          }),
+        )
+        .elicits({
+          pickFlight: {
+            response: z.object({ flightId: z.string() }),
+            context: z.object({ flights: z.array(z.object({ id: z.string() })) }),
+          },
+          pickSeat: {
+            response: z.object({ row: z.number(), seat: z.string() }),
+            context: z.object({ seatMap: z.object({ rows: z.number() }) }),
+          },
+        })
+        .execute(function* (params, ctx) {
+          expectTypeOf(params).toEqualTypeOf<{ from: string; destination: string }>()
+
+          const flight = yield* ctx.elicit('pickFlight', {
+            message: `Pick a flight from ${params.from} to ${params.destination}`,
+            flights: [{ id: 'FL001' }],
+          })
+          if (flight.action !== 'accept') return { success: false as const }
+          expectTypeOf(flight.content).toEqualTypeOf<{ flightId: string }>()
+
+          const seat = yield* ctx.elicit('pickSeat', {
+            message: 'Pick a seat',
+            seatMap: { rows: 10 },
+          })
+          if (seat.action !== 'accept') return { success: false as const }
+          expectTypeOf(seat.content).toEqualTypeOf<{ row: number; seat: string }>()
+
+          const tip = yield* ctx.sample({ prompt: 'Give a tip' })
+          expectTypeOf(tip.text).toBeString()
+
+          return {
+            success: true as const,
+            flightId: flight.content.flightId,
+            seat: `${seat.content.row}${seat.content.seat}`,
+            tip: tip.text,
+          }
+        })
+
+      type Result = InferMcpToolResult<typeof tool>
+      expectTypeOf<Result>().toEqualTypeOf<
+        | { success: false }
+        | { success: true; flightId: string; seat: string; tip: string }
+      >()
     })
 
     it('should infer ctx.render response type from component props', () => {

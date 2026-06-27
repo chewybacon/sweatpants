@@ -26,6 +26,39 @@ describe("createTool(name) unified builder", () => {
     expect(Tool.elicits["confirm"]?.response).toBeDefined();
   });
 
+  it("rejects invalid params before invoking a unified tool implementation", function* () {
+    let calls = 0;
+    const Tool = createTool("book_flight")
+      .description("book a flight")
+      .parameters(z.object({ from: z.string(), destination: z.string() }))
+      .elicits({})
+      .execute(function* (input) {
+        calls++;
+        return { route: `${input.from}-${input.destination}` };
+      });
+
+    const invoke = yield* Tool({
+      history: [],
+      elicit: (() => { throw new Error("not used"); }) as never,
+      elicitDynamic: (() => { throw new Error("not used"); }) as never,
+      sample: (() => { throw new Error("not used"); }) as never,
+      notify: function* () {},
+      log: function* () {},
+    });
+
+    try {
+      yield* invoke({ destination: "NYC" } as unknown as { from: string; destination: string });
+      throw new Error("expected validation failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toContain("Invalid input for tool");
+    }
+
+    expect(calls).toBe(0);
+    expect(yield* invoke({ from: "Boston", destination: "NYC" })).toEqual({ route: "Boston-NYC" });
+    expect(calls).toBe(1);
+  });
+
   it("activates as a unified callable against a ToolCtx", function* () {
     const Tool = createTool("echo")
       .description("echo")

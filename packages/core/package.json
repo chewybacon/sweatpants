@@ -63,7 +63,8 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "check": "tsc -b",
-    "test": "vitest"
+    "test": "vitest",
+    "test:acceptance": "vitest run acceptance"
   },
   "peerDependencies": {
     "@effectionx/websocket": "^2.3.0",

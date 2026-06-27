@@ -498,6 +498,60 @@ describe('Durable Chat Handler', () => {
       expect(result.toolResults?.[0]?.content).toContain('Mock result for: hello')
     })
 
+    it('should reject invalid tool parameters before server execution', function* () {
+      let serverCalls = 0
+      const routeTool: IsomorphicTool = {
+        name: 'book_flight',
+        description: 'Book a flight',
+        parameters: z.object({ from: z.string(), destination: z.string() }),
+        server: function* (params: unknown) {
+          serverCalls++
+          return { route: params }
+        },
+      }
+      let providerCalls = 0
+      const provider = createMockProvider({
+        customStream: (messages, options) => {
+          const idx = providerCalls++
+          if (idx === 0) {
+            return createMockProvider({
+              responses: 'Calling tool',
+              toolCalls: [{ id: 'call-missing-from', name: 'book_flight', arguments: { destination: 'NYC' } }],
+            }).stream(messages, options)
+          }
+          return createMockProvider({ responses: 'Where are you flying from?' }).stream(messages, options)
+        },
+      })
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider, [routeTool]),
+        maxToolIterations: 2,
+      })
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: 'user:flight', role: 'user', content: 'I want to fly to NYC' }], {
+          enabledTools: true,
+        })
+      )
+
+      const toolErrors = getEventsByType(result, 'ag_ui_tool_call_error') as Array<{
+        type: 'ag_ui_tool_call_error'
+        toolCallId: string
+        toolCallName: string
+        message: string
+        error?: { code?: string; issues?: Array<{ path: Array<string | number> }> }
+      }>
+
+      expect(serverCalls).toBe(0)
+      expect(result.toolResults).toBeNull()
+      expect(toolErrors).toHaveLength(1)
+      expect(toolErrors[0]).toMatchObject({
+        toolCallId: 'call-missing-from',
+        toolCallName: 'book_flight',
+      })
+      expect(toolErrors[0]?.error?.code).toBe('TOOL_PARAMETER_VALIDATION_FAILED')
+      expect(toolErrors[0]?.error?.issues?.some((issue) => issue.path.includes('from'))).toBe(true)
+    })
+
     it('should reconcile unique generated tool-name aliases before execution', function* () {
       const generatedTool = createMockTool('book-flight_book_flight', 'Books a flight')
       const provider = createMockProvider({

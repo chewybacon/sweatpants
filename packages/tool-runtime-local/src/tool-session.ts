@@ -45,6 +45,7 @@ import type {
   ElicitId,
   McpRuntimeTool,
 } from "@sweatpants/framework/chat/mcp-tools";
+import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createBridgeHost, type ElicitResponse } from "@sweatpants/framework/chat/mcp-tools";
 
 // =============================================================================
@@ -136,10 +137,17 @@ export function createToolSession<
     // createQueue returns a synchronous queue with add/close/next methods
     const eventQueue = createQueue<ToolSessionEvent<TResult>, void>();
 
+    const validatedParams = validateToolParameters<TParams>({
+      schema: tool.parameters,
+      params,
+      toolName: tool.name,
+      callId: sessionId,
+    });
+
     // Create the bridge host
     const hostConfig = {
       tool,
-      params,
+      params: validatedParams,
       callId: sessionId,
       ...(options.signal !== undefined && { signal: options.signal }),
       ...(options.parentMessages !== undefined && { parentMessages: options.parentMessages }),

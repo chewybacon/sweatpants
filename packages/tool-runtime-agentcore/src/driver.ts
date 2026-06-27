@@ -3,6 +3,8 @@ import {
   ToolRuntimeContext,
   ToolRuntimeError,
   createToolExecutionRef,
+  toToolParameterJsonSchema,
+  validateToolParameters,
   type ElicitToolRequest,
   type StartToolCallRequest,
   type ToolCall,
@@ -50,12 +52,7 @@ export interface AgentCoreToolRuntimeDriverOptions {
 }
 
 function parametersToSchema(parameters: unknown): Record<string, unknown> {
-  if (parameters && typeof parameters === 'object' && typeof (parameters as { toJSONSchema?: unknown }).toJSONSchema === 'function') {
-    return (parameters as { toJSONSchema: () => Record<string, unknown> }).toJSONSchema()
-  }
-  return parameters && typeof parameters === 'object'
-    ? (parameters as Record<string, unknown>)
-    : { type: 'object', properties: {}, required: [] }
+  return toToolParameterJsonSchema(parameters)
 }
 
 function toDefinition(tool: AgentCoreRuntimeTool): ToolDefinition {
@@ -77,6 +74,15 @@ export function createAgentCoreToolInventoryEntry(tool: AgentCoreRuntimeTool, me
 
 function toToolSchema(tool: AgentCoreRuntimeTool): ToolRuntimeToolSchema {
   return toDefinition(tool)
+}
+
+function validateParams(tool: AgentCoreRuntimeTool, params: unknown, callId: string): unknown {
+  return validateToolParameters({
+    schema: tool.parameters,
+    params,
+    toolName: tool.name,
+    callId,
+  })
 }
 
 function adaptEvent(event: McpToolSessionEvent): RuntimeToolSessionEvent {
@@ -245,7 +251,8 @@ export function createAgentCoreToolExecutionStrategy(
         : toolsByName.get(call.function.name)
       if (!tool) throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `AgentCore strategy cannot execute tool: ${call.function.name}`)
       const selectedModel = modelSelectionFromMetadata(ctx.metadata)
-      const session = yield* options.registry.create(tool, call.function.arguments, {
+      const params = validateParams(tool, call.function.arguments, call.id)
+      const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
         ...(selectedModel ? { model: selectedModel } : {}),
@@ -303,7 +310,8 @@ export function createAgentCoreToolRuntimeDriver(
     if (!tool) {
       throw new ToolRuntimeError('TOOL_NOT_FOUND', `Tool not found in AgentCore runtime: ${request.toolName}`)
     }
-    const session = yield* registry.create(tool, request.arguments, {
+    const params = validateParams(tool, request.arguments, request.callId)
+    const session = yield* registry.create(tool, params, {
       sessionId: request.callId,
       ...(request.signal ? { signal: request.signal } : {}),
     })
@@ -350,7 +358,8 @@ export function createAgentCoreToolRuntimeDriver(
         throw new ToolRuntimeError('NO_MATCHING_TOOL_STRATEGY', `AgentCore runtime cannot execute tool: ${request.call.function.name}`)
       }
       const selectedModel = modelSelectionFromMetadata(request.metadata)
-      const session = yield* registry.create(tool, request.call.function.arguments, {
+      const params = validateParams(tool, request.call.function.arguments, request.call.id)
+      const session = yield* registry.create(tool, params, {
         sessionId: request.call.id,
         ...(request.signal ? { signal: request.signal } : {}),
         ...(selectedModel ? { model: selectedModel } : {}),

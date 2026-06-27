@@ -22,6 +22,7 @@ import {
   createToolExecutionRef,
   type ToolRuntime,
 } from '../../../lib/chat/tool-runtime.ts'
+import { validateToolParameters } from '../../../lib/chat/tool-parameters.ts'
 import {
   ModelProviderContext,
   ModelProviderModelContext,
@@ -427,7 +428,12 @@ function createTestToolRuntime(tools: IsomorphicTool[]): ToolRuntime {
       const tool = byName.get(request.call.function.name)
       const ref = createToolExecutionRef({ runtimeId: 'test', callId: request.call.id, toolName: request.call.function.name })
       if (!tool) return { kind: 'failed', ref, error: { code: 'TOOL_NOT_FOUND', message: `Tool not found: ${request.call.function.name}` } }
-      const params = tool.parameters.parse(request.call.function.arguments)
+      const params = validateToolParameters({
+        schema: tool.parameters,
+        params: request.call.function.arguments,
+        toolName: tool.name,
+        callId: request.call.id,
+      })
       if (!tool.server) {
         if (tool.client) return { kind: 'awaiting_client', ref, request: { params, usesHandoff: false } }
         return { kind: 'failed', ref, error: { code: 'TOOL_NOT_EXECUTABLE', message: `Tool not executable: ${tool.name}` } }
