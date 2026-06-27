@@ -71,6 +71,8 @@ UNSAFE_ALLOW_ANY_CHAT_MODEL=yes
 
 # AgentCore-hosted tools default to host-mediated ctx.sample(). Enable internal
 # AgentCore sampling only when the runtime has credentials/network access for the sample model.
+# If internal sampling is used while the chat model is app-local (for example
+# github-copilot or ollama), configure this explicit AgentCore-reachable sample model.
 AGENTCORE_TOOL_SAMPLE_MODE=host # host | internal
 AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER=amazon-bedrock
 AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5

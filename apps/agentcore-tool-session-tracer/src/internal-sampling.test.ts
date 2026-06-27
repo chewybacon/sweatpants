@@ -64,14 +64,19 @@ describe("AgentCore internal sampling configuration", () => {
     );
   });
 
-  it("rejects inherited local-only Ollama without host fallback", async () => {
+  it("rejects inherited app-local models without host fallback", async () => {
     vi.stubEnv("AGENTCORE_TOOL_SAMPLE_MODE", "internal");
-    await expect(
-      sampleInsideAgentCore({
-        inheritedModel: { provider: "ollama", id: "qwen3:30b" },
-        messages: [{ role: "user", content: "hello" }],
-      }),
-    ).rejects.toThrow("AGENTCORE_TOOL_SAMPLE_MODE=host");
+    for (const inheritedModel of [
+      { provider: "ollama", id: "qwen3:30b" },
+      { provider: "github-copilot", id: "claude-sonnet-4.5" },
+    ]) {
+      await expect(
+        sampleInsideAgentCore({
+          inheritedModel,
+          messages: [{ role: "user", content: "hello" }],
+        }),
+      ).rejects.toThrow("AGENTCORE_TOOL_SAMPLE_MODE=host");
+    }
   });
 
   it("parses structured sample text with reasoning or markdown wrappers", () => {

@@ -13,6 +13,14 @@ import { tictactoeTool } from '../tools/tictactoe/tool.ts'
 const registry = createWorkerToolRegistry([
   { name: 'book_flight', handler: function* (params, ctx) {
     const tool = bookFlightTool
+    // Unified callable tools (createMCPTool/createIsomorphicTool finalized)
+    // are functions carrying legacy metadata (execute/handoffConfig/server).
+    // Detect them by 'capabilities' and activate via the unified path
+    // (ctx) => invoke(input); otherwise fall back to legacy field dispatch.
+    if (tool && typeof tool === 'function' && 'capabilities' in tool) {
+      const invoke = yield* (tool as any)(ctx)
+      return yield* invoke(params)
+    }
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {
         return yield* (tool as any).execute(params, ctx)
@@ -31,6 +39,14 @@ const registry = createWorkerToolRegistry([
   } },
   { name: 'calculator', handler: function* (params, ctx) {
     const tool = calculator
+    // Unified callable tools (createMCPTool/createIsomorphicTool finalized)
+    // are functions carrying legacy metadata (execute/handoffConfig/server).
+    // Detect them by 'capabilities' and activate via the unified path
+    // (ctx) => invoke(input); otherwise fall back to legacy field dispatch.
+    if (tool && typeof tool === 'function' && 'capabilities' in tool) {
+      const invoke = yield* (tool as any)(ctx)
+      return yield* invoke(params)
+    }
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {
         return yield* (tool as any).execute(params, ctx)
@@ -49,6 +65,14 @@ const registry = createWorkerToolRegistry([
   } },
   { name: 'play_ttt', handler: function* (params, ctx) {
     const tool = playTttTool
+    // Unified callable tools (createMCPTool/createIsomorphicTool finalized)
+    // are functions carrying legacy metadata (execute/handoffConfig/server).
+    // Detect them by 'capabilities' and activate via the unified path
+    // (ctx) => invoke(input); otherwise fall back to legacy field dispatch.
+    if (tool && typeof tool === 'function' && 'capabilities' in tool) {
+      const invoke = yield* (tool as any)(ctx)
+      return yield* invoke(params)
+    }
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {
         return yield* (tool as any).execute(params, ctx)
@@ -67,6 +91,14 @@ const registry = createWorkerToolRegistry([
   } },
   { name: 'tictactoe', handler: function* (params, ctx) {
     const tool = tictactoeTool
+    // Unified callable tools (createMCPTool/createIsomorphicTool finalized)
+    // are functions carrying legacy metadata (execute/handoffConfig/server).
+    // Detect them by 'capabilities' and activate via the unified path
+    // (ctx) => invoke(input); otherwise fall back to legacy field dispatch.
+    if (tool && typeof tool === 'function' && 'capabilities' in tool) {
+      const invoke = yield* (tool as any)(ctx)
+      return yield* invoke(params)
+    }
     if (tool && typeof tool === 'object') {
       if ('execute' in (tool as unknown as Record<string, unknown>)) {
         return yield* (tool as any).execute(params, ctx)

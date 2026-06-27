@@ -68,8 +68,8 @@ const config = defineConfig({
     // Use jsdom for DOM testing with Interactors
     environment: "jsdom",
     env: {
-      DEFAULT_CHAT_MODEL_PROVIDER: "ollama",
-      DEFAULT_CHAT_MODEL_ID: "gemma4:12b-mlx",
+      DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
+      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
     },
     // Exclude Playwright e2e tests from Vitest
     exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],

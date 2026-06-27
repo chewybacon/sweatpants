@@ -96,7 +96,7 @@ AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER=amazon-bedrock
 AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 ```
 
-When `AGENTCORE_TOOL_SAMPLE_MODE=internal` and no explicit sample model is set, the runtime inherits `start_tool_session.context.model`. Inheriting local-only models such as `ollama/gemma4:12b-mlx` fails clearly; use host mode or configure an explicit AgentCore-reachable sample model such as `amazon-bedrock/zai.glm-5`.
+When `AGENTCORE_TOOL_SAMPLE_MODE=internal` and no explicit sample model is set, the runtime inherits `start_tool_session.context.model`. Inheriting app-local models such as `ollama/gemma4:12b-mlx` or `github-copilot/claude-sonnet-4.5` fails clearly; use host mode or configure an explicit AgentCore-reachable sample model such as `amazon-bedrock/zai.glm-5`.
 
 ## Runtime-session lifecycle contract
 
