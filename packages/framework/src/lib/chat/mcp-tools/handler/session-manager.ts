@@ -15,7 +15,7 @@
  */
 import { createContext, type Operation } from 'effection'
 import type { ToolSessionRegistry } from '../session/types.ts'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../mcp-tool-builder.ts'
 import type { ElicitsMap, ElicitResult, ElicitExchange, RawSampleResultBase } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,
@@ -91,7 +91,7 @@ export interface McpSessionManagerOptions {
   registry: ToolSessionRegistry
 
   /** Available tools by name */
-  tools: Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>
+  tools: Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>>
 
   /** Session timeout in milliseconds */
   sessionTimeout?: number | undefined
@@ -103,7 +103,7 @@ export interface McpSessionManagerOptions {
 export class McpSessionManager {
   private readonly sessions = new Map<string, McpSessionState>()
   private readonly registry: ToolSessionRegistry
-  private readonly tools: Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>
+  private readonly tools: Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>>
   private readonly sessionTimeout: number
 
   constructor(options: McpSessionManagerOptions) {

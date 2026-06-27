@@ -72,7 +72,39 @@ import type {
   McpToolHandoffConfigWithElicits,
   McpToolLimits,
   ElicitsMap,
+  LogLevel,
 } from "./mcp-tool-types.ts";
+
+// =============================================================================
+// UNIFIED TOOL CALLABLE SHAPE
+// =============================================================================
+
+export interface UnifiedToolCtxShape<TElicits extends ElicitsMap = ElicitsMap> {
+  history?: unknown[];
+  elicit<K extends keyof TElicits & string>(key: K, options: { message: string } & Record<string, unknown>): Operation<{
+    action?: "accept" | "decline" | "cancel";
+    content?: unknown;
+    exchange?: unknown;
+    status?: "accepted" | "declined" | "cancelled";
+    value?: unknown;
+    reason?: string;
+  }>;
+  elicitDynamic?(options: { key: string; message: string; responseSchema?: unknown; contextSchema?: unknown; context?: unknown }): Operation<{
+    action?: "accept" | "decline" | "cancel";
+    content?: unknown;
+    exchange?: unknown;
+    status?: "accepted" | "declined" | "cancelled";
+    value?: unknown;
+    reason?: string;
+  }>;
+  sample<TParsed = undefined>(options: Record<string, unknown>): Operation<{ content: string; parsed?: TParsed; exchange?: unknown; parseError?: string }>;
+  notify(message: string, fraction?: number, level?: LogLevel): Operation<void>;
+  log?(level: LogLevel, message: string): Operation<void>;
+}
+
+export type UnifiedCallable<I = unknown, O = unknown, TElicits extends ElicitsMap = ElicitsMap> = {
+  (ctx: UnifiedToolCtxShape<TElicits>): Operation<(input: I) => Operation<O>>;
+};
 
 // =============================================================================
 // PHANTOM TYPE CARRIERS
@@ -212,24 +244,31 @@ export interface McpToolBuilderWithElicits<
    */
   execute<TResult>(
     fn: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>,
-  ): FinalizedMcpToolWithElicits<TName, TParams, undefined, undefined, TResult, TElicits>;
+  ): McpRuntimeTool<TName, TParams, undefined, undefined, TResult, TElicits>;
 
   /**
    * Define handoff pattern with keyed elicitation.
    */
   handoff<THandoff, TClient, TResult>(
     config: McpToolHandoffConfigWithElicits<TParams, THandoff, TClient, TResult, TElicits>,
-  ): FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>;
+  ): McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>;
 }
 
 // =============================================================================
-// FINALIZED TOOL
+// RUNTIME TOOL
 // =============================================================================
 
 /**
  * A fully configured MCP tool.
  */
-export interface FinalizedMcpTool<TName extends string, TParams, THandoff, TClient, TResult> {
+/**
+ * @deprecated Use `McpRuntimeTool` for runtime consumers. This compatibility
+ * view remains for type inference during migration.
+ */
+export interface McpRuntimeToolShape<TName extends string, TParams, THandoff, TClient, TResult> {
+  /** Unified callable runtime activation. */
+  (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>;
+
   /** Phantom type carrier */
   _types: McpToolTypes<TParams, THandoff, TClient, TResult>;
 
@@ -253,6 +292,12 @@ export interface FinalizedMcpTool<TName extends string, TParams, THandoff, TClie
 
   /** Execute function (if not using handoff) */
   execute?: (params: TParams, ctx: McpToolContext) => Operation<TResult>;
+
+  /** Unified tool schemas for projection/runtime consumers. */
+  schemas?: { input: unknown; output?: unknown };
+
+  /** Unified tool capabilities for projection/runtime consumers. */
+  capabilities?: { elicitation?: boolean; sampling?: boolean };
 }
 
 /**
@@ -261,7 +306,11 @@ export interface FinalizedMcpTool<TName extends string, TParams, THandoff, TClie
  * This tool is "bridgeable" - it can be derived into a plugin with
  * exhaustive, type-safe UI handlers for each elicitation key.
  */
-export interface FinalizedMcpToolWithElicits<
+/**
+ * @deprecated Use `McpRuntimeTool` for runtime consumers. This compatibility
+ * view remains for type inference during migration.
+ */
+export interface McpRuntimeToolShapeWithElicits<
   TName extends string,
   TParams,
   THandoff,
@@ -269,6 +318,9 @@ export interface FinalizedMcpToolWithElicits<
   TResult,
   TElicits extends ElicitsMap,
 > {
+  /** Unified callable runtime activation. */
+  (ctx: UnifiedToolCtxShape<TElicits>): Operation<(input: TParams) => Operation<TResult>>;
+
   /** Phantom type carrier */
   _types: McpToolTypes<TParams, THandoff, TClient, TResult>;
 
@@ -295,6 +347,12 @@ export interface FinalizedMcpToolWithElicits<
 
   /** Execute function with keyed elicitation */
   execute?: (params: TParams, ctx: McpToolContextWithElicits<TElicits>) => Operation<TResult>;
+
+  /** Unified tool schemas for projection/runtime consumers. */
+  schemas?: { input: unknown; output?: unknown };
+
+  /** Unified tool capabilities for projection/runtime consumers. */
+  capabilities?: { elicitation?: boolean; sampling?: boolean };
 }
 
 // =============================================================================
@@ -302,38 +360,38 @@ export interface FinalizedMcpToolWithElicits<
 // =============================================================================
 
 /**
- * Extract the result type from a finalized tool.
+ * Extract the result type from a runtime tool.
  */
 export type InferMcpToolResult<T> =
-  T extends FinalizedMcpTool<any, any, any, any, infer R> ? R : never;
+  T extends McpRuntimeToolShape<any, any, any, any, infer R> ? R : never;
 
 /**
- * Extract the params type from a finalized tool.
+ * Extract the params type from a runtime tool.
  */
 export type InferMcpToolParams<T> =
-  T extends FinalizedMcpTool<any, infer P, any, any, any> ? P : never;
+  T extends McpRuntimeToolShape<any, infer P, any, any, any> ? P : never;
 
 /**
- * Extract the handoff type from a finalized tool.
+ * Extract the handoff type from a runtime tool.
  */
 export type InferMcpToolHandoff<T> =
-  T extends FinalizedMcpTool<any, any, infer H, any, any> ? H : never;
+  T extends McpRuntimeToolShape<any, any, infer H, any, any> ? H : never;
 
 /**
- * Extract the client output type from a finalized tool.
+ * Extract the client output type from a runtime tool.
  */
 export type InferMcpToolClient<T> =
-  T extends FinalizedMcpTool<any, any, any, infer C, any> ? C : never;
+  T extends McpRuntimeToolShape<any, any, any, infer C, any> ? C : never;
 
 /**
  * Any MCP tool (for arrays/registries).
  */
-export type AnyMcpTool = FinalizedMcpTool<string, any, any, any, any>;
+export type AnyMcpTool = McpRuntimeToolShape<string, any, any, any, any>;
 
 /**
  * Any bridgeable MCP tool (has `.elicits()`).
  */
-export type AnyBridgeableMcpTool = FinalizedMcpToolWithElicits<
+export type AnyBridgeableMcpTool = McpRuntimeToolShapeWithElicits<
   string,
   any,
   any,
@@ -346,7 +404,24 @@ export type AnyBridgeableMcpTool = FinalizedMcpToolWithElicits<
  * Extract the elicits map from a bridgeable tool.
  */
 export type InferMcpToolElicits<T> =
-  T extends FinalizedMcpToolWithElicits<any, any, any, any, any, infer E> ? E : never;
+  T extends McpRuntimeToolShapeWithElicits<any, any, any, any, any, infer E> ? E : never;
+
+/**
+ * Neutral MCP-compatible runtime tool shape.
+ *
+ * This is the public runtime type new consumers should use. The older
+ * `McpRuntimeToolShape*` names remain as compatibility views while package
+ * consumers migrate, but they are not a distinct terminal runtime model.
+ */
+export type McpRuntimeTool<
+  TName extends string = string,
+  TParams = unknown,
+  THandoff = unknown,
+  TClient = unknown,
+  TResult = unknown,
+  TElicits extends ElicitsMap = ElicitsMap,
+> = McpRuntimeToolShapeWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits> &
+  UnifiedCallable<TParams, TResult, TElicits>;
 
 // =============================================================================
 // BUILDER IMPLEMENTATION
@@ -359,8 +434,126 @@ interface BuilderState {
   elicits?: ElicitsMap;
   requires?: { elicitation?: boolean; sampling?: boolean };
   limits?: McpToolLimits;
-  handoffConfig?: McpToolHandoffConfig<any, any, any, any>;
+  handoffConfig?: McpToolHandoffConfigWithElicits<any, any, any, any, any>;
   executeFn?: (params: any, ctx: McpToolContext) => Operation<any>;
+}
+
+function makeServerCtx() {
+  return {
+    callId: `call-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    signal: new AbortController().signal,
+  };
+}
+
+function normalizeElicitAction(res: { action?: string; status?: string }) {
+  return res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel");
+}
+
+function shimMcpToolCtx<TElicits extends ElicitsMap>(ctx: UnifiedToolCtxShape<TElicits>): McpToolContextWithElicits<TElicits> {
+  const mcpCtx = {
+    parentMessages: [],
+    parentSystemPrompt: undefined,
+    messages: [],
+    depth: 0,
+    sample(config: Record<string, unknown>): Operation<any> {
+      return (function* (): Operation<any> {
+        const res = yield* ctx.sample(config);
+        return {
+          text: res.content,
+          content: res.content,
+          parsed: res.parsed ?? undefined,
+          parseError: res.parseError,
+          stopReason: "endTurn",
+          exchange: res.exchange,
+        };
+      })();
+    },
+    sampleTools(_config: unknown): Operation<any> {
+      return (function* (): Operation<any> {
+        throw new Error("sampleTools is not supported by the unified agents runtime shim yet; use ctx.sample({ tools }) through the framework MCP runtime.");
+      })();
+    },
+    sampleSchema(config: Record<string, unknown>): Operation<any> {
+      return (function* (): Operation<any> {
+        const res = yield* ctx.sample(config);
+        if (res.parsed === undefined) {
+          throw new Error(res.parseError ?? "sampleSchema failed to produce parsed output");
+        }
+        return { text: res.content, content: res.content, parsed: res.parsed, exchange: res.exchange };
+      })();
+    },
+    elicit(key: string, options: { message: string } & Record<string, unknown>): Operation<any> {
+      return (function* (): Operation<any> {
+        const res = yield* ctx.elicit(key as keyof TElicits & string, options as never);
+        const action = normalizeElicitAction(res);
+        if (action === "accept") {
+          return {
+            action: "accept",
+            status: "accepted",
+            content: (res as { content?: unknown; value?: unknown }).content ?? (res as { value?: unknown }).value,
+            value: (res as { value?: unknown; content?: unknown }).value ?? (res as { content?: unknown }).content,
+            exchange: (res as { exchange?: unknown }).exchange,
+          };
+        }
+        return { action, status: action === "decline" ? "declined" : "cancelled", reason: (res as { reason?: string }).reason };
+      })();
+    },
+    branch<T>(fn: (branchCtx: McpToolContextWithElicits<TElicits>) => Operation<T>): Operation<T> {
+      return fn(mcpCtx as unknown as McpToolContextWithElicits<TElicits>);
+    },
+    log(level: LogLevel, message: string): Operation<void> {
+      return ctx.log ? ctx.log(level, message) : ctx.notify(message, undefined, level);
+    },
+    notify(message: string, progress?: number): Operation<void> {
+      return ctx.notify(message, progress);
+    },
+  };
+  return mcpCtx as unknown as McpToolContextWithElicits<TElicits>;
+}
+
+function makeUnifiedCallable<I, O, TElicits extends ElicitsMap>(meta: {
+  name: string;
+  parameters: z.ZodType;
+  execute?: (params: I, ctx: McpToolContextWithElicits<TElicits>) => Operation<O>;
+  handoffConfig?: McpToolHandoffConfigWithElicits<I, unknown, unknown, O, TElicits>;
+}): UnifiedCallable<I, O, TElicits> {
+  const activate = function (ctx: UnifiedToolCtxShape<TElicits>): Operation<(input: I) => Operation<O>> {
+    return {
+      *[Symbol.iterator]() {
+        const toolCtx = shimMcpToolCtx(ctx);
+        const serverCtx = makeServerCtx();
+        const invoke = (input: I): Operation<O> =>
+          (function* (): Operation<O> {
+            const parsed = meta.parameters.safeParse(input);
+            if (!parsed.success || parsed.data === undefined) {
+              throw new Error(`Invalid params for tool "${meta.name}": ${parsed.error?.message ?? "validation failed"}`);
+            }
+            const params = parsed.data as I;
+            if (meta.handoffConfig) {
+              const { before, client, after } = meta.handoffConfig;
+              const handoff = yield* before(params, serverCtx as never);
+              const clientResult = yield* client(handoff, toolCtx);
+              return yield* after(handoff, clientResult, serverCtx as never, params);
+            }
+            if (meta.execute) {
+              return yield* meta.execute(params, toolCtx);
+            }
+            throw new Error(`Tool "${meta.name}" has no execute or handoffConfig`);
+          })();
+        return invoke;
+      },
+    };
+  };
+  return activate as UnifiedCallable<I, O, TElicits>;
+}
+
+function attachUnifiedMetadata<T extends Function>(callable: T, meta: Record<string, unknown>): T & Record<string, unknown> {
+  const descriptors: PropertyDescriptorMap = {};
+  for (const [key, value] of Object.entries(meta)) {
+    descriptors[key] = { value, enumerable: true, writable: true, configurable: true };
+  }
+  Object.defineProperties(callable, descriptors);
+  return callable as T & Record<string, unknown>;
 }
 
 function createBuilder(state: BuilderState): any {
@@ -407,7 +600,12 @@ function createBuilder(state: BuilderState): any {
         );
       }
 
-      return {
+      const callable = makeUnifiedCallable<any, any, any>({
+        name: state.name,
+        parameters: state.parameters,
+        execute: fn,
+      });
+      return attachUnifiedMetadata(callable, {
         _types: undefined as any,
         name: state.name,
         description: state.description,
@@ -416,10 +614,12 @@ function createBuilder(state: BuilderState): any {
         requires: state.requires,
         limits: state.limits,
         execute: fn,
-      } as FinalizedMcpToolWithElicits<any, any, undefined, undefined, any, any>;
+        schemas: { input: state.parameters, output: undefined },
+        capabilities: state.requires ?? { elicitation: Object.keys(state.elicits).length > 0, sampling: false },
+      }) as unknown as McpRuntimeTool<any, any, undefined, undefined, any, any>;
     },
 
-    handoff(config: McpToolHandoffConfig<any, any, any, any>) {
+    handoff(config: McpToolHandoffConfigWithElicits<any, any, any, any, any>) {
       if (!state.description) {
         throw new Error(`Tool "${state.name}": .description() must be called before .handoff()`);
       }
@@ -432,7 +632,12 @@ function createBuilder(state: BuilderState): any {
         );
       }
 
-      return {
+      const callable = makeUnifiedCallable<any, any, any>({
+        name: state.name,
+        parameters: state.parameters,
+        handoffConfig: config,
+      });
+      return attachUnifiedMetadata(callable, {
         _types: undefined as any,
         name: state.name,
         description: state.description,
@@ -441,7 +646,9 @@ function createBuilder(state: BuilderState): any {
         requires: state.requires,
         limits: state.limits,
         handoffConfig: config,
-      } as FinalizedMcpToolWithElicits<any, any, any, any, any, any>;
+        schemas: { input: state.parameters, output: undefined },
+        capabilities: state.requires ?? { elicitation: true, sampling: true },
+      }) as unknown as McpRuntimeTool<any, any, any, any, any, any>;
     },
   };
 

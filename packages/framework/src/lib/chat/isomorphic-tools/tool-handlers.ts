@@ -64,7 +64,7 @@
  * @packageDocumentation
  */
 type RenderNode = unknown
-import type { FinalizedIsomorphicTool } from './builder.ts'
+import type { IsomorphicRuntimeTool } from './builder.ts'
 import type { AnyIsomorphicTool } from './types.ts'
 
 // =============================================================================
@@ -72,21 +72,21 @@ import type { AnyIsomorphicTool } from './types.ts'
 // =============================================================================
 
 /**
- * Base tool type that encompasses both raw definitions and finalized tools.
+ * Base tool type that encompasses both raw definitions and runtime tools.
  * This allows the handler API to accept tools from either defineIsomorphicTool()
  * or createIsomorphicTool().build()
  */
-export type AnyToolDef = AnyIsomorphicTool | FinalizedIsomorphicTool<any, any, any, any, any, any>
+export type AnyToolDef = AnyIsomorphicTool | IsomorphicRuntimeTool<any, any, any, any, any, any>
 
 /**
  * Extract the client output type from any tool definition.
  * 
- * For FinalizedIsomorphicTool: uses the builder's type inference
+ * For IsomorphicRuntimeTool: uses the builder's type inference
  * For raw definitions: infers from the client generator's return type
  */
 type ExtractClientOutput<T> = 
-  // FinalizedIsomorphicTool path
-  T extends FinalizedIsomorphicTool<any, any, any, any, infer TClient, any>
+  // IsomorphicRuntimeTool path
+  T extends IsomorphicRuntimeTool<any, any, any, any, infer TClient, any>
     ? TClient
   : unknown
 
@@ -96,11 +96,11 @@ type ExtractClientOutput<T> =
  * - Server-first with handoff: receive handoff data from before()
  * - Server-first without handoff: receive server output
  * 
- * Works with both FinalizedIsomorphicTool and raw definitions.
+ * Works with both IsomorphicRuntimeTool and raw definitions.
  */
 export type HandoffData<T> = 
-  // FinalizedIsomorphicTool path (builder-created)
-  T extends FinalizedIsomorphicTool<
+  // IsomorphicRuntimeTool path (builder-created)
+  T extends IsomorphicRuntimeTool<
     any,
     any,
     any,
@@ -162,7 +162,7 @@ export interface TypedHandler<TTool> {
  * can infer TTool from the tool argument, then apply it to the handler.
  *
  * Works with both raw definitions (from defineIsomorphicTool) and
- * finalized tools (from createIsomorphicTool().build()).
+ * runtime tools (from createIsomorphicTool().build()).
  *
  * @example
  * ```typescript
@@ -276,7 +276,7 @@ export interface ToolHandlerBuilder {
    * Add a handler for a tool.
    *
    * Works with both raw definitions (from defineIsomorphicTool) and
-   * finalized tools (from createIsomorphicTool().build()).
+   * runtime tools (from createIsomorphicTool().build()).
    *
    * @param tool - The isomorphic tool to handle
    * @param handlerFn - Function that receives typed data and respond callback, returns RenderNode
@@ -301,7 +301,7 @@ export interface ToolHandlerBuilder {
  *
  * This provides a fluent API with full type inference at each .add() call site.
  * Works with both raw definitions (from defineIsomorphicTool) and
- * finalized tools (from createIsomorphicTool().build()).
+ * runtime tools (from createIsomorphicTool().build()).
  *
  * @example
  * ```typescript
@@ -350,7 +350,7 @@ export function createToolHandlers(): ToolHandlerBuilder {
  * Type guard to narrow a PendingHandoff to a specific tool's types.
  *
  * This is useful for manual rendering without the registry pattern.
- * Works with both raw definitions and finalized tools.
+ * Works with both raw definitions and runtime tools.
  *
  * @example
  * ```typescript

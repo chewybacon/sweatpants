@@ -23,7 +23,7 @@ import {
 } from '@sweatpants/framework/chat'
 import type {
   ElicitsMap,
-  FinalizedMcpToolWithElicits,
+  McpRuntimeTool,
   ToolSession as McpToolSession,
   ToolSessionEvent as McpToolSessionEvent,
   ToolSessionRegistry,
@@ -31,7 +31,7 @@ import type {
 } from '@sweatpants/framework/chat/mcp-tools'
 import { createAgentCoreToolSessionRegistry, type AgentCoreToolSessionRegistryOptions } from './agentcore-session-registry.ts'
 
-type AgentCoreRuntimeTool = FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>
+type AgentCoreRuntimeTool = McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>
 
 type AgentCoreImplementation = { kind: 'agentcore'; tool: AgentCoreRuntimeTool }
 type AgentCoreContextModelSelection = { provider: string; id: string }

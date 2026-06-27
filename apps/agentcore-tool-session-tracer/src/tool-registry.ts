@@ -1,8 +1,8 @@
-import type { FinalizedMcpToolWithElicits } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts";
+import type { McpRuntimeTool } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts";
 import type { ElicitsMap } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
 import { toolList } from "../../yo-chat/src/__generated__/tool-registry.gen.ts";
 
-type RuntimeMcpTool = FinalizedMcpToolWithElicits<
+type RuntimeMcpTool = McpRuntimeTool<
   string,
   unknown,
   unknown,

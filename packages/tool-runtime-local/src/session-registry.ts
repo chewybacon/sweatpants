@@ -24,7 +24,7 @@ import type {
   ToolSessionStatus,
 } from '@sweatpants/framework/chat/mcp-tools'
 import type { ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
-import type { FinalizedMcpToolWithElicits } from '@sweatpants/framework/chat/mcp-tools'
+import type { McpRuntimeTool } from '@sweatpants/framework/chat/mcp-tools'
 import { createToolSession } from './tool-session.ts'
 import { createWorkerToolSession } from './worker-tool-session.ts'
 
@@ -118,7 +118,7 @@ export function createToolSessionRegistry(
 
     const registry: ToolSessionRegistry = {
       *create<TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap>(
-        tool: FinalizedMcpToolWithElicits<string, TParams, THandoff, TClient, TResult, TElicits>,
+        tool: McpRuntimeTool<string, TParams, THandoff, TClient, TResult, TElicits>,
         params: TParams,
         sessionOptions?: ToolSessionOptions
       ): Operation<ToolSession<TResult>> {

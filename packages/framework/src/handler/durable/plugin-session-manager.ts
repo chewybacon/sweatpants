@@ -56,7 +56,7 @@ import type {
 } from '../../lib/chat/mcp-tools/session/types.ts'
 // Note: concrete tool session registries should be created at server startup, not here.
 import type { ElicitsMap, RawElicitResult } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
-import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
 
 // =============================================================================
@@ -110,7 +110,7 @@ export type PluginSessionEvent =
  */
 export interface CreatePluginSessionConfig {
   /** The MCP tool to execute */
-  tool: FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>
+  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>
 
   /** Tool parameters */
   params: unknown

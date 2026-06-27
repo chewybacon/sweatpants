@@ -46,8 +46,7 @@ export type {
   McpToolBuilderWithDescription,
   McpToolBuilderWithParams,
   McpToolBuilderWithElicits,
-  FinalizedMcpTool,
-  FinalizedMcpToolWithElicits,
+  McpRuntimeTool,
   McpToolTypes,
   // Type inference helpers
   InferMcpToolResult,
@@ -139,7 +138,7 @@ export type {
   MCPToolBuilderBase,
   MCPToolBuilderWithDescription,
   MCPToolBuilderWithParams,
-  FinalizedMCPTool,
+  MCPRuntimeTool,
   MCPToolTypes,
   InferMCPResult,
   InferMCPParams,

@@ -199,7 +199,7 @@ function handleTool(data: MyToolHandoffs) {
 
 ## Type Extraction
 
-Extract types from finalized tools for use elsewhere:
+Extract types from runtime tools for use elsewhere:
 
 ```typescript
 import {
@@ -319,10 +319,10 @@ interface IsomorphicToolTypes<
   result: TResult
 }
 
-interface FinalizedIsomorphicTool<...> {
+interface IsomorphicRuntimeTool<...> {
   _types: IsomorphicToolTypes<...>  // Phantom - no runtime value
   name: TName
-  // ... actual runtime fields
+  // ... actual runtime fields plus unified callable activation
 }
 ```
 

@@ -55,7 +55,7 @@ import type { Operation } from "effection";
 import type { z } from "zod";
 import type { ContextMode, ContextForMode } from "./contexts.ts";
 // Unified tool ctx (structural — no import from @sweatpants/agents). Same shape
-// as the MCP builder's UnifiedToolCtxShape; the finalized isomorphic tool is
+// as the MCP builder's UnifiedToolCtxShape; the runtime isomorphic tool is
 // callable as a UnifiedToolFactory.
 export interface UnifiedToolCtxShape {
   elicit(key: string, request: { message: string; schema?: unknown }): Operation<{
@@ -237,7 +237,7 @@ export interface IsomorphicToolBuilderWithContext<
    */
   handoff<THandoff, TClient, TResult>(
     config: TypedHandoffConfig<TParams, TContext, THandoff, TClient, TResult>,
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, THandoff, TClient, TResult> & UnifiedCallable<TParams, TResult>;
+  ): IsomorphicRuntimeTool<TName, TParams, TContext, THandoff, TClient, TResult>;
 
   /**
    * Simple server-only execution (no handoff).
@@ -257,7 +257,7 @@ export interface IsomorphicToolBuilderWithContext<
       ctx: ContextForMode<TContext>,
       params: TParams,
     ) => Operation<TClientOutput>,
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput> & UnifiedCallable<TParams, TClientOutput>;
+  ): IsomorphicRuntimeTool<TName, TParams, TContext, undefined, TClientOutput, TClientOutput>;
 
   /**
    * Set approval configuration.
@@ -289,16 +289,16 @@ export interface IsomorphicToolBuilderServerOnly<
       ctx: ContextForMode<TContext>,
       params: TParams,
     ) => Operation<TClientOutput>,
-  ): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput> & UnifiedCallable<TParams, TServerOutput>;
+  ): IsomorphicRuntimeTool<TName, TParams, TContext, undefined, TClientOutput, TServerOutput>;
 
   /**
    * Finalize without client (server-only tool).
    */
-  build(): FinalizedIsomorphicTool<TName, TParams, TContext, undefined, undefined, TServerOutput> & UnifiedCallable<TParams, TServerOutput>;
+  build(): IsomorphicRuntimeTool<TName, TParams, TContext, undefined, undefined, TServerOutput>;
 }
 
 // =============================================================================
-// FINALIZED TOOL
+// RUNTIME TOOL
 // =============================================================================
 
 /**
@@ -309,7 +309,11 @@ export interface IsomorphicToolBuilderServerOnly<
  * - Integration with the registry
  * - Safe extraction of types
  */
-export interface FinalizedIsomorphicTool<
+/**
+ * @deprecated Use `IsomorphicRuntimeTool` for runtime consumers. This
+ * compatibility view remains for type inference during migration.
+ */
+export interface IsomorphicRuntimeToolShape<
   TName extends string,
   TParams,
   TContext extends ContextMode,
@@ -317,6 +321,9 @@ export interface FinalizedIsomorphicTool<
   TClient,
   TResult,
 > {
+  /** Unified callable runtime activation. */
+  (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>;
+
   /**
    * Phantom type carrier - no runtime cost.
    * Access with `tool._types.result` etc. for type-level operations.
@@ -373,34 +380,48 @@ export interface FinalizedIsomorphicTool<
 // =============================================================================
 
 /**
- * Extract the result type from a finalized tool.
+ * Extract the result type from a runtime tool.
  */
 export type InferToolResult<T> =
-  T extends FinalizedIsomorphicTool<any, any, any, any, any, infer TResult> ? TResult : never;
+  T extends IsomorphicRuntimeToolShape<any, any, any, any, any, infer TResult> ? TResult : never;
 
 /**
- * Extract the params type from a finalized tool.
+ * Extract the params type from a runtime tool.
  */
 export type InferToolParams<T> =
-  T extends FinalizedIsomorphicTool<any, infer TParams, any, any, any, any> ? TParams : never;
+  T extends IsomorphicRuntimeToolShape<any, infer TParams, any, any, any, any> ? TParams : never;
 
 /**
- * Extract the context mode from a finalized tool.
+ * Extract the context mode from a runtime tool.
  */
 export type InferToolContext<T> =
-  T extends FinalizedIsomorphicTool<any, any, infer TContext, any, any, any> ? TContext : never;
+  T extends IsomorphicRuntimeToolShape<any, any, infer TContext, any, any, any> ? TContext : never;
 
 /**
- * Extract the handoff type from a finalized tool.
+ * Extract the handoff type from a runtime tool.
  */
 export type InferToolHandoff<T> =
-  T extends FinalizedIsomorphicTool<any, any, any, infer THandoff, any, any> ? THandoff : never;
+  T extends IsomorphicRuntimeToolShape<any, any, any, infer THandoff, any, any> ? THandoff : never;
 
 /**
- * Extract the client output type from a finalized tool.
+ * Extract the client output type from a runtime tool.
  */
 export type InferToolClientOutput<T> =
-  T extends FinalizedIsomorphicTool<any, any, any, any, infer TClient, any> ? TClient : never;
+  T extends IsomorphicRuntimeToolShape<any, any, any, any, infer TClient, any> ? TClient : never;
+
+/**
+ * Neutral isomorphic runtime tool shape. New runtime consumers should use this
+ * name instead of depending on the runtime compatibility view.
+ */
+export type IsomorphicRuntimeTool<
+  TName extends string = string,
+  TParams = unknown,
+  TContext extends ContextMode = ContextMode,
+  THandoff = unknown,
+  TClient = unknown,
+  TResult = unknown,
+> = IsomorphicRuntimeToolShape<TName, TParams, TContext, THandoff, TClient, TResult> &
+  UnifiedCallable<TParams, TResult>;
 
 // =============================================================================
 // BUILDER IMPLEMENTATION
@@ -569,7 +590,7 @@ function createBuilder(state: BuilderState): any {
             *after(handoff: any, client: any) { return yield* config.after(handoff, client, ctx, params); },
           });
         },
-      }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+      }) as unknown as IsomorphicRuntimeTool<any, any, any, any, any, any>;
     },
 
     server(fn: (params: any, ctx: any, clientOutput?: any) => Operation<any>) {
@@ -600,7 +621,7 @@ function createBuilder(state: BuilderState): any {
             replayTrace: function* (trace: ToolExecutionTrace) {
               return trace as HydratedToolExecutionTrace;
             },
-          }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+          }) as unknown as IsomorphicRuntimeTool<any, any, any, any, any, any>;
         },
         build() {
           if (!state.contextMode) {
@@ -624,7 +645,7 @@ function createBuilder(state: BuilderState): any {
             replayTrace: function* (trace: ToolExecutionTrace) {
               return trace as HydratedToolExecutionTrace;
             },
-          }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+          }) as unknown as IsomorphicRuntimeTool<any, any, any, any, any, any>;
         },
       };
     },
@@ -650,7 +671,7 @@ function createBuilder(state: BuilderState): any {
         replayTrace: function* (trace: ToolExecutionTrace) {
           return trace as HydratedToolExecutionTrace;
         },
-      }) as unknown as FinalizedIsomorphicTool<any, any, any, any, any, any>;
+      }) as unknown as IsomorphicRuntimeTool<any, any, any, any, any, any>;
     },
   };
 

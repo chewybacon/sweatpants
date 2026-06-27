@@ -56,11 +56,11 @@ import type { MCPClientContext, MCPHandoffConfig, ElicitConfig, SampleConfig, Lo
 // UNIFIED TOOL CTX (structural — no import from @sweatpants/agents)
 // =============================================================================
 //
-// The finalized MCP tool is callable as a `UnifiedToolFactory`: `(ctx) =>
+// The runtime MCP tool is callable as a `UnifiedToolFactory`: `(ctx) =>
 // Operation<(input) => Operation<out>>` where `ctx` is this structural shape.
 // `@sweatpants/agents`' `ToolCtx` is structurally compatible, so `ctx.call`
-// duck-types the finalized tool (by `capabilities`) and projects `AgentCtx`→
-// `ToolCtx` at call time. No adapter (`adaptMCPTool`) needed.
+// duck-types the runtime tool (by `capabilities`) and projects `AgentCtx`→
+// `ToolCtx` at call time. No framework-to-agents adapter is needed.
 
 export interface UnifiedToolCtxShape {
   elicit(key: string, request: { message: string; schema?: unknown }): Operation<{
@@ -82,7 +82,7 @@ export interface UnifiedToolCtxShape {
   log?(level: LogLevel, message: string): Operation<void>
 }
 
-/** A finalized MCP tool is both the legacy metadata object AND a callable. */
+/** A runtime MCP tool is both the legacy metadata object AND a callable. */
 export type UnifiedCallable<I = unknown, O = unknown> = {
   (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>>
 }
@@ -152,28 +152,28 @@ export interface MCPToolBuilderWithParams<TName extends string, TParams> {
    */
   execute<TResult>(
     fn: (params: TParams, ctx: MCPClientContext) => Operation<TResult>,
-  ): FinalizedMCPTool<TName, TParams, undefined, undefined, TResult> & {
-    (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>
-  };
+  ): MCPRuntimeTool<TName, TParams, undefined, undefined, TResult>;
 
   /**
    * Define handoff pattern for multi-turn interaction.
    */
   handoff<THandoff, TClient, TResult>(
     config: MCPHandoffConfig<TParams, THandoff, TClient, TResult>,
-  ): FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult> & {
-    (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>
-  };
+  ): MCPRuntimeTool<TName, TParams, THandoff, TClient, TResult>;
 }
 
 // =============================================================================
-// FINALIZED TOOL
+// RUNTIME TOOL
 // =============================================================================
 
 /**
  * A fully configured MCP tool.
  */
-export interface FinalizedMCPTool<TName extends string, TParams, THandoff, TClient, TResult> {
+/**
+ * @deprecated Use `MCPRuntimeTool` for runtime consumers. This compatibility
+ * view remains for type inference during migration.
+ */
+export interface MCPRuntimeToolShape<TName extends string, TParams, THandoff, TClient, TResult> {
   /** Phantom type carrier */
   _types: MCPToolTypes<TParams, THandoff, TClient, TResult>;
 
@@ -206,25 +206,34 @@ export interface FinalizedMCPTool<TName extends string, TParams, THandoff, TClie
 // =============================================================================
 
 /**
- * Extract the result type from a finalized tool.
+ * Extract the result type from a runtime tool.
  */
-export type InferMCPResult<T> = T extends FinalizedMCPTool<any, any, any, any, infer R> ? R : never;
+export type InferMCPResult<T> = T extends MCPRuntimeToolShape<any, any, any, any, infer R> ? R : never;
 
 /**
- * Extract the params type from a finalized tool.
+ * Extract the params type from a runtime tool.
  */
-export type InferMCPParams<T> = T extends FinalizedMCPTool<any, infer P, any, any, any> ? P : never;
+export type InferMCPParams<T> = T extends MCPRuntimeToolShape<any, infer P, any, any, any> ? P : never;
 
 /**
- * Extract the handoff type from a finalized tool.
+ * Extract the handoff type from a runtime tool.
  */
 export type InferMCPHandoff<T> =
-  T extends FinalizedMCPTool<any, any, infer H, any, any> ? H : never;
+  T extends MCPRuntimeToolShape<any, any, infer H, any, any> ? H : never;
 
 /**
- * Extract the client output type from a finalized tool.
+ * Extract the client output type from a runtime tool.
  */
-export type InferMCPClient<T> = T extends FinalizedMCPTool<any, any, any, infer C, any> ? C : never;
+export type InferMCPClient<T> = T extends MCPRuntimeToolShape<any, any, any, infer C, any> ? C : never;
+
+/** Neutral runtime type for the original MCP builder compatibility surface. */
+export type MCPRuntimeTool<
+  TName extends string = string,
+  TParams = unknown,
+  THandoff = unknown,
+  TClient = unknown,
+  TResult = unknown,
+> = MCPRuntimeToolShape<TName, TParams, THandoff, TClient, TResult> & UnifiedCallable<TParams, TResult>;
 
 // =============================================================================
 // BUILDER IMPLEMENTATION
@@ -240,7 +249,7 @@ interface BuilderState {
 }
 
 // =============================================================================
-// UNIFIED CALLABLE FACTORY — the finalized tool is callable as a UnifiedToolFactory
+// UNIFIED CALLABLE FACTORY — the runtime tool is callable as a UnifiedToolFactory
 // =============================================================================
 
 /** Shim a structural UnifiedToolCtxShape into the MCPClientContext the impls expect. */
@@ -301,7 +310,7 @@ function makeServerCtx() {
 }
 
 /**
- * Build the unified callable for a finalized MCP tool. The returned function is
+ * Build the unified callable for a runtime MCP tool. The returned function is
  * `(ctx: UnifiedToolCtxShape) => Operation<(input) => Operation<out>>`. Legacy
  * metadata (name/description/parameters/requires/handoffConfig/execute) is
  * attached as properties so existing consumers (mock-runtime, MCP handler) keep
@@ -377,8 +386,8 @@ function createBuilder(state: BuilderState): any {
         parameters: state.parameters,
         execute: fn,
       });
-      const finalized = callable as FinalizedMCPTool<any, any, undefined, undefined, any> & UnifiedCallable<any, any>;
-      Object.defineProperties(finalized, {
+      const runtime = callable as MCPRuntimeTool<any, any, undefined, undefined, any>;
+      Object.defineProperties(runtime, {
         _types: { value: undefined as any, enumerable: true, writable: true, configurable: true },
         name: { value: state.name, enumerable: true, writable: true, configurable: true },
         description: { value: state.description, enumerable: true, writable: true, configurable: true },
@@ -388,7 +397,7 @@ function createBuilder(state: BuilderState): any {
         schemas: { value: { input: state.parameters, output: undefined }, enumerable: true, writable: true, configurable: true },
         capabilities: { value: state.requires ?? { elicitation: false, sampling: false }, enumerable: true, writable: true, configurable: true },
       });
-      return finalized;
+      return runtime;
     },
 
     handoff(config: MCPHandoffConfig<any, any, any, any>) {
@@ -404,8 +413,8 @@ function createBuilder(state: BuilderState): any {
         parameters: state.parameters,
         handoffConfig: config,
       });
-      const finalized = callable as FinalizedMCPTool<any, any, any, any, any> & UnifiedCallable<any, any>;
-      Object.defineProperties(finalized, {
+      const runtime = callable as MCPRuntimeTool<any, any, any, any, any>;
+      Object.defineProperties(runtime, {
         _types: { value: undefined as any, enumerable: true, writable: true, configurable: true },
         name: { value: state.name, enumerable: true, writable: true, configurable: true },
         description: { value: state.description, enumerable: true, writable: true, configurable: true },
@@ -415,7 +424,7 @@ function createBuilder(state: BuilderState): any {
         schemas: { value: { input: state.parameters, output: undefined }, enumerable: true, writable: true, configurable: true },
         capabilities: { value: state.requires ?? { elicitation: true, sampling: true }, enumerable: true, writable: true, configurable: true },
       });
-      return finalized;
+      return runtime;
     },
   };
 

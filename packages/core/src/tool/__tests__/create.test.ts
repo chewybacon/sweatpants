@@ -92,7 +92,7 @@ describe("createTool", () => {
         input: z.object({ destination: z.string() }),
         output: z.object({ flights: z.array(z.string()) }),
         progress: z.object({ loaded: z.number() }),
-        impl: function* ({ destination }, _send) {
+        impl: function* ({ destination }) {
           return { flights: [`Flight to ${destination}`] };
         },
       });
@@ -115,7 +115,7 @@ describe("createTool", () => {
         input: z.object({ message: z.string(), count: z.number() }),
         output: z.object({ echoed: z.string() }),
         progress: z.object({ step: z.number() }),
-        impl: function* (args, _send) {
+        impl: function* (args) {
           receivedArgs.push(args);
           return { echoed: args.message.repeat(args.count) };
         },
@@ -350,6 +350,7 @@ describe("createTool", () => {
       // The error would only happen if someone bypassed the factory
       expect(Unactivated.name).toBe("unactivated");
     });
+
 
     it("should propagate impl errors", function* () {
       const Failing = createTool({

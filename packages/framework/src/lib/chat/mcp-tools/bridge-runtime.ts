@@ -57,7 +57,7 @@ import {
   createRawSampleExchange,
   createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
-import type { FinalizedMcpToolWithElicits } from './mcp-tool-builder.ts'
+import type { McpRuntimeTool } from './mcp-tool-builder.ts'
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
@@ -268,7 +268,7 @@ export interface BridgeHostConfig<
   TElicits extends ElicitsMap = ElicitsMap,
 > {
   /** Tool being executed */
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>
 
   /** Tool parameters */
   params: TParams
@@ -1354,7 +1354,7 @@ export function runBridgeTool<
   TResult,
   TElicits extends ElicitsMap,
 >(config: {
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>
   params: TParams
   samplingProvider: BridgeSamplingProvider
   handlers: BridgeElicitHandlers<TElicits>

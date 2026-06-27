@@ -43,7 +43,7 @@ import type {
   RawSampleResult,
   ElicitsMap,
   ElicitId,
-  FinalizedMcpToolWithElicits,
+  McpRuntimeTool,
 } from "@sweatpants/framework/chat/mcp-tools";
 import { createBridgeHost, type ElicitResponse } from "@sweatpants/framework/chat/mcp-tools";
 
@@ -112,7 +112,7 @@ export function createToolSession<
   TResult,
   TElicits extends ElicitsMap,
 >(
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>,
+  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>,
   params: TParams,
   _samplingProvider: ToolSessionSamplingProvider,
   options: ToolSessionOptions = {},

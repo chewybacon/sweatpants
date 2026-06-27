@@ -3,7 +3,7 @@
  *
  * CB-2: replayTrace (and other metadata) must remain writable so consumers can
  *   override post-finalization (the yo-chat app assigns replayTrace after build()).
- * CB-3: callable finalized tools must be detectable as unified (typeof === 'function'
+ * CB-3: callable runtime tools must be detectable as unified (typeof === 'function'
  *   with capabilities) so the Vite worker and other guards route them correctly.
  * A-3: useChatSession tool-name detection accepts callable tools — covered by the
  *   same "function with name" shape asserted here.
@@ -14,7 +14,7 @@ import { createIsomorphicTool } from '../builder.ts'
 import { createMCPTool } from '../../mcp-tools/builder.ts'
 
 describe('Unified callable compat (review CB-2/CB-3)', () => {
-  it('isomorphic finalized tool is a function with readable + writable metadata', () => {
+  it('isomorphic runtime tool is a function with readable + writable metadata', () => {
     const tool = createIsomorphicTool('pick')
       .description('pick a thing')
       .parameters(z.object({ x: z.string() }))
@@ -41,7 +41,7 @@ describe('Unified callable compat (review CB-2/CB-3)', () => {
     expect((tool as { replayTrace: unknown }).replayTrace).toBe(customTrace)
   })
 
-  it('MCP finalized tool is a function with writable metadata', () => {
+  it('MCP runtime tool is a function with writable metadata', () => {
     const tool = createMCPTool('book')
       .description('book a thing')
       .parameters(z.object({ dest: z.string() }))

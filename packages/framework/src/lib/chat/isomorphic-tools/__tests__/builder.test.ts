@@ -147,7 +147,7 @@ describe('Isomorphic Tool Builder Types', () => {
     })
   })
 
-  describe('FinalizedIsomorphicTool Structure', () => {
+  describe('IsomorphicRuntimeTool Structure', () => {
     it('should have correct property types', () => {
       const tool = createIsomorphicTool('structured')
         .description('A structured tool')

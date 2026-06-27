@@ -222,7 +222,7 @@ describe('MCP Tool Builder Types', () => {
   })
 
   describe('Tool Structure', () => {
-    it('should have correct finalized structure', () => {
+    it('should have correct runtime structure', () => {
       const tool = createMCPTool('structured')
         .description('A tool')
         .parameters(z.object({ id: z.number() }))

@@ -38,19 +38,18 @@ export interface ToolConfig<
 }
 
 /**
- * Tool implementation function.
- * Takes input args and a send function for progress updates.
+ * Config-style tool implementation function.
+ *
+ * This legacy-compatible config surface is input-only. Tools that need the
+ * unified capability surface (`elicit`, `sample`, `notify`, `log`, local
+ * history) should use the builder chain:
+ * `createTool(name).description(...).parameters(...).elicits(...).execute((input, ctx) => ...)`.
  */
 export type ToolImplFn<
   TInput extends ZodSchema,
-  TProgress extends ZodSchema | undefined,
+  _TProgress extends ZodSchema | undefined,
   TOutput extends ZodSchema,
-> = (
-  args: z.infer<TInput>,
-  send: TProgress extends ZodSchema
-    ? (progress: z.infer<TProgress>) => Operation<void>
-    : never,
-) => Operation<z.infer<TOutput>>;
+> = (args: z.infer<TInput>) => Operation<z.infer<TOutput>>;
 
 /**
  * An activated tool that can be invoked with input.
@@ -186,6 +185,27 @@ export interface UnifiedToolFactory<
   readonly capabilities: { elicitation?: boolean; sampling?: boolean };
   (ctx: CoreToolCtx<TElicits>): Operation<(input: I) => Operation<O>>;
 }
+
+/**
+ * Neutral public tool runtime shape.
+ *
+ * Fluent builders such as `createTool`, framework `createMCPTool`, and
+ * `createIsomorphicTool` should converge on this callable metadata shape. Older
+ * `Finalized*Tool` names are migration aliases/compatibility views, not a
+ * distinct terminal runtime model.
+ */
+export type ToolDefinition<
+  I = unknown,
+  O = unknown,
+  TElicits extends ElicitsMap = ElicitsMap,
+> = UnifiedToolFactory<I, O, TElicits>;
+
+/** Alias for the neutral unified public tool shape. */
+export type UnifiedTool<
+  I = unknown,
+  O = unknown,
+  TElicits extends ElicitsMap = ElicitsMap,
+> = ToolDefinition<I, O, TElicits>;
 
 export interface CreateToolBuilderBase<TName extends string> {
   description(desc: string): CreateToolBuilderWithDescription<TName>;
