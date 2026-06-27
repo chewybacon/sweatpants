@@ -79,9 +79,10 @@ export function selectInternalSampleModel(
 }
 
 function assertAgentCoreUsableModel(selection: ModelSelection): void {
-  if (selection.provider === "ollama") {
+  const appOnlyProviders = new Set(["ollama", "github-copilot"]);
+  if (appOnlyProviders.has(selection.provider)) {
     throw new Error(
-      `AgentCore internal sampling cannot use local-only model ${modelSelectionKey(selection)}; configure AGENTCORE_TOOL_SAMPLE_MODE=host or set AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER/ID to an AgentCore-reachable model`,
+      `AgentCore internal sampling cannot use app-local model ${modelSelectionKey(selection)}; configure AGENTCORE_TOOL_SAMPLE_MODE=host or set AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER/ID to an AgentCore-reachable model`,
     );
   }
 }
