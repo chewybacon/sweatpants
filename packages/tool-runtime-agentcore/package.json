@@ -43,6 +43,7 @@
     "dev": "tsup --watch",
     "check": "pnpm build:deps && tsc -b",
     "test": "vitest run src --passWithNoTests",
+    "test:acceptance": "vitest run acceptance",
     "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",
     "build:types": "tsc -b tsconfig.json --force"
   },

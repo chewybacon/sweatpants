@@ -28,6 +28,7 @@
     "dev": "tsup --watch",
     "check": "tsc -b",
     "test": "vitest run --passWithNoTests",
+    "test:acceptance": "vitest run acceptance",
     "build:types": "tsc -b tsconfig.json --force"
   },
   "peerDependencies": {

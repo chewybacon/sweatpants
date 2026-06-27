@@ -227,6 +227,7 @@ export interface AgUiToolCallErrorStreamEvent {
   toolCallId: string
   toolCallName: string
   message: string
+  error?: import('../tool-parameters.ts').ToolParameterValidationErrorPayload
 }
 
 /**

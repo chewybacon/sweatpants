@@ -51,6 +51,7 @@ import {
 } from "@sweatpants/framework/chat/mcp-tools";
 import {
   createInMemoryToolSessionStore,
+  createLocalToolRuntimeDriver,
   createMcpToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
@@ -146,6 +147,32 @@ function* waitForState(
 }
 
 describe("yo-chat tool blackbox", () => {
+  it("book_flight rejects missing required route params before starting UI", async () => {
+    await run(function* () {
+      const driver = yield* createLocalToolRuntimeDriver({
+        tools: [bookFlightTool as LocalMcpTool],
+        samplingProvider: { *sample() { return { text: "unused" }; } },
+      });
+
+      try {
+        yield* driver.startToolCall({
+          toolName: bookFlightTool.name,
+          callId: "call-missing-origin",
+          arguments: { destination: "NYC" },
+        });
+        throw new Error("expected validation failure");
+      } catch (error) {
+        expect(error).toMatchObject({
+          code: "TOOL_PARAMETER_VALIDATION_FAILED",
+          payload: {
+            toolName: bookFlightTool.name,
+            callId: "call-missing-origin",
+          },
+        });
+      }
+    });
+  });
+
   it("book_flight runs through pickFlight and pickSeat elicits", async () => {
     await run(function* () {
       const pluginRegistry = createPluginRegistryFrom([bookFlightPlugin.client as any]);

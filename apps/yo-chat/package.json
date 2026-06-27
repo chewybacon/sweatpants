@@ -9,6 +9,7 @@
     "build:server": "esbuild express-server.ts --bundle --platform=node --format=esm --outfile=dist/express-server.js --packages=external --external:./server/*",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:acceptance": "vitest run acceptance",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "deploy": "vite build",

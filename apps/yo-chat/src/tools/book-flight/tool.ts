@@ -9,7 +9,7 @@
  */
 import { z } from "zod";
 import { createMcpTool } from "@sweatpants/framework/chat";
-import { sleep, type Operation } from "effection";
+import { sleep } from "effection";
 
 // =============================================================================
 // TYPES
@@ -85,70 +85,6 @@ function generateTicketNumber(): string {
   return result;
 }
 
-function contentToText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (!Array.isArray(content)) {
-    return "";
-  }
-
-  return content
-    .map((part) => {
-      if (!part || typeof part !== "object") {
-        return "";
-      }
-      const record = part as Record<string, unknown>;
-      return typeof record["text"] === "string" ? record["text"] : "";
-    })
-    .filter(Boolean)
-    .join(" ");
-}
-
-function inferRouteFromText(text: string): Partial<BookFlightParams> {
-  const fromToMatch = /\bfrom\s+(.+?)\s+to\s+([^.!?]+)(?:[.!?]|$)/i.exec(text);
-  if (fromToMatch?.[1] && fromToMatch[2]) {
-    return {
-      from: fromToMatch[1].trim(),
-      destination: fromToMatch[2].trim(),
-    };
-  }
-
-  const airportMatch = /\b([A-Z]{3})\s*(?:to|→|-)\s*([A-Z]{3})\b/.exec(text);
-  if (airportMatch?.[1] && airportMatch[2]) {
-    return {
-      from: airportMatch[1],
-      destination: airportMatch[2],
-    };
-  }
-
-  return {};
-}
-
-function inferRouteFromContext(ctx: BookFlightContext): Partial<BookFlightParams> {
-  const messages = ctx.parentMessages ?? ctx.messages ?? [];
-  for (const message of [...messages].reverse()) {
-    const text = contentToText(message.content);
-    const route = inferRouteFromText(text);
-    if (route.from || route.destination) {
-      return route;
-    }
-  }
-  return {};
-}
-
-function normalizeBookFlightParams(
-  params: Partial<BookFlightParams>,
-  ctx: BookFlightContext,
-): BookFlightParams {
-  const inferred = inferRouteFromContext(ctx);
-  return {
-    from: params.from?.trim() || inferred.from || "NYC",
-    destination: params.destination?.trim() || inferred.destination || "LAX",
-  };
-}
-
 // =============================================================================
 // SCHEMAS
 // =============================================================================
@@ -176,30 +112,6 @@ const SeatMapSchema = z.object({
 type BookFlightParams = {
   from: string;
   destination: string;
-};
-
-type BookFlightElicitResult<TContent> =
-  | { action: "accept"; content: TContent }
-  | { action: "decline" }
-  | { action: "cancel" };
-
-type BookFlightContext = {
-  parentMessages?: readonly { content?: unknown }[];
-  messages?: readonly { content?: unknown }[];
-  notify(message: string, progress: number): Operation<void>;
-  elicit(
-    key: "pickFlight",
-    request: { message: string; flights: Flight[] },
-  ): Operation<BookFlightElicitResult<{ flightId: string }>>;
-  elicit(
-    key: "pickSeat",
-    request: {
-      message: string;
-      seatMap: SeatMap;
-      flightInfo: { airline: string; flightNumber: string };
-    },
-  ): Operation<BookFlightElicitResult<{ row: number; seat: string }>>;
-  sample(request: { prompt: string; maxTokens: number }): Operation<{ text: string }>;
 };
 
 export const bookFlightTool = createMcpTool("book_flight")
@@ -235,20 +147,17 @@ export const bookFlightTool = createMcpTool("book_flight")
       }),
     },
   })
-  .execute(function* (rawParams: Partial<BookFlightParams> = {}, ctx: unknown) {
-    const bookFlightCtx = ctx as BookFlightContext;
-    const params = normalizeBookFlightParams(rawParams, bookFlightCtx);
-
+  .execute(function* (params, ctx) {
     // 1. Search for flights
-    yield* bookFlightCtx.notify("Searching for flights...", 0.1);
+    yield* ctx.notify("Searching for flights...", 0.1);
     const flights = mockFlightSearch(params.from, params.destination);
 
     // 2. Elicit: Pick a flight
-    yield* bookFlightCtx.notify("Found available flights", 0.2);
+    yield* ctx.notify("Found available flights", 0.2);
 
     yield* sleep(900); // mock request
 
-    const flightResult = yield* bookFlightCtx.elicit("pickFlight", {
+    const flightResult = yield* ctx.elicit("pickFlight", {
       message: `Select a flight from ${params.from} to ${params.destination}`,
       flights,
     });
@@ -279,14 +188,14 @@ export const bookFlightTool = createMcpTool("book_flight")
       };
     }
 
-    yield* bookFlightCtx.notify("Flight selected, loading seat map...", 0.4);
+    yield* ctx.notify("Flight selected, loading seat map...", 0.4);
 
     // 3. Elicit: Pick a seat
     const seatMap = mockSeatMap();
 
     yield* sleep(900); // mock request
 
-    const seatResult = yield* bookFlightCtx.elicit("pickSeat", {
+    const seatResult = yield* ctx.elicit("pickSeat", {
       message: `Select your seat on ${selectedFlight.airline} ${selectedFlight.flightNumber}`,
       seatMap,
       flightInfo: {
@@ -312,20 +221,20 @@ export const bookFlightTool = createMcpTool("book_flight")
     }
 
     const seatCode = `${seatResult.content.row}${seatResult.content.seat}`;
-    yield* bookFlightCtx.notify("Seat selected, finalizing booking...", 0.7);
+    yield* ctx.notify("Seat selected, finalizing booking...", 0.7);
 
     // 4. Sample: Get travel tip
-    yield* bookFlightCtx.notify("Getting travel tips...", 0.8);
-    const tip = yield* bookFlightCtx.sample({
+    yield* ctx.notify("Getting travel tips...", 0.8);
+    const tip = yield* ctx.sample({
       prompt: `Give a brief, helpful travel tip for someone arriving at ${params.destination} airport. Keep it to 1-2 sentences.`,
       maxTokens: 100,
     });
 
     // 5. Create booking
-    yield* bookFlightCtx.notify("Creating your booking...", 0.9);
+    yield* ctx.notify("Creating your booking...", 0.9);
     const ticketNumber = generateTicketNumber();
 
-    yield* bookFlightCtx.notify("Booking complete!", 1.0);
+    yield* ctx.notify("Booking complete!", 1.0);
 
     return {
       success: true,

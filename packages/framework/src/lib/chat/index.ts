@@ -13,6 +13,7 @@ export * from "./sse.ts";
 export * from "./model-provider.ts";
 export * from "./tool-inventory.ts";
 export * from "./tool-runtime.ts";
+export * from "./tool-parameters.ts";
 
 // Scope-driven chat setup contexts.
 export {

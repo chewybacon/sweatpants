@@ -25,6 +25,7 @@ import type {
 } from '@sweatpants/framework/chat/mcp-tools'
 import type { ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
 import type { McpRuntimeTool } from '@sweatpants/framework/chat/mcp-tools'
+import { validateToolParameters } from '@sweatpants/framework/chat'
 import { createToolSession } from './tool-session.ts'
 import { createWorkerToolSession } from './worker-tool-session.ts'
 
@@ -127,6 +128,13 @@ export function createToolSessionRegistry(
           ...(defaultTimeout !== undefined && { timeout: defaultTimeout }),
         }
 
+        const validatedParams = validateToolParameters<TParams>({
+          schema: tool.parameters,
+          params,
+          toolName: tool.name,
+          callId: mergedOptions.sessionId ?? tool.name,
+        })
+
         // Use a channel to receive the session from the spawned task
         const sessionChannel = createChannel<ToolSession<TResult>, void>()
 
@@ -144,7 +152,7 @@ export function createToolSessionRegistry(
             ? yield* createWorkerToolSession({
                 sessionId: mergedOptions.sessionId ?? tool.name,
                 toolName: tool.name,
-                params,
+                params: validatedParams,
                 workerUrl: resolvedWorkerUrl ?? worker.workerUrl,
                 ...(mergedOptions.systemPrompt !== undefined && { systemPrompt: mergedOptions.systemPrompt }),
                 ...(mergedOptions.parentMessages !== undefined && { parentMessages: mergedOptions.parentMessages }),
@@ -152,7 +160,7 @@ export function createToolSessionRegistry(
               })
             : yield* createToolSession(
                 tool,
-                params,
+                validatedParams,
                 samplingProvider,
                 mergedOptions
               )) as ToolSession<TResult>

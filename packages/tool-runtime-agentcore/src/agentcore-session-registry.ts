@@ -6,6 +6,7 @@ import type {
 } from '@sweatpants/framework/chat/mcp-tools'
 import type { McpRuntimeTool } from '@sweatpants/framework/chat/mcp-tools'
 import type { ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
+import { validateToolParameters } from '@sweatpants/framework/chat'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   type AgentCoreToolEvent,
@@ -173,6 +174,12 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
       sessionOptions?: ToolSessionOptions
     ): Operation<ToolSession<TResult>> {
       const sessionId = sessionOptions?.sessionId ?? `session_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      const validatedParams = validateToolParameters<TParams>({
+        schema: tool.parameters,
+        params,
+        toolName: tool.name,
+        callId: sessionId,
+      })
       const profile = selectProfile(tool.name)
       const startedAt = now()
       const expiresAt = new Date(startedAt.getTime() + profile.maxSessionTtlMs)
@@ -204,7 +211,7 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         commandId: `start_${sessionId}`,
         toolSessionId: sessionId,
         toolName: tool.name,
-        params,
+        params: validatedParams,
         context: {
           ...(sessionOptions?.sessionId !== undefined && { callId: sessionOptions.sessionId }),
           ...(sessionOptions?.parentMessages !== undefined && { parentMessages: sessionOptions.parentMessages }),

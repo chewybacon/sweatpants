@@ -53,6 +53,10 @@ import {
   buildAgUiCheckpoint,
   buildAgUiCustomState,
 } from "../../lib/chat/session/ag-ui-checkpoint.ts";
+import {
+  getToolParameterValidationErrorPayload,
+  validateToolParameters,
+} from "../../lib/chat/tool-parameters.ts";
 
 // =============================================================================
 // CONTEXT HELPERS (adapted from create-handler.ts)
@@ -104,15 +108,15 @@ interface EngineState {
 // =============================================================================
 
 /**
- * Validate tool parameters using the tool's Zod schema.
+ * Validate tool parameters using the tool's declared schema.
  */
-function validateToolParams(tool: IsomorphicTool, params: unknown): unknown {
-  try {
-    return tool.parameters.parse(params);
-  } catch {
-    // Return as-is if validation fails - let the tool handle it
-    return params;
-  }
+function validateToolParams(tool: IsomorphicTool, params: unknown, callId: string): unknown {
+  return validateToolParameters({
+    schema: tool.parameters,
+    params,
+    toolName: tool.name,
+    callId,
+  });
 }
 
 /**
@@ -173,6 +177,7 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
       toolCallId: result.error.callId,
       toolCallName: result.error.toolName,
       message: result.error.message,
+      ...(result.error.validation ? { error: result.error.validation } : {}),
     };
   }
 
@@ -210,6 +215,20 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
   };
 }
 
+function validationErrorResult(error: unknown, call: ToolCall): ToolExecutionResult {
+  const validation = getToolParameterValidationErrorPayload(error);
+  const message = validation?.message ?? (error instanceof Error ? error.message : String(error));
+  return {
+    ok: false,
+    error: {
+      callId: validation?.callId ?? call.id,
+      toolName: validation?.toolName ?? call.function.name,
+      message,
+      ...(validation ? { code: validation.code, issues: validation.issues, validation } : {}),
+    },
+  };
+}
+
 function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolExecutionResult {
   const ref = execution.ref;
   const toolName = ref.toolName || call.function.name;
@@ -223,15 +242,19 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
         toolName,
         serverOutput: execution.result,
       };
-    case "failed":
+    case "failed": {
+      const validation = getToolParameterValidationErrorPayload(execution.error.cause);
       return {
         ok: false,
         error: {
-          callId: ref.callId,
-          toolName,
-          message: execution.error.message,
+          callId: validation?.callId ?? ref.callId,
+          toolName: validation?.toolName ?? toolName,
+          message: validation?.message ?? execution.error.message,
+          ...(execution.error.code ? { code: execution.error.code } : {}),
+          ...(validation ? { code: validation.code, issues: validation.issues, validation } : {}),
         },
       };
+    }
     case "awaiting_client":
       return {
         ok: true,
@@ -464,7 +487,7 @@ function* processClientOutput(
 
       // Re-run the server function - it will call ctx.handoff() which now
       // returns the result of config.after(cachedHandoff, clientOutput)
-      const validatedParams = validateToolParams(tool, output.params);
+      const validatedParams = validateToolParams(tool, output.params, output.callId);
       const serverResult = yield* tool.server(validatedParams, phase2Context);
 
       const content =
@@ -493,11 +516,13 @@ function* processClientOutput(
       ...(output.trace && { trace: output.trace }),
     };
   } catch (error) {
+    const validation = getToolParameterValidationErrorPayload(error);
     return {
       type: "ag_ui_tool_call_error",
       toolCallId: output.callId,
       toolCallName: output.toolName,
-      message: error instanceof Error ? error.message : String(error),
+      message: validation?.message ?? (error instanceof Error ? error.message : String(error)),
+      ...(validation ? { error: validation } : {}),
     };
   }
 }
@@ -1022,6 +1047,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                       : undefined,
                   );
                 }
+              } else if (event.type === "ag_ui_tool_call_error") {
+                appendToolMessage(
+                  state.conversationMessages,
+                  conversationTranscriptState,
+                  output.callId,
+                  `Error: ${event.message}`,
+                  { toolName: output.toolName },
+                );
               }
             }
 
@@ -1221,15 +1254,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   state.pendingEvents.push(toolResultToAgUiStreamEvent(result));
                 }
               } catch (error) {
-                const message = error instanceof Error ? error.message : String(error);
-                const result: ToolExecutionResult = {
-                  ok: false,
-                  error: {
-                    callId: tc.id,
-                    toolName: tc.function.name,
-                    message,
-                  },
-                };
+                const result = validationErrorResult(error, tc);
                 results.push(result);
                 state.pendingEvents.push(toolResultToAgUiStreamEvent(result));
               }
