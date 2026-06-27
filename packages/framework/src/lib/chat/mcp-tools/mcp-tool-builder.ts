@@ -65,6 +65,7 @@
  */
 import type { Operation } from "effection";
 import type { z } from "zod";
+import { SampleValidationError } from "./mcp-tool-types.ts";
 import type {
   McpToolContext,
   McpToolContextWithElicits,
@@ -73,11 +74,25 @@ import type {
   McpToolLimits,
   ElicitsMap,
   LogLevel,
+  SampleToolsResult,
+  SamplingToolCall,
 } from "./mcp-tool-types.ts";
 
 // =============================================================================
 // UNIFIED TOOL CALLABLE SHAPE
 // =============================================================================
+
+export interface UnifiedShimSampleResult<TParsed = undefined> {
+  content?: string;
+  text?: string;
+  parsed?: TParsed | null;
+  exchange?: unknown;
+  parseError?: unknown;
+  model?: string;
+  stopReason?: string;
+  toolCalls?: unknown;
+  raw?: unknown;
+}
 
 export interface UnifiedToolCtxShape<TElicits extends ElicitsMap = ElicitsMap> {
   history?: unknown[];
@@ -97,7 +112,7 @@ export interface UnifiedToolCtxShape<TElicits extends ElicitsMap = ElicitsMap> {
     value?: unknown;
     reason?: string;
   }>;
-  sample<TParsed = undefined>(options: Record<string, unknown>): Operation<{ content: string; parsed?: TParsed; exchange?: unknown; parseError?: string }>;
+  sample<TParsed = undefined>(options: Record<string, unknown>): Operation<UnifiedShimSampleResult<TParsed>>;
   notify(message: string, fraction?: number, level?: LogLevel): Operation<void>;
   log?(level: LogLevel, message: string): Operation<void>;
 }
@@ -449,6 +464,114 @@ function normalizeElicitAction(res: { action?: string; status?: string }) {
   return res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel");
 }
 
+function sampleText(res: UnifiedShimSampleResult<unknown> | Record<string, unknown>): string {
+  const text = (res as { text?: unknown }).text;
+  if (typeof text === "string") return text;
+  const content = (res as { content?: unknown }).content;
+  return typeof content === "string" ? content : "";
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> | undefined {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+function normalizeToolCall(value: unknown): SamplingToolCall | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  const id = record["id"];
+  const directName = record["name"];
+  const fn = record["function"];
+  const fnRecord = fn && typeof fn === "object" ? fn as Record<string, unknown> : undefined;
+  const name = typeof directName === "string" ? directName : fnRecord && typeof fnRecord["name"] === "string" ? fnRecord["name"] : undefined;
+  const args = parseToolArguments("arguments" in record ? record["arguments"] : fnRecord?.["arguments"]);
+
+  if (typeof id !== "string" || typeof name !== "string" || !args) return undefined;
+  return { id, name, arguments: args };
+}
+
+function normalizeToolCalls(res: unknown): SamplingToolCall[] {
+  if (!res || typeof res !== "object") return [];
+  const record = res as Record<string, unknown>;
+  const candidates = [
+    record["toolCalls"],
+    (record["raw"] && typeof record["raw"] === "object" ? (record["raw"] as Record<string, unknown>)["toolCalls"] : undefined),
+    (record["raw"] && typeof record["raw"] === "object" ? (record["raw"] as Record<string, unknown>)["tool_calls"] : undefined),
+  ];
+
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) continue;
+    const calls = candidate
+      .map(normalizeToolCall)
+      .filter((call): call is SamplingToolCall => call !== undefined);
+    if (calls.length > 0) return calls;
+  }
+
+  return [];
+}
+
+function normalizeSampleResult(res: UnifiedShimSampleResult<unknown> | Record<string, unknown>): Record<string, unknown> {
+  const text = sampleText(res);
+  return {
+    ...res,
+    text,
+    content: typeof (res as { content?: unknown }).content === "string" ? (res as { content: string }).content : text,
+    stopReason: typeof (res as { stopReason?: unknown }).stopReason === "string" ? (res as { stopReason: string }).stopReason : "endTurn",
+  };
+}
+
+function isPromptMode(config: Record<string, unknown>): config is Record<string, unknown> & { prompt: string } {
+  return typeof config["prompt"] === "string" && config["prompt"].trim().length > 0;
+}
+
+function isMessagesMode(config: Record<string, unknown>): config is Record<string, unknown> & { messages: unknown[] } {
+  return Array.isArray(config["messages"]);
+}
+
+function sampleToolsAttemptConfig(config: Record<string, unknown>, attempt: number): Record<string, unknown> {
+  const { retries: _retries, ...sampleConfig } = config;
+  const withToolChoice = {
+    ...sampleConfig,
+    toolChoice: typeof sampleConfig["toolChoice"] === "string" ? sampleConfig["toolChoice"] : "required",
+  };
+
+  if (attempt > 0 && isPromptMode(withToolChoice)) {
+    return {
+      ...withToolChoice,
+      prompt: `${withToolChoice.prompt}\n\n[IMPORTANT: You must call one of the available tools.]`,
+    };
+  }
+
+  return withToolChoice;
+}
+
+function sampleSchemaAttemptConfig(config: Record<string, unknown>, attempt: number, lastError?: unknown): Record<string, unknown> {
+  const { retries: _retries, ...sampleConfig } = config;
+  if (attempt > 0 && isPromptMode(sampleConfig)) {
+    const message = typeof lastError === "string"
+      ? lastError
+      : lastError && typeof lastError === "object" && "message" in lastError && typeof (lastError as { message?: unknown }).message === "string"
+        ? (lastError as { message: string }).message
+        : "Invalid response format";
+    return {
+      ...sampleConfig,
+      prompt: `${sampleConfig.prompt}\n\n[IMPORTANT: Your previous response was invalid: ${message}. Please respond with valid JSON matching the schema.]`,
+    };
+  }
+  return sampleConfig;
+}
+
 function shimMcpToolCtx<TElicits extends ElicitsMap>(ctx: UnifiedToolCtxShape<TElicits>): McpToolContextWithElicits<TElicits> {
   const mcpCtx = {
     parentMessages: [],
@@ -458,28 +581,94 @@ function shimMcpToolCtx<TElicits extends ElicitsMap>(ctx: UnifiedToolCtxShape<TE
     sample(config: Record<string, unknown>): Operation<any> {
       return (function* (): Operation<any> {
         const res = yield* ctx.sample(config);
+        const normalized = normalizeSampleResult(res as UnifiedShimSampleResult<unknown>);
+        const toolCalls = normalizeToolCalls(res);
         return {
-          text: res.content,
-          content: res.content,
+          ...normalized,
           parsed: res.parsed ?? undefined,
           parseError: res.parseError,
-          stopReason: "endTurn",
           exchange: res.exchange,
+          ...(toolCalls.length > 0 ? { toolCalls } : {}),
         };
       })();
     },
-    sampleTools(_config: unknown): Operation<any> {
+    sampleTools(config: unknown): Operation<any> {
       return (function* (): Operation<any> {
-        throw new Error("sampleTools is not supported by the unified agents runtime shim yet; use ctx.sample({ tools }) through the framework MCP runtime.");
+        if (!config || typeof config !== "object") {
+          throw new Error("sampleTools() requires a config object");
+        }
+
+        const cfg = config as Record<string, unknown>;
+        if (!isPromptMode(cfg) && !isMessagesMode(cfg)) {
+          throw new Error("sampleTools() requires either prompt or messages");
+        }
+        if (!Array.isArray(cfg["tools"])) {
+          throw new Error("sampleTools() requires tools");
+        }
+
+        const retries = typeof cfg["retries"] === "number" ? cfg["retries"] : 2;
+        const attempts = retries + 1;
+        let lastResult: Record<string, unknown> | undefined;
+
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const sampleConfig = sampleToolsAttemptConfig(cfg, attempt);
+          const res = yield* ctx.sample(sampleConfig);
+          const normalized = normalizeSampleResult(res as UnifiedShimSampleResult<unknown>);
+          const toolCalls = normalizeToolCalls(res);
+          lastResult = normalized;
+
+          if (toolCalls.length > 0) {
+            return {
+              ...normalized,
+              stopReason: "toolUse",
+              toolCalls: toolCalls as SampleToolsResult["toolCalls"],
+            };
+          }
+        }
+
+        throw new SampleValidationError(
+          "sampleTools",
+          attempts,
+          lastResult as never,
+          `sampleTools failed after ${attempts} attempts: model did not return tool calls`,
+        );
       })();
     },
     sampleSchema(config: Record<string, unknown>): Operation<any> {
       return (function* (): Operation<any> {
-        const res = yield* ctx.sample(config);
-        if (res.parsed === undefined) {
-          throw new Error(res.parseError ?? "sampleSchema failed to produce parsed output");
+        if (!config || typeof config !== "object") {
+          throw new Error("sampleSchema() requires a config object");
         }
-        return { text: res.content, content: res.content, parsed: res.parsed, exchange: res.exchange };
+        if (!isPromptMode(config) && !isMessagesMode(config)) {
+          throw new Error("sampleSchema() requires either prompt or messages");
+        }
+        if (!("schema" in config) || config["schema"] === undefined) {
+          throw new Error("sampleSchema() requires schema");
+        }
+
+        const retries = typeof config["retries"] === "number" ? config["retries"] : 2;
+        const attempts = retries + 1;
+        let lastResult: Record<string, unknown> | undefined;
+        let lastError: unknown;
+
+        for (let attempt = 0; attempt < attempts; attempt += 1) {
+          const sampleConfig = sampleSchemaAttemptConfig(config, attempt, lastError);
+          const res = yield* ctx.sample(sampleConfig);
+          const normalized = normalizeSampleResult(res as UnifiedShimSampleResult<unknown>);
+          lastResult = normalized;
+          lastError = res.parseError;
+
+          if (res.parsed !== undefined && res.parsed !== null) {
+            return { ...normalized, parsed: res.parsed, exchange: res.exchange };
+          }
+        }
+
+        throw new SampleValidationError(
+          "sampleSchema",
+          attempts,
+          lastResult as never,
+          `sampleSchema failed after ${attempts} attempts: model did not return valid parsed output`,
+        );
       })();
     },
     elicit(key: string, options: { message: string } & Record<string, unknown>): Operation<any> {

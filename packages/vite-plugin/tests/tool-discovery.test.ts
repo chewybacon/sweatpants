@@ -837,6 +837,9 @@ describe("integration: toolDiscoveryPlugin", () => {
       const worker = await readWorker();
       expect(worker).toContain("import { calculator } from '../tools/calculator.ts'");
       expect(worker).toContain("{ name: 'calculator', handler: function*");
+      expect(worker).toContain("typeof tool === 'function' && 'capabilities' in tool");
+      expect(worker).toContain("const invoke = yield* (tool as any)(ctx)");
+      expect(worker).toContain("return yield* invoke(params)");
       expect(worker).toContain("createWorkerToolRegistry");
       expect(worker).toContain("runWorker");
     } finally {
