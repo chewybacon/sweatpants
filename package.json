@@ -18,6 +18,7 @@
         "format:check": "files=$(git diff --name-only --diff-filter=ACMRTUXB -- . | grep -E '\\.(ts|tsx|js|jsx|mjs|cjs|json|md|css|yml|yaml)$' || true); [ -z \"$files\" ] || ./node_modules/.bin/oxfmt --check $files",
         "check": "tsc -b",
         "validate:exports": "tsx scripts/validate-package-exports.ts",
+        "verify:generated": "pnpm -C apps/yo-chat verify:generated",
         "pull:gemini-cli": "rm -rf apps/yo-agent/packages/gemini-cli && git clone --depth 1 https://github.com/google-gemini/gemini-cli.git apps/yo-agent/packages/gemini-cli && rm -rf apps/yo-agent/packages/gemini-cli/.git"
     },
     "dependencies": {
