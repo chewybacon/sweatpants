@@ -7,15 +7,20 @@ import { test, expect } from '@playwright/test'
  * 1. Feature parity with regular /api/chat (basic streaming, tools, markdown)
  * 2. Durable-specific features (session ID, reconnection, replay)
  * 
- * Tests require:
- * - Ollama running locally at http://localhost:11434
- * - A model that supports tool calling (e.g., gemma4:12b-mlx)
+ * Tests require a configured chat model provider. The direct API assertions use
+ * the same provider/model as the Playwright web server instead of hard-coding a
+ * local Ollama model.
  * 
  * Run with: pnpm test:e2e --grep "Durable"
  */
 
 // Increase timeout for LLM responses
 test.setTimeout(240000)
+
+const apiModel = {
+  provider: process.env.DEFAULT_CHAT_MODEL_PROVIDER ?? 'github-copilot',
+  id: process.env.DEFAULT_CHAT_MODEL_ID ?? 'claude-sonnet-4.5',
+}
 
 // =============================================================================
 // PARITY TESTS - These should pass just like /demo/chat tests
@@ -317,7 +322,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Hi' }],
-        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
+        model: apiModel,
       },
     })
     
@@ -335,7 +340,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Say hi' }],
-        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
+        model: apiModel,
       },
     })
     
@@ -368,7 +373,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Say hello' }],
-        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
+        model: apiModel,
       },
     })
     
@@ -404,7 +409,7 @@ test.describe('Durable Chat - Session Features', () => {
     const response = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Count to 5' }],
-        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
+        model: apiModel,
       },
     })
     
@@ -432,7 +437,7 @@ test.describe('Durable Chat - Reconnection', () => {
     const response1 = await request.post('/api/chat', {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
-        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
+        model: apiModel,
       },
     })
     
@@ -455,7 +460,7 @@ test.describe('Durable Chat - Reconnection', () => {
     const response2 = await request.post(reconnectUrl, {
       data: {
         messages: [{ role: 'user', content: 'Count slowly from 1 to 10' }],
-        model: { provider: 'ollama', id: 'gemma4:12b-mlx' },
+        model: apiModel,
       },
     })
     

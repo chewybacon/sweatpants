@@ -51,7 +51,7 @@
  * ```
  */
 type RenderNode = unknown
-import type { FinalizedIsomorphicTool } from './builder.ts'
+import type { IsomorphicRuntimeTool } from './builder.ts'
 import type { IsomorphicHandoffEvent } from './types.ts'
 
 // =============================================================================
@@ -59,23 +59,23 @@ import type { IsomorphicHandoffEvent } from './types.ts'
 // =============================================================================
 
 /**
- * Extract the handoff type (before() return) from a finalized tool.
+ * Extract the handoff type (before() return) from a runtime tool.
  */
-export type ExtractHandoff<T> = T extends FinalizedIsomorphicTool<
+export type ExtractHandoff<T> = T extends IsomorphicRuntimeTool<
   any, any, any, infer THandoff, any, any
 > ? THandoff : unknown
 
 /**
- * Extract the client output type from a finalized tool.
+ * Extract the client output type from a runtime tool.
  */
-export type ExtractClientOutput<T> = T extends FinalizedIsomorphicTool<
+export type ExtractClientOutput<T> = T extends IsomorphicRuntimeTool<
   any, any, any, any, infer TClient, any
 > ? TClient : unknown
 
 /**
- * Extract the params type from a finalized tool.
+ * Extract the params type from a runtime tool.
  */
-export type ExtractParams<T> = T extends FinalizedIsomorphicTool<
+export type ExtractParams<T> = T extends IsomorphicRuntimeTool<
   any, infer TParams, any, any, any, any
 > ? TParams : unknown
 
@@ -149,7 +149,7 @@ export interface TypedHandoffHandler<THandoff, _TParams, TClient> {
  * ```
  */
 export function createHandoffHandler<
-  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any>,
+  TTool extends IsomorphicRuntimeTool<any, any, any, any, any, any>,
   THandoff = ExtractHandoff<TTool>,
   TParams = ExtractParams<TTool>,
   TClient = ExtractClientOutput<TTool>,
@@ -304,7 +304,7 @@ export interface TypedPendingHandoff<THandoff, TParams, TClient> {
  * ```
  */
 export function createTypedPendingHandoff<
-  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any>,
+  TTool extends IsomorphicRuntimeTool<any, any, any, any, any, any>,
   THandoff = ExtractHandoff<TTool>,
   TParams = ExtractParams<TTool>,
   TClient = ExtractClientOutput<TTool>,
@@ -359,8 +359,8 @@ export function createTypedPendingHandoff<
  * }
  * ```
  */
-export type ToolHandoffUnion<TTools extends readonly FinalizedIsomorphicTool<any, any, any, any, any, any>[]> = {
-  [K in keyof TTools]: TTools[K] extends FinalizedIsomorphicTool<
+export type ToolHandoffUnion<TTools extends readonly IsomorphicRuntimeTool<any, any, any, any, any, any>[]> = {
+  [K in keyof TTools]: TTools[K] extends IsomorphicRuntimeTool<
     infer TName,
     infer TParams,
     any,  // TContext
@@ -384,7 +384,7 @@ export type ToolHandoffUnion<TTools extends readonly FinalizedIsomorphicTool<any
  * Returns null if the event doesn't match the tool.
  */
 export function narrowHandoff<
-  TTool extends FinalizedIsomorphicTool<any, any, any, any, any, any>,
+  TTool extends IsomorphicRuntimeTool<any, any, any, any, any, any>,
 >(
   tool: TTool,
   event: IsomorphicHandoffEvent,

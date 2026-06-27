@@ -2,8 +2,8 @@
  * Book Flight E2E — the unified tool model proof.
  *
  * A `createMCPTool` handoff tool (before/client/after with elicit + sample +
- * notify) is adapted via `adaptMCPTool` into a `UnifiedToolFactory`, registered
- * on an agent, and called from the agent's `ctx.tools.bookFlight(...)`. The
+ * notify) is registered directly on an agent and called from the agent's
+ * `ctx.tools.bookFlight(...)` via the unified callable runtime shape. The
  * handoff lifecycle runs as a coroutine; the client phase's `ctx.elicit` /
  * `ctx.sample` calls flow through the stream as `elicit_request` /
  * `sample_request` events and are fulfilled by `session.send` — proving the
@@ -133,7 +133,7 @@ const bookFlightMCP = createMCPTool('book_flight')
     },
   })
 
-// --- The agent (tool used directly — no adaptMCPTool needed) ---
+// --- The agent (tool used directly through unified runtime) ---
 
 const TravelAgent = createAgent({
   name: 'travel',

@@ -42,7 +42,7 @@
 // --- Builder Pattern (RECOMMENDED) ---
 export {
   createIsomorphicTool,
-  type FinalizedIsomorphicTool,
+  type IsomorphicRuntimeTool,
   type TypedHandoffConfig,
   type IsomorphicToolTypes,
   type InferToolResult,

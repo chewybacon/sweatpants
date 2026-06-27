@@ -32,6 +32,8 @@ export {
   type CoreToolCtx,
   type CoreElicitResult,
   type UnifiedToolFactory,
+  type ToolDefinition,
+  type UnifiedTool,
   type CreateToolBuilderBase,
   type CreateToolBuilderWithDescription,
   type CreateToolBuilderWithParams,

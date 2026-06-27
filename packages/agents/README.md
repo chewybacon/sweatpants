@@ -18,7 +18,7 @@ Implemented surfaces:
 - **Checkpoint before park** — the runtime emits a checkpoint with `pendingInterruptIds` before parking on elicit or host-fulfilled sample.
 - **Server vs host sampling** — server-resolved samples use the configured `sampleProvider`, stream progress, and do not park; host-fulfilled samples emit `sample_request` and resume through `respondSample`.
 - **Structured notifications** — tools get both `ctx.notify(message, fraction?, level?)` and `ctx.log(level, message)`.
-- **Legacy interop** — `createTool2`, `adaptMCPTool`, and `adaptIsomorphicTool` remain as migration shims. Framework `createMCPTool` / `createIsomorphicTool` finalized values are callable as unified tools while preserving their legacy metadata.
+- **Unified framework builders** — framework `createMCPTool` / `createIsomorphicTool` builder syntax is supported when the emitted value is invoked through the unified callable/runtime contract.
 
 ## Usage
 
@@ -80,10 +80,10 @@ yield* session.send({ type: 'sendMessage', message: 'plan a trip to Japan' })
 
 ## Migration notes
 
-- New tools should use `(input, ctx: ToolCtx)`; legacy `(args, send)` core tools still run during migration.
+- New local tools must use `(input, ctx: ToolCtx)` via the unified builder contract; the removed progress-callback local execution model is no longer supported.
 - Existing `const result = yield* ctx.call(...)` / `ctx.tools.X(...)` sites must either destructure `{ result, exchange }` or switch to `ctx.callResult(...)`.
 - The runtime does **not** auto-append elicit, sample, or tool-call exchanges to agent history. Append explicitly when the harness wants the model to see them.
-- MCP/A2A/AG-UI do not require upfront `.elicits()` declarations; `.elicits()` is a Sweatpants authoring and local-bridge contract.
+- Bridgeable static UI prompts must be declared with `.elicits({...})` and called by key with `ctx.elicit(key, ...)`; truly dynamic prompts must use `ctx.elicitDynamic(...)` with request-local schema metadata.
 
 ## Implementation notes
 
@@ -101,4 +101,4 @@ Primary local proofs live under `src/__tests__/`:
 - `book-flight-e2e.test.ts` — framework MCP handoff through unified `ToolCtx`.
 - `isomorphic-e2e.test.ts` — isomorphic server-only and handoff tools through unified `ToolCtx`.
 
-Framework and core compatibility suites remain green during migration.
+Framework and core tests assert the terminal unified behavior rather than legacy coexistence.

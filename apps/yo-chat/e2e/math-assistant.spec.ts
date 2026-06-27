@@ -252,8 +252,9 @@ test.describe('Math Assistant', () => {
   // ===========================================================================
 
   test('math rendering persists across multiple messages', async ({ page }) => {
-    // First message with math
-    await sendMessageAndWait(page, 'What is $e^{i\\pi} + 1$?')
+    // First message with math. This is a renderer persistence test, so ask
+    // the live model to copy math instead of solving it with the calculator.
+    await sendMessageAndWait(page, 'Renderer test: do not use tools. Reply exactly: The identity is $e^{i\\pi}+1=0$.')
     await expectAssistantResponse(page)
     
     // Verify first message has KaTeX
@@ -262,8 +263,10 @@ test.describe('Math Assistant', () => {
     const firstKatexCount = await firstMessage.locator('.katex').count()
     console.log(`First message KaTeX count: ${firstKatexCount}`)
     
-    // Second message with different math
-    await sendMessageAndWait(page, 'Now calculate $\\sqrt{2}$ using the calculator')
+    // Second message with different math. Keep this renderer-focused test away
+    // from tool-calling prompts so a live model cannot overwrite the scenario
+    // with a long calculator loop before persistence is asserted.
+    await sendMessageAndWait(page, 'Renderer test: do not use tools. Reply exactly: The symbol $\\sqrt{2}$ means the square root of two.')
     
     await expectAssistantResponse(page)
     

@@ -38,7 +38,7 @@ import type {
 import {
   McpCapabilityError as MCPCapabilityError,
 } from './mcp-tool-types.ts'
-import type { FinalizedMCPTool } from './builder.ts'
+import type { MCPRuntimeTool } from './builder.ts'
 
 // =============================================================================
 // MOCK CLIENT CONFIGURATION
@@ -306,7 +306,7 @@ export function runMCPTool<
   TClient,
   TResult,
 >(
-  tool: FinalizedMCPTool<TName, TParams, THandoff, TClient, TResult>,
+  tool: MCPRuntimeTool<TName, TParams, THandoff, TClient, TResult>,
   params: TParams,
   client: MockMCPClient,
   options: RunMCPToolOptions = {}

@@ -123,17 +123,13 @@ export function createTool<
         const actualImpl = impl ?? config.impl;
 
         if (actualImpl) {
-          // Create a send function for progress (placeholder for now)
-          const send = function* (_progress: unknown): Operation<void> {
-            // TODO: Route progress through transport
-            // For now, just a no-op
-          };
-
-          // Install the impl as middleware that replaces the default
+          // Install the config-style impl as middleware that replaces the default.
+          // This input-only surface does not provide the unified ToolCtx; tools
+          // that need elicit/sample/notify/log/history should use the builder
+          // chain createTool(name)...execute((input, ctx) => ...).
           yield* api.around({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
-              // @ts-expect-error - send typing is complex, will refine later
-              return yield* actualImpl(args, send);
+              return yield* actualImpl(args);
             },
           });
         } else {
@@ -291,17 +287,13 @@ function createToolWithBindings<
         const actualImpl = impl ?? config.impl;
 
         if (actualImpl) {
-          // Create a send function for progress (placeholder for now)
-          const send = function* (_progress: unknown): Operation<void> {
-            // TODO: Route progress through transport
-            // For now, just a no-op
-          };
-
-          // Install the impl as middleware that replaces the default
+          // Install the config-style impl as middleware that replaces the default.
+          // This input-only surface does not provide the unified ToolCtx; tools
+          // that need elicit/sample/notify/log/history should use the builder
+          // chain createTool(name)...execute((input, ctx) => ...).
           yield* api.around({
             *invoke([args]: [Input], _next: (...args: [Input]) => Operation<Output>) {
-              // @ts-expect-error - send typing is complex, will refine later
-              return yield* actualImpl(args, send);
+              return yield* actualImpl(args);
             },
           });
         } else {

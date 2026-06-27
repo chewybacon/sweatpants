@@ -38,7 +38,7 @@ import type {
   LogLevel,
   ElicitsMap,
 } from '../mcp-tool-types.ts'
-import type { FinalizedMcpToolWithElicits } from '../mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../mcp-tool-builder.ts'
 
 // Re-export result types for convenience
 export type { 
@@ -328,7 +328,7 @@ export interface ToolSessionRegistry {
    * @returns The created session
    */
   create<TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap>(
-    tool: FinalizedMcpToolWithElicits<string, TParams, THandoff, TClient, TResult, TElicits>,
+    tool: McpRuntimeTool<string, TParams, THandoff, TClient, TResult, TElicits>,
     params: TParams,
     options?: ToolSessionOptions
   ): Operation<ToolSession<TResult>>

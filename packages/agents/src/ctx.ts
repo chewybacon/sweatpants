@@ -475,16 +475,11 @@ export function buildAgentCtx(opts: BuildCtxOptions): AgentCtx {
     function* elicit(key: string, options: Record<string, unknown> & { message: string }): Operation<ElicitResult> {
       const declared = args.elicits[key]
       if (!declared) {
-        // Legacy compatibility: unkeyed framework tools pass an ad-hoc schema.
-        if (Object.keys(args.elicits).length === 0 && (options['schema'] || options['responseSchema'])) {
-          return yield* elicitDynamic({
-            key,
-            message: options.message,
-            responseSchema: options['responseSchema'] ?? options['schema'],
-            context: extractContext(options),
-          })
-        }
-        throw codedError('unknown_elicit_key', `Unknown elicit key "${key}" for tool "${args.toolName}"`)
+        throw codedError(
+          'unknown_elicit_key',
+          `Unknown elicit key "${key}" for tool "${args.toolName}". ` +
+            'Bridgeable static elicits must be declared with .elicits({...}); use ctx.elicitDynamic(...) for dynamic prompts.',
+        )
       }
       const interruptOptions = (options['interrupt'] ?? {}) as Record<string, unknown>
       const context = extractContext(options)

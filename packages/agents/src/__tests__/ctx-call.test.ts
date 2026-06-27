@@ -1,6 +1,7 @@
 import { describe, it, expect } from '@effectionx/vitest'
 import { z } from 'zod'
 import { createTool } from '@sweatpants/core'
+import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
 import { createAgent } from '../create-agent.ts'
 import { createAgentSession } from '../session.ts'
 import { createInMemoryAgentStreamStore } from '../stream.ts'
@@ -24,6 +25,20 @@ const BuilderEcho = createTool('builder_echo')
   .elicits({})
   .execute(function* ({ text }) {
     return { echoed: text }
+  })
+
+const FrameworkConfirm = createMcpTool('framework_confirm')
+  .description('framework declared elicit confirm')
+  .parameters(z.object({ item: z.string() }))
+  .elicits({
+    confirm: { response: z.object({ ok: z.boolean() }) },
+  })
+  .execute(function* ({ item }, ctx) {
+    const confirmation = yield* ctx.elicit('confirm', { message: `Confirm ${item}?` })
+    return {
+      item,
+      confirmed: confirmation.action === 'accept' && confirmation.content.ok,
+    }
   })
 
 const Hotel = createAgent({
@@ -190,6 +205,50 @@ describe('ctx.call composition (REQ-003/004/006)', () => {
       | undefined
     expect(result?.value.result.echoed).toBe('hello')
     expect(result?.value.exchange.messages).toHaveLength(2)
+  })
+
+  it('framework createMcpTool output runs directly as a unified callable tool', function* () {
+    const Agent = createAgent({
+      name: 'framework-tool-agent',
+      description: 'framework tool agent',
+      systemPrompt: 'confirm things',
+      tools: { framework_confirm: FrameworkConfirm },
+      entry: function* (_input, ctx) {
+        return yield* ctx.tools.framework_confirm({ item: 'booking' })
+      },
+      model: { provider: 'mock', id: 'm1' },
+      maxIterations: 1,
+    })
+
+    const store = createInMemoryAgentStreamStore()
+    const session = yield* createAgentSession(Agent, {
+      contextId: 'ctx-framework-builder-tool',
+      store,
+    })
+    yield* session.send({ type: 'sendMessage', message: 'go' })
+
+    const events = yield* collectUntil(session, (e) =>
+      e.some((x) => x.type === 'elicit_request'),
+    )
+    const request = events.find((e) => e.type === 'elicit_request') as
+      | { type: 'elicit_request'; requestId: string }
+      | undefined
+    expect(request?.requestId).toBeTruthy()
+    yield* session.send({
+      type: 'respondElicit',
+      requestId: request!.requestId,
+      result: { status: 'accepted', value: { ok: true } },
+    })
+
+    const finalEvents = yield* collectUntil(session, (e) =>
+      e.some((x) => x.type === 'result'),
+      events[events.length - 1]!.lsn + 1,
+    )
+    const result = finalEvents.find((e) => e.type === 'result') as
+      | { type: 'result'; value: { result: { item: string; confirmed: boolean }; exchange: { messages: unknown[] } } }
+      | undefined
+    expect(result?.value.result).toEqual({ item: 'booking', confirmed: true })
+    expect(result?.value.exchange.messages.length).toBeGreaterThanOrEqual(2)
   })
 
   it('ctx.callResult(toolName, input) returns only the typed result (REQ-028)', function* () {

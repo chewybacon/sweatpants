@@ -68,7 +68,7 @@ import type {
   RawElicitResult,
 } from "./mcp-tool-types.ts";
 import type { ElicitDefinition } from "@sweatpants/elicit-context";
-import type { FinalizedMcpToolWithElicits } from "./mcp-tool-builder.ts";
+import type { McpRuntimeTool } from "./mcp-tool-builder.ts";
 
 // Re-export renderable types for plugin authors
 export type {
@@ -183,7 +183,7 @@ export interface PluginServerRegistration<
   TElicits extends ElicitsMap,
 > {
   /** Tools to register with the chat handler */
-  tools: [FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>];
+  tools: [McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>];
 
   /** Tool name (for lookup) */
   toolName: TName;
@@ -221,7 +221,7 @@ export interface McpPlugin<
   client: PluginClientRegistration<TElicits>;
 
   /** Original tool (for advanced use cases) */
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>;
+  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>;
 }
 
 // =============================================================================
@@ -304,7 +304,7 @@ interface PluginBuilderState<
   TResult,
   TElicits extends ElicitsMap,
 > {
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>;
+  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>;
   handlers?: ElicitHandlers<TElicits>;
 }
 
@@ -372,7 +372,7 @@ export function makePlugin<
   TResult,
   TElicits extends ElicitsMap,
 >(
-  tool: FinalizedMcpToolWithElicits<TName, TParams, THandoff, TClient, TResult, TElicits>,
+  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>,
 ): PluginBuilder<TName, TParams, THandoff, TClient, TResult, TElicits> {
   return createPluginBuilder({ tool });
 }
@@ -391,7 +391,7 @@ export type InferElicits<T> = T extends McpPlugin<any, any, any, any, any, infer
  */
 export type InferPluginTool<T> =
   T extends McpPlugin<infer N, infer P, infer H, infer C, infer R, infer E>
-    ? FinalizedMcpToolWithElicits<N, P, H, C, R, E>
+    ? McpRuntimeTool<N, P, H, C, R, E>
     : never;
 
 /**

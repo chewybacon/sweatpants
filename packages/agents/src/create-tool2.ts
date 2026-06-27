@@ -21,7 +21,7 @@ export interface UnifiedToolConfig<
   description: string
   input: TInput
   output: TOutput
-  /** Optional declared elicit map; omitted means legacy dynamic elicits. */
+  /** Optional declared elicit map; omit only for tools that exclusively use ctx.elicitDynamic(...). */
   elicits?: TElicits
   /** Capabilities required of the client (MCP `requires`, REQ-005). */
   capabilities?: ToolCapabilities

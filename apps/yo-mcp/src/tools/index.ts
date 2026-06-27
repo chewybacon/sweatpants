@@ -4,7 +4,7 @@
  * Export all available tools for the MCP server.
  * All tools use the new createMcpTool API with .elicits() pattern.
  */
-import type { FinalizedMcpToolWithElicits, ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
+import type { McpRuntimeTool, ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
 
 // Import all tools
 import { echoTool } from './echo'
@@ -21,18 +21,18 @@ export { confirmTool } from './confirm'
 /**
  * All available tools
  */
-export const allTools: FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>[] = [
-  echoTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
-  pickCardTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
-  greetTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
-  confirmTool as FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>,
+export const allTools: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>[] = [
+  echoTool as McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>,
+  pickCardTool as McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>,
+  greetTool as McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>,
+  confirmTool as McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>,
 ]
 
 /**
  * Tools map (for handler)
  */
-export function createToolsMap(): Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>> {
-  const map = new Map<string, FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
+export function createToolsMap(): Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>> {
+  const map = new Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>>()
   for (const tool of allTools) {
     map.set(tool.name, tool)
   }

@@ -10,6 +10,8 @@ export type {
   CoreToolCtx,
   CoreElicitResult,
   UnifiedToolFactory,
+  ToolDefinition,
+  UnifiedTool,
   CreateToolBuilderBase,
   CreateToolBuilderWithDescription,
   CreateToolBuilderWithParams,

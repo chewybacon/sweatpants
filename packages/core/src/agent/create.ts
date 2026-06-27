@@ -41,13 +41,16 @@ import type {
  * yield* flight.search({ destination: "Tokyo" });
  *
  * // Tool accessing config
- * const Search = createTool({
- *   name: "search",
- *   impl: function* (args, send) {
+ * const Search = createTool("search")
+ *   .description("Search flights")
+ *   .parameters(z.object({ destination: z.string() }))
+ *   .elicits({})
+ *   .execute(function* (args, ctx) {
  *     const config = yield* FlightAgent.useConfig();
  *     // config is typed as { apiKey: string; baseUrl: string }
- *   },
- * });
+ *     ctx.history.push({ role: "tool", content: [{ type: "text", text: args.destination }] });
+ *     return { flights: [] };
+ *   });
  * ```
  */
 // Overload for agent WITH config

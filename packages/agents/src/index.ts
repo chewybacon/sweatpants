@@ -149,7 +149,7 @@ export type {
   OutputFromFactory,
 } from '@sweatpants/core'
 
-// unified tool model (native builder, migration wrapper, adapters)
+// unified tool model (native builder and migration wrapper)
 export {
   createTool,
   finalizeUnifiedTool,
@@ -160,13 +160,6 @@ export {
   type CreateToolBuilderWithElicits,
   type ToolCapabilities,
 } from './create-tool.ts'
-export { adaptMCPTool, type MCPToolLike, type MCPClientCtxLike, type MCPServerCtxLike } from './adapt-mcp.ts'
-export {
-  adaptIsomorphicTool,
-  type IsomorphicToolLike,
-  type IsomorphicClientCtxLike,
-  type IsomorphicServerCtxLike,
-} from './adapt-isomorphic.ts'
 export {
   type ToolCtx,
   type ToolImpl,

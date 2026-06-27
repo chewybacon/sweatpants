@@ -54,6 +54,26 @@ describe("framework package boundaries", () => {
     expect(chatIndex).not.toContain("ChatProvider");
   });
 
+  it("does not publicly export legacy finalized tool runtime type names", () => {
+    const indexes = [
+      resolve(frameworkRoot, "src/lib/chat/mcp-tools/index.ts"),
+      resolve(frameworkRoot, "src/lib/chat/isomorphic-tools/index.ts"),
+    ];
+    const forbidden = [
+      ["Finalized", "McpTool"].join(""),
+      ["Finalized", "McpToolWithElicits"].join(""),
+      ["Finalized", "MCPTool"].join(""),
+      ["Finalized", "IsomorphicTool"].join(""),
+    ];
+
+    for (const indexPath of indexes) {
+      const source = readFileSync(indexPath, "utf8");
+      for (const name of forbidden) {
+        expect(source, `${indexPath} must not export ${name}`).not.toContain(name);
+      }
+    }
+  });
+
   it("does not publicly export legacy initializer hook server API", () => {
     const serverIndex = readFileSync(resolve(frameworkRoot, "src/server/index.ts"), "utf8");
     const durableIndex = readFileSync(

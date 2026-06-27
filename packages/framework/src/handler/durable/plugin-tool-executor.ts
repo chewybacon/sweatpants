@@ -15,7 +15,7 @@ import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/sessi
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
 import type { ElicitsMap } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
-import type { FinalizedMcpToolWithElicits } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
 import {
   createBridgeHost,
   type BridgeEvent,
@@ -45,7 +45,7 @@ export interface PluginToolExecutionConfig {
   toolCall: ToolCall
 
   /** The finalized MCP tool (with .elicits) */
-  tool: FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap>
+  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>
 
   /** The plugin client registration */
   plugin: PluginClientRegistration<ElicitsMap>
@@ -76,7 +76,7 @@ export type PluginToolResult =
  */
 export function isPluginTool(
   tool: unknown
-): tool is FinalizedMcpToolWithElicits<string, unknown, unknown, unknown, unknown, ElicitsMap> {
+): tool is McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap> {
   return (
     tool != null &&
     typeof tool === 'object' &&

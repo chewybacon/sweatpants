@@ -2,8 +2,8 @@
  * createTool2 E2E — a tool authored natively on the unified `(input, ctx: ToolCtx)`
  * signature composes via `ctx.tools.X` and elicits/samples through the stream.
  *
- * This is the terminal authoring surface (design REQ-2): no `adaptMCPTool`
- * adapter, no `FinalizedMCPTool`. The tool's `ctx.elicit`/`ctx.sample`/
+ * This is the terminal authoring surface (design REQ-2): framework tools are used directly
+ * adapter, no framework finalized runtime object. The tool's `ctx.elicit`/`ctx.sample`/
  * `ctx.notify` are the same `ToolCtx` the agent projects at call time.
  */
 import { describe, it, expect } from '@effectionx/vitest'
@@ -22,12 +22,17 @@ const askFavorite = createTool2({
   input: z.object({ topic: z.string() }),
   output: z.object({ color: z.string(), summary: z.string() }),
   capabilities: { elicitation: true, sampling: true },
+  elicits: {
+    favorite: {
+      response: z.object({ value: z.string() }),
+      reason: 'favorite-color',
+    },
+  },
   impl: function* (input, ctx) {
     yield* ctx.notify(`Asking about favorite ${input.topic}`, 0.3)
 
     const res = yield* ctx.elicit('favorite', {
       message: `What is your favorite ${input.topic}?`,
-      schema: z.object({ value: z.string() }),
     })
     if (res.status !== 'accepted') {
       return { color: 'unknown', summary: `user declined` }

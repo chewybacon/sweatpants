@@ -28,7 +28,7 @@ import {
 } from "@sweatpants/framework/chat/isomorphic-tools";
 import type {
   ElicitsMap,
-  FinalizedMcpToolWithElicits,
+  McpRuntimeTool,
   ToolSession as McpToolSession,
   ToolSessionEvent as McpToolSessionEvent,
   ToolSessionRegistry,
@@ -38,7 +38,7 @@ import type {
 import { createInMemoryToolSessionStore } from "./in-memory-store.ts";
 import { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
 
-type LocalRuntimeTool = FinalizedMcpToolWithElicits<
+type LocalRuntimeTool = McpRuntimeTool<
   string,
   unknown,
   unknown,

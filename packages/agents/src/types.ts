@@ -25,9 +25,9 @@ import type { UnifiedToolFactory } from './tool-ctx.ts'
 
 /**
  * A tool that can be registered on an agent and invoked via `ctx.tools.X` /
- * `ctx.call`. Either a core `AnyToolFactory` (zero-arg activation, `(args, send)`
- * impl) or a `UnifiedToolFactory` (activated with a `ToolCtx`, `(input, ctx)`
- * impl). The runtime detects which via `isUnifiedToolFactory`.
+ * `ctx.call`. Unified tool factories activate with a `ToolCtx` and execute via
+ * `(input, ctx)`. Remote/no-impl core factories remain valid transport-routed
+ * targets.
  */
 export type ToolTarget = AnyToolFactory | UnifiedToolFactory<any, any>
 
