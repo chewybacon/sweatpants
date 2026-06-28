@@ -35,6 +35,10 @@ export const appEnv = createEnv({
     OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
     AWS_REGION: z.string().optional(),
 
+    // Test-only deterministic model provider for rendering pipeline e2e fixtures.
+    // Production/shared servers MUST leave this unset.
+    ENABLE_SCRIPTED_RENDERING_PROVIDER: z.enum(['yes']).optional(),
+
     // Default system prompt for manual chat mode. Individual requests/personas may override it.
     CHAT_SYSTEM_PROMPT: z.string().default(`You are yo-chat, a tool-using assistant. Use the available tools whenever the user asks you to use a tool, book a flight, calculate something, pick a card, or play a game. When the user says not to answer directly, you must call the appropriate tool instead of explaining. Use the provider's native tool-calling mechanism; do not print tool-call JSON as text. After a tool returns a result, treat that result as authoritative. If the result completes the user's request, confirms success, or includes a ticket/confirmation/reservation, do not call the same tool again for that request; summarize the completed result to the user.`),
 
@@ -69,6 +73,8 @@ export const appEnv = createEnv({
   client: {
     // Example public env var (expand as needed)
     VITE_BASE_URL: z.string().optional(),
+    // Test-only UI gate for deterministic rendering e2e fixtures.
+    VITE_ENABLE_SCRIPTED_RENDERING: z.enum(['1']).optional(),
   },
 
   /**

@@ -17,7 +17,8 @@ const CONVERSATION_ID_KEY = 'basic-chat-conversation-id'
 const SCRIPTED_RENDERING_CONVERSATION_ID_KEY = 'basic-chat-scripted-rendering-conversation-id'
 
 function scriptedRenderingEnabled(): boolean {
-  return new URLSearchParams(window.location.search).get('scriptedRendering') === '1'
+  return import.meta.env['VITE_ENABLE_SCRIPTED_RENDERING'] === '1'
+    && new URLSearchParams(window.location.search).get('scriptedRendering') === '1'
 }
 
 function conversationIdKey(): string {

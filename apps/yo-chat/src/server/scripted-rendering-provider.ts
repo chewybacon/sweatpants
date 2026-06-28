@@ -1,13 +1,16 @@
-import { resource, type Operation } from 'effection'
+import { resource, type Operation, type Stream } from 'effection'
 import {
   ModelProviderContext,
   ModelProviderModelContext,
   type AssistantMessage,
   type Model,
   type ModelProviderDriver,
-  type RuntimeContext,
-  type RuntimeStreamEvent,
 } from '@sweatpants/framework/chat'
+
+type RuntimeContext = Parameters<ModelProviderDriver['stream']>[0]['context']
+type RuntimeStreamEvent = ReturnType<ModelProviderDriver['stream']> extends Stream<infer TEvent, unknown>
+  ? TEvent
+  : never
 
 const scriptedRenderingModel: Model = {
   id: 'scripted-rendering',
