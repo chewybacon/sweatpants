@@ -66,6 +66,15 @@ For changes affecting multiple apps/packages or user-visible browser flows, the 
 pnpm test:e2e
 ```
 
+This root e2e gate includes both:
+
+```bash
+pnpm -C apps/yo-chat test:e2e
+pnpm -C apps/yo-mcp test
+```
+
+Run the headless yo-mcp e2e suite (`pnpm -C apps/yo-mcp test`) as part of landing changes to MCP protocol behavior, MCP tool authoring, sampling/elicitation backchannels, streamable HTTP transport, or the MCP Inspector-driven demos. The yo-mcp suite should pass with no skipped tests.
+
 unless the user explicitly scopes the validation more narrowly.
 
 ## Git Operations (When Requested)

@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const isCI = process.env['CI']
+const reuseExistingServer = process.env['PLAYWRIGHT_REUSE_EXISTING_SERVER'] === '1' && !isCI
 
 /**
  * Playwright config for yo-mcp E2E tests.
@@ -41,7 +42,7 @@ export default defineConfig({
       // Start yo-mcp HTTP server
       command: 'pnpm dev',
       port: 3001, // Wait for this port to be listening
-      reuseExistingServer: false, // Always start fresh
+      reuseExistingServer,
       timeout: 30000,
       stdout: 'pipe', // Show server output
     },
@@ -51,7 +52,7 @@ export default defineConfig({
       // MCP_AUTO_OPEN_ENABLED=false prevents auto-opening the browser
       command: 'DANGEROUSLY_OMIT_AUTH=true MCP_AUTO_OPEN_ENABLED=false npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp',
       port: 6274, // Inspector UI port
-      reuseExistingServer: false, // Always start fresh
+      reuseExistingServer,
       timeout: 30000,
       stdout: 'pipe', // Show inspector output
     },
