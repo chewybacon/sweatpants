@@ -1,4 +1,4 @@
-import { createSignal, each, call, type Signal } from 'effection'
+import { createSignal, spawn, call, type Signal } from 'effection'
 import type { RedisClientType } from 'redis'
 
 import type { TokenBuffer, TokenBufferStore } from './types.ts'
@@ -64,7 +64,7 @@ export function createRedisTokenBufferStore<T>(
           completed: 'false',
           error: '',
           refCount: '0',
-          flushedUpTo: '-1',
+          flushedUpTo: '0',
         }),
       )
 
@@ -107,7 +107,7 @@ function createRedisBuffer<T>(
         yield* call(() => client.xAdd(key, '*', { token: serializeToken(token) }))
       }
       const allEntries = yield* call(() => client.xRange(key, '-', '+'))
-      const count = allEntries.length - 1
+      const count = allEntries.length
       const signal = getSignal(id)
       signal.send()
       return count
@@ -145,10 +145,10 @@ function createRedisBuffer<T>(
       const tokens = allTokens.slice(afterLSN)
 
       if (flushOnRead && tokens.length > 0) {
-        yield* call(() => client.hSet(metaKey(id), { flushedUpTo: String(afterLSN + tokens.length - 1) }))
+        yield* call(() => client.hSet(metaKey(id), { flushedUpTo: String(afterLSN + tokens.length) }))
       }
 
-      return { tokens, lsn: allTokens.length - 1 }
+      return { tokens, lsn: allTokens.length }
     },
 
     *isComplete() {
@@ -166,21 +166,30 @@ function createRedisBuffer<T>(
 
     *waitForChange(afterLSN) {
       const key = streamKey(id)
-      const entries = yield* call(() => client.xRange(key, '-', '+'))
-      const currentCount = entries.length - 1
-      if (currentCount > afterLSN) {
-        return
-      }
-
-      const completed = yield* call(() => client.hGet(metaKey(id), 'completed'))
-      if (completed === 'true') {
-        return
-      }
-
       const signal = getSignal(id)
-      for (const _ of yield* each(signal)) {
-        break
-      }
+
+      // Subscribe before re-checking state so an append/complete signal cannot
+      // be dropped between the state check and the signal subscription.
+      const task = yield* spawn(function* () {
+        const sub = yield* signal
+
+        const entries = yield* call(() => client.xRange(key, '-', '+'))
+        const currentCount = entries.length
+        if (currentCount > afterLSN) {
+          return
+        }
+
+        const completed = yield* call(() => client.hGet(metaKey(id), 'completed'))
+        if (completed === 'true') {
+          return
+        }
+
+        const result = yield* sub.next()
+        if (result.done) {
+          return
+        }
+      })
+      yield* task
     },
   }
 }

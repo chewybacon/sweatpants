@@ -504,11 +504,14 @@ infrastructure-durable storage.
 #### 8.6.2 Redis-Specific Considerations
 
 - `append()` uses `XADD` with auto-generated IDs (`*`). Token count is
-  derived from `XRANGE` length minus one (accounting for the deleted
-  sentinel entry).
+  derived from the post-sentinel `XRANGE` length. Because the creation
+  sentinel is deleted before the buffer is returned, Redis `append()` and
+  `read().lsn` MUST report the same 1-indexed total-length semantics as the
+  in-memory store.
 - `read()` uses `XRANGE('-', '+')` to fetch all entries, filters out the
-  `__init__` sentinel, and slices from `afterLSN`. This is an O(N) scan;
-  large buffers SHOULD use `flushOnRead` to bound growth.
+  `__init__` sentinel defensively, and slices from `afterLSN`. This is an
+  O(N) scan; large buffers SHOULD use `flushOnRead` to record the highest
+  consumed 1-indexed LSN and bound future growth.
 - `fail()` sets both `completed: 'true'` and `error: <message>` in the
   metadata hash. Recovery of error details is limited to the message string.
 
