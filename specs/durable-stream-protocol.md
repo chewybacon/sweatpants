@@ -36,6 +36,23 @@ The `StreamEvent` union (Section 3.3) includes all standard AG-UI event types
 plus framework-specific extensions. Framework extensions are explicitly
 identified in the [Stream Event Catalog](./stream-event-catalog.md).
 
+### 1.3 Canonical Durable Chat Model
+
+The canonical durable chat model is **turn-scoped durable sessions within
+multi-turn conversations**:
+
+- a conversation is the long-lived logical thread;
+- each user/assistant turn creates one durable stream session;
+- each session owns exactly one append-only event log and one LSN sequence;
+- conversation state is reconstructed by projecting canonical stream events,
+  snapshots, and checkpoints across the relevant turn-scoped sessions.
+
+A "one durable stream per conversation" protocol is non-canonical. That model
+was explored in the retired `@sweatpants/durable-conversations` spike and is
+archived in `docs/archive/durable-conversations-spike-retirement.md`. New
+protocol, framework, and app work SHOULD use the turn-scoped session model
+specified here unless a future ADR explicitly changes this decision.
+
 ## 2. Terminology
 
 The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
@@ -44,8 +61,8 @@ interpreted as described in [RFC 2119][rfc2119].
 
 | Term | Definition |
 |---|---|
-| **Session** | A single streaming request/response pair. Each POST to the chat endpoint creates one session. A session owns exactly one append-only event log. |
-| **Conversation** | A logical thread of chat turns. A conversation spans one or more sessions (one per turn). Identified by a `conversationId`. |
+| **Session** | A single streaming request/response pair. Each POST to the chat endpoint creates one session. A session owns exactly one append-only event log and one LSN sequence. A session is turn-scoped, not conversation-scoped. |
+| **Conversation** | A logical thread of chat turns. A conversation spans one or more sessions (one per turn). Identified by a `conversationId`. A conversation is durable through replay/projection of canonical session events, snapshots, and checkpoints; it does not own a separate protocol stream. |
 | **Frame** | A single unit on the wire: `{ "lsn": <number>, "event": <StreamEvent> }`. Also called a `DurableFrame`. |
 | **LSN** | Log Sequence Number. A 1-indexed, monotonically increasing, gap-free integer assigned to each frame within a session. |
 | **Buffer** | The server-side append-only log that stores serialized events for a session. |

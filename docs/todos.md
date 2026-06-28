@@ -25,10 +25,13 @@ like openapi client generators work
 - Extract shared event/patch mapping helpers so direct stream events and AG-UI checkpoint events use the same code path.
 - Add targeted regression tests before each extraction to preserve behavior.
 
-### Choose one canonical durable chat protocol path
+### Canonical durable chat protocol path
 
-- Decide whether `@sweatpants/durable-conversations` is the future public API, an internal experiment, or an archive candidate.
-- Document the canonical flow for durable chat sessions, reconnects, tool calls, and elicitation.
-- Remove or archive duplicate durable/session paths once the canonical path is selected.
+Decision recorded in `docs/adr-turn-scoped-durable-chat.md` and `docs/archive/durable-conversations-spike-retirement.md`: `@sweatpants/durable-conversations` was a spike and is not the future public API. The canonical path is the framework durable handler plus `@sweatpants/durable-streams`, using turn-scoped sessions within multi-turn conversations.
+
+Follow-ups:
+
+- Ensure the canonical durable handler docs cover sessions, reconnects, tool calls, elicitation, and checkpoints.
+- Add deterministic tests for the retired spike's useful scenarios: producer survives reader disconnect, replay by offset after disconnect, defined per-conversation mutation ordering, and durable elicit pause/resume.
 - Update README and app examples to use only the canonical public API.
 
