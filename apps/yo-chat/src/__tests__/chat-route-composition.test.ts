@@ -61,6 +61,22 @@ describe('yo-chat chat application composition', () => {
     }
   })
 
+  it('keeps scripted rendering fixtures behind explicit Playwright-only gates', () => {
+    const envSchema = read('src/env.schema.ts')
+    const modelProvider = read('src/server/model-provider.ts')
+    const basicRoute = read('src/routes/chat/basic/index.tsx')
+    const playwrightConfig = read('playwright.config.ts')
+
+    expect(envSchema).toContain('ENABLE_SCRIPTED_RENDERING_PROVIDER')
+    expect(envSchema).toContain('VITE_ENABLE_SCRIPTED_RENDERING')
+    expect(modelProvider).toContain("env.ENABLE_SCRIPTED_RENDERING_PROVIDER !== 'yes'")
+    expect(modelProvider).toContain('Scripted rendering provider is disabled')
+    expect(modelProvider).toContain('installScriptedRenderingModelProvider')
+    expect(basicRoute).toContain("import.meta.env['VITE_ENABLE_SCRIPTED_RENDERING'] === '1'")
+    expect(playwrightConfig).toContain("ENABLE_SCRIPTED_RENDERING_PROVIDER: 'yes'")
+    expect(playwrightConfig).toContain("VITE_ENABLE_SCRIPTED_RENDERING: '1'")
+  })
+
   it('keeps production chat wiring in app-owned server modules', () => {
     const serverFiles = listFiles('src/server')
     expect(serverFiles).toContain('src/server/chat-application.ts')

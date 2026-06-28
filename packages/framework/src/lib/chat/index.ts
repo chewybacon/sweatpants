@@ -13,9 +13,7 @@ export * from "./sse.ts";
 export * from "./model-provider.ts";
 export type {
   AssistantMessage,
-  Context as RuntimeContext,
   Model,
-  StreamEvent as RuntimeStreamEvent,
 } from "./runtime/index.ts";
 export * from "./tool-inventory.ts";
 export * from "./tool-runtime.ts";

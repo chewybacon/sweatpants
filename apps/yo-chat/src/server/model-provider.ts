@@ -25,6 +25,9 @@ function defaultChatModel(): ModelSelection {
 export function* setupYoChatModelProvider(ctx: ChatHandlerSetupContext): Operation<void> {
   const url = new URL(ctx.request.url)
   if (url.searchParams.get('scripted') === 'rendering') {
+    if (env.ENABLE_SCRIPTED_RENDERING_PROVIDER !== 'yes') {
+      throw new Error('Scripted rendering provider is disabled. Set ENABLE_SCRIPTED_RENDERING_PROVIDER=yes for deterministic rendering tests.')
+    }
     yield* installScriptedRenderingModelProvider()
     return
   }

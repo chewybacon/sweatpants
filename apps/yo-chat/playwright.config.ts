@@ -33,6 +33,8 @@ export default defineConfig({
       DEFAULT_CHAT_MODEL_ID: process.env['DEFAULT_CHAT_MODEL_ID'] ?? 'claude-sonnet-4.5',
       OLLAMA_URL: process.env['OLLAMA_URL'] ?? 'http://localhost:11434',
       MCP_TOOL_RUNTIME: process.env['MCP_TOOL_RUNTIME'] ?? 'local',
+      ENABLE_SCRIPTED_RENDERING_PROVIDER: 'yes',
+      VITE_ENABLE_SCRIPTED_RENDERING: '1',
     },
   },
 })
