@@ -1,9 +1,9 @@
-import { afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { run } from 'effection'
 import { createClient, type RedisClientType } from 'redis'
 
 import { createRedisTokenBufferStore } from '../redis-store.ts'
-import type { TokenBuffer } from '../types.ts'
+import { defineTokenBufferStoreConformance } from './token-buffer-store-conformance.ts'
 
 function redisUrl(): string {
   return process.env['REDIS_URL'] ?? 'redis://localhost:6379'
@@ -41,36 +41,48 @@ describe('RedisTokenBufferStore', () => {
     }
   })
 
-  it('creates a buffer', async () => {
-    if (!redisAvailable) {
-      return
+  afterAll(async () => {
+    if (redisAvailable) {
+      await client.disconnect()
     }
+  })
+
+  const requireRedis = (skip: (note?: string) => never): void => {
+    if (!redisAvailable) {
+      skip(`Redis unavailable at ${redisUrl()}`)
+    }
+  }
+
+  defineTokenBufferStoreConformance(
+    'redis',
+    () => createRedisTokenBufferStore<string>(client),
+    requireRedis,
+  )
+
+  it('creates a buffer', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('test-stream'))
     expect(buffer.id).toBe('test-stream')
   })
 
-  it('appends and reads tokens', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('appends and reads tokens', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('append-read'))
 
     const lsn = await run(() => buffer.append(['a', 'b', 'c']))
-    expect(lsn).toBe(2)
+    expect(lsn).toBe(3)
 
     const result = await run(() => buffer.read(0))
     expect(result.tokens).toEqual(['a', 'b', 'c'])
-    expect(result.lsn).toBe(2)
+    expect(result.lsn).toBe(3)
   })
 
-  it('reads from a specific offset', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('reads from a specific offset', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('offset-read'))
@@ -79,13 +91,11 @@ describe('RedisTokenBufferStore', () => {
 
     const result = await run(() => buffer.read(2))
     expect(result.tokens).toEqual(['c', 'd'])
-    expect(result.lsn).toBe(3)
+    expect(result.lsn).toBe(4)
   })
 
-  it('returns empty tokens when reading past tail', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('returns empty tokens when reading past tail', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('past-tail'))
@@ -94,13 +104,11 @@ describe('RedisTokenBufferStore', () => {
 
     const result = await run(() => buffer.read(10))
     expect(result.tokens).toEqual([])
-    expect(result.lsn).toBe(0)
+    expect(result.lsn).toBe(1)
   })
 
-  it('completes the buffer', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('completes the buffer', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('complete'))
@@ -110,10 +118,8 @@ describe('RedisTokenBufferStore', () => {
     expect(isComplete).toBe(true)
   })
 
-  it('fails the buffer with an error', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('fails the buffer with an error', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('fail'))
@@ -124,10 +130,8 @@ describe('RedisTokenBufferStore', () => {
     expect(error?.message).toBe('boom')
   })
 
-  it('gets a buffer by id', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('gets a buffer by id', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     await run(() => store.create('get-by-id'))
@@ -137,20 +141,16 @@ describe('RedisTokenBufferStore', () => {
     expect(buffer?.id).toBe('get-by-id')
   })
 
-  it('returns null for non-existent buffer', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('returns null for non-existent buffer', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.get('non-existent'))
     expect(buffer).toBeNull()
   })
 
-  it('deletes a buffer', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('deletes a buffer', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     await run(() => store.create('to-delete'))
@@ -160,17 +160,15 @@ describe('RedisTokenBufferStore', () => {
     expect(buffer).toBeNull()
   })
 
-  it('waits for change when new data arrives', async () => {
-    if (!redisAvailable) {
-      return
-    }
+  it('waits for change when new data arrives', async ({ skip }) => {
+    requireRedis(skip)
 
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('wait-change'))
 
     await run(() => buffer.append(['a']))
 
-    const waitForChangePromise = run(() => buffer.waitForChange(0))
+    const waitForChangePromise = run(() => buffer.waitForChange(1))
 
     await new Promise((resolve) => setTimeout(resolve, 50))
 

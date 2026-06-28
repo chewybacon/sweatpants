@@ -2,6 +2,9 @@ import { run } from 'effection'
 import { describe, expect, it } from 'vitest'
 
 import { createInMemoryBufferStore, createInMemoryRegistryStore } from '../in-memory-store.ts'
+import { defineTokenBufferStoreConformance } from './token-buffer-store-conformance.ts'
+
+defineTokenBufferStoreConformance('in-memory', () => createInMemoryBufferStore<string>())
 
 describe('in-memory-store', () => {
   it('supports append/read/complete lifecycle', async () => {
