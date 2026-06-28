@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * E2E tests for the greet tool.
@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  */
 
 // Helper to connect to server
-async function connectToServer(page: import("@playwright/test").Page) {
+async function connectToServer(page: Page) {
   // Select Streamable HTTP transport
   const transportDropdown = page.locator("#transport-type-select");
   await transportDropdown.click();
@@ -33,7 +33,7 @@ async function connectToServer(page: import("@playwright/test").Page) {
 }
 
 // Helper to list tools (click List Tools button if needed)
-async function ensureToolsListed(page: import("@playwright/test").Page) {
+async function ensureToolsListed(page: Page) {
   const listToolsButton = page.getByRole("button", { name: "List Tools" });
   if (await listToolsButton.isEnabled()) {
     await listToolsButton.click();
@@ -42,21 +42,166 @@ async function ensureToolsListed(page: import("@playwright/test").Page) {
 }
 
 // Helper to click on a tool in the list
-async function selectTool(page: import("@playwright/test").Page, toolName: string) {
+async function selectTool(page: Page, toolName: string) {
   const toolItem = page.locator(".cursor-pointer").filter({ hasText: toolName }).first();
   await toolItem.click();
   await page.waitForTimeout(500);
 }
 
+type JsonRpcMessage = {
+  jsonrpc: "2.0";
+  id?: string | number | null;
+  method?: string;
+  params?: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: Record<string, unknown>;
+};
+
+type SseReader = ReadableStreamDefaultReader<Uint8Array>;
+
+type SseBuffer = { text: string };
+
+function parseSseData(rawEvent: string): string | null {
+  const data = rawEvent
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart())
+    .join("\n");
+  return data.trim().length > 0 ? data : null;
+}
+
+async function readNextSseMessage(reader: SseReader, buffer: SseBuffer): Promise<JsonRpcMessage> {
+  const decoder = new TextDecoder();
+
+  while (true) {
+    const boundary = buffer.text.indexOf("\n\n");
+    if (boundary >= 0) {
+      const rawEvent = buffer.text.slice(0, boundary);
+      buffer.text = buffer.text.slice(boundary + 2);
+      const data = parseSseData(rawEvent);
+      if (!data) continue;
+      return JSON.parse(data) as JsonRpcMessage;
+    }
+
+    const next = await reader.read();
+    if (next.done) {
+      throw new Error("SSE stream ended before the expected message arrived");
+    }
+    buffer.text += decoder.decode(next.value, { stream: true });
+  }
+}
+
+async function readUntilSseMessage(
+  reader: SseReader,
+  buffer: SseBuffer,
+  label: string,
+  predicate: (message: JsonRpcMessage) => boolean,
+): Promise<JsonRpcMessage> {
+  const readLoop = async () => {
+    while (true) {
+      const message = await readNextSseMessage(reader, buffer);
+      if (predicate(message)) return message;
+    }
+  };
+
+  return Promise.race([
+    readLoop(),
+    new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 15000);
+    }),
+  ]);
+}
+
+async function callGreetViaMcpSampling(input: {
+  name: string;
+  style: "formal" | "casual" | "poetic" | "pirate";
+  sampledGreeting: string;
+}): Promise<Record<string, unknown>> {
+  const callId = `call-${input.style}-${Date.now()}`;
+  const response = await fetch("http://localhost:3001/mcp", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: callId,
+      method: "tools/call",
+      params: {
+        name: "greet",
+        arguments: {
+          name: input.name,
+          style: input.style,
+        },
+      },
+    }),
+  });
+
+  expect(response.status).toBe(200);
+  expect(response.headers.get("content-type")).toContain("text/event-stream");
+  const sessionId = response.headers.get("mcp-session-id") ?? response.headers.get("Mcp-Session-Id");
+  expect(sessionId).toBeTruthy();
+  expect(response.body).toBeTruthy();
+
+  const reader = response.body!.getReader();
+  const buffer = { text: "" };
+
+  try {
+    const sampleRequest = await readUntilSseMessage(
+      reader,
+      buffer,
+      "sampling/createMessage request",
+      (message) => message.method === "sampling/createMessage",
+    );
+    expect(sampleRequest.id).toBeTruthy();
+    expect(JSON.stringify(sampleRequest.params)).toContain(input.name);
+    expect(JSON.stringify(sampleRequest.params)).toContain(input.style);
+
+    const sampleResponse = await fetch("http://localhost:3001/mcp", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Mcp-Session-Id": sessionId!,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: sampleRequest.id,
+        result: {
+          role: "assistant",
+          content: { type: "text", text: input.sampledGreeting },
+          model: "playwright-sampling-model",
+          stopReason: "endTurn",
+        },
+      }),
+    });
+
+    expect(sampleResponse.status).toBe(202);
+
+    const toolResult = await readUntilSseMessage(
+      reader,
+      buffer,
+      "tools/call result",
+      (message) => message.id === callId && !!message.result,
+    );
+
+    const result = toolResult.result as { content?: Array<{ text?: unknown }>; isError?: boolean };
+    expect(result.isError).toBe(false);
+    const resultText = result.content?.[0]?.text;
+    expect(typeof resultText).toBe("string");
+    return JSON.parse(resultText as string) as Record<string, unknown>;
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 test.describe("Greet Tool (Sampling)", () => {
-  test.beforeEach(async ({ page }) => {
+  test("generates greeting via sampling backchannel", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
     await connectToServer(page);
     await ensureToolsListed(page);
-  });
 
-  test.skip("generates greeting via sampling backchannel", async ({ page }) => {
     // Capture console messages for debugging
     page.on("console", (msg) => {
       if (msg.type() === "error" || msg.type() === "warning") {
@@ -67,128 +212,73 @@ test.describe("Greet Tool (Sampling)", () => {
     // Select the greet tool
     await selectTool(page, "greet");
 
-    await page.screenshot({ path: "test-results/greet-01-selected.png", fullPage: true });
-
     // The right panel should show the tool form
-    // Fill in the name field
     const nameInput = page.getByLabel(/name/i).first();
     await expect(nameInput).toBeVisible({ timeout: 5000 });
     await nameInput.fill("Alice");
 
-    // Style is optional (defaults to casual), but let's set it
     const styleSelect = page.getByLabel(/style/i);
     if (await styleSelect.isVisible()) {
       await styleSelect.click();
       await page.waitForTimeout(300);
-      // Try to select 'formal'
       const formalOption = page.getByRole("option", { name: /formal/i });
       if (await formalOption.isVisible()) {
         await formalOption.click();
       }
     }
 
-    await page.screenshot({ path: "test-results/greet-02-filled.png", fullPage: true });
+    // Click Run - this triggers the sampling request.
+    await page.getByRole("button", { name: /run/i }).first().click();
 
-    // Click Run - this will trigger the sampling request
-    const runButton = page.getByRole("button", { name: /run/i }).first();
-    await runButton.click();
-
-    await page.waitForTimeout(1000);
-
-    await page.screenshot({ path: "test-results/greet-03-after-run.png", fullPage: true });
-
-    // The tool should pause and wait for sampling response
-    // Look for the Sampling tab to have a pending indicator (badge)
-    // or we may need to click on the Sampling tab
     const samplingTab = page.getByRole("tab", { name: /sampling/i });
-
-    // Wait for the sampling tab to show pending indicator
-    // The Inspector shows a badge with count when there are pending requests
-    await page.waitForTimeout(2000);
-
-    await page.screenshot({ path: "test-results/greet-04-sampling-pending.png", fullPage: true });
-
-    // Click on Sampling tab
+    await expect(samplingTab).toBeVisible({ timeout: 10000 });
     await samplingTab.click();
-    await page.waitForTimeout(500);
 
-    await page.screenshot({ path: "test-results/greet-05-sampling-tab.png", fullPage: true });
-
-    // The Sampling tab should show the pending request with the prompt
-    // Look for our prompt about generating a greeting
-    const bodyText = await page.locator("body").textContent();
-    console.log("Body after clicking sampling tab:", bodyText?.slice(0, 2000));
-
-    // The Sampling tab shows fields for the response:
-    // - model (textbox "model name", default "stub-model")
-    // - stopReason (textbox "Stop reason", default "endTurn")
-    // - role (textbox "Role of the model", default "assistant")
-    // - content > type (textbox "Type of content", default "text")
-    // - content > text (textbox "text content" - this is where we put the response)
-
-    // Fill in the text content - this is the main response
     const textContentInput = page.getByRole("textbox", { name: "text content" }).first();
-    await expect(textContentInput).toBeVisible();
+    await expect(textContentInput).toBeVisible({ timeout: 10000 });
     await textContentInput.fill(
       "Dear Alice, it is my pleasure to extend warm greetings to you on this fine day.",
     );
 
-    await page.screenshot({ path: "test-results/greet-06-response-filled.png", fullPage: true });
+    await page.getByRole("button", { name: /approve/i }).first().click();
 
-    // Click Approve button to submit the sampling response
-    const approveButton = page.getByRole("button", { name: /approve/i }).first();
-    await expect(approveButton).toBeVisible();
-    await approveButton.click();
-
-    // Wait a moment for the response to be processed
-    await page.waitForTimeout(2000);
-
-    await page.screenshot({ path: "test-results/greet-07-after-approve.png", fullPage: true });
-
-    // Check if the sampling request was cleared (badge should disappear)
-    const samplingTabAfter = page.getByRole("tab", { name: /sampling/i });
-    const samplingTabText = await samplingTabAfter.textContent();
-    console.log("Sampling tab text after approve:", samplingTabText);
-
-    // Go back to Tools tab to see the result
     const toolsTab = page.getByRole("tab", { name: /tools/i });
     await toolsTab.click();
 
-    await page.waitForTimeout(1000);
+    await expect(page.getByText("Tool Result: Success")).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText(/Dear Alice, it is my pleasure/)).toBeVisible();
 
-    // Check current state of the page
-    const bodyAfterTools = await page.locator("body").textContent();
-    console.log("Body after switching to Tools tab:", bodyAfterTools?.slice(0, 2000));
-
-    // NOTE: Explicitly skipped because the tool currently stays in "Running..."
-    // after sampling approval. The sampling badge clears, but the tool does not
-    // complete successfully yet. Re-enable this test only after the handler/runtime
-    // path is fixed and the test can assert real completion.
-
-    await page.screenshot({ path: "test-results/greet-08-final-result.png", fullPage: true });
-
-    // Verify the sampling badge is gone (response was accepted)
-    const samplingBadge = page.locator('[class*="badge"]').filter({ hasText: "1" });
-    await expect(samplingBadge).not.toBeVisible({ timeout: 5000 });
-
-    // Wait for tool to complete
-    await page.waitForTimeout(3000);
-
-    // Take a screenshot to see current state
-    await page.screenshot({ path: "test-results/greet-09-checking-result.png", fullPage: true });
-
-    // Check the result - it should either show our greeting OR an error
     const resultText = await page.locator("body").textContent();
-    console.log("Final body text:", resultText?.slice(0, 3000));
-
-    // The tool should have completed (no more "Running...")
-    // Note: Due to cross-scope Effection issues, the tool may not complete successfully yet
-    // For now, we verify the sampling flow worked (badge cleared)
-    // TODO: Fix cross-scope signal handling so tool completes with greeting
+    expect(resultText).toContain('name:"Alice"');
+    expect(resultText).toContain('style:"formal"');
+    expect(resultText).toContain("Dear Alice, it is my pleasure");
+    expect(resultText).not.toContain("Running...");
   });
 
-  test.skip("handles different greeting styles", async () => {
-    // This test exercises different styles (casual, formal, poetic, pirate)
-    // Skipped for now until we understand the sampling UI better
+  test("handles different greeting styles", async () => {
+    for (const scenario of [
+      {
+        name: "Morgan",
+        style: "casual" as const,
+        sampledGreeting: "Hey Morgan! Hope your day is going great.",
+      },
+      {
+        name: "Morgan",
+        style: "poetic" as const,
+        sampledGreeting: "Morgan, may your morning bloom like sunlight over quiet hills.",
+      },
+      {
+        name: "Morgan",
+        style: "pirate" as const,
+        sampledGreeting: "Ahoy Morgan! May fair winds carry ye toward grand adventure.",
+      },
+    ]) {
+      const result = await callGreetViaMcpSampling(scenario);
+      expect(result).toMatchObject({
+        name: scenario.name,
+        style: scenario.style,
+        greeting: scenario.sampledGreeting,
+      });
+    }
   });
 });
