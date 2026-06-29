@@ -17,7 +17,7 @@
  */
 import type { Operation } from 'effection'
 import type { ToolSessionRegistry, ToolSession } from '../session/types.ts'
-import type { McpRuntimeTool } from '../mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../mcp-runtime-tool.ts'
 import type { ElicitsMap } from '../mcp-tool-types.ts'
 import type { JsonRpcId } from '../protocol/types.ts'
 

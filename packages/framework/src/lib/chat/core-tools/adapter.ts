@@ -55,6 +55,13 @@ export function isCoreToolFactory(value: unknown): value is CoreToolFactory {
   // Use bracket notation to access properties on the function
   const fn = value as unknown as Record<string, unknown>
 
+  // Framework isomorphic tools are also callable functions and may carry
+  // `schemas`/`capabilities` metadata, but they must keep their browser client
+  // and handoff fields. Do not normalize them as core tools.
+  if ('contextMode' in fn || 'server' in fn || 'client' in fn || 'handoffConfig' in fn) {
+    return false
+  }
+
   return (
     typeof fn['name'] === 'string' &&
     typeof fn['description'] === 'string' &&

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
-import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/core'
 import { ToolRuntimeApi, createToolInventory } from '@sweatpants/framework/chat'
 import {
   createIsomorphicToolInventoryEntry,
@@ -14,10 +14,10 @@ import {
   installLocalToolRuntime,
 } from '../index.ts'
 
-const echoTool = createMcpTool('echo')
+const echoTool = createTool('echo')
   .description('Echo input')
   .parameters(z.object({ message: z.string() }))
-  .elicits({})
+  
   .execute(function* (params) {
     return { echoed: params.message }
   })
@@ -60,10 +60,10 @@ describe('local ToolRuntimeDriver', () => {
   it('rejects invalid MCP params before creating a local session', async () => {
     await run(function* () {
       let executeCalls = 0
-      const strictTool = createMcpTool('strict_echo')
+      const strictTool = createTool('strict_echo')
         .description('Strict echo input')
         .parameters(z.object({ message: z.string() }))
-        .elicits({})
+        
         .execute(function* (params) {
           executeCalls++
           return { echoed: params.message }

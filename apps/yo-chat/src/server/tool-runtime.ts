@@ -47,18 +47,10 @@ type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0];
 let sharedPluginSessionRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;
 
-const toolWorkerUrl = new URL("../__generated__/tool-worker.gen.ts", import.meta.url);
-
 function* createLocalPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
   const store = createInMemoryToolSessionStore();
-  const isDev = process.env["NODE_ENV"] !== "production";
   return yield* createToolSessionRegistry(store, {
     samplingProvider: pluginSamplingProvider,
-    worker: {
-      workerUrl: toolWorkerUrl,
-      isDev,
-      ...(isDev ? { execArgv: ["--import", "tsx"] } : {}),
-    },
   });
 }
 

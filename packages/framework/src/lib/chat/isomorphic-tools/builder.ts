@@ -52,31 +52,14 @@
  * ```
  */
 import type { Operation } from "effection";
+import type { ToolCtx } from "@sweatpants/core";
 import type { z } from "zod";
 import type { ContextMode, ContextForMode } from "./contexts.ts";
-// Unified tool ctx (structural — no import from @sweatpants/agents). Same shape
-// as the MCP builder's UnifiedToolCtxShape; the runtime isomorphic tool is
-// callable as a UnifiedToolFactory.
-export interface UnifiedToolCtxShape {
-  elicit(key: string, request: { message: string; schema?: unknown }): Operation<{
-    action?: "accept" | "decline" | "cancel"
-    content?: unknown
-    status?: "accepted" | "declined" | "cancelled"
-    value?: unknown
-    reason?: string
-  }>
-  elicitDynamic?(options: { key: string; message: string; responseSchema?: unknown; context?: unknown }): Operation<{
-    action?: "accept" | "decline" | "cancel"
-    content?: unknown
-    status?: "accepted" | "declined" | "cancelled"
-    value?: unknown
-    reason?: string
-  }>
-  sample(options: { prompt: string; schema?: unknown }): Operation<{ content: string }>
-  notify(message: string, fraction?: number): Operation<void>
-}
+
+type IsomorphicCoreToolCtx = ToolCtx<Record<string, any>, true>;
+
 export type UnifiedCallable<I = unknown, O = unknown> = {
-  (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>>
+  (ctx: IsomorphicCoreToolCtx): Operation<(input: I) => Operation<O>>
 };
 
 import type {
@@ -322,7 +305,7 @@ export interface IsomorphicRuntimeToolShape<
   TResult,
 > {
   /** Unified callable runtime activation. */
-  (ctx: UnifiedToolCtxShape): Operation<(input: TParams) => Operation<TResult>>;
+  (ctx: IsomorphicCoreToolCtx): Operation<(input: TParams) => Operation<TResult>>;
 
   /**
    * Phantom type carrier - no runtime cost.
@@ -449,18 +432,15 @@ function makeServerCtx() {
   };
 }
 
-/** Shim the structural unified ctx into the isomorphic client ctx shape. */
-function shimClientCtx(ctx: UnifiedToolCtxShape, callId: string) {
+/** Shim the canonical core ToolCtx into the isomorphic client ctx shape. */
+function shimClientCtx(ctx: IsomorphicCoreToolCtx, callId: string) {
   return {
     callId,
     signal: new AbortController().signal,
     *waitFor<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse> {
-      const res = ctx.elicitDynamic
-        ? yield* ctx.elicitDynamic({ key: type, message: `UI request: ${type}`, context: payload })
-        : yield* ctx.elicit(type, { message: `UI request: ${type}` });
-      const action = res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel");
-      if (action !== "accept") throw new Error(`waitFor("${type}") was ${action}`);
-      return (res.content ?? res.value) as TResponse;
+      const res = yield* ctx.elicit(type, { message: `UI request: ${type}`, context: payload } as never);
+      if (res.action !== "accept") throw new Error(`waitFor("${type}") was ${res.action}`);
+      return res.content as TResponse;
     },
     *prompt<T>(opts: { prompt: string; schema?: unknown }): Operation<T> {
       const sampleOptions: { prompt: string; schema?: unknown } = { prompt: opts.prompt };
@@ -469,11 +449,8 @@ function shimClientCtx(ctx: UnifiedToolCtxShape, callId: string) {
       return res.content as T;
     },
     *requestApproval(message: string): Operation<{ approved: true } | { approved: false; reason?: string }> {
-      const res = ctx.elicitDynamic
-        ? yield* ctx.elicitDynamic({ key: "approval", message })
-        : yield* ctx.elicit("approval", { message });
-      const action = res.action ?? (res.status === "accepted" ? "accept" : res.status === "declined" ? "decline" : "cancel");
-      if (action === "accept") return { approved: true as const };
+      const res = yield* ctx.elicit("approval", { message } as never);
+      if (res.action === "accept") return { approved: true as const };
       const declined: { approved: false; reason?: string } = { approved: false };
       if (res.reason !== undefined) declined.reason = res.reason;
       return declined;
@@ -490,7 +467,7 @@ function makeIsomorphicUnifiedCallable<I, O>(meta: {
   serverFn?: (params: I, ctx: any) => Operation<O>;
   handoffConfig?: TypedHandoffConfig<I, any, any, any, O>;
 }): UnifiedCallable<I, O> {
-  const activate = function (ctx: UnifiedToolCtxShape): Operation<(input: I) => Operation<O>> {
+  const activate = function (ctx: IsomorphicCoreToolCtx): Operation<(input: I) => Operation<O>> {
     return {
       *[Symbol.iterator]() {
         const serverCtx = makeServerCtx();

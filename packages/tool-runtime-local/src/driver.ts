@@ -8,7 +8,6 @@ import {
   type ClientToolRequest,
   type StartToolCallRequest,
   type ToolCall,
-  type ToolDefinition,
   type ToolExecuteRequest,
   type ToolExecution,
   type ToolExecutionContext,
@@ -53,6 +52,8 @@ type LocalImplementation =
   | { kind: "mcp"; tool: LocalRuntimeTool }
   | { kind: "isomorphic"; tool: LocalIsomorphicTool };
 
+type InventoryToolDefinition = ToolInventoryEntry["definition"];
+
 export interface LocalIsomorphicTool {
   name: string;
   description: string;
@@ -82,7 +83,7 @@ function parametersToSchema(parameters: unknown): Record<string, unknown> {
   return toToolParameterJsonSchema(parameters);
 }
 
-function mcpToolDefinition(tool: LocalRuntimeTool): ToolDefinition {
+function mcpToolDefinition(tool: LocalRuntimeTool): InventoryToolDefinition {
   return {
     name: tool.name,
     description: tool.description,
@@ -90,7 +91,7 @@ function mcpToolDefinition(tool: LocalRuntimeTool): ToolDefinition {
   };
 }
 
-function isomorphicToolDefinition(tool: LocalIsomorphicTool): ToolDefinition {
+function isomorphicToolDefinition(tool: LocalIsomorphicTool): InventoryToolDefinition {
   return {
     name: tool.name,
     description: tool.description,

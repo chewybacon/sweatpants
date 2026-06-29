@@ -294,26 +294,32 @@ export function createToolSession<
       events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void> {
         return resource<Subscription<ToolSessionEvent<TResult>, void>>(function* (provide) {
           let replayIndex = 0;
+          let deliveredThroughLSN = afterLSN ?? 0;
 
           yield* provide({
             *next(): Operation<IteratorResult<ToolSessionEvent<TResult>, void>> {
               if (afterLSN !== undefined) {
                 while (replayIndex < state.events.length) {
                   const event = state.events[replayIndex++]!;
-                  if (event.lsn > afterLSN) {
+                  if (event.lsn > deliveredThroughLSN) {
+                    deliveredThroughLSN = event.lsn;
                     return { done: false, value: event };
                   }
                 }
               }
 
               // Pull next live event from queue - this blocks until available.
-              // If this resumed stream is reading from a queue with older
-              // buffered events still present, discard events at/before the
-              // requested offset.
+              // If this resumed stream first replayed buffered events from
+              // state.events, the same events may still be present in the live
+              // queue. Discard everything already delivered, not only the
+              // caller-provided afterLSN.
               while (true) {
                 const next = yield* eventQueue.next();
-                if (afterLSN !== undefined && !next.done && next.value.lsn <= afterLSN) {
+                if (!next.done && next.value.lsn <= deliveredThroughLSN) {
                   continue;
+                }
+                if (!next.done) {
+                  deliveredThroughLSN = next.value.lsn;
                 }
                 return next;
               }

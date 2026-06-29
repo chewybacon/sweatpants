@@ -2,7 +2,8 @@
 import { describe, it, expect } from 'vitest'
 import { run, each } from 'effection'
 import { z } from 'zod'
-import { createMcpTool, useToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/framework/chat'
+import { useToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -33,26 +34,23 @@ function createProfile(toolNames: string[]): AgentCoreToolRuntimeProfile {
   }
 }
 
-const simpleTool = createMcpTool('simple_tool')
+const simpleTool = createTool('simple_tool')
   .description('simple')
   .parameters(z.object({ input: z.string() }))
-  .elicits({})
   .execute(function* (params) {
     return { input: params.input }
   })
 
-const elicitTool = createMcpTool('elicit_tool')
+const elicitTool = createTool('elicit_tool')
   .description('elicit')
   .parameters(z.object({}))
-  .elicits({})
   .execute(function* () {
     return { ok: true }
   })
 
-const sampleTool = createMcpTool('sample_tool')
+const sampleTool = createTool('sample_tool')
   .description('sample')
   .parameters(z.object({}))
-  .elicits({})
   .execute(function* () {
     return { ok: true }
   })

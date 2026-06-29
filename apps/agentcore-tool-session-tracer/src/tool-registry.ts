@@ -1,4 +1,4 @@
-import type { McpRuntimeTool } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts";
+import type { McpRuntimeTool } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-runtime-tool.ts";
 import type { ElicitsMap } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
 import { toolList } from "../../yo-chat/src/__generated__/tool-registry.gen.ts";
 
@@ -14,17 +14,20 @@ type RuntimeMcpTool = McpRuntimeTool<
 type BridgeCompatibleTool = {
   execute?: unknown;
   handoffConfig?: unknown;
+  parameters?: unknown;
+  capabilities?: unknown;
+  schemas?: unknown;
 };
 
 function isBridgeCompatibleTool(tool: unknown): tool is BridgeCompatibleTool {
-  if (typeof tool !== "object" || tool === null) return false;
-  return "execute" in tool || "handoffConfig" in tool;
+  if ((typeof tool !== "object" && typeof tool !== "function") || tool === null) return false;
+  return "execute" in tool || "handoffConfig" in tool || ("parameters" in tool && "capabilities" in tool && "schemas" in tool);
 }
 
 function assertRuntimeMcpTool(name: string, tool: unknown): RuntimeMcpTool {
   if (!isBridgeCompatibleTool(tool)) {
     throw new Error(
-      `Generated AgentCore tool "${name}" is not MCP bridge-compatible: expected execute or handoffConfig`,
+      `Generated AgentCore tool "${name}" is not MCP bridge-compatible: expected canonical core ToolDefinition, execute, or handoffConfig`,
     );
   }
   return tool as RuntimeMcpTool;

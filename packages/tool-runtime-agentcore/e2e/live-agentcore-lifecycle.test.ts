@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach, beforeAll } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand, StopRuntimeSessionCommand } from '@aws-sdk/client-bedrock-agentcore'
-import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/framework/chat'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   createAgentCoreRemoteToolRuntimeClient,
@@ -94,18 +94,16 @@ type RuntimeRequest = {
 const rawClient = new BedrockAgentCoreClient({ region })
 const runtimeSessionsToCleanup = new Set<string>()
 
-const simpleResultTool = createMcpTool('simple_result')
+const simpleResultTool = createTool('simple_result')
   .description('Live tracer simple result tool')
   .parameters(z.object({ value: z.unknown().optional() }))
-  .elicits({})
   .execute(function* (params) {
     return params
   })
 
-const elicitThenResultTool = createMcpTool('elicit_then_result')
+const elicitThenResultTool = createTool('elicit_then_result')
   .description('Live tracer elicit then result tool')
   .parameters(z.object({ value: z.unknown().optional() }))
-  .elicits({})
   .execute(function* (params) {
     return params
   })

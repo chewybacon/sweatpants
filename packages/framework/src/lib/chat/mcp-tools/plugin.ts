@@ -10,7 +10,7 @@
  * @example Derive a plugin from a bridgeable tool
  * ```typescript
  * // Define the MCP tool with elicitation surface
- * const bookFlight = createMcpTool('book_flight')
+ * const bookFlight = createTool('book_flight')
  *   .description('Book a flight')
  *   .parameters(z.object({ destination: z.string() }))
  *   .elicits({
@@ -68,7 +68,7 @@ import type {
   RawElicitResult,
 } from "./mcp-tool-types.ts";
 import type { ElicitDefinition } from "@sweatpants/elicit-context";
-import type { McpRuntimeTool } from "./mcp-tool-builder.ts";
+import type { McpRuntimeTool } from "./mcp-runtime-tool.ts";
 
 // Re-export renderable types for plugin authors
 export type {
@@ -335,7 +335,7 @@ function createPluginBuilder<
             client: {
               toolName: tool.name,
               handlers,
-              schemas: tool.elicits,
+              schemas: tool.elicits as TElicits,
             },
           };
         },

@@ -1,6 +1,6 @@
 import { sleep } from 'effection'
 import { z } from 'zod'
-import { createMcpTool } from '../../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts'
+import { createTool } from '../../../../packages/core/src/tool/index.ts'
 
 export interface Flight {
   id: string
@@ -84,14 +84,14 @@ const SeatMapSchema = z.object({
 })
 
 /**
- * AgentCore-hosted MCP tool that mirrors the yo-chat book-flight tool shape.
+ * AgentCore-hosted tool that mirrors the yo-chat book-flight tool shape.
  *
- * Unlike the old tracer branch, this is a real finalized `createMcpTool()`
- * whose generator is executed by the framework bridge runtime inside
- * AgentCore. The data is still mock data, but the pause/resume mechanics are
- * the same as a generated Sweatpants MCP tool registry entry.
+ * This is a real finalized canonical `createTool()` definition whose generator
+ * is executed by the framework bridge runtime inside AgentCore. The data is
+ * still mock data, but the pause/resume mechanics are the same as a generated
+ * Sweatpants tool registry entry.
  */
-export const bookFlightTool = createMcpTool('book_flight')
+export const bookFlightTool = createTool('book_flight')
   .description('Book a flight for the user with interactive flight and seat selection')
   .parameters(
     z.object({
@@ -122,6 +122,7 @@ export const bookFlightTool = createMcpTool('book_flight')
       }),
     },
   })
+  .samples()
   .execute(function* (params, ctx) {
     yield* ctx.notify('Searching for flights...', 0.1)
     const flights = mockFlightSearch(params.from, params.destination)
@@ -131,7 +132,7 @@ export const bookFlightTool = createMcpTool('book_flight')
 
     const flightResult = yield* ctx.elicit('pickFlight', {
       message: `Select a flight from ${params.from} to ${params.destination}`,
-      flights,
+      context: { flights },
     })
 
     if (flightResult.action === 'decline') {
@@ -164,10 +165,12 @@ export const bookFlightTool = createMcpTool('book_flight')
 
     const seatResult = yield* ctx.elicit('pickSeat', {
       message: `Select your seat on ${selectedFlight.airline} ${selectedFlight.flightNumber}`,
-      seatMap,
-      flightInfo: {
-        airline: selectedFlight.airline,
-        flightNumber: selectedFlight.flightNumber,
+      context: {
+        seatMap,
+        flightInfo: {
+          airline: selectedFlight.airline,
+          flightNumber: selectedFlight.flightNumber,
+        },
       },
     })
 
@@ -217,7 +220,7 @@ export const bookFlightTool = createMcpTool('book_flight')
         from: params.from,
         to: params.destination,
       },
-      travelTip: tip.text,
+      travelTip: tip.text ?? tip.content ?? '',
       message: `Successfully booked ${selectedFlight.airline} ${selectedFlight.flightNumber} from ${params.from} to ${params.destination}. Seat ${seatCode}. Ticket: ${ticketNumber}`,
     }
   })

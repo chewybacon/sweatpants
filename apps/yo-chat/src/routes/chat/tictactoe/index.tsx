@@ -129,6 +129,7 @@ function TicTacToeDemo() {
       // TicTacToe plugin handle. enabledPlugins is derived automatically from
       // the plugin's tool name.
       plugins: [tictactoePlugin],
+      initialToolChoice: "required",
       // System prompt for the game
       systemPrompt: `You are playing tic-tac-toe against the user.
 

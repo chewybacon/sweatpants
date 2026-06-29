@@ -360,7 +360,7 @@ export type { ElicitDefinition }
  *
  * @example With context
  * ```typescript
- * const tool = createMcpTool('book_flight')
+ * const tool = createTool('book_flight')
  *   .elicits({
  *     pickFlight: {
  *       response: z.object({ flightId: z.string() }),
@@ -371,7 +371,7 @@ export type { ElicitDefinition }
  * 
  * @example Without context
  * ```typescript
- * const tool = createMcpTool('confirm')
+ * const tool = createTool('confirm')
  *   .elicits({
  *     confirm: {
  *       response: z.object({ ok: z.boolean() }),
@@ -1394,7 +1394,7 @@ export interface McpToolContext {
  * @example
  * ```typescript
  * // Tool declares elicitation surface
- * const tool = createMcpTool('book_flight')
+ * const tool = createTool('book_flight')
  *   .elicits({
  *     pickFlight: z.object({ flightId: z.string() }),
  *     confirm: z.object({ ok: z.boolean() }),

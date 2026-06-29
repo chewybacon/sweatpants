@@ -38,7 +38,7 @@ import type {
   LogLevel,
   ElicitsMap,
 } from '../mcp-tool-types.ts'
-import type { McpRuntimeTool } from '../mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../mcp-runtime-tool.ts'
 
 // Re-export result types for convenience
 export type { 

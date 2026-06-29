@@ -246,10 +246,18 @@ export function createPiAiModelProviderDriver(runtime: Runtime = piAiRuntime): M
       return runtime.stream(request.model, request.context, request.options)
     },
     *sample(request): Operation<AssistantMessage> {
+      const hasTools = (request.context.tools?.length ?? 0) > 0
       const subscription: Subscription<StreamEvent, AssistantMessage> = yield* runtime.stream(
         request.model,
         request.context,
-        { ...request.options, toolChoice: request.options?.toolChoice ?? 'none' },
+        {
+          ...request.options,
+          ...(request.options?.toolChoice !== undefined
+            ? { toolChoice: request.options.toolChoice }
+            : hasTools
+              ? { toolChoice: 'none' as const }
+              : {}),
+        },
       )
       while (true) {
         const next = yield* subscription.next()
