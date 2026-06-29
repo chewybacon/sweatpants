@@ -1,7 +1,6 @@
 import { describe, it, expect } from '@effectionx/vitest'
 import { z } from 'zod'
 import { createTool } from '@sweatpants/core'
-import { createMcpTool } from '../../../framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts'
 import { createAgent } from '../create-agent.ts'
 import { createAgentSession } from '../session.ts'
 import { createInMemoryAgentStreamStore } from '../stream.ts'
@@ -27,8 +26,8 @@ const BuilderEcho = createTool('builder_echo')
     return { echoed: text }
   })
 
-const FrameworkConfirm = createMcpTool('framework_confirm')
-  .description('framework declared elicit confirm')
+const FrameworkConfirm = createTool('framework_confirm')
+  .description('canonical declared elicit confirm')
   .parameters(z.object({ item: z.string() }))
   .elicits({
     confirm: { response: z.object({ ok: z.boolean() }) },
@@ -207,7 +206,7 @@ describe('ctx.call composition (REQ-003/004/006)', () => {
     expect(result?.value.exchange.messages).toHaveLength(2)
   })
 
-  it('framework createMcpTool output runs directly as a unified callable tool', function* () {
+  it('canonical core createTool output runs directly as a unified callable tool', function* () {
     const Agent = createAgent({
       name: 'framework-tool-agent',
       description: 'framework tool agent',

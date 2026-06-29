@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { run, resource, type Operation } from 'effection'
 import { z } from 'zod'
-import { createMcpTool, type ToolSessionRegistry, type ToolSession } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/framework/chat'
+import { type ToolSessionRegistry, type ToolSession } from '@sweatpants/framework/chat/mcp-tools'
 import { ToolRuntimeApi, createToolInventory } from '@sweatpants/framework/chat'
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
@@ -16,26 +17,23 @@ import {
   type AgentCoreToolSessionStores,
 } from '../index.ts'
 
-const remoteTool = createMcpTool('remote_echo')
+const remoteTool = createTool('remote_echo')
   .description('Remote echo')
   .parameters(z.object({ message: z.string() }))
-  .elicits({})
   .execute(function* () {
     return { unreachable: true }
   })
 
-const remoteElicitTool = createMcpTool('remote_elicit')
+const remoteElicitTool = createTool('remote_elicit')
   .description('Remote elicit')
   .parameters(z.object({}))
-  .elicits({})
   .execute(function* () {
     return { unreachable: true }
   })
 
-const remoteSampleTool = createMcpTool('remote_sample')
+const remoteSampleTool = createTool('remote_sample')
   .description('Remote sample')
   .parameters(z.object({}))
-  .elicits({})
   .execute(function* () {
     return { unreachable: true }
   })

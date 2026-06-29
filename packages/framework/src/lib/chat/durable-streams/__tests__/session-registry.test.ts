@@ -58,6 +58,20 @@ function* useTestRegistryViaContext() {
   return { registry, bufferStore, registryStore }
 }
 
+function* waitForSessionStatus(
+  session: { status(): Operation<string> },
+  expected: string,
+  timeoutMs = 1000,
+): Operation<void> {
+  const startedAt = Date.now()
+  let current = yield* session.status()
+  while (current !== expected && Date.now() - startedAt < timeoutMs) {
+    yield* sleep(10)
+    current = yield* session.status()
+  }
+  expect(current).toBe(expected)
+}
+
 // =============================================================================
 // SCENARIO TESTS
 // =============================================================================
@@ -75,8 +89,7 @@ describe('Session Registry', () => {
       expect(session.id).toBe('di-test-1')
       expect(yield* bufferStore.get('di-test-1')).not.toBe(null)
 
-      yield* sleep(50)
-      expect(yield* session.status()).toBe('complete')
+      yield* waitForSessionStatus(session, 'complete')
     })
 
     it('should throw helpful error when contexts not configured', function* () {
@@ -142,8 +155,7 @@ describe('Session Registry', () => {
       })
 
       // Wait for stream to complete
-      yield* sleep(50)
-      expect(yield* session.status()).toBe('complete')
+      yield* waitForSessionStatus(session, 'complete')
 
       // Release
       yield* registry.release('session-3')
@@ -214,7 +226,7 @@ describe('Session Registry', () => {
       expect(tokens.join('')).toBe('Hello world from LLM')
 
       // Session should be complete
-      expect(yield* session.status()).toBe('complete')
+      yield* waitForSessionStatus(session, 'complete')
     })
 
     it('should allow reconnect to resume reading from last LSN', function* () {

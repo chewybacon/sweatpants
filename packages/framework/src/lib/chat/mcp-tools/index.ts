@@ -47,7 +47,7 @@ export type {
   InferMcpToolElicits,
   AnyMcpTool,
   AnyBridgeableMcpTool,
-} from "./mcp-tool-builder.ts";
+} from "./mcp-runtime-tool.ts";
 
 // Types from unified types file
 export type {
@@ -122,6 +122,12 @@ export {
 // Mock runtime helpers for adapter tests.
 export { createMockMCPClient, runMCPTool } from "./mock-runtime.ts";
 export type { MockMCPClient, MockMCPClientConfig, RunMCPToolOptions } from "./mock-runtime.ts";
+export {
+  projectCoreElicitExchangeToMcpMessages,
+  projectCoreSampleExchangeToMcpMessages,
+  projectCoreExchangeToMcpMessages,
+  projectCoreExchangesToMcpMessages,
+} from "./core-exchange-projection.ts";
 
 // =============================================================================
 // PLUGIN SYSTEM (bridgeable tools -> framework-native plugins)

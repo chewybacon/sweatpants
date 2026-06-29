@@ -24,6 +24,7 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
+import type { ToolCtx, ToolDefinition } from '@sweatpants/core'
 import type {
   MCPClientContext,
   MCPServerContext,
@@ -38,7 +39,7 @@ import type {
 import {
   McpCapabilityError as MCPCapabilityError,
 } from './mcp-tool-types.ts'
-import type { MCPRuntimeTool } from './builder.ts'
+import type { McpRuntimeTool as MCPRuntimeTool } from './mcp-runtime-tool.ts'
 
 // =============================================================================
 // MOCK CLIENT CONFIGURATION
@@ -316,11 +317,14 @@ export function runMCPTool<
       const callId = options.callId ?? `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
       const signal = options.signal ?? new AbortController().signal
 
+      const canonicalTool = isCanonicalCoreTool(tool) ? tool : undefined
+      const requires = canonicalTool?.capabilities ?? tool.requires
+
       // Check capabilities
-      if (tool.requires?.elicitation && !client.capabilities.elicitation) {
+      if (requires?.elicitation && !client.capabilities.elicitation) {
         throw new MCPCapabilityError('elicitation', `Tool "${tool.name}" requires elicitation capability`)
       }
-      if (tool.requires?.sampling && !client.capabilities.sampling) {
+      if (requires?.sampling && !client.capabilities.sampling) {
         throw new MCPCapabilityError('sampling', `Tool "${tool.name}" requires sampling capability`)
       }
 
@@ -336,7 +340,10 @@ export function runMCPTool<
 
       let result: TResult
 
-      if (tool.handoffConfig) {
+      if (canonicalTool) {
+        const invoke = yield* canonicalTool(createCoreToolCtx(canonicalTool, clientCtx))
+        result = (yield* invoke(validatedParams as never)) as TResult
+      } else if (tool.handoffConfig) {
         // Execute handoff pattern
         const { before, client: clientFn, after } = tool.handoffConfig
 
@@ -344,18 +351,80 @@ export function runMCPTool<
         const handoff = yield* before(validatedParams, serverCtx)
 
         // Client phase
-        const clientResult = yield* clientFn(handoff, clientCtx)
+        const clientResult = yield* clientFn(handoff, clientCtx as never)
 
         // Phase 2: after()
         result = yield* after(handoff, clientResult, serverCtx, validatedParams)
       } else if (tool.execute) {
         // Simple execute
-        result = yield* tool.execute(validatedParams, clientCtx)
+        result = yield* tool.execute(validatedParams, clientCtx as never)
       } else {
         throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
       }
 
       return result
     }
+  }
+}
+
+function isCanonicalCoreTool(value: unknown): value is ToolDefinition {
+  return typeof value === 'function' &&
+    value !== null &&
+    'parameters' in value &&
+    'capabilities' in value &&
+    'schemas' in value &&
+    'annotations' in value &&
+    'samples' in value
+}
+
+function createCoreToolCtx(tool: ToolDefinition, clientCtx: MCPClientContext): ToolCtx<any, any> {
+  return {
+    history: [],
+    notify: (message, fraction) => clientCtx.notify(message, fraction),
+    log: (level, message) => clientCtx.log(level, message),
+    elicit: function* (key: string, request: { message: string; context?: unknown }): Operation<unknown> {
+      const def = (tool.elicits as Record<string, { response?: unknown }>)[key]
+      if (!def) {
+        throw new Error(`Unknown elicit key "${key}" for tool "${tool.name}"`)
+      }
+      const response = yield* clientCtx.elicit({ message: request.message, schema: def.response as never })
+      if (response.action === 'accept') {
+        return {
+          action: 'accept',
+          content: response.content,
+          exchange: {
+            kind: 'elicit',
+            key,
+            request: { message: request.message, context: request.context },
+            response: { action: 'accept', content: response.content },
+          },
+        }
+      }
+      return {
+        action: response.action,
+        exchange: {
+          kind: 'elicit',
+          key,
+          request: { message: request.message, context: request.context },
+          response: { action: response.action },
+        },
+      }
+    },
+    sample: function* (...args: unknown[]): Operation<unknown> {
+      const key = typeof args[0] === 'string' ? args[0] : undefined
+      const request = (key ? args[1] : args[0]) as Record<string, unknown>
+      const response = yield* clientCtx.sample(request as never)
+      return {
+        content: typeof response === 'string' ? response : undefined,
+        text: typeof response === 'string' ? response : undefined,
+        raw: response,
+        exchange: {
+          kind: 'sample',
+          ...(key ? { key } : {}),
+          request,
+          response,
+        },
+      }
+    },
   }
 }

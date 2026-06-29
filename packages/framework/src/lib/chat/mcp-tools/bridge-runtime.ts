@@ -58,7 +58,7 @@ import {
   createRawSampleExchange,
   createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
-import type { McpRuntimeTool } from './mcp-tool-builder.ts'
+import type { McpRuntimeTool } from './mcp-runtime-tool.ts'
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
@@ -943,8 +943,20 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             seq,
           }
 
-          // Extract message and context data
-          const { message, ...contextData } = options
+          // Extract message and context data. Canonical core tools pass rich
+          // elicitation data under `context`, while older framework tools passed
+          // it as top-level option fields. Support both shapes and expose the
+          // declared context itself to plugin handlers.
+          const { message, context, ...legacyContextData } = options
+          const hasLegacyContextData = Object.keys(legacyContextData).length > 0
+          const contextData =
+            context !== undefined && !hasLegacyContextData
+              ? context
+              : context !== undefined && typeof context === 'object' && context !== null
+                ? { ...(context as Record<string, unknown>), ...legacyContextData }
+                : context !== undefined
+                  ? { context, ...legacyContextData }
+                  : legacyContextData
 
           // Encode context into schema and message using x-elicit-context transport
           const baseSchema = zodToJsonSchema(responseSchema as any)
@@ -1258,7 +1270,7 @@ export function createBridgeHost<
             toolName: tool.name,
             callId,
             elicitSeq: 0,
-            elicits: tool.elicits,
+            elicits: tool.elicits as TElicits,
             eventChannel,
           }
 
@@ -1269,7 +1281,11 @@ export function createBridgeHost<
 
           let result: TResult
 
-          if (tool.handoffConfig) {
+          if (isCanonicalCoreRuntimeTool(tool)) {
+            const branchCtx = createBridgeContext(initialState)
+            const invoke = yield* tool(branchCtx as never)
+            result = (yield* invoke(validatedParams as never)) as TResult
+          } else if (tool.handoffConfig) {
             const handoffConfig = tool.handoffConfig as McpToolHandoffConfigWithElicits<
               TParams,
               THandoff,
@@ -1291,7 +1307,7 @@ export function createBridgeHost<
             result = yield* handoffConfig.after(handoff, clientResult, serverCtx, validatedParams)
           } else if (tool.execute) {
             const branchCtx = createBridgeContext(initialState)
-            result = yield* tool.execute(validatedParams, branchCtx)
+            result = yield* tool.execute(validatedParams, branchCtx as never)
           } else {
             throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
           }
@@ -1304,6 +1320,15 @@ export function createBridgeHost<
       }
     },
   }
+}
+
+function isCanonicalCoreRuntimeTool(tool: unknown): tool is { (ctx: unknown): Operation<(input: unknown) => Operation<unknown>>; annotations: unknown; samples: unknown; capabilities: unknown; schemas: unknown } {
+  return typeof tool === 'function' &&
+    tool !== null &&
+    'annotations' in tool &&
+    'samples' in tool &&
+    'capabilities' in tool &&
+    'schemas' in tool
 }
 
 // =============================================================================

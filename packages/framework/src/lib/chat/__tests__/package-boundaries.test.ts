@@ -54,6 +54,21 @@ describe("framework package boundaries", () => {
     expect(chatIndex).not.toContain("ChatProvider");
   });
 
+  it("does not publicly export duplicate MCP tool builders", () => {
+    const indexes = [
+      resolve(frameworkRoot, "src/lib/chat/index.ts"),
+      resolve(frameworkRoot, "src/lib/chat/mcp-tools/index.ts"),
+    ];
+    const forbidden = ["createMcpTool", "createMCPTool", "McpToolBuilderBase", "MCPToolBuilderBase"];
+
+    for (const indexPath of indexes) {
+      const source = readFileSync(indexPath, "utf8");
+      for (const name of forbidden) {
+        expect(source, `${indexPath} must not export ${name}`).not.toContain(name);
+      }
+    }
+  });
+
   it("does not publicly export legacy finalized tool runtime type names", () => {
     const indexes = [
       resolve(frameworkRoot, "src/lib/chat/mcp-tools/index.ts"),

@@ -4,14 +4,14 @@
  * A tool that demonstrates a simple confirmation flow with elicitation.
  */
 import { z } from 'zod'
-import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/framework/chat'
 
 const confirmSchema = z.object({
   confirmed: z.boolean().describe('Whether to proceed'),
   reason: z.string().optional().describe('Optional reason for your choice'),
 })
 
-export const confirmTool = createMcpTool('confirm')
+export const confirmTool = createTool('confirm')
   .description('Ask the user to confirm an action')
   .parameters(
     z.object({

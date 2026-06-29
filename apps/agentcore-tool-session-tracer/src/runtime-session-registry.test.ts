@@ -169,7 +169,7 @@ describe("RuntimeSessionRegistry protocol safety", () => {
     expect(
       events.some(
         (event) =>
-          event?.type === "error" && /local-only model ollama\/qwen3:30b/.test(event.message),
+          event?.type === "error" && /app-local model ollama\/qwen3:30b/.test(event.message),
       ),
     ).toBe(true);
     expect(status(responses)).toMatchObject({ type: "session_status", status: "failed" });

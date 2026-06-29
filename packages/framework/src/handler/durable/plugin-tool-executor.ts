@@ -15,7 +15,7 @@ import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/sessi
 import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
 import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
 import type { ElicitsMap } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
-import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-runtime-tool.ts'
 import {
   createBridgeHost,
   type BridgeEvent,

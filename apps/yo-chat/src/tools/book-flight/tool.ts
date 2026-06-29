@@ -8,7 +8,7 @@
  * - LLM sampling for travel tips
  */
 import { z } from "zod";
-import { createMcpTool } from "@sweatpants/framework/chat";
+import { createTool } from "@sweatpants/framework/chat";
 import { sleep } from "effection";
 
 // =============================================================================
@@ -114,7 +114,7 @@ type BookFlightParams = {
   destination: string;
 };
 
-export const bookFlightTool = createMcpTool("book_flight")
+export const bookFlightTool = createTool("book_flight")
   .description("Book a flight for the user with interactive flight and seat selection")
   .parameters(
     z.object({
@@ -147,6 +147,7 @@ export const bookFlightTool = createMcpTool("book_flight")
       }),
     },
   })
+  .samples()
   .execute(function* (params, ctx) {
     // 1. Search for flights
     yield* ctx.notify("Searching for flights...", 0.1);
@@ -159,7 +160,7 @@ export const bookFlightTool = createMcpTool("book_flight")
 
     const flightResult = yield* ctx.elicit("pickFlight", {
       message: `Select a flight from ${params.from} to ${params.destination}`,
-      flights,
+      context: { flights },
     });
 
     // Handle decline/cancel
@@ -197,10 +198,12 @@ export const bookFlightTool = createMcpTool("book_flight")
 
     const seatResult = yield* ctx.elicit("pickSeat", {
       message: `Select your seat on ${selectedFlight.airline} ${selectedFlight.flightNumber}`,
-      seatMap,
-      flightInfo: {
-        airline: selectedFlight.airline,
-        flightNumber: selectedFlight.flightNumber,
+      context: {
+        seatMap,
+        flightInfo: {
+          airline: selectedFlight.airline,
+          flightNumber: selectedFlight.flightNumber,
+        },
       },
     });
 
@@ -253,7 +256,7 @@ export const bookFlightTool = createMcpTool("book_flight")
         from: params.from,
         to: params.destination,
       },
-      travelTip: tip.text,
+      travelTip: tip.text ?? tip.content ?? "",
       message: `Successfully booked ${selectedFlight.airline} ${selectedFlight.flightNumber} from ${params.from} to ${params.destination}. Seat ${seatCode}. Ticket: ${ticketNumber}`,
     };
   });

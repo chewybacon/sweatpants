@@ -1,7 +1,7 @@
 import { run } from 'effection'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/core'
 import {
   createIsomorphicToolInventoryEntry,
   createLocalToolRuntimeDriver,
@@ -10,10 +10,10 @@ import {
 
 let mcpExecuteCalls = 0
 
-const strictMcpTool = createMcpTool('strict_echo')
+const strictMcpTool = createTool('strict_echo')
   .description('Strict echo')
   .parameters(z.object({ message: z.string() }))
-  .elicits({})
+  
   .execute(function* (params) {
     mcpExecuteCalls += 1
     return { echoed: params.message }

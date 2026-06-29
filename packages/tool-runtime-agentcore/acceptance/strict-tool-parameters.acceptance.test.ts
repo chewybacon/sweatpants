@@ -1,16 +1,16 @@
 import { run, resource, type Operation } from 'effection'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createMcpTool, type ToolSession, type ToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/framework/chat'
+import { type ToolSession, type ToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
 import {
   createAgentCoreToolInventoryEntry,
   createAgentCoreToolRuntimeDriver,
 } from '../src/index.ts'
 
-const remoteTool = createMcpTool('remote_echo')
+const remoteTool = createTool('remote_echo')
   .description('Remote echo')
   .parameters(z.object({ message: z.string() }))
-  .elicits({})
   .execute(function* () {
     return { unreachable: true }
   })

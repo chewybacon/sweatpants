@@ -15,7 +15,7 @@
  */
 import { createContext, type Operation } from 'effection'
 import type { ToolSessionRegistry } from '../session/types.ts'
-import type { McpRuntimeTool } from '../mcp-tool-builder.ts'
+import type { McpRuntimeTool } from '../mcp-runtime-tool.ts'
 import type { ElicitsMap, ElicitResult, ElicitExchange, RawSampleResultBase } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,

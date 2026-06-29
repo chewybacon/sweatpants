@@ -18,16 +18,11 @@ let initPromise: Promise<typeof import('katex')> | null = null
 /**
  * Check if we're running in a browser environment.
  */
-const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined'
-
 /**
- * Initialize KaTeX.
- * Returns null if not in a browser environment.
+ * Initialize KaTeX. KaTeX can render in both browser and Node environments,
+ * which lets acceptance tests and server-side rendering use the same pipeline.
  */
 async function initKatex(): Promise<typeof import('katex') | null> {
-  // KaTeX can technically run in Node, but we'll be consistent with mermaid
-  if (!isBrowser) return null
-
   if (katexInstance) return katexInstance
 
   if (initPromise) return initPromise
@@ -45,7 +40,6 @@ async function initKatex(): Promise<typeof import('katex') | null> {
  * Check if KaTeX is already initialized.
  */
 export function isKatexReady(): boolean {
-  if (!isBrowser) return true // On server, consider it "ready" (will be skipped)
   return katexInstance !== null
 }
 
@@ -80,12 +74,8 @@ export function renderMath(
     try {
       const katex = await initKatex()
 
-      // Skip on server
       if (!katex) {
-        return {
-          success: false,
-          error: 'KaTeX requires browser environment',
-        } as MathRenderResult
+        return { success: false, error: 'KaTeX failed to initialize' } as MathRenderResult
       }
 
       const html = katex.default.renderToString(latex, {

@@ -12,7 +12,8 @@
       "import": {
         "types": "./dist/index.d.ts",
         "default": "./dist/index.js"
-      }
+      },
+      "default": "./src/index.ts"
     },
     "./tools": {
       "development": {
