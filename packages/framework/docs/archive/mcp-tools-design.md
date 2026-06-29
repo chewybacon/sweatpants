@@ -44,7 +44,7 @@ This maps perfectly to our generator model.
 The core authoring surface is the `*client()` generator with an `MCPClientContext`:
 
 ```typescript
-const bookFlight = createMCPTool('book_flight')
+const bookFlight = createTool('book_flight')
   .description('Book a flight with user confirmation')
   .parameters(z.object({ 
     destination: z.string(),
@@ -276,7 +276,7 @@ if (!clientCapabilities.sampling) {
 Tools can declare required capabilities:
 
 ```typescript
-const myTool = createMCPTool('my_tool')
+const myTool = createTool('my_tool')
   .requires({ elicitation: true, sampling: true })
   // Tool won't be listed if client doesn't have these capabilities
 ```
@@ -461,7 +461,7 @@ The runtime handles MCP timeouts and disconnects:
 ### Basic Tool
 
 ```typescript
-const simpleTool = createMCPTool('simple')
+const simpleTool = createTool('simple')
   .description('A simple tool')
   .parameters(z.object({ input: z.string() }))
   .execute(function*(params, ctx) {
@@ -479,7 +479,7 @@ const simpleTool = createMCPTool('simple')
 ### Tool with Handoff
 
 ```typescript
-const complexTool = createMCPTool('complex')
+const complexTool = createTool('complex')
   .description('A complex tool with handoff')
   .parameters(z.object({ ... }))
   .requires({ elicitation: true, sampling: true })
@@ -493,7 +493,7 @@ const complexTool = createMCPTool('complex')
 ### Headless Tool (No Client Interaction)
 
 ```typescript
-const headlessTool = createMCPTool('calculate')
+const headlessTool = createTool('calculate')
   .description('Perform calculation')
   .parameters(z.object({ expression: z.string() }))
   .execute(function*(params) {
@@ -564,10 +564,10 @@ createIsomorphicTool('my_tool')
   .handoff({ ... })
 ```
 
-**Option B:** Separate `createMCPTool()` builder
+**Option B:** Separate `createTool()` builder
 
 ```typescript
-createMCPTool('my_tool')
+createTool('my_tool')
   .handoff({ ... })
 ```
 
@@ -585,7 +585,7 @@ const flightSearch = {
 }
 
 // MCP version
-const bookFlightMCP = createMCPTool('book_flight')
+const bookFlightMCP = createTool('book_flight')
   .handoff({
     *before(params) { return yield* flightSearch.searchFlights(params) },
     *client(handoff, ctx) {
@@ -640,7 +640,7 @@ Extend existing Vite plugin or create MCP-specific plugin?
 ### Phase 1: Core Primitives
 - [ ] Define `MCPClientContext` interface
 - [ ] Define `ElicitResult` and related types
-- [ ] Implement `createMCPTool()` builder
+- [ ] Implement `createTool()` builder
 - [ ] Basic schema validation (flat object constraint)
 
 ### Phase 2: Runtime

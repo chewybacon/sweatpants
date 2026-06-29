@@ -25,10 +25,9 @@
  */
 
 // =============================================================================
-// CANONICAL AUTHORING API
+// CANONICAL CORE TOOL TYPES
 // =============================================================================
 
-export { createTool } from "@sweatpants/core";
 export type {
   ToolDefinition,
   ToolCtx,

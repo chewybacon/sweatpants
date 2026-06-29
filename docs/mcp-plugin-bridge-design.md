@@ -90,7 +90,7 @@ Each plugin tool execution creates a `BridgeHost` (from `bridge-runtime.ts`) whi
 
 | Component | File | Changes |
 |-----------|------|---------|
-| MCP Tool Builder | `mcp-tool-builder.ts` | Make `.elicits()` required |
+| MCP Tool Builder | `canonical core tool builder` | Make `.elicits()` required |
 | Plugin Types | `plugin.ts` | Update `PluginClientContext` with `render()` |
 | Chat Engine | `chat-engine.ts` | Add plugin tool detection and execution |
 
@@ -202,7 +202,7 @@ The implementation includes a full demo of an MCP plugin tool:
 ### Tool Definition
 
 ```typescript
-const bookFlightTool = createMcpTool('book_flight')
+const bookFlightTool = createTool('book_flight')
   .description('Book a flight for the user')
   .parameters(z.object({
     from: z.string(),
@@ -293,7 +293,7 @@ packages/framework/src/lib/chat/mcp-tools/
   plugin.ts               # Updated PluginClientContext
   plugin-executor.ts      # NEW: Handler execution
   plugin-registry.ts      # NEW: Plugin lookup
-  mcp-tool-builder.ts     # Updated: .elicits() required
+  canonical core tool builder     # Updated: .elicits() required
 
 packages/framework/src/handler/durable/
   chat-engine.ts          # Plugin tool integration

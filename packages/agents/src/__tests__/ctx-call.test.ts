@@ -7,16 +7,13 @@ import { createInMemoryAgentStreamStore } from '../stream.ts'
 import { UnresolvableTargetError } from '../ctx.ts'
 import { collectUntil } from './helpers.ts'
 
-const Book = createTool({
-  name: 'book',
-  description: 'book a thing',
-  input: z.object({ destination: z.string() }),
-  output: z.object({ confirmed: z.boolean(), destination: z.string() }),
-  progress: z.object({}),
-  impl: function* ({ destination }) {
+const Book = createTool('book')
+  .description('book a thing')
+  .parameters(z.object({ destination: z.string() }))
+  .output(z.object({ confirmed: z.boolean(), destination: z.string() }))
+  .execute(function* ({ destination }) {
     return { confirmed: true, destination }
-  },
-})
+  })
 
 const BuilderEcho = createTool('builder_echo')
   .description('builder echo')

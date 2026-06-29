@@ -17,7 +17,7 @@
 - [x] Run tests to verify no regressions
 
 **Files:**
-- `packages/framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts`
+- `packages/framework/src/lib/chat/mcp-tools/canonical core tool builder`
 - `packages/framework/src/lib/chat/mcp-tools/__tests__/branch.test.ts`
 
 ### 0.2 Update PluginClientContext with `render()` Method
@@ -151,7 +151,7 @@
 ## Phase 2: book_flight Tool Implementation - COMPLETED
 
 ### 2.1 Tool Definition ✅
-- [x] Create `bookFlightTool` with `createMcpTool()`
+- [x] Create `bookFlightTool` with `createTool()`
 - [x] Define parameters: `from`, `destination`
 - [x] Define elicits: `pickFlight`, `pickSeat`
 - [x] Implement execute function with mock data
@@ -467,7 +467,7 @@ Multi-step elicitation is broken because tool sessions are destroyed when the fi
 
 ### 2026-01-08 (Session 4)
 - Completed Phase 2 - book_flight Tool Implementation
-- Created `bookFlightTool` with `createMcpTool()` pattern
+- Created `bookFlightTool` with `createTool()` pattern
   - Parameters: `from`, `destination`
   - Elicits: `pickFlight` (returns flightId), `pickSeat` (returns row, seat)
   - Uses `ctx.sample()` for travel tip generation

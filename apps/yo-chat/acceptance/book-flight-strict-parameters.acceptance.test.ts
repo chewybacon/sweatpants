@@ -5,13 +5,13 @@ import {
 } from '@sweatpants/tool-runtime-local'
 import { bookFlightTool } from '../src/tools/book-flight/tool.ts'
 
-type LocalMcpTool = NonNullable<Parameters<typeof createLocalToolRuntimeDriver>[0]['tools']>[number]
+type LocalSessionTool = NonNullable<Parameters<typeof createLocalToolRuntimeDriver>[0]['tools']>[number]
 
 describe('yo-chat book_flight strict parameter acceptance', () => {
   it('rejects missing required route params before starting the booking UI flow', async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [bookFlightTool as LocalMcpTool],
+        tools: [bookFlightTool as LocalSessionTool],
         samplingProvider: { *sample() { return { text: 'unused' } } },
       })
 
@@ -37,7 +37,7 @@ describe('yo-chat book_flight strict parameter acceptance', () => {
   it('starts the authored flight picker flow when route params are complete', async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [bookFlightTool as LocalMcpTool],
+        tools: [bookFlightTool as LocalSessionTool],
         samplingProvider: { *sample() { return { text: 'unused' } } },
       })
 

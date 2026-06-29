@@ -69,7 +69,7 @@ apps/yo-chat/src/tools/play-ttt/
 ### Tool Definition
 
 ```typescript
-export const playTttTool = createMcpTool('play_ttt')
+export const playTttTool = createTool('play_ttt')
   .description('Play a complete game of tic-tac-toe. Encapsulates the entire game from start to finish.')
   .parameters(z.object({}))  // No params needed - tool handles everything
   .elicits({

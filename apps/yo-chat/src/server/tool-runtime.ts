@@ -17,7 +17,7 @@ import {
   createInMemoryToolSessionStore,
   createIsomorphicToolInventoryEntry,
   createLocalInlineToolExecutionStrategy,
-  createMcpToolInventoryEntry,
+  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
@@ -40,7 +40,7 @@ import { getSharedRedisClient } from "@/lib/shared-redis";
 import { activeAgentCoreToolNames, activePluginTools, allTools } from "./tools";
 import { pluginSamplingProvider } from "./plugin-sampling-provider";
 
-type LocalMcpTool = Parameters<typeof createMcpToolInventoryEntry>[0];
+type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
 type LocalIsomorphicRuntimeTool = Parameters<typeof createIsomorphicToolInventoryEntry>[0];
 type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0];
 
@@ -128,10 +128,10 @@ function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegi
   return yield* createLocalPluginToolSessionRegistry();
 }
 
-function runtimePluginTools(): LocalMcpTool[] {
+function runtimePluginTools(): LocalSessionTool[] {
   // Tool names are already canonical (no prefixing/aliasing), so AgentCore and
   // local runtimes use the same tool objects directly.
-  return activePluginTools as LocalMcpTool[];
+  return activePluginTools as LocalSessionTool[];
 }
 
 function parametersToSchema(parameters: unknown): Record<string, unknown> {
@@ -163,7 +163,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
         .map((tool) => createIsomorphicToolInventoryEntry(tool as LocalIsomorphicRuntimeTool)),
       ...(env.MCP_TOOL_RUNTIME === "agentcore"
         ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool as AgentCoreMcpTool))
-        : pluginTools.map((tool) => createMcpToolInventoryEntry(tool))),
+        : pluginTools.map((tool) => createToolInventoryEntry(tool))),
     ]),
   );
 

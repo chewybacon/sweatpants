@@ -211,6 +211,9 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.41.1
         version: 1.41.1
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -391,6 +394,9 @@ importers:
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@19.2.8)(react@19.2.3)
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -581,6 +587,9 @@ importers:
 
   apps/yo-mcp:
     dependencies:
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
@@ -984,6 +993,9 @@ importers:
         specifier: ^4.7.0
         version: 4.7.1
     devDependencies:
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../core
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../framework

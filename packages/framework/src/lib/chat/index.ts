@@ -121,8 +121,7 @@ export {
   MODEL_CONTEXT_SCHEMA_KEY,
 } from "./mcp-tools/model-context.ts";
 
-// Canonical tool authoring surface. Framework adapts core tools at runtime/protocol boundaries.
-export { createTool } from "@sweatpants/core";
+// Canonical core tool types. Author tools with createTool from @sweatpants/core.
 export type {
   ToolDefinition,
   ToolCtx,

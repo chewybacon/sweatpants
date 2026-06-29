@@ -2,7 +2,7 @@
 import { describe, it, expect } from 'vitest'
 import { run, each } from 'effection'
 import { z } from 'zod'
-import { createTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/core'
 import { useToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,

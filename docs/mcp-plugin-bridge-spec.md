@@ -58,7 +58,7 @@ This avoids a bespoke “MCP-UI protocol” in userland: tool authors write a pl
 Add to MCP tool builder:
 
 ```ts
-const tool = createMcpTool('book_flight')
+const tool = createTool('book_flight')
   .description('Book a flight')
   .parameters(z.object({ from: z.string(), to: z.string() }))
   .elicits({
@@ -221,7 +221,7 @@ useChat({ plugins: [bookFlightPlugin.client] })
 ---
 
 ## Migration / Backwards compatibility
-- Existing `createMcpTool` / `createBranchTool` should continue to work.
+- Existing `createTool` / `createBranchTool` should continue to work.
 - `.elicits(...)` is opt-in; tools without it can still call the legacy `elicit({schema,...})` path or be considered “not bridgeable”.
 
 ---

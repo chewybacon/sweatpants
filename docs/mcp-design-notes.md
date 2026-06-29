@@ -12,7 +12,7 @@ Framework Core (packages/framework/src/lib/chat/mcp-tools/)
    - MCPHandoffConfig for before/client/after pattern
    - Error classes (MCPCapabilityError, ElicitationDeclinedError, etc.)
 2. builder.ts - Type-safe builder API:
-   - createMCPTool(name) fluent builder
+   - createTool(name) fluent builder
    - Phantom types for compile-time type inference
    - Support for simple .execute() or .handoff({ before, client, after })
 3. mock-runtime.ts - Testing utilities:
@@ -79,14 +79,14 @@ What's Next
    
 ---
 Key Design Decisions
-1. Separate createMCPTool() builder (not unified with isomorphic tools) - cleaner for now
+1. Separate createTool() builder (not unified with isomorphic tools) - cleaner for now
 2. Generator pattern - Each yield* is a suspension point mapped to MCP request/response
 3. Three-phase handoff - before() runs once on server, client() does multi-turn MCP interaction, after() finalizes
 4. ElicitResult discriminated union - Forces handling of decline/cancel cases
 ---
 Example Usage
-import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
-const bookFlight = createMCPTool('book_flight')
+import { createTool } from '@sweatpants/core'
+const bookFlight = createTool('book_flight')
   .description('Book a flight')
   .parameters(z.object({ destination: z.string() }))
   .requires({ elicitation: true, sampling: true })

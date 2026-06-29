@@ -8,7 +8,7 @@
  * - LLM sampling for travel tips
  */
 import { z } from "zod";
-import { createTool } from "@sweatpants/framework/chat";
+import { createTool } from "@sweatpants/core";
 import { sleep } from "effection";
 
 // =============================================================================
@@ -108,11 +108,6 @@ const SeatMapSchema = z.object({
 // =============================================================================
 // TOOL DEFINITION
 // =============================================================================
-
-type BookFlightParams = {
-  from: string;
-  destination: string;
-};
 
 export const bookFlightTool = createTool("book_flight")
   .description("Book a flight for the user with interactive flight and seat selection")

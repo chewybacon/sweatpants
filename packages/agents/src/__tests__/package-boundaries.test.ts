@@ -21,7 +21,7 @@ describe('@sweatpants/agents package boundaries', () => {
   it('does not publicly export removed tool builder names', () => {
     const index = readFileSync(resolve(agentsRoot, 'src/index.ts'), 'utf8')
 
-    expect(index).not.toContain('createTool2')
+    expect(index).not.toContain(['create', 'Tool2'].join(''))
     expect(index).not.toContain('finalizeUnifiedTool')
     expect(index).not.toContain('normalizeElicits')
   })

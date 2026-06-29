@@ -5,7 +5,7 @@ import { describe, expect, it, afterEach, beforeAll } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
 import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand, StopRuntimeSessionCommand } from '@aws-sdk/client-bedrock-agentcore'
-import { createTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/core'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   createAgentCoreRemoteToolRuntimeClient,

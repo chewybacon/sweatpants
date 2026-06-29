@@ -129,17 +129,15 @@ export type ExtractElicitResponse<E> = E extends ElicitDefinition<any, infer TRe
   ? InferSchema<TResponseSchema>
   : InferSchema<E>;
 
-export type ExtractElicitContext<E> = E extends ElicitDefinition<infer TContextSchema, any>
-  ? TContextSchema extends undefined
-    ? undefined
-    : InferSchema<TContextSchema>
+export type ExtractElicitContext<E> = E extends { readonly context: infer TContextSchema }
+  ? InferSchema<TContextSchema>
   : undefined;
 
 export type ExtractElicitResponseSchema<E> = E extends ElicitDefinition<any, infer TResponseSchema>
   ? TResponseSchema
   : E;
 
-export type ExtractElicitContextSchema<E> = E extends ElicitDefinition<infer TContextSchema, any>
+export type ExtractElicitContextSchema<E> = E extends { readonly context: infer TContextSchema }
   ? TContextSchema
   : undefined;
 

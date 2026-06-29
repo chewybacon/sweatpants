@@ -8,19 +8,13 @@ import { createInMemoryAgentStreamStore } from '../stream.ts'
 import { parallel } from '../parallel.ts'
 import { collectUntil } from './helpers.ts'
 
-const ElicitTool = createTool({
-  name: 'ask',
-  description: 'ask the user',
-  input: z.object({ question: z.string() }),
-  output: z.object({ answer: z.string() }),
-  progress: z.object({}),
-  // No impl: this tool is only invoked via the harness ctx.call which routes
-  // to the tool factory. We give it an impl that calls ctx... but the existing
-  // tool API has no ctx. So we test elicit at the harness level instead.
-  impl: function* ({ question }) {
+const ElicitTool = createTool('ask')
+  .description('ask the user')
+  .parameters(z.object({ question: z.string() }))
+  .output(z.object({ answer: z.string() }))
+  .execute(function* ({ question }) {
     return { answer: `echo:${question}` }
-  },
-})
+  })
 
 describe('ctx.elicit (REQ-014/015)', () => {
   it('ctx.elicit emits elicit_request and parks until respondElicit (TC-028)', function* () {

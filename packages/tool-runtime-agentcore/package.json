@@ -63,7 +63,8 @@
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@sweatpants/core": "workspace:*"
   },
   "license": "MIT"
 }

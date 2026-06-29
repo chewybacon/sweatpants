@@ -6,7 +6,7 @@
  * then the tool parses the free-form response and falls back to a random legal
  * move only when the sampled text is unusable.
  */
-import { createTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/core'
 import { z } from 'zod'
 import {
   type Board,

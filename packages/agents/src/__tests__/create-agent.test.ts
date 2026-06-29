@@ -5,16 +5,13 @@ import { createTool } from '@sweatpants/core'
 import { createAgent } from '../create-agent.ts'
 import type { AgentFactory } from '../types.ts'
 
-const Book = createTool({
-  name: 'book',
-  description: 'book a thing',
-  input: z.object({ destination: z.string() }),
-  output: z.object({ confirmed: z.boolean(), destination: z.string() }),
-  progress: z.object({}),
-  impl: function* ({ destination }) {
+const Book = createTool('book')
+  .description('book a thing')
+  .parameters(z.object({ destination: z.string() }))
+  .output(z.object({ confirmed: z.boolean(), destination: z.string() }))
+  .execute(function* ({ destination }) {
     return { confirmed: true, destination }
-  },
-})
+  })
 
 describe('createAgent (REQ-001)', () => {
   it('returns a callable AgentFactory with metadata', function* () {

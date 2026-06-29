@@ -473,7 +473,7 @@ await main(function* () {
 Same tool definition, multiple runtimes:
 
 ```ts
-const bookFlightTool = createMcpTool('book_flight')
+const bookFlightTool = createTool('book_flight')
   .elicits({ pickFlight, pickSeat })
   .execute(function* (params, ctx) {
     const flights = yield* searchFlights(params)

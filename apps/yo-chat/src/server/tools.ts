@@ -34,7 +34,7 @@ const SUPPORTED_AGENTCORE_TOOL_NAMES: Set<string> | null = (() => {
   return new Set(configured);
 })();
 
-function createMcpToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
+function createToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
   const map = new Map<string, unknown>();
   for (const tool of mcpTools) {
     map.set(tool.name, tool);
@@ -78,7 +78,7 @@ const pluginClients = [
 export const pluginRegistry = createPluginRegistryFrom(pluginClients);
 
 export const activePluginTools = activeMcpPluginTools();
-export const mcpToolRegistry = createMcpToolRegistry(activePluginTools);
+export const mcpToolRegistry = createToolRegistry(activePluginTools);
 
 console.info("[yo-chat] active MCP plugin tools", {
   runtime: env.MCP_TOOL_RUNTIME,

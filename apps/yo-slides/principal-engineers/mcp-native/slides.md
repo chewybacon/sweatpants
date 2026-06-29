@@ -430,7 +430,7 @@ Tool completes
 ````md magic-move
 ```ts
 // Step 1: Define the MCP tool with elicit keys
-const bookFlightTool = createMcpTool('book_flight')
+const bookFlightTool = createTool('book_flight')
   .description('Book a flight for the user')
   .parameters(z.object({
     from: z.string(),
@@ -473,7 +473,7 @@ const bookFlightPlugin = makePlugin(bookFlightTool)
 ```
 ```ts
 // The tool flows into makePlugin()
-const bookFlightTool = createMcpTool('book_flight')
+const bookFlightTool = createTool('book_flight')
   .elicits({
     pickFlight: z.object({ flightId: z.string() }),  // ─┐
     pickSeat: z.object({ row: z.number(), seat: z.string() }),  // ─┤
@@ -651,7 +651,7 @@ class: text-center
 <div>
 
 ### Working Now
-- `createMcpTool()` builder
+- `createTool()` builder
 - `makePlugin()` with typed handlers
 - `ctx.render()` / `ctx.elicit()`
 - Session management

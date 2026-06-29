@@ -123,7 +123,7 @@ When an isomorphic tool has a `client()` function, we auto-generate a plugin han
 ```typescript
 // Internal translation in builder.ts .build():
 
-const mcpTool = createMcpTool(config.name)
+const mcpTool = createTool(config.name)
   .elicits({
     __handoff__: {
       response: z.unknown(),

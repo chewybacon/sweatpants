@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { run, resource, type Operation } from 'effection'
 import { z } from 'zod'
-import { createTool } from '@sweatpants/framework/chat'
-import { type ToolSessionRegistry, type ToolSession } from '@sweatpants/framework/chat/mcp-tools'
+import { createTool } from '@sweatpants/core'
 import { ToolRuntimeApi, createToolInventory } from '@sweatpants/framework/chat'
+import { type ToolSessionRegistry, type ToolSession } from '@sweatpants/framework/chat/mcp-tools'
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolExecutionStrategy,

@@ -4,7 +4,7 @@
  * A tool that demonstrates a simple confirmation flow with elicitation.
  */
 import { z } from 'zod'
-import { createTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/core'
 
 const confirmSchema = z.object({
   confirmed: z.boolean().describe('Whether to proceed'),
@@ -20,9 +20,7 @@ export const confirmTool = createTool('confirm')
     })
   )
   .elicits({
-    confirmation: {
-      response: confirmSchema,
-    },
+    confirmation: confirmSchema,
   })
   .execute(function* (params, ctx) {
     const prefix = params.dangerous ? 'WARNING: ' : ''
