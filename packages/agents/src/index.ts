@@ -141,28 +141,16 @@ export {
   type A2ACancelTaskProjection,
 } from './projections.ts'
 
-// re-export core tool types for authoring convenience
-export type {
-  AnyToolFactory,
-  ToolFromFactory,
-  InputFromFactory,
-  OutputFromFactory,
-} from '@sweatpants/core'
-
-// unified tool model (native builder and migration wrapper)
+// canonical core tool model re-exported for authoring convenience
 export {
   createTool,
-  finalizeUnifiedTool,
-  normalizeElicits,
-  type CreateToolBuilderBase,
-  type CreateToolBuilderWithDescription,
-  type CreateToolBuilderWithParams,
-  type CreateToolBuilderWithElicits,
-  type ToolCapabilities,
-} from './create-tool.ts'
-export {
+  type AnyToolFactory,
+  type ToolFromFactory,
+  type InputFromFactory,
+  type OutputFromFactory,
   type ToolCtx,
-  type ToolImpl,
+  type CoreToolCtx,
+  type ToolDefinition,
   type UnifiedToolFactory,
   type ElicitDefinition,
   type ElicitEntry,
@@ -173,6 +161,21 @@ export {
   type ExtractElicitContextSchema,
   type NormalizedElicitDefinition,
   type NormalizedElicitsMap,
-  projectToToolCtx,
-} from './tool-ctx.ts'
-export { createTool2, type UnifiedToolConfig } from './create-tool2.ts'
+  type SampleDefinition,
+  type SamplesMap,
+  type SampleRequest as ToolSampleRequest,
+  type ToolSampleResult,
+  type InteractionExchange,
+  type ElicitExchange as ToolElicitExchange,
+  type SampleExchange as ToolSampleExchange,
+  type ToolExtension,
+  type ToolExtensionMetadata,
+  type CreateToolBuilderBase,
+  type CreateToolBuilderWithDescription,
+  type CreateToolBuilderWithParams,
+  type CreateToolBuilderWithElicits,
+} from '@sweatpants/core'
+
+// migration helpers retained as non-canonical internals while first-party callers are ported
+export { finalizeUnifiedTool, normalizeElicits, type ToolCapabilities } from './create-tool.ts'
+export { projectToToolCtx, type ToolImpl } from './tool-ctx.ts'
