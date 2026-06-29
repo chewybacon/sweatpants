@@ -16,8 +16,8 @@
  */
 import { describe, it, expect } from 'vitest'
 import { z } from 'zod'
-import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
-import { createTool2 } from '../create-tool2.ts'
+import { createMCPTool } from '../../../framework/src/lib/chat/mcp-tools/builder.ts'
+import { createTool } from '@sweatpants/core'
 import { createAgent } from '../create-agent.ts'
 import type { ToolTarget, TargetInput, TargetOutput } from '../types.ts'
 
@@ -33,18 +33,16 @@ const mcpTool = createMCPTool('mcp_x')
 const _mcpOk: ToolTarget = mcpTool
 void _mcpOk
 
-// --- createTool2 output is a ToolTarget (no `as never`) ---
+// --- canonical core createTool output is a ToolTarget (no `as never`) ---
 
-const nativeTool = createTool2({
-  name: 'native_x',
-  description: 'd',
-  input: z.object({ b: z.number() }),
-  output: z.object({ result: z.string() }),
-  impl: function* (input, ctx) {
+const nativeTool = createTool('native_x')
+  .description('d')
+  .parameters(z.object({ b: z.number() }))
+  .output(z.object({ result: z.string() }))
+  .execute(function* (input, ctx) {
     yield* ctx.notify('hi')
     return { result: String(input.b) }
-  },
-})
+  })
 
 const _nativeOk: ToolTarget = nativeTool
 void _nativeOk

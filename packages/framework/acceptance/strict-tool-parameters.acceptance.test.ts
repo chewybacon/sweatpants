@@ -19,7 +19,8 @@ import {
   validateToolParameters,
   type ToolRuntime,
 } from '../src/lib/chat/index.ts'
-import { createBridgeHost, createMcpTool } from '../src/lib/chat/mcp-tools/index.ts'
+import { createBridgeHost } from '../src/lib/chat/mcp-tools/index.ts'
+import { createMcpTool } from '../src/lib/chat/mcp-tools/mcp-tool-builder.ts'
 
 let executeCalls = 0
 let bridgeStarts = 0

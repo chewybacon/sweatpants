@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@effectionx/vitest'
 import { z } from 'zod'
 import { createTool } from '@sweatpants/core'
-import { createMcpTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createMcpTool } from '../../../framework/src/lib/chat/mcp-tools/mcp-tool-builder.ts'
 import { createAgent } from '../create-agent.ts'
 import { createAgentSession } from '../session.ts'
 import { createInMemoryAgentStreamStore } from '../stream.ts'

@@ -10,8 +10,8 @@
 import { describe, it, expect } from 'vitest'
 import { run, spawn, each, sleep } from 'effection'
 import { z } from 'zod'
+import { createMcpTool } from '../mcp-tool-builder.ts'
 import {
-  createMcpTool,
   createBridgeHost,
 } from '../index'
 import type {

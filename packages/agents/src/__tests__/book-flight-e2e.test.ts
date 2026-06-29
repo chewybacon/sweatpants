@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from '@effectionx/vitest'
 import { z } from 'zod'
-import { createMCPTool } from '@sweatpants/framework/chat/mcp-tools'
+import { createMCPTool } from '../../../framework/src/lib/chat/mcp-tools/builder.ts'
 import { createAgent } from '../create-agent.ts'
 import { createAgentSession } from '../session.ts'
 import { createInMemoryAgentStreamStore } from '../stream.ts'

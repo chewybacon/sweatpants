@@ -176,6 +176,5 @@ export {
   type CreateToolBuilderWithElicits,
 } from '@sweatpants/core'
 
-// migration helpers retained as non-canonical internals while first-party callers are ported
-export { finalizeUnifiedTool, normalizeElicits, type ToolCapabilities } from './create-tool.ts'
+// Agent runtime projection helpers; authoring uses canonical core createTool above.
 export { projectToToolCtx, type ToolImpl } from './tool-ctx.ts'

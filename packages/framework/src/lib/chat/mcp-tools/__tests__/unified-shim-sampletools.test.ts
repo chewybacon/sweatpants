@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { run } from 'effection'
 import { z } from 'zod'
-import { createMcpTool, SampleValidationError } from '../index.ts'
+import { createMcpTool } from '../mcp-tool-builder.ts'
+import { SampleValidationError } from '../index.ts'
 import type { Operation } from 'effection'
 import type { UnifiedToolCtxShape } from '../mcp-tool-builder.ts'
 

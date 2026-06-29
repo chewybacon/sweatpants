@@ -6,6 +6,7 @@
  */
 import type { Operation } from 'effection'
 import type { ZodSchema } from 'zod'
+import type { ToolCtx, ToolDefinition } from '@sweatpants/core'
 import type { AnyIsomorphicTool, ServerToolContext } from '../isomorphic-tools/types.ts'
 import { withFrameworkTransport } from './framework-transport.ts'
 
@@ -22,20 +23,22 @@ import { withFrameworkTransport } from './framework-transport.ts'
  * Note: We use `any` for middleware and context types to allow any core tool factory
  * regardless of its specific generic parameters. The runtime behavior is correct.
  */
-export type CoreToolFactory = {
+export type LegacyCoreToolFactory = {
   (...args: unknown[]): Operation<unknown>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   decorate: (middleware: any) => Operation<void>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  withContext: <T>(context: any, value: T) => CoreToolFactory
+  withContext: <T>(context: any, value: T) => LegacyCoreToolFactory
   readonly name: string
   readonly description: string
   readonly schemas: {
     readonly input: ZodSchema
-    readonly output: ZodSchema
+    readonly output?: ZodSchema
     readonly progress?: ZodSchema
   }
 }
+
+export type CoreToolFactory = ToolDefinition | LegacyCoreToolFactory
 
 /**
  * Detect if a value is a @sweatpants/core tool factory.
@@ -53,14 +56,13 @@ export function isCoreToolFactory(value: unknown): value is CoreToolFactory {
   const fn = value as unknown as Record<string, unknown>
 
   return (
-    typeof fn['decorate'] === 'function' &&
-    typeof fn['withContext'] === 'function' &&
     typeof fn['name'] === 'string' &&
     typeof fn['description'] === 'string' &&
     fn['schemas'] !== null &&
     typeof fn['schemas'] === 'object' &&
     'input' in (fn['schemas'] as object) &&
-    'output' in (fn['schemas'] as object)
+    ((typeof fn['decorate'] === 'function' && typeof fn['withContext'] === 'function') ||
+      ('parameters' in fn && 'capabilities' in fn))
   )
 }
 
@@ -92,14 +94,40 @@ export function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTo
      */
     *server(params: unknown, ctx: ServerToolContext): Operation<unknown> {
       return yield* withFrameworkTransport(ctx, function* () {
-        // Activate the core tool (no impl means it uses its configured impl)
-        const tool = yield* (coreToolFactory as () => Operation<(args: unknown) => Operation<unknown>>)()
+        if (isCanonicalCoreTool(coreToolFactory)) {
+          const toolCtx = createFrameworkToolCtx(coreToolFactory, ctx)
+          const tool = yield* coreToolFactory(toolCtx)
+          return yield* tool(params as never)
+        }
 
-        // Invoke the tool with params
+        // Activate legacy config-style core tools (no impl means they use their configured impl).
+        const tool = yield* (coreToolFactory as LegacyCoreToolFactory as () => Operation<(args: unknown) => Operation<unknown>>)()
         return yield* tool(params)
       })
     },
   }
 
   return adapted
+}
+
+function isCanonicalCoreTool(value: CoreToolFactory): value is ToolDefinition {
+  return 'parameters' in value && 'capabilities' in value
+}
+
+function createFrameworkToolCtx(tool: ToolDefinition, serverCtx: ServerToolContext): ToolCtx<any, any> {
+  return {
+    history: [],
+    notify: function* (_message: string, _fraction?: number, _level?: 'debug' | 'info' | 'warning' | 'error') {
+      // Framework stream projection is adapter-specific; the core adapter keeps
+      // notify/log observable but non-fatal when no stream bridge is installed.
+    },
+    log: function* (_level: 'debug' | 'info' | 'warning' | 'error', _message: string) {},
+    elicit: function* (key: string): Operation<never> {
+      throw new Error(`Tool "${tool.name}" requires unsupported elicit capability "${key}" in framework core adapter for call "${serverCtx.callId}"`)
+    },
+    sample: function* (...args: unknown[]): Operation<never> {
+      const key = typeof args[0] === 'string' ? ` "${args[0]}"` : ''
+      throw new Error(`Tool "${tool.name}" requires unsupported sample capability${key} in framework core adapter for call "${serverCtx.callId}"`)
+    },
+  }
 }

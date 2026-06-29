@@ -26,6 +26,18 @@ describe('Core Tool Adapter', () => {
       expect(isCoreToolFactory(coreTool)).toBe(true)
     })
 
+    it('should detect a canonical core ToolDefinition', function* () {
+      const coreTool = createTool('canonical_test')
+        .description('A canonical test tool')
+        .parameters(z.object({ value: z.string() }))
+        .output(z.object({ result: z.string() }))
+        .execute(function* ({ value }) {
+          return { result: value.toUpperCase() }
+        })
+
+      expect(isCoreToolFactory(coreTool)).toBe(true)
+    })
+
     it('should return false for plain objects', function* () {
       const notATool = {
         name: 'not_a_tool',
@@ -74,6 +86,28 @@ describe('Core Tool Adapter', () => {
       expect(adapted.parameters).toBe(coreTool.schemas.input)
       expect(adapted.server).toBeDefined()
       expect(adapted.client).toBeUndefined()
+    })
+
+    it('should execute an adapted canonical core ToolDefinition', function* () {
+      const coreTool = createTool('canonical_adapt')
+        .description('Canonical adaptation')
+        .parameters(z.object({ input: z.string() }))
+        .output(z.object({ output: z.string() }))
+        .execute(function* ({ input }, ctx) {
+          yield* ctx.notify('processing')
+          return { output: `processed: ${input}` }
+        })
+
+      const adapted = adaptCoreTool(coreTool)
+      expect(adapted.parameters).toBe(coreTool.schemas.input)
+      expect(adapted.server).toBeDefined()
+
+      const result = yield* adapted.server!({ input: 'abc' }, {
+        callId: 'call-1',
+        signal: new AbortController().signal,
+      })
+
+      expect(result).toEqual({ output: 'processed: abc' })
     })
   })
 

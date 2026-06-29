@@ -1,6 +1,7 @@
 /**
- * createTool2 E2E — a tool authored natively on the unified `(input, ctx: ToolCtx)`
- * signature composes via `ctx.tools.X` and elicits/samples through the stream.
+ * Canonical core createTool E2E — a tool authored natively on the unified
+ * `(input, ctx: ToolCtx)` signature composes via `ctx.tools.X` and
+ * elicits/samples through the stream.
  *
  * This is the terminal authoring surface (design REQ-2): framework tools are used directly
  * adapter, no framework finalized runtime object. The tool's `ctx.elicit`/`ctx.sample`/
@@ -11,42 +12,39 @@ import { z } from 'zod'
 import { createAgent } from '../create-agent.ts'
 import { createAgentSession } from '../session.ts'
 import { createInMemoryAgentStreamStore } from '../stream.ts'
-import { createTool2 } from '../create-tool2.ts'
+import { createTool } from '@sweatpants/core'
 import { collectUntil } from './helpers.ts'
 import type { AgentEvent } from '../events.ts'
 
 // A native unified tool that uses all three mid-run primitives.
-const askFavorite = createTool2({
-  name: 'ask_favorite',
-  description: 'Ask the user for their favorite color and summarize it.',
-  input: z.object({ topic: z.string() }),
-  output: z.object({ color: z.string(), summary: z.string() }),
-  capabilities: { elicitation: true, sampling: true },
-  elicits: {
+const askFavorite = createTool('ask_favorite')
+  .description('Ask the user for their favorite color and summarize it.')
+  .parameters(z.object({ topic: z.string() }))
+  .output(z.object({ color: z.string(), summary: z.string() }))
+  .elicits({
     favorite: {
       response: z.object({ value: z.string() }),
-      reason: 'favorite-color',
     },
-  },
-  impl: function* (input, ctx) {
+  })
+  .samples()
+  .execute(function* (input, ctx) {
     yield* ctx.notify(`Asking about favorite ${input.topic}`, 0.3)
 
     const res = yield* ctx.elicit('favorite', {
       message: `What is your favorite ${input.topic}?`,
     })
-    if (res.status !== 'accepted') {
+    if (res.action !== 'accept') {
       return { color: 'unknown', summary: `user declined` }
     }
-    const color = (res.value as { value: string }).value
+    const color = res.content.value
 
     const summary = yield* ctx.sample({
       prompt: `Say something nice about the color ${color} in one sentence.`,
     })
 
     yield* ctx.notify('Done', 1)
-    return { color, summary: summary.content }
-  },
-})
+    return { color, summary: summary.content ?? '' }
+  })
 
 const Agent = createAgent({
   name: 'fav',
@@ -67,7 +65,7 @@ function firstRequest(events: AgentEvent[], type: 'elicit_request' | 'sample_req
     | undefined
 }
 
-describe('createTool2 E2E (native unified tool)', () => {
+describe('canonical core createTool E2E (native unified tool)', () => {
   it('elicits + samples + notifies through the stream via ctx.tools.X', function* () {
     const store = createInMemoryAgentStreamStore()
     const session = yield* createAgentSession(Agent, {
