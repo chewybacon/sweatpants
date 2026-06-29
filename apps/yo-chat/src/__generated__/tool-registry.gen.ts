@@ -6,9 +6,12 @@
  */
 
 import { askQuestion } from '../tools/general/ask_question'
+import { bookFlightTool } from '../tools/book-flight/tool'
 import { calculator } from '../tools/calculator'
 import { pickCard } from '../tools/pick-card'
+import { playTttTool } from '../tools/play-ttt/tool'
 import { startTttGame } from '../tools/games/tic-tac-toe'
+import { tictactoeTool } from '../tools/tictactoe/tool'
 import { tttMove } from '../tools/games/tic-tac-toe'
 import { tttWinner } from '../tools/games/tic-tac-toe'
 
@@ -18,9 +21,12 @@ import { tttWinner } from '../tools/games/tic-tac-toe'
  */
 export const tools = {
   askQuestion,
+  bookFlightTool,
   calculator,
   pickCard,
+  playTttTool,
   startTttGame,
+  tictactoeTool,
   tttMove,
   tttWinner,
 } as const
@@ -35,9 +41,12 @@ export const toolList = Object.values(tools)
  */
 export type ToolName =
   | 'ask_question'
+  | 'book_flight'
   | 'calculator'
   | 'pick_card'
+  | 'play_ttt'
   | 'start_ttt_game'
+  | 'tictactoe'
   | 'ttt_move'
   | 'ttt_winner'
 

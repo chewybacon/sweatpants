@@ -364,13 +364,13 @@ describe("discoverToolsInContent", () => {
     });
 
     it("supports multiple export function names", () => {
-      const content = `export const foo = createMcpTool('my_tool')`;
+      const content = `export const foo = createTool('my_tool')`;
       const tools = discoverToolsInContent(
         content,
         "/project/src/tools/my-tool.ts",
         "/project/src/tools",
         resolveToolDiscoveryOptions({
-          exportFunctionName: ["createMcpTool", "createIsomorphicTool"],
+          exportFunctionName: ["createTool", "createIsomorphicTool"],
         }),
       );
 
@@ -451,7 +451,7 @@ describe("discoverToolsInContent", () => {
 
   describe("name derivation (no explicit name)", () => {
     it("derives name from export identifier, stripping Tool suffix", () => {
-      const content = `export const tictactoeTool = createMcpTool().build()`;
+      const content = `export const tictactoeTool = createTool().build()`;
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
@@ -468,7 +468,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("derives name from file basename for default export without name", () => {
-      const content = `export default createMcpTool().build()`;
+      const content = `export default createTool().build()`;
       const tools = discoverToolsInContent(
         content,
         "/project/src/tools/my_tool.ts",
@@ -481,7 +481,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("keeps explicit name as-is without prefixing", () => {
-      const content = `export const bookFlightTool = createMcpTool('book_flight').build()`;
+      const content = `export const bookFlightTool = createTool('book_flight').build()`;
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
@@ -489,7 +489,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("does not prefix nested tool names with directory path", () => {
-      const content = `export const tictactoeTool = createMcpTool().build()`;
+      const content = `export const tictactoeTool = createTool().build()`;
       const tools = discoverToolsInContent(
         content,
         "/project/src/tools/games/tic-tac-toe.ts",
@@ -697,7 +697,7 @@ describe("resolveToolDiscoveryOptions", () => {
     expect(options.dir).toBe("src/tools");
     expect(options.outFile).toBe("src/__generated__/tool-registry.gen.ts");
     expect(options.pattern).toBe("**/*.ts");
-    expect(options.exportFunctionName).toEqual(["createIsomorphicTool", "createMcpTool"]);
+    expect(options.exportFunctionName).toEqual(["createIsomorphicTool", "createTool"]);
     expect(options.logLevel).toBe("normal");
     expect(options.generateWorker).toBe(false);
     expect(options.workerOutFile).toBe("src/__generated__/tool-worker.gen.ts");
@@ -1086,7 +1086,7 @@ export { varTool }`,
     await setupTempProject();
 
     try {
-      await writeToolFile("tictactoe.ts", `export const tictactoeTool = createMcpTool().build()`);
+      await writeToolFile("tictactoe.ts", `export const tictactoeTool = createTool().build()`);
       await writeToolFile(
         "calculator.ts",
         `export const calculator = createIsomorphicTool().build()`,
@@ -1110,7 +1110,7 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/games"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/games/tic-tac-toe.ts"),
-        `export const tictactoeTool = createMcpTool().build()`,
+        `export const tictactoeTool = createTool().build()`,
       );
 
       await runPlugin();
@@ -1132,11 +1132,11 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/b"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/a/tool.ts"),
-        `export const myTool = createMcpTool().build()`,
+        `export const myTool = createTool().build()`,
       );
       await writeFile(
         join(tempDir, "src/tools/b/tool.ts"),
-        `export const myTool = createMcpTool().build()`,
+        `export const myTool = createTool().build()`,
       );
 
       await expect(runPlugin()).rejects.toThrow(/Duplicate tool name detected: 'my'/);

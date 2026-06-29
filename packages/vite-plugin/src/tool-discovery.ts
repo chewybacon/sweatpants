@@ -592,7 +592,7 @@ export function generateWorkerContent(
     registryEntries.push(
       `  { name: '${tool.toolName}', handler: function* (params, ctx) {
     const tool = ${variableName}
-    // Unified callable tools (createMCPTool/createIsomorphicTool finalized)
+    // Unified callable tools (createTool/createIsomorphicTool finalized)
     // are functions carrying legacy metadata (execute/handoffConfig/server).
     // Detect them by 'capabilities' and activate via the unified path
     // (ctx) => invoke(input); otherwise fall back to legacy field dispatch.
