@@ -9,7 +9,7 @@ import {
   createLocalSessionToolExecutionStrategy,
   createInMemoryToolSessionStore,
   createLocalToolRuntimeDriver,
-  createMcpToolInventoryEntry,
+  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from '../index.ts'
@@ -57,7 +57,7 @@ describe('local ToolRuntimeDriver', () => {
     })
   })
 
-  it('rejects invalid MCP params before creating a local session', async () => {
+  it('rejects invalid session params before creating a local session', async () => {
     await run(function* () {
       let executeCalls = 0
       const strictTool = createTool('strict_echo')
@@ -130,13 +130,13 @@ describe('local ToolRuntimeDriver', () => {
   })
 
   it('creates inventory entries with model-safe definitions and hidden implementation payloads', () => {
-    const mcpEntry = createMcpToolInventoryEntry(echoTool, { runtime: 'local' })
-    expect(mcpEntry.definition).toMatchObject({ name: 'echo', description: 'Echo input' })
-    expect(mcpEntry.definition.parameters).toMatchObject({ required: ['message'] })
-    expect((mcpEntry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
-    expect('implementation' in mcpEntry.definition).toBe(false)
-    expect(mcpEntry.implementation).toBeDefined()
-    expect(mcpEntry.capabilities).toMatchObject({ session: true, worker: true, elicits: true, samples: true })
+    const entry = createToolInventoryEntry(echoTool, { runtime: 'local' })
+    expect(entry.definition).toMatchObject({ name: 'echo', description: 'Echo input' })
+    expect(entry.definition.parameters).toMatchObject({ required: ['message'] })
+    expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
+    expect('implementation' in entry.definition).toBe(false)
+    expect(entry.implementation).toBeDefined()
+    expect(entry.capabilities).toMatchObject({ session: true, worker: true, elicits: true, samples: true })
 
     const clientOnly = {
       name: 'pick_color',
@@ -147,7 +147,7 @@ describe('local ToolRuntimeDriver', () => {
     const clientEntry = createIsomorphicToolInventoryEntry(clientOnly)
     expect(clientEntry.implementation).toBeDefined()
     expect(clientEntry.capabilities).toMatchObject({ client: true, inline: false })
-    expect(() => createToolInventory([mcpEntry, mcpEntry])).toThrow('Duplicate tool name')
+    expect(() => createToolInventory([entry, entry])).toThrow('Duplicate tool name')
   })
 
   it('executes inline, client handoff, and missing-session resume paths through normalized runtime API', async () => {
@@ -208,7 +208,7 @@ describe('local ToolRuntimeDriver', () => {
 
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), { samplingProvider: { *sample() { return { text: 'unused' } } } })
       const session = createLocalSessionToolExecutionStrategy({ registry, samplingProvider: { *sample() { return { text: 'unused' } } }, tools: [echoTool] })
-      const sessionEntry = createMcpToolInventoryEntry(echoTool)
+      const sessionEntry = createToolInventoryEntry(echoTool)
       const sessionResult = yield* session.execute(sessionEntry, { id: 'call-session', type: 'function', function: { name: 'echo', arguments: { message: 'hello' } } }, { runtimeId: 'local' })
       expect(sessionResult).toMatchObject({ kind: 'completed', result: { echoed: 'hello' } })
     })

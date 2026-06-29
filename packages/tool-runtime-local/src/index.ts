@@ -3,7 +3,7 @@ export {
   createLocalInlineToolExecutionStrategy,
   createLocalSessionToolExecutionStrategy,
   createLocalToolRuntimeDriver,
-  createMcpToolInventoryEntry,
+  createToolInventoryEntry,
   installLocalToolRuntime,
   type LocalInlineToolExecutionStrategyOptions,
   type LocalIsomorphicTool,

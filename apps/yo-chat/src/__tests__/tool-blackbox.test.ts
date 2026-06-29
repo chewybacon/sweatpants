@@ -52,12 +52,12 @@ import {
 import {
   createInMemoryToolSessionStore,
   createLocalToolRuntimeDriver,
-  createMcpToolInventoryEntry,
+  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 
-type LocalMcpTool = Parameters<typeof createMcpToolInventoryEntry>[0];
+type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
 
 import {
   executeClientPart,
@@ -150,7 +150,7 @@ describe("yo-chat tool blackbox", () => {
   it("book_flight rejects missing required route params before starting UI", async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [bookFlightTool as LocalMcpTool],
+        tools: [bookFlightTool as LocalSessionTool],
         samplingProvider: { *sample() { return { text: "unused" }; } },
       });
 
@@ -237,9 +237,9 @@ describe("yo-chat tool blackbox", () => {
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
-        const localBookFlightTool = bookFlightTool as LocalMcpTool;
+        const localBookFlightTool = bookFlightTool as LocalSessionTool;
         yield* ToolInventoryContext.set(
-          createToolInventory([createMcpToolInventoryEntry(localBookFlightTool)]),
+          createToolInventory([createToolInventoryEntry(localBookFlightTool)]),
         );
         yield* installLocalToolRuntime({
           tools: [localBookFlightTool],
@@ -442,9 +442,9 @@ describe("yo-chat tool blackbox", () => {
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
-        const localBookFlightTool = bookFlightTool as LocalMcpTool;
+        const localBookFlightTool = bookFlightTool as LocalSessionTool;
         yield* ToolInventoryContext.set(
-          createToolInventory([createMcpToolInventoryEntry(localBookFlightTool)]),
+          createToolInventory([createToolInventoryEntry(localBookFlightTool)]),
         );
         yield* installLocalToolRuntime({
           tools: [localBookFlightTool],

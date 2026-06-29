@@ -80,10 +80,10 @@ export const calculator = createIsomorphicTool("calculator")
 ### MCP Tools with Elicit
 
 ```ts
-import { createMcpTool } from "@sweatpants/framework/chat/mcp-tools";
+import { createTool } from "@sweatpants/core";
 import { z } from "zod";
 
-export const bookFlight = createMcpTool("book_flight")
+export const bookFlight = createTool("book_flight")
     .description("Book a flight for the user")
     .parameters(
         z.object({

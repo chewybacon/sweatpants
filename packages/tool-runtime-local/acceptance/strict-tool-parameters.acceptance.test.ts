@@ -5,12 +5,12 @@ import { createTool } from '@sweatpants/core'
 import {
   createIsomorphicToolInventoryEntry,
   createLocalToolRuntimeDriver,
-  createMcpToolInventoryEntry,
+  createToolInventoryEntry,
 } from '../src/index.ts'
 
 let mcpExecuteCalls = 0
 
-const strictMcpTool = createTool('strict_echo')
+const strictTool = createTool('strict_echo')
   .description('Strict echo')
   .parameters(z.object({ message: z.string() }))
   
@@ -20,11 +20,11 @@ const strictMcpTool = createTool('strict_echo')
   })
 
 describe('@sweatpants/tool-runtime-local strict parameter acceptance', () => {
-  it('rejects invalid MCP params before local session or tool execution and executes valid params', async () => {
+  it('rejects invalid session params before local session or tool execution and executes valid params', async () => {
     await run(function* () {
       mcpExecuteCalls = 0
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [strictMcpTool],
+        tools: [strictTool],
         samplingProvider: { *sample() { return { text: 'unused' } } },
       })
 
@@ -96,7 +96,7 @@ describe('@sweatpants/tool-runtime-local strict parameter acceptance', () => {
   })
 
   it('projects inventory schemas without leaking runtime schema objects', () => {
-    const entry = createMcpToolInventoryEntry(strictMcpTool)
+    const entry = createToolInventoryEntry(strictTool)
     expect(entry.definition.parameters).toMatchObject({ required: ['message'] })
     expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
     expect(() => structuredClone(entry.definition)).not.toThrow()

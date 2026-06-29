@@ -12,20 +12,6 @@ import { createIsomorphicToolRegistry } from '../../isomorphic-tools/registry.ts
 
 describe('Core Tool Adapter', () => {
   describe('isCoreToolFactory', () => {
-    it('should detect a core tool factory', function* () {
-      const coreTool = createTool({
-        name: 'test_tool',
-        description: 'A test tool',
-        input: z.object({ value: z.string() }),
-        output: z.object({ result: z.string() }),
-        impl: function* ({ value }) {
-          return { result: value.toUpperCase() }
-        },
-      })
-
-      expect(isCoreToolFactory(coreTool)).toBe(true)
-    })
-
     it('should detect a canonical core ToolDefinition', function* () {
       const coreTool = createTool('canonical_test')
         .description('A canonical test tool')
@@ -67,16 +53,14 @@ describe('Core Tool Adapter', () => {
   })
 
   describe('adaptCoreTool', () => {
-    it('should adapt a core tool to AnyIsomorphicTool', function* () {
-      const coreTool = createTool({
-        name: 'adapt_test',
-        description: 'Test adaptation',
-        input: z.object({ input: z.string() }),
-        output: z.object({ output: z.string() }),
-        impl: function* ({ input }) {
+    it('should adapt a canonical core ToolDefinition to AnyIsomorphicTool', function* () {
+      const coreTool = createTool('adapt_test')
+        .description('Test adaptation')
+        .parameters(z.object({ input: z.string() }))
+        .output(z.object({ output: z.string() }))
+        .execute(function* ({ input }) {
           return { output: `processed: ${input}` }
-        },
-      })
+        })
 
       const adapted = adaptCoreTool(coreTool)
 
@@ -113,15 +97,13 @@ describe('Core Tool Adapter', () => {
 
   describe('Registry Integration', () => {
     it('should accept core tools in createIsomorphicToolRegistry', function* () {
-      const coreTool = createTool({
-        name: 'core_in_registry',
-        description: 'Core tool in registry',
-        input: z.object({ data: z.string() }),
-        output: z.object({ result: z.string() }),
-        impl: function* ({ data }) {
+      const coreTool = createTool('core_in_registry')
+        .description('Core tool in registry')
+        .parameters(z.object({ data: z.string() }))
+        .output(z.object({ result: z.string() }))
+        .execute(function* ({ data }) {
           return { result: data }
-        },
-      })
+        })
 
       const isomorphicTool = {
         name: 'iso_in_registry',
@@ -144,18 +126,16 @@ describe('Core Tool Adapter', () => {
     })
 
     it('should generate schemas for core tools', function* () {
-      const coreTool = createTool({
-        name: 'schema_test',
-        description: 'Schema test tool',
-        input: z.object({
+      const coreTool = createTool('schema_test')
+        .description('Schema test tool')
+        .parameters(z.object({
           query: z.string().describe('Search query'),
           limit: z.number().optional().describe('Max results'),
-        }),
-        output: z.object({ results: z.array(z.string()) }),
-        impl: function* () {
+        }))
+        .output(z.object({ results: z.array(z.string()) }))
+        .execute(function* () {
           return { results: [] }
-        },
-      })
+        })
 
       const registry = createIsomorphicToolRegistry([coreTool])
       const schemas = registry.toToolSchemas()
@@ -168,15 +148,13 @@ describe('Core Tool Adapter', () => {
     })
 
     it('should extract server tools for core tools', function* () {
-      const coreTool = createTool({
-        name: 'server_extract',
-        description: 'Server extraction test',
-        input: z.object({ id: z.string() }),
-        output: z.object({ found: z.boolean() }),
-        impl: function* () {
+      const coreTool = createTool('server_extract')
+        .description('Server extraction test')
+        .parameters(z.object({ id: z.string() }))
+        .output(z.object({ found: z.boolean() }))
+        .execute(function* () {
           return { found: true }
-        },
-      })
+        })
 
       const registry = createIsomorphicToolRegistry([coreTool])
       const serverTools = registry.toServerTools()
@@ -187,15 +165,13 @@ describe('Core Tool Adapter', () => {
     })
 
     it('should reject duplicate tool names', function* () {
-      const coreTool = createTool({
-        name: 'duplicate',
-        description: 'First tool',
-        input: z.object({}),
-        output: z.object({}),
-        impl: function* () {
+      const coreTool = createTool('duplicate')
+        .description('First tool')
+        .parameters(z.object({}))
+        .output(z.object({}))
+        .execute(function* () {
           return {}
-        },
-      })
+        })
 
       const isomorphicTool = {
         name: 'duplicate',

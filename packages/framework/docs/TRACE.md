@@ -10,7 +10,7 @@ A line-by-line trace of what happens when a user books a flight. Follow along wi
 
 **Tool definition:**
 ```typescript
-const bookFlightTool = createMcpTool('book_flight')
+const bookFlightTool = createTool('book_flight')
   .description('Book a flight for the user')
   .parameters(z.object({
     destination: z.string(),

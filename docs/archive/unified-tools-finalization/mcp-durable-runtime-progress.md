@@ -29,27 +29,27 @@
    - All error types (`McpToolDepthError`, `McpToolTokenError`, etc.)
    - Merged content from old `branch-types.ts` and `types.ts`
 
-2. **Created new unified builder**: `mcp-tool-builder.ts`
-   - `createMcpTool()` function
+2. **Created new unified builder**: `canonical core tool builder`
+   - `createTool()` function
    - All builder interfaces (`McpToolBuilderBase`, etc.)
    - All finalized tool types (`FinalizedMcpTool`, `FinalizedMcpToolWithElicits`)
 
 3. **Updated index.ts** with:
    - Primary exports from new unified files
    - Legacy aliases (`createBranchTool`, `BranchContext`, `BranchDepthError`, etc.)
-   - Kept original simple API (`createMCPTool`, `builder.ts`, `types.ts`, `mock-runtime.ts`)
+   - Kept original simple API (`createTool`, `builder.ts`, `types.ts`, `mock-runtime.ts`)
 
 4. **Updated runtime files** to import from new unified files:
-   - `branch-runtime.ts` - Uses `mcp-tool-types.ts` and `mcp-tool-builder.ts`
-   - `bridge-runtime.ts` - Uses `mcp-tool-types.ts` and `mcp-tool-builder.ts`
-   - `plugin.ts` - Uses `mcp-tool-types.ts` and `mcp-tool-builder.ts`
-   - `branch-mock.ts` - Uses `mcp-tool-types.ts` and `mcp-tool-builder.ts`
+   - `branch-runtime.ts` - Uses `mcp-tool-types.ts` and `canonical core tool builder`
+   - `bridge-runtime.ts` - Uses `mcp-tool-types.ts` and `canonical core tool builder`
+   - `plugin.ts` - Uses `mcp-tool-types.ts` and `canonical core tool builder`
+   - `branch-mock.ts` - Uses `mcp-tool-types.ts` and `canonical core tool builder`
 
 5. **Updated test files** to import from index (using legacy aliases)
 
 6. **Deleted orphaned old files**:
    - `branch-types.ts` (replaced by `mcp-tool-types.ts`)
-   - `branch-builder.ts` (replaced by `mcp-tool-builder.ts`)
+   - `branch-builder.ts` (replaced by `canonical core tool builder`)
 
 ### Files After Phase 1
 
@@ -58,7 +58,7 @@ packages/framework/src/lib/chat/mcp-tools/
 ├── __tests__/          # All tests import from index
 ├── examples/           # Example tools
 ├── mcp-tool-types.ts   # NEW: Unified types (primary source)
-├── mcp-tool-builder.ts # NEW: Unified builder (primary source)
+├── canonical core tool builder # NEW: Unified builder (primary source)
 ├── branch-runtime.ts   # Updated: imports from new files
 ├── branch-mock.ts      # Updated: imports from new files
 ├── bridge-runtime.ts   # Updated: imports from new files
@@ -78,7 +78,7 @@ packages/framework/src/lib/chat/mcp-tools/
 ### Progress Log
 
 - 2026-01-07: Phase 1 started
-- 2026-01-07: Created `mcp-tool-types.ts` and `mcp-tool-builder.ts`
+- 2026-01-07: Created `mcp-tool-types.ts` and `canonical core tool builder`
 - 2026-01-07: Updated all runtime files to use new types
 - 2026-01-07: Updated index.ts with legacy aliases
 - 2026-01-07: Updated test imports
@@ -459,7 +459,7 @@ packages/framework/src/lib/chat/mcp-tools/handler/
 
 ### What Was Done
 
-1. **Rewrote all yo-mcp tools** to use `createMcpTool` with `.elicits()` pattern:
+1. **Rewrote all yo-mcp tools** to use `createTool` with `.elicits()` pattern:
    - `apps/yo-mcp/src/tools/echo.ts` - Simple echo (no elicitation)
    - `apps/yo-mcp/src/tools/pick-card.ts` - Card game with elicitation
    - `apps/yo-mcp/src/tools/greet.ts` - Greeting with sampling
@@ -502,11 +502,11 @@ apps/yo-mcp/
 │   ├── cli.ts                    # REWRITTEN: HTTP server with createMcpHandler
 │   └── tools/
 │       ├── index.ts              # UPDATED: New exports, removed old tool arrays
-│       ├── echo.ts               # REWRITTEN: Uses createMcpTool
-│       ├── pick-card.ts          # REWRITTEN: Uses createMcpTool + .elicits()
-│       ├── greet.ts              # REWRITTEN: Uses createMcpTool
-│       ├── confirm.ts            # REWRITTEN: Uses createMcpTool + .elicits()
-│       └── pick-card-branch.ts   # REWRITTEN: Uses createMcpTool + .elicits()
+│       ├── echo.ts               # REWRITTEN: Uses createTool
+│       ├── pick-card.ts          # REWRITTEN: Uses createTool + .elicits()
+│       ├── greet.ts              # REWRITTEN: Uses createTool
+│       ├── confirm.ts            # REWRITTEN: Uses createTool + .elicits()
+│       └── pick-card-branch.ts   # REWRITTEN: Uses createTool + .elicits()
 ├── package.json                  # UPDATED: Removed @modelcontextprotocol/sdk
 └── (runtime/mcp-bridge.ts)       # DELETED
 ```
@@ -514,7 +514,7 @@ apps/yo-mcp/
 ### Progress Log
 
 - 2026-01-07: Phase 8 started
-- 2026-01-07: Rewrote all tools to use createMcpTool
+- 2026-01-07: Rewrote all tools to use createTool
 - 2026-01-07: Created new HTTP-based cli.ts
 - 2026-01-07: Removed @modelcontextprotocol/sdk dependency
 - 2026-01-07: Verified with curl - echo and greet tools working
@@ -701,7 +701,7 @@ The MCP Durable Tool Runtime is **fully functional** with:
 
 ```typescript
 // Create tools with elicitation and sampling
-const myTool = createMcpTool('my_tool')
+const myTool = createTool('my_tool')
   .description('Does something')
   .parameters(z.object({ input: z.string() }))
   .elicits({ confirm: z.object({ ok: z.boolean() }) })
@@ -782,7 +782,7 @@ packages/framework/src/lib/chat/mcp-tools/
 │   ├── setup.ts
 │   └── index.ts
 ├── mcp-tool-types.ts             # Phase 1: Unified types
-├── mcp-tool-builder.ts           # Phase 1: Unified builder
+├── canonical core tool builder           # Phase 1: Unified builder
 ├── bridge-runtime.ts             # Phase 2: Buffered channels
 └── index.ts                      # Main exports
 ```

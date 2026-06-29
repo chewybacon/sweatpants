@@ -32,7 +32,8 @@
     "@sweatpants/tool-runtime-agentcore": "workspace:*",
     "bedrock-agentcore": "^0.2.0",
     "effection": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@sweatpants/core": "workspace:*"
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",

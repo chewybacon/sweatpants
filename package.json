@@ -10,7 +10,7 @@
         "dev:yo-chat:agentcore": "pnpm -C packages/framework dev --watch & DEFAULT_CHAT_MODEL_PROVIDER=${DEFAULT_CHAT_MODEL_PROVIDER:-amazon-bedrock} DEFAULT_CHAT_MODEL_ID=${DEFAULT_CHAT_MODEL_ID:-zai.glm-5} AWS_REGION=${AWS_REGION:-us-east-1} MCP_TOOL_RUNTIME=agentcore pnpm -C apps/yo-chat dev",
         "dev:yo-chat:agentcore:auto": "./scripts/launch-yo-chat-agentcore.sh",
         "build": "pnpm run -r build && pnpm validate:exports",
-        "test": "pnpm run -r --parallel test",
+        "test": "pnpm run -r --workspace-concurrency=1 test",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
         "lint": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin . && pnpm run -r --parallel lint",
         "lint:fix": "./node_modules/.bin/oxlint --import-plugin --react-plugin --promise-plugin --vitest-plugin --fix .",

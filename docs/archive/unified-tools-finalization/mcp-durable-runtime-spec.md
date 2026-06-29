@@ -20,7 +20,7 @@ We're implementing a durable tool execution runtime that:
 1. **In-memory for v1** - Keep generators alive, refcount pattern (like TokenBuffer)
 2. **Interface-first** - Abstract storage/runtime behind interfaces, swap backends later
 3. **No generator serialization** - Too complex (DB connections, transactions, etc.)
-4. **MCP naming** - `createMcpTool`, align with spec for ecosystem benefit
+4. **MCP naming** - `createTool`, align with spec for ecosystem benefit
 5. **Miniflare/DO optional** - Try it, but behind interface via Effection context
 6. **Framework-agnostic** - Build on `createStreamingHandler` pattern
 
@@ -59,8 +59,8 @@ We're implementing a durable tool execution runtime that:
 │  - ctx.sample() → MCP sampling/createMessage                    │
 │  - ctx.notify() → MCP notifications/progress                    │
 ├─────────────────────────────────────────────────────────────────┤
-│                    createMcpTool()                               │
-│  (Unified builder - replaces createBranchTool/createMCPTool)    │
+│                    createTool()                               │
+│  (Unified builder - replaces createBranchTool/createTool)    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -142,7 +142,7 @@ interface ToolSessionStore {
 packages/framework/src/lib/chat/mcp-tools/
 ├── index.ts                    # Main exports
 ├── types.ts                    # Shared types (renamed from branch-types)
-├── builder.ts                  # createMcpTool (unified, renamed)
+├── builder.ts                  # createTool (unified, renamed)
 ├── runtime.ts                  # Tool execution (renamed from bridge-runtime)
 ├── mock.ts                     # Mock runtime for testing
 ├── plugin.ts                   # Plugin bridge (existing)
@@ -174,8 +174,8 @@ packages/framework/src/lib/chat/mcp-tools/
 
 | Old | New |
 |-----|-----|
-| `createBranchTool` | `createMcpTool` |
-| `createMCPTool` | Removed |
+| `createBranchTool` | `createTool` |
+| `createTool` | Removed |
 | `FinalizedBranchTool` | `FinalizedMcpTool` |
 | `FinalizedBranchToolWithElicits` | `FinalizedMcpToolWithElicits` |
 | `BranchContext` | `McpToolContext` |

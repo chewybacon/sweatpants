@@ -83,7 +83,7 @@ function parametersToSchema(parameters: unknown): Record<string, unknown> {
   return toToolParameterJsonSchema(parameters);
 }
 
-function mcpToolDefinition(tool: LocalRuntimeTool): InventoryToolDefinition {
+function sessionToolDefinition(tool: LocalRuntimeTool): InventoryToolDefinition {
   return {
     name: tool.name,
     description: tool.description,
@@ -99,12 +99,12 @@ function isomorphicToolDefinition(tool: LocalIsomorphicTool): InventoryToolDefin
   };
 }
 
-export function createMcpToolInventoryEntry(
+export function createToolInventoryEntry(
   tool: LocalRuntimeTool,
   metadata?: Record<string, unknown>,
 ): ToolInventoryEntry<LocalImplementation> {
   return {
-    definition: mcpToolDefinition(tool),
+    definition: sessionToolDefinition(tool),
     implementation: { kind: "mcp", tool },
     capabilities: { session: true, worker: true, elicits: true, samples: true },
     ...(metadata ? { metadata } : {}),
@@ -127,7 +127,7 @@ export function createIsomorphicToolInventoryEntry(
 }
 
 function toToolSchema(tool: LocalRuntimeTool | LocalIsomorphicTool): ToolRuntimeToolSchema {
-  return "elicits" in tool ? mcpToolDefinition(tool) : isomorphicToolDefinition(tool);
+  return "elicits" in tool ? sessionToolDefinition(tool) : isomorphicToolDefinition(tool);
 }
 
 function adaptEvent(event: McpToolSessionEvent): RuntimeToolSessionEvent {

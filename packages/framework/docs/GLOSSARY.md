@@ -491,9 +491,9 @@ Tool that can run on server, client, or both with handoff between phases. Uses `
 
 ### MCP Tool / Plugin Tool
 
-Tool built with `createMcpTool()` that uses the elicit/sample context. Requires a plugin for client-side handling.
+Tool built with `createTool()` that uses the elicit/sample context. Requires a plugin for client-side handling.
 
-**File:** [`src/lib/chat/mcp-tools/mcp-tool-builder.ts`](../src/lib/chat/mcp-tools/mcp-tool-builder.ts)
+**File:** [`src/lib/chat/mcp-tools/canonical core tool builder`](../src/lib/chat/mcp-tools/canonical core tool builder)
 
 ---
 

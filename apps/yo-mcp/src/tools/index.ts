@@ -2,7 +2,7 @@
  * Tool Registry
  *
  * Export all available tools for the MCP server.
- * All tools use the new createMcpTool API with .elicits() pattern.
+ * All tools use the new createTool API with .elicits() pattern.
  */
 import type { McpRuntimeTool, ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
 

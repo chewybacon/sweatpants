@@ -6,7 +6,7 @@
  * helpers (ctx.sampleTools / ctx.sampleSchema) for L1 strategy + L2 move
  * selection, just like the pre-refactor tool.
  */
-import { createTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/core'
 import { z } from 'zod'
 import {
   type Board,

@@ -5,7 +5,7 @@
 // that whole barrel into the ESM AgentCore runtime pulls in pino's CommonJS
 // dynamic requires. App tools only need the core builder at runtime, so this
 // shim keeps the AgentCore bundle minimal and ESM-safe.
-export { createTool } from '../../../packages/core/src/tool/index.ts'
+export { createTool } from '@sweatpants/core'
 export {
   ModelProviderContext,
   ModelProviderModelContext,

@@ -16,7 +16,7 @@ Rebuild the internal implementation of the MCP tool runtime using `@sweatpants/c
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    UNCHANGED (External API)                              │
-│  createMcpTool().parameters().elicits().execute()                       │
+│  createTool().parameters().elicits().execute()                       │
 │  makePlugin().onElicit().build()                                         │
 │  useChat hook, durable stream handler                                    │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -167,7 +167,7 @@ The existing `runWorker()` + `createWorkerToolSession()` continues to work for p
 
 ## What's Preserved
 
-- `createMcpTool()` builder API
+- `createTool()` builder API
 - `makePlugin()` pattern  
 - `.elicits({})` finite UI surface
 - `.handoff()` pattern (before/client/after)

@@ -1,7 +1,7 @@
 import { run, resource, type Operation } from 'effection'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import { createTool } from '@sweatpants/framework/chat'
+import { createTool } from '@sweatpants/core'
 import { type ToolSession, type ToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
 import {
   createAgentCoreToolInventoryEntry,

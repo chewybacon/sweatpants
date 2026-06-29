@@ -1,6 +1,6 @@
 import { sleep } from 'effection'
 import { z } from 'zod'
-import { createTool } from '../../../../packages/core/src/tool/index.ts'
+import { createTool } from '@sweatpants/core'
 
 export interface Flight {
   id: string

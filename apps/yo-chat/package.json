@@ -61,7 +61,8 @@
     "@sweatpants/vite-plugin": "workspace:*",
     "@sweatpants/model-provider-pi-ai": "workspace:*",
     "@sweatpants/tool-runtime-agentcore": "workspace:*",
-    "@sweatpants/tool-runtime-local": "workspace:*"
+    "@sweatpants/tool-runtime-local": "workspace:*",
+    "@sweatpants/core": "workspace:*"
   },
   "devDependencies": {
     "@interactors/html": "^1.0.1",

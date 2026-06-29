@@ -15,7 +15,7 @@ Active (work plan)
 
 ## Phase 0 — Prep / alignment
 - [ ] Confirm naming for new API surface:
-  - `createMcpTool().elicits(...)`
+  - `createTool().elicits(...)`
   - `ctx.elicit(key, { message })`
   - `makePlugin(mcpTool).onElicit({...}).build()`
 

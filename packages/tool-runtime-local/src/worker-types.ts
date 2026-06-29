@@ -490,7 +490,7 @@ export interface WorkerToolContext {
 
   /**
    * Alias for progress() - matches the MCP tool context API (ctx.notify()).
-   * MCP tools created with createMcpTool() call ctx.notify(), so this alias
+   * Canonical session tools created with createTool() call ctx.notify(), so this alias
    * allows them to run in worker mode without modification.
    */
   notify(message: string, progress?: number): Operation<void>
