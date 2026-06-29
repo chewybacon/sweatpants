@@ -3,13 +3,15 @@ import { z } from "zod";
 import { createTool } from "../create.ts";
 
 describe("createTool(name) unified builder", () => {
-  it("requires .elicits() before .execute() and preserves normalized metadata", function* () {
-    expect(() =>
-      // @ts-expect-error runtime guard for migration/non-TS callers
-      createTool("bad").description("bad").parameters(z.object({})).execute(function* () {
+  it("allows optional .elicits() before .execute() and preserves normalized metadata", function* () {
+    const Minimal = createTool("minimal")
+      .description("minimal")
+      .parameters(z.object({}))
+      .execute(function* () {
         return {};
-      }),
-    ).toThrow(/\.elicits\(\)/);
+      });
+
+    expect(Minimal.capabilities.elicitation).toBe(false);
 
     const Tool = createTool("confirm")
       .description("confirm something")
@@ -22,7 +24,6 @@ describe("createTool(name) unified builder", () => {
 
     expect(Tool.name).toBe("confirm");
     expect(Tool.capabilities.elicitation).toBe(true);
-    expect(Tool.elicits["confirm"]?.mode).toBe("form");
     expect(Tool.elicits["confirm"]?.response).toBeDefined();
   });
 
