@@ -29,7 +29,7 @@ export interface ToolDiscoveryOptions {
 
   /**
    * Function name(s) to look for in exports.
-   * @default ['createIsomorphicTool', 'createMcpTool']
+   * @default ['createIsomorphicTool', 'createTool']
    */
   exportFunctionName?: string | string[];
 
@@ -68,7 +68,7 @@ export function resolveToolDiscoveryOptions(
 ): ResolvedToolDiscoveryOptions {
   const exportFunctionName = options.exportFunctionName ?? [
     "createIsomorphicTool",
-    "createMcpTool",
+    "createTool",
   ];
 
   return {
