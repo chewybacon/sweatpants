@@ -1,60 +1,50 @@
 /**
  * MCP Tools Module
  *
- * Generator-based primitives for authoring MCP (Model Context Protocol) tools.
+ * MCP adapter/runtime utilities for canonical core tools.
  *
- * ## Primary API (NEW - use these)
+ * Tool authoring is owned by `@sweatpants/core`:
  *
- * - `createMcpTool`: Unified builder with branching, sampling, and elicitation
- *
- * ## Legacy API (DEPRECATED - will be removed)
- *
- * - `createMCPTool`: Original builder with MCPClientContext (simpler, no branching)
- * - `createBranchTool`: Old name for createMcpTool
- *
- * @example Using the primary API
  * ```typescript
- * import { createMcpTool } from '@grove/framework/mcp-tools'
+ * import { createTool } from '@sweatpants/core/tools'
  *
- * const analyze = createMcpTool('analyze')
- *   .description('Analyze with sub-branches')
+ * const analyze = createTool('analyze')
+ *   .description('Analyze input')
  *   .parameters(z.object({ input: z.string() }))
+ *   .samples()
  *   .execute(function*(params, ctx) {
- *     // Auto-tracked conversation
- *     const first = yield* ctx.sample({ prompt: 'First step...' })
- *
- *     // Sub-branch for isolated task
- *     const detail = yield* ctx.branch(function* (subCtx) {
- *       return yield* subCtx.sample({ prompt: 'Detail...' })
- *     }, { inheritMessages: false })
- *
- *     return { first: first.text, detail: detail.text }
+ *     const first = yield* ctx.sample({ prompt: `Analyze ${params.input}` })
+ *     return { text: first.text }
  *   })
  * ```
+ *
+ * This module exposes MCP projection, protocol, plugin, and execution helpers.
+ * It no longer publicly exports MCP-specific tool builders.
  *
  * @packageDocumentation
  */
 
 // =============================================================================
-// PRIMARY API (NEW UNIFIED TYPES AND BUILDER)
+// CANONICAL AUTHORING API
 // =============================================================================
 
-export { createMcpTool } from "./mcp-tool-builder.ts";
+export { createTool } from "@sweatpants/core";
 export type {
-  // Builder interfaces
-  McpToolBuilderBase,
-  McpToolBuilderWithDescription,
-  McpToolBuilderWithParams,
-  McpToolBuilderWithElicits,
+  ToolDefinition,
+  ToolCtx,
+  InteractionExchange,
+  ElicitExchange as CoreElicitExchange,
+  SampleExchange as CoreSampleExchange,
+  SampleRequest as CoreSampleRequest,
+} from "@sweatpants/core";
+
+export type {
   McpRuntimeTool,
-  McpToolTypes,
-  // Type inference helpers
   InferMcpToolResult,
   InferMcpToolParams,
   InferMcpToolHandoff,
   InferMcpToolClient,
   InferMcpToolElicits,
-  // Union types
   AnyMcpTool,
   AnyBridgeableMcpTool,
 } from "./mcp-tool-builder.ts";
@@ -129,45 +119,7 @@ export {
   createStructuredSampleExchange,
 } from "./mcp-tool-types.ts";
 
-// =============================================================================
-// ORIGINAL MCP BUILDER (simpler, no sub-branching)
-// =============================================================================
-
-export { createMCPTool } from "./builder.ts";
-export type {
-  MCPToolBuilderBase,
-  MCPToolBuilderWithDescription,
-  MCPToolBuilderWithParams,
-  MCPRuntimeTool,
-  MCPToolTypes,
-  InferMCPResult,
-  InferMCPParams,
-  InferMCPHandoff,
-  InferMCPClient,
-} from "./builder.ts";
-
-// Original types
-export type {
-  MCPClientContext,
-  MCPServerContext,
-  MCPHandoffConfig,
-  MCPToolDef,
-  AnyMCPTool,
-  SampleConfig,
-  InferMCPToolParams,
-  InferMCPToolResult,
-  InferMCPToolHandoff,
-  InferMCPToolClient,
-} from "./types.ts";
-
-// Legacy errors (shared) - keep for compatibility
-export {
-  McpCapabilityError as MCPCapabilityError,
-  McpToolTimeoutError as MCPTimeoutError,
-  McpDisconnectError as MCPDisconnectError,
-} from "./mcp-tool-types.ts";
-
-// Original mock runtime
+// Mock runtime helpers for adapter tests.
 export { createMockMCPClient, runMCPTool } from "./mock-runtime.ts";
 export type { MockMCPClient, MockMCPClientConfig, RunMCPToolOptions } from "./mock-runtime.ts";
 

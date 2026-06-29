@@ -121,8 +121,19 @@ export {
   MODEL_CONTEXT_SCHEMA_KEY,
 } from "./mcp-tools/model-context.ts";
 
-// MCP tool builder (browser-safe - only types, no Node.js deps)
-export { createMcpTool } from "./mcp-tools/mcp-tool-builder.ts";
+// Canonical tool authoring surface. Framework adapts core tools at runtime/protocol boundaries.
+export { createTool } from "@sweatpants/core";
+export type {
+  ToolDefinition,
+  ToolCtx,
+  CoreToolCtx,
+  InteractionExchange as CoreInteractionExchange,
+  ElicitExchange as CoreElicitExchange,
+  SampleExchange as CoreSampleExchange,
+  SampleRequest as CoreSampleRequest,
+  ToolExtension,
+  ToolExtensionMetadata,
+} from "@sweatpants/core";
 
 export type { IsomorphicToolSchema } from "./isomorphic-tools/index.ts";
 

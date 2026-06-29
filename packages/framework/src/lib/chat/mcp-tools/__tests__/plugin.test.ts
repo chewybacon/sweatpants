@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, expectTypeOf } from 'vitest'
 import { z } from 'zod'
-import { createMcpTool, makePlugin } from '../index.ts'
+import { createMcpTool } from '../mcp-tool-builder.ts'
+import { makePlugin } from '../index.ts'
 import type { InferMcpToolResult } from '../index.ts'
 import type { RawElicitResult } from '../types.ts'
 import type { RenderableProps } from '../plugin.ts'

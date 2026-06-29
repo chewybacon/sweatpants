@@ -5,11 +5,11 @@
  */
 import { z } from 'zod'
 import { describe, it, expect } from '../../isomorphic-tools/__tests__/vitest-effection.ts'
+import { createMCPTool } from '../builder.ts'
 import {
-  createMCPTool,
   createMockMCPClient,
   runMCPTool,
-  MCPCapabilityError,
+  McpCapabilityError as MCPCapabilityError,
 } from '../index.ts'
 
 describe('MCP Tool Execution', () => {

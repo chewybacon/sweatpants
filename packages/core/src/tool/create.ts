@@ -515,13 +515,19 @@ function finalizeCoreUnifiedTool(options: {
           (function* (): Operation<unknown> {
             const parsed = options.parameters.safeParse(input);
             if (!parsed.success || parsed.data === undefined) {
-              throw new Error(`Invalid input for tool "${options.name}": ${parsed.error?.message ?? "validation failed"}`);
+              throw codedToolError(
+                "invalid_tool_input",
+                `Invalid input for tool "${options.name}": ${parsed.error?.message ?? "validation failed"}`,
+              );
             }
             const result = yield* options.impl(parsed.data, ctx);
             if (options.output) {
               const parsedOutput = options.output.safeParse(result);
               if (!parsedOutput.success || parsedOutput.data === undefined) {
-                throw new Error(`Invalid output for tool "${options.name}": ${parsedOutput.error?.message ?? "validation failed"}`);
+                throw codedToolError(
+                  "invalid_tool_output",
+                  `Invalid output for tool "${options.name}": ${parsedOutput.error?.message ?? "validation failed"}`,
+                );
               }
               return parsedOutput.data;
             }
@@ -554,6 +560,12 @@ function finalizeCoreUnifiedTool(options: {
   });
 
   return factory as unknown as UnifiedToolFactory;
+}
+
+function codedToolError(code: string, message: string): Error & { code: string } {
+  const error = new Error(message) as Error & { code: string };
+  error.code = code;
+  return error;
 }
 
 function normalizeCoreElicits(elicits: ElicitsMap): Record<string, ElicitDefinition> {
