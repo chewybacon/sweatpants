@@ -12,7 +12,6 @@
 
 // Re-export shared primitives from core-types
 export type {
-  IsomorphicToolState,
   Capabilities,
   BaseContentMetadata,
   ContentMetadata,
@@ -24,13 +23,6 @@ export type {
 } from './core-types.ts'
 import type { ConversationReplayToolTrace } from './session/streaming.ts'
 
-// Re-export from isomorphic-tools
-export type {
-  ServerToolContext,
-  ServerAuthorityContext,
-  IsomorphicHandoffEvent,
-} from './isomorphic-tools/types.ts'
-
 // Re-export from session
 export type {
   AgUiCheckpoint,
@@ -40,9 +32,7 @@ export type {
   ConversationReplayToolTrace,
   StreamResult,
   StreamCompleteResult,
-  StreamIsomorphicHandoffResult,
   ConversationStateStreamEvent,
-  IsomorphicHandoffStreamEvent,
   StreamEvent,
   Streamer,
   MessageRenderer,
@@ -101,14 +91,6 @@ export type {
   ClientToolProgressPatch,
   ClientToolPermissionRequestPatch,
   ClientToolPatch,
-  // Isomorphic tool patches
-  IsomorphicToolStatePatch,
-  IsomorphicToolPatch,
-  // Handoff patches
-  PendingHandoffState,
-  PendingHandoffPatch,
-  HandoffCompletePatch,
-  HandoffPatch,
   // Union
   ChatPatch,
 } from './patches/index.ts'
@@ -117,8 +99,6 @@ export {
   isCorePatch,
   isBufferPatch,
   isClientToolPatch,
-  isIsomorphicToolPatch,
-  isHandoffPatch,
 } from './patches/index.ts'
 
 // =============================================================================

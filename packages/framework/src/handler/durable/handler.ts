@@ -26,7 +26,6 @@ import {
   PluginRegistryContext,
   PluginSessionManagerContext,
   PluginSessionRegistryContext,
-  ToolRegistryContext,
 } from "../../lib/chat/contexts.ts";
 import {
   ModelProviderApi,
@@ -66,8 +65,6 @@ import {
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
-  IsomorphicTool,
-  ToolRegistry,
   ToolSchema,
 } from "./types.ts";
 import type { ConversationReplayState } from "../../lib/chat/session/streaming.ts";
@@ -90,33 +87,11 @@ const durableParamsBinder = bindModel({
 // HELPER FUNCTIONS
 // =============================================================================
 
-/**
- * Create a tool registry from an array of tools.
- */
-function createToolRegistry(tools: IsomorphicTool[]): ToolRegistry {
-  const map = new Map<string, IsomorphicTool>();
-  for (const tool of tools) {
-    map.set(tool.name, tool);
-  }
-  return {
-    get(name: string): IsomorphicTool | undefined {
-      return map.get(name);
-    },
-    has(name: string): boolean {
-      return map.has(name);
-    },
-    names(): string[] {
-      return Array.from(map.keys());
-    },
-  };
-}
-
 function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
   return {
     name: definition.name,
     description: definition.description,
     parameters: definition.parameters,
-    isIsomorphic: false,
   };
 }
 
@@ -151,27 +126,9 @@ function createSerializedEventStream(
 
 function mergeReplayState(
   base: ConversationReplayState | undefined,
-  body: ChatRequestBody,
+  _body: ChatRequestBody,
 ): ConversationReplayState | undefined {
-  const traces = new Map<string, ConversationReplayState["toolTraces"][number]>();
-
-  for (const trace of base?.toolTraces ?? []) {
-    traces.set(trace.callId, trace);
-  }
-
-  for (const output of body.isomorphicClientOutputs ?? []) {
-    if (!output.trace) {
-      continue;
-    }
-
-    traces.set(output.callId, {
-      callId: output.callId,
-      toolName: output.toolName,
-      trace: output.trace,
-    });
-  }
-
-  return traces.size > 0 ? { toolTraces: Array.from(traces.values()) } : undefined;
+  return base;
 }
 
 function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
@@ -312,7 +269,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ? { ...(contextStreamOptions ?? {}), ...(body.streamOptions ?? {}) }
           : undefined;
       const initialToolChoice =
-        body.elicitResponses?.length || body.isomorphicClientOutputs?.length
+        body.elicitResponses?.length
           ? undefined
           : body.initialToolChoice;
       log.debug(
@@ -320,13 +277,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         "model provider configured",
       );
 
-      const tools = yield* ToolRegistryContext.get();
-      if (!tools) {
-        throw new Error(
-          "Tool registry not configured. Ensure a tool registry initializer hook sets ToolRegistryContext.",
-        );
-      }
-      log.debug({ toolCount: tools.length }, "tools configured");
+      const inventoryEntries = yield* ToolInventoryApi.list();
+      const inventoryNames = new Set(inventoryEntries.map((entry) => entry.definition.name));
+      const inventoryNameList = inventoryEntries.map((entry) => entry.definition.name);
+      log.debug({ toolCount: inventoryEntries.length }, "tool inventory configured");
 
       const resolvePersona = yield* PersonaResolverContext.get();
       const maxIterations = (yield* MaxIterationsContext.get()) ?? maxToolIterations;
@@ -376,16 +330,12 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const registry: SessionRegistry<string> = yield* useSessionRegistry<string>();
       log.debug("session registry acquired");
 
-      // Create tool registry
-      const toolRegistry = createToolRegistry(tools);
-      const inventoryEntries = yield* ToolInventoryApi.list();
       const activeToolRuntime = yield* ToolRuntimeContext.get();
       if (!activeToolRuntime) {
         throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
       }
 
       // Build tool schemas
-      const clientToolNames = (body.isomorphicTools ?? []).map((t) => t.name);
       const enabledToolNames = new Set<string>();
       let systemPrompt: string | undefined;
       let sessionInfo: (StreamEvent & { type: "session_info" }) | undefined;
@@ -406,9 +356,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         systemPrompt = resolved.systemPrompt;
 
         for (const toolName of resolved.tools) {
-          if (toolRegistry.has(toolName)) {
+          if (inventoryNames.has(toolName)) {
             enabledToolNames.add(toolName);
-          } else if (!clientToolNames.includes(toolName)) {
+          } else {
             throw new Error(`Unknown persona tool: ${toolName}`);
           }
         }
@@ -419,10 +369,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             ...resolved.capabilities,
             tools: Array.from(
               new Set([
-                ...resolved.capabilities.tools.filter(
-                  (name) => toolRegistry.has(name) || clientToolNames.includes(name),
-                ),
-                ...clientToolNames,
+                ...resolved.capabilities.tools.filter((name) => inventoryNames.has(name)),
               ]),
             ),
           },
@@ -430,22 +377,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         };
       } else {
         // Manual mode
-        for (const name of clientToolNames) {
-          if (toolRegistry.has(name)) {
-            enabledToolNames.add(name);
-          }
-        }
-
         if (body.enabledTools === true) {
-          for (const name of toolRegistry.names()) {
-            const tool = toolRegistry.get(name);
-            if (tool && !tool.client) {
-              enabledToolNames.add(name);
-            }
+          for (const name of inventoryNameList) {
+            enabledToolNames.add(name);
           }
         } else if (Array.isArray(body.enabledTools)) {
           for (const name of body.enabledTools) {
-            if (toolRegistry.has(name)) {
+            if (inventoryNames.has(name)) {
               enabledToolNames.add(name);
             }
           }
@@ -478,13 +416,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         metadata: { sessionId, conversationId: requestedConversationId },
       });
 
-      const clientSchemas = body.isomorphicTools ?? [];
-
-      // Dedupe schemas. Client-provided schemas are still included for browser-only
-      // tools, but executable outer calls must resolve through ToolInventory.
       const seenNames = new Set<string>();
       const toolSchemas: ToolSchema[] = [];
-      for (const schema of [...exposedDefinitions.map(definitionToToolSchema), ...clientSchemas]) {
+      for (const schema of exposedDefinitions.map(definitionToToolSchema)) {
         if (!seenNames.has(schema.name)) {
           seenNames.add(schema.name);
           toolSchemas.push(schema);
@@ -526,15 +460,12 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const engineAbortController = new AbortController();
 
         // Create the chat engine
-        // toolSchemas includes server tools, client isomorphic tools, AND MCP plugin tools
+        // toolSchemas includes canonical tools exposed for this request
         const engine = createChatEngine({
           messages: body.messages,
           ...(body.replayState ? { replayState: body.replayState } : {}),
           ...(systemPrompt !== undefined && { systemPrompt }),
           toolSchemas,
-          toolRegistry,
-          clientIsomorphicTools: clientSchemas,
-          isomorphicClientOutputs: body.isomorphicClientOutputs ?? [],
           runtime,
           model,
           ...(streamOptions ? { streamOptions } : {}),

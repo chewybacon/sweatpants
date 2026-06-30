@@ -1,7 +1,7 @@
 {
   "name": "@sweatpants/agents",
   "version": "0.1.0",
-  "description": "Unified agent model: agents as callable coroutines on a shared durable stream with isomorphic fulfillment",
+  "description": "Unified agent model: agents as callable coroutines on a shared durable stream with protocol-neutral fulfillment",
   "type": "module",
   "exports": {
     ".": {

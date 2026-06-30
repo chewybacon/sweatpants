@@ -10,10 +10,7 @@ import { bookFlightTool } from '../tools/book-flight/tool'
 import { calculator } from '../tools/calculator'
 import { pickCard } from '../tools/pick-card'
 import { playTttTool } from '../tools/play-ttt/tool'
-import { startTttGame } from '../tools/games/tic-tac-toe'
 import { tictactoeTool } from '../tools/tictactoe/tool'
-import { tttMove } from '../tools/games/tic-tac-toe'
-import { tttWinner } from '../tools/games/tic-tac-toe'
 
 /**
  * All discovered tools as a const object.
@@ -25,10 +22,7 @@ export const tools = {
   calculator,
   pickCard,
   playTttTool,
-  startTttGame,
   tictactoeTool,
-  tttMove,
-  tttWinner,
 } as const
 
 /**
@@ -45,10 +39,7 @@ export type ToolName =
   | 'calculator'
   | 'pick_card'
   | 'play_ttt'
-  | 'start_ttt_game'
   | 'tictactoe'
-  | 'ttt_move'
-  | 'ttt_winner'
 
 /**
  * Get a tool by name (type-safe).

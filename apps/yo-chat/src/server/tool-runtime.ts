@@ -15,8 +15,7 @@ import { type ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import {
   ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
-  createIsomorphicToolInventoryEntry,
-  createLocalInlineToolExecutionStrategy,
+  createLocalSessionToolExecutionStrategy,
   createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
@@ -41,11 +40,11 @@ import { activeAgentCoreToolNames, activePluginTools, allTools } from "./tools";
 import { pluginSamplingProvider } from "./plugin-sampling-provider";
 
 type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
-type LocalIsomorphicRuntimeTool = Parameters<typeof createIsomorphicToolInventoryEntry>[0];
 type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0];
 
 let sharedPluginSessionRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;
+let sharedLocalSessionRegistry: ToolSessionRegistry | null = null;
 
 function* createLocalPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
   const store = createInMemoryToolSessionStore();
@@ -129,9 +128,12 @@ function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegi
 }
 
 function runtimePluginTools(): LocalSessionTool[] {
-  // Tool names are already canonical (no prefixing/aliasing), so AgentCore and
-  // local runtimes use the same tool objects directly.
   return activePluginTools as LocalSessionTool[];
+}
+
+function localTools(): LocalSessionTool[] {
+  const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));
+  return allTools.filter((tool) => !pluginNames.has(tool.name)) as LocalSessionTool[];
 }
 
 function parametersToSchema(parameters: unknown): Record<string, unknown> {
@@ -155,12 +157,18 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   yield* PluginSessionManagerContext.set(sharedPluginSessionManager);
 
   const pluginTools = runtimePluginTools();
-  const pluginGeneratedNames = new Set<string>(activePluginTools.map((tool) => tool.name));
+  const localRuntimeTools = localTools();
+
+  if (env.MCP_TOOL_RUNTIME === "agentcore" && !sharedLocalSessionRegistry) {
+    sharedLocalSessionRegistry = yield* createLocalPluginToolSessionRegistry();
+  }
+  const localExecutionRegistry = env.MCP_TOOL_RUNTIME === "agentcore"
+    ? sharedLocalSessionRegistry!
+    : sharedPluginSessionRegistry;
+
   yield* ToolInventoryContext.set(
     createToolInventory([
-      ...allTools
-        .filter((tool) => !pluginGeneratedNames.has(tool.name))
-        .map((tool) => createIsomorphicToolInventoryEntry(tool as LocalIsomorphicRuntimeTool)),
+      ...localRuntimeTools.map((tool) => createToolInventoryEntry(tool)),
       ...(env.MCP_TOOL_RUNTIME === "agentcore"
         ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool as AgentCoreMcpTool))
         : pluginTools.map((tool) => createToolInventoryEntry(tool))),
@@ -176,25 +184,22 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
           registry: sharedPluginSessionRegistry,
           samplingProvider: pluginSamplingProvider,
         }),
-        createLocalInlineToolExecutionStrategy(),
+        createLocalSessionToolExecutionStrategy({
+          registry: localExecutionRegistry,
+          samplingProvider: pluginSamplingProvider,
+          tools: localRuntimeTools,
+        }),
       ],
     });
 
     const runtimeWithListTools = {
       ...runtime,
       *listTools() {
-        return [
-          ...pluginTools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: parametersToSchema(tool.parameters),
-          })),
-          ...allTools.map((tool) => ({
-            name: (tool as LocalIsomorphicRuntimeTool).name,
-            description: (tool as LocalIsomorphicRuntimeTool).description,
-            parameters: parametersToSchema((tool as LocalIsomorphicRuntimeTool).parameters),
-          })),
-        ];
+        return [...pluginTools, ...localRuntimeTools].map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          parameters: parametersToSchema(tool.parameters),
+        }));
       },
     };
     yield* ToolRuntimeContext.set(runtimeWithListTools);
@@ -202,9 +207,8 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   }
 
   yield* installLocalToolRuntime({
-    tools: pluginTools,
-    isomorphicTools: allTools as LocalIsomorphicRuntimeTool[],
-    registry: sharedPluginSessionRegistry,
+    tools: [...pluginTools, ...localRuntimeTools],
+    registry: localExecutionRegistry,
     samplingProvider: pluginSamplingProvider,
   });
 }

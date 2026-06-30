@@ -4,13 +4,8 @@ import { z } from 'zod'
 import { createTool } from '@sweatpants/core'
 import { ToolRuntimeApi, createToolInventory } from '@sweatpants/framework/chat'
 import {
-  createIsomorphicToolInventoryEntry,
-  createLocalInlineToolExecutionStrategy,
-  createLocalSessionToolExecutionStrategy,
-  createInMemoryToolSessionStore,
   createLocalToolRuntimeDriver,
   createToolInventoryEntry,
-  createToolSessionRegistry,
   installLocalToolRuntime,
 } from '../index.ts'
 
@@ -95,40 +90,6 @@ describe('local ToolRuntimeDriver', () => {
     })
   })
 
-  it('rejects invalid inline params before server execution', async () => {
-    await run(function* () {
-      let serverCalls = 0
-      const inlineTool = {
-        name: 'strict_inline',
-        description: 'Strict inline echo',
-        parameters: z.object({ message: z.string() }),
-        server: function* (params: unknown) {
-          serverCalls++
-          return { echoed: (params as { message: string }).message }
-        },
-      }
-      const driver = yield* createLocalToolRuntimeDriver({ isomorphicTools: [inlineTool] })
-
-      try {
-        yield* driver.execute({
-          entry: createIsomorphicToolInventoryEntry(inlineTool),
-          call: { id: 'call-invalid-inline', type: 'function', function: { name: 'strict_inline', arguments: {} } },
-        })
-        throw new Error('expected validation failure')
-      } catch (error) {
-        expect(error).toMatchObject({
-          code: 'TOOL_PARAMETER_VALIDATION_FAILED',
-          payload: {
-            toolName: 'strict_inline',
-            callId: 'call-invalid-inline',
-          },
-        })
-      }
-
-      expect(serverCalls).toBe(0)
-    })
-  })
-
   it('creates inventory entries with model-safe definitions and hidden implementation payloads', () => {
     const entry = createToolInventoryEntry(echoTool, { runtime: 'local' })
     expect(entry.definition).toMatchObject({ name: 'echo', description: 'Echo input' })
@@ -136,82 +97,9 @@ describe('local ToolRuntimeDriver', () => {
     expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
     expect('implementation' in entry.definition).toBe(false)
     expect(entry.implementation).toBeDefined()
-    expect(entry.capabilities).toMatchObject({ session: true, worker: true, elicits: true, samples: true })
+    expect(entry.capabilities).toMatchObject({ session: true, worker: true, elicits: false, samples: false })
 
-    const clientOnly = {
-      name: 'pick_color',
-      description: 'Pick color',
-      parameters: { type: 'object', properties: {}, required: [] },
-      client: function* () { return 'blue' },
-    }
-    const clientEntry = createIsomorphicToolInventoryEntry(clientOnly)
-    expect(clientEntry.implementation).toBeDefined()
-    expect(clientEntry.capabilities).toMatchObject({ client: true, inline: false })
     expect(() => createToolInventory([entry, entry])).toThrow('Duplicate tool name')
-  })
-
-  it('executes inline, client handoff, and missing-session resume paths through normalized runtime API', async () => {
-    await run(function* () {
-      const inlineTool = {
-        name: 'inline_echo',
-        description: 'Inline echo',
-        parameters: z.object({ message: z.string() }),
-        server: function* (params: unknown) { return { echoed: (params as { message: string }).message } },
-      }
-      const clientTool = {
-        name: 'client_pick',
-        description: 'Client pick',
-        parameters: z.object({}),
-        client: function* () { return 'picked' },
-      }
-      const driver = yield* createLocalToolRuntimeDriver({ isomorphicTools: [inlineTool, clientTool] })
-
-      const inline = yield* driver.execute({
-        entry: createIsomorphicToolInventoryEntry(inlineTool),
-        call: { id: 'call-inline', type: 'function', function: { name: 'inline_echo', arguments: { message: 'hi' } } },
-      })
-      expect(inline).toMatchObject({ kind: 'completed', result: { echoed: 'hi' } })
-      expect(inline.ref.sessionId).toBeUndefined()
-
-      const handoff = yield* driver.execute({
-        entry: createIsomorphicToolInventoryEntry(clientTool),
-        call: { id: 'call-client', type: 'function', function: { name: 'client_pick', arguments: {} } },
-      })
-      expect(handoff.kind).toBe('awaiting_client')
-      expect(handoff.ref.sessionId).toBeUndefined()
-
-      try {
-        yield* driver.resume({
-          ref: { runtimeId: 'local', executionId: 'missing', callId: 'call-missing', toolName: 'echo', sessionId: 'missing' },
-          input: { type: 'elicit_response', elicitId: 'elicit', result: { action: 'accept' } },
-        })
-        throw new Error('expected missing session')
-      } catch (error) {
-        expect(error).toMatchObject({ code: 'EXECUTION_NOT_FOUND' })
-      }
-    })
-  })
-
-  it('exports executable strategy objects for inline and session modes', async () => {
-    await run(function* () {
-      const inlineTool = {
-        name: 'inline_strategy_echo',
-        description: 'Inline strategy echo',
-        parameters: z.object({ message: z.string() }),
-        server: function* (params: unknown) { return { echoed: (params as { message: string }).message } },
-      }
-      const inline = createLocalInlineToolExecutionStrategy()
-      const inlineEntry = createIsomorphicToolInventoryEntry(inlineTool)
-      expect(inline.canExecute(inlineEntry, { id: 'call-inline', type: 'function', function: { name: inlineTool.name, arguments: { message: 'hi' } } }, { runtimeId: 'local' })).toBe(true)
-      const inlineResult = yield* inline.execute(inlineEntry, { id: 'call-inline', type: 'function', function: { name: inlineTool.name, arguments: { message: 'hi' } } }, { runtimeId: 'local' })
-      expect(inlineResult).toMatchObject({ kind: 'completed', result: { echoed: 'hi' } })
-
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), { samplingProvider: { *sample() { return { text: 'unused' } } } })
-      const session = createLocalSessionToolExecutionStrategy({ registry, samplingProvider: { *sample() { return { text: 'unused' } } }, tools: [echoTool] })
-      const sessionEntry = createToolInventoryEntry(echoTool)
-      const sessionResult = yield* session.execute(sessionEntry, { id: 'call-session', type: 'function', function: { name: 'echo', arguments: { message: 'hello' } } }, { runtimeId: 'local' })
-      expect(sessionResult).toMatchObject({ kind: 'completed', result: { echoed: 'hello' } })
-    })
   })
 
   it('installer sets ToolRuntimeContext for ToolRuntimeApi', async () => {

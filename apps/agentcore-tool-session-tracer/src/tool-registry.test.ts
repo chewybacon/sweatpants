@@ -19,25 +19,25 @@ describe("AgentCore runtime tool filtering", () => {
   });
 
   it("filters the single registry to the configured subset at runtime", async () => {
-    process.env["AGENTCORE_TOOL_NAMES"] = "pick_card,start_ttt_game";
+    process.env["AGENTCORE_TOOL_NAMES"] = "book_flight,play_ttt";
     const { runtimeMcpToolNames, getRuntimeMcpTool } = await import("./tool-registry.ts");
 
     const names = runtimeMcpToolNames();
-    expect(names).toContain("pick_card");
-    expect(names).toContain("start_ttt_game");
-    expect(names).not.toContain("ttt_move");
+    expect(names).toContain("book_flight");
+    expect(names).toContain("play_ttt");
+    expect(names).not.toContain("tictactoe");
     expect(names).not.toContain("calculator");
 
-    expect(getRuntimeMcpTool("pick_card")).toBeDefined();
-    expect(getRuntimeMcpTool("ttt_move")).toBeUndefined();
+    expect(getRuntimeMcpTool("book_flight")).toBeDefined();
+    expect(getRuntimeMcpTool("tictactoe")).toBeUndefined();
   });
 
   it("changing the env var changes the subset without code changes", async () => {
-    process.env["AGENTCORE_TOOL_NAMES"] = "ttt_move";
+    process.env["AGENTCORE_TOOL_NAMES"] = "tictactoe";
     const { runtimeMcpToolNames } = await import("./tool-registry.ts");
 
     const names = runtimeMcpToolNames();
-    expect(names).toEqual(["ttt_move"]);
-    expect(names).not.toContain("start_ttt_game");
+    expect(names).toEqual(["tictactoe"]);
+    expect(names).not.toContain("play_ttt");
   });
 });

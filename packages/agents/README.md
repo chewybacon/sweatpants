@@ -18,7 +18,7 @@ Implemented surfaces:
 - **Checkpoint before park** — the runtime emits a checkpoint with `pendingInterruptIds` before parking on elicit or host-fulfilled sample.
 - **Server vs host sampling** — server-resolved samples use the configured `sampleProvider`, stream progress, and do not park; host-fulfilled samples emit `sample_request` and resume through `respondSample`.
 - **Structured notifications** — tools get both `ctx.notify(message, fraction?, level?)` and `ctx.log(level, message)`.
-- **Framework adapters/sugar** — framework helpers such as `createIsomorphicTool` are runtime/placement sugar; first-party tool authoring should prefer canonical core `createTool`.
+- **Framework adapters/sugar** — framework helpers such as `createTool` are runtime/placement sugar; first-party tool authoring should prefer canonical core `createTool`.
 
 ## Usage
 
@@ -97,7 +97,7 @@ Primary local proofs live under `src/__tests__/`:
 - `ctx-call.test.ts` — `{ result, exchange }` return shape and migration helper behavior.
 - `elicit.test.ts` — elicit routing, nested/sub-agent propagation, parallel cover-all behavior.
 - `create-tool2-e2e.test.ts` — migration wrapper for native unified tools.
-- `book-flight-e2e.test.ts` — framework MCP handoff through unified `ToolCtx`.
-- `isomorphic-e2e.test.ts` — isomorphic server-only and handoff tools through unified `ToolCtx`.
+- `book-flight-e2e.test.ts` — framework MCP elicitation through unified `ToolCtx`.
+- `canonical-tool-e2e.test.ts` — server-only and browser-interactive canonical tools through unified `ToolCtx`.
 
 Framework and core tests assert the terminal unified behavior rather than legacy coexistence.

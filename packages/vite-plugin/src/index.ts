@@ -2,7 +2,7 @@
  * @sweatpants/framework Vite Plugin
  *
  * Provides file-based discovery and registry generation for:
- * - Tools (isomorphic tools)
+ * - Canonical core tools
  * - Providers (future)
  * - Personas (future)
  * - Rendering pipelines (future)

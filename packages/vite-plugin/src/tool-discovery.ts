@@ -338,8 +338,8 @@ export function discoverToolsInContent(
   let match: RegExpExecArray | null;
 
   // Named export with inline definition.
-  // export const guessCard = createIsomorphicTool('guess_card')
-  // export const guessCard = createIsomorphicTool()
+  // export const guessCard = createTool('guess_card')
+  // export const guessCard = createTool()
   const namedExportRegex = new RegExp(
     `export\\s+const\\s+(\\w+)\\s*=\\s*(?:${fnPattern})\\s*\\(([^)]*)\\)`,
     "g",
@@ -360,8 +360,8 @@ export function discoverToolsInContent(
   }
 
   // Default export with inline definition.
-  // export default createIsomorphicTool('guess_card')
-  // export default createIsomorphicTool()
+  // export default createTool('guess_card')
+  // export default createTool()
   const defaultExportRegex = new RegExp(
     `export\\s+default\\s+(?:${fnPattern})\\s*\\(([^)]*)\\)`,
     "g",
@@ -380,8 +380,8 @@ export function discoverToolsInContent(
   }
 
   // Variable definition (not directly exported).
-  // const guessCard = createIsomorphicTool('guess_card')
-  // const guessCard = createIsomorphicTool()
+  // const guessCard = createTool('guess_card')
+  // const guessCard = createTool()
   const varDefRegex = new RegExp(`const\\s+(\\w+)\\s*=\\s*(?:${fnPattern})\\s*\\(([^)]*)\\)`, "g");
 
   const varDefs = new Map<string, { explicitName: string | undefined; toolName: string }>();
@@ -572,8 +572,7 @@ export function generateWorkerContent(
 
   // Worker files run as raw Node.js ESM with --experimental-strip-types,
   // which supports .ts but NOT .tsx (JSX requires transformation).
-  // Skip .tsx files - they typically contain React components (isomorphic tools)
-  // that can't meaningfully run in a worker thread anyway.
+  // Skip .tsx files because raw Node.js workers do not transform JSX.
   const workerCompatibleTools = tools.filter((t) => !t.absolutePath.endsWith(".tsx"));
   const sortedTools = [...workerCompatibleTools].sort((a, b) =>
     a.toolName.localeCompare(b.toolName),
@@ -592,27 +591,12 @@ export function generateWorkerContent(
     registryEntries.push(
       `  { name: '${tool.toolName}', handler: function* (params, ctx) {
     const tool = ${variableName}
-    // Unified callable tools (createTool/createIsomorphicTool finalized)
-    // are functions carrying legacy metadata (execute/handoffConfig/server).
-    // Detect them by 'capabilities' and activate via the unified path
-    // (ctx) => invoke(input); otherwise fall back to legacy field dispatch.
     if (tool && typeof tool === 'function' && 'capabilities' in tool) {
       const invoke = yield* (tool as any)(ctx)
       return yield* invoke(params)
     }
-    if (tool && typeof tool === 'object') {
-      if ('execute' in (tool as unknown as Record<string, unknown>)) {
-        return yield* (tool as any).execute(params, ctx)
-      }
-      if ('handoffConfig' in (tool as unknown as Record<string, unknown>)) {
-        const config = (tool as any).handoffConfig
-        const handoff = yield* config.before(params, ctx)
-        const clientResult = yield* config.client(handoff, ctx)
-        return yield* config.after(handoff, clientResult, ctx, params)
-      }
-      if ('server' in (tool as unknown as Record<string, unknown>)) {
-        return yield* (tool as any).server(params, ctx)
-      }
+    if (tool && typeof tool === 'object' && 'execute' in (tool as unknown as Record<string, unknown>)) {
+      return yield* (tool as any).execute(params, ctx)
     }
     return yield* (tool as any)(params, ctx)
   } }`,

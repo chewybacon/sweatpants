@@ -110,7 +110,6 @@ export interface UnifiedToolFactory<
   readonly schemas?: { input: unknown; output?: unknown }
   readonly capabilities?: { elicitation?: boolean; sampling?: boolean }
   readonly requires?: { elicitation?: boolean; sampling?: boolean }
-  readonly handoffConfig?: unknown
   readonly execute?: unknown
   (ctx: ToolCtx<TElicits>): Operation<(input: I) => Operation<O>>
 }

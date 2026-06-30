@@ -33,8 +33,8 @@ import {
   getComponentKey,
   createRuntime,
   createComponentHandler,
-} from '../isomorphic-tools/runtime/emissions.ts'
-import type { UserProps, ExtractResponse } from '../isomorphic-tools/runtime/browser-context.ts'
+} from '../browser-rendering/emissions.ts'
+import type { UserProps, ExtractResponse } from '../browser-rendering/browser-context.ts'
 
 // =============================================================================
 // CONTEXT CREATION

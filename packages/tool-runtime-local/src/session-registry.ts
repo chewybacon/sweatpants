@@ -118,8 +118,8 @@ export function createToolSessionRegistry(
     }
 
     const registry: ToolSessionRegistry = {
-      *create<TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap>(
-        tool: McpRuntimeTool<string, TParams, THandoff, TClient, TResult, TElicits>,
+      *create<TParams, TInteraction, TClient, TResult, TElicits extends ElicitsMap>(
+        tool: McpRuntimeTool<string, TParams, TInteraction, TClient, TResult, TElicits>,
         params: TParams,
         sessionOptions?: ToolSessionOptions
       ): Operation<ToolSession<TResult>> {

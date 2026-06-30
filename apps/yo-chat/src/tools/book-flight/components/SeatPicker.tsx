@@ -5,7 +5,7 @@
  * Used by the book_flight tool's pickSeat elicitation.
  */
 import { useState, useMemo } from 'react'
-import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
+import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
 import { stripMessageContext } from '@sweatpants/framework/chat'
 import type { SeatMap } from '../tool'
 

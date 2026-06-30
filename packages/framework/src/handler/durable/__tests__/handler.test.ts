@@ -23,9 +23,9 @@ import {
   setupDurableStreams,
 } from '../../../lib/chat/durable-streams/index.ts'
 import type { RetentionPolicy } from '@sweatpants/durable-streams'
-import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
 import { createDurableChatHandler } from '../handler.ts'
-import type { ChatHandlerSetup, IsomorphicTool } from '../types.ts'
+import type { ChatHandlerSetup } from '../types.ts'
+type LegacyTestTool = any
 import type { Message } from '../../../lib/chat/types.ts'
 import {
   createMockProvider,
@@ -46,7 +46,7 @@ import {
  */
 function createTestHooks(
   provider: ReturnType<typeof createMockProvider>,
-  tools: IsomorphicTool[] = [],
+  tools: LegacyTestTool[] = [],
   options: { retentionPolicy?: RetentionPolicy } = {}
 ): ChatHandlerSetup {
   const bufferStore = createInMemoryBufferStore<string>()
@@ -218,259 +218,6 @@ describe('Durable Chat Handler', () => {
   })
 
   describe('Tool Calling', () => {
-    it('should expose historical tool trace state in durable replay for completed client outputs', function* () {
-      const provider = createMockProvider({ responses: ['First tool turn', 'Second tool turn'] })
-      const handler = createDurableChatHandler({
-        setup: createTestHooks(provider, [], {
-          retentionPolicy: { mode: 'retain_forever' },
-        }),
-      })
-
-      const conversationId = 'durable-tool-trace-thread'
-
-      const firstBody = {
-        messages: [
-          { id: 'u1', role: 'user', content: 'Draw first card' },
-          {
-            id: 'a1',
-            role: 'assistant',
-            content: '',
-            tool_calls: [
-              {
-                id: 'call-1',
-                type: 'function' as const,
-                function: { name: 'pick_card', arguments: { count: 3 } },
-              },
-            ],
-          },
-          {
-            id: 't1',
-            role: 'tool',
-            tool_call_id: 'call-1',
-            content: 'The user selected the Ace of Spades.',
-          },
-        ],
-        conversationId,
-        isomorphicClientOutputs: [
-          {
-            callId: 'call-1',
-            toolName: 'pick_card',
-            params: { count: 3 },
-            clientOutput: { picked: 'A♠' },
-            trace: {
-              emissions: [
-                {
-                  order: 0,
-                  componentKey: 'CardPicker',
-                  props: { cards: ['A♠', 'K♣'], prompt: 'Pick one' },
-                  response: { picked: 'A♠' },
-                  timestamp: 100,
-                },
-              ],
-              startedAt: 50,
-              completedAt: 100,
-            },
-          },
-        ],
-      }
-
-      const firstRequest = new Request('http://localhost/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(firstBody),
-      })
-      yield* call(() => handler(firstRequest))
-
-      const secondBody = {
-        messages: [
-          ...firstBody.messages,
-          { id: 'a2', role: 'assistant', content: 'First card acknowledged.' },
-          { id: 'u2', role: 'user', content: 'Draw second card' },
-          {
-            id: 'a3',
-            role: 'assistant',
-            content: '',
-            tool_calls: [
-              {
-                id: 'call-2',
-                type: 'function' as const,
-                function: { name: 'pick_card', arguments: { count: 3 } },
-              },
-            ],
-          },
-          {
-            id: 't2',
-            role: 'tool',
-            tool_call_id: 'call-2',
-            content: 'The user selected the Four of Clubs.',
-          },
-        ],
-        conversationId,
-        replayState: {
-          toolTraces: [
-            {
-              callId: 'call-1',
-              toolName: 'pick_card',
-              trace: firstBody.isomorphicClientOutputs[0].trace,
-            },
-          ],
-        },
-        isomorphicClientOutputs: [
-          {
-            callId: 'call-2',
-            toolName: 'pick_card',
-            params: { count: 3 },
-            clientOutput: { picked: '4♣' },
-            trace: {
-              emissions: [
-                {
-                  order: 0,
-                  componentKey: 'CardPicker',
-                  props: { cards: ['4♣', 'A♦'], prompt: 'Pick again' },
-                  response: { picked: '4♣' },
-                  timestamp: 200,
-                },
-              ],
-              startedAt: 150,
-              completedAt: 200,
-            },
-          },
-        ],
-      }
-
-      const secondRequest = new Request('http://localhost/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(secondBody),
-      })
-      yield* call(() => handler(secondRequest))
-
-      const { request: replayRequest } = createChatRequest([], {
-        method: 'GET',
-        conversationId,
-      })
-      const replayResponse = yield* call(() => handler(replayRequest))
-      const replay = yield* call(() => consumeDurableResponse(replayResponse))
-
-      const checkpoints = getEventsByType(replay, 'ag_ui_checkpoint') as Array<{
-        type: 'ag_ui_checkpoint'
-        checkpoint: {
-          state: {
-            replay?: {
-              toolTraces: Array<{ callId: string }>
-            }
-          }
-        }
-      }>
-
-      expect(checkpoints.length).toBeGreaterThan(0)
-      expect(checkpoints[0]?.checkpoint.state.replay?.toolTraces.map((trace) => trace.callId)).toEqual(
-        expect.arrayContaining(['call-1']),
-      )
-
-      expect(
-        checkpoints[0]?.checkpoint.state.replay?.toolTraces.map((trace) => trace.callId),
-      ).toEqual(expect.arrayContaining(['call-1', 'call-2']))
-    })
-
-    it('does not retain stale handoff placeholders after a client tool completes', function* () {
-      const provider = createMockProvider({ responses: 'Second tool turn' })
-      const handler = createDurableChatHandler({
-        setup: createTestHooks(provider, [], {
-          retentionPolicy: { mode: 'retain_forever' },
-        }),
-      })
-
-      const conversationId = 'durable-tool-placeholder-thread'
-
-      const request = new Request('http://localhost/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId,
-          messages: [
-            { id: 'u1', role: 'user', content: 'Draw first card' },
-            {
-              id: 'a1',
-              role: 'assistant',
-              content: '',
-              tool_calls: [
-                {
-                  id: 'call-1',
-                  type: 'function' as const,
-                  function: { name: 'pick_card', arguments: { count: 3 } },
-                },
-              ],
-            },
-            {
-              id: 't1',
-              role: 'tool',
-              tool_call_id: 'call-1',
-              content: '',
-            },
-          ],
-          isomorphicClientOutputs: [
-            {
-              callId: 'call-1',
-              toolName: 'pick_card',
-              params: { count: 3 },
-              clientOutput: { picked: 'A♠' },
-              usesHandoff: true,
-              trace: {
-                emissions: [
-                  {
-                    order: 0,
-                    componentKey: 'CardPicker',
-                    props: { cards: ['A♠', 'K♣'], prompt: 'Pick one' },
-                    response: { picked: 'A♠' },
-                    timestamp: 100,
-                  },
-                ],
-                startedAt: 50,
-                completedAt: 100,
-              },
-            },
-          ],
-        }),
-      })
-
-      yield* call(() => handler(request))
-
-      const { request: replayRequest } = createChatRequest([], {
-        method: 'GET',
-        conversationId,
-      })
-      const replayResponse = yield* call(() => handler(replayRequest))
-      const replay = yield* call(() => consumeDurableResponse(replayResponse))
-
-      const checkpoints = getEventsByType(replay, 'ag_ui_checkpoint') as Array<{
-        type: 'ag_ui_checkpoint'
-        checkpoint: {
-          messages: {
-            messages: Array<{
-              role: string
-              content: string
-              tool_calls?: Array<{ id: string }>
-              tool_call_id?: string
-            }>
-          }
-        }
-      }>
-
-      expect(checkpoints.length).toBeGreaterThan(0)
-      const messages = checkpoints[0]?.checkpoint.messages.messages ?? []
-
-      expect(
-        messages.filter((message) => message.role === 'assistant' && message.tool_calls?.some((toolCall) => toolCall.id === 'call-1')),
-      ).toHaveLength(1)
-      expect(
-        messages.filter((message) => message.role === 'tool' && message.tool_call_id === 'call-1'),
-      ).toHaveLength(1)
-      expect(
-        messages.find((message) => message.role === 'tool' && message.tool_call_id === 'call-1')?.content,
-      ).toBe('')
-    })
-
     it('should execute server-side tools and emit results', function* () {
       const echoTool = createMockTool('echo', 'Echoes input')
       const provider = createMockProvider({
@@ -500,7 +247,7 @@ describe('Durable Chat Handler', () => {
 
     it('should reject invalid tool parameters before server execution', function* () {
       let serverCalls = 0
-      const routeTool: IsomorphicTool = {
+      const routeTool: LegacyTestTool = {
         name: 'book_flight',
         description: 'Book a flight',
         parameters: z.object({ from: z.string(), destination: z.string() }),
@@ -653,152 +400,6 @@ describe('Durable Chat Handler', () => {
       ])
     })
 
-    it('should include accumulated replay state in handoff conversation_state events', function* () {
-      const handoffTool: IsomorphicTool = {
-        name: 'mock_handoff',
-        description: 'A mock isomorphic tool with handoff',
-        parameters: z.object({ count: z.number() }),
-        server: function* (params: unknown) {
-          const { count } = params as { count: number }
-          return { cards: Array.from({ length: count }, (_, i) => `Card ${i + 1}`) }
-        },
-        client: function* (_input: unknown, _ctx: unknown, _params: unknown) {
-          return 'Client picked a card'
-        },
-      }
-
-      const provider = createMockProvider({
-        responses: ['Let me draw a card for you'],
-        toolCalls: [{ id: 'call-new', name: 'mock_handoff', arguments: { count: 3 } }],
-      })
-
-      const handler = createDurableChatHandler({
-        setup: createTestHooks(provider, [handoffTool], {
-          retentionPolicy: { mode: 'retain_forever' },
-        }),
-        maxToolIterations: 5,
-      })
-
-      const conversationId = 'durable-handoff-replay-thread'
-
-      const priorTrace = {
-        callId: 'call-prior',
-        toolName: 'mock_handoff',
-        trace: {
-          emissions: [{
-            order: 0,
-            componentKey: 'CardPicker',
-            props: { cards: ['A♠', 'K♣'], prompt: 'Pick one' },
-            response: { picked: 'A♠' },
-            timestamp: 100,
-          }],
-          startedAt: 50,
-          completedAt: 100,
-        },
-      }
-
-      const request = new Request('http://localhost/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId,
-          messages: [{ id: 'u1', role: 'user', content: 'Draw a card' }],
-          replayState: { toolTraces: [priorTrace] },
-          isomorphicTools: [{
-            name: 'mock_handoff',
-            description: 'A mock isomorphic tool with handoff',
-            parameters: { type: 'object', properties: { count: { type: 'number' } } },
-            usesHandoff: true,
-          }],
-        }),
-      })
-
-      const response = yield* call(() => handler(request))
-      const result = yield* call(() => consumeDurableResponse(response))
-
-      const checkpoints = getEventsByType(result, 'ag_ui_checkpoint') as Array<{
-        type: 'ag_ui_checkpoint'
-        checkpoint: {
-          state: {
-            toolCalls?: Array<{ id: string; name: string }>
-            replay?: {
-              toolTraces: Array<{ callId: string; toolName: string }>
-            }
-          }
-        }
-      }>
-
-      const handoffState = checkpoints.find(
-        (cp) => cp.checkpoint.state.toolCalls && cp.checkpoint.state.toolCalls.length > 0,
-      )
-
-      expect(handoffState).toBeDefined()
-      expect(
-        handoffState!.checkpoint.state.replay?.toolTraces.map((t) => t.callId),
-      ).toContain('call-prior')
-    })
-
-    it('should emit ag_ui_checkpoint messages with ids for handoff transcripts', function* () {
-      const handoffTool: IsomorphicTool = {
-        name: 'mock_handoff',
-        description: 'A mock isomorphic tool with handoff',
-        parameters: z.object({ count: z.number() }),
-        server: function* (params: unknown) {
-          const { count } = params as { count: number }
-          return { cards: Array.from({ length: count }, (_, i) => `Card ${i + 1}`) }
-        },
-        client: function* () {
-          return 'Client picked a card'
-        },
-      }
-
-      const provider = createMockProvider({
-        responses: ['Let me draw a card for you'],
-        toolCalls: [{ id: 'call-new', name: 'mock_handoff', arguments: { count: 3 } }],
-      })
-
-      const handler = createDurableChatHandler({
-        setup: createTestHooks(provider, [handoffTool], {
-          retentionPolicy: { mode: 'retain_forever' },
-        }),
-        maxToolIterations: 5,
-      })
-
-      const request = new Request('http://localhost/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          conversationId: 'durable-handoff-message-ids',
-          messages: [{ id: 'user:seed', role: 'user', content: 'Draw a card' }],
-          isomorphicTools: [{
-            name: 'mock_handoff',
-            description: 'A mock isomorphic tool with handoff',
-            parameters: { type: 'object', properties: { count: { type: 'number' } } },
-            usesHandoff: true,
-          }],
-        }),
-      })
-
-      const response = yield* call(() => handler(request))
-      const result = yield* call(() => consumeDurableResponse(response))
-
-      const checkpoints = getEventsByType(result, 'ag_ui_checkpoint') as Array<{
-        type: 'ag_ui_checkpoint'
-        checkpoint: {
-          messages: {
-            messages: Array<{ id?: string; role: string }>
-          }
-        }
-      }>
-
-      expect(checkpoints.length).toBeGreaterThan(0)
-
-      for (const event of checkpoints) {
-        for (const message of event.checkpoint.messages.messages) {
-          expect(message.id, `expected id for ${message.role} message in ag_ui_checkpoint`).toBeTruthy()
-        }
-      }
-    })
   })
 
   describe('Error Handling', () => {
@@ -871,7 +472,6 @@ describe('Durable Chat Handler', () => {
           const bufferStore = createInMemoryBufferStore<string>()
           const registryStore = createInMemoryRegistryStore()
           yield* setupDurableStreams({ bufferStore, registryStore })
-          yield* ToolRegistryContext.set([])
         },
       })
 

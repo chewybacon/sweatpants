@@ -124,7 +124,7 @@ function TicTacToeDemo() {
   const { messages, streamingMessage, isStreaming, pipelineReady, send, abort, reset, error } =
     useChat({
       pipeline: "markdown",
-      // No isomorphic tools - using plugin instead
+      // Browser interaction is supplied by the plugin.
       tools: [],
       // TicTacToe plugin handle. enabledPlugins is derived automatically from
       // the plugin's tool name.

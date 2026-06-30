@@ -3,13 +3,13 @@
  *
  * Find files matching a glob pattern. Read-only, safe for plan mode.
  */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/core'
 import { z } from 'zod'
 import { call } from 'effection'
 import fg from 'fast-glob'
 import * as path from 'node:path'
 
-export const globFiles = createIsomorphicTool('glob_files')
+export const globFiles = createTool('glob_files')
   .description('Find files matching a glob pattern')
   .parameters(
     z.object({
@@ -25,8 +25,7 @@ export const globFiles = createIsomorphicTool('glob_files')
         .describe('Maximum number of results to return'),
     })
   )
-  .context('headless')
-  .server(function* (params) {
+  .execute(function* (params) {
     const searchDir = params.cwd
       ? path.resolve(process.cwd(), params.cwd)
       : process.cwd()
@@ -61,4 +60,3 @@ export const globFiles = createIsomorphicTool('glob_files')
       return { error: `Failed to glob files: ${error}` }
     }
   })
-  .build()

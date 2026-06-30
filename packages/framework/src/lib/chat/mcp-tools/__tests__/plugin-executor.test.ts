@@ -11,7 +11,7 @@ import {
 } from '../plugin-executor.ts'
 import type { PluginClientRegistration } from '../plugin.ts'
 import type { ElicitRequest, ElicitId } from '../mcp-tool-types.ts'
-import type { PendingEmission, ComponentEmissionPayload } from '../../isomorphic-tools/runtime/emissions.ts'
+import type { PendingEmission, ComponentEmissionPayload } from '../../browser-rendering/emissions.ts'
 
 // Helper to create a valid ElicitRequest
 function createElicitRequest<K extends string>(

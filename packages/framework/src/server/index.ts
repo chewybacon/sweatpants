@@ -122,7 +122,6 @@ export type {
   ChatRequestBody,
   DurableStreamEvent,
   DurableStreamParams,
-  IsomorphicTool,
   ToolSchema,
   McpToolRegistry,
   PluginSessionManager,

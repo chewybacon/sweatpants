@@ -4,7 +4,6 @@ import {
   McpToolRegistryContext,
   PersonaResolverContext,
   PluginRegistryContext,
-  ToolRegistryContext,
   resolvePersona,
 } from "@sweatpants/framework/chat";
 import { createPluginRegistryFrom } from "@sweatpants/framework/chat/mcp-tools";
@@ -89,7 +88,6 @@ console.info("[yo-chat] active MCP plugin tools", {
 });
 
 export function* setupYoChatBaseContexts(): Operation<void> {
-  yield* ToolRegistryContext.set(allTools);
   yield* PersonaResolverContext.set(resolvePersona);
   yield* MaxIterationsContext.set(10);
   yield* PluginRegistryContext.set(pluginRegistry);

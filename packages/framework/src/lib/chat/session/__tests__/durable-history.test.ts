@@ -42,35 +42,6 @@ function makeAgUiCheckpoint(messages: Message[], opts?: {
   return checkpoint
 }
 
-function makeAgUiStateSnapshot(opts: {
-  threadId?: string
-  runId?: string
-    pendingClientActions?: Array<{
-      toolCallId: string
-      toolName: string
-      kind: 'handoff' | 'elicit'
-      params?: unknown
-      sessionId?: string
-      elicitId?: string
-      key?: string
-    message?: string
-    schema?: Record<string, unknown>
-    data?: unknown
-    usesHandoff?: boolean
-  }>
-}): StreamEvent {
-  return {
-    type: 'ag_ui_state_snapshot',
-    run: {
-      threadId: opts.threadId ?? 'thread-1',
-      runId: opts.runId ?? 'run-1',
-    },
-    state: {
-      ...(opts.pendingClientActions ? { pendingClientActions: opts.pendingClientActions } : {}),
-    },
-  }
-}
-
 function makeTextContent(messageId: string, delta: string): StreamEvent {
   return { type: 'ag_ui_text_message_content', messageId, delta }
 }
@@ -414,53 +385,6 @@ describe('replayFramesToConversation', () => {
       'tool:call_1',
       'assistant:final:call_1',
     ])
-  })
-
-  it('reconstructs pending client actions from ag_ui_state_snapshot', async () => {
-    const frames: DurableFrame[] = [
-      makeFrame(
-        makeAgUiStateSnapshot({
-          pendingClientActions: [
-            {
-              toolCallId: 'call_1',
-              toolName: 'pick_card',
-              kind: 'handoff',
-              params: { count: 2 },
-              data: { cards: ['A', 'K'] },
-              usesHandoff: true,
-            },
-            {
-              toolCallId: 'call_2',
-              toolName: 'confirm',
-              kind: 'elicit',
-              sessionId: 'session-2',
-              elicitId: 'elicit-2',
-              key: 'confirmAction',
-              message: 'Confirm?',
-              schema: { type: 'object' },
-            },
-          ],
-        }),
-        1,
-      ),
-    ]
-
-    const result = await run(function* () {
-      return yield* replayFramesToConversation(frames, [], [])
-    })
-
-    expect(result.patches).toContainEqual({
-      type: 'pending_handoff',
-      handoff: {
-        callId: 'call_1',
-        toolName: 'pick_card',
-        params: { count: 2 },
-        data: { cards: ['A', 'K'] },
-        usesHandoff: true,
-      },
-    })
-    expect(result.patches.some((patch) => patch.type === 'elicit_start')).toBe(true)
-    expect(result.patches.some((patch) => patch.type === 'elicit')).toBe(true)
   })
 
   it('requires ids on checkpoint messages for new transcripts', async () => {

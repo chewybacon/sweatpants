@@ -6,7 +6,7 @@
  * 
  * @example
  * ```ts
- * import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+ * import { createIsomorphicTool } from '@sweatpants/framework/chat/browser-rendering'
  * import { z } from 'zod'
  * 
  * // Then define your tools similar to these examples
@@ -15,7 +15,7 @@
 import { sleep } from 'effection'
 import { z } from 'zod'
 
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createIsomorphicTool } from '@sweatpants/framework/chat/browser-rendering'
 
 /**
  * Calculator tool - performs basic arithmetic calculations.

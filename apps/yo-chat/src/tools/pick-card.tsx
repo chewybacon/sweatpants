@@ -1,24 +1,15 @@
-/**
- * Pick Card Tool
- *
- * A demonstration of the ctx.render() pattern for interactive tools.
- * Server draws cards, client lets user pick one via rendered UI.
- */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
-import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/core'
+import { getElicitContext, makePlugin, stripMessageContext } from '@sweatpants/framework/chat'
+import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
 import { z } from 'zod'
-
-// =============================================================================
-// CARD UTILITIES
-// =============================================================================
 
 const CARDS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2']
 const SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
 const SUIT_SYMBOLS: Record<string, string> = {
-  'Hearts': '\u2665',
-  'Diamonds': '\u2666',
-  'Clubs': '\u2663',
-  'Spades': '\u2660',
+  Hearts: '\u2665',
+  Diamonds: '\u2666',
+  Clubs: '\u2663',
+  Spades: '\u2660',
 }
 
 export interface Card {
@@ -26,6 +17,12 @@ export interface Card {
   suit: string
   display: string
 }
+
+const CardSchema = z.object({
+  rank: z.string(),
+  suit: z.string(),
+  display: z.string(),
+})
 
 function drawRandomCard(): Card {
   const rank = CARDS[Math.floor(Math.random() * CARDS.length)]!
@@ -49,20 +46,12 @@ function drawUniqueCards(count: number): Card[] {
   return [...cards.values()]
 }
 
-// =============================================================================
-// CARD PICKER COMPONENT
-// =============================================================================
-
 interface CardPickerProps extends RenderableProps<{ picked: Card }> {
   cards: Card[]
   prompt: string
 }
 
-/**
- * Card picker component rendered inline in the chat.
- */
 function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPickerProps) {
-  // If already responded, show the selection
   if (disabled && response) {
     return (
       <div className="my-2 p-3 bg-muted rounded-lg">
@@ -92,13 +81,13 @@ function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPicker
     )
   }
 
-  // Interactive state
   return (
     <div className="my-2 p-3 bg-muted rounded-lg">
       <p className="text-sm text-muted-foreground mb-2">{prompt}</p>
       <div className="flex gap-2 flex-wrap">
         {cards.map((card) => (
           <button
+            type="button"
             key={`${card.rank}-${card.suit}`}
             onClick={() => onRespond({ picked: card })}
             disabled={disabled}
@@ -120,7 +109,6 @@ function CardPicker({ cards, prompt, onRespond, disabled, response }: CardPicker
   )
 }
 
-// Ensure the component has a display name for serialization
 CardPicker.displayName = 'CardPicker'
 
 function* replayPickCardTrace(trace: {
@@ -136,64 +124,63 @@ function* replayPickCardTrace(trace: {
 }) {
   return {
     ...trace,
-    emissions: trace.emissions.map((entry: {
-      order: number
-      componentKey: string
-      props: Record<string, unknown>
-      response?: unknown
-      timestamp: number
-    }) => ({
+    emissions: trace.emissions.map((entry) => ({
       ...entry,
       _component: CardPicker,
     })),
   }
 }
 
-// =============================================================================
-// TOOL DEFINITION
-// =============================================================================
+type PickCardContext = {
+  cards: Card[]
+  prompt: string
+  [key: string]: unknown
+}
 
-export const pickCard = createIsomorphicTool('pick_card')
+export const pickCard = createTool('pick_card')
   .description('Draw random cards and let the user pick one')
   .parameters(
     z.object({
       count: z.number().min(2).max(10).default(5).describe('Number of cards to draw'),
     })
   )
-  .context('browser')
-  .approval({ client: 'none' }) // Skip approval for demo - the card picker IS the user interaction
-  .handoff({
-    /**
-     * Server draws random cards.
-     */
-    *before(params) {
-      const cards = drawUniqueCards(params.count)
-      return {
-        cards,
-        prompt: `Pick one of these ${cards.length} cards:`,
-      }
-    },
-
-    /**
-     * Client renders the card picker and waits for selection.
-     */
-    *client(handoff, ctx: any) {
-      const result = yield* ctx.render(CardPicker, {
-        cards: handoff.cards,
-        prompt: handoff.prompt,
-      })
-      return {
-        ...result.picked
-      } as Card
-    },
-
-    /**
-     * Server confirms the selection.
-     */
-    *after(_handoff, client) {
-      // Return a clear string message for the LLM
-      return `The user selected the ${client.rank} of ${client.suit}. Please acknowledge their choice.`
+  .elicits({
+    pickCard: {
+      context: z.object({
+        cards: z.array(CardSchema),
+        prompt: z.string(),
+      }),
+      response: z.object({
+        picked: CardSchema,
+      }),
     },
   })
+  .execute(function* (params, ctx) {
+    const cards = drawUniqueCards(params.count)
+    const prompt = `Pick one of these ${cards.length} cards:`
+    const picked = yield* ctx.elicit('pickCard', {
+      message: prompt,
+      context: { cards, prompt },
+    })
+
+    if (picked.action !== 'accept') {
+      return 'No card was selected.'
+    }
+
+    const card = picked.content.picked
+    return `The user selected the ${card.rank} of ${card.suit}. Please acknowledge their choice.`
+  })
+
+export const pickCardPlugin = makePlugin(pickCard)
+  .onElicit({
+    pickCard: function* (req, ctx) {
+      const context = getElicitContext<PickCardContext>(req)
+      const cards = context.cards ?? []
+      const prompt = context.prompt ?? stripMessageContext(req.message)
+      const result = yield* ctx.render(CardPicker, { cards, prompt })
+      return { action: 'accept' as const, content: result }
+    },
+  })
+  .build()
 
 ;(pickCard as typeof pickCard & { replayTrace?: typeof replayPickCardTrace }).replayTrace = replayPickCardTrace

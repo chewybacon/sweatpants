@@ -4,7 +4,7 @@
  * An agent is a callable coroutine (Spec REQ-001): a definition produced by
  * `createAgent` comprising an `entry` harness, `tools`, optional `subAgents`,
  * `model`, and config. It composes in-process as a generator call and deploys
- * over a protocol handler with no changes (isomorphic fulfillment, DD2).
+ * over a protocol handler with no changes (protocol-neutral fulfillment, DD2).
  */
 
 import type { Operation } from 'effection'

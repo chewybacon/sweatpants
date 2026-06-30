@@ -13,18 +13,6 @@
  * - react/chat (React hooks and components)
  */
 
-/**
- * State of an isomorphic tool during execution.
- */
-export type IsomorphicToolState =
-  | 'pending'
-  | 'server_executing'
-  | 'awaiting_client_approval'
-  | 'client_executing'
-  | 'complete'
-  | 'error'
-  | 'denied'
-
 // =============================================================================
 // CAPABILITIES
 // =============================================================================

@@ -1,7 +1,7 @@
 /**
  * Local fulfillment driver — runs an agent's `entry` harness as a generator,
- * constructing its `AgentCtx` and fulfilling `ctx.call` isomorphically for
- * local tools and sub-agents (Spec REQ-003/006/009).
+ * constructing its `AgentCtx` and fulfilling `ctx.call` through local runtime
+ * adapters for local tools and sub-agents (Spec REQ-003/006/009).
  *
  * Remote handles (A2A/agentcore) error clearly here; stage 2 wires transports.
  */

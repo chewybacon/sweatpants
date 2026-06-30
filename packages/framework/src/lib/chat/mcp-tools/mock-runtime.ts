@@ -27,7 +27,6 @@ import type { Operation } from 'effection'
 import type { ToolCtx, ToolDefinition } from '@sweatpants/core'
 import type {
   MCPClientContext,
-  MCPServerContext,
   ElicitResult,
   RawElicitResult,
   ElicitConfig,
@@ -303,20 +302,17 @@ export interface RunMCPToolOptions {
 export function runMCPTool<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
 >(
-  tool: MCPRuntimeTool<TName, TParams, THandoff, TClient, TResult>,
+  tool: MCPRuntimeTool<TName, TParams, TInteraction, TClient, TResult>,
   params: TParams,
   client: MockMCPClient,
-  options: RunMCPToolOptions = {}
+  _options: RunMCPToolOptions = {}
 ): Operation<TResult> {
   return {
     *[Symbol.iterator]() {
-      const callId = options.callId ?? `call_${Date.now()}_${Math.random().toString(36).slice(2)}`
-      const signal = options.signal ?? new AbortController().signal
-
       const canonicalTool = isCanonicalCoreTool(tool) ? tool : undefined
       const requires = canonicalTool?.capabilities ?? tool.requires
 
@@ -335,7 +331,6 @@ export function runMCPTool<
       }
       const validatedParams = parseResult.data as TParams
 
-      const serverCtx: MCPServerContext = { callId, signal }
       const clientCtx = client.createContext()
 
       let result: TResult
@@ -343,23 +338,11 @@ export function runMCPTool<
       if (canonicalTool) {
         const invoke = yield* canonicalTool(createCoreToolCtx(canonicalTool, clientCtx))
         result = (yield* invoke(validatedParams as never)) as TResult
-      } else if (tool.handoffConfig) {
-        // Execute handoff pattern
-        const { before, client: clientFn, after } = tool.handoffConfig
-
-        // Phase 1: before()
-        const handoff = yield* before(validatedParams, serverCtx)
-
-        // Client phase
-        const clientResult = yield* clientFn(handoff, clientCtx as never)
-
-        // Phase 2: after()
-        result = yield* after(handoff, clientResult, serverCtx, validatedParams)
       } else if (tool.execute) {
         // Simple execute
         result = yield* tool.execute(validatedParams, clientCtx as never)
       } else {
-        throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
+        throw new Error(`Tool "${tool.name}" has no execute function`)
       }
 
       return result

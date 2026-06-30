@@ -14,7 +14,6 @@ export {
 export type {
   ChatSession,
   ClientToolSessionOptions,
-  HandoffResponseSignalValue,
 } from './create-session.ts'
 
 // Streaming
@@ -34,7 +33,6 @@ export {
 export {
   BaseUrlContext,
   StreamerContext,
-  ToolRegistryContext,
 } from './contexts.ts'
 
 // Streaming types
@@ -46,10 +44,8 @@ export type {
   ConversationReplayToolTrace,
   StreamResult,
   StreamCompleteResult,
-  StreamIsomorphicHandoffResult,
   StreamElicitResult,
   ConversationStateStreamEvent,
-  IsomorphicHandoffStreamEvent,
   ElicitRequestStreamEvent,
   ToolSessionStatusStreamEvent,
   ToolSessionErrorStreamEvent,

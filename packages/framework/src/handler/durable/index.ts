@@ -40,13 +40,8 @@ export type {
   // Tool types
   ToolCall,
   ToolSchema,
-  ToolRegistry,
-  IsomorphicTool,
   ToolExecutionResult,
   ElicitRequestData,
-
-  // Client output types
-  IsomorphicClientOutput,
 
   // Handler types
   DurableChatHandlerConfig,

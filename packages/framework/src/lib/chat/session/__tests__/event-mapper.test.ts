@@ -172,61 +172,6 @@ describe("mapStreamEventsToPatches", () => {
     });
   });
 
-  it("reconstructs handoff and elicit patches from AG-UI state snapshots", async () => {
-    const { patches, result } = await mapEvents([
-      {
-        type: "ag_ui_state_snapshot",
-        run: {
-          threadId: "thread-1",
-          runId: "run-1",
-        },
-        state: {
-          pendingClientActions: [
-            {
-              toolCallId: "call-handoff",
-              toolName: "pick_card",
-              kind: "handoff",
-              params: { count: 3 },
-              data: { cards: ["A", "K", "Q"] },
-              usesHandoff: true,
-            },
-          ],
-        },
-      },
-      {
-        type: "ag_ui_checkpoint",
-        checkpoint: {
-          run: { threadId: "thread-1", runId: "run-1" },
-          messages: { messages: [] },
-          state: {
-            assistantContent: "",
-            toolCalls: [],
-            serverToolResults: [],
-          },
-        },
-      },
-    ]);
-
-    expect(patches).toContainEqual({
-      type: "isomorphic_tool_state",
-      id: "call-handoff",
-      state: "awaiting_client_approval",
-      serverOutput: { cards: ["A", "K", "Q"] },
-    });
-    expect(result).toMatchObject({
-      type: "isomorphic_handoff",
-      handoffs: [
-        {
-          callId: "call-handoff",
-          toolName: "pick_card",
-          params: { count: 3 },
-          serverOutput: { cards: ["A", "K", "Q"] },
-          usesHandoff: true,
-        },
-      ],
-    });
-  });
-
   it("maps direct resumed elicit_request events into elicit patches", async () => {
     const { patches, result } = await mapEvents([
       {

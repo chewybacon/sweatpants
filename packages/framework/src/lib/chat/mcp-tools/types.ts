@@ -265,67 +265,6 @@ export interface MCPServerContext {
 }
 
 // =============================================================================
-// HANDOFF CONFIGURATION
-// =============================================================================
-
-/**
- * Configuration for an MCP tool with handoff pattern.
- *
- * Type flow:
- * ```
- * TParams ──► before(params, ctx) → THandoff
- *                                      │
- *        ┌─────────────────────────────┤
- *        ▼                             ▼
- * client(handoff, ctx) → TClient
- *        │                             │
- *        └───────► after(handoff, client, ctx, params) → TResult
- * ```
- *
- * @template TParams - Tool parameters (from LLM)
- * @template THandoff - Data from before() to client() and after()
- * @template TClient - Data from client() to after()
- * @template TResult - Final result returned to LLM
- */
-export interface MCPHandoffConfig<TParams, THandoff, TClient, TResult> {
-  /**
-   * Phase 1: Server-side setup (runs ONCE).
-   *
-   * Put expensive computations, database lookups, random selections,
-   * or any non-idempotent code here. The return value is:
-   * 1. Passed to client() as handoff data
-   * 2. Cached and passed to after() (NOT re-computed)
-   */
-  before: (params: TParams, ctx: MCPServerContext) => Operation<THandoff>
-
-  /**
-   * Client phase: Multi-turn MCP interaction.
-   *
-   * This is where you use ctx.elicit() and ctx.sample() for
-   * bidirectional communication with the MCP client.
-   *
-   * Can yield* multiple times for multi-turn conversations.
-   */
-  client: (handoff: THandoff, ctx: MCPClientContext) => Operation<TClient>
-
-  /**
-   * Phase 2: Server-side finalization (runs ONCE after client).
-   *
-   * Receives:
-   * - handoff: Cached data from before() (NOT re-computed)
-   * - client: Response from client()
-   *
-   * Returns the final result that goes to the LLM.
-   */
-  after: (
-    handoff: THandoff,
-    client: TClient,
-    ctx: MCPServerContext,
-    params: TParams
-  ) => Operation<TResult>
-}
-
-// =============================================================================
 // MCP TOOL DEFINITION
 // =============================================================================
 
@@ -334,15 +273,11 @@ export interface MCPHandoffConfig<TParams, THandoff, TClient, TResult> {
  *
  * @template TName - Tool name (literal string type)
  * @template TParams - Tool parameters
- * @template THandoff - Handoff data type (undefined if no handoff)
- * @template TClient - Client output type
  * @template TResult - Final result type
  */
 export interface MCPToolDef<
   TName extends string = string,
   TParams = unknown,
-  THandoff = unknown,
-  TClient = unknown,
   TResult = unknown,
 > {
   /** Tool name (used by LLM to invoke) */
@@ -364,12 +299,7 @@ export interface MCPToolDef<
   }
 
   /**
-   * Handoff configuration (for tools with multi-turn interaction).
-   */
-  handoffConfig?: MCPHandoffConfig<TParams, THandoff, TClient, TResult>
-
-  /**
-   * Simple execute function (for tools without handoff).
+   * Execute function for canonical runtime tools.
    */
   execute?: (params: TParams, ctx: MCPClientContext) => Operation<TResult>
 }
@@ -381,34 +311,20 @@ export interface MCPToolDef<
 /**
  * Any MCP tool (for arrays/registries).
  */
-export type AnyMCPTool = MCPToolDef<string, any, any, any, any>
+export type AnyMCPTool = MCPToolDef<string, any, any>
 
 /**
  * Extract params type from an MCP tool.
  */
-export type InferMCPToolParams<T> = T extends MCPToolDef<any, infer P, any, any, any>
+export type InferMCPToolParams<T> = T extends MCPToolDef<any, infer P, any>
   ? P
   : never
 
 /**
  * Extract result type from an MCP tool.
  */
-export type InferMCPToolResult<T> = T extends MCPToolDef<any, any, any, any, infer R>
+export type InferMCPToolResult<T> = T extends MCPToolDef<any, any, infer R>
   ? R
-  : never
-
-/**
- * Extract handoff type from an MCP tool.
- */
-export type InferMCPToolHandoff<T> = T extends MCPToolDef<any, any, infer H, any, any>
-  ? H
-  : never
-
-/**
- * Extract client output type from an MCP tool.
- */
-export type InferMCPToolClient<T> = T extends MCPToolDef<any, any, any, infer C, any>
-  ? C
   : never
 
 // =============================================================================

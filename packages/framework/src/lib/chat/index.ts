@@ -2,7 +2,7 @@
 export * from "./types.ts";
 export * from "./types/index.ts";
 export * from "./frame.ts";
-export type { IsomorphicTool, PersonaResolver, ResolvedPersona } from "./setup-types.ts";
+export type { PersonaResolver, ResolvedPersona } from "./setup-types.ts";
 
 // Stream utilities
 export * from "./ndjson.ts";
@@ -21,7 +21,6 @@ export * from "./tool-parameters.ts";
 
 // Scope-driven chat setup contexts.
 export {
-  ToolRegistryContext,
   PersonaResolverContext,
   MaxIterationsContext,
   PluginRegistryContext,
@@ -45,12 +44,10 @@ export {
   loggingTransform,
   BaseUrlContext,
   StreamerContext,
-  ToolRegistryContext as ClientToolRegistryContext,
 } from "./session/index.ts";
 export type {
   ChatSession,
   ClientToolSessionOptions,
-  HandoffResponseSignalValue,
   StreamChatOptions,
   ElicitResponseData,
   DurableHistoryReplay,
@@ -61,10 +58,8 @@ export type {
   ConversationReplayToolTrace,
   StreamResult,
   StreamCompleteResult,
-  StreamIsomorphicHandoffResult,
   StreamElicitResult,
   ConversationStateStreamEvent,
-  IsomorphicHandoffStreamEvent,
   ElicitRequestStreamEvent,
   ToolSessionStatusStreamEvent,
   ToolSessionErrorStreamEvent,
@@ -112,8 +107,6 @@ export type {
 export { createPluginRegistry, createPluginRegistryFrom } from "./mcp-tools/plugin-registry.ts";
 export type { PluginRegistry } from "./mcp-tools/plugin-registry.ts";
 export { executeElicitHandlerFromRequest } from "./mcp-tools/plugin-executor.ts";
-export type { PendingHandoff, ToolHandlerRegistry } from "./isomorphic-tools/index.ts";
-
 // Model context utilities (browser-safe subset of mcp-tools)
 export {
   stripMessageContext,
@@ -123,7 +116,7 @@ export {
 
 // Canonical core tool types. Author tools with createTool from @sweatpants/core.
 export type {
-  ToolDefinition,
+  ToolDefinition as CoreToolDefinition,
   ToolCtx,
   CoreToolCtx,
   InteractionExchange as CoreInteractionExchange,
@@ -133,8 +126,6 @@ export type {
   ToolExtension,
   ToolExtensionMetadata,
 } from "@sweatpants/core";
-
-export type { IsomorphicToolSchema } from "./isomorphic-tools/index.ts";
 
 // Sample result types for structured output and tool calling
 export type {
@@ -161,6 +152,7 @@ export type {
 
 // Plugin builder (browser-safe)
 export { makePlugin } from "./mcp-tools/plugin.ts";
+export * from "./browser-rendering/index.ts";
 export type {
   McpPlugin,
   PluginBuilder,

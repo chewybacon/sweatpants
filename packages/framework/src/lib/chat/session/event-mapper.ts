@@ -1,13 +1,9 @@
-/**
- * lib/chat/session/event-mapper.ts
- */
 import type { Operation, Channel, Stream } from "effection";
 import { each } from "effection";
 import type { ChatPatch } from "../patches/index.ts";
 import type {
   StreamEvent,
   StreamResult,
-  IsomorphicHandoffStreamEvent,
   ElicitRequestStreamEvent,
   ConversationState,
 } from "./streaming.ts";
@@ -26,42 +22,13 @@ export function* mapStreamEventsToPatches(
   }
 
   function parseAgUiToolArguments(serialized: string): unknown {
-    if (serialized.length === 0) {
-      return {};
-    }
-
+    if (serialized.length === 0) return {};
     try {
       return JSON.parse(serialized);
     } catch {
       return serialized;
     }
   }
-
-  function resetAssistantSource() {
-    activeAgUiAssistantMessageId = null;
-    allowActiveAgUiAssistantText = false;
-  }
-
-  let assistantText = "";
-  const isomorphicHandoffs: IsomorphicHandoffStreamEvent[] = [];
-  const elicitRequests: ElicitRequestStreamEvent[] = [];
-  const emissionStartedForCall = new Set<string>();
-  let agUiConversationState: ConversationState | null = null;
-  const toolResults: Array<{ id: string; name: string; content: string }> = [];
-  const toolCalls: Array<{ id: string; name: string; arguments: unknown }> = [];
-  const agUiToolCalls = new Map<
-    string,
-    {
-      id: string;
-      name: string;
-      arguments: string;
-      emitted: boolean;
-    }
-  >();
-  let activeAgUiAssistantMessageId: string | null = null;
-  let allowActiveAgUiAssistantText = false;
-  const seenHandoffCallIds = new Set<string>();
-  const seenElicitKeys = new Set<string>();
 
   function ensureAgUiConversationState() {
     if (!agUiConversationState) {
@@ -72,7 +39,6 @@ export function* mapStreamEventsToPatches(
         serverToolResults: [],
       };
     }
-
     return agUiConversationState;
   }
 
@@ -81,16 +47,25 @@ export function* mapStreamEventsToPatches(
     ensureAgUiConversationState().assistantContent = content;
   }
 
+  let assistantText = "";
+  const elicitRequests: ElicitRequestStreamEvent[] = [];
+  const emissionStartedForCall = new Set<string>();
+  let agUiConversationState: ConversationState | null = null;
+  const toolResults: Array<{ id: string; name: string; content: string }> = [];
+  const toolCalls: Array<{ id: string; name: string; arguments: unknown }> = [];
+  const agUiToolCalls = new Map<
+    string,
+    { id: string; name: string; arguments: string; emitted: boolean }
+  >();
+  let activeAgUiAssistantMessageId: string | null = null;
+  let allowActiveAgUiAssistantText = false;
+  const seenElicitKeys = new Set<string>();
+
   for (const rawEvent of yield* each(eventStream)) {
     const frame = rawEvent as { lsn: number; event: StreamEvent };
     const event = frame.event;
 
-    onStreamEvent?.({
-      lsn: frame.lsn,
-      event,
-      phase: "live",
-      receivedAt: Date.now(),
-    });
+    onStreamEvent?.({ lsn: frame.lsn, event, phase: "live", receivedAt: Date.now() });
 
     switch (event.type) {
       case "session_info":
@@ -104,48 +79,20 @@ export function* mapStreamEventsToPatches(
       case "ag_ui_run_started":
         break;
 
-      case "ag_ui_messages_snapshot":
-        {
-          const priorState = agUiConversationState as ConversationState | null;
-          const existingAssistantContent: string | undefined = priorState?.assistantContent;
-          const existingToolCalls = priorState?.toolCalls;
-          const existingServerToolResults = priorState?.serverToolResults;
-          const existingReplay = priorState?.replay;
-          agUiConversationState = {
-            messages: event.messages,
-            assistantContent: existingAssistantContent ?? assistantText,
-            toolCalls: existingToolCalls ?? [],
-            serverToolResults: existingServerToolResults ?? [],
-            ...(existingReplay ? { replay: existingReplay } : {}),
-          };
-        }
+      case "ag_ui_messages_snapshot": {
+        const priorState = agUiConversationState as ConversationState | null;
+        agUiConversationState = {
+          messages: event.messages,
+          assistantContent: priorState?.assistantContent ?? assistantText,
+          toolCalls: priorState?.toolCalls ?? [],
+          serverToolResults: priorState?.serverToolResults ?? [],
+          ...(priorState?.replay ? { replay: priorState.replay } : {}),
+        };
         break;
+      }
 
       case "ag_ui_state_snapshot":
         for (const action of event.state.pendingClientActions ?? []) {
-          if (action.kind === "handoff") {
-            if (seenHandoffCallIds.has(action.toolCallId)) {
-              continue;
-            }
-
-            seenHandoffCallIds.add(action.toolCallId);
-            const handoffEvent: IsomorphicHandoffStreamEvent = {
-              type: "isomorphic_handoff",
-              callId: action.toolCallId,
-              toolName: action.toolName,
-              params: action.params,
-              serverOutput: action.data,
-              ...(action.usesHandoff !== undefined ? { usesHandoff: action.usesHandoff } : {}),
-            };
-            isomorphicHandoffs.push(handoffEvent);
-            yield* patches.send({
-              type: "isomorphic_tool_state",
-              id: action.toolCallId,
-              state: "awaiting_client_approval",
-              serverOutput: action.data,
-            });
-          }
-
           if (
             action.kind === "elicit" &&
             action.sessionId &&
@@ -155,10 +102,7 @@ export function* mapStreamEventsToPatches(
             action.schema
           ) {
             const elicitKey = `${action.toolCallId}:${action.elicitId}`;
-            if (seenElicitKeys.has(elicitKey)) {
-              continue;
-            }
-
+            if (seenElicitKeys.has(elicitKey)) continue;
             seenElicitKeys.add(elicitKey);
             const elicitEvent: ElicitRequestStreamEvent = {
               type: "elicit_request",
@@ -170,18 +114,11 @@ export function* mapStreamEventsToPatches(
               message: action.message,
               schema: action.schema,
             };
-
             elicitRequests.push(elicitEvent);
-
             if (!emissionStartedForCall.has(action.toolCallId)) {
               emissionStartedForCall.add(action.toolCallId);
-              yield* patches.send({
-                type: "elicit_start",
-                callId: action.toolCallId,
-                toolName: action.toolName,
-              });
+              yield* patches.send({ type: "elicit_start", callId: action.toolCallId, toolName: action.toolName });
             }
-
             yield* patches.send({
               type: "elicit",
               callId: action.toolCallId,
@@ -202,22 +139,13 @@ export function* mapStreamEventsToPatches(
 
       case "elicit_request": {
         const elicitKey = `${event.callId}:${event.elicitId}`;
-        if (seenElicitKeys.has(elicitKey)) {
-          break;
-        }
-
+        if (seenElicitKeys.has(elicitKey)) break;
         seenElicitKeys.add(elicitKey);
         elicitRequests.push(event);
-
         if (!emissionStartedForCall.has(event.callId)) {
           emissionStartedForCall.add(event.callId);
-          yield* patches.send({
-            type: "elicit_start",
-            callId: event.callId,
-            toolName: event.toolName,
-          });
+          yield* patches.send({ type: "elicit_start", callId: event.callId, toolName: event.toolName });
         }
-
         yield* patches.send({
           type: "elicit",
           callId: event.callId,
@@ -243,43 +171,27 @@ export function* mapStreamEventsToPatches(
           serverToolResults: event.checkpoint.state.serverToolResults,
           ...(event.checkpoint.state.replay ? { replay: event.checkpoint.state.replay } : {}),
         };
-
         for (const toolCall of event.checkpoint.state.toolCalls) {
-          if (agUiToolCalls.get(toolCall.id)?.emitted) {
-            continue;
-          }
-
-          rememberToolCall({
-            id: toolCall.id,
-            name: toolCall.name,
-            arguments: toolCall.arguments,
-          });
-
+          if (agUiToolCalls.get(toolCall.id)?.emitted) continue;
+          rememberToolCall({ id: toolCall.id, name: toolCall.name, arguments: toolCall.arguments });
           agUiToolCalls.set(toolCall.id, {
             id: toolCall.id,
             name: toolCall.name,
             arguments: JSON.stringify(toolCall.arguments),
             emitted: true,
           });
-
           yield* patches.send({
             type: "tool_call_start",
-            call: {
-              id: toolCall.id,
-              name: toolCall.name,
-              arguments: JSON.stringify(toolCall.arguments),
-            },
+            call: { id: toolCall.id, name: toolCall.name, arguments: JSON.stringify(toolCall.arguments) },
           });
         }
         break;
 
       case "ag_ui_text_message_start":
-        if (event.role !== "assistant") {
-          break;
+        if (event.role === "assistant") {
+          activeAgUiAssistantMessageId = event.messageId;
+          allowActiveAgUiAssistantText = true;
         }
-
-        activeAgUiAssistantMessageId = event.messageId;
-        allowActiveAgUiAssistantText = true;
         break;
 
       case "ag_ui_text_message_content":
@@ -320,15 +232,8 @@ export function* mapStreamEventsToPatches(
 
       case "ag_ui_tool_call_end": {
         const toolCall = agUiToolCalls.get(event.toolCallId);
-        if (!toolCall || toolCall.emitted) {
-          break;
-        }
-
-        rememberToolCall({
-          id: toolCall.id,
-          name: toolCall.name,
-          arguments: parseAgUiToolArguments(toolCall.arguments),
-        });
+        if (!toolCall || toolCall.emitted) break;
+        rememberToolCall({ id: toolCall.id, name: toolCall.name, arguments: parseAgUiToolArguments(toolCall.arguments) });
         ensureAgUiConversationState().toolCalls = toolCalls.map((call) => ({
           id: call.id,
           name: call.name,
@@ -336,86 +241,42 @@ export function* mapStreamEventsToPatches(
         }));
         yield* patches.send({
           type: "tool_call_start",
-          call: {
-            id: toolCall.id,
-            name: toolCall.name,
-            arguments: toolCall.arguments,
-          },
+          call: { id: toolCall.id, name: toolCall.name, arguments: toolCall.arguments },
         });
-        agUiToolCalls.set(event.toolCallId, {
-          ...toolCall,
-          emitted: true,
-        });
+        agUiToolCalls.set(event.toolCallId, { ...toolCall, emitted: true });
         break;
       }
 
       case "thinking":
-        yield* patches.send({
-          type: "streaming_reasoning",
-          content: event.content,
-        });
+        yield* patches.send({ type: "streaming_reasoning", content: event.content });
         break;
 
       case "ag_ui_tool_call_result":
-        toolResults.push({
-          id: event.toolCallId,
-          name: event.toolCallName,
-          content: event.content,
-        });
+        toolResults.push({ id: event.toolCallId, name: event.toolCallName, content: event.content });
         ensureAgUiConversationState().serverToolResults = toolResults.map((result) => ({
           id: result.id,
           name: result.name,
           content: result.content,
           isError: false,
         }));
-        yield* patches.send({
-          type: "tool_call_result",
-          id: event.toolCallId,
-          result: event.content,
-        });
-        yield* patches.send({
-          type: "elicit_complete",
-          callId: event.toolCallId,
-        });
+        yield* patches.send({ type: "tool_call_result", id: event.toolCallId, result: event.content });
+        yield* patches.send({ type: "elicit_complete", callId: event.toolCallId });
         break;
 
       case "ag_ui_tool_call_error":
-        yield* patches.send({
-          type: "tool_call_error",
-          id: event.toolCallId,
-          error: event.message,
-        });
-        yield* patches.send({
-          type: "elicit_complete",
-          callId: event.toolCallId,
-        });
+        yield* patches.send({ type: "tool_call_error", id: event.toolCallId, error: event.message });
+        yield* patches.send({ type: "elicit_complete", callId: event.toolCallId });
         break;
 
       case "ag_ui_run_finished":
-        // Completion signal — final text already accumulated from ag_ui_text_message_content events
-        resetAssistantSource();
+        activeAgUiAssistantMessageId = null;
+        allowActiveAgUiAssistantText = false;
         setAssistantContent(assistantText);
-        break;
-
-      case "isomorphic_handoff":
-        if (seenHandoffCallIds.has(event.callId)) {
-          break;
-        }
-        seenHandoffCallIds.add(event.callId);
-        isomorphicHandoffs.push(event);
-        yield* patches.send({
-          type: "isomorphic_tool_state",
-          id: event.callId,
-          state: "awaiting_client_approval",
-          serverOutput: event.serverOutput,
-        });
         break;
 
       case "error":
         yield* patches.send({ type: "error", message: event.message });
-        if (!event.recoverable) {
-          throw new Error(event.message);
-        }
+        if (!event.recoverable) throw new Error(event.message);
         break;
 
       case "tool_session_status":
@@ -440,27 +301,7 @@ export function* mapStreamEventsToPatches(
       })),
       serverToolResults: [],
     };
-
-    return {
-      type: "elicit",
-      pendingElicitations: elicitRequests,
-      conversationState: state,
-    };
-  }
-
-  if (isomorphicHandoffs.length > 0) {
-    const state = agUiConversationState ?? {
-      messages: [],
-      assistantContent: assistantText,
-      toolCalls: [],
-      serverToolResults: [],
-    };
-
-    return {
-      type: "isomorphic_handoff",
-      handoffs: isomorphicHandoffs,
-      conversationState: state,
-    };
+    return { type: "elicit", pendingElicitations: elicitRequests, conversationState: state };
   }
 
   return {

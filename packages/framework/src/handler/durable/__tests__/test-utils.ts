@@ -10,8 +10,8 @@
 import { resource, sleep } from 'effection'
 import type { Operation, Stream } from 'effection'
 import { z } from 'zod'
+import { createTool, type ToolDefinition as CoreToolDefinition } from '@sweatpants/core'
 import type { ChatEvent, ChatResult, Message, ToolCall as ProviderToolCall } from '../../../lib/chat/types.ts'
-import { ToolRegistryContext } from '../../../lib/chat/contexts.ts'
 import {
   ToolInventoryContext,
   createToolInventory,
@@ -36,7 +36,7 @@ import type {
   Usage,
 } from '../../../lib/chat/runtime/index.ts'
 import { setupInMemoryDurableStreams, type DurableStreamsSetup } from '../../../lib/chat/durable-streams/index.ts'
-import type { IsomorphicTool, ToolSchema, ChatHandlerSetup, DurableStreamEvent } from '../types.ts'
+import type { ChatHandlerSetup, DurableStreamEvent } from '../types.ts'
 import type { StreamEvent } from '../../types.ts'
 
 // =============================================================================
@@ -49,7 +49,7 @@ export interface MockProviderStreamOptions {
   apiKey?: string
   toolChoice?: 'auto' | 'none' | 'required'
   schema?: Record<string, unknown>
-  isomorphicToolSchemas?: Array<Record<string, unknown>>
+  toolSchemas?: Array<Record<string, unknown>>
 }
 
 export interface MockProviderCapabilities {
@@ -294,7 +294,7 @@ export function createMockModelProviderDriver(provider: MockProvider): ModelProv
           model: request.model.id,
           ...(request.model.baseUrl ? { baseUri: request.model.baseUrl } : {}),
           ...(request.options?.apiKey ? { apiKey: request.options.apiKey } : {}),
-          ...(request.context.tools ? { isomorphicToolSchemas: request.context.tools.map((tool) => ({ ...tool, isIsomorphic: true as const })) } : {}),
+          ...(request.context.tools ? { toolSchemas: request.context.tools.map((tool) => ({ ...tool })) } : {}),
           ...(request.options?.toolChoice ? { toolChoice: request.options.toolChoice } : {}),
           ...(request.options?.responseFormat?.schema ? { schema: request.options.responseFormat.schema } : {}),
         })
@@ -367,45 +367,26 @@ export function* setupMockModelProvider(provider: MockProvider): Operation<void>
 // MOCK TOOLS
 // =============================================================================
 
+type MockTool = CoreToolDefinition<string, unknown, unknown, any, any>
+
 /**
  * Create a simple mock tool that returns its input.
  */
-export function createMockTool(name: string, description: string = 'A mock tool'): IsomorphicTool {
-  return {
-    name,
-    description,
-    parameters: z.object({ input: z.string() }),
-    server: function* (params: unknown) {
+export function createMockTool(name: string, description: string = 'A mock tool'): MockTool {
+  return createTool(name)
+    .description(description)
+    .parameters(z.object({ input: z.string() }))
+    .execute(function* (params) {
       const { input } = params as { input: string }
       return `Mock result for: ${input}`
-    },
-  }
-}
-
-/**
- * Create a mock tool with client component (isomorphic handoff).
- */
-export function createMockIsomorphicTool(name: string): IsomorphicTool {
-  return {
-    name,
-    description: 'An isomorphic mock tool',
-    parameters: z.object({ query: z.string() }),
-    server: function* (params: unknown) {
-      const { query } = params as { query: string }
-      return { serverData: `Server processed: ${query}` }
-    },
-    client: function* (_input: unknown, _ctx: unknown, _params: unknown) {
-      // This would run on client
-      return 'Client output'
-    },
-  }
+    }) as MockTool
 }
 
 // =============================================================================
 // INITIALIZER HOOKS
 // =============================================================================
 
-function toolEntry(tool: IsomorphicTool): ToolInventoryEntry<IsomorphicTool> {
+function toolEntry(tool: MockTool): ToolInventoryEntry<MockTool> {
   return {
     definition: {
       name: tool.name,
@@ -413,14 +394,21 @@ function toolEntry(tool: IsomorphicTool): ToolInventoryEntry<IsomorphicTool> {
       parameters: z.toJSONSchema(tool.parameters),
     },
     implementation: tool,
-    capabilities: {
-      inline: !!tool.server,
-      client: !!tool.client,
-    },
+    capabilities: { session: true },
   }
 }
 
-function createTestToolRuntime(tools: IsomorphicTool[]): ToolRuntime {
+function createToolCtx(): Parameters<MockTool>[0] {
+  return {
+    history: [],
+    notify: function* () {},
+    log: function* () {},
+    elicit: function* (): Operation<never> { throw new Error('Test tool did not install an elicit handler') },
+    sample: function* (): Operation<never> { throw new Error('Test tool did not install a sample provider') },
+  } as Parameters<MockTool>[0]
+}
+
+function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
   const byName = new Map(tools.map((tool) => [tool.name, tool] as const))
   return {
     id: 'test',
@@ -434,14 +422,10 @@ function createTestToolRuntime(tools: IsomorphicTool[]): ToolRuntime {
         toolName: tool.name,
         callId: request.call.id,
       })
-      if (!tool.server) {
-        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, usesHandoff: false } }
-        return { kind: 'failed', ref, error: { code: 'TOOL_NOT_EXECUTABLE', message: `Tool not executable: ${tool.name}` } }
-      }
       try {
-        const serverOutput = yield* tool.server(params, { callId: request.call.id, signal: request.signal ?? new AbortController().signal })
-        if (tool.client) return { kind: 'awaiting_client', ref, request: { params, serverOutput, usesHandoff: true } }
-        return { kind: 'completed', ref, result: serverOutput }
+        const invoke = yield* tool(createToolCtx())
+        const result = yield* invoke(params as never)
+        return { kind: 'completed', ref, result }
       } catch (error) {
         return { kind: 'failed', ref, error: { code: 'TOOL_ERROR', message: error instanceof Error ? error.message : String(error) } }
       }
@@ -453,8 +437,7 @@ function createTestToolRuntime(tools: IsomorphicTool[]): ToolRuntime {
   }
 }
 
-export function* setupMockTools(tools: IsomorphicTool[]): Operation<void> {
-  yield* ToolRegistryContext.set(tools)
+export function* setupMockTools(tools: MockTool[]): Operation<void> {
   yield* ToolInventoryContext.set(createToolInventory(tools.map(toolEntry)))
   yield* ToolRuntimeContext.set(createTestToolRuntime(tools))
 }
@@ -464,7 +447,7 @@ export function* setupMockTools(tools: IsomorphicTool[]): Operation<void> {
  */
 export function createTestChatHandlerSetup(
   provider: MockProvider,
-  tools: IsomorphicTool[] = []
+  tools: MockTool[] = []
 ): ChatHandlerSetup {
   return function* setup() {
     yield* setupMockModelProvider(provider)
@@ -503,18 +486,6 @@ export interface ErrorEvent {
 }
 
 /**
- * Isomorphic handoff event from stream.
- */
-export interface HandoffEvent {
-  type: 'isomorphic_handoff'
-  callId: string
-  toolName: string
-  params: unknown
-  serverOutput: unknown
-  usesHandoff: boolean
-}
-
-/**
  * Parsed result from consuming a durable chat response.
  */
 export interface DurableResponseResult {
@@ -530,8 +501,6 @@ export interface DurableResponseResult {
   toolCalls: Array<{ id: string; name: string; arguments: unknown }> | null
   /** Tool results */
   toolResults: Array<{ id: string; name: string; content: string }> | null
-  /** Handoffs if present */
-  handoffs: HandoffEvent[]
   /** Complete event if present */
   complete: CompleteEvent | null
   /** Error event if present */
@@ -587,7 +556,6 @@ export async function consumeDurableResponse(response: Response): Promise<Durabl
   let thinking = ''
   let toolCalls: Array<{ id: string; name: string; arguments: unknown }> | null = null
   const toolResults: Array<{ id: string; name: string; content: string }> = []
-  const handoffs: HandoffEvent[] = []
   let complete: CompleteEvent | null = null
   let error: ErrorEvent | null = null
   let lastLSN = 0
@@ -628,9 +596,6 @@ export async function consumeDurableResponse(response: Response): Promise<Durabl
       case 'ag_ui_tool_call_result':
         toolResults.push({ id: e.toolCallId, name: e.toolCallName, content: e.content })
         break
-      case 'isomorphic_handoff':
-        handoffs.push(e as HandoffEvent)
-        break
       case 'ag_ui_run_finished':
         complete = e as CompleteEvent
         break
@@ -647,7 +612,6 @@ export async function consumeDurableResponse(response: Response): Promise<Durabl
     thinking,
     toolCalls,
     toolResults: toolResults.length > 0 ? toolResults : null,
-    handoffs,
     complete,
     error,
     lastLSN,
@@ -689,7 +653,6 @@ export function createChatRequest(
     enabledTools?: boolean | string[]
     enabledPlugins?: string[]
     systemPrompt?: string
-    isomorphicTools?: ToolSchema[]
   } = {}
 ): { request: Request; body: Record<string, unknown> } {
   const {
