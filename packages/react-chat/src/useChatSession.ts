@@ -30,6 +30,7 @@ import type {
   SessionOptions,
 } from "./types.ts";
 import type { ElicitTrackingState } from "@sweatpants/framework/chat";
+import type { ToolExecutionTrace } from "@sweatpants/framework/chat/browser-rendering";
 import { useChatConfig } from "./ChatProvider.tsx";
 import { createPluginRegistryFrom } from "@sweatpants/framework/chat";
 import type { PluginHandleInput } from "@sweatpants/framework/chat";
@@ -457,8 +458,9 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   // and sends it with the next message.
   const respondToElicit = useCallback(
     (
-      elicit: { sessionId: string; callId: string; elicitId: string },
+      elicit: { sessionId: string; callId: string; elicitId: string; toolName?: string },
       result: { action: "accept" | "decline" | "cancel"; content?: unknown },
+      trace?: ToolExecutionTrace,
     ) => {
       // Dispatch an elicit_response command to the session
       dispatchCommand({
@@ -466,7 +468,9 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         sessionId: elicit.sessionId,
         callId: elicit.callId,
         elicitId: elicit.elicitId,
+        ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
         result,
+        ...(trace ? { trace } : {}),
       });
     },
     [dispatchCommand],

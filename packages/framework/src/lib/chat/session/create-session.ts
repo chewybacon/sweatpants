@@ -122,14 +122,15 @@ function createStreamingEndAcknowledger(onForwarded: () => void): PatchTransform
   }
 }
 
-function findAssistantElicitHostMessage(history: Message[]): Message | undefined {
+function findAssistantToolCallHostMessage(
+  history: Message[],
+  pendingToolCalls: Array<{ id: string; name: string }>,
+): Message | undefined {
+  const pendingIds = new Set(pendingToolCalls.map((toolCall) => toolCall.id))
   return [...history].reverse().find(
     (message) =>
       message.role === 'assistant' &&
-      message.content === '' &&
-      !message.tool_calls?.length &&
-      typeof message.id === 'string' &&
-      message.id.startsWith('assistant:final:'),
+      message.tool_calls?.some((toolCall) => pendingIds.has(toolCall.id)),
   )
 }
 
@@ -161,10 +162,14 @@ export function* runChatSession(
   if (options.conversationId) {
     const contextBaseUrl = yield* BaseUrlContext.get()
     const baseUrl = options.baseUrl ?? contextBaseUrl ?? '/api/chat'
+    const replayTools = [
+      ...(options.tools ?? []),
+      ...(options.plugins ?? []).map((plugin) => plugin.tool),
+    ]
     const durableHistory = yield* readDurableHistory({
       baseUrl,
       conversationId: options.conversationId,
-      ...((options.tools?.length ?? 0) > 0 ? { tools: options.tools } : {}),
+      ...(replayTools.length > 0 ? { tools: replayTools } : {}),
       ...((options.transforms?.length ?? 0) > 0 ? { transforms: options.transforms } : {}),
       ...(options.onStreamEvent ? { onStreamEvent: options.onStreamEvent } : {}),
     })
@@ -233,11 +238,11 @@ export function* runChatSession(
         resetTranscriptState(transcriptState, history)
         replayState = result.conversationState.replay ?? replayState
 
-        const assistantElicitHostMessage = findAssistantElicitHostMessage(history)
-        if (assistantElicitHostMessage) {
+        const assistantToolCallHostMessage = findAssistantToolCallHostMessage(history, pendingToolCalls)
+        if (assistantToolCallHostMessage) {
           yield* patches.send({
             type: 'assistant_message',
-            message: assistantElicitHostMessage,
+            message: assistantToolCallHostMessage,
           })
         }
         break
@@ -398,6 +403,7 @@ export function* runChatSession(
           ...(cmd.ref ? { ref: cmd.ref } : {}),
           elicitId: cmd.elicitId,
           result: cmd.result,
+          ...(cmd.trace ? { trace: cmd.trace } : {}),
         })
 
         yield* patches.send({

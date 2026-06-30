@@ -134,6 +134,8 @@ export interface ElicitResponse {
     action: "accept" | "decline" | "cancel";
     content?: unknown;
   };
+  /** Browser render trace for replaying plugin UI after refresh. */
+  trace?: ToolExecutionTrace;
 }
 
 export interface PluginAbortRequest {
