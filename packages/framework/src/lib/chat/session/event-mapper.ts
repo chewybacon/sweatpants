@@ -47,6 +47,18 @@ export function* mapStreamEventsToPatches(
     ensureAgUiConversationState().assistantContent = content;
   }
 
+  function rememberReplayTrace(event: { toolCallId: string; toolCallName: string; trace?: import('../browser-rendering/emissions.ts').ToolExecutionTrace }) {
+    if (!event.trace) return;
+    const state = ensureAgUiConversationState();
+    const existing = state.replay?.toolTraces ?? [];
+    state.replay = {
+      toolTraces: [
+        ...existing.filter((trace) => trace.callId !== event.toolCallId),
+        { callId: event.toolCallId, toolName: event.toolCallName, trace: event.trace },
+      ],
+    };
+  }
+
   let assistantText = "";
   const elicitRequests: ElicitRequestStreamEvent[] = [];
   const emissionStartedForCall = new Set<string>();
@@ -253,6 +265,7 @@ export function* mapStreamEventsToPatches(
 
       case "ag_ui_tool_call_result":
         toolResults.push({ id: event.toolCallId, name: event.toolCallName, content: event.content });
+        rememberReplayTrace(event);
         ensureAgUiConversationState().serverToolResults = toolResults.map((result) => ({
           id: result.id,
           name: result.name,

@@ -24,6 +24,13 @@ import { executeElicitHandlerFromRequest } from '@sweatpants/framework/chat'
 import type { PluginClientContext } from '@sweatpants/framework/chat'
 import type { ElicitRequest, ElicitId } from '@sweatpants/framework/chat'
 import { MODEL_CONTEXT_SCHEMA_KEY } from '@sweatpants/framework/chat'
+import {
+  COMPONENT_EMISSION_TYPE,
+  createToolTrace,
+  type ComponentEmissionPayload,
+  type Emission,
+  type ToolExecutionTrace,
+} from '@sweatpants/framework/chat/browser-rendering'
 
 // =============================================================================
 // TYPES
@@ -41,8 +48,9 @@ export interface UseElicitExecutorOptions {
 
   /** Send elicit response back to server */
   respondToElicit: (
-    elicit: { sessionId: string; callId: string; elicitId: string },
-    result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown }
+    elicit: { sessionId: string; callId: string; elicitId: string; toolName?: string },
+    result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown },
+    trace?: ToolExecutionTrace
   ) => void
 }
 
@@ -184,8 +192,10 @@ function* executePluginHandler(
     toolName: elicit.toolName,
   })
 
-  // Emission counter for this handler
+  // Emission counter and trace capture for this handler
   let emissionCounter = 0
+  const traceStartedAt = Date.now()
+  const traceEmissions: Emission<ComponentEmissionPayload>[] = []
 
   // Create a custom render function that dispatches directly to React
   function* renderEmission<TResponse>(
@@ -196,6 +206,19 @@ function* executePluginHandler(
     emissionCounter++
     const emissionId = `${elicit.elicitId}-em-${emissionCounter}`
 
+    const timestamp = Date.now()
+    const traceEmission: Emission<ComponentEmissionPayload, TResponse> = {
+      id: emissionId,
+      type: COMPONENT_EMISSION_TYPE,
+      payload: {
+        componentKey,
+        props,
+      },
+      timestamp,
+      status: 'pending',
+    }
+    traceEmissions.push(traceEmission as Emission<ComponentEmissionPayload>)
+
     // Create a signal to wait for the response
     const responseSignal = createSignal<TResponse, void>()
 
@@ -205,6 +228,9 @@ function* executePluginHandler(
     const respond = (value: TResponse): void => {
       if (responded) return
       responded = true
+
+      traceEmission.response = value
+      traceEmission.status = 'complete'
 
       dispatchEmissionPatch({
         type: 'tool_emission_response',
@@ -224,13 +250,13 @@ function* executePluginHandler(
       toolName: elicit.toolName,
       emission: {
         id: emissionId,
-        type: 'component',
+        type: COMPONENT_EMISSION_TYPE,
         payload: {
           componentKey,
           props,
           _component: Component,
         },
-        timestamp: Date.now(),
+        timestamp,
         status: 'pending',
       },
       respond: respond as (response: unknown) => void,
@@ -292,13 +318,17 @@ function* executePluginHandler(
     const result = yield* executeElicitHandlerFromRequest(plugin, elicitRequest, ctx)
 
     // Handler completed - send the response back to server
+    const trace = createToolTrace(traceEmissions, traceStartedAt, Date.now())
+
     respondToElicit(
       {
         sessionId: elicit.sessionId,
         callId: elicit.callId,
         elicitId: elicit.elicitId,
+        toolName: elicit.toolName,
       },
-      result
+      result,
+      trace
     )
 
     // Emit completion patch
@@ -313,6 +343,7 @@ function* executePluginHandler(
         sessionId: elicit.sessionId,
         callId: elicit.callId,
         elicitId: elicit.elicitId,
+        toolName: elicit.toolName,
       },
       { action: 'cancel' }
     )

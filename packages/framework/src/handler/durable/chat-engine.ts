@@ -164,6 +164,26 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
   };
 }
 
+function mergeToolExecutionTrace(
+  existing: ToolExecutionTrace | undefined,
+  incoming: ToolExecutionTrace,
+): ToolExecutionTrace {
+  if (!existing) return incoming;
+
+  const offset = existing.emissions.length;
+  return {
+    startedAt: Math.min(existing.startedAt, incoming.startedAt),
+    completedAt: Math.max(existing.completedAt, incoming.completedAt),
+    emissions: [
+      ...existing.emissions,
+      ...incoming.emissions.map((entry, index) => ({
+        ...entry,
+        order: offset + index,
+      })),
+    ],
+  };
+}
+
 function validationErrorResult(error: unknown, call: ToolCall): ToolExecutionResult {
   const validation = getToolParameterValidationErrorPayload(error);
   const message = validation?.message ?? (error instanceof Error ? error.message : String(error));
@@ -743,6 +763,15 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   elicitResult = { action: "cancel" };
                 }
 
+                if (response.trace && toolName) {
+                  const existingReplayTrace = replayToolTraceMap.get(callId)?.trace;
+                  replayToolTraceMap.set(callId, {
+                    callId,
+                    toolName,
+                    trace: mergeToolExecutionTrace(existingReplayTrace, response.trace),
+                  });
+                }
+
                 try {
                   if (!toolRuntime)
                     throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
@@ -781,6 +810,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                     type: "function",
                     function: { name: toolName, arguments: {} },
                   });
+                  if (toolResult.ok && toolResult.kind === "result") {
+                    const replayTrace = replayToolTraceMap.get(callId)?.trace;
+                    if (replayTrace) {
+                      toolResult.trace = replayTrace;
+                    }
+                  }
 
                   if (toolResult.ok && toolResult.kind === "plugin_awaiting") {
                     state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult));

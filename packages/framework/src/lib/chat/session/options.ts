@@ -9,6 +9,7 @@ import type { ChatPatch } from "../patches/index.ts";
 import type { Message } from "../types.ts";
 import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { ConversationReplayState } from "./streaming.ts";
+import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
 import type { PluginHandleInput } from "../mcp-tools/plugin.ts";
 import type { StreamOptions } from "../runtime/index.ts";
 
@@ -62,6 +63,8 @@ export interface ElicitResponseData {
     action: "accept" | "decline" | "cancel";
     content?: unknown;
   };
+  /** Browser render trace for replaying plugin UI after refresh. */
+  trace?: ToolExecutionTrace;
 }
 
 // =============================================================================
@@ -321,6 +324,8 @@ export type ChatCommand =
         action: "accept" | "decline" | "cancel";
         content?: unknown;
       };
+      /** Browser render trace for replaying plugin UI after refresh. */
+      trace?: ToolExecutionTrace;
       /**
        * If true, automatically send a continuation request after storing the response.
        * This allows multi-step elicitation flows to progress without user intervention.

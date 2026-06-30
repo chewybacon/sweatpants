@@ -98,7 +98,7 @@ export function deduplicateMessages(messages: Message[]): Message[] {
 }
 
 function isReplayableTool(value: unknown): value is ReplayableTool {
-  return !!value && typeof value === 'object' && 'name' in value
+  return !!value && (typeof value === 'object' || typeof value === 'function') && 'name' in value
 }
 
 function* replayToolTrace(
