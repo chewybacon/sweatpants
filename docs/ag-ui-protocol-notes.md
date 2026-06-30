@@ -1,47 +1,138 @@
 # AG-UI Protocol Notes
 
-## Current Transitional Model
+## Strict public event contract
 
-The framework now emits a transitional AG-UI-aligned event family alongside the legacy chat stream events.
+New public durable chat runs emit AG-UI `BaseEvent` JSON objects using standard uppercase event types such as `RUN_STARTED`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `TOOL_CALL_RESULT`, `MESSAGES_SNAPSHOT`, `STATE_SNAPSHOT`, `ACTIVITY_SNAPSHOT`, `RUN_FINISHED`, and `RUN_ERROR`.
 
-### AG-UI-aligned events currently emitted
+Legacy lowercase Sweatpants frames (`ag_ui_*`, `elicit_request`, `ag_ui_checkpoint`, `conversation_state`) are compatibility-reader concepts only and must not be produced by strict public streams for new sessions.
 
-- `ag_ui_run_started`
-- `ag_ui_messages_snapshot`
-- `ag_ui_state_snapshot`
-- `ag_ui_checkpoint`
-- `ag_ui_text_message_start`
-- `ag_ui_text_message_content`
-- `ag_ui_text_message_end`
-- `ag_ui_tool_call_start`
-- `ag_ui_tool_call_args`
-- `ag_ui_tool_call_end`
+## Request and resume shape
 
-### Transitional rules
+Public clients start or resume runs with a `RunAgentInput`-compatible JSON body:
 
-- live UI still consumes legacy chat patches derived from legacy events
-- durable replay understands AG-UI checkpoint/state events
-- AG-UI state snapshot is the current home for:
-  - semantic replay traces
-  - pending client actions (`handoff`, `elicit`)
+```json
+{
+  "threadId": "conversation-1",
+  "runId": "run-2",
+  "parentRunId": "run-1",
+  "state": {},
+  "messages": [],
+  "tools": [],
+  "context": [],
+  "resume": [
+    {
+      "interruptId": "elicit-pick-flight-1",
+      "status": "resolved",
+      "payload": { "action": "accept", "content": { "flightId": "FL001" } }
+    }
+  ],
+  "forwardedProps": {
+    "sweatpants": {
+      "clientReplayTraces": {
+        "elicit-pick-flight-1": {
+          "version": 1,
+          "startedAt": 1730000000000,
+          "completedAt": 1730000000100,
+          "emissions": []
+        }
+      }
+    }
+  }
+}
+```
 
-## Decision Summary
+`resume[].payload` is business response data only. Framework replay metadata belongs under `forwardedProps.sweatpants.clientReplayTraces[interruptId]`.
 
-### Interactive replay
+## Elicitation
 
-Use AG-UI custom state, currently represented by `ag_ui_state_snapshot.state.replay`.
+Plugin/user input pauses are represented by terminal `RUN_FINISHED` events with interrupt outcomes:
 
-### Pause / resume
+```json
+{
+  "type": "RUN_FINISHED",
+  "threadId": "conversation-1",
+  "runId": "run-1",
+  "outcome": {
+    "type": "interrupt",
+    "interrupts": [
+      {
+        "id": "elicit-pick-flight-1",
+        "reason": "input_required",
+        "message": "Pick a flight",
+        "toolCallId": "call-1",
+        "responseSchema": { "type": "object" },
+        "metadata": {
+          "sweatpants/sessionId": "call-1",
+          "sweatpants/toolName": "bookFlight",
+          "sweatpants/key": "pickFlight",
+          "sweatpants/componentMode": "plugin-render"
+        }
+      }
+    ]
+  }
+}
+```
 
-Use AG-UI core tool lifecycle plus AG-UI custom state in `ag_ui_state_snapshot.state.pendingClientActions`.
+Accept and decline are sent as `status: "resolved"` with `{ action: "accept", content }` or `{ action: "decline" }`. Cancel is sent as `status: "cancelled"` without a business payload.
 
-### Durable restore
+## Plugin replay activity
 
-Use `ag_ui_checkpoint` as the AG-UI-aligned replacement seam for `conversation_state`.
+Completed browser-rendered plugin UI is projected as AG-UI activity data:
 
-## Remaining migration work
+```json
+{
+  "type": "ACTIVITY_SNAPSHOT",
+  "messageId": "sweatpants:plugin-replay:call-1",
+  "activityType": "sweatpants:plugin-replay",
+  "replace": true,
+  "content": {
+    "version": 1,
+    "toolCallId": "call-1",
+    "toolName": "bookFlight",
+    "trace": {
+      "version": 1,
+      "startedAt": 1730000000000,
+      "completedAt": 1730000000100,
+      "emissions": [
+        {
+          "order": 0,
+          "emissionId": "elicit-pick-flight-1-em-1",
+          "sourceInterruptId": "elicit-pick-flight-1",
+          "componentKey": "FlightList",
+          "props": {},
+          "response": { "flightId": "FL001" },
+          "timestamp": 1730000000050
+        }
+      ]
+    }
+  }
+}
+```
 
-- replace the live legacy event mapper with an AG-UI-native client bridge
-- define compaction rules for AG-UI snapshots and deltas
-- move handoff/elicit live client transport onto AG-UI-native events
-- retire legacy custom events once parity is proven
+One activity message is used per tool call. Repeated snapshots use the same `messageId` and `replace: true` so retries update the canonical activity instead of appending duplicates.
+
+## Trace safety and limits
+
+Replay traces are untrusted browser metadata. The framework validates and normalizes them before serialization and again before server projection.
+
+Limits:
+
+- maximum 32 emissions per incoming interrupt trace
+- maximum 128 merged emissions per tool call
+- maximum JSON depth 20
+- maximum serialized incoming trace size 64 KiB
+- maximum serialized merged per-call activity content size 256 KiB
+
+Trace `props` and `response` values must be JSON-safe. Circular values, `BigInt`, functions, symbols, non-finite numbers, unsupported object instances, over-depth data, and oversized traces are omitted from replay metadata; the resume itself continues when the business payload is valid.
+
+## Persistence and privacy
+
+Accepted replay trace props and responses may be persisted in durable history as `ACTIVITY_SNAPSHOT` content. The framework performs shape/size validation, not semantic PII redaction. Plugin authors should keep replay props compact and avoid including sensitive data unless durable replay persistence is intended.
+
+## Ordering
+
+The emissions array order is the canonical replay order. `order` is derived from array position after normalization/merge. `timestamp` is client wall-clock display/debug metadata only and is never used as a replay ordering key.
+
+## Transport purity
+
+Public AG-UI SSE `data:` blocks contain only AG-UI event JSON. Durable cursor metadata is carried out-of-band via headers or SSE `id:` fields, not separate JSON control data frames.

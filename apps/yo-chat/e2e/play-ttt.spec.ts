@@ -331,8 +331,7 @@ test.describe("play_ttt Agentic Tool", () => {
 
     // After first round (user move + model response), we should have 2 move cards
     // Look for "Move #1" and "Move #2" in the history
-    const moveCard1 = page.locator("text=Move #1");
-    const moveCard2 = page.locator("text=Move #2");
+    const moveCard1 = page.locator("text=Move #1").first();
 
     await expect(moveCard1).toBeVisible({ timeout: 10000 });
     console.log("First move card visible");
@@ -392,26 +391,22 @@ test.describe("play_ttt Agentic Tool", () => {
   test("handles game cancellation gracefully", async ({ page }) => {
     await page.getByRole("button", { name: "Start Game" }).click();
 
-    const emptyCell = await waitForPlayableCell(page);
+    await waitForPlayableCell(page);
 
-    try {
-      // Click Stop button to abort
-      const stopButton = page.getByRole("button", { name: "Stop" });
-      if (await stopButton.isVisible()) {
-        await stopButton.click();
-        console.log("Clicked Stop button");
-      }
-
-      // Click New Game to reset
-      await page.getByRole("button", { name: "New Game" }).click();
-
-      // Should be able to start a new game
-      await page.getByRole("button", { name: "Start Game" }).click();
-      await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
-
-      console.log("Game reset successful!");
-    } catch (error) {
-      throw error;
+    // Click Stop button to abort
+    const stopButton = page.getByRole("button", { name: "Stop" });
+    if (await stopButton.isVisible()) {
+      await stopButton.click();
+      console.log("Clicked Stop button");
     }
+
+    // Click New Game to reset
+    await page.getByRole("button", { name: "New Game" }).click();
+
+    // Should be able to start a new game
+    await page.getByRole("button", { name: "Start Game" }).click();
+    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+
+    console.log("Game reset successful!");
   });
 });

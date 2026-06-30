@@ -43,10 +43,9 @@ import { bindModel, createBindingSource, stringParam } from "../model-binder.ts"
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
-import {
-  buildAgUiCheckpoint,
-  buildAgUiCustomState,
-} from "../../lib/chat/session/ag-ui-checkpoint.ts";
+import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
+import { internalMessagesToAgUiMessages } from "../../lib/chat/session/ag-ui-compat.ts";
+import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
   recordConversationSession,
@@ -65,6 +64,7 @@ import {
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
+  ElicitResponse,
   ToolSchema,
 } from "./types.ts";
 import type { ConversationReplayState } from "../../lib/chat/session/streaming.ts";
@@ -131,6 +131,172 @@ function mergeReplayState(
   return base;
 }
 
+function replayActivityMessages(replayState: ConversationReplayState | undefined) {
+  return (replayState?.toolTraces ?? []).flatMap((toolTrace) => {
+    const activity = buildPluginReplayActivity({
+      toolCallId: toolTrace.callId,
+      toolName: toolTrace.toolName,
+      trace: toolTrace.trace,
+    });
+    return activity
+      ? [
+          {
+            id: activity.messageId,
+            role: "activity" as const,
+            activityType: activity.activityType,
+            content: activity.content,
+          },
+        ]
+      : [];
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function forwardedClientReplayTraces(forwardedProps: unknown): Record<string, unknown> {
+  if (!isRecord(forwardedProps)) return {};
+  const sweatpants = forwardedProps["sweatpants"];
+  if (!isRecord(sweatpants)) return {};
+  const traces = sweatpants["clientReplayTraces"];
+  return isRecord(traces) ? traces : {};
+}
+
+function parseToolArguments(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return isRecord(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return isRecord(value) ? value : {};
+}
+
+function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages"] {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((message, index) => {
+    if (!isRecord(message)) {
+      return { id: `message:${index}`, role: "user", content: String(message) };
+    }
+    const role = message["role"];
+    const id =
+      typeof message["id"] === "string" && message["id"].length > 0
+        ? message["id"]
+        : `${typeof role === "string" ? role : "message"}:${index}`;
+    const content =
+      typeof message["content"] === "string"
+        ? message["content"]
+        : message["content"] === undefined
+          ? ""
+          : JSON.stringify(message["content"]);
+
+    if (role === "assistant") {
+      const toolCalls = Array.isArray(message["tool_calls"])
+        ? message["tool_calls"]
+        : Array.isArray(message["toolCalls"])
+          ? message["toolCalls"]
+          : [];
+      return {
+        id,
+        role: "assistant" as const,
+        content,
+        ...(toolCalls.length > 0
+          ? {
+              tool_calls: toolCalls.filter(isRecord).map((toolCall) => {
+                const fn = isRecord(toolCall["function"]) ? toolCall["function"] : {};
+                return {
+                  id: typeof toolCall["id"] === "string" ? toolCall["id"] : `tool:${index}`,
+                  type: "function" as const,
+                  function: {
+                    name: typeof fn["name"] === "string" ? fn["name"] : "unknown",
+                    arguments: parseToolArguments(fn["arguments"]),
+                  },
+                };
+              }),
+            }
+          : {}),
+      };
+    }
+
+    if (role === "tool") {
+      const toolCallId =
+        typeof message["tool_call_id"] === "string"
+          ? message["tool_call_id"]
+          : typeof message["toolCallId"] === "string"
+            ? message["toolCallId"]
+            : "";
+      return { id, role: "tool" as const, content, tool_call_id: toolCallId };
+    }
+
+    if (role === "system") return { id, role: "system" as const, content };
+    return { id, role: "user" as const, content };
+  });
+}
+
+function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
+  return {
+    ...body,
+    messages: normalizeIncomingMessages(body.messages),
+  };
+}
+
+function latestToolCallForResume(messages: ChatRequestBody["messages"]): {
+  callId: string;
+  toolName: string;
+} | null {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== "assistant" || !message.tool_calls?.length) continue;
+    const toolCall = message.tool_calls[message.tool_calls.length - 1];
+    if (!toolCall) continue;
+    return { callId: toolCall.id, toolName: toolCall.function.name };
+  }
+  return null;
+}
+
+function mapResumeEntriesToElicitResponses(body: ChatRequestBody): ElicitResponse[] {
+  const resume = body.resume ?? [];
+  if (resume.length === 0) return [];
+
+  const fallbackToolCall = latestToolCallForResume(body.messages);
+  const traces = forwardedClientReplayTraces(body.forwardedProps);
+  const mapped: ElicitResponse[] = [];
+
+  for (const entry of resume) {
+    if (!fallbackToolCall) continue;
+    const result =
+      entry.status === "cancelled"
+        ? { action: "cancel" as const }
+        : mapResolvedResumePayload(entry.payload);
+    const response: ElicitResponse = {
+      sessionId: fallbackToolCall.callId,
+      callId: fallbackToolCall.callId,
+      toolName: fallbackToolCall.toolName,
+      elicitId: entry.interruptId,
+      result,
+    };
+    const trace = traces[entry.interruptId];
+    if (trace !== undefined) {
+      response.trace = trace as NonNullable<ElicitResponse["trace"]>;
+    }
+    mapped.push(response);
+  }
+
+  return mapped;
+}
+
+function mapResolvedResumePayload(payload: unknown): ElicitResponse["result"] {
+  if (isRecord(payload) && payload["action"] === "accept") {
+    return { action: "accept", content: payload["content"] };
+  }
+  if (isRecord(payload) && payload["action"] === "decline") {
+    return { action: "decline" };
+  }
+  return { action: "accept", content: payload };
+}
+
 function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
   return {
     stream(model, context, options) {
@@ -188,7 +354,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // Parse request body for mutating requests only.
       const body =
         request.method === "POST" && !isProtocolMutation
-          ? ((yield* call(() => request.json())) as ChatRequestBody)
+          ? normalizeChatRequestBody((yield* call(() => request.json())) as ChatRequestBody)
           : ({ messages: [] } as ChatRequestBody);
 
       const requestedConversationId =
@@ -268,10 +434,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         contextStreamOptions || body.streamOptions
           ? { ...(contextStreamOptions ?? {}), ...(body.streamOptions ?? {}) }
           : undefined;
-      const initialToolChoice =
-        body.elicitResponses?.length
-          ? undefined
-          : body.initialToolChoice;
+      const publicResumeResponses = mapResumeEntriesToElicitResponses(body);
+      const legacyElicitResponses = body.elicitResponses ?? [];
+      const effectiveElicitResponses =
+        legacyElicitResponses.length > 0 ? legacyElicitResponses : publicResumeResponses;
+      const initialToolChoice = effectiveElicitResponses.length
+        ? undefined
+        : body.initialToolChoice;
       log.debug(
         { provider: model.provider, model: model.id, api: model.api },
         "model provider configured",
@@ -368,9 +537,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           capabilities: {
             ...resolved.capabilities,
             tools: Array.from(
-              new Set([
-                ...resolved.capabilities.tools.filter((name) => inventoryNames.has(name)),
-              ]),
+              new Set([...resolved.capabilities.tools.filter((name) => inventoryNames.has(name))]),
             ),
           },
           persona: resolved.name,
@@ -432,8 +599,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         {
           sessionId,
           isReconnect,
-          hasElicitResponses: !!body.elicitResponses,
-          elicitResponseCount: body.elicitResponses?.length ?? 0,
+          hasElicitResponses: effectiveElicitResponses.length > 0,
+          elicitResponseCount: effectiveElicitResponses.length,
         },
         "determining path",
       );
@@ -459,6 +626,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // see an aborted signal and fail immediately.
         const engineAbortController = new AbortController();
 
+        const agUiRun = {
+          threadId: body.threadId ?? requestedConversationId ?? sessionId,
+          runId: body.runId ?? sessionId,
+          ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
+        };
+        void sessionInfo;
+
         // Create the chat engine
         // toolSchemas includes canonical tools exposed for this request
         const engine = createChatEngine({
@@ -475,19 +649,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           toolRuntimeId: activeToolRuntime.id,
           maxIterations,
           signal: engineAbortController.signal,
-          sessionInfo,
-          agUiRun: {
-            threadId: requestedConversationId ?? sessionId,
-            runId: sessionId,
-          },
+          agUiRun,
           // Plugin support for MCP tools
           ...(pluginRegistry && { pluginRegistry }),
           ...(mcpToolRegistry && { mcpToolRegistry }),
           ...(pluginSessionManager && { pluginSessionManager }),
           ...(pluginSamplingProvider && { pluginSamplingProvider }),
           // Pass elicit responses if provided
-          ...(body.elicitResponses && {
-            elicitResponses: body.elicitResponses,
+          ...(effectiveElicitResponses.length > 0 && {
+            elicitResponses: effectiveElicitResponses,
           }),
           ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
         });
@@ -495,55 +665,45 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
         // Wrap engine to serialize events
         const initialReplayState = mergeReplayState(body.replayState, body);
-        const initialEvents: StreamEvent[] =
-          body.messages.length > 0
+        const initialEvents: StreamEvent[] = [
+          {
+            type: "RUN_STARTED",
+            ...agUiRun,
+            input: {
+              ...agUiRun,
+              state: body.state ?? {},
+              messages: [
+                ...internalMessagesToAgUiMessages(body.messages),
+                ...replayActivityMessages(initialReplayState),
+              ],
+              tools: toolSchemas.map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+              })),
+              context: body.context ?? [],
+              forwardedProps: body.forwardedProps ?? {},
+              ...(body.resume ? { resume: body.resume } : {}),
+            },
+          },
+          ...(body.messages.length > 0
             ? [
-                ...(requestedConversationId
-                  ? [
-                      {
-                        type: "ag_ui_run_started",
-                        run: {
-                          threadId: requestedConversationId,
-                          runId: sessionId,
-                        },
-                        input: {
-                          messages: body.messages,
-                        },
-                      } satisfies StreamEvent,
-                      {
-                        type: "ag_ui_messages_snapshot",
-                        run: {
-                          threadId: requestedConversationId,
-                          runId: sessionId,
-                        },
-                        messages: body.messages,
-                      } satisfies StreamEvent,
-                      {
-                        type: "ag_ui_state_snapshot",
-                        run: {
-                          threadId: requestedConversationId,
-                          runId: sessionId,
-                        },
-                        state: buildAgUiCustomState({
-                          ...(initialReplayState ? { replay: initialReplayState } : {}),
-                        }),
-                      } satisfies StreamEvent,
-                      {
-                        type: "ag_ui_checkpoint",
-                        checkpoint: buildAgUiCheckpoint({
-                          threadId: requestedConversationId,
-                          runId: sessionId,
-                          messages: body.messages,
-                          assistantContent: "",
-                          toolCalls: [],
-                          serverToolResults: [],
-                          ...(initialReplayState ? { replay: initialReplayState } : {}),
-                        }),
-                      } satisfies StreamEvent,
-                    ]
-                  : []),
+                {
+                  type: "MESSAGES_SNAPSHOT" as const,
+                  messages: [
+                    ...internalMessagesToAgUiMessages(body.messages),
+                    ...replayActivityMessages(initialReplayState),
+                  ],
+                },
               ]
-            : [];
+            : []),
+          {
+            type: "STATE_SNAPSHOT",
+            snapshot: buildAgUiCustomState({
+              ...(initialReplayState ? { replay: initialReplayState } : {}),
+            }),
+          },
+        ];
         const serializedStream = createSerializedEventStream(engine, initialEvents);
         log.debug({ sessionId }, "new session path: serialized stream created");
 
@@ -583,9 +743,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const errorEvent = {
           lsn: 0,
           event: {
-            type: "error",
+            type: "RUN_ERROR",
             message: error.message,
-            recoverable: false,
+            code: "internal_error",
           },
         };
         const body = JSON.stringify(errorEvent) + "\n";

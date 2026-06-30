@@ -386,8 +386,8 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
     // After first round, we should have 2 move cards
-    const moveCard1 = page.locator("text=Move #1");
-    const moveCard2 = page.locator("text=Move #2");
+    const moveCard1 = page.locator("text=Move #1").first();
+    const moveCard2 = page.locator("text=Move #2").first();
 
     await expect(moveCard1).toBeVisible({ timeout: 10000 });
     await expect(moveCard2).toBeVisible({ timeout: 10000 });
@@ -457,7 +457,7 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
     await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 });
 
     // Verify move cards exist
-    const moveCard = page.locator("text=Move #1");
+    const moveCard = page.locator("text=Move #1").first();
     await expect(moveCard).toBeVisible({ timeout: 10000 });
 
     // Unlike play-ttt, there should be NO strategy badges

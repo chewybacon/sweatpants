@@ -10,33 +10,33 @@
  *
  * @packageDocumentation
  */
-import { spawn, each, type Operation, type Channel } from 'effection'
-import type { ToolSessionSamplingProvider } from '../../lib/chat/mcp-tools/session/types.ts'
-import type { PluginRegistry } from '../../lib/chat/mcp-tools/plugin-registry.ts'
-import type { PluginClientRegistration } from '../../lib/chat/mcp-tools/plugin.ts'
-import type { ElicitsMap } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
-import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-runtime-tool.ts'
+import { spawn, each, type Operation, type Channel } from "effection";
+import type { ToolSessionSamplingProvider } from "../../lib/chat/mcp-tools/session/types.ts";
+import type { PluginRegistry } from "../../lib/chat/mcp-tools/plugin-registry.ts";
+import type { PluginClientRegistration } from "../../lib/chat/mcp-tools/plugin.ts";
+import type { ElicitsMap } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
+import type { McpRuntimeTool } from "../../lib/chat/mcp-tools/mcp-runtime-tool.ts";
 import {
   createBridgeHost,
   type BridgeEvent,
   type ElicitResponse,
   type SampleResponse,
-} from '../../lib/chat/mcp-tools/bridge-runtime.ts'
+} from "../../lib/chat/mcp-tools/bridge-runtime.ts";
 import {
   createPluginClientContext,
   executeElicitHandlerFromRequest,
-} from '../../lib/chat/mcp-tools/plugin-executor.ts'
+} from "../../lib/chat/mcp-tools/plugin-executor.ts";
 import type {
   ComponentEmissionPayload,
   PendingEmission,
-} from '../../lib/chat/browser-rendering/emissions.ts'
-import type { StreamEvent } from '../types.ts'
-import type { ToolCall, ToolExecutionResult } from './types.ts'
+} from "../../lib/chat/browser-rendering/emissions.ts";
+import type { StreamEvent } from "../types.ts";
+import type { ToolCall, ToolExecutionResult } from "./types.ts";
 import {
   getToolParameterValidationErrorPayload,
   validateToolParameters,
   type ToolParameterValidationErrorPayload,
-} from '../../lib/chat/tool-parameters.ts'
+} from "../../lib/chat/tool-parameters.ts";
 
 // =============================================================================
 // TYPES
@@ -47,22 +47,22 @@ import {
  */
 export interface PluginToolExecutionConfig {
   /** The tool call from the LLM */
-  toolCall: ToolCall
+  toolCall: ToolCall;
 
   /** The finalized MCP tool (with .elicits) */
-  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>
+  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>;
 
   /** The plugin client registration */
-  plugin: PluginClientRegistration<ElicitsMap>
+  plugin: PluginClientRegistration<ElicitsMap>;
 
   /** Provider for handling sample events */
-  samplingProvider: ToolSessionSamplingProvider
+  samplingProvider: ToolSessionSamplingProvider;
 
   /** Emission channel for plugin UI rendering */
-  emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined
+  emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined;
 
   /** Abort signal for cancellation */
-  signal: AbortSignal
+  signal: AbortSignal;
 }
 
 /**
@@ -71,13 +71,13 @@ export interface PluginToolExecutionConfig {
 export type PluginToolResult =
   | { ok: true; callId: string; toolName: string; result: unknown }
   | {
-      ok: false
-      callId: string
-      toolName: string
-      error: string
-      code?: string
-      validation?: ToolParameterValidationErrorPayload
-    }
+      ok: false;
+      callId: string;
+      toolName: string;
+      error: string;
+      code?: string;
+      validation?: ToolParameterValidationErrorPayload;
+    };
 
 // =============================================================================
 // PLUGIN TOOL DETECTION
@@ -87,15 +87,15 @@ export type PluginToolResult =
  * Check if a tool is a plugin tool (has .elicits property).
  */
 export function isPluginTool(
-  tool: unknown
+  tool: unknown,
 ): tool is McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap> {
   return (
     tool != null &&
-    typeof tool === 'object' &&
-    'elicits' in tool &&
+    typeof tool === "object" &&
+    "elicits" in tool &&
     tool.elicits != null &&
-    typeof tool.elicits === 'object'
-  )
+    typeof tool.elicits === "object"
+  );
 }
 
 /**
@@ -103,10 +103,10 @@ export function isPluginTool(
  */
 export function getPluginForTool(
   toolName: string,
-  pluginRegistry: PluginRegistry | undefined
+  pluginRegistry: PluginRegistry | undefined,
 ): PluginClientRegistration<ElicitsMap> | undefined {
-  if (!pluginRegistry) return undefined
-  return pluginRegistry.get(toolName)
+  if (!pluginRegistry) return undefined;
+  return pluginRegistry.get(toolName);
 }
 
 // =============================================================================
@@ -122,12 +122,10 @@ export function getPluginForTool(
  * 3. Runs the tool to completion
  * 4. Returns the result
  */
-export function* executePluginTool(
-  config: PluginToolExecutionConfig
-): Operation<PluginToolResult> {
-  const { toolCall, tool, plugin, samplingProvider, emissionChannel, signal } = config
-  const callId = toolCall.id
-  const toolName = toolCall.function.name
+export function* executePluginTool(config: PluginToolExecutionConfig): Operation<PluginToolResult> {
+  const { toolCall, tool, plugin, samplingProvider, emissionChannel, signal } = config;
+  const callId = toolCall.id;
+  const toolName = toolCall.function.name;
 
   try {
     const params = validateToolParameters({
@@ -135,7 +133,7 @@ export function* executePluginTool(
       params: toolCall.function.arguments,
       toolName,
       callId,
-    })
+    });
 
     // Create the bridge host
     const host = createBridgeHost({
@@ -143,34 +141,34 @@ export function* executePluginTool(
       params,
       callId,
       signal,
-    })
+    });
 
     // Spawn event handler to process bridge events
     yield* spawn(function* () {
       for (const event of yield* each(host.events)) {
-        yield* handleBridgeEvent(event, plugin, samplingProvider, emissionChannel, callId, signal)
-        yield* each.next()
+        yield* handleBridgeEvent(event, plugin, samplingProvider, emissionChannel, callId, signal);
+        yield* each.next();
       }
-    })
+    });
 
     // Run the tool to completion
-    const result = yield* host.run()
+    const result = yield* host.run();
 
     return {
       ok: true,
       callId,
       toolName,
       result,
-    }
+    };
   } catch (error) {
-    const validation = getToolParameterValidationErrorPayload(error)
+    const validation = getToolParameterValidationErrorPayload(error);
     return {
       ok: false,
       callId,
       toolName,
       error: validation?.message ?? (error instanceof Error ? error.message : String(error)),
       ...(validation ? { code: validation.code, validation } : {}),
-    }
+    };
   }
 }
 
@@ -183,19 +181,19 @@ function* handleBridgeEvent(
   samplingProvider: ToolSessionSamplingProvider,
   emissionChannel: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined,
   callId: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Operation<void> {
   switch (event.type) {
-    case 'elicit': {
+    case "elicit": {
       // Create plugin client context
       if (!emissionChannel) {
         // No emission channel - can't render UI
         // Decline the elicitation
         event.responseSignal.send({
           id: event.request.id,
-          result: { action: 'decline' },
-        })
-        return
+          result: { action: "decline" },
+        });
+        return;
       }
 
       const ctx = createPluginClientContext({
@@ -204,28 +202,28 @@ function* handleBridgeEvent(
         elicitRequest: event.request,
         emissionChannel,
         signal,
-      })
+      });
 
       try {
         // Execute the plugin's handler for this elicitation key
-        const result = yield* executeElicitHandlerFromRequest(plugin, event.request, ctx)
+        const result = yield* executeElicitHandlerFromRequest(plugin, event.request, ctx);
 
         // Send the response back to the tool
         event.responseSignal.send({
           id: event.request.id,
           result,
-        } as ElicitResponse)
+        } as ElicitResponse);
       } catch (error) {
         // Handler failed - cancel the elicitation
         event.responseSignal.send({
           id: event.request.id,
-          result: { action: 'cancel' },
-        })
+          result: { action: "cancel" },
+        });
       }
-      break
+      break;
     }
 
-    case 'sample': {
+    case "sample": {
       try {
         const result = yield* samplingProvider.sample(event.messages, {
           ...(event.options?.systemPrompt ? { systemPrompt: event.options.systemPrompt } : {}),
@@ -233,33 +231,36 @@ function* handleBridgeEvent(
           ...(event.options?.tools ? { tools: event.options.tools } : {}),
           ...(event.options?.toolChoice ? { toolChoice: event.options.toolChoice } : {}),
           ...(event.options?.schema ? { schema: event.options.schema } : {}),
-        })
-        event.responseSignal.send({ result } as SampleResponse)
+        });
+        event.responseSignal.send({ result } as SampleResponse);
       } catch (error) {
         event.responseSignal.send({
-          result: { text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]` },
-        } as SampleResponse)
+          result: {
+            text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]`,
+          },
+        } as SampleResponse);
       }
-      break
+      break;
     }
 
-    case 'log': {
+    case "log": {
       // Logs are informational - could emit as stream events if needed
       // For now, just log to console in development
-      if (process.env['NODE_ENV'] === 'development') {
-        console.log(`[Plugin ${plugin.toolName}] ${event.level}: ${event.message}`)
+      if (process.env["NODE_ENV"] === "development") {
+        console.log(`[Plugin ${plugin.toolName}] ${event.level}: ${event.message}`);
       }
-      break
+      break;
     }
 
-    case 'notify': {
+    case "notify": {
       // Progress notifications - could emit as stream events if needed
       // For now, just log to console in development
-      if (process.env['NODE_ENV'] === 'development') {
-        const progress = event.progress !== undefined ? ` (${Math.round(event.progress * 100)}%)` : ''
-        console.log(`[Plugin ${plugin.toolName}] Progress${progress}: ${event.message}`)
+      if (process.env["NODE_ENV"] === "development") {
+        const progress =
+          event.progress !== undefined ? ` (${Math.round(event.progress * 100)}%)` : "";
+        console.log(`[Plugin ${plugin.toolName}] Progress${progress}: ${event.message}`);
       }
-      break
+      break;
     }
   }
 }
@@ -271,11 +272,11 @@ export function pluginResultToToolResult(result: PluginToolResult): ToolExecutio
   if (result.ok) {
     return {
       ok: true,
-      kind: 'result',
+      kind: "result",
       callId: result.callId,
       toolName: result.toolName,
       serverOutput: result.result,
-    }
+    };
   }
 
   return {
@@ -289,7 +290,7 @@ export function pluginResultToToolResult(result: PluginToolResult): ToolExecutio
         ? { issues: result.validation.issues, validation: result.validation }
         : {}),
     },
-  }
+  };
 }
 
 /**
@@ -298,23 +299,25 @@ export function pluginResultToToolResult(result: PluginToolResult): ToolExecutio
 export function pluginResultToStreamEvent(result: PluginToolResult): StreamEvent {
   if (result.ok) {
     const content =
-      typeof result.result === 'string'
-        ? result.result
-        : JSON.stringify(result.result)
+      typeof result.result === "string" ? result.result : JSON.stringify(result.result);
 
     return {
-      type: 'ag_ui_tool_call_result',
+      type: "TOOL_CALL_RESULT",
+      messageId: `tool:${result.callId}`,
       toolCallId: result.callId,
       toolCallName: result.toolName,
       content,
-    }
+      role: "tool",
+    };
   }
 
   return {
-    type: 'ag_ui_tool_call_error',
+    type: "TOOL_CALL_RESULT",
+    messageId: `tool:${result.callId}`,
     toolCallId: result.callId,
     toolCallName: result.toolName,
-    message: result.error,
+    content: `Error: ${result.error}`,
+    role: "tool",
     ...(result.validation ? { error: result.validation } : {}),
-  }
+  };
 }

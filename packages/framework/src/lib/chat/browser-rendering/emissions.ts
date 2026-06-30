@@ -36,12 +36,12 @@
  * Signal fires, generator resumes with response
  * ```
  */
-import type { Operation, Channel } from 'effection'
-import { createSignal } from 'effection'
+import type { Operation, Channel } from "effection";
+import { createSignal } from "effection";
 
 export type ComponentTypeLike<TProps = any> =
   | ((props: TProps) => unknown)
-  | { displayName?: string | undefined; name?: string | undefined }
+  | { displayName?: string | undefined; name?: string | undefined };
 
 // =============================================================================
 // EMISSION TYPES
@@ -55,25 +55,25 @@ export type ComponentTypeLike<TProps = any> =
  */
 export interface Emission<TPayload = unknown, TResponse = unknown> {
   /** Unique ID for this emission */
-  id: string
+  id: string;
 
   /** Type discriminator - routes to handler */
-  type: string
+  type: string;
 
   /** Serializable payload data */
-  payload: TPayload
+  payload: TPayload;
 
-  /** Timestamp for ordering in trace */
-  timestamp: number
+  /** Client wall-clock display/debug metadata; never used as a replay ordering key. */
+  timestamp: number;
 
   /** Current status */
-  status: 'pending' | 'complete' | 'error'
+  status: "pending" | "complete" | "error";
 
   /** Response value once complete */
-  response?: TResponse
+  response?: TResponse;
 
   /** Error message if status is 'error' */
-  error?: string
+  error?: string;
 }
 
 /**
@@ -84,16 +84,16 @@ export interface Emission<TPayload = unknown, TResponse = unknown> {
  */
 export interface ComponentEmissionPayload<TProps = Record<string, unknown>> {
   /** Serializable key for component (displayName || name) */
-  componentKey: string
+  componentKey: string;
 
   /** Component props (without RenderableProps) */
-  props: TProps
+  props: TProps;
 
   /**
    * Transient component reference for immediate rendering.
    * Not serialized - on rehydration, the tool re-runs and provides fresh reference.
    */
-  _component?: ComponentTypeLike
+  _component?: ComponentTypeLike;
 }
 
 /**
@@ -101,8 +101,8 @@ export interface ComponentEmissionPayload<TProps = Record<string, unknown>> {
  * Used internally by the runtime to track what's waiting.
  */
 export interface PendingEmission<TPayload = unknown, TResponse = unknown> {
-  emission: Emission<TPayload, TResponse>
-  respond: (response: TResponse) => void
+  emission: Emission<TPayload, TResponse>;
+  respond: (response: TResponse) => void;
 }
 
 /**
@@ -110,20 +110,26 @@ export interface PendingEmission<TPayload = unknown, TResponse = unknown> {
  * Fully serializable - no component references.
  */
 export interface EmissionTraceEntry {
-  /** Order in execution sequence */
-  order: number
+  /** Derived from array position after normalization/merge. */
+  order: number;
+
+  /** Stable browser emission id, when available. */
+  emissionId?: string;
+
+  /** Source AG-UI interrupt id, when available. */
+  sourceInterruptId?: string;
 
   /** Component key for potential rehydration */
-  componentKey: string
+  componentKey: string;
 
   /** Props that were passed */
-  props: Record<string, unknown>
+  props: Record<string, unknown>;
 
   /** Response value */
-  response?: unknown
+  response?: unknown;
 
-  /** Timestamp */
-  timestamp: number
+  /** Client wall-clock display/debug metadata; never used as a replay ordering key. */
+  timestamp: number;
 }
 
 /**
@@ -131,30 +137,33 @@ export interface EmissionTraceEntry {
  * Adds the transient component reference back for UI rendering.
  */
 export interface HydratedEmissionTraceEntry extends EmissionTraceEntry {
-  _component?: ComponentTypeLike
+  _component?: ComponentTypeLike;
 }
 
 /**
  * Tool execution trace - included in completed tool messages.
  */
 export interface ToolExecutionTrace {
-  /** All emissions in order */
-  emissions: EmissionTraceEntry[]
+  /** Version 1 for normalized replay traces; missing means legacy v0. */
+  version?: 1;
+
+  /** All emissions in canonical array order */
+  emissions: EmissionTraceEntry[];
 
   /** Start timestamp */
-  startedAt: number
+  startedAt: number;
 
   /** End timestamp */
-  completedAt: number
+  completedAt: number;
 }
 
 /**
  * Tool execution trace with transient component references restored.
  */
 export interface HydratedToolExecutionTrace {
-  emissions: HydratedEmissionTraceEntry[]
-  startedAt: number
-  completedAt: number
+  emissions: HydratedEmissionTraceEntry[];
+  startedAt: number;
+  completedAt: number;
 }
 
 // =============================================================================
@@ -169,21 +178,21 @@ export interface HydratedToolExecutionTrace {
  */
 export type EmissionHandler<TPayload = unknown, TResponse = unknown> = (
   emission: Emission<TPayload, TResponse>,
-  respond: (value: TResponse) => void
-) => void | Promise<void>
+  respond: (value: TResponse) => void,
+) => void | Promise<void>;
 
 /**
  * Configuration for creating a runtime.
  */
 export interface RuntimeConfig {
   /** Handlers for emission types */
-  handlers: Record<string, EmissionHandler<any, any>>
+  handlers: Record<string, EmissionHandler<any, any>>;
 
   /** Fallback behavior for unknown emission types */
-  fallback?: 'error' | 'warn' | 'ignore'
+  fallback?: "error" | "warn" | "ignore";
 
   /** Optional channel to send emissions through (for React integration) */
-  emissionChannel?: Channel<PendingEmission<any, any>, void>
+  emissionChannel?: Channel<PendingEmission<any, any>, void>;
 }
 
 /**
@@ -198,10 +207,7 @@ export interface RuntimePrimitive {
    * @param payload - Data for the handler
    * @returns Response from the handler
    */
-  emit<TPayload, TResponse>(
-    type: string,
-    payload: TPayload
-  ): Operation<TResponse>
+  emit<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse>;
 }
 
 /**
@@ -211,83 +217,77 @@ export interface RuntimePrimitive {
  * @param callId - Tool call ID (for emission IDs)
  * @returns RuntimePrimitive
  */
-export function createRuntime(
-  config: RuntimeConfig,
-  callId: string
-): RuntimePrimitive {
-  let emissionCounter = 0
+export function createRuntime(config: RuntimeConfig, callId: string): RuntimePrimitive {
+  let emissionCounter = 0;
 
   return {
-    *emit<TPayload, TResponse>(
-      type: string,
-      payload: TPayload
-    ): Operation<TResponse> {
+    *emit<TPayload, TResponse>(type: string, payload: TPayload): Operation<TResponse> {
       const emission: Emission<TPayload, TResponse> = {
         id: `${callId}-em-${++emissionCounter}`,
         type,
         payload,
         timestamp: Date.now(),
-        status: 'pending',
-      }
+        status: "pending",
+      };
 
-      const handler = config.handlers[type]
+      const handler = config.handlers[type];
 
       if (!handler) {
-        if (config.fallback === 'error') {
-          throw new Error(`No handler for emission type: ${type}`)
+        if (config.fallback === "error") {
+          throw new Error(`No handler for emission type: ${type}`);
         }
-        if (config.fallback === 'warn') {
-          console.warn(`No handler for emission type: ${type}`)
+        if (config.fallback === "warn") {
+          console.warn(`No handler for emission type: ${type}`);
         }
         // 'ignore' or undefined - return undefined
-        return undefined as TResponse
+        return undefined as TResponse;
       }
 
       // Create signal for response
-      const responseSignal = createSignal<TResponse, void>()
-      const subscription = yield* responseSignal
+      const responseSignal = createSignal<TResponse, void>();
+      const subscription = yield* responseSignal;
 
       // Create respond callback
       const respond = (value: TResponse) => {
-        emission.response = value
-        emission.status = 'complete'
-        responseSignal.send(value)
-      }
+        emission.response = value;
+        emission.status = "complete";
+        responseSignal.send(value);
+      };
 
       // If there's a channel, send through it (for React integration)
       if (config.emissionChannel) {
-        yield* config.emissionChannel.send({ emission: emission as Emission, respond })
+        yield* config.emissionChannel.send({ emission: emission as Emission, respond });
       }
 
       // Call the handler
       try {
-        const result = handler(emission as Emission, respond)
+        const result = handler(emission as Emission, respond);
         if (result instanceof Promise) {
           // Don't await - handler may call respond() asynchronously
           result.catch((err) => {
-            emission.status = 'error'
-            emission.error = err instanceof Error ? err.message : String(err)
+            emission.status = "error";
+            emission.error = err instanceof Error ? err.message : String(err);
             // Throw in the generator
-            responseSignal.send(undefined as TResponse)
-          })
+            responseSignal.send(undefined as TResponse);
+          });
         }
       } catch (err) {
-        emission.status = 'error'
-        emission.error = err instanceof Error ? err.message : String(err)
-        throw err
+        emission.status = "error";
+        emission.error = err instanceof Error ? err.message : String(err);
+        throw err;
       }
 
       // Wait for response
-      const result = yield* subscription.next()
-      
+      const result = yield* subscription.next();
+
       // Check if we got an error
-      if (emission.status === 'error') {
-        throw new Error(emission.error ?? 'Emission handler failed')
+      if (emission.status === "error") {
+        throw new Error(emission.error ?? "Emission handler failed");
       }
-      
-      return result.value as TResponse
+
+      return result.value as TResponse;
     },
-  }
+  };
 }
 
 // =============================================================================
@@ -297,7 +297,7 @@ export function createRuntime(
 /**
  * The default emission type for ctx.render().
  */
-export const COMPONENT_EMISSION_TYPE = '__component__'
+export const COMPONENT_EMISSION_TYPE = "__component__";
 
 /**
  * Create the default component handler.
@@ -309,20 +309,20 @@ export const COMPONENT_EMISSION_TYPE = '__component__'
  * @returns Handler function
  */
 export function createComponentHandler(
-  channel: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>
+  channel: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>,
 ): EmissionHandler<ComponentEmissionPayload, unknown> {
   return (
     emission: Emission<ComponentEmissionPayload, unknown>,
-    _respond: (value: unknown) => void
+    _respond: (value: unknown) => void,
   ) => {
     // Send to React via channel - respond is passed through
     // The channel consumer (React) will call respond when user interacts
     // We don't call respond here - that's the responsibility of the React side
-    
+
     // Note: This is a sync handler that pushes to channel
     // The actual response comes from React calling the respond callback
-    void channel.send({ emission, respond: _respond })
-  }
+    void channel.send({ emission, respond: _respond });
+  };
 }
 
 // =============================================================================
@@ -333,8 +333,8 @@ export function createComponentHandler(
  * Extract a serializable key from a component.
  */
 export function getComponentKey(Component: ComponentTypeLike): string {
-  const candidate = Component as { displayName?: string; name?: string }
-  return candidate.displayName || candidate.name || 'Anonymous'
+  const candidate = Component as { displayName?: string; name?: string };
+  return candidate.displayName || candidate.name || "Anonymous";
 }
 
 /**
@@ -342,15 +342,18 @@ export function getComponentKey(Component: ComponentTypeLike): string {
  */
 export function emissionToTraceEntry(
   emission: Emission<ComponentEmissionPayload>,
-  order: number
+  order: number,
+  sourceInterruptId?: string,
 ): EmissionTraceEntry {
   return {
     order,
+    emissionId: emission.id,
+    ...(sourceInterruptId ? { sourceInterruptId } : {}),
     componentKey: emission.payload.componentKey,
     props: emission.payload.props as Record<string, unknown>,
     response: emission.response,
     timestamp: emission.timestamp,
-  }
+  };
 }
 
 /**
@@ -359,11 +362,13 @@ export function emissionToTraceEntry(
 export function createToolTrace(
   emissions: Emission<ComponentEmissionPayload>[],
   startedAt: number,
-  completedAt: number
+  completedAt: number,
+  options: { sourceInterruptId?: string } = {},
 ): ToolExecutionTrace {
   return {
-    emissions: emissions.map((e, i) => emissionToTraceEntry(e, i)),
+    version: 1,
+    emissions: emissions.map((e, i) => emissionToTraceEntry(e, i, options.sourceInterruptId)),
     startedAt,
     completedAt,
-  }
+  };
 }

@@ -11,10 +11,7 @@ export * from "./sse.ts";
 
 // Scope-driven driver contracts and APIs.
 export * from "./model-provider.ts";
-export type {
-  AssistantMessage,
-  Model,
-} from "./runtime/index.ts";
+export type { AssistantMessage, Model } from "./runtime/index.ts";
 export * from "./tool-inventory.ts";
 export * from "./tool-runtime.ts";
 export * from "./tool-parameters.ts";
@@ -39,6 +36,13 @@ export {
   streamChatOnce,
   readDurableHistory,
   replayFramesToConversation,
+  PLUGIN_REPLAY_ACTIVITY_TYPE,
+  PLUGIN_REPLAY_LIMITS,
+  normalizeClientReplayTrace,
+  mergePluginReplayTrace,
+  buildPluginReplayActivity,
+  activityMessageToPluginReplayTrace,
+  activitySnapshotToPluginReplayTrace,
   useTransformPipeline,
   passthroughTransform,
   loggingTransform,
@@ -51,6 +55,9 @@ export type {
   StreamChatOptions,
   ElicitResponseData,
   DurableHistoryReplay,
+  PluginReplayTraceSource,
+  PluginReplayActivityContent,
+  PluginReplayActivitySnapshotEvent,
   AgUiCheckpoint,
   AgUiCustomState,
   AgUiRunMetadata,
