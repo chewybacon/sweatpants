@@ -12,25 +12,25 @@
  * 4. Handler emissions are forwarded as `tool_emission` patches
  * 5. When handler completes, sends `elicit_response` automatically
  */
-import { useEffect, useRef } from 'react'
-import type { ComponentType } from 'react'
-import { run, createSignal } from 'effection'
-import type { Task, Operation } from 'effection'
-import type { PluginRegistry } from '@sweatpants/framework/chat'
-import type { ElicitTrackingState } from '@sweatpants/framework/chat'
-import type { ElicitState } from '@sweatpants/framework/chat'
-import type { EmissionPatch } from '@sweatpants/framework/chat'
-import { executeElicitHandlerFromRequest } from '@sweatpants/framework/chat'
-import type { PluginClientContext } from '@sweatpants/framework/chat'
-import type { ElicitRequest, ElicitId } from '@sweatpants/framework/chat'
-import { MODEL_CONTEXT_SCHEMA_KEY } from '@sweatpants/framework/chat'
+import { useEffect, useRef } from "react";
+import type { ComponentType } from "react";
+import { run, createSignal } from "effection";
+import type { Task, Operation } from "effection";
+import type { PluginRegistry } from "@sweatpants/framework/chat";
+import type { ElicitTrackingState } from "@sweatpants/framework/chat";
+import type { ElicitState } from "@sweatpants/framework/chat";
+import type { EmissionPatch } from "@sweatpants/framework/chat";
+import { executeElicitHandlerFromRequest } from "@sweatpants/framework/chat";
+import type { PluginClientContext } from "@sweatpants/framework/chat";
+import type { ElicitRequest, ElicitId } from "@sweatpants/framework/chat";
+import { MODEL_CONTEXT_SCHEMA_KEY } from "@sweatpants/framework/chat";
 import {
   COMPONENT_EMISSION_TYPE,
   createToolTrace,
   type ComponentEmissionPayload,
   type Emission,
   type ToolExecutionTrace,
-} from '@sweatpants/framework/chat/browser-rendering'
+} from "@sweatpants/framework/chat/browser-rendering";
 
 // =============================================================================
 // TYPES
@@ -38,20 +38,20 @@ import {
 
 export interface UseElicitExecutorOptions {
   /** Current pending elicitations from state */
-  pendingElicits: ElicitTrackingState[]
+  pendingElicits: ElicitTrackingState[];
 
   /** Registry of plugin client registrations */
-  registry: PluginRegistry
+  registry: PluginRegistry;
 
   /** Dispatch an emission patch to add emission to state */
-  dispatchEmissionPatch: (patch: EmissionPatch) => void
+  dispatchEmissionPatch: (patch: EmissionPatch) => void;
 
   /** Send elicit response back to server */
   respondToElicit: (
     elicit: { sessionId: string; callId: string; elicitId: string; toolName?: string },
-    result: { action: 'accept' | 'decline' | 'cancel'; content?: unknown },
-    trace?: ToolExecutionTrace
-  ) => void
+    result: { action: "accept" | "decline" | "cancel"; content?: unknown },
+    trace?: ToolExecutionTrace,
+  ) => void;
 }
 
 // =============================================================================
@@ -69,105 +69,102 @@ export interface UseElicitExecutorOptions {
  * - When handler completes, response is sent back to server
  */
 export function useElicitExecutor(options: UseElicitExecutorOptions): void {
-  const { pendingElicits, registry, dispatchEmissionPatch, respondToElicit } = options
+  const { pendingElicits, registry, dispatchEmissionPatch, respondToElicit } = options;
 
   // Track which elicitations we've already started executing
-  const executingRef = useRef<Set<string>>(new Set())
+  const executingRef = useRef<Set<string>>(new Set());
 
   // Track elicitations whose client handler already produced a response.
   // The server may not clear the pending elicit from React state until the next
   // stream update, so completed ids must not be executed again during that gap.
-  const completedRef = useRef<Set<string>>(new Set())
+  const completedRef = useRef<Set<string>>(new Set());
 
   // Track running tasks so we can clean up
-  const tasksRef = useRef<Map<string, Task<void>>>(new Map())
+  const tasksRef = useRef<Map<string, Task<void>>>(new Map());
 
   useEffect(() => {
-    const currentPendingIds = new Set<string>()
+    const currentPendingIds = new Set<string>();
     for (const tracking of pendingElicits) {
       for (const elicit of tracking.elicitations) {
-        if (elicit.status === 'pending') currentPendingIds.add(elicit.elicitId)
+        if (elicit.status === "pending") currentPendingIds.add(elicit.elicitId);
       }
     }
 
     for (const id of completedRef.current) {
-      if (!currentPendingIds.has(id)) completedRef.current.delete(id)
+      if (!currentPendingIds.has(id)) completedRef.current.delete(id);
     }
     for (const id of executingRef.current) {
-      if (!currentPendingIds.has(id)) executingRef.current.delete(id)
+      if (!currentPendingIds.has(id)) executingRef.current.delete(id);
     }
 
     // Find pending elicitations that we haven't started or completed yet
     for (const tracking of pendingElicits) {
       for (const elicit of tracking.elicitations) {
         // Skip if not pending or already executing
-        if (elicit.status !== 'pending') continue
-        if (executingRef.current.has(elicit.elicitId)) continue
-        if (completedRef.current.has(elicit.elicitId)) continue
+        if (elicit.status !== "pending") continue;
+        if (executingRef.current.has(elicit.elicitId)) continue;
+        if (completedRef.current.has(elicit.elicitId)) continue;
 
         // Look up the plugin
-        const plugin = registry.get(elicit.toolName)
+        const plugin = registry.get(elicit.toolName);
         if (!plugin) {
           console.warn(
             `No plugin registered for tool "${elicit.toolName}". ` +
-            `Register it via the plugins option in useChat/useChatSession.`
-          )
-          continue
+              `Register it via the plugins option in useChat/useChatSession.`,
+          );
+          continue;
         }
 
         // Check if the plugin has a handler for this key
         if (!(elicit.key in plugin.handlers)) {
           console.warn(
             `Plugin "${elicit.toolName}" has no handler for key "${elicit.key}". ` +
-            `Available keys: ${Object.keys(plugin.handlers).join(', ')}`
-          )
-          continue
+              `Available keys: ${Object.keys(plugin.handlers).join(", ")}`,
+          );
+          continue;
         }
 
         // Mark as executing
-        executingRef.current.add(elicit.elicitId)
+        executingRef.current.add(elicit.elicitId);
 
         // Start the handler execution
         const task = run(function* () {
-          yield* executePluginHandler(
-            plugin,
-            elicit,
-            dispatchEmissionPatch,
-            respondToElicit
-          )
-        })
+          yield* executePluginHandler(plugin, elicit, dispatchEmissionPatch, respondToElicit);
+        });
 
-        tasksRef.current.set(elicit.elicitId, task)
+        tasksRef.current.set(elicit.elicitId, task);
 
         // Clean up when task completes
-        task.then(() => {
-          tasksRef.current.delete(elicit.elicitId)
-          completedRef.current.add(elicit.elicitId)
-        }).catch((err) => {
-          if (err.message !== 'halted') {
-            console.error(`Plugin handler error for ${elicit.toolName}.${elicit.key}:`, err)
-          }
-          tasksRef.current.delete(elicit.elicitId)
-          completedRef.current.add(elicit.elicitId)
-        })
+        task
+          .then(() => {
+            tasksRef.current.delete(elicit.elicitId);
+            completedRef.current.add(elicit.elicitId);
+          })
+          .catch((err) => {
+            if (err.message !== "halted") {
+              console.error(`Plugin handler error for ${elicit.toolName}.${elicit.key}:`, err);
+            }
+            tasksRef.current.delete(elicit.elicitId);
+            completedRef.current.add(elicit.elicitId);
+          });
       }
     }
-  }, [pendingElicits, registry, dispatchEmissionPatch, respondToElicit])
+  }, [pendingElicits, registry, dispatchEmissionPatch, respondToElicit]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       for (const task of tasksRef.current.values()) {
         task.halt().catch((e) => {
-          if (e instanceof Error && e.message !== 'halted') {
-            console.error('[useElicitExecutor] halt error:', e)
+          if (e instanceof Error && e.message !== "halted") {
+            console.error("[useElicitExecutor] halt error:", e);
           }
-        })
+        });
       }
-      tasksRef.current.clear()
-      executingRef.current.clear()
-    }
-  }, [])
+      tasksRef.current.clear();
+      executingRef.current.clear();
+    };
+  }, []);
 }
 
 // =============================================================================
@@ -178,35 +175,35 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
  * Execute a single plugin handler for an elicitation.
  */
 function* executePluginHandler(
-  plugin: ReturnType<PluginRegistry['get']>,
+  plugin: ReturnType<PluginRegistry["get"]>,
   elicit: ElicitState,
   dispatchEmissionPatch: (patch: EmissionPatch) => void,
-  respondToElicit: UseElicitExecutorOptions['respondToElicit']
+  respondToElicit: UseElicitExecutorOptions["respondToElicit"],
 ) {
-  if (!plugin) return
+  if (!plugin) return;
 
   // Emit tool_emission_start patch so UI knows emissions are coming
   dispatchEmissionPatch({
-    type: 'tool_emission_start',
+    type: "tool_emission_start",
     callId: elicit.callId,
     toolName: elicit.toolName,
-  })
+  });
 
   // Emission counter and trace capture for this handler
-  let emissionCounter = 0
-  const traceStartedAt = Date.now()
-  const traceEmissions: Emission<ComponentEmissionPayload>[] = []
+  let emissionCounter = 0;
+  const traceStartedAt = Date.now();
+  const traceEmissions: Emission<ComponentEmissionPayload>[] = [];
 
   // Create a custom render function that dispatches directly to React
   function* renderEmission<TResponse>(
     componentKey: string,
     Component: ComponentType<any>,
-    props: Record<string, unknown>
+    props: Record<string, unknown>,
   ): Operation<TResponse> {
-    emissionCounter++
-    const emissionId = `${elicit.elicitId}-em-${emissionCounter}`
+    emissionCounter++;
+    const emissionId = `${elicit.elicitId}-em-${emissionCounter}`;
 
-    const timestamp = Date.now()
+    const timestamp = Date.now();
     const traceEmission: Emission<ComponentEmissionPayload, TResponse> = {
       id: emissionId,
       type: COMPONENT_EMISSION_TYPE,
@@ -215,37 +212,37 @@ function* executePluginHandler(
         props,
       },
       timestamp,
-      status: 'pending',
-    }
-    traceEmissions.push(traceEmission as Emission<ComponentEmissionPayload>)
+      status: "pending",
+    };
+    traceEmissions.push(traceEmission as Emission<ComponentEmissionPayload>);
 
     // Create a signal to wait for the response
-    const responseSignal = createSignal<TResponse, void>()
+    const responseSignal = createSignal<TResponse, void>();
 
-    let responded = false
+    let responded = false;
 
     // Create respond callback that resumes the generator
     const respond = (value: TResponse): void => {
-      if (responded) return
-      responded = true
+      if (responded) return;
+      responded = true;
 
-      traceEmission.response = value
-      traceEmission.status = 'complete'
+      traceEmission.response = value;
+      traceEmission.status = "complete";
 
       dispatchEmissionPatch({
-        type: 'tool_emission_response',
+        type: "tool_emission_response",
         callId: elicit.callId,
         emissionId,
         response: value,
-      })
+      });
 
-      responseSignal.send(value)
-    }
+      responseSignal.send(value);
+    };
 
     // Dispatch the emission with the respond callback
     // Include toolName in case tool_emission_start hasn't been processed yet (React batching)
     dispatchEmissionPatch({
-      type: 'tool_emission',
+      type: "tool_emission",
       callId: elicit.callId,
       toolName: elicit.toolName,
       emission: {
@@ -257,29 +254,32 @@ function* executePluginHandler(
           _component: Component,
         },
         timestamp,
-        status: 'pending',
+        status: "pending",
       },
       respond: respond as (response: unknown) => void,
-    })
+    });
 
     // Wait for the response
-    const subscription = yield* responseSignal
-    const result = yield* subscription.next()
-    return result.value as TResponse
+    const subscription = yield* responseSignal;
+    const result = yield* subscription.next();
+    return result.value as TResponse;
   }
 
   // Build the elicit request with context embedded in schema
   // Handlers use getElicitContext(req) which extracts from schema.json['x-model-context']
   const schemaWithContext = elicit.context
-    ? { ...((elicit.schema as Record<string, unknown>) ?? {}), [MODEL_CONTEXT_SCHEMA_KEY]: elicit.context }
-    : (elicit.schema as Record<string, unknown>) ?? {}
+    ? {
+        ...((elicit.schema as Record<string, unknown>) ?? {}),
+        [MODEL_CONTEXT_SCHEMA_KEY]: elicit.context,
+      }
+    : ((elicit.schema as Record<string, unknown>) ?? {});
 
   const elicitId: ElicitId = {
     toolName: elicit.toolName,
     key: elicit.key,
     callId: elicit.callId,
     seq: 0,
-  }
+  };
 
   const elicitRequest: ElicitRequest<string, any> = {
     id: elicitId,
@@ -292,7 +292,7 @@ function* executePluginHandler(
       zod: {} as any, // Not used by handlers, they use getElicitContext
       json: schemaWithContext,
     },
-  }
+  };
 
   // Create a custom plugin client context with our direct render function
   const ctx: PluginClientContext = {
@@ -302,23 +302,29 @@ function* executePluginHandler(
 
     // Custom render that dispatches directly to React state
     *render(Component, props) {
-      const candidate = Component as { displayName?: string; name?: string }
-      const componentKey = candidate.displayName || candidate.name || 'Anonymous'
-      return yield* renderEmission(componentKey, Component as ComponentType<any>, props as Record<string, unknown>)
+      const candidate = Component as { displayName?: string; name?: string };
+      const componentKey = candidate.displayName || candidate.name || "Anonymous";
+      return yield* renderEmission(
+        componentKey,
+        Component as ComponentType<any>,
+        props as Record<string, unknown>,
+      );
     },
 
     // Optional reportProgress - no-op
     *reportProgress(_message: string) {
       // No-op for now
     },
-  }
+  };
 
   try {
     // Execute the handler
-    const result = yield* executeElicitHandlerFromRequest(plugin, elicitRequest, ctx)
+    const result = yield* executeElicitHandlerFromRequest(plugin, elicitRequest, ctx);
 
     // Handler completed - send the response back to server
-    const trace = createToolTrace(traceEmissions, traceStartedAt, Date.now())
+    const trace = createToolTrace(traceEmissions, traceStartedAt, Date.now(), {
+      sourceInterruptId: elicit.elicitId,
+    });
 
     respondToElicit(
       {
@@ -328,14 +334,14 @@ function* executePluginHandler(
         toolName: elicit.toolName,
       },
       result,
-      trace
-    )
+      trace,
+    );
 
     // Emit completion patch
     dispatchEmissionPatch({
-      type: 'tool_emission_complete',
+      type: "tool_emission_complete",
       callId: elicit.callId,
-    })
+    });
   } catch (err) {
     // On error, send cancel response
     respondToElicit(
@@ -345,10 +351,10 @@ function* executePluginHandler(
         elicitId: elicit.elicitId,
         toolName: elicit.toolName,
       },
-      { action: 'cancel' }
-    )
+      { action: "cancel" },
+    );
 
     // Re-throw for logging
-    throw err
+    throw err;
   }
 }

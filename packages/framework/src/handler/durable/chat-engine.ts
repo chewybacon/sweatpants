@@ -21,8 +21,8 @@ import type {
   Message as RuntimeMessage,
   StreamEvent as RuntimeStreamEvent,
 } from "../../lib/chat/runtime/index.ts";
-import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/emissions.ts";
 import type { StreamEvent, ChatMessage } from "../types.ts";
+import type { AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
 import type {
   ChatEngineParams,
   ChatEngine,
@@ -41,10 +41,13 @@ import {
   appendToolMessage,
   createTranscriptState,
 } from "../../lib/chat/session/transcript.ts";
+import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
+import { internalMessagesToAgUiMessages } from "../../lib/chat/session/ag-ui-compat.ts";
 import {
-  buildAgUiCheckpoint,
-  buildAgUiCustomState,
-} from "../../lib/chat/session/ag-ui-checkpoint.ts";
+  buildPluginReplayActivity,
+  mergePluginReplayTrace,
+  normalizeClientReplayTrace,
+} from "../../lib/chat/session/plugin-replay.ts";
 import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
 
 // =============================================================================
@@ -74,9 +77,9 @@ interface EngineState {
 /**
  * Convert a runtime stream event to AG-UI StreamEvents.
  *
- * Text tokens are emitted incrementally as `ag_ui_text_message_content` events.
- * The first text token also triggers `ag_ui_text_message_start`.
- * Thinking tokens are passed through as `thinking` events.
+ * Text tokens are emitted incrementally as `TEXT_MESSAGE_CONTENT` events.
+ * The first text token also triggers `TEXT_MESSAGE_START`.
+ * Thinking tokens are projected as AG-UI reasoning message content.
  * Tool call lifecycle events are ignored here — durable tool lifecycle is emitted
  * after a supported final tool-use result is reconciled.
  */
@@ -92,23 +95,29 @@ function runtimeEventToAgUiStreamEvents(
         state.assistantMessageId ??= `assistant:final:${agUiRun.runId}`;
         state.assistantTextOpen = true;
         events.push({
-          type: "ag_ui_text_message_start",
+          type: "TEXT_MESSAGE_START",
           messageId: state.assistantMessageId,
           role: "assistant" as const,
         });
       }
       events.push({
-        type: "ag_ui_text_message_content",
+        type: "TEXT_MESSAGE_CONTENT",
         messageId: state.assistantMessageId!,
         delta: event.delta,
       });
       return events;
     }
     case "thinking_delta":
-      return [{ type: "thinking", content: event.delta }];
+      return [
+        {
+          type: "REASONING_MESSAGE_CONTENT",
+          messageId: `reasoning:${agUiRun.runId}`,
+          delta: event.delta,
+        },
+      ];
     case "error":
       return event.error.errorMessage
-        ? [{ type: "error", message: event.error.errorMessage, recoverable: false }]
+        ? [{ type: "RUN_ERROR", message: event.error.errorMessage, code: "runtime_error" }]
         : [];
     default:
       return [];
@@ -118,33 +127,49 @@ function runtimeEventToAgUiStreamEvents(
 /**
  * Convert a tool execution result to an AG-UI StreamEvent.
  *
- * - Success results emit `ag_ui_tool_call_result`
- * - Error results emit `ag_ui_tool_call_error`
- * - Elicit results pass through as pending client actions
+ * - Success results emit `TOOL_CALL_RESULT`
+ * - Error results emit a schema-valid `TOOL_CALL_RESULT` whose content starts with `Error:`
+ * - Elicit results terminate the run through `RUN_FINISHED.outcome.type === "interrupt"`
  */
-function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
+function toolResultToAgUiStreamEvent(
+  result: ToolExecutionResult,
+  agUiRun: AgUiRunMetadata,
+): StreamEvent {
   if (!result.ok) {
     return {
-      type: "ag_ui_tool_call_error",
+      type: "TOOL_CALL_RESULT",
+      messageId: `tool:${result.error.callId}`,
       toolCallId: result.error.callId,
       toolCallName: result.error.toolName,
-      message: result.error.message,
+      content: `Error: ${result.error.message}`,
+      role: "tool",
       ...(result.error.validation ? { error: result.error.validation } : {}),
     };
   }
 
-
   if (result.kind === "plugin_awaiting") {
-    // Plugin tool is waiting for elicitation - emit elicit request
     return {
-      type: "elicit_request",
-      sessionId: result.sessionId,
-      callId: result.callId,
-      toolName: result.toolName,
-      elicitId: result.elicitRequest.elicitId,
-      key: result.elicitRequest.key,
-      message: result.elicitRequest.message,
-      schema: result.elicitRequest.schema,
+      type: "RUN_FINISHED",
+      threadId: agUiRun.threadId,
+      runId: agUiRun.runId,
+      outcome: {
+        type: "interrupt",
+        interrupts: [
+          {
+            id: result.elicitRequest.elicitId,
+            reason: "input_required",
+            message: result.elicitRequest.message,
+            toolCallId: result.callId,
+            responseSchema: result.elicitRequest.schema,
+            metadata: {
+              "sweatpants/sessionId": result.sessionId,
+              "sweatpants/toolName": result.toolName,
+              "sweatpants/key": result.elicitRequest.key,
+              "sweatpants/componentMode": "plugin-render",
+            },
+          },
+        ],
+      },
     };
   }
 
@@ -153,34 +178,13 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
       ? result.serverOutput
       : JSON.stringify(result.serverOutput);
 
-  const trace: ToolExecutionTrace | undefined = "trace" in result ? result.trace : undefined;
-
   return {
-    type: "ag_ui_tool_call_result",
+    type: "TOOL_CALL_RESULT",
+    messageId: `tool:${result.callId}`,
     toolCallId: result.callId,
     toolCallName: result.toolName,
     content,
-    ...(trace ? { trace } : {}),
-  };
-}
-
-function mergeToolExecutionTrace(
-  existing: ToolExecutionTrace | undefined,
-  incoming: ToolExecutionTrace,
-): ToolExecutionTrace {
-  if (!existing) return incoming;
-
-  const offset = existing.emissions.length;
-  return {
-    startedAt: Math.min(existing.startedAt, incoming.startedAt),
-    completedAt: Math.max(existing.completedAt, incoming.completedAt),
-    emissions: [
-      ...existing.emissions,
-      ...incoming.emissions.map((entry, index) => ({
-        ...entry,
-        order: offset + index,
-      })),
-    ],
+    role: "tool",
   };
 }
 
@@ -264,7 +268,7 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
         error: {
           callId: ref.callId,
           toolName,
-          message: `Unsupported tool execution state: ${(execution as { kind?: string }).kind ?? 'unknown'}`,
+          message: `Unsupported tool execution state: ${(execution as { kind?: string }).kind ?? "unknown"}`,
         },
       };
   }
@@ -364,18 +368,18 @@ function validateContinuationRef(input: {
 function agUiToolLifecycleEvents(toolCalls: ToolCall[]): StreamEvent[] {
   return toolCalls.flatMap((toolCall) => [
     {
-      type: "ag_ui_tool_call_start" as const,
+      type: "TOOL_CALL_START" as const,
       toolCallId: toolCall.id,
       toolCallName: toolCall.function.name,
       parentMessageId: `assistant:tools:${toolCall.id}`,
     },
     {
-      type: "ag_ui_tool_call_args" as const,
+      type: "TOOL_CALL_ARGS" as const,
       toolCallId: toolCall.id,
       delta: JSON.stringify(toolCall.function.arguments),
     },
     {
-      type: "ag_ui_tool_call_end" as const,
+      type: "TOOL_CALL_END" as const,
       toolCallId: toolCall.id,
     },
   ]);
@@ -388,21 +392,21 @@ function agUiTextLifecycleEvents(
 ): StreamEvent[] {
   return [
     {
-      type: "ag_ui_text_message_start",
+      type: "TEXT_MESSAGE_START",
       messageId,
       role,
     },
     ...(text.length > 0
       ? [
           {
-            type: "ag_ui_text_message_content" as const,
+            type: "TEXT_MESSAGE_CONTENT" as const,
             messageId,
             delta: text,
           },
         ]
       : []),
     {
-      type: "ag_ui_text_message_end",
+      type: "TEXT_MESSAGE_END",
       messageId,
     },
   ];
@@ -764,12 +768,31 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 }
 
                 if (response.trace && toolName) {
-                  const existingReplayTrace = replayToolTraceMap.get(callId)?.trace;
-                  replayToolTraceMap.set(callId, {
-                    callId,
-                    toolName,
-                    trace: mergeToolExecutionTrace(existingReplayTrace, response.trace),
+                  const normalizedTrace = normalizeClientReplayTrace(response.trace, {
+                    interruptId: elicitId,
                   });
+                  if (normalizedTrace) {
+                    const existingReplayTrace = replayToolTraceMap.get(callId)?.trace;
+                    const mergedTrace = mergePluginReplayTrace(existingReplayTrace, {
+                      threadId: agUiRun.threadId,
+                      runId: agUiRun.runId,
+                      toolCallId: callId,
+                      toolName,
+                      interruptId: elicitId,
+                      trace: normalizedTrace,
+                    });
+                    replayToolTraceMap.set(callId, {
+                      callId,
+                      toolName,
+                      trace: mergedTrace,
+                    });
+                    const activity = buildPluginReplayActivity({
+                      toolCallId: callId,
+                      toolName,
+                      trace: mergedTrace,
+                    });
+                    if (activity) state.pendingEvents.push(activity);
+                  }
                 }
 
                 try {
@@ -818,12 +841,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                   }
 
                   if (toolResult.ok && toolResult.kind === "plugin_awaiting") {
-                    state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult));
+                    state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult, agUiRun));
                     state.awaitingElicitResult = toolResult;
                     continue;
                   }
 
-                  state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult));
+                  state.pendingEvents.push(toolResultToAgUiStreamEvent(toolResult, agUiRun));
                   if (toolResult.ok && toolResult.kind === "result") {
                     const content =
                       typeof toolResult.serverOutput === "string"
@@ -865,9 +888,11 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               }
             }
 
-            // Check if we need to await more elicitation
+            // A resumed tool may request another interrupt. RUN_FINISHED with
+            // interrupt outcome is terminal for this public AG-UI run, so do not
+            // emit checkpoint/control events after it.
             if (state.awaitingElicitResult) {
-              state.phase = "awaiting_elicit";
+              state.phase = "done";
             } else {
               state.phase = "start_iteration";
             }
@@ -927,7 +952,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             if (result.value.type === "error") {
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
-                  type: "ag_ui_text_message_end",
+                  type: "TEXT_MESSAGE_END",
                   messageId: state.assistantMessageId!,
                 });
                 state.assistantTextOpen = false;
@@ -967,15 +992,15 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             if (result.stopReason === "error" || result.stopReason === "aborted") {
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
-                  type: "ag_ui_text_message_end",
+                  type: "TEXT_MESSAGE_END",
                   messageId: state.assistantMessageId!,
                 });
                 state.assistantTextOpen = false;
               }
               state.pendingEvents.push({
-                type: "error",
+                type: "RUN_ERROR",
                 message: result.errorMessage ?? `Runtime generation ${result.stopReason}`,
-                recoverable: false,
+                code: "runtime_error",
               });
               state.phase = "done";
               return { done: false, value: state.pendingEvents.shift()! };
@@ -986,7 +1011,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               // Close the assistant text lifecycle if it was opened during streaming
               if (state.assistantTextOpen) {
                 state.pendingEvents.push({
-                  type: "ag_ui_text_message_end",
+                  type: "TEXT_MESSAGE_END",
                   messageId: state.assistantMessageId!,
                 });
                 state.assistantTextOpen = false;
@@ -1010,7 +1035,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             if (state.assistantTextOpen) {
               // Text was streamed incrementally — just close the lifecycle
               state.pendingEvents.push({
-                type: "ag_ui_text_message_end",
+                type: "TEXT_MESSAGE_END",
                 messageId: state.assistantMessageId!,
               });
               state.assistantTextOpen = false;
@@ -1027,12 +1052,10 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             }
 
             state.pendingEvents.push({
-              type: "ag_ui_run_finished",
-              run: {
-                threadId: agUiRun.threadId,
-                runId: agUiRun.runId,
-                ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
-              },
+              type: "RUN_FINISHED",
+              threadId: agUiRun.threadId,
+              runId: agUiRun.runId,
+              outcome: { type: "success" },
             });
             return { done: false, value: state.pendingEvents.shift()! };
           }
@@ -1061,14 +1084,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 );
                 const result = toolExecutionToResult(execution, tc);
                 results.push(result);
-
-                if (!(result.ok && result.kind === "plugin_awaiting")) {
-                  state.pendingEvents.push(toolResultToAgUiStreamEvent(result));
-                }
               } catch (error) {
                 const result = validationErrorResult(error, tc);
                 results.push(result);
-                state.pendingEvents.push(toolResultToAgUiStreamEvent(result));
               }
             }
 
@@ -1107,23 +1125,50 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               );
               state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls));
 
-              // Plugin tool(s) need elicitation - emit elicit events and transition
+              state.pendingEvents.push({
+                type: "MESSAGES_SNAPSHOT",
+                messages: internalMessagesToAgUiMessages(state.conversationMessages),
+              });
+              state.pendingEvents.push({
+                type: "STATE_SNAPSHOT",
+                snapshot: buildAgUiCustomState({
+                  ...(replayToolTraceMap.size > 0
+                    ? {
+                        replay: {
+                          toolTraces: Array.from(replayToolTraceMap.values()),
+                        },
+                      }
+                    : {}),
+                }),
+              });
+
               for (const r of pluginAwaitingResults) {
                 if (r.ok && r.kind === "plugin_awaiting") {
-                  state.pendingEvents.push({
-                    type: "elicit_request",
-                    sessionId: r.sessionId,
-                    callId: r.callId,
-                    toolName: r.toolName,
-                    elicitId: r.elicitRequest.elicitId,
-                    key: r.elicitRequest.key,
-                    message: r.elicitRequest.message,
-                    schema: r.elicitRequest.schema,
-                  });
                   state.awaitingElicitResult = r;
                 }
               }
-              state.phase = "awaiting_elicit";
+              state.pendingEvents.push({
+                type: "RUN_FINISHED",
+                threadId: agUiRun.threadId,
+                runId: agUiRun.runId,
+                outcome: {
+                  type: "interrupt",
+                  interrupts: pluginAwaitingResults.map((r) => ({
+                    id: r.elicitRequest.elicitId,
+                    reason: "input_required",
+                    message: r.elicitRequest.message,
+                    toolCallId: r.callId,
+                    responseSchema: r.elicitRequest.schema,
+                    metadata: {
+                      "sweatpants/sessionId": r.sessionId,
+                      "sweatpants/toolName": r.toolName,
+                      "sweatpants/key": r.elicitRequest.key,
+                      "sweatpants/componentMode": "plugin-render",
+                    },
+                  })),
+                },
+              });
+              state.phase = "done";
 
               // Return first pending event
               if (state.pendingEvents.length > 0) {
@@ -1141,6 +1186,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               runtimeText(providerResult),
             );
             state.pendingEvents.push(...agUiToolLifecycleEvents(toolCalls));
+            for (const r of results) {
+              state.pendingEvents.push(toolResultToAgUiStreamEvent(r, agUiRun));
+            }
 
             // Add tool result messages
             for (const r of results) {
@@ -1176,139 +1224,39 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           }
 
           case "awaiting_elicit": {
-            // A tool is awaiting elicitation
-            // Emit conversation state for client to render UI and send response
-            let toolCalls = state.toolCalls || [];
-            const results = state.toolResults || [];
-            const providerResult = state.runtimeResult;
-
-            // CRITICAL FIX: If toolCalls is empty but we have an awaiting elicit result,
-            // extract the tool call info from conversationMessages. This happens when
-            // resuming from elicitation - the original state.toolCalls was set during
-            // the first request's provider_streaming phase, but on subsequent requests
-            // (elicit responses), we create a new engine with fresh state.
-            if (
-              toolCalls.length === 0 &&
+            const awaiting =
               state.awaitingElicitResult?.ok &&
               state.awaitingElicitResult.kind === "plugin_awaiting"
-            ) {
-              // Find the assistant message that owns the currently awaited tool call.
-              // Conversation history can contain prior completed plugin calls; using
-              // the first assistant with tool calls can attach the new elicitation UI
-              // to stale tool-call parts from an earlier turn.
-              const awaitedCallId = state.awaitingElicitResult.callId;
-              const assistantWithToolCalls =
-                [...state.conversationMessages]
-                  .reverse()
-                  .find(
-                    (msg) =>
-                      msg.role === "assistant" &&
-                      msg.tool_calls?.some((toolCall) => toolCall.id === awaitedCallId),
-                  ) ??
-                [...state.conversationMessages]
-                  .reverse()
-                  .find(
-                    (msg) =>
-                      msg.role === "assistant" && msg.tool_calls && msg.tool_calls.length > 0,
-                  );
-              if (assistantWithToolCalls && assistantWithToolCalls.tool_calls) {
-                toolCalls = assistantWithToolCalls.tool_calls.map((tc) => ({
-                  id: tc.id,
-                  type: "function" as const,
-                  function: {
-                    name: tc.function.name,
-                    arguments: tc.function.arguments,
-                  },
-                }));
-              }
+                ? state.awaitingElicitResult
+                : null;
+
+            state.pendingEvents.push({
+              type: "MESSAGES_SNAPSHOT",
+              messages: internalMessagesToAgUiMessages(state.conversationMessages),
+            });
+            state.pendingEvents.push({
+              type: "STATE_SNAPSHOT",
+              snapshot: buildAgUiCustomState({
+                ...(replayToolTraceMap.size > 0
+                  ? {
+                      replay: {
+                        toolTraces: Array.from(replayToolTraceMap.values()),
+                      },
+                    }
+                  : {}),
+              }),
+            });
+            if (awaiting) {
+              state.pendingEvents.push(toolResultToAgUiStreamEvent(awaiting, agUiRun));
             }
-
-            const serverToolResults = results.map((r) => {
-              if (r.ok) {
-                if (r.kind === "plugin_awaiting") {
-                  return { id: r.callId, name: r.toolName, content: "", isError: false };
-                }
-                return {
-                  id: r.callId,
-                  name: r.toolName,
-                  content:
-                    typeof r.serverOutput === "string"
-                      ? r.serverOutput
-                      : JSON.stringify(r.serverOutput),
-                  isError: false,
-                };
-              }
-              return {
-                id: r.error.callId,
-                name: r.error.toolName,
-                content: `Error: ${r.error.message}`,
-                isError: true,
-              };
-            });
-
-            state.pendingEvents.push({
-              type: "ag_ui_state_snapshot",
-              run: {
-                threadId: agUiRun.threadId,
-                runId: agUiRun.runId,
-                ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
-              },
-              state: buildAgUiCustomState({
-                ...(replayToolTraceMap.size > 0
-                  ? {
-                      replay: {
-                        toolTraces: Array.from(replayToolTraceMap.values()),
-                      },
-                    }
-                  : {}),
-                elicits:
-                  state.awaitingElicitResult &&
-                  state.awaitingElicitResult.ok &&
-                  state.awaitingElicitResult.kind === "plugin_awaiting"
-                    ? [
-                        {
-                          type: "elicit_request" as const,
-                          sessionId: state.awaitingElicitResult.sessionId,
-                          callId: state.awaitingElicitResult.callId,
-                          toolName: state.awaitingElicitResult.toolName,
-                          elicitId: state.awaitingElicitResult.elicitRequest.elicitId,
-                          key: state.awaitingElicitResult.elicitRequest.key,
-                          message: state.awaitingElicitResult.elicitRequest.message,
-                          schema: state.awaitingElicitResult.elicitRequest.schema,
-                        },
-                      ]
-                    : [],
-              }),
-            });
-            state.pendingEvents.push({
-              type: "ag_ui_checkpoint",
-              checkpoint: buildAgUiCheckpoint({
-                threadId: agUiRun.threadId,
-                runId: agUiRun.runId,
-                ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
-                messages: state.conversationMessages,
-                assistantContent: providerResult ? runtimeText(providerResult) : "",
-                toolCalls,
-                serverToolResults,
-                ...(replayToolTraceMap.size > 0
-                  ? {
-                      replay: {
-                        toolTraces: Array.from(replayToolTraceMap.values()),
-                      },
-                    }
-                  : {}),
-              }),
-            });
 
             state.phase = "done";
 
-            // Return first pending event
             if (state.pendingEvents.length > 0) {
               return { done: false, value: state.pendingEvents.shift()! };
             }
             return yield* this.next();
           }
-
 
           case "complete": {
             state.phase = "done";
@@ -1317,9 +1265,9 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
           case "error": {
             const errorEvent: StreamEvent = {
-              type: "error",
+              type: "RUN_ERROR",
               message: state.error?.message ?? "Unknown error",
-              recoverable: false,
+              code: "internal_error",
             };
             state.phase = "done";
             return { done: false, value: errorEvent };

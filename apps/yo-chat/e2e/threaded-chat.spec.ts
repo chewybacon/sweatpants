@@ -72,9 +72,11 @@ async function completeCardPick(page: Page) {
 
 async function assertCompletedCardPicks(page: Page, labels: string[]) {
   await expect(toolCallBlocks(page)).toHaveCount(labels.length, { timeout: 30000 });
-  for (let i = 0; i < labels.length; i++) {
-    const block = toolCallBlocks(page).nth(i);
-    await expect(block.getByText(`You picked: ${labels[i]}`)).toBeVisible({ timeout: 30000 });
+  for (const label of labels) {
+    const block = toolCallBlocks(page)
+      .filter({ hasText: `You picked: ${label}` })
+      .first();
+    await expect(block.getByText(`You picked: ${label}`)).toBeVisible({ timeout: 30000 });
     await expect(pickableCardButtons(block).first()).toBeDisabled({ timeout: 10000 });
   }
 }

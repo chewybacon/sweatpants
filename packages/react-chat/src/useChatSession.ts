@@ -15,12 +15,17 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { run, each } from "effection";
 import {
   createChatSession,
+  createPluginRegistryFrom,
+  initialChatState,
   type ChatCommand,
   type ChatSession,
   type ClientToolSessionOptions,
+  type ElicitTrackingState,
+  type EmissionPatch,
+  type PluginHandleInput,
+  type ReasoningPart,
+  type TextPart,
 } from "@sweatpants/framework/chat";
-import { initialChatState } from "@sweatpants/framework/chat";
-import type { TextPart, ReasoningPart } from "@sweatpants/framework/chat";
 import { createPipelineTransform, markdown } from "./pipeline/index.ts";
 import type {
   ChatState,
@@ -29,13 +34,9 @@ import type {
   ToolEmissionState,
   SessionOptions,
 } from "./types.ts";
-import type { ElicitTrackingState } from "@sweatpants/framework/chat";
 import type { ToolExecutionTrace } from "@sweatpants/framework/chat/browser-rendering";
 import { useChatConfig } from "./ChatProvider.tsx";
-import { createPluginRegistryFrom } from "@sweatpants/framework/chat";
-import type { PluginHandleInput } from "@sweatpants/framework/chat";
 import { useElicitExecutor } from "./useElicitExecutor.ts";
-import type { EmissionPatch } from "@sweatpants/framework/chat";
 
 // =============================================================================
 // LOCAL EMISSION STATE REDUCER
@@ -51,14 +52,16 @@ function localEmissionReducer(
 ): LocalEmissionState {
   switch (action.type) {
     case "tool_emission_start": {
+      const existing = state[action.callId];
       return {
         ...state,
         [action.callId]: {
           callId: action.callId,
           toolName: action.toolName,
-          emissions: [],
+          emissions: existing?.emissions ?? [],
           status: "running",
-          startedAt: Date.now(),
+          startedAt: existing?.startedAt ?? Date.now(),
+          ...(existing?.completedAt ? { completedAt: existing.completedAt } : {}),
         },
       };
     }
@@ -95,20 +98,27 @@ function localEmissionReducer(
         ...state,
         [action.callId]: {
           ...tracking,
-          emissions: [...tracking.emissions, newEmission],
+          emissions: [
+            ...tracking.emissions.filter((emission) => emission.id !== newEmission.id),
+            newEmission,
+          ],
         },
       };
     }
     case "tool_emission_response": {
       const tracking = state[action.callId];
-      if (!tracking) return state;
+      if (!tracking) {
+        return state;
+      }
 
       return {
         ...state,
         [action.callId]: {
           ...tracking,
           emissions: tracking.emissions.map((e) => {
-            if (e.status === "complete") return e;
+            if (e.status === "complete") {
+              return e;
+            }
             // Once any elicitation emission for a tool call receives a response,
             // disable all pending emissions for that call. Historical plugin
             // UIs remain visible but must not stay interactive while the remote
@@ -125,7 +135,9 @@ function localEmissionReducer(
     }
     case "tool_emission_complete": {
       const tracking = state[action.callId];
-      if (!tracking) return state;
+      if (!tracking) {
+        return state;
+      }
 
       return {
         ...state,
@@ -139,6 +151,56 @@ function localEmissionReducer(
     default:
       return state;
   }
+}
+
+function shouldLocalEmissionWin(
+  local: ToolEmissionState,
+  durable: ToolEmissionState | undefined,
+): boolean {
+  return local.respond !== undefined || local.status === "pending" || durable === undefined;
+}
+
+function mergeEmissionTracking(
+  durable: ToolEmissionTrackingState | undefined,
+  local: ToolEmissionTrackingState,
+): ToolEmissionTrackingState {
+  if (!durable) {
+    return local;
+  }
+
+  const mergedById = new Map<string, ToolEmissionState>();
+  for (const emission of durable.emissions) {
+    mergedById.set(emission.id, emission);
+  }
+  for (const emission of local.emissions) {
+    const durableEmission = mergedById.get(emission.id);
+    if (shouldLocalEmissionWin(emission, durableEmission)) {
+      mergedById.set(emission.id, emission);
+    }
+  }
+
+  const orderedIds = [
+    ...durable.emissions.map((emission) => emission.id),
+    ...local.emissions.map((emission) => emission.id),
+  ];
+  const seen = new Set<string>();
+  const emissions: ToolEmissionState[] = [];
+  for (const id of orderedIds) {
+    if (seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const emission = mergedById.get(id);
+    if (emission) {
+      emissions.push(emission);
+    }
+  }
+
+  return {
+    ...durable,
+    status: local.status === "running" ? "running" : durable.status,
+    emissions,
+  };
 }
 
 /** Default transforms applied to all sessions */
@@ -291,7 +353,8 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         conversationId: mergedOptions.conversationId ?? null,
         toolNames: (mergedOptions.tools ?? []).map((tool) =>
           // Canonical tool values carry a `name`.
-          (typeof tool === "function" || (typeof tool === "object" && tool !== null)) && "name" in tool
+          (typeof tool === "function" || (typeof tool === "object" && tool !== null)) &&
+          "name" in tool
             ? String((tool as { name: unknown }).name)
             : "unknown",
         ),
@@ -307,11 +370,13 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     ],
   );
 
-  // Stable ref to options to avoid re-running effect if object identity changes
-  const optionsRef = useRef(mergedOptions);
   useEffect(() => {
-    optionsRef.current = mergedOptions;
-  }, [mergedOptions]);
+    setLocalEmissions({});
+  }, [sessionIdentity]);
+
+  // Stable ref to options to avoid re-running the session effect if object identity changes.
+  const optionsRef = useRef(mergedOptions);
+  optionsRef.current = mergedOptions;
 
   // Store the dispatch function from the session. Commands sent before
   // Effection finishes mounting are buffered so early user clicks do not no-op.
@@ -341,7 +406,9 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     return () => {
       dispatchRef.current = null;
       void task.halt().catch((e) => {
-        if (e.message !== "halted") console.error(e);
+        if (e.message !== "halted") {
+          console.error(e);
+        }
       });
     };
   }, [sessionIdentity]);
@@ -380,6 +447,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   }, [dispatchCommand]);
 
   const reset = useCallback(() => {
+    setLocalEmissions({});
     dispatchCommand({ type: "reset" });
   }, [dispatchCommand]);
 
@@ -397,24 +465,28 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   // 1. state.toolEmissions - replay/projection from the stream
   // 2. localEmissions - plugin handlers via ctx.render() (client-side, via useElicitExecutor)
   // Merge both sources, with local emissions taking precedence (they have respond callbacks)
-  const toolEmissions: ToolEmissionTrackingState[] = useMemo(() => {
+  const mergedToolEmissions = useMemo(() => {
     const merged: Record<string, ToolEmissionTrackingState> = { ...state.toolEmissions };
 
-    // Overlay local emissions (these have the respond callbacks)
     for (const [callId, tracking] of Object.entries(localEmissions)) {
-      merged[callId] = tracking;
+      merged[callId] = mergeEmissionTracking(merged[callId], tracking);
     }
 
-    return Object.values(merged);
+    return merged;
   }, [state.toolEmissions, localEmissions]);
 
-  // Create state with merged emissions for consumers like deriveMessages
-  // This ensures plugin handler emissions are visible alongside other data
+  const toolEmissions: ToolEmissionTrackingState[] = useMemo(
+    () => Object.values(mergedToolEmissions),
+    [mergedToolEmissions],
+  );
+
+  // Create state with merged emissions for consumers like deriveMessages.
   const stateWithMergedEmissions = useMemo(
     () => ({
       ...state,
+      toolEmissions: mergedToolEmissions,
     }),
-    [state],
+    [state, mergedToolEmissions],
   );
 
   // Ref for local emissions (needed in respondToEmission callback)
@@ -425,30 +497,27 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
 
   // Respond to a pending emission
   // Checks local plugin emissions first, then stream-projected emissions.
-  const respondToEmission = useCallback(
-    (callId: string, emissionId: string, response: unknown) => {
-      // Check local emissions first (plugin handlers have priority, they have respond callbacks)
-      const localTracking = localEmissionsRef.current[callId];
-      const localEmission = localTracking?.emissions.find(
-        (e: ToolEmissionState) => e.id === emissionId,
-      );
-      if (localEmission?.respond) {
-        localEmission.respond(response);
-        return;
-      }
+  const respondToEmission = useCallback((callId: string, emissionId: string, response: unknown) => {
+    // Check local emissions first (plugin handlers have priority, they have respond callbacks)
+    const localTracking = localEmissionsRef.current[callId];
+    const localEmission = localTracking?.emissions.find(
+      (e: ToolEmissionState) => e.id === emissionId,
+    );
+    if (localEmission?.respond) {
+      localEmission.respond(response);
+      return;
+    }
 
-      // Check state emissions from stream replay/projection
-      const stateTracking = stateRef.current.toolEmissions[callId];
-      const stateEmission = stateTracking?.emissions.find(
-        (e: ToolEmissionState) => e.id === emissionId,
-      );
-      if (stateEmission?.respond) {
-        stateEmission.respond(response);
-        // The respond callback sends tool_emission_response patch to update state
-      }
-    },
-    [dispatchLocalEmission],
-  );
+    // Check state emissions from stream replay/projection
+    const stateTracking = stateRef.current.toolEmissions[callId];
+    const stateEmission = stateTracking?.emissions.find(
+      (e: ToolEmissionState) => e.id === emissionId,
+    );
+    if (stateEmission?.respond) {
+      stateEmission.respond(response);
+      // The respond callback sends tool_emission_response patch to update state
+    }
+  }, []);
 
   // Get pending elicits from state (MCP plugin tools)
   const pendingElicits: ElicitTrackingState[] = Object.values(state.pendingElicits);
@@ -489,7 +558,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     (patch: EmissionPatch & { respond?: (response: unknown) => void }) => {
       dispatchLocalEmission(patch);
     },
-    [],
+    [dispatchLocalEmission],
   );
 
   // Auto-execute plugin handlers when elicitations arrive

@@ -6,34 +6,35 @@
  */
 
 // Session runtime
-export {
-  createChatSession,
-  runChatSession,
-} from './create-session.ts'
+export { createChatSession, runChatSession } from "./create-session.ts";
 
-export type {
-  ChatSession,
-  ClientToolSessionOptions,
-} from './create-session.ts'
+export type { ChatSession, ClientToolSessionOptions } from "./create-session.ts";
 
 // Streaming
-export { streamChatOnce } from './stream-chat.ts'
-export type { StreamChatOptions, ElicitResponseData } from './stream-chat.ts'
-export { readDurableHistory, replayFramesToConversation } from './durable-history.ts'
-export type { DurableHistoryReplay } from './durable-history.ts'
+export { streamChatOnce } from "./stream-chat.ts";
+export type { StreamChatOptions, ElicitResponseData } from "./stream-chat.ts";
+export { readDurableHistory, replayFramesToConversation } from "./durable-history.ts";
+export type { DurableHistoryReplay } from "./durable-history.ts";
+export {
+  PLUGIN_REPLAY_ACTIVITY_TYPE,
+  PLUGIN_REPLAY_LIMITS,
+  normalizeClientReplayTrace,
+  mergePluginReplayTrace,
+  buildPluginReplayActivity,
+  activityMessageToPluginReplayTrace,
+  activitySnapshotToPluginReplayTrace,
+} from "./plugin-replay.ts";
+export type {
+  PluginReplayTraceSource,
+  PluginReplayActivityContent,
+  PluginReplayActivitySnapshotEvent,
+} from "./plugin-replay.ts";
 
 // Transforms
-export {
-  useTransformPipeline,
-  passthroughTransform,
-  loggingTransform,
-} from './transforms.ts'
+export { useTransformPipeline, passthroughTransform, loggingTransform } from "./transforms.ts";
 
 // Contexts
-export {
-  BaseUrlContext,
-  StreamerContext,
-} from './contexts.ts'
+export { BaseUrlContext, StreamerContext } from "./contexts.ts";
 
 // Streaming types
 export type {
@@ -50,7 +51,7 @@ export type {
   ToolSessionStatusStreamEvent,
   ToolSessionErrorStreamEvent,
   StreamEvent,
-} from './streaming.ts'
+} from "./streaming.ts";
 
 // Options and configuration
 export type {
@@ -60,4 +61,4 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from './options.ts'
+} from "./options.ts";

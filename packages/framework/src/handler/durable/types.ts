@@ -11,7 +11,10 @@ import type {
 } from "../../lib/chat/browser-rendering/index.ts";
 import type { PluginSessionManager } from "./plugin-session-manager.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
-import type { ToolParameterValidationErrorPayload, ToolParameterValidationIssue } from "../../lib/chat/tool-parameters.ts";
+import type {
+  ToolParameterValidationErrorPayload,
+  ToolParameterValidationIssue,
+} from "../../lib/chat/tool-parameters.ts";
 
 export type EnginePhase =
   | "init"
@@ -148,7 +151,24 @@ export interface ModelSelection {
   id: string;
 }
 
+export interface ResumeEntry {
+  interruptId: string;
+  status: "resolved" | "cancelled";
+  payload?: unknown;
+}
+
 export interface ChatRequestBody {
+  /** AG-UI thread id for strict public requests. Falls back to conversation/session id. */
+  threadId?: string;
+  /** AG-UI run id for strict public requests. Falls back to the durable session id. */
+  runId?: string;
+  /** Parent AG-UI run id for resumed runs. */
+  parentRunId?: string;
+  state?: unknown;
+  tools?: unknown[];
+  context?: Array<{ description: string; value: string }>;
+  forwardedProps?: unknown;
+  resume?: ResumeEntry[];
   messages: ChatMessage[];
   systemPrompt?: string;
   persona?: string;

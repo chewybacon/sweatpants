@@ -132,7 +132,7 @@ describe("Durable Chat Handler HTTP Smoke Tests", () => {
       // Consume and verify response
       const result = await consumeDurableResponse(response);
 
-      expect(result.sessionInfo).not.toBeNull();
+      expect(result.events.some((entry) => entry.event.type === "RUN_STARTED")).toBe(true);
       expect(result.text).toBe("Hello from HTTP!");
       expect(result.complete).not.toBeNull();
       expect(result.events.length).toBeGreaterThan(0);
@@ -485,9 +485,10 @@ describe("Durable Chat Handler HTTP Smoke Tests", () => {
       expect(sseResponse.headers.get("Content-Type")).toBe("text/event-stream");
 
       const text = await sseResponse.text();
-      expect(text).toContain("event: data");
-      expect(text).toContain("event: control");
-      expect(text).toContain("streamNextOffset");
+      expect(text).toContain("id: 0000000000000001");
+      expect(text).toContain('data: {"type":"RUN_STARTED"');
+      expect(text).not.toContain("event: control");
+      expect(text).not.toContain("streamNextOffset");
 
       await response1.body?.cancel();
     });

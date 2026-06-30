@@ -139,7 +139,11 @@ describe("yo-chat tool blackbox", () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [bookFlightTool as LocalSessionTool],
-        samplingProvider: { *sample() { return { text: "unused" }; } },
+        samplingProvider: {
+          *sample() {
+            return { text: "unused" };
+          },
+        },
       });
 
       try {
@@ -285,9 +289,10 @@ describe("yo-chat tool blackbox", () => {
           result: { action: "accept", content: { flightId: "FL001" } },
         };
 
+        const r2Messages = r1Result.conversationState.messages;
         const r2 = yield* withTimeout(
           "second request (respond pickFlight, expect pickSeat)",
-          streamChatOnce(messages, patches, {
+          streamChatOnce(r2Messages, patches, {
             baseUrl: "http://localhost/chat",
             plugins: [bookFlightPlugin],
             elicitResponses: [pickFlightResponse],
@@ -310,9 +315,10 @@ describe("yo-chat tool blackbox", () => {
           result: { action: "accept", content: { row: 1, seat: "A" } },
         };
 
+        const r3Messages = r2Result.conversationState.messages;
         const r3 = yield* withTimeout(
           "third request (respond pickSeat, expect complete)",
-          streamChatOnce(messages, patches, {
+          streamChatOnce(r3Messages, patches, {
             baseUrl: "http://localhost/chat",
             plugins: [bookFlightPlugin],
             elicitResponses: [pickSeatResponse],
@@ -579,5 +585,4 @@ describe("yo-chat tool blackbox", () => {
       }
     });
   }, 60_000);
-
 });
