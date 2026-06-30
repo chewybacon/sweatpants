@@ -425,7 +425,17 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   // Stable command callbacks
   const send = useCallback(
     (content: string) => {
-      dispatchCommand({ type: "send", content });
+      const streamingText = stateRef.current.streaming.parts
+        .filter((part): part is TextPart => part.type === "text")
+        .map((part) => part.content)
+        .join("");
+      dispatchCommand({
+        type: "send",
+        content,
+        ...(stateRef.current.isStreaming && streamingText.trim()
+          ? { partialContent: streamingText }
+          : {}),
+      });
     },
     [dispatchCommand],
   );

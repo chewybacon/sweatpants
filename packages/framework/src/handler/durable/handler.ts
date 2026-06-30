@@ -44,7 +44,10 @@ import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import { internalMessagesToAgUiMessages } from "../../lib/chat/session/ag-ui-compat.ts";
+import {
+  internalMessageToAgUiMessage,
+  internalMessagesToAgUiMessages,
+} from "../../lib/chat/session/ag-ui-compat.ts";
 import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
@@ -149,6 +152,57 @@ function replayActivityMessages(replayState: ConversationReplayState | undefined
         ]
       : [];
   });
+}
+
+function messagesWithReplayActivities(
+  messages: ChatRequestBody["messages"],
+  replayState: ConversationReplayState | undefined,
+) {
+  const activitiesByCallId = new Map(
+    replayActivityMessages(replayState).map((message) => [message.content.toolCallId, message]),
+  );
+  if (activitiesByCallId.size === 0) {
+    return internalMessagesToAgUiMessages(messages);
+  }
+
+  const output: ReturnType<typeof internalMessagesToAgUiMessages> = [];
+  const inserted = new Set<string>();
+  const toolResultCallIds = new Set(
+    messages
+      .filter((message) => message.role === "tool" && message.tool_call_id)
+      .map((message) => message.tool_call_id!),
+  );
+
+  for (const message of messages) {
+    output.push(internalMessageToAgUiMessage(message));
+
+    const toolCallId =
+      message.role === "tool" && message.tool_call_id
+        ? message.tool_call_id
+        : message.role === "assistant" &&
+            message.tool_calls?.length === 1 &&
+            !toolResultCallIds.has(message.tool_calls[0]!.id)
+          ? message.tool_calls[0]?.id
+          : undefined;
+    if (!toolCallId || inserted.has(toolCallId)) {
+      continue;
+    }
+
+    const activity = activitiesByCallId.get(toolCallId);
+    if (!activity) {
+      continue;
+    }
+    output.push(activity);
+    inserted.add(toolCallId);
+  }
+
+  for (const [toolCallId, activity] of activitiesByCallId) {
+    if (!inserted.has(toolCallId)) {
+      output.push(activity);
+    }
+  }
+
+  return output;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -672,10 +726,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             input: {
               ...agUiRun,
               state: body.state ?? {},
-              messages: [
-                ...internalMessagesToAgUiMessages(body.messages),
-                ...replayActivityMessages(initialReplayState),
-              ],
+              messages: messagesWithReplayActivities(body.messages, initialReplayState),
               tools: toolSchemas.map((tool) => ({
                 name: tool.name,
                 description: tool.description,
@@ -690,10 +741,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             ? [
                 {
                   type: "MESSAGES_SNAPSHOT" as const,
-                  messages: [
-                    ...internalMessagesToAgUiMessages(body.messages),
-                    ...replayActivityMessages(initialReplayState),
-                  ],
+                  messages: messagesWithReplayActivities(body.messages, initialReplayState),
                 },
               ]
             : []),

@@ -287,7 +287,12 @@ export interface StreamChatOptions extends SessionOptions {
  * Commands that can be sent to a chat session.
  */
 export type ChatCommand =
-  | { type: "send"; content: string }
+  | {
+      type: "send";
+      content: string;
+      /** Raw assistant text currently streaming when this send interrupts a run. */
+      partialContent?: string;
+    }
   | {
       type: "abort";
       /** Raw text from UI buffer (settled + pending) */

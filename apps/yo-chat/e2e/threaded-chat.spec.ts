@@ -81,7 +81,111 @@ async function assertCompletedCardPicks(page: Page, labels: string[]) {
   }
 }
 
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function pickedCardPattern(displayLabel: string): RegExp {
+  const suitNames: Record<string, string> = {
+    "♥": "Hearts",
+    "♦": "Diamonds",
+    "♣": "Clubs",
+    "♠": "Spades",
+  };
+  const rankNames: Record<string, string> = {
+    A: "Ace",
+    K: "King",
+    Q: "Queen",
+    J: "Jack",
+  };
+  const suitSymbol = displayLabel.slice(-1);
+  const rank = displayLabel.slice(0, -1);
+  const rankText = rankNames[rank] ?? rank;
+  const humanLabel = suitNames[suitSymbol]
+    ? `${rankText} of ${suitNames[suitSymbol]}`
+    : displayLabel;
+  const shortHumanLabel = suitNames[suitSymbol]
+    ? `${rank} of ${suitNames[suitSymbol]}`
+    : displayLabel;
+  return new RegExp(
+    `${escapeRegex(displayLabel)}|${escapeRegex(humanLabel)}|${escapeRegex(shortHumanLabel)}`,
+    "i",
+  );
+}
+
+async function waitForAssistantMentioningCard(page: Page, displayLabel: string, minIndex = 0) {
+  const cardPattern = pickedCardPattern(displayLabel);
+  await expect
+    .poll(
+      async () => {
+        const assistants = await page.getByTestId("message-assistant").allTextContents();
+        return assistants.slice(minIndex).some((text) => cardPattern.test(text));
+      },
+      { timeout: 90000 },
+    )
+    .toBe(true);
+}
+
 test.describe("Threaded Chat Prototype", () => {
+  test("preserves card pick conversation after refresh", async ({ page }) => {
+    await createNewThread(page);
+
+    const firstPrompt = "draw a card from 5 cards";
+    await sendMessage(page, firstPrompt);
+
+    const interactiveAppeared = await interactiveToolCallBlocks(page)
+      .last()
+      .waitFor({ state: "visible", timeout: 60000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!interactiveAppeared) {
+      const errorLocator = page.locator("text=/^Error:/");
+      if ((await errorLocator.count()) > 0) {
+        const errorText = await errorLocator.first().textContent();
+        throw new Error(`Tool execution error: ${errorText}`);
+      }
+      test.skip(true, "LLM did not produce an interactive pick_card block");
+      return;
+    }
+
+    const toolAssistant = page.getByTestId("message-assistant").filter({
+      has: page.getByTestId("tool-call-block").filter({ hasText: /Tool · pick_card/ }),
+    });
+    await expect(toolAssistant.first()).toBeVisible({ timeout: 30000 });
+
+    const assistantCountBeforePick = await page.getByTestId("message-assistant").count();
+    const picked = await completeCardPick(page);
+    await waitForIdle(page);
+    await waitForAssistantMentioningCard(page, picked.pickedLabel, assistantCountBeforePick);
+
+    const followup = "What card did I just pick?";
+    await sendMessage(page, followup);
+    await waitForIdle(page);
+    await waitForAssistantMentioningCard(page, picked.pickedLabel, assistantCountBeforePick + 1);
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 30000 });
+
+    await expect(page.getByTestId("message-user").filter({ hasText: firstPrompt })).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(page.getByTestId("message-user").filter({ hasText: followup })).toBeVisible({
+      timeout: 30000,
+    });
+    await assertCompletedCardPicks(page, [picked.pickedLabel]);
+
+    const cardPattern = pickedCardPattern(picked.pickedLabel);
+    await expect
+      .poll(
+        async () =>
+          (await page.getByTestId("message-assistant").allTextContents()).filter((text) =>
+            cardPattern.test(text),
+          ).length,
+        { timeout: 30000 },
+      )
+      .toBeGreaterThanOrEqual(2);
+  });
+
   test("replays two completed card picks after refresh", async ({ page }) => {
     await createNewThread(page);
 

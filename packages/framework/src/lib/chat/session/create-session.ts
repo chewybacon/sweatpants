@@ -12,126 +12,129 @@ import {
   type Signal,
   type Stream,
   type Subscription,
-} from 'effection'
-import { streamChatOnce, type ElicitResponseData } from './stream-chat.ts'
-import { useTransformPipeline } from './transforms.ts'
-import { chatReducer, initialChatState } from '../state/reducer.ts'
-import type { ChatState } from '../state/chat-state.ts'
-import { StreamerContext, BaseUrlContext } from './contexts.ts'
-import type { ChatPatch } from '../patches/index.ts'
-import type { Message } from '../types.ts'
-import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from './options.ts'
-import type { ConversationReplayState, StreamResult } from './streaming.ts'
+} from "effection";
+import { streamChatOnce, type ElicitResponseData } from "./stream-chat.ts";
+import { useTransformPipeline } from "./transforms.ts";
+import { chatReducer, initialChatState } from "../state/reducer.ts";
+import type { ChatState } from "../state/chat-state.ts";
+import { StreamerContext, BaseUrlContext } from "./contexts.ts";
+import type { ChatPatch } from "../patches/index.ts";
+import type { Message } from "../types.ts";
+import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from "./options.ts";
+import type { ConversationReplayState, StreamResult } from "./streaming.ts";
 import {
   syncConversationStateForElicit,
   syncConversationStateForComplete,
-} from './turn-manager.ts'
+} from "./turn-manager.ts";
 import {
   appendAssistantFinalMessage,
   appendToolMessage,
   appendUserMessage,
   createTranscriptState,
   resetTranscriptState,
-} from './transcript.ts'
-import { readDurableHistory } from './durable-history.ts'
+} from "./transcript.ts";
+import { readDurableHistory } from "./durable-history.ts";
 
-const defaultStreamer: Streamer = streamChatOnce
+const defaultStreamer: Streamer = streamChatOnce;
 
 function createBufferedStateSignal<T>() {
-  const values: T[] = []
-  const signal = createSignal<T, void>()
+  const values: T[] = [];
+  const signal = createSignal<T, void>();
 
   return {
     send(value: T) {
-      values.push(value)
-      signal.send(value)
+      values.push(value);
+      signal.send(value);
     },
     *subscribe(): Operation<Stream<T, void>> {
-      const live: Subscription<T, void> = yield* signal
-      let replayIndex = 0
+      const live: Subscription<T, void> = yield* signal;
+      let replayIndex = 0;
 
       return resource(function* (provide) {
         yield* provide({
           *next(): Operation<IteratorResult<T, void>> {
             if (replayIndex < values.length) {
-              return { done: false, value: values[replayIndex++]! }
+              return { done: false, value: values[replayIndex++]! };
             }
-            return yield* live.next()
+            return yield* live.next();
           },
-        })
-      })
+        });
+      });
     },
-  }
+  };
 }
 
 export interface ClientToolSessionOptions extends SessionOptions {}
 
 export interface ChatSession {
-  state: Stream<ChatState, void>
-  dispatch: (command: ChatCommand) => void
+  state: Stream<ChatState, void>;
+  dispatch: (command: ChatCommand) => void;
 }
 
 export function createChatSession(options: ClientToolSessionOptions = {}): Operation<ChatSession> {
   return resource(function* (provide) {
-    const scope = yield* useScope()
-    const commands = createSignal<ChatCommand, void>()
-    const patches = createChannel<ChatPatch, void>()
-    const stateSignal = createBufferedStateSignal<ChatState>()
+    const scope = yield* useScope();
+    const commands = createSignal<ChatCommand, void>();
+    const patches = createChannel<ChatPatch, void>();
+    const stateSignal = createBufferedStateSignal<ChatState>();
 
     if (options.baseUrl) {
-      yield* BaseUrlContext.set(options.baseUrl)
+      yield* BaseUrlContext.set(options.baseUrl);
     }
     if (options.streamer) {
-      yield* StreamerContext.set(options.streamer)
+      yield* StreamerContext.set(options.streamer);
     }
 
-    yield* spawn(() => runChatSession(commands, patches, options))
+    yield* spawn(() => runChatSession(commands, patches, options));
 
     yield* spawn(function* () {
-      let currentState = initialChatState
-      stateSignal.send(currentState)
+      let currentState = initialChatState;
+      stateSignal.send(currentState);
 
       for (const patch of yield* each(patches)) {
-        currentState = chatReducer(currentState, patch)
-        stateSignal.send(currentState)
-        yield* each.next()
+        currentState = chatReducer(currentState, patch);
+        stateSignal.send(currentState);
+        yield* each.next();
       }
-    })
+    });
 
     yield* provide({
       state: yield* stateSignal.subscribe(),
-      dispatch: (cmd) => scope.run(function* () {
-        yield* call(() => {
-          commands.send(cmd)
-          return undefined
-        })
-      }),
-    })
-  })
+      dispatch: (cmd) =>
+        scope.run(function* () {
+          yield* call(() => {
+            commands.send(cmd);
+            return undefined;
+          });
+        }),
+    });
+  });
 }
 
 function createStreamingEndAcknowledger(onForwarded: () => void): PatchTransform {
   return function* (input, output) {
     for (const patch of yield* each(input)) {
-      yield* output.send(patch)
-      if (patch.type === 'streaming_end') {
-        onForwarded()
+      yield* output.send(patch);
+      if (patch.type === "streaming_end") {
+        onForwarded();
       }
-      yield* each.next()
+      yield* each.next();
     }
-  }
+  };
 }
 
 function findAssistantToolCallHostMessage(
   history: Message[],
   pendingToolCalls: Array<{ id: string; name: string }>,
 ): Message | undefined {
-  const pendingIds = new Set(pendingToolCalls.map((toolCall) => toolCall.id))
-  return [...history].reverse().find(
-    (message) =>
-      message.role === 'assistant' &&
-      message.tool_calls?.some((toolCall) => pendingIds.has(toolCall.id)),
-  )
+  const pendingIds = new Set(pendingToolCalls.map((toolCall) => toolCall.id));
+  return [...history]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "assistant" &&
+        message.tool_calls?.some((toolCall) => pendingIds.has(toolCall.id)),
+    );
 }
 
 function finalAssistantMessage(
@@ -139,156 +142,173 @@ function finalAssistantMessage(
   transcriptState: ReturnType<typeof createTranscriptState>,
   content: string,
 ): Message {
-  const last = history[history.length - 1]
-  if (last && last.role === 'assistant' && last.content === content && !last.tool_calls?.length) {
-    return last
+  const last = history[history.length - 1];
+  if (last && last.role === "assistant" && last.content === content && !last.tool_calls?.length) {
+    return last;
   }
-  return appendAssistantFinalMessage(history, transcriptState, content)
+  return appendAssistantFinalMessage(history, transcriptState, content);
 }
 
 export function* runChatSession(
   commands: Signal<ChatCommand, void>,
   patches: Channel<ChatPatch, void>,
-  options: ClientToolSessionOptions = {}
+  options: ClientToolSessionOptions = {},
 ): Operation<void> {
-  const history: Message[] = []
-  const transcriptState = createTranscriptState(history)
-  let currentRequestTask: Task<StreamResult> | null = null
-  const pendingElicitResponses: ElicitResponseData[] = []
-  const sentElicitResponseIds = new Set<string>()
-  let pendingToolCalls: Array<{ id: string; name: string }> = []
-  let replayState: ConversationReplayState | undefined
+  const history: Message[] = [];
+  const transcriptState = createTranscriptState(history);
+  let currentRequestTask: Task<StreamResult> | null = null;
+  const pendingElicitResponses: ElicitResponseData[] = [];
+  const sentElicitResponseIds = new Set<string>();
+  let pendingToolCalls: Array<{ id: string; name: string }> = [];
+  let replayState: ConversationReplayState | undefined;
 
   if (options.conversationId) {
-    const contextBaseUrl = yield* BaseUrlContext.get()
-    const baseUrl = options.baseUrl ?? contextBaseUrl ?? '/api/chat'
+    const contextBaseUrl = yield* BaseUrlContext.get();
+    const baseUrl = options.baseUrl ?? contextBaseUrl ?? "/api/chat";
     const replayTools = [
       ...(options.tools ?? []),
       ...(options.plugins ?? []).map((plugin) => plugin.tool),
-    ]
+    ];
     const durableHistory = yield* readDurableHistory({
       baseUrl,
       conversationId: options.conversationId,
       ...(replayTools.length > 0 ? { tools: replayTools } : {}),
       ...((options.transforms?.length ?? 0) > 0 ? { transforms: options.transforms } : {}),
       ...(options.onStreamEvent ? { onStreamEvent: options.onStreamEvent } : {}),
-    })
+    });
 
     for (const message of durableHistory.history) {
-      history.push(message)
+      history.push(message);
     }
-    resetTranscriptState(transcriptState, history)
-    replayState = durableHistory.replayState
+    resetTranscriptState(transcriptState, history);
+    replayState = durableHistory.replayState;
 
     for (const patch of durableHistory.patches) {
-      yield* patches.send(patch)
+      yield* patches.send(patch);
     }
   }
 
   function* startRequest(): Operation<StreamResult> {
-    let streamingEndForwarded = false
-    let streamingEndForwardedResolve: (() => void) | null = null
-    let streamingEndSent = false
+    let streamingEndForwarded = false;
+    let streamingEndForwardedResolve: (() => void) | null = null;
+    let streamingEndSent = false;
 
     function waitForStreamingEndForwarded(): Promise<void> {
-      if (streamingEndForwarded) return Promise.resolve()
+      if (streamingEndForwarded) return Promise.resolve();
       return new Promise<void>((resolve) => {
-        streamingEndForwardedResolve = resolve
-      })
+        streamingEndForwardedResolve = resolve;
+      });
     }
 
     const streamingEndAcknowledger = createStreamingEndAcknowledger(() => {
       if (!streamingEndForwarded) {
-        streamingEndForwarded = true
-        streamingEndForwardedResolve?.()
-        streamingEndForwardedResolve = null
+        streamingEndForwarded = true;
+        streamingEndForwardedResolve?.();
+        streamingEndForwardedResolve = null;
       }
-    })
+    });
 
     const streamPatches = yield* useTransformPipeline(patches, [
       ...(options.transforms ?? []),
       streamingEndAcknowledger,
-    ])
+    ]);
 
-    const contextStreamer = yield* StreamerContext.get()
-    const streamer = contextStreamer ?? options.streamer ?? defaultStreamer
-    const originalHistoryLength = history.length
-    let result: StreamResult
+    const contextStreamer = yield* StreamerContext.get();
+    const streamer = contextStreamer ?? options.streamer ?? defaultStreamer;
+    const originalHistoryLength = history.length;
+    let result: StreamResult;
 
     while (true) {
-      const elicitResponsesToSend = pendingElicitResponses.splice(0)
+      const elicitResponsesToSend = pendingElicitResponses.splice(0);
       result = yield* streamer([...history], streamPatches, {
         ...options,
         ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
         ...(replayState ? { replayState } : {}),
-      })
+      });
 
-      if (result.type === 'complete') {
+      if (result.type === "complete") {
         if (result.conversationState) {
-          syncConversationStateForComplete(history, result.conversationState)
-          resetTranscriptState(transcriptState, history)
-          replayState = result.conversationState.replay ?? replayState
+          syncConversationStateForComplete(history, result.conversationState);
+          resetTranscriptState(transcriptState, history);
+          replayState = result.conversationState.replay ?? replayState;
         }
-        pendingToolCalls = []
-        break
+        pendingToolCalls = [];
+        break;
       }
 
-      if (result.type === 'elicit') {
-        pendingToolCalls = syncConversationStateForElicit(history, result.conversationState)
-        resetTranscriptState(transcriptState, history)
-        replayState = result.conversationState.replay ?? replayState
+      if (result.type === "elicit") {
+        pendingToolCalls = syncConversationStateForElicit(history, result.conversationState);
+        resetTranscriptState(transcriptState, history);
+        replayState = result.conversationState.replay ?? replayState;
 
-        const assistantToolCallHostMessage = findAssistantToolCallHostMessage(history, pendingToolCalls)
+        const assistantToolCallHostMessage = findAssistantToolCallHostMessage(
+          history,
+          pendingToolCalls,
+        );
         if (assistantToolCallHostMessage) {
           yield* patches.send({
-            type: 'assistant_message',
+            type: "assistant_message",
             message: assistantToolCallHostMessage,
-          })
+          });
         }
-        break
+        break;
       }
 
-      break
+      break;
     }
 
-    if (result!.type === 'complete') {
+    if (result!.type === "complete") {
       for (const toolResult of result.toolResults ?? []) {
-        const exists = history.some((message) => message.role === 'tool' && message.tool_call_id === toolResult.id)
+        const exists = history.some(
+          (message) => message.role === "tool" && message.tool_call_id === toolResult.id,
+        );
         if (!exists) {
           appendToolMessage(history, transcriptState, toolResult.id, toolResult.content, {
             toolName: toolResult.name,
-          })
+          });
         }
       }
 
-      const finalContent = result.text || result.conversationState?.assistantContent || ''
+      const finalContent = result.text || result.conversationState?.assistantContent || "";
       if (finalContent || originalHistoryLength === history.length) {
-        const assistantMessage = finalAssistantMessage(history, transcriptState, finalContent)
+        const assistantMessage = finalAssistantMessage(history, transcriptState, finalContent);
         yield* patches.send({
-          type: 'assistant_message',
+          type: "assistant_message",
           message: assistantMessage,
-        })
+        });
       }
     }
 
-    yield* streamPatches.send({ type: 'streaming_end' })
-    streamingEndSent = true
-    yield* call(waitForStreamingEndForwarded)
-    yield* streamPatches.close()
+    yield* streamPatches.send({ type: "streaming_end" });
+    streamingEndSent = true;
+    yield* call(waitForStreamingEndForwarded);
+    yield* streamPatches.close();
 
     if (!streamingEndSent) {
-      yield* patches.send({ type: 'streaming_end' })
+      yield* patches.send({ type: "streaming_end" });
     }
 
-    return result!
+    return result!;
   }
 
   for (const cmd of yield* each(commands)) {
     switch (cmd.type) {
-      case 'send': {
+      case "send": {
         if (currentRequestTask) {
-          yield* currentRequestTask.halt()
-          currentRequestTask = null
+          const partialContent = cmd.partialContent?.trim();
+          if (partialContent) {
+            const partialMessage = appendAssistantFinalMessage(
+              history,
+              transcriptState,
+              cmd.partialContent!,
+            );
+            yield* patches.send({
+              type: "assistant_message",
+              message: partialMessage,
+            });
+          }
+          yield* currentRequestTask.halt();
+          currentRequestTask = null;
         }
 
         if (pendingToolCalls.length > 0) {
@@ -297,104 +317,104 @@ export function* runChatSession(
               history,
               transcriptState,
               tc.id,
-              'Tool execution was cancelled by user sending a new message.',
-            )
+              "Tool execution was cancelled by user sending a new message.",
+            );
           }
-          pendingToolCalls = []
+          pendingToolCalls = [];
         }
 
-        const userMessage = appendUserMessage(history, transcriptState, cmd.content)
-        const rendered = options.renderer?.(cmd.content)
+        const userMessage = appendUserMessage(history, transcriptState, cmd.content);
+        const rendered = options.renderer?.(cmd.content);
         yield* patches.send({
-          type: 'user_message',
+          type: "user_message",
           message: userMessage,
           ...(rendered !== undefined ? { rendered } : {}),
-        })
-        yield* patches.send({ type: 'streaming_start' })
+        });
+        yield* patches.send({ type: "streaming_start" });
 
         currentRequestTask = yield* spawn(function* () {
           try {
-            return yield* startRequest()
+            return yield* startRequest();
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unknown error'
-            yield* patches.send({ type: 'error', message })
-            yield* patches.send({ type: 'streaming_end' })
-            throw error
+            const message = error instanceof Error ? error.message : "Unknown error";
+            yield* patches.send({ type: "error", message });
+            yield* patches.send({ type: "streaming_end" });
+            throw error;
           } finally {
-            currentRequestTask = null
+            currentRequestTask = null;
           }
-        })
-        break
+        });
+        break;
       }
 
-      case 'continue': {
+      case "continue": {
         if (currentRequestTask) {
-          yield* currentRequestTask.halt()
-          currentRequestTask = null
+          yield* currentRequestTask.halt();
+          currentRequestTask = null;
         }
 
-        yield* patches.send({ type: 'streaming_start' })
+        yield* patches.send({ type: "streaming_start" });
         currentRequestTask = yield* spawn(function* () {
           try {
-            return yield* startRequest()
+            return yield* startRequest();
           } catch (error) {
-            const message = error instanceof Error ? error.message : 'Unknown error'
-            yield* patches.send({ type: 'error', message })
-            yield* patches.send({ type: 'streaming_end' })
-            throw error
+            const message = error instanceof Error ? error.message : "Unknown error";
+            yield* patches.send({ type: "error", message });
+            yield* patches.send({ type: "streaming_end" });
+            throw error;
           } finally {
-            currentRequestTask = null
+            currentRequestTask = null;
           }
-        })
-        break
+        });
+        break;
       }
 
-      case 'abort': {
+      case "abort": {
         if (currentRequestTask) {
-          yield* currentRequestTask.halt()
-          currentRequestTask = null
+          yield* currentRequestTask.halt();
+          currentRequestTask = null;
         }
 
-        const preservePartial = options.preservePartialOnAbort ?? true
-        const suffix = options.abortSuffix ?? ''
+        const preservePartial = options.preservePartialOnAbort ?? true;
+        const suffix = options.abortSuffix ?? "";
         if (preservePartial && cmd.partialContent?.trim()) {
           const partialMessage: Message = {
             id: crypto.randomUUID(),
-            role: 'assistant',
+            role: "assistant",
             content: cmd.partialContent + suffix,
             partial: true,
-          }
-          history.push(partialMessage)
+          };
+          history.push(partialMessage);
           yield* patches.send({
-            type: 'abort_complete',
+            type: "abort_complete",
             message: partialMessage,
             ...(cmd.partialHtml !== undefined ? { rendered: cmd.partialHtml } : {}),
-          })
+          });
         } else {
-          yield* patches.send({ type: 'streaming_end' })
+          yield* patches.send({ type: "streaming_end" });
         }
-        break
+        break;
       }
 
-      case 'reset': {
+      case "reset": {
         if (currentRequestTask) {
-          yield* currentRequestTask.halt()
-          currentRequestTask = null
+          yield* currentRequestTask.halt();
+          currentRequestTask = null;
         }
-        history.length = 0
-        pendingElicitResponses.length = 0
-        pendingToolCalls = []
-        sentElicitResponseIds.clear()
-        resetTranscriptState(transcriptState, history)
-        yield* patches.send({ type: 'reset' })
-        break
+        history.length = 0;
+        pendingElicitResponses.length = 0;
+        pendingToolCalls = [];
+        sentElicitResponseIds.clear();
+        resetTranscriptState(transcriptState, history);
+        yield* patches.send({ type: "reset" });
+        break;
       }
 
-      case 'elicit_response': {
+      case "elicit_response": {
         if (sentElicitResponseIds.has(cmd.elicitId)) {
-          break
+          break;
         }
-        sentElicitResponseIds.add(cmd.elicitId)
+        sentElicitResponseIds.add(cmd.elicitId);
 
         pendingElicitResponses.push({
           sessionId: cmd.sessionId,
@@ -404,22 +424,22 @@ export function* runChatSession(
           elicitId: cmd.elicitId,
           result: cmd.result,
           ...(cmd.trace ? { trace: cmd.trace } : {}),
-        })
+        });
 
         yield* patches.send({
-          type: 'elicit_response',
+          type: "elicit_response",
           callId: cmd.callId,
           elicitId: cmd.elicitId,
           response: cmd.result,
-        })
+        });
 
         if (cmd.autoContinue !== false) {
-          commands.send({ type: 'continue' })
+          commands.send({ type: "continue" });
         }
-        break
+        break;
       }
     }
 
-    yield* each.next()
+    yield* each.next();
   }
 }
