@@ -29,7 +29,7 @@ import {
 import type {
   ComponentEmissionPayload,
   PendingEmission,
-} from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
+} from '../../lib/chat/browser-rendering/emissions.ts'
 import type { StreamEvent } from '../types.ts'
 import type { ToolCall, ToolExecutionResult } from './types.ts'
 import {

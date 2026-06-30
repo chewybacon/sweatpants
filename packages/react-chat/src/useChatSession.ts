@@ -12,7 +12,7 @@
  * 3. Exposing dispatch methods (send, abort, reset)
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { run, each, createSignal } from "effection";
+import { run, each } from "effection";
 import {
   createChatSession,
   type ChatCommand,
@@ -30,7 +30,6 @@ import type {
   SessionOptions,
 } from "./types.ts";
 import type { ElicitTrackingState } from "@sweatpants/framework/chat";
-import type { PendingHandoff, ToolHandlerRegistry } from "@sweatpants/framework/chat";
 import { useChatConfig } from "./ChatProvider.tsx";
 import { createPluginRegistryFrom } from "@sweatpants/framework/chat";
 import type { PluginHandleInput } from "@sweatpants/framework/chat";
@@ -149,31 +148,6 @@ const defaultTransforms = [createPipelineTransform({ processors: [markdown] })];
  */
 export interface UseChatSessionOptions extends SessionOptions {
   /**
-   * Registry of React tool handlers.
-   *
-   * When a tool has a handler registered here, instead of running its
-   * `*client()` generator, the session emits a `pending_handoff` patch
-   * and waits for `respondToHandoff()` to receive the response.
-   *
-   * @example
-   * ```tsx
-   * const toolHandlers = createToolHandlers()
-   *   .add(guessCardTool, (data, respond) => (
-   *     <CardPicker choices={data.choices} onPick={respond} />
-   *   ))
-   *   .build()
-   *
-   * const { pendingHandoffs, respondToHandoff } = useChatSession({
-   *   tools: [guessCardTool],
-   *   reactHandlers: toolHandlers,
-   * })
-   *
-   * return <>{toolHandlers.render(pendingHandoffs, respondToHandoff)}</>
-   * ```
-   */
-  reactHandlers?: ToolHandlerRegistry;
-
-  /**
    * Plugin handles for MCP tool elicitation handling.
    *
    * Pass concrete plugin objects (the return value of
@@ -233,30 +207,6 @@ export interface UseChatSessionReturn {
    * @param reason - Optional reason for denial
    */
   deny: (callId: string, reason?: string) => void;
-
-  // --- Tool Handoff API (React Integration) ---
-
-  /**
-   * Pending tool handoffs that need UI handling.
-   *
-   * Use with `createToolHandlers()` to render type-safe UI:
-   * ```tsx
-   * const toolHandlers = createToolHandlers()
-   *   .add(myTool, (data, respond) => <MyUI data={data} onComplete={respond} />)
-   *   .build()
-   *
-   * return <>{toolHandlers.render(pendingHandoffs, respondToHandoff)}</>
-   * ```
-   */
-  pendingHandoffs: PendingHandoff[];
-
-  /**
-   * Respond to a pending handoff with client output.
-   *
-   * @param callId - The tool call ID
-   * @param output - The client output (type depends on tool)
-   */
-  respondToHandoff: (callId: string, output: unknown) => void;
 
   // --- Tool Emissions API (ctx.render() pattern) ---
 
@@ -331,7 +281,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     ...options,
     baseUrl: options.baseUrl ?? config.baseUrl,
     transforms: options.transforms ?? defaultTransforms,
-    ...(options.reactHandlers && { reactHandlers: options.reactHandlers }),
   };
 
   const sessionIdentity = useMemo(
@@ -340,20 +289,17 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         baseUrl: mergedOptions.baseUrl,
         conversationId: mergedOptions.conversationId ?? null,
         toolNames: (mergedOptions.tools ?? []).map((tool) =>
-          // Tools may be plain objects (legacy) or callable functions (unified
-          // createTool/createIsomorphicTool outputs); both carry a `name`.
+          // Canonical tool values carry a `name`.
           (typeof tool === "function" || (typeof tool === "object" && tool !== null)) && "name" in tool
             ? String((tool as { name: unknown }).name)
             : "unknown",
         ),
         pluginNames: (options.plugins ?? []).map((plugin) => plugin.client.toolName),
-        hasReactHandlers: Boolean(mergedOptions.reactHandlers),
         transformCount: mergedOptions.transforms?.length ?? 0,
       }),
     [
       mergedOptions.baseUrl,
       mergedOptions.conversationId,
-      mergedOptions.reactHandlers,
       mergedOptions.tools,
       mergedOptions.transforms,
       options.plugins,
@@ -371,40 +317,10 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   const dispatchRef = useRef<ChatSession["dispatch"] | null>(null);
   const pendingCommandsRef = useRef<ChatCommand[]>([]);
 
-  // Store the approval callback function
-  const sendApprovalRef = useRef<
-    ((value: { callId: string; approved: boolean; reason?: string }) => void) | null
-  >(null);
-
-  // Store the handoff response callback function
-  const sendHandoffResponseRef = useRef<
-    ((value: { callId: string; output: unknown }) => void) | null
-  >(null);
-
   useEffect(() => {
     // Start the Effection runtime
     const task = run(function* () {
-      // Create approval signal locally so we can bridge it to React callbacks
-      // createSignal is now imported directly from 'effection'
-      const approvalSignal = createSignal<
-        { callId: string; approved: boolean; reason?: string },
-        void
-      >();
-
-      sendApprovalRef.current = (val) => approvalSignal.send(val);
-
-      // Create handoff response signal for React tool handlers
-      const handoffResponseSignal = createSignal<{ callId: string; output: unknown }, void>();
-
-      sendHandoffResponseRef.current = (val) => handoffResponseSignal.send(val);
-
-      // Create a session using the resource pattern
-      // The resource returns { state, dispatch } and manages the session lifecycle
-      const { state: stateStream, dispatch } = yield* createChatSession({
-        ...optionsRef.current,
-        approvalSignal,
-        handoffResponseSignal,
-      });
+      const { state: stateStream, dispatch } = yield* createChatSession(optionsRef.current);
 
       // Expose dispatch to React and flush commands that arrived during mount.
       dispatchRef.current = dispatch;
@@ -423,8 +339,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     // Cleanup: halt the task
     return () => {
       dispatchRef.current = null;
-      sendApprovalRef.current = null;
-      sendHandoffResponseRef.current = null;
       void task.halt().catch((e) => {
         if (e.message !== "halted") console.error(e);
       });
@@ -468,32 +382,18 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     dispatchCommand({ type: "reset" });
   }, [dispatchCommand]);
 
-  // Client tool approval callbacks
-  const approve = useCallback((callId: string) => {
-    sendApprovalRef.current?.({ callId, approved: true });
-  }, []);
+  // Client tool approval callbacks are retained as no-ops for older callers.
+  const approve = useCallback((_callId: string) => {}, []);
 
-  const deny = useCallback((callId: string, reason?: string) => {
-    sendApprovalRef.current?.({ callId, approved: false, ...(reason !== undefined && { reason }) });
-  }, []);
-
-  // Tool handoff response callback
-  const respondToHandoff = useCallback((callId: string, output: unknown) => {
-    sendHandoffResponseRef.current?.({ callId, output });
-  }, []);
+  const deny = useCallback((_callId: string, _reason?: string) => {}, []);
 
   // Get pending approvals from state
   const pendingApprovals = Object.values(state.pendingClientTools).filter(
     (tool) => tool.state === "awaiting_approval",
   );
 
-  // Derive pending handoffs from state
-  // Map from PendingHandoffState (internal) to PendingHandoff (external API)
-  // TODO: pendingHandoffs will be replaced by pendingElicits in Phase 7
-  const pendingHandoffs: PendingHandoff[] = [];
-
   // Tool emissions come from both:
-  // 1. state.toolEmissions - isomorphic tools via ctx.render() (server-side, through patch stream)
+  // 1. state.toolEmissions - replay/projection from the stream
   // 2. localEmissions - plugin handlers via ctx.render() (client-side, via useElicitExecutor)
   // Merge both sources, with local emissions taking precedence (they have respond callbacks)
   const toolEmissions: ToolEmissionTrackingState[] = useMemo(() => {
@@ -523,7 +423,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   }, [localEmissions]);
 
   // Respond to a pending emission
-  // Checks both local emissions (plugin handlers) and state emissions (isomorphic tools)
+  // Checks local plugin emissions first, then stream-projected emissions.
   const respondToEmission = useCallback(
     (callId: string, emissionId: string, response: unknown) => {
       // Check local emissions first (plugin handlers have priority, they have respond callbacks)
@@ -536,7 +436,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
         return;
       }
 
-      // Check state emissions (isomorphic tools via ctx.render from server)
+      // Check state emissions from stream replay/projection
       const stateTracking = stateRef.current.toolEmissions[callId];
       const stateEmission = stateTracking?.emissions.find(
         (e: ToolEmissionState) => e.id === emissionId,
@@ -605,8 +505,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     pendingApprovals,
     approve,
     deny,
-    pendingHandoffs,
-    respondToHandoff,
     toolEmissions,
     respondToEmission,
   };

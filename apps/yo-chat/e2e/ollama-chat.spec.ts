@@ -162,7 +162,7 @@ test.describe("Ollama tool calling", () => {
     await expect(page.getByRole("heading", { name: "Card Picker" })).toBeVisible();
     await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 10000 });
 
-    // Ask to pick a card - this should trigger the pick_card isomorphic tool
+    // Ask to pick a card - this should trigger the canonical pick_card tool
     const input = page.getByPlaceholder("Type a message...");
     await input.click(); // Ensure hydration
     await input.pressSequentially("Use the pick_card tool with count=3 to let me pick a card", {
@@ -216,15 +216,15 @@ test.describe("Ollama tool calling", () => {
      * This test verifies the complete pick_card flow:
      *
      * 1. User asks to pick a card
-     * 2. Server runs *before() - draws random cards
-     * 3. Client renders CardPicker via ctx.render()
-     * 4. User clicks a specific card (e.g., "5♥")
-     * 5. Client returns { picked: card } from *client()
-     * 6. Server runs *after(handoff, clientOutput) - returns "You selected the 5 of Hearts!"
-     * 7. LLM sees the *after() result and responds accordingly
+     * 2. Tool code draws random cards
+     * 3. Tool code calls ctx.elicit('pickCard', ...)
+     * 4. Plugin renders CardPicker via ctx.render()
+     * 5. User clicks a specific card (e.g., "5♥")
+     * 6. Tool resumes and returns "You selected the 5 of Hearts!"
+     * 7. LLM sees the tool result and responds accordingly
      * 8. LLM's final message should acknowledge the SELECTION, not just list the cards
      *
-     * This tests that the handoff pattern works correctly end-to-end.
+     * This tests that canonical elicitation works correctly end-to-end.
      */
 
     const input = page.getByPlaceholder("Type a message...");

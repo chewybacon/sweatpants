@@ -2,7 +2,7 @@
  * useElicitExecutor.ts
  *
  * Automatically executes plugin elicitation handlers when elicit patches arrive.
- * Routes handler emissions through the same state as isomorphic tools (toolEmissions).
+ * Routes handler emissions through tool emission tracking state.
  *
  * ## How It Works
  *

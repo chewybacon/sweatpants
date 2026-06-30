@@ -86,5 +86,5 @@ src/
 ## See Also
 
 - [Framework Documentation](../../packages/framework/docs/README.md)
-- [Isomorphic Tools Guide](../../packages/framework/docs/isomorphic-tools.md)
+- [Core Tools Guide](../../packages/core/README.md)
 - [yo-chat Reference App](../yo-chat/README.md)

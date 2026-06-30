@@ -29,7 +29,7 @@ const tictactoePlugin: PluginHandleInput = {
 const calculator = { name: "calculator" };
 
 describe("plugin handle API types", () => {
-  it("useChat accepts full plugin objects and isomorphic tools separately", () => {
+  it("useChat accepts full plugin objects and tool handles separately", () => {
     const options: UseChatOptions = {
       tools: [calculator],
       plugins: [tictactoePlugin],

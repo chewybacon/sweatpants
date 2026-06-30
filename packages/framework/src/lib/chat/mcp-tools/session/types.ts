@@ -327,8 +327,8 @@ export interface ToolSessionRegistry {
    * @param options - Session options
    * @returns The created session
    */
-  create<TParams, THandoff, TClient, TResult, TElicits extends ElicitsMap>(
-    tool: McpRuntimeTool<string, TParams, THandoff, TClient, TResult, TElicits>,
+  create<TParams, TInteraction, TClient, TResult, TElicits extends ElicitsMap>(
+    tool: McpRuntimeTool<string, TParams, TInteraction, TClient, TResult, TElicits>,
     params: TParams,
     options?: ToolSessionOptions
   ): Operation<ToolSession<TResult>>

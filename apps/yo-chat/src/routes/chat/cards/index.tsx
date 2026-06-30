@@ -7,7 +7,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useRef, useEffect } from 'react'
 import { useChat, type ChatMessage, type ChatToolCall } from '@sweatpants/react-chat'
-import { tools } from '@/__generated__/tool-registry.gen'
+import { pickCardPlugin } from '@/tools/pick-card'
 
 export const Route = createFileRoute('/chat/cards/')({
   component: CardsChatDemo,
@@ -131,8 +131,9 @@ function CardsChatDemo() {
     error,
   } = useChat({
     pipeline: 'markdown',
-    // Only pickCard tool - focused demo
-    tools: [tools.pickCard],
+    // Only the pick-card plugin - focused demo
+    tools: [],
+    plugins: [pickCardPlugin],
   })
 
   const [input, setInput] = useState('')

@@ -4,7 +4,7 @@
  * Patch types for tool elicitation.
  * These patches handle the client-side UI for tools that need user input.
  * 
- * This is the unified elicitation system used by both MCP tools and isomorphic tools.
+ * This is the elicitation system used by canonical tools.
  */
 
 // =============================================================================
@@ -27,7 +27,7 @@ export interface ElicitState {
   /** Name of the tool */
   toolName: string
 
-  /** Elicitation key (e.g., 'pickFlight', 'pickSeat', '__handoff__') */
+  /** Elicitation key (e.g., 'pickFlight', 'pickSeat') */
   key: string
 
   /** Human-readable message for the user */

@@ -87,7 +87,7 @@ const tool = yield* ProcessData()
 const result = yield* tool({ data: ['a', 'b'] })
 ```
 
-**Compare with:** [Isomorphic Tool](#isomorphic-tool), [MCP Tool](#mcp-tool--plugin-tool)
+**Compare with:** [MCP Tool / Plugin Tool](#mcp-tool--plugin-tool)
 
 ---
 
@@ -184,22 +184,18 @@ interface TransportRequest<TPayload = unknown> {
 
 ### Core Tool Adapter
 
-Converts `@sweatpants/core` tools to framework isomorphic tools. Auto-detected by the registry.
+Projects canonical `@sweatpants/core` tools into framework model-safe tool definitions and runtime inventory entries.
 
 **File:** [`src/lib/chat/core-tools/adapter.ts`](../src/lib/chat/core-tools/adapter.ts)
 
 ```typescript
-// Detection
-function isCoreToolFactory(value: unknown): value is CoreToolFactory
-
-// Conversion
-function adaptCoreTool(coreToolFactory: CoreToolFactory): AnyIsomorphicTool
+function adaptCoreTool(tool: ToolDefinition): FrameworkToolDefinition
 ```
 
-The adapted tool:
-- Maps `input` schema → `parameters`
-- Runs as a server-first isomorphic tool
-- Uses `contextMode: 'headless'` (no browser APIs)
+The adapter:
+- Maps canonical parameters to model-facing JSON Schema
+- Keeps implementation payloads out of model-visible definitions
+- Preserves canonical `ctx.notify`, `ctx.elicit`, and `ctx.sample` execution
 
 ---
 
@@ -272,25 +268,17 @@ if (picked.action === 'accept') {
 
 ---
 
-### Handoff
+### Browser Elicit Handler
 
-Transfer of execution between server phases. Used in the `before/client/after` pattern for isomorphic tools.
+Plugin handler that satisfies a declared core tool elicit by rendering UI or otherwise asking the user for input.
 
 ```typescript
-.handoff({
-  *before(params) {
-    // Phase 1: Server prepares data
-    return { flights: [...] }
-  },
-  *client(handoff, ctx) {
-    // Client execution (React/Agent)
-    return yield* ctx.elicit('pick', handoff)
-  },
-  *after(handoff, clientResult) {
-    // Phase 2: Server processes result
-    return { confirmation: '...' }
-  }
-})
+makePlugin(bookFlightTool)
+  .onElicit({
+    pickFlight: function* (request, ctx) {
+      return yield* ctx.render(FlightPicker, request.context)
+    },
+  })
 ```
 
 ---
@@ -481,19 +469,19 @@ Stores serialized events for replay. Enables reconnection and multi-client fan-o
 
 ## Tool Types
 
-### Isomorphic Tool
+### Core Tool
 
-Tool that can run on server, client, or both with handoff between phases. Uses `createIsomorphicTool()` builder.
+Canonical tool built with `createTool()` from `@sweatpants/core`. Core tools declare model parameters plus optional `elicits` and `samples`; runtime adapters execute them through local, MCP, or AgentCore sessions.
 
-**File:** [`src/lib/chat/isomorphic-tools/builder.ts`](../src/lib/chat/isomorphic-tools/builder.ts)
+**File:** [`packages/core/src/tool/`](../../core/src/tool/)
 
 ---
 
 ### MCP Tool / Plugin Tool
 
-Tool built with `createTool()` that uses the elicit/sample context. Requires a plugin for client-side handling.
+Framework plugin that binds browser/host handlers to a core tool's declared elicit keys. Use `makePlugin(tool).onElicit(...)` for client-side handling.
 
-**File:** [`src/lib/chat/mcp-tools/canonical core tool builder`](../src/lib/chat/mcp-tools/canonical core tool builder)
+**File:** [`src/lib/chat/mcp-tools/`](../src/lib/chat/mcp-tools/)
 
 ---
 

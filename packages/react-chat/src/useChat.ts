@@ -206,7 +206,7 @@ export interface UseChatReturn {
   /**
    * Access to the underlying session for advanced use cases.
    *
-   * Use this to access buffers, tool approvals, handoffs, etc.
+   * Use this to access buffers, tool approvals, elicit state, etc.
    */
   session: UseChatSessionReturn
 }

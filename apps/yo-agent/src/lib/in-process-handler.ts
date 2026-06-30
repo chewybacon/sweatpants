@@ -1,29 +1,10 @@
-/**
- * In-Process Handler Adapter
- *
- * Creates a fetch-like interface that calls the chat handler directly
- * in-process, without going over HTTP. This allows yo-agent to use
- * the same setup patterns as yo-chat while running in a single process.
- *
- * ## Architecture
- *
- * Instead of:
- *   React Hook → fetch() → HTTP → Express → Handler
- *
- * We have:
- *   React Hook → inProcessFetch() → Handler (direct call)
- *
- * The handler returns a streaming Response, which we pass back to the hook.
- */
-
-import { createChatHandler } from '@sweatpants/framework/server'
-import type { ChatHandlerSetupContext, IsomorphicTool } from '@sweatpants/framework/server'
+import { createChatHandler, type ChatHandlerSetupContext } from '@sweatpants/framework/server'
 import {
   MaxIterationsContext,
   ToolInventoryContext,
-  ToolRegistryContext,
   createToolInventory,
 } from '@sweatpants/framework/chat'
+import type { ToolDefinition } from '@sweatpants/core'
 import {
   installPiAiModelProvider,
   resolvePiAiModel,
@@ -31,37 +12,22 @@ import {
 } from '@sweatpants/model-provider-pi-ai'
 import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
 import {
-  createIsomorphicToolInventoryEntry,
+  createToolInventoryEntry,
   installLocalToolRuntime,
 } from '@sweatpants/tool-runtime-local'
 import type { Operation } from 'effection'
 
-// Re-export for convenience
-export type { IsomorphicTool }
+export type AgentTool = ToolDefinition<string, unknown, unknown, any, any>
 
-/**
- * Configuration for creating an in-process handler.
- */
 export interface InProcessHandlerConfig {
-  /** Model to use for primary chat inference. */
   model: ModelSelection
-  
-  /** Tools to register */
-  tools: IsomorphicTool[]
-  
-  /** Max tool iterations (default: 10) */
+  tools: AgentTool[]
   maxIterations?: number
 }
 
-/**
- * Create an in-process chat handler.
- *
- * Returns a fetch-like function that can be used with the framework's hooks.
- */
 export function createInProcessHandler(config: InProcessHandlerConfig) {
   const { model: modelSelection, tools, maxIterations = 10 } = config
 
-  // Create request setup (same pattern as yo-chat)
   const setupDurableStreams = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
     yield* setupInMemoryDurableStreams<string>()
   }
@@ -71,16 +37,14 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
   }
 
   const setupTools = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
-    yield* ToolRegistryContext.set(tools)
-    yield* ToolInventoryContext.set(createToolInventory(tools.map((tool) => createIsomorphicToolInventoryEntry(tool))))
-    yield* installLocalToolRuntime({ isomorphicTools: tools })
+    yield* ToolInventoryContext.set(createToolInventory(tools.map((tool) => createToolInventoryEntry(tool))))
+    yield* installLocalToolRuntime({ tools })
   }
 
   const setupMaxIterations = function* (_ctx: ChatHandlerSetupContext): Operation<void> {
     yield* MaxIterationsContext.set(maxIterations)
   }
 
-  // Create the handler
   const handler = createChatHandler({
     setup: function* setup(ctx) {
       yield* setupDurableStreams(ctx)
@@ -91,39 +55,23 @@ export function createInProcessHandler(config: InProcessHandlerConfig) {
     maxToolIterations: maxIterations,
   })
 
-  /**
-   * Fetch-like function that calls the handler in-process.
-   *
-   * This is the adapter that makes the framework's hooks work
-   * without an HTTP layer.
-   */
   async function inProcessFetch(
     input: string | Request,
     init?: RequestInit
   ): Promise<Response> {
-    // Build the request - preserve the original if it's already a Request
-    const request = typeof input === 'string' 
+    const request = typeof input === 'string'
       ? new Request(input, init)
       : input
 
     const url = request.url
-
-    // Check if this is a chat request
     if (url.endsWith('/api/chat') && request.method === 'POST') {
       return handler(request)
     }
 
-    // For other requests, return a 404
     return new Response('Not found', { status: 404 })
   }
 
   return inProcessFetch
 }
 
-/**
- * Create a base URL for in-process requests.
- *
- * The actual URL doesn't matter since we're not going over HTTP,
- * but the hooks expect a valid URL format.
- */
 export const IN_PROCESS_BASE_URL = 'http://localhost:0'

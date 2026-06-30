@@ -57,7 +57,7 @@ import type {
 // Note: concrete tool session registries should be created at server startup, not here.
 import type { ElicitsMap, RawElicitResult } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
 import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-runtime-tool.ts'
-import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/isomorphic-tools/runtime/emissions.ts'
+import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/browser-rendering/emissions.ts'
 
 // =============================================================================
 // TYPES

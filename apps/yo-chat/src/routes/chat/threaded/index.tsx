@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { MessageCirclePlus, PanelLeftOpen, RefreshCcw, Terminal } from 'lucide-react'
 import { useChat, type ChatMessage, type ChatToolCall, type StreamEventEntry } from '@sweatpants/react-chat'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { tools } from '@/__generated__/tool-registry.gen'
+import { pickCardPlugin } from '@/tools/pick-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -195,7 +195,8 @@ function ThreadPanel({
     session,
   } = useChat({
     pipeline: 'full',
-    tools: [tools.pickCard],
+    tools: [],
+    plugins: [pickCardPlugin],
     conversationId: threadId,
     onStreamEvent,
   })

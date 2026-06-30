@@ -232,7 +232,7 @@ export function* createSessionRegistry<T>(
       // Create handle that reads status from mutable state
       const handle = createHandle(sessionId, buffer)
 
-      // Get logger factory for context handoff to background task
+      // Get logger factory for context transfer to background task
       const loggerFactory = yield* LoggerFactoryContext.get()
       const source = options.source
       

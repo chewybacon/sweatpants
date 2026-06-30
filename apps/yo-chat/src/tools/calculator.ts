@@ -1,27 +1,19 @@
-/**
- * Calculator Tool
- *
- * A simple server-only tool that evaluates mathematical expressions.
- * Demonstrates the basic tool pattern with file-based discovery.
- */
-import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+import { createTool } from '@sweatpants/core'
 import { z } from 'zod'
 
-export const calculator = createIsomorphicTool('calculator')
+export const calculator = createTool('calculator')
   .description('Evaluate a mathematical expression')
   .parameters(
     z.object({
       expression: z.string().describe('The mathematical expression to evaluate'),
     })
   )
-  .context('headless')
-  .server(function*(params) {
-    // Simple expression evaluator (in production, use a proper math parser)
+  .execute(function* (params) {
     try {
-      // Only allow safe math operations
       const sanitized = params.expression.replace(/[^0-9+\-*/().%\s]/g, '')
       if (sanitized !== params.expression) {
         return {
+          expression: params.expression,
           error: 'Invalid characters in expression',
           result: null,
         }
@@ -43,4 +35,3 @@ export const calculator = createIsomorphicTool('calculator')
       }
     }
   })
-  .build()

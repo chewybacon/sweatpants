@@ -1,10 +1,10 @@
 /**
  * Tests for session history synchronization after tool calls.
  * 
- * Bug context: After isomorphic tool handoffs complete, the session history
- * wasn't being updated with:
+ * Bug context: After browser-interactive tool calls complete, the session history
+ * must be updated with:
  * 1. Assistant messages containing tool_calls
- * 2. Tool result messages with actual content (phase 2 results)
+ * 2. Tool result messages with actual content
  * 
  * This caused the LLM to not see tool call history on subsequent turns,
  * preventing it from calling tools again.

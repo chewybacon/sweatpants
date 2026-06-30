@@ -2,7 +2,7 @@
  * Tool Discovery Tests
  *
  * Tests for the tool discovery Vite plugin that scans directories
- * for isomorphic tool definitions and generates a type-safe registry.
+ * for canonical tool definitions and generates a type-safe registry.
  *
  * @vitest-environment node
  */
@@ -108,11 +108,11 @@ describe("calculateImportPath", () => {
 
 describe("discoverToolsInContent", () => {
   describe("named export pattern", () => {
-    it("discovers export const with createIsomorphicTool", () => {
+    it("discovers export const with createTool", () => {
       const content = `
-        import { createIsomorphicTool } from '@/lib/chat/isomorphic-tools'
+        import { createTool } from '@sweatpants/core'
 
-        export const calculator = createIsomorphicTool('calculator')
+        export const calculator = createTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
           .server(function*() { return { result: 42 } })
@@ -128,11 +128,11 @@ describe("discoverToolsInContent", () => {
       });
     });
 
-    it("discovers export const with createIsomorphicTool any import path", () => {
+    it("discovers export const with createTool any import path", () => {
       const content = `
-        import { createIsomorphicTool } from '@/herp/derp'
+        import { createTool } from '@sweatpants/core'
 
-        export const calculator = createIsomorphicTool('calculator')
+        export const calculator = createTool('calculator')
           .description('Calculate something')
           .parameters(z.object({}))
           .server(function*() { return { result: 42 } })
@@ -150,11 +150,11 @@ describe("discoverToolsInContent", () => {
 
     it("discovers multiple named exports", () => {
       const content = `
-        export const calculator = createIsomorphicTool('calculator')
+        export const calculator = createTool('calculator')
           .description('...')
           .build()
 
-        export const search = createIsomorphicTool('search_web')
+        export const search = createTool('search_web')
           .description('...')
           .build()
       `;
@@ -168,9 +168,9 @@ describe("discoverToolsInContent", () => {
     });
 
     it("handles different quote styles", () => {
-      const singleQuote = `export const foo = createIsomorphicTool('my_tool')`;
-      const doubleQuote = `export const bar = createIsomorphicTool("my_tool_2")`;
-      const backtick = `export const baz = createIsomorphicTool(\`my_tool_3\`)`;
+      const singleQuote = `export const foo = createTool('my_tool')`;
+      const doubleQuote = `export const bar = createTool("my_tool_2")`;
+      const backtick = `export const baz = createTool(\`my_tool_3\`)`;
 
       expect(discoverTools(singleQuote)).toHaveLength(1);
       expect(discoverTools(doubleQuote)).toHaveLength(1);
@@ -178,8 +178,8 @@ describe("discoverToolsInContent", () => {
     });
 
     it("handles whitespace variations", () => {
-      const withSpaces = `export const   foo   =   createIsomorphicTool  (  'my_tool'  )`;
-      const withNewlines = `export const foo = createIsomorphicTool(\n  'my_tool'\n)`;
+      const withSpaces = `export const   foo   =   createTool  (  'my_tool'  )`;
+      const withNewlines = `export const foo = createTool(\n  'my_tool'\n)`;
 
       expect(discoverTools(withSpaces)).toHaveLength(1);
       expect(discoverTools(withNewlines)).toHaveLength(1);
@@ -189,7 +189,7 @@ describe("discoverToolsInContent", () => {
   describe("default export pattern", () => {
     it("discovers inline default export", () => {
       const content = `
-        export default createIsomorphicTool('my_default_tool')
+        export default createTool('my_default_tool')
           .description('...')
           .build()
       `;
@@ -206,7 +206,7 @@ describe("discoverToolsInContent", () => {
 
     it("discovers variable + default export pattern", () => {
       const content = `
-        const guessCard = createIsomorphicTool('guess_card')
+        const guessCard = createTool('guess_card')
           .description('...')
           .build()
 
@@ -229,7 +229,7 @@ describe("discoverToolsInContent", () => {
   describe("export { } pattern", () => {
     it("discovers variable + named export brace pattern", () => {
       const content = `
-        const myTool = createIsomorphicTool('my_tool')
+        const myTool = createTool('my_tool')
           .description('...')
           .build()
 
@@ -247,7 +247,7 @@ describe("discoverToolsInContent", () => {
 
     it("discovers export with alias", () => {
       const content = `
-        const internalTool = createIsomorphicTool('my_tool')
+        const internalTool = createTool('my_tool')
           .description('...')
           .build()
 
@@ -265,8 +265,8 @@ describe("discoverToolsInContent", () => {
 
     it("discovers multiple exports in braces", () => {
       const content = `
-        const toolA = createIsomorphicTool('tool_a').build()
-        const toolB = createIsomorphicTool('tool_b').build()
+        const toolA = createTool('tool_a').build()
+        const toolB = createTool('tool_b').build()
         const notATool = { foo: 'bar' }
 
         export { toolA, toolB, notATool }
@@ -290,8 +290,8 @@ describe("discoverToolsInContent", () => {
 
     it("ignores commented out tools", () => {
       const content = `
-        // export const commented = createIsomorphicTool('commented_tool')
-        export const active = createIsomorphicTool('active_tool')
+        // export const commented = createTool('commented_tool')
+        export const active = createTool('active_tool')
       `;
       const tools = discoverTools(content);
 
@@ -303,7 +303,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("handles tool names with special characters", () => {
-      const content = `export const foo = createIsomorphicTool('my-tool_v2')`;
+      const content = `export const foo = createTool('my-tool_v2')`;
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
@@ -312,7 +312,7 @@ describe("discoverToolsInContent", () => {
 
     it("does not duplicate tools exported multiple ways", () => {
       const content = `
-        export const myTool = createIsomorphicTool('my_tool')
+        export const myTool = createTool('my_tool')
           .build()
 
         // Also exported via braces (but should not duplicate)
@@ -323,7 +323,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("sets correct file paths", () => {
-      const content = `export const foo = createIsomorphicTool('foo')`;
+      const content = `export const foo = createTool('foo')`;
       const tools = discoverToolsInContent(
         content,
         "/project/src/tools/nested/my-tool.ts",
@@ -336,7 +336,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("sets correct file paths (island)", () => {
-      const content = `export const foo = createIsomorphicTool('foo')`;
+      const content = `export const foo = createTool('foo')`;
       const tools = discoverToolsInContent(
         content,
         "/project/src/feature/tools/my-tool.ts",
@@ -370,7 +370,7 @@ describe("discoverToolsInContent", () => {
         "/project/src/tools/my-tool.ts",
         "/project/src/tools",
         resolveToolDiscoveryOptions({
-          exportFunctionName: ["createTool", "createIsomorphicTool"],
+          exportFunctionName: ["createTool"],
         }),
       );
 
@@ -382,9 +382,9 @@ describe("discoverToolsInContent", () => {
   describe(".tsx file support", () => {
     it("discovers .tsx files with named exports", () => {
       const content = `
-        import { createIsomorphicTool } from '@sweatpants/framework/chat/isomorphic-tools'
+        import { createTool } from '@sweatpants/core'
 
-        export const askQuestion = createIsomorphicTool('ask_question')
+        export const askQuestion = createTool('ask_question')
           .description('Ask a question to the user')
           .parameters(z.object({ question: z.string() }))
           .build()
@@ -406,7 +406,7 @@ describe("discoverToolsInContent", () => {
 
     it("discovers nested .tsx files", () => {
       const content = `
-        export const askQuestion = createIsomorphicTool('ask_question').build()
+        export const askQuestion = createTool('ask_question').build()
       `;
       const tools = discoverToolsInContent(
         content,
@@ -422,7 +422,7 @@ describe("discoverToolsInContent", () => {
 
     it("discovers default export .tsx files", () => {
       const content = `
-        export default createIsomorphicTool('ui_dialog').build()
+        export default createTool('ui_dialog').build()
       `;
       const tools = discoverToolsInContent(
         content,
@@ -460,7 +460,7 @@ describe("discoverToolsInContent", () => {
     });
 
     it("derives name from export identifier without Tool suffix (unchanged)", () => {
-      const content = `export const calculator = createIsomorphicTool().build()`;
+      const content = `export const calculator = createTool().build()`;
       const tools = discoverTools(content);
 
       expect(tools).toHaveLength(1);
@@ -697,7 +697,7 @@ describe("resolveToolDiscoveryOptions", () => {
     expect(options.dir).toBe("src/tools");
     expect(options.outFile).toBe("src/__generated__/tool-registry.gen.ts");
     expect(options.pattern).toBe("**/*.ts");
-    expect(options.exportFunctionName).toEqual(["createIsomorphicTool", "createTool"]);
+    expect(options.exportFunctionName).toEqual(["createTool"]);
     expect(options.logLevel).toBe("normal");
     expect(options.generateWorker).toBe(false);
     expect(options.workerOutFile).toBe("src/__generated__/tool-worker.gen.ts");
@@ -794,7 +794,7 @@ describe("integration: toolDiscoveryPlugin", () => {
     try {
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createIsomorphicTool('calculator').build()`,
+        `export const calculator = createTool('calculator').build()`,
       );
 
       await runPlugin();
@@ -815,7 +815,7 @@ describe("integration: toolDiscoveryPlugin", () => {
     try {
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createIsomorphicTool('calculator').build()`,
+        `export const calculator = createTool('calculator').build()`,
       );
 
       const plugin = toolDiscoveryPlugin({
@@ -853,11 +853,11 @@ describe("integration: toolDiscoveryPlugin", () => {
     try {
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createIsomorphicTool('calculator').build()`,
+        `export const calculator = createTool('calculator').build()`,
       );
       await writeToolFile(
         "search.ts",
-        `export const search = createIsomorphicTool('search_web').build()`,
+        `export const search = createTool('search_web').build()`,
       );
 
       await runPlugin();
@@ -879,7 +879,7 @@ describe("integration: toolDiscoveryPlugin", () => {
       await mkdir(join(tempDir, "src/tools/games"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/games/guess-card.ts"),
-        `export const guessCard = createIsomorphicTool('guess_card').build()`,
+        `export const guessCard = createTool('guess_card').build()`,
       );
 
       await runPlugin();
@@ -914,11 +914,11 @@ describe("integration: toolDiscoveryPlugin", () => {
     try {
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createIsomorphicTool('calculator').build()`,
+        `export const calculator = createTool('calculator').build()`,
       );
       await writeToolFile(
         "calculator.test.ts",
-        `export const testTool = createIsomorphicTool('test_tool').build()`,
+        `export const testTool = createTool('test_tool').build()`,
       );
 
       await runPlugin();
@@ -938,7 +938,7 @@ describe("integration: toolDiscoveryPlugin", () => {
     try {
       await writeToolFile(
         "my-tool.ts",
-        `export default createIsomorphicTool('my_default_tool').build()`,
+        `export default createTool('my_default_tool').build()`,
       );
 
       await runPlugin();
@@ -959,17 +959,17 @@ describe("integration: toolDiscoveryPlugin", () => {
       // Named export
       await writeToolFile(
         "named.ts",
-        `export const namedTool = createIsomorphicTool('named_tool').build()`,
+        `export const namedTool = createTool('named_tool').build()`,
       );
       // Default export
       await writeToolFile(
         "default.ts",
-        `export default createIsomorphicTool('default_tool').build()`,
+        `export default createTool('default_tool').build()`,
       );
       // Variable + export
       await writeToolFile(
         "variable.ts",
-        `const varTool = createIsomorphicTool('var_tool').build()
+        `const varTool = createTool('var_tool').build()
 export { varTool }`,
       );
 
@@ -990,7 +990,7 @@ export { varTool }`,
     try {
       await writeToolFile(
         "ask_question.tsx",
-        `export const askQuestion = createIsomorphicTool('ask_question')
+        `export const askQuestion = createTool('ask_question')
           .description('Ask a question to the user')
           .parameters(z.object({ question: z.string() }))
           .build()`,
@@ -1014,7 +1014,7 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/general"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/general/ask_question.tsx"),
-        `export const askQuestion = createIsomorphicTool('ask_question').build()`,
+        `export const askQuestion = createTool('ask_question').build()`,
       );
 
       await runPlugin();
@@ -1034,13 +1034,13 @@ export { varTool }`,
       // TypeScript tool
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createIsomorphicTool('calculator').build()`,
+        `export const calculator = createTool('calculator').build()`,
       );
       // TSX tool in nested directory
       await mkdir(join(tempDir, "src/tools/general"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/general/ask_question.tsx"),
-        `export const askQuestion = createIsomorphicTool('ask_question').build()`,
+        `export const askQuestion = createTool('ask_question').build()`,
       );
 
       await runPlugin();
@@ -1064,11 +1064,11 @@ export { varTool }`,
     try {
       await writeToolFile(
         "real-tool.tsx",
-        `export const realTool = createIsomorphicTool('real_tool').build()`,
+        `export const realTool = createTool('real_tool').build()`,
       );
       await writeToolFile(
         "real-tool.test.tsx",
-        `export const testTool = createIsomorphicTool('test_tool').build()`,
+        `export const testTool = createTool('test_tool').build()`,
       );
 
       await runPlugin();
@@ -1089,7 +1089,7 @@ export { varTool }`,
       await writeToolFile("tictactoe.ts", `export const tictactoeTool = createTool().build()`);
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createIsomorphicTool().build()`,
+        `export const calculator = createTool().build()`,
       );
 
       await runPlugin();

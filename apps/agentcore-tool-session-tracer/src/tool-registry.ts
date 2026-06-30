@@ -1,6 +1,8 @@
 import type { McpRuntimeTool } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-runtime-tool.ts";
 import type { ElicitsMap } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
-import { toolList } from "../../yo-chat/src/__generated__/tool-registry.gen.ts";
+import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
+import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
+import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
 
 type RuntimeMcpTool = McpRuntimeTool<
   string,
@@ -13,7 +15,6 @@ type RuntimeMcpTool = McpRuntimeTool<
 
 type BridgeCompatibleTool = {
   execute?: unknown;
-  handoffConfig?: unknown;
   parameters?: unknown;
   capabilities?: unknown;
   schemas?: unknown;
@@ -21,24 +22,20 @@ type BridgeCompatibleTool = {
 
 function isBridgeCompatibleTool(tool: unknown): tool is BridgeCompatibleTool {
   if ((typeof tool !== "object" && typeof tool !== "function") || tool === null) return false;
-  return "execute" in tool || "handoffConfig" in tool || ("parameters" in tool && "capabilities" in tool && "schemas" in tool);
+  return "execute" in tool || ("parameters" in tool && "capabilities" in tool && "schemas" in tool);
 }
 
 function assertRuntimeMcpTool(name: string, tool: unknown): RuntimeMcpTool {
   if (!isBridgeCompatibleTool(tool)) {
     throw new Error(
-      `Generated AgentCore tool "${name}" is not MCP bridge-compatible: expected canonical core ToolDefinition, execute, or handoffConfig`,
+      `Generated AgentCore tool "${name}" is not MCP bridge-compatible: expected canonical core ToolDefinition or execute`,
     );
   }
   return tool as RuntimeMcpTool;
 }
 
-/**
- * Supported AgentCore tool names, filtered at runtime via the
- * `AGENTCORE_TOOL_NAMES` environment variable. When unset, defaults to the
- * Batch-1 bridge-compatible tools. This is a runtime configuration concern —
- * no codegen fork.
- */
+const ALL_RUNTIME_TOOLS = [bookFlightTool, playTttTool, tictactoeTool] as const;
+
 const SUPPORTED_TOOL_NAMES = new Set<string>(
   (process.env["AGENTCORE_TOOL_NAMES"] ?? "book_flight,play_ttt,tictactoe")
     .split(",")
@@ -48,7 +45,7 @@ const SUPPORTED_TOOL_NAMES = new Set<string>(
 
 const runtimeTools = new Map<string, RuntimeMcpTool>();
 
-for (const tool of toolList) {
+for (const tool of ALL_RUNTIME_TOOLS) {
   const name = (tool as { name: string }).name;
   if (SUPPORTED_TOOL_NAMES.has(name)) {
     runtimeTools.set(name, assertRuntimeMcpTool(name, tool));

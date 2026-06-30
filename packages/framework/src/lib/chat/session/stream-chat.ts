@@ -9,7 +9,7 @@
  * - Parse response body via parseNDJSON Effection stream
  * - Convert to Effection stream and consume with each()
  * - Emit patches for each event
- * - Handle client tool handoff when server requests client-side execution
+ * - Emit elicit patches when runtime tools request browser/user input
  */
 import type { Operation, Channel } from 'effection'
 import { useAbortSignal } from 'effection'
@@ -34,7 +34,7 @@ export type { ElicitResponseData, StreamChatOptions } from './options.ts'
  * @param messages - The conversation history to send
  * @param patches - Channel to emit patches to
  * @param options - Optional configuration for the chat
- * @returns StreamResult - either complete or isomorphic_handoff
+ * @returns StreamResult - complete or waiting for elicitation
  */
 export function* streamChatOnce(
   messages: Message[],

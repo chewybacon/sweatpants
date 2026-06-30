@@ -17,14 +17,10 @@
  *     pickFlight: z.object({ flightId: z.string() }),
  *     confirm: z.object({ ok: z.boolean() }),
  *   })
- *   .handoff({
- *     *before(params) { ... },
- *     *client(handoff, ctx) {
- *       const picked = yield* ctx.elicit('pickFlight', { message: 'Pick a flight' })
- *       const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
- *       return { picked, ok }
- *     },
- *     *after(handoff, client) { ... }
+ *   .execute(function* (params, ctx) {
+ *     const picked = yield* ctx.elicit('pickFlight', { message: 'Pick a flight' })
+ *     const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
+ *     return { picked, ok }
  *   })
  *
  * // Derive the plugin with exhaustive UI handlers
@@ -60,7 +56,7 @@
  */
 import type { Operation } from "effection";
 import type { z } from "zod";
-import type { ComponentTypeLike } from "../isomorphic-tools/runtime/emissions.ts";
+import type { ComponentTypeLike } from "../browser-rendering/emissions.ts";
 import type {
   ElicitRequest,
   ElicitsMap,
@@ -76,13 +72,13 @@ export type {
   RenderableProps,
   UserProps,
   ExtractResponse,
-} from "../isomorphic-tools/runtime/browser-context.ts";
+} from "../browser-rendering/browser-context.ts";
 
 // =============================================================================
 // CLIENT CONTEXT (what onElicit handlers receive)
 // =============================================================================
 
-import type { UserProps, ExtractResponse } from "../isomorphic-tools/runtime/browser-context.ts";
+import type { UserProps, ExtractResponse } from "../browser-rendering/browser-context.ts";
 
 /**
  * Context available to onElicit handlers.
@@ -178,14 +174,14 @@ export type ElicitHandlers<TElicits extends ElicitsMap> = {
 export interface PluginServerRegistration<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
   TSamples extends SamplesMap | true | undefined,
 > {
   /** Tools to register with the chat handler */
-  tools: [McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>];
+  tools: [McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>];
 
   /** Tool name (for lookup) */
   toolName: TName;
@@ -211,20 +207,20 @@ export interface PluginClientRegistration<TElicits extends ElicitsMap> {
 export interface McpPlugin<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
   TSamples extends SamplesMap | true | undefined = undefined,
 > {
   /** Server-side registration */
-  server: PluginServerRegistration<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>;
+  server: PluginServerRegistration<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>;
 
   /** Client-side registration */
   client: PluginClientRegistration<TElicits>;
 
   /** Original tool (for advanced use cases) */
-  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>;
+  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>;
 }
 
 // =============================================================================
@@ -237,7 +233,7 @@ export interface McpPlugin<
 export interface PluginBuilder<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
@@ -247,7 +243,7 @@ export interface PluginBuilder<
    * Define exhaustive handlers for all elicitation keys.
    *
    * Each handler is a generator that receives:
-   * - `req`: The elicitation request (message, schema, handoff data, etc.)
+   * - `req`: The elicitation request (message, schema, context data, etc.)
    * - `ctx`: Client context (step, waitFor, reportProgress, etc.)
    *
    * And returns an `ElicitResult<T>`:
@@ -274,7 +270,7 @@ export interface PluginBuilder<
    */
   onElicit(
     handlers: ElicitHandlers<TElicits>,
-  ): PluginBuilderWithHandlers<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>;
+  ): PluginBuilderWithHandlers<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>;
 }
 
 /**
@@ -283,7 +279,7 @@ export interface PluginBuilder<
 export interface PluginBuilderWithHandlers<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
@@ -294,7 +290,7 @@ export interface PluginBuilderWithHandlers<
    *
    * @returns A plugin with `server` and `client` registrations
    */
-  build(): McpPlugin<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>;
+  build(): McpPlugin<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>;
 }
 
 // =============================================================================
@@ -304,31 +300,31 @@ export interface PluginBuilderWithHandlers<
 interface PluginBuilderState<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
   TSamples extends SamplesMap | true | undefined,
 > {
-  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>;
+  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>;
   handlers?: ElicitHandlers<TElicits>;
 }
 
 function createPluginBuilder<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
   TSamples extends SamplesMap | true | undefined,
 >(
-  state: PluginBuilderState<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>,
-): PluginBuilder<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples> {
+  state: PluginBuilderState<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>,
+): PluginBuilder<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples> {
   return {
     onElicit(handlers: ElicitHandlers<TElicits>) {
       return {
-        build(): McpPlugin<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples> {
+        build(): McpPlugin<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples> {
           const { tool } = state;
 
           return {
@@ -374,14 +370,14 @@ function createPluginBuilder<
 export function makePlugin<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
   TSamples extends SamplesMap | true | undefined,
 >(
-  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples>,
-): PluginBuilder<TName, TParams, THandoff, TClient, TResult, TElicits, TSamples> {
+  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples>,
+): PluginBuilder<TName, TParams, TInteraction, TClient, TResult, TElicits, TSamples> {
   return createPluginBuilder({ tool });
 }
 

@@ -39,7 +39,7 @@ function categorize(type: string): EventCategory {
   if (type.startsWith('ag_ui_text_message')) return 'text'
   if (type === 'thinking') return 'text'
   if (type.startsWith('ag_ui_tool_call')) return 'tool'
-  if (type === 'isomorphic_handoff' || type === 'elicit_request') return 'tool'
+  if (type === 'elicit_request') return 'tool'
   if (type.startsWith('tool_session')) return 'tool'
   if (type === 'ag_ui_run_started' || type === 'ag_ui_run_finished') return 'lifecycle'
   if (type === 'session_info') return 'lifecycle'

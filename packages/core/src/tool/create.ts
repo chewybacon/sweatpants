@@ -22,7 +22,7 @@ import type { ElicitResponse } from "../types/transport.ts";
 
 /**
  * Creates a unified tool with the builder chain: createTool(name) →
- * .description() → .parameters() → .elicits() → .execute()/.handoff().
+ * .description() → .parameters() → .elicits()/.samples() → .execute().
  */
 export function createTool<TName extends string>(
   name: TName,

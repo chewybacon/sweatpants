@@ -6,11 +6,10 @@
  *
  * The engine handles:
  * - Session info emission
- * - Client output processing (phase 2 handoffs)
  * - Provider streaming (text, thinking, tool_calls)
  * - Tool execution with parallel execution and buffered results
  * - Tool loop iterations
- * - Handoff detection and conversation state emission
+ * - Elicitation detection and conversation state emission
  * - Error handling (non-fatal continues, fatal stops)
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
@@ -22,21 +21,14 @@ import type {
   Message as RuntimeMessage,
   StreamEvent as RuntimeStreamEvent,
 } from "../../lib/chat/runtime/index.ts";
-import type {
-  ServerToolContext,
-  ServerAuthorityContext,
-} from "../../lib/chat/isomorphic-tools/types.ts";
-import type { ToolExecutionTrace } from "../../lib/chat/isomorphic-tools/runtime/emissions.ts";
+import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/emissions.ts";
 import type { StreamEvent, ChatMessage } from "../types.ts";
 import type {
   ChatEngineParams,
   ChatEngine,
   ToolCall,
   ToolSchema,
-  ToolRegistry,
-  IsomorphicTool,
   ToolExecutionResult,
-  IsomorphicClientOutput,
 } from "./types.ts";
 import {
   type ToolExecution,
@@ -53,33 +45,7 @@ import {
   buildAgUiCheckpoint,
   buildAgUiCustomState,
 } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import {
-  getToolParameterValidationErrorPayload,
-  validateToolParameters,
-} from "../../lib/chat/tool-parameters.ts";
-
-// =============================================================================
-// CONTEXT HELPERS (adapted from create-handler.ts)
-// =============================================================================
-
-/**
- * Create a Phase 2 context for server-first tools.
- *
- * After client execution, we resume the server's handoff with
- * the cached handoff data and client output.
- */
-function createPhase2Context(
-  baseContext: ServerToolContext,
-  cachedHandoff: unknown,
-  clientOutput: unknown,
-): ServerAuthorityContext {
-  return {
-    ...baseContext,
-    *handoff(config) {
-      return yield* config.after(cachedHandoff as never, clientOutput as never);
-    },
-  };
-}
+import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
 
 // =============================================================================
 // INTERNAL STATE TYPES
@@ -95,8 +61,6 @@ interface EngineState {
   toolCalls: ToolCall[] | null;
   toolResults: ToolExecutionResult[] | null;
   error: Error | null;
-  // Plugin session state
-  pendingPluginSessions: Map<string, { callId: string; toolName: string }>;
   awaitingElicitResult: ToolExecutionResult | null;
   assistantMessageId: string | null;
   assistantTextOpen: boolean;
@@ -106,18 +70,6 @@ interface EngineState {
 // =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
-
-/**
- * Validate tool parameters using the tool's declared schema.
- */
-function validateToolParams(tool: IsomorphicTool, params: unknown, callId: string): unknown {
-  return validateToolParameters({
-    schema: tool.parameters,
-    params,
-    toolName: tool.name,
-    callId,
-  });
-}
 
 /**
  * Convert a runtime stream event to AG-UI StreamEvents.
@@ -168,7 +120,7 @@ function runtimeEventToAgUiStreamEvents(
  *
  * - Success results emit `ag_ui_tool_call_result`
  * - Error results emit `ag_ui_tool_call_error`
- * - Handoff and elicit results pass through unchanged (they are not legacy)
+ * - Elicit results pass through as pending client actions
  */
 function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
   if (!result.ok) {
@@ -181,9 +133,6 @@ function toolResultToAgUiStreamEvent(result: ToolExecutionResult): StreamEvent {
     };
   }
 
-  if (result.kind === "handoff") {
-    return result.handoff;
-  }
 
   if (result.kind === "plugin_awaiting") {
     // Plugin tool is waiting for elicitation - emit elicit request
@@ -255,24 +204,6 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
         },
       };
     }
-    case "awaiting_client":
-      return {
-        ok: true,
-        kind: "handoff",
-        callId: ref.callId,
-        toolName,
-        handoff: {
-          type: "isomorphic_handoff",
-          callId: ref.callId,
-          toolName,
-          params: execution.request.params ?? call.function.arguments,
-          serverOutput: execution.request.serverOutput,
-          ...(execution.request.usesHandoff !== undefined
-            ? { usesHandoff: execution.request.usesHandoff }
-            : {}),
-        },
-        serverOutput: execution.request.serverOutput,
-      };
     case "awaiting_elicit":
       return {
         ok: true,
@@ -305,6 +236,15 @@ function toolExecutionToResult(execution: ToolExecution, call: ToolCall): ToolEx
           key: "running",
           message: "Tool execution is still running.",
           schema: { type: "object", properties: {}, required: [] },
+        },
+      };
+    default:
+      return {
+        ok: false,
+        error: {
+          callId: ref.callId,
+          toolName,
+          message: `Unsupported tool execution state: ${(execution as { kind?: string }).kind ?? 'unknown'}`,
         },
       };
   }
@@ -449,85 +389,6 @@ function agUiTextLifecycleEvents(
 }
 
 // =============================================================================
-// TOOL EXECUTION
-// =============================================================================
-
-/**
- * Process client outputs from phase 1 handoffs (phase 2 execution).
- * Returns AG-UI tool call result/error events.
- */
-function* processClientOutput(
-  output: IsomorphicClientOutput,
-  registry: ToolRegistry,
-  _signal: AbortSignal,
-): Operation<StreamEvent> {
-  const tool = registry.get(output.toolName);
-
-  if (!tool) {
-    return {
-      type: "ag_ui_tool_call_error",
-      toolCallId: output.callId,
-      toolCallName: output.toolName,
-      message: `Tool not found: ${output.toolName}`,
-    };
-  }
-
-  // Phase 2: Execute server's after() with client output
-  try {
-    // If tool has a server function, run it with Phase 2 context
-    // This re-enters the tool's server function with handoff() configured
-    // to call config.after() instead of config.before()
-    if (tool.server && output.usesHandoff) {
-      const baseContext: ServerToolContext = { callId: output.callId, signal: _signal };
-      const phase2Context = createPhase2Context(
-        baseContext,
-        output.cachedHandoff,
-        output.clientOutput,
-      );
-
-      // Re-run the server function - it will call ctx.handoff() which now
-      // returns the result of config.after(cachedHandoff, clientOutput)
-      const validatedParams = validateToolParams(tool, output.params, output.callId);
-      const serverResult = yield* tool.server(validatedParams, phase2Context);
-
-      const content =
-        typeof serverResult === "string" ? serverResult : JSON.stringify(serverResult);
-
-      return {
-        type: "ag_ui_tool_call_result",
-        toolCallId: output.callId,
-        toolCallName: output.toolName,
-        content,
-        ...(output.trace && { trace: output.trace }),
-      };
-    }
-
-    // Fallback: just use client output as the result
-    const content =
-      typeof output.clientOutput === "string"
-        ? output.clientOutput
-        : JSON.stringify(output.clientOutput);
-
-    return {
-      type: "ag_ui_tool_call_result",
-      toolCallId: output.callId,
-      toolCallName: output.toolName,
-      content,
-      ...(output.trace && { trace: output.trace }),
-    };
-  } catch (error) {
-    const validation = getToolParameterValidationErrorPayload(error);
-    return {
-      type: "ag_ui_tool_call_error",
-      toolCallId: output.callId,
-      toolCallName: output.toolName,
-      message: validation?.message ?? (error instanceof Error ? error.message : String(error)),
-      ...(validation ? { error: validation } : {}),
-    };
-  }
-}
-
-// =============================================================================
 // CHAT ENGINE FACTORY
 // =============================================================================
 
@@ -546,9 +407,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     replayState,
     systemPrompt,
     toolSchemas,
-    toolRegistry,
-    clientIsomorphicTools,
-    isomorphicClientOutputs,
     runtime,
     model,
     streamOptions,
@@ -566,12 +424,12 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
   // Build schema lookup map
   const schemaByName = new Map<string, ToolSchema>();
-  for (const schema of [...toolSchemas, ...clientIsomorphicTools]) {
+  for (const schema of toolSchemas) {
     schemaByName.set(schema.name, schema);
   }
 
   const allSchemaMap = new Map<string, ToolSchema>();
-  for (const schema of [...toolSchemas, ...clientIsomorphicTools]) {
+  for (const schema of toolSchemas) {
     if (!allSchemaMap.has(schema.name)) allSchemaMap.set(schema.name, schema);
   }
   const allSchemas = Array.from(allSchemaMap.values());
@@ -598,7 +456,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       toolCalls: null,
       toolResults: null,
       error: null,
-      pendingPluginSessions: new Map(),
       awaitingElicitResult: null,
       assistantMessageId: null,
       assistantTextOpen: false,
@@ -795,8 +652,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
                 state.phase = "process_plugin_abort";
               } else if (elicitResponses && elicitResponses.length > 0) {
                 state.phase = "process_plugin_responses";
-              } else if (isomorphicClientOutputs.length > 0) {
-                state.phase = "process_client_outputs";
               } else {
                 state.phase = "start_iteration";
               }
@@ -807,8 +662,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               state.phase = "process_plugin_abort";
             } else if (elicitResponses && elicitResponses.length > 0) {
               state.phase = "process_plugin_responses";
-            } else if (isomorphicClientOutputs.length > 0) {
-              state.phase = "process_client_outputs";
             } else {
               state.phase = "start_iteration";
             }
@@ -856,8 +709,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Move to next phase
             if (elicitResponses && elicitResponses.length > 0) {
               state.phase = "process_plugin_responses";
-            } else if (isomorphicClientOutputs.length > 0) {
-              state.phase = "process_client_outputs";
             } else {
               state.phase = "start_iteration";
             }
@@ -982,85 +833,11 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             // Check if we need to await more elicitation
             if (state.awaitingElicitResult) {
               state.phase = "awaiting_elicit";
-            } else if (isomorphicClientOutputs.length > 0) {
-              state.phase = "process_client_outputs";
             } else {
               state.phase = "start_iteration";
             }
 
             // Return first pending event if any
-            if (state.pendingEvents.length > 0) {
-              return { done: false, value: state.pendingEvents.shift()! };
-            }
-            return yield* this.next();
-          }
-
-          case "process_client_outputs": {
-            // Process all client outputs and buffer the events
-            for (const output of isomorphicClientOutputs) {
-              const event = yield* processClientOutput(output, toolRegistry, signal);
-              state.pendingEvents.push(event);
-
-              if (output.trace) {
-                replayToolTraceMap.set(output.callId, {
-                  callId: output.callId,
-                  toolName: output.toolName,
-                  trace: output.trace,
-                });
-              }
-
-              // Also add to conversation messages if it's a result
-              if (event.type === "ag_ui_tool_call_result") {
-                // Find existing tool message or add new one
-                let found = false;
-                for (const msg of state.conversationMessages) {
-                  if (msg.role === "tool" && msg.tool_call_id === output.callId) {
-                    msg.content = event.content;
-                    if (output.trace) {
-                      (
-                        msg as typeof msg & {
-                          replay?: {
-                            toolName: string;
-                            trace: ToolExecutionTrace;
-                          };
-                        }
-                      ).replay = {
-                        toolName: output.toolName,
-                        trace: output.trace,
-                      };
-                    }
-                    found = true;
-                    break;
-                  }
-                }
-                if (!found) {
-                  appendToolMessage(
-                    state.conversationMessages,
-                    conversationTranscriptState,
-                    output.callId,
-                    event.content,
-                    output.trace
-                      ? {
-                          toolName: output.toolName,
-                          trace: output.trace,
-                        }
-                      : undefined,
-                  );
-                }
-              } else if (event.type === "ag_ui_tool_call_error") {
-                appendToolMessage(
-                  state.conversationMessages,
-                  conversationTranscriptState,
-                  output.callId,
-                  `Error: ${event.message}`,
-                  { toolName: output.toolName },
-                );
-              }
-            }
-
-            state.phase = "start_iteration";
-
-            // Return first pending event
             if (state.pendingEvents.length > 0) {
               return { done: false, value: state.pendingEvents.shift()! };
             }
@@ -1320,90 +1097,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               return yield* this.next();
             }
 
-            // Check for handoffs
-            const handoffResults = results.filter((r) => r.ok && r.kind === "handoff");
-
-            if (handoffResults.length > 0) {
-              // Hand off to client - emit AG-UI checkpoint and stop
-              state.phase = "handoff_pending";
-
-              const serverToolResults = results.map((r) => {
-                if (r.ok) {
-                  if (r.kind === "handoff") {
-                    return { id: r.callId, name: r.toolName, content: "", isError: false };
-                  }
-                  if (r.kind === "plugin_awaiting") {
-                    return { id: r.callId, name: r.toolName, content: "", isError: false };
-                  }
-                  return {
-                    id: r.callId,
-                    name: r.toolName,
-                    content:
-                      typeof r.serverOutput === "string"
-                        ? r.serverOutput
-                        : JSON.stringify(r.serverOutput),
-                    isError: false,
-                  };
-                }
-                return {
-                  id: r.error.callId,
-                  name: r.error.toolName,
-                  content: `Error: ${r.error.message}`,
-                  isError: true,
-                };
-              });
-
-              state.pendingEvents.push({
-                type: "ag_ui_state_snapshot",
-                run: {
-                  threadId: agUiRun.threadId,
-                  runId: agUiRun.runId,
-                  ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
-                },
-                state: buildAgUiCustomState({
-                  ...(replayToolTraceMap.size > 0
-                    ? {
-                        replay: {
-                          toolTraces: Array.from(replayToolTraceMap.values()),
-                        },
-                      }
-                    : {}),
-                  handoffs: handoffResults
-                    .filter(
-                      (
-                        r,
-                      ): r is Extract<
-                        (typeof handoffResults)[number],
-                        { ok: true; kind: "handoff" }
-                      > => r.ok && r.kind === "handoff",
-                    )
-                    .map((r) => r.handoff),
-                }),
-              });
-              state.pendingEvents.push({
-                type: "ag_ui_checkpoint",
-                checkpoint: buildAgUiCheckpoint({
-                  threadId: agUiRun.threadId,
-                  runId: agUiRun.runId,
-                  ...(agUiRun.parentRunId ? { parentRunId: agUiRun.parentRunId } : {}),
-                  messages: state.conversationMessages,
-                  assistantContent: runtimeText(providerResult),
-                  toolCalls,
-                  serverToolResults,
-                  ...(replayToolTraceMap.size > 0
-                    ? {
-                        replay: {
-                          toolTraces: Array.from(replayToolTraceMap.values()),
-                        },
-                      }
-                    : {}),
-                }),
-              });
-
-              return { done: false, value: state.pendingEvents.shift()! };
-            }
-
-            // No handoffs - update messages and continue loop
+            // Update messages and continue loop
             // Add assistant message with tool calls
             appendAssistantToolCallMessage(
               state.conversationMessages,
@@ -1496,7 +1190,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
             const serverToolResults = results.map((r) => {
               if (r.ok) {
-                if (r.kind === "handoff" || r.kind === "plugin_awaiting") {
+                if (r.kind === "plugin_awaiting") {
                   return { id: r.callId, name: r.toolName, content: "", isError: false };
                 }
                 return {
@@ -1571,7 +1265,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
               }),
             });
 
-            state.phase = "handoff_pending";
+            state.phase = "done";
 
             // Return first pending event
             if (state.pendingEvents.length > 0) {
@@ -1580,11 +1274,6 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
             return yield* this.next();
           }
 
-          case "handoff_pending": {
-            // After emitting AG-UI checkpoint, we're done
-            state.phase = "done";
-            return { done: true, value: undefined };
-          }
 
           case "complete": {
             state.phase = "done";

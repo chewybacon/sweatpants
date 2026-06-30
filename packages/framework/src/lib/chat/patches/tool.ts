@@ -1,10 +1,8 @@
 /**
  * lib/chat/patches/tool.ts
  *
- * Tool-related patches for client tools and isomorphic tools.
+ * Tool-related patches for client-side progress and approval states.
  */
-
-import type { IsomorphicToolState } from '../core-types.ts'
 
 // =============================================================================
 // CLIENT TOOL PATCHES
@@ -100,29 +98,3 @@ export type ClientToolPatch =
   | ClientToolDeniedPatch
   | ClientToolProgressPatch
   | ClientToolPermissionRequestPatch
-
-// =============================================================================
-// ISOMORPHIC TOOL PATCHES
-// =============================================================================
-
-/**
- * Emitted when an isomorphic tool's state changes.
- */
-export interface IsomorphicToolStatePatch {
-  type: 'isomorphic_tool_state'
-  /** Tool call ID */
-  id: string
-  /** Current state */
-  state: IsomorphicToolState
-  /** Server output (if available) */
-  serverOutput?: unknown
-  /** Client output (if available) */
-  clientOutput?: unknown
-  /** Error message (if failed) */
-  error?: string
-}
-
-/**
- * Isomorphic tool patches.
- */
-export type IsomorphicToolPatch = IsomorphicToolStatePatch

@@ -5,7 +5,7 @@
  * Used by the book_flight tool's pickFlight elicitation.
  */
 import { useMemo } from 'react'
-import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
+import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
 import { stripMessageContext } from '@sweatpants/framework/chat'
 import type { Flight } from '../tool'
 

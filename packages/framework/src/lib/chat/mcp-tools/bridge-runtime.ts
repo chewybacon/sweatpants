@@ -25,11 +25,9 @@ import { encodeElicitContext } from '@sweatpants/elicit-context'
 import { validateToolParameters } from '../tool-parameters.ts'
 import type {
   McpToolContextWithElicits,
-  McpToolHandoffConfigWithElicits,
   McpToolLimits,
   McpToolBranchOptions,
   McpToolSampleConfig,
-  McpToolServerContext,
   ElicitId,
   ElicitRequest,
   ElicitsMap,
@@ -263,13 +261,13 @@ export interface BridgeSamplingProvider {
 export interface BridgeHostConfig<
   TName extends string = string,
   TParams = unknown,
-  THandoff = unknown,
+  TInteraction = unknown,
   TClient = unknown,
   TResult = unknown,
   TElicits extends ElicitsMap = ElicitsMap,
 > {
   /** Tool being executed */
-  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits>
 
   /** Tool parameters */
   params: TParams
@@ -1213,12 +1211,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 export function createBridgeHost<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(
-  config: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits>
+  config: BridgeHostConfig<TName, TParams, TInteraction, TClient, TResult, TElicits>
 ): BridgeHost<TResult> {
   // Use a buffered channel to avoid subscribe-before-send race condition.
   // Messages are queued until a subscriber starts iterating.
@@ -1233,8 +1231,6 @@ export function createBridgeHost<
       return {
         *[Symbol.iterator]() {
           const { tool, params, limits: overrideLimits, parentMessages, systemPrompt } = config
-          const signal = config.signal ?? new AbortController().signal
-
           const validatedParams = validateToolParameters<TParams>({
             schema: tool.parameters,
             params,
@@ -1246,12 +1242,6 @@ export function createBridgeHost<
           const limits: McpToolLimits = {
             ...tool.limits,
             ...overrideLimits,
-          }
-
-          // Create server context
-          const serverCtx: McpToolServerContext = {
-            callId,
-            signal,
           }
 
           const rootTokenTracker: TokenTracker = { used: 0 }
@@ -1285,31 +1275,11 @@ export function createBridgeHost<
             const branchCtx = createBridgeContext(initialState)
             const invoke = yield* tool(branchCtx as never)
             result = (yield* invoke(validatedParams as never)) as TResult
-          } else if (tool.handoffConfig) {
-            const handoffConfig = tool.handoffConfig as McpToolHandoffConfigWithElicits<
-              TParams,
-              THandoff,
-              TClient,
-              TResult,
-              TElicits
-            >
-
-            // Phase 1: before()
-            const handoff = yield* handoffConfig.before(validatedParams, serverCtx)
-
-            // Create context for client phase
-            const branchCtx = createBridgeContext(initialState)
-
-            // Client phase
-            const clientResult = yield* handoffConfig.client(handoff, branchCtx)
-
-            // Phase 2: after()
-            result = yield* handoffConfig.after(handoff, clientResult, serverCtx, validatedParams)
           } else if (tool.execute) {
             const branchCtx = createBridgeContext(initialState)
             result = yield* tool.execute(validatedParams, branchCtx as never)
           } else {
-            throw new Error(`Tool "${tool.name}" has no execute or handoff config`)
+            throw new Error(`Tool "${tool.name}" has no execute function`)
           }
 
           // Close channel when done
@@ -1375,12 +1345,12 @@ export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
 export function runBridgeTool<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(config: {
-  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>
+  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits>
   params: TParams
   samplingProvider: BridgeSamplingProvider
   handlers: BridgeElicitHandlers<TElicits>
@@ -1405,7 +1375,7 @@ export function runBridgeTool<
 
       // createBridgeHost now uses a buffered channel internally,
       // so no sleep(0) hacks are needed. Events are queued until subscriber is ready.
-      const hostConfig: BridgeHostConfig<TName, TParams, THandoff, TClient, TResult, TElicits> = {
+      const hostConfig: BridgeHostConfig<TName, TParams, TInteraction, TClient, TResult, TElicits> = {
         tool: config.tool,
         params,
       }

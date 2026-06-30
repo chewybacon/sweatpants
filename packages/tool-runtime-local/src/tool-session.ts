@@ -108,12 +108,12 @@ interface SessionState<TResult> {
 export function createToolSession<
   TName extends string,
   TParams,
-  THandoff,
+  TInteraction,
   TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(
-  tool: McpRuntimeTool<TName, TParams, THandoff, TClient, TResult, TElicits>,
+  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits>,
   params: TParams,
   _samplingProvider: ToolSessionSamplingProvider,
   options: ToolSessionOptions = {},

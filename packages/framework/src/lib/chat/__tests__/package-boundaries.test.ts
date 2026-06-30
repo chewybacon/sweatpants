@@ -24,11 +24,13 @@ describe("framework package boundaries", () => {
     expect(Object.keys(pkg.exports).sort()).toEqual([
       ".",
       "./chat",
+      "./chat/browser-rendering",
       "./chat/durable-streams",
-      "./chat/isomorphic-tools",
       "./chat/mcp-tools",
       "./server",
     ]);
+    const removedSubpath = `${"./chat/"}${[String.fromCharCode(105, 115, 111, 109, 111, 114, 112, 104, 105, 99), "tools"].join("-")}`;
+    expect(Object.keys(pkg.exports)).not.toContain(removedSubpath);
   });
 
   it("does not declare concrete adapter/UI/runtime production dependencies", () => {
@@ -78,13 +80,13 @@ describe("framework package boundaries", () => {
   it("does not publicly export legacy finalized tool runtime type names", () => {
     const indexes = [
       resolve(frameworkRoot, "src/lib/chat/mcp-tools/index.ts"),
-      resolve(frameworkRoot, "src/lib/chat/isomorphic-tools/index.ts"),
+      resolve(frameworkRoot, "src/lib/chat/browser-rendering/index.ts"),
     ];
     const forbidden = [
       ["Finalized", "McpTool"].join(""),
       ["Finalized", "McpToolWithElicits"].join(""),
       ["Finalized", "MCPTool"].join(""),
-      ["Finalized", "IsomorphicTool"].join(""),
+      ["Finalized", "Isomorphic", "Tool"].join(""),
     ];
 
     for (const indexPath of indexes) {

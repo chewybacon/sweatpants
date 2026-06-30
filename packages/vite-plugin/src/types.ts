@@ -29,7 +29,7 @@ export interface ToolDiscoveryOptions {
 
   /**
    * Function name(s) to look for in exports.
-   * @default ['createIsomorphicTool', 'createTool']
+   * @default ['createTool']
    */
   exportFunctionName?: string | string[];
 
@@ -66,10 +66,7 @@ export interface ResolvedToolDiscoveryOptions {
 export function resolveToolDiscoveryOptions(
   options: ToolDiscoveryOptions = {},
 ): ResolvedToolDiscoveryOptions {
-  const exportFunctionName = options.exportFunctionName ?? [
-    "createIsomorphicTool",
-    "createTool",
-  ];
+  const exportFunctionName = options.exportFunctionName ?? ["createTool"];
 
   return {
     dir: options.dir ?? "src/tools",

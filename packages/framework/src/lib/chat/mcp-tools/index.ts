@@ -41,7 +41,6 @@ export type {
   McpRuntimeTool,
   InferMcpToolResult,
   InferMcpToolParams,
-  InferMcpToolHandoff,
   InferMcpToolClient,
   InferMcpToolElicits,
   AnyMcpTool,
@@ -53,10 +52,6 @@ export type {
   // Context types
   McpToolContext,
   McpToolContextWithElicits,
-  McpToolServerContext,
-  // Handoff configuration
-  McpToolHandoffConfig,
-  McpToolHandoffConfigWithElicits,
   // Branch options and limits
   McpToolBranchOptions,
   McpToolLimits,

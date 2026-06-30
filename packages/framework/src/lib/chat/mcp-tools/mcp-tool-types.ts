@@ -450,8 +450,8 @@ export interface ElicitRequest<
   /** Original tool params (for context) */
   params?: unknown
 
-  /** Handoff data from before() phase (for richer UI) */
-  handoff?: unknown
+  /** Optional context data for richer UI */
+  context?: unknown
 }
 
 // =============================================================================
@@ -1119,23 +1119,18 @@ export interface McpToolLimits {
  *
  * @example
  * ```typescript
- * *client(handoff, ctx: McpToolContext) {
- *   // Auto-tracked conversation
- *   const analysis = yield* ctx.sample({ prompt: 'Analyze...' })
+ * createTool('analyze')
+ *   .execute(function* (params, ctx) {
+ *     // Auto-tracked conversation
+ *     const analysis = yield* ctx.sample({ prompt: 'Analyze...' })
  *
- *   // Sub-branch for focused task
- *   const detail = yield* ctx.branch(function* (subCtx) {
- *     return yield* subCtx.sample({ prompt: 'Detail...' })
- *   }, { inheritMessages: false })
+ *     // User confirmation
+ *     const choice = yield* ctx.elicit('confirm', {
+ *       message: 'Confirm?',
+ *     })
  *
- *   // User confirmation
- *   const choice = yield* ctx.elicit({
- *     message: 'Confirm?',
- *     schema: z.object({ ok: z.boolean() })
+ *     return { analysis, confirmed: choice.action === 'accept' }
  *   })
- *
- *   return { analysis, detail, confirmed: choice.action === 'accept' }
- * }
  * ```
  */
 export interface McpToolContext {
@@ -1399,13 +1394,11 @@ export interface McpToolContext {
  *     pickFlight: z.object({ flightId: z.string() }),
  *     confirm: z.object({ ok: z.boolean() }),
  *   })
- *   .handoff({
- *     *client(handoff, ctx) {
- *       // ctx.elicit is keyed and type-safe
- *       const picked = yield* ctx.elicit('pickFlight', { message: 'Pick a flight' })
- *       const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
- *       return { picked, ok }
- *     }
+ *   .execute(function* (params, ctx) {
+ *     // ctx.elicit is keyed and type-safe
+ *     const picked = yield* ctx.elicit('pickFlight', { message: 'Pick a flight' })
+ *     const ok = yield* ctx.elicit('confirm', { message: 'Confirm?' })
+ *     return { picked, ok }
  *   })
  * ```
  */
@@ -1497,114 +1490,6 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
 
   log(level: LogLevel, message: string): Operation<void>
   notify(message: string, progress?: number): Operation<void>
-}
-
-// =============================================================================
-// SERVER CONTEXT
-// =============================================================================
-
-/**
- * Server context for before() and after() phases.
- */
-export interface McpToolServerContext {
-  /** Unique identifier for this tool call */
-  callId: string
-
-  /** Abort signal for cancellation */
-  signal: AbortSignal
-}
-
-// =============================================================================
-// HANDOFF CONFIGURATION
-// =============================================================================
-
-/**
- * Configuration for a tool with handoff pattern.
- *
- * Type flow:
- * ```
- * TParams --> before(params, ctx) --> THandoff
- *                                        |
- *         +------------------------------+
- *         v                              v
- * client(handoff, ctx) --> TClient
- *         |                              |
- *         +--------> after(handoff, client, ctx, params) --> TResult
- * ```
- *
- * @template TParams - Tool parameters from LLM
- * @template THandoff - Data from before() to client() and after()
- * @template TClient - Data from client() to after()
- * @template TResult - Final result returned to LLM
- */
-export interface McpToolHandoffConfig<TParams, THandoff, TClient, TResult> {
-  /**
-   * Phase 1: Server-side setup (runs ONCE).
-   *
-   * Put expensive computations, database lookups, random selections,
-   * or any non-idempotent code here. The return value is:
-   * 1. Passed to client() as handoff data
-   * 2. Cached and passed to after() (NOT re-computed)
-   */
-  before: (params: TParams, ctx: McpToolServerContext) => Operation<THandoff>
-
-  /**
-   * Client phase: Branch-based multi-turn interaction.
-   *
-   * This is where you use ctx.sample(), ctx.elicit(), and ctx.branch()
-   * for complex multi-turn conversations with the LLM and user.
-   */
-  client: (handoff: THandoff, ctx: McpToolContext) => Operation<TClient>
-
-  /**
-   * Phase 2: Server-side finalization (runs ONCE after client).
-   *
-   * Receives:
-   * - handoff: Cached data from before() (NOT re-computed)
-   * - client: Response from client()
-   *
-   * Returns the final result that goes to the LLM.
-   */
-  after: (
-    handoff: THandoff,
-    client: TClient,
-    ctx: McpToolServerContext,
-    params: TParams
-  ) => Operation<TResult>
-}
-
-/**
- * Configuration for a tool with handoff and keyed elicitation.
- *
- * Same as McpToolHandoffConfig but the client phase receives
- * McpToolContextWithElicits for type-safe, keyed elicitation.
- *
- * @template TParams - Tool parameters from LLM
- * @template THandoff - Data from before() to client() and after()
- * @template TClient - Data from client() to after()
- * @template TResult - Final result returned to LLM
- * @template TElicits - Map of elicitation keys to their Zod schemas
- */
-export interface McpToolHandoffConfigWithElicits<
-  TParams,
-  THandoff,
-  TClient,
-  TResult,
-  TElicits extends ElicitsMap,
-> {
-  before: (params: TParams, ctx: McpToolServerContext) => Operation<THandoff>
-
-  client: (
-    handoff: THandoff,
-    ctx: McpToolContextWithElicits<TElicits>
-  ) => Operation<TClient>
-
-  after: (
-    handoff: THandoff,
-    client: TClient,
-    ctx: McpToolServerContext,
-    params: TParams
-  ) => Operation<TResult>
 }
 
 // =============================================================================

@@ -19,7 +19,7 @@ export default defineConfig({
     options.alias = {
       ...options.alias,
       '@sweatpants/core': resolve(here, '../../packages/core/src/index.ts'),
-      '@sweatpants/framework/chat/isomorphic-tools': resolve(here, '../../packages/framework/src/lib/chat/isomorphic-tools/index.ts'),
+      '@sweatpants/framework/chat/browser-rendering': resolve(here, '../../packages/framework/src/lib/chat/browser-rendering/index.ts'),
       '@sweatpants/framework/chat': resolve(here, 'src/framework-chat-agentcore-shim.ts'),
     }
   },

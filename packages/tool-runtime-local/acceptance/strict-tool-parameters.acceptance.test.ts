@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createTool } from '@sweatpants/core'
 import {
-  createIsomorphicToolInventoryEntry,
   createLocalToolRuntimeDriver,
   createToolInventoryEntry,
 } from '../src/index.ts'
@@ -55,43 +54,6 @@ describe('@sweatpants/tool-runtime-local strict parameter acceptance', () => {
         expect(next.value).toMatchObject({ type: 'result', result: { echoed: 'hello' } })
       }
       expect(mcpExecuteCalls).toBe(1)
-    })
-  })
-
-  it('rejects invalid inline isomorphic params before server callback execution', async () => {
-    await run(function* () {
-      let serverCalls = 0
-      const inlineTool = {
-        name: 'strict_inline',
-        description: 'Strict inline',
-        parameters: z.object({ message: z.string() }),
-        server: function* (params: unknown) {
-          serverCalls += 1
-          return { echoed: (params as { message: string }).message }
-        },
-      }
-      const driver = yield* createLocalToolRuntimeDriver({ isomorphicTools: [inlineTool] })
-
-      try {
-        yield* driver.execute({
-          entry: createIsomorphicToolInventoryEntry(inlineTool),
-          call: { id: 'call-invalid-inline', type: 'function', function: { name: 'strict_inline', arguments: {} } },
-        })
-        throw new Error('expected validation failure')
-      } catch (error) {
-        expect(error).toMatchObject({
-          code: 'TOOL_PARAMETER_VALIDATION_FAILED',
-          payload: { toolName: 'strict_inline', callId: 'call-invalid-inline' },
-        })
-      }
-      expect(serverCalls).toBe(0)
-
-      const result = yield* driver.execute({
-        entry: createIsomorphicToolInventoryEntry(inlineTool),
-        call: { id: 'call-valid-inline', type: 'function', function: { name: 'strict_inline', arguments: { message: 'hi' } } },
-      })
-      expect(result).toMatchObject({ kind: 'completed', result: { echoed: 'hi' } })
-      expect(serverCalls).toBe(1)
     })
   })
 

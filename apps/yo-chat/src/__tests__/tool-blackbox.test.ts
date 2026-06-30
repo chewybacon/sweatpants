@@ -2,7 +2,6 @@ import {
   call,
   createChannel,
   createScope,
-  createSignal,
   each,
   race,
   run,
@@ -26,7 +25,6 @@ import {
   PluginRegistryContext,
   PluginSessionManagerContext,
   ToolInventoryContext,
-  ToolRegistryContext,
   createToolInventory,
 } from "@sweatpants/framework/chat";
 
@@ -60,19 +58,9 @@ import {
 type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
 
 import {
-  executeClientPart,
-  executeServerPart,
-  executeServerPhase2,
-} from "@sweatpants/framework/chat/isomorphic-tools";
-import type { IsomorphicHandoffEvent } from "@sweatpants/framework/chat/isomorphic-tools";
-import type { ApprovalSignalValue } from "../../../../packages/framework/src/lib/chat/isomorphic-tools/runtime/tool-runtime.ts";
-import type { PendingEmission } from "../../../../packages/framework/src/lib/chat/isomorphic-tools/runtime/emissions.ts";
-
-import {
   createMockProvider,
   setupMockModelProvider,
 } from "../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts";
-import { pickCard } from "../tools/pick-card";
 import { bookFlightTool, bookFlightPlugin } from "../tools/book-flight";
 
 function createSingleToolMcpRegistry(tool: { name: string }) {
@@ -233,7 +221,6 @@ describe("yo-chat tool blackbox", () => {
       const setup = function* setup() {
         yield* setupInMemoryDurableStreams<string>();
         yield* setupMockModelProvider(provider);
-        yield* ToolRegistryContext.set([]);
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
@@ -438,7 +425,6 @@ describe("yo-chat tool blackbox", () => {
       const setup = function* setup() {
         yield* setupInMemoryDurableStreams<string>();
         yield* setupMockModelProvider(provider);
-        yield* ToolRegistryContext.set([]);
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
@@ -594,62 +580,4 @@ describe("yo-chat tool blackbox", () => {
     });
   }, 60_000);
 
-  it("pick_card executes server/client phases via handoff", async () => {
-    const anyTool = pickCard as any;
-    const signal = new AbortController().signal;
-
-    await run(function* () {
-      const phase1 = yield* executeServerPart(anyTool, "call-1", { count: 3 }, signal);
-
-      expect(phase1.kind).toBe("handoff");
-      if (phase1.kind !== "handoff") {
-        throw new Error("Expected handoff result");
-      }
-
-      const patches = createChannel<ChatPatch, void>();
-      const approvalSignal = createSignal<ApprovalSignalValue, void>();
-      const emissionChannel = createChannel<PendingEmission, void>();
-
-      const handoff = phase1.handoff as IsomorphicHandoffEvent;
-
-      const emissionSub = yield* emissionChannel;
-      yield* spawn(function* () {
-        const next = yield* emissionSub.next();
-        if (next.done) return;
-        const emission = next.value;
-        const serverOutput = handoff.serverOutput as {
-          cards: Array<{ rank: string; suit: string; display: string }>;
-        };
-        emission.respond({ picked: serverOutput.cards[0] });
-      });
-
-      yield* spawn(function* () {
-        yield* sleep(10);
-        approvalSignal.send({ callId: handoff.callId, approved: true });
-      });
-
-      const clientResult = yield* executeClientPart(
-        anyTool,
-        handoff,
-        patches,
-        approvalSignal,
-        undefined,
-        emissionChannel,
-      );
-
-      expect(clientResult.ok).toBe(true);
-
-      const serverResult = yield* executeServerPhase2(
-        anyTool,
-        handoff.callId,
-        handoff.params,
-        clientResult.clientOutput,
-        phase1.serverOutput,
-        signal,
-        handoff.usesHandoff ?? false,
-      );
-
-      expect(serverResult).toMatch(/The user selected the/);
-    });
-  }, 20_000);
 });

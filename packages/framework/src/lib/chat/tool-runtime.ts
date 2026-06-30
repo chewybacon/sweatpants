@@ -19,7 +19,7 @@ export interface ToolExecuteRequest {
 }
 
 export interface ToolContinuationInput {
-  type: 'elicit_response' | 'client_handoff_response'
+  type: 'elicit_response'
   elicitId?: string
   result: unknown
 }
@@ -38,15 +38,6 @@ export interface ToolExecutionError {
   cause?: unknown
 }
 
-export interface ClientToolRequest {
-  componentId?: string
-  props?: unknown
-  schema?: Record<string, unknown>
-  params?: unknown
-  serverOutput?: unknown
-  usesHandoff?: boolean
-}
-
 export interface ElicitToolRequest {
   elicitId: string
   key: string
@@ -59,7 +50,6 @@ export type ToolExecutionEvent =
   | { type: 'progress'; lsn?: number; message?: string; [key: string]: unknown }
   | { type: 'log'; lsn?: number; level?: string; message: string; [key: string]: unknown }
   | { type: 'elicit_request'; lsn?: number; elicitId: string; key: string; message: string; schema: Record<string, unknown>; [key: string]: unknown }
-  | { type: 'client_request'; lsn?: number; request: ClientToolRequest; [key: string]: unknown }
   | { type: 'sample_request'; lsn?: number; sampleId: string; [key: string]: unknown }
   | { type: 'sample_response_queued'; lsn?: number; [key: string]: unknown }
   | { type: 'result'; lsn?: number; result: unknown; [key: string]: unknown }
@@ -69,17 +59,14 @@ export type ToolExecutionEvent =
 export type ToolExecution =
   | { kind: 'completed'; ref: ToolExecutionRef; result: unknown }
   | { kind: 'failed'; ref: ToolExecutionRef; error: ToolExecutionError }
-  | { kind: 'awaiting_client'; ref: ToolExecutionRef; request: ClientToolRequest }
   | { kind: 'awaiting_elicit'; ref: ToolExecutionRef; request: ElicitToolRequest }
   | { kind: 'running'; ref: ToolExecutionRef; events: Stream<ToolExecutionEvent, void> }
 
-export type PendingToolRequest =
-  | ({ type: 'elicit' } & ElicitToolRequest)
-  | ({ type: 'client' } & ClientToolRequest)
+export type PendingToolRequest = ({ type: 'elicit' } & ElicitToolRequest)
 
 export interface PendingToolExecution {
   ref: ToolExecutionRef
-  status: 'awaiting_client' | 'awaiting_elicit' | 'running' | 'stale'
+  status: 'awaiting_elicit' | 'running' | 'stale'
   request?: PendingToolRequest
   lastEventLSN?: number
   createdAt: number
@@ -93,13 +80,6 @@ export type ToolContinuationPayload =
       toolName: string
       ref?: ToolExecutionRef
       elicitId: string
-      result: unknown
-    }
-  | {
-      type: 'client_handoff_response'
-      callId: string
-      toolName: string
-      ref?: ToolExecutionRef
       result: unknown
     }
 

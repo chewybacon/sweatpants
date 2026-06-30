@@ -60,18 +60,18 @@
         "default": "./dist/chat/durable-streams.cjs"
       }
     },
-    "./chat/isomorphic-tools": {
+    "./chat/browser-rendering": {
       "development": {
-        "import": "./src/lib/chat/isomorphic-tools/index.ts",
-        "types": "./src/lib/chat/isomorphic-tools/index.ts"
+        "import": "./src/lib/chat/browser-rendering/index.ts",
+        "types": "./src/lib/chat/browser-rendering/index.ts"
       },
       "import": {
-        "types": "./dist/lib/chat/isomorphic-tools/index.d.ts",
-        "default": "./dist/chat/isomorphic-tools.js"
+        "types": "./dist/lib/chat/browser-rendering/index.d.ts",
+        "default": "./dist/chat/browser-rendering.js"
       },
       "require": {
-        "types": "./dist/lib/chat/isomorphic-tools/index.d.ts",
-        "default": "./dist/chat/isomorphic-tools.cjs"
+        "types": "./dist/lib/chat/browser-rendering/index.d.ts",
+        "default": "./dist/chat/browser-rendering.cjs"
       }
     },
     "./chat/mcp-tools": {

@@ -123,7 +123,7 @@ export interface ChatState {
    * Pending elicitations for tools that need client input.
    * Keyed by tool call ID.
    *
-   * This is the unified elicitation system used by both MCP tools and isomorphic tools.
+   * This is the elicitation system used by canonical tools.
    * The elicitation flow is:
    * 1. Server emits elicit_start when tool begins
    * 2. Server emits elicit when tool needs client input
@@ -134,7 +134,7 @@ export interface ChatState {
   pendingElicits: Record<string, ElicitTrackingState>
 
   /**
-   * Tool emissions for isomorphic tools (ctx.render pattern).
+   * Tool emissions for plugin-rendered UI.
    * Keyed by tool call ID.
    *
    * The emission flow is:

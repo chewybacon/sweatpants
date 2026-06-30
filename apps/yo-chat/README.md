@@ -49,7 +49,7 @@ Batch 1 AgentCore remote execution supports only this explicit MCP bridge-compat
 - `play_ttt`
 - `tictactoe`
 
-Old `createIsomorphicTool` tools, browser/rendering tools, `ctx.render()` flows, and arbitrary yo-chat TSX tools are out of scope for this AgentCore runtime prototype and remain local/unsupported for remote AgentCore execution.
+Legacy browser/rendering tools and arbitrary yo-chat TSX tools are out of scope for this AgentCore runtime prototype and remain local/unsupported for remote AgentCore execution.
 
 Optional settings:
 

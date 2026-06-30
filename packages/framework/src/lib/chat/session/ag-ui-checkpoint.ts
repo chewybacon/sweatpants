@@ -5,7 +5,7 @@ import type {
   ConversationReplayState,
 } from './streaming.ts'
 import type { ServerToolResult } from '../core-types.ts'
-import type { ElicitRequestStreamEvent, IsomorphicHandoffStreamEvent } from './streaming.ts'
+import type { ElicitRequestStreamEvent } from './streaming.ts'
 
 export interface BuildAgUiCheckpointOptions {
   threadId: string
@@ -54,29 +54,18 @@ export function buildAgUiCheckpoint(options: BuildAgUiCheckpointOptions): AgUiCh
 
 export function buildAgUiCustomState(options: {
   replay?: ConversationReplayState
-  handoffs?: IsomorphicHandoffStreamEvent[]
   elicits?: ElicitRequestStreamEvent[]
 }): AgUiCustomState {
-  const pendingClientActions = [
-    ...(options.handoffs ?? []).map((handoff) => ({
-      toolCallId: handoff.callId,
-      toolName: handoff.toolName,
-      kind: 'handoff' as const,
-      params: handoff.params,
-      data: handoff.serverOutput,
-      usesHandoff: handoff.usesHandoff ?? false,
-    })),
-    ...(options.elicits ?? []).map((elicit) => ({
-      toolCallId: elicit.callId,
-      toolName: elicit.toolName,
-      kind: 'elicit' as const,
-      sessionId: elicit.sessionId,
-      elicitId: elicit.elicitId,
-      key: elicit.key,
-      message: elicit.message,
-      schema: elicit.schema,
-    })),
-  ]
+  const pendingClientActions = (options.elicits ?? []).map((elicit) => ({
+    toolCallId: elicit.callId,
+    toolName: elicit.toolName,
+    kind: 'elicit' as const,
+    sessionId: elicit.sessionId,
+    elicitId: elicit.elicitId,
+    key: elicit.key,
+    message: elicit.message,
+    schema: elicit.schema,
+  }))
 
   return {
     ...(options.replay ? { replay: options.replay } : {}),

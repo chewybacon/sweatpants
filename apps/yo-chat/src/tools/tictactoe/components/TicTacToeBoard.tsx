@@ -4,7 +4,7 @@
  * Interactive board for the tictactoe plugin.
  * Displays the game state and handles cell clicks.
  */
-import type { RenderableProps } from '@sweatpants/framework/chat/isomorphic-tools'
+import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
 import type { Board, LastMove } from '../types'
 
 // =============================================================================

@@ -84,8 +84,8 @@ for (const line of lines) {
           console.log(`    assistant: tool_calls=[${msg.tool_calls.map(tc => `${tc.id?.substring(0,12)}(${tc.function?.name})`).join(', ')}]`)
         }
       }
-    } else if (type === 'isomorphic_handoff') {
-      console.log(`  [lsn=${frame.lsn}] isomorphic_handoff: callId=${event.callId?.substring(0,12)} tool=${event.toolName}`)
+    } else if (type === 'elicit_request') {
+      console.log(`  [lsn=${frame.lsn}] elicit_request: callId=${event.callId?.substring(0,12)} tool=${event.toolName} key=${event.key}`)
     } else if (type === 'tool_result') {
       console.log(`  [lsn=${frame.lsn}] tool_result: id=${event.id?.substring(0,12)} hasTrace=${!!event.trace}`)
     } else if (type === 'complete') {

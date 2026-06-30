@@ -15,6 +15,18 @@ function deriveEnabledPlugins(options: StreamChatOptions): string[] {
   return (options.plugins ?? []).map((plugin) => plugin.client.toolName);
 }
 
+function deriveEnabledTools(options: StreamChatOptions): boolean | string[] | undefined {
+  if (options.enabledTools !== undefined) return options.enabledTools;
+  if (!options.tools?.length) return undefined;
+  return options.tools
+    .map((tool) =>
+      (typeof tool === "function" || (typeof tool === "object" && tool !== null)) && "name" in tool
+        ? String((tool as { name: unknown }).name)
+        : undefined,
+    )
+    .filter((name): name is string => typeof name === "string" && name.length > 0);
+}
+
 export function* executeChatFetch(
   baseUrl: string,
   messages: Message[],
@@ -27,7 +39,7 @@ export function* executeChatFetch(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages,
-        enabledTools: options.enabledTools,
+        enabledTools: deriveEnabledTools(options),
         enabledPlugins: deriveEnabledPlugins(options),
         systemPrompt: options.systemPrompt,
         persona: options.persona,
@@ -36,8 +48,6 @@ export function* executeChatFetch(
         effort: options.effort,
         streamOptions: options.streamOptions,
         initialToolChoice: options.initialToolChoice,
-        isomorphicTools: options.isomorphicToolSchemas,
-        isomorphicClientOutputs: options.isomorphicClientOutputs,
         elicitResponses: options.elicitResponses,
         replayState: options.replayState,
         ...(options.conversationId && { conversationId: options.conversationId }),

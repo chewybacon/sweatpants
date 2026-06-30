@@ -1,11 +1,7 @@
 import type { Operation } from 'effection'
 import { call } from 'effection'
-import type {
-  ChatPatch,
-  PendingHandoffState,
-} from '../patches/index.ts'
-import type { HydratedToolExecutionTrace, ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'
-import type { AnyIsomorphicTool } from '../isomorphic-tools/types.ts'
+import type { ChatPatch } from '../patches/index.ts'
+import type { HydratedToolExecutionTrace, ToolExecutionTrace } from '../browser-rendering/emissions.ts'
 import type { Message } from '../types.ts'
 import type { ConversationReplayState, StreamEvent } from './streaming.ts'
 import type { PatchTransform, StreamEventEntry } from './options.ts'
@@ -25,10 +21,15 @@ export interface DurableFrame {
   event: StreamEvent
 }
 
+type ReplayableTool = {
+  name: string
+  replayTrace?: (trace: ToolExecutionTrace) => Operation<HydratedToolExecutionTrace>
+}
+
 interface ReadDurableHistoryOptions {
   baseUrl: string
   conversationId: string
-  tools?: AnyIsomorphicTool[]
+  tools?: unknown[]
   transforms?: PatchTransform[]
   onStreamEvent?: (entry: StreamEventEntry) => void
 }
@@ -96,17 +97,12 @@ export function deduplicateMessages(messages: Message[]): Message[] {
   return result
 }
 
-function upsertPendingHandoff(
-  pendingHandoffs: PendingHandoffState[],
-  handoff: PendingHandoffState,
-): PendingHandoffState[] {
-  const next = pendingHandoffs.filter((item) => item.callId !== handoff.callId)
-  next.push(handoff)
-  return next
+function isReplayableTool(value: unknown): value is ReplayableTool {
+  return !!value && typeof value === 'object' && 'name' in value
 }
 
 function* replayToolTrace(
-  tools: AnyIsomorphicTool[] | undefined,
+  tools: unknown[] | undefined,
   toolName: string,
   trace: ToolExecutionTrace | undefined,
 ): Operation<HydratedToolExecutionTrace | null> {
@@ -114,7 +110,9 @@ function* replayToolTrace(
     return null
   }
 
-  const tool = tools.find((candidate) => candidate.name === toolName)
+  const tool = tools.find(
+    (candidate): candidate is ReplayableTool => isReplayableTool(candidate) && candidate.name === toolName,
+  )
   if (!tool?.replayTrace) {
     return null
   }
@@ -153,7 +151,7 @@ function* buildAssistantReplayParts(
   message: Message,
   toolResults: Message[],
   replayToolTraceByCallId: Map<string, ConversationReplayState['toolTraces'][number]>,
-  tools: AnyIsomorphicTool[] | undefined,
+  tools: unknown[] | undefined,
   transforms: PatchTransform[] | undefined,
 ): Operation<MessagePart[] | undefined> {
   if (message.role !== 'assistant') {
@@ -195,7 +193,7 @@ function* buildAssistantReplayParts(
 
 export function* replayFramesToConversation(
   frames: DurableFrame[],
-  tools?: AnyIsomorphicTool[],
+  tools?: unknown[],
   transforms?: PatchTransform[],
   onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<DurableHistoryReplay> {
@@ -204,7 +202,6 @@ export function* replayFramesToConversation(
   const transcriptState = createTranscriptState(history)
   let currentAssistantText = ''
   let pendingToolCalls: Array<{ id: string; name: string; arguments: unknown }> = []
-  let pendingHandoffs: PendingHandoffState[] = []
   let seededFromConversationState = false
   let seededToolCallIds: Set<string> = new Set()
   let seededAssistantContent: Set<string> = new Set()
@@ -409,7 +406,6 @@ export function* replayFramesToConversation(
 
         currentAssistantText = ''
         pendingToolCalls = []
-        pendingHandoffs = []
         break
       }
 
@@ -557,27 +553,6 @@ export function* replayFramesToConversation(
 
       case 'ag_ui_state_snapshot': {
         for (const action of event.state.pendingClientActions ?? []) {
-          if (action.kind === 'handoff') {
-            pendingHandoffs = upsertPendingHandoff(pendingHandoffs, {
-              callId: action.toolCallId,
-              toolName: action.toolName,
-              params: action.params ?? {},
-              data: action.data,
-              usesHandoff: action.usesHandoff ?? false,
-            })
-
-            patches.push({
-              type: 'pending_handoff',
-              handoff: {
-                callId: action.toolCallId,
-                toolName: action.toolName,
-                params: action.params ?? {},
-                data: action.data,
-                usesHandoff: action.usesHandoff ?? false,
-              },
-            })
-          }
-
           if (
             action.kind === 'elicit' &&
             action.sessionId &&
@@ -618,28 +593,6 @@ export function* replayFramesToConversation(
       case 'ag_ui_text_message_start':
       case 'ag_ui_text_message_end':
       case 'ag_ui_tool_call_end': {
-        break
-      }
-
-      case 'isomorphic_handoff': {
-        pendingHandoffs = upsertPendingHandoff(pendingHandoffs, {
-          callId: event.callId,
-          toolName: event.toolName,
-          params: event.params,
-          data: event.serverOutput,
-          usesHandoff: event.usesHandoff ?? false,
-        })
-
-        patches.push({
-          type: 'pending_handoff',
-          handoff: {
-            callId: event.callId,
-            toolName: event.toolName,
-            params: event.params,
-            data: event.serverOutput,
-            usesHandoff: event.usesHandoff ?? false,
-          },
-        })
         break
       }
 

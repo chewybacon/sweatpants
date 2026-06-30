@@ -4,7 +4,7 @@
  * Patch types for tool emissions (ctx.render() pattern).
  */
 
-import type { ComponentEmissionPayload, ToolExecutionTrace } from '../isomorphic-tools/runtime/emissions.ts'
+import type { ComponentEmissionPayload, ToolExecutionTrace } from '../browser-rendering/emissions.ts'
 
 // =============================================================================
 // EMISSION STATE

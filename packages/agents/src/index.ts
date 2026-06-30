@@ -1,7 +1,7 @@
 /**
  * @sweatpants/agents — unified agent model.
  *
- * Agents as callable coroutines on a shared durable stream with isomorphic
+ * Agents as callable coroutines on a shared durable stream with protocol-neutral
  * fulfillment. See `.pi/specs/a2a-protocol-support-spec.md`.
  *
  * Stage 1 (this package): AgentEvent vocabulary, AgentSession/stream,

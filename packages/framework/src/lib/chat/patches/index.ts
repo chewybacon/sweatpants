@@ -1,15 +1,9 @@
 /**
  * lib/chat/patches/index.ts
- *
- * Unified patch types for the chat system.
- * Patches are messages sent from the session layer to React state.
  */
 
-// Re-export all patch types
 export type {
-  // Content part types
   ContentPartType,
-  // Core patches
   SessionInfoPatch,
   UserMessagePatch,
   HistoryMessagePatch,
@@ -30,7 +24,6 @@ export type {
 } from './base.ts'
 
 export type {
-  // Buffer patches
   BufferSettledPatch,
   BufferPendingPatch,
   BufferRawPatch,
@@ -39,7 +32,6 @@ export type {
 } from './buffer.ts'
 
 export type {
-  // Client tool patches
   ClientToolAwaitingApprovalPatch,
   ClientToolExecutingPatch,
   ClientToolCompletePatch,
@@ -48,21 +40,9 @@ export type {
   ClientToolProgressPatch,
   ClientToolPermissionRequestPatch,
   ClientToolPatch,
-  // Isomorphic tool patches
-  IsomorphicToolStatePatch,
-  IsomorphicToolPatch,
 } from './tool.ts'
 
 export type {
-  // Handoff patches
-  PendingHandoffState,
-  PendingHandoffPatch,
-  HandoffCompletePatch,
-  HandoffPatch,
-} from './handoff.ts'
-
-export type {
-  // Emission patches (new ctx.render() pattern)
   ToolEmissionState,
   ToolEmissionTrackingState,
   ToolEmissionStartPatch,
@@ -73,7 +53,6 @@ export type {
 } from './emission.ts'
 
 export type {
-  // Elicitation patches (unified for all tools)
   ElicitState,
   ElicitTrackingState,
   ElicitStartPatch,
@@ -83,42 +62,19 @@ export type {
   ElicitPatchUnion,
 } from './elicit.ts'
 
-// Import for union type construction
 import type { CorePatch } from './base.ts'
 import type { BufferPatch } from './buffer.ts'
-import type { ClientToolPatch, IsomorphicToolPatch } from './tool.ts'
-import type { HandoffPatch } from './handoff.ts'
+import type { ClientToolPatch } from './tool.ts'
 import type { EmissionPatch } from './emission.ts'
 import type { ElicitPatchUnion } from './elicit.ts'
 
-/**
- * All chat patches - the complete union of all patch types.
- *
- * Organized into categories for better maintainability:
- * - CorePatch: Session lifecycle, messages, streaming, errors
- * - BufferPatch: Dual-buffer rendering (settled/pending/raw/renderable)
- * - ClientToolPatch: Browser-side tool execution
- * - IsomorphicToolPatch: Server+client tool state
- * - HandoffPatch: Tool handoff to React UI
- * - EmissionPatch: Tool emissions (ctx.render() pattern)
- * - ElicitPatchUnion: Tool elicitation (unified)
- */
 export type ChatPatch =
   | CorePatch
   | BufferPatch
   | ClientToolPatch
-  | IsomorphicToolPatch
-  | HandoffPatch
   | EmissionPatch
   | ElicitPatchUnion
 
-// =============================================================================
-// TYPE GUARDS
-// =============================================================================
-
-/**
- * Check if a patch is a core patch.
- */
 export function isCorePatch(patch: ChatPatch): patch is CorePatch {
   return [
     'session_info',
@@ -140,9 +96,6 @@ export function isCorePatch(patch: ChatPatch): patch is CorePatch {
   ].includes(patch.type)
 }
 
-/**
- * Check if a patch is a buffer patch.
- */
 export function isBufferPatch(patch: ChatPatch): patch is BufferPatch {
   return [
     'buffer_settled',
@@ -152,9 +105,6 @@ export function isBufferPatch(patch: ChatPatch): patch is BufferPatch {
   ].includes(patch.type)
 }
 
-/**
- * Check if a patch is a client tool patch.
- */
 export function isClientToolPatch(patch: ChatPatch): patch is ClientToolPatch {
   return [
     'client_tool_awaiting_approval',
@@ -167,23 +117,6 @@ export function isClientToolPatch(patch: ChatPatch): patch is ClientToolPatch {
   ].includes(patch.type)
 }
 
-/**
- * Check if a patch is an isomorphic tool patch.
- */
-export function isIsomorphicToolPatch(patch: ChatPatch): patch is IsomorphicToolPatch {
-  return patch.type === 'isomorphic_tool_state'
-}
-
-/**
- * Check if a patch is a handoff patch.
- */
-export function isHandoffPatch(patch: ChatPatch): patch is HandoffPatch {
-  return ['pending_handoff', 'handoff_complete'].includes(patch.type)
-}
-
-/**
- * Check if a patch is an emission patch.
- */
 export function isEmissionPatch(patch: ChatPatch): patch is EmissionPatch {
   return [
     'tool_emission_start',
@@ -193,9 +126,6 @@ export function isEmissionPatch(patch: ChatPatch): patch is EmissionPatch {
   ].includes(patch.type)
 }
 
-/**
- * Check if a patch is an elicit patch.
- */
 export function isElicitPatch(patch: ChatPatch): patch is ElicitPatchUnion {
   return [
     'elicit_start',

@@ -8,7 +8,6 @@ import type { Operation, Channel } from "effection";
 import type { ChatPatch } from "../patches/index.ts";
 import type { Message } from "../types.ts";
 import type { StreamEvent, StreamResult } from "./streaming.ts";
-import type { IsomorphicToolSchema } from "../isomorphic-tools/index.ts";
 import type { ConversationReplayState } from "./streaming.ts";
 import type { PluginHandleInput } from "../mcp-tools/plugin.ts";
 import type { StreamOptions } from "../runtime/index.ts";
@@ -124,20 +123,10 @@ export interface SessionOptions {
   baseUrl?: string;
 
   /**
-   * Tools to enable for this session.
-   *
-   * Import tools directly and pass them here:
-   * ```typescript
-   * import { pickCard, calculator } from '@/__generated__/tool-registry.gen'
-   *
-   * useChat({
-   *   tools: [pickCard, calculator],
-   * })
-   * ```
-   *
-   * Only these tools will be available to the LLM.
+   * Tools to enable for this session by object reference. The client sends
+   * their names as `enabledTools`; server execution comes from ToolInventory.
    */
-  tools?: unknown[]; // Will be typed as AnyIsomorphicTool[] in the hooks
+  tools?: unknown[];
 
   /**
    * Plugin handles to enable for this session.
@@ -268,29 +257,9 @@ export interface SessionOptions {
 // =============================================================================
 
 /**
- * Options for streamChatOnce, extending SessionOptions with isomorphic tool schemas.
+ * Options for streamChatOnce.
  */
 export interface StreamChatOptions extends SessionOptions {
-  /**
-   * Isomorphic tool schemas to send to the server.
-   * Server will execute server parts and hand off for client-side execution.
-   */
-  isomorphicToolSchemas?: IsomorphicToolSchema[];
-
-  /**
-   * Client outputs from isomorphic tool execution that need server validation.
-   * Sent when re-initiating after executing isomorphic tools that need phase 2.
-   */
-  isomorphicClientOutputs?: Array<{
-    callId: string;
-    toolName: string;
-    params: unknown;
-    clientOutput: unknown;
-    cachedHandoff?: unknown;
-    usesHandoff?: boolean;
-    trace?: ToolExecutionTrace;
-  }>;
-
   replayState?: ConversationReplayState;
 
   /**
@@ -359,4 +328,3 @@ export type ChatCommand =
        */
       autoContinue?: boolean;
     };
-import type { ToolExecutionTrace } from "../isomorphic-tools/runtime/emissions.ts";
