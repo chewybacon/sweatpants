@@ -116,6 +116,9 @@ export interface EmissionTraceEntry {
   /** Stable browser emission id, when available. */
   emissionId?: string;
 
+  /** Stable fallback identity for legacy emissions lacking emissionId. */
+  legacyMergeKey?: string;
+
   /** Source AG-UI interrupt id, when available. */
   sourceInterruptId?: string;
 

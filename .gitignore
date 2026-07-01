@@ -13,6 +13,11 @@ coverage/
 # Logs
 *.log
 
+# Local env / secrets
+.env*.local
+**/.env*.local
+.sweatpants/
+
 # Caches
 .turbo/
 .cache/

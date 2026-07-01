@@ -20,8 +20,8 @@ export type {
   TokenUsage,
   ToolCallInfo,
   ServerToolResult,
-} from './core-types.ts'
-import type { ConversationReplayToolTrace } from './session/streaming.ts'
+} from "./core-types.ts";
+import type { ConversationReplayToolTrace } from "./session/streaming.ts";
 
 // Re-export from session
 export type {
@@ -39,7 +39,7 @@ export type {
   PatchTransform,
   SessionOptions,
   ChatCommand,
-} from './session/index.ts'
+} from "./session/index.ts";
 
 // Re-export from state
 export type {
@@ -55,9 +55,9 @@ export type {
   ChatState,
   ToolEmissionState,
   ToolEmissionTrackingState,
-} from './state/index.ts'
+} from "./state/index.ts";
 
-export { groupTimelineByToolCall, initialChatState } from './state/index.ts'
+export { groupTimelineByToolCall, initialChatState } from "./state/index.ts";
 
 // Re-export from patches
 export type {
@@ -93,13 +93,9 @@ export type {
   ClientToolPatch,
   // Union
   ChatPatch,
-} from './patches/index.ts'
+} from "./patches/index.ts";
 
-export {
-  isCorePatch,
-  isBufferPatch,
-  isClientToolPatch,
-} from './patches/index.ts'
+export { isCorePatch, isBufferPatch, isClientToolPatch } from "./patches/index.ts";
 
 // =============================================================================
 // MESSAGE TYPES (defined here - core to the chat protocol)
@@ -110,22 +106,23 @@ export {
  * This provides a common contract for message passing between layers.
  */
 export interface Message {
-  id: string
-  role: 'system' | 'user' | 'assistant' | 'tool'
-  content: string
-  partial?: boolean
-  tool_calls?: ToolCall[]
-  tool_call_id?: string
+  id: string;
+  role: "developer" | "system" | "user" | "assistant" | "tool" | "activity" | "reasoning";
+  content: string;
+  partial?: boolean;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  activityType?: string;
   replay?: {
-    toolName?: string
-    trace?: ConversationReplayToolTrace['trace']
-  }
+    toolName?: string;
+    trace?: ConversationReplayToolTrace["trace"];
+  };
 }
 
 /**
  * Ollama-specific message format (alias for Message for backward compatibility).
  */
-export type OllamaMessage = Message
+export type OllamaMessage = Message;
 
 /**
  * Tool call structure — canonical nested (OpenAI-compatible) format.
@@ -134,12 +131,12 @@ export type OllamaMessage = Message
  * All providers normalise into this shape before it enters the framework.
  */
 export interface ToolCall {
-  id: string
-  type: 'function'
+  id: string;
+  type: "function";
   function: {
-    name: string
-    arguments: Record<string, unknown>
-  }
+    name: string;
+    arguments: Record<string, unknown>;
+  };
 }
 
 // =============================================================================
@@ -150,18 +147,18 @@ export interface ToolCall {
  * Events emitted by chat providers during streaming.
  */
 export type ChatEvent =
-  | { type: 'text'; content: string }
-  | { type: 'thinking'; content: string }
-  | { type: 'tool_calls'; toolCalls: ToolCall[] }
+  | { type: "text"; content: string }
+  | { type: "thinking"; content: string }
+  | { type: "tool_calls"; toolCalls: ToolCall[] };
 
 /**
  * Final result from a chat provider.
  */
 export interface ChatResult {
-  text: string
-  thinking?: string
-  toolCalls?: ToolCall[]
-  usage: TokenUsage
+  text: string;
+  thinking?: string;
+  toolCalls?: ToolCall[];
+  usage: TokenUsage;
 }
 
 // =============================================================================
@@ -174,9 +171,9 @@ export interface ChatResult {
  * it passes them to the LLM and hands back to the client for execution.
  */
 export interface ClientToolSchema {
-  name: string
-  description: string
-  parameters: Record<string, unknown> // JSON Schema
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>; // JSON Schema
 }
 
 // =============================================================================
@@ -187,43 +184,43 @@ export interface ClientToolSchema {
  * Ollama chat request format.
  */
 export interface OllamaChatRequest {
-  model: string
-  messages: Message[]
-  stream?: boolean
+  model: string;
+  messages: Message[];
+  stream?: boolean;
   tools?: Array<{
-    type: 'function'
+    type: "function";
     function: {
-      name: string
-      description: string
-      parameters: Record<string, unknown>
-    }
-  }>
+      name: string;
+      description: string;
+      parameters: Record<string, unknown>;
+    };
+  }>;
   /** Tool choice: 'auto' (default), 'none', 'required', or specific tool name */
-  tool_choice?: 'auto' | 'none' | 'required' | string
+  tool_choice?: "auto" | "none" | "required" | string;
   /** Format for structured output: 'json' or a JSON schema object */
-  format?: 'json' | Record<string, unknown>
+  format?: "json" | Record<string, unknown>;
 }
 
 /**
  * Ollama chat response chunk.
  */
 export interface OllamaChatChunk {
-  model: string
-  created_at: string
+  model: string;
+  created_at: string;
   message: {
-    role: string
-    content: string
-    thinking?: string // DeepSeek-R1 style
-    tool_calls?: ToolCall[]
-  }
-  done: boolean
-  done_reason?: string
-  total_duration?: number
-  load_duration?: number
-  prompt_eval_count?: number
-  prompt_eval_duration?: number
-  eval_count?: number
-  eval_duration?: number
-  error?: string
+    role: string;
+    content: string;
+    thinking?: string; // DeepSeek-R1 style
+    tool_calls?: ToolCall[];
+  };
+  done: boolean;
+  done_reason?: string;
+  total_duration?: number;
+  load_duration?: number;
+  prompt_eval_count?: number;
+  prompt_eval_duration?: number;
+  eval_count?: number;
+  eval_duration?: number;
+  error?: string;
 }
-import type { TokenUsage } from './core-types.ts'
+import type { TokenUsage } from "./core-types.ts";

@@ -152,7 +152,7 @@ function entryMergeKey(entry: EmissionTraceEntry): string | null {
     return `${entry.sourceInterruptId}\u0000${entry.emissionId}`;
   }
   if (entry.sourceInterruptId) {
-    return `${entry.sourceInterruptId}\u0000order:${entry.order}`;
+    return `${entry.sourceInterruptId}\u0000legacy:${entry.legacyMergeKey ?? entry.order}`;
   }
   return null;
 }
@@ -214,7 +214,9 @@ export function normalizeClientReplayTrace(
 
     emissions.push({
       order: index,
-      ...(typeof emissionId === "string" && emissionId.length > 0 ? { emissionId } : {}),
+      ...(typeof emissionId === "string" && emissionId.length > 0
+        ? { emissionId }
+        : { legacyMergeKey: `order:${index}` }),
       ...(typeof sourceInterruptId === "string" && sourceInterruptId.length > 0
         ? { sourceInterruptId }
         : {}),
@@ -258,6 +260,9 @@ export function mergePluginReplayTrace(
   for (const entry of incoming.trace.emissions) {
     const normalizedEntry: EmissionTraceEntry = {
       ...entry,
+      ...(!entry.emissionId && !entry.legacyMergeKey
+        ? { legacyMergeKey: `order:${entry.order}` }
+        : {}),
       ...(incoming.interruptId && !entry.sourceInterruptId
         ? { sourceInterruptId: incoming.interruptId }
         : {}),

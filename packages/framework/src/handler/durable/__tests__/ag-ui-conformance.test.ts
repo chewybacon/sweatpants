@@ -21,6 +21,7 @@ import {
 type AgUiEvent = { type: string; [key: string]: unknown };
 
 const agUiMessageSchema = z.discriminatedUnion("role", [
+  z.object({ id: z.string(), role: z.literal("developer"), content: z.string() }).passthrough(),
   z.object({ id: z.string(), role: z.literal("system"), content: z.string() }).passthrough(),
   z
     .object({
@@ -237,6 +238,15 @@ function assertPublicConformance(events: AgUiEvent[]) {
   assertAgUiLifecycle(events);
 }
 
+function parseSseDataObjects(raw: string): AgUiEvent[] {
+  return raw.split("\n\n").flatMap((frame) =>
+    frame
+      .split("\n")
+      .filter((line) => line.startsWith("data: "))
+      .map((line) => JSON.parse(line.slice("data: ".length)) as AgUiEvent),
+  );
+}
+
 describe("strict AG-UI public conformance", () => {
   it("validates normal text runs against AG-UI schemas and lifecycle rules", function* () {
     const provider = createMockProvider({ responses: "Hello schema world" });
@@ -347,6 +357,68 @@ describe("strict AG-UI public conformance", () => {
       `sweatpants:plugin-replay:${callId}`,
       "user:u2",
     ]);
+  });
+
+  it("emits raw strict SSE frames whose data payloads are AG-UI events", function* () {
+    const provider = createMockProvider({ responses: "sse public" });
+    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+
+    const { request } = createChatRequest(
+      [{ id: "user:raw-sse", role: "user", content: "Say hello over SSE" }],
+      { live: "sse" },
+    );
+    const response = yield* call(() => handler(request));
+    const raw = yield* call(() => response.text());
+    const events = parseSseDataObjects(raw);
+
+    expect(raw).toContain("id: ");
+    expect(events.some((event) => "lsn" in event && "event" in event)).toBe(false);
+    assertPublicConformance(events);
+  });
+
+  it("preserves AG-UI activity, developer, and reasoning roles without replayState", function* () {
+    const provider = createMockProvider({ responses: "role safe" });
+    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+
+    const response = yield* call(() =>
+      handler(
+        new Request("http://localhost/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              { id: "developer:1", role: "developer", content: "developer note" },
+              { id: "system:1", role: "system", content: "system note" },
+              {
+                id: "activity:1",
+                role: "activity",
+                activityType: "sweatpants:plugin-replay",
+                content: { ok: true },
+              },
+              { id: "reasoning:1", role: "reasoning", content: "private chain" },
+              { id: "user:1", role: "user", content: "hello" },
+              { id: "unknown:1", role: "not-a-role", content: "must not become user" },
+            ],
+          }),
+        }),
+      ),
+    );
+
+    const result = yield* call(() => consumeDurableResponse(response));
+    const snapshot = result.events
+      .map((entry) => entry.event as AgUiEvent)
+      .find((event) => event.type === "MESSAGES_SNAPSHOT") as
+      | { type: "MESSAGES_SNAPSHOT"; messages: Array<{ id: string; role: string }> }
+      | undefined;
+
+    expect(snapshot?.messages.map((message) => [message.id, message.role])).toEqual([
+      ["developer:1", "developer"],
+      ["system:1", "system"],
+      ["activity:1", "activity"],
+      ["reasoning:1", "reasoning"],
+      ["user:1", "user"],
+    ]);
+    expect(snapshot?.messages.some((message) => message.id === "unknown:1")).toBe(false);
   });
 
   it("rejects injected legacy public events in the conformance harness", function* () {

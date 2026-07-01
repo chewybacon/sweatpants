@@ -483,15 +483,17 @@ describe("Durable Chat Handler", () => {
 
       const response = yield* call(() => handler(request));
       const result = yield* call(() => consumeDurableResponse(response));
-      const sessionErrors = result.events
+      const runErrors = result.events
         .map((entry) => entry.event)
         .filter(
-          (event): event is { type: "tool_session_error"; message: string } =>
-            (event as { type?: string }).type === "tool_session_error",
+          (event): event is { type: "RUN_ERROR"; message: string; code?: string } =>
+            (event as { type?: string }).type === "RUN_ERROR",
         );
       expect(
-        sessionErrors.some((event) =>
-          event.message.includes("Continuation ref mismatch: runtimeId"),
+        runErrors.some(
+          (event) =>
+            event.code === "TOOL_RESUME_FAILED" &&
+            event.message.includes("Continuation ref mismatch: runtimeId"),
         ),
       ).toBe(true);
     });
