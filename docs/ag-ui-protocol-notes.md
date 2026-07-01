@@ -2,9 +2,11 @@
 
 ## Strict public event contract
 
-New public durable chat runs emit AG-UI `BaseEvent` JSON objects using standard uppercase event types such as `RUN_STARTED`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `TOOL_CALL_RESULT`, `MESSAGES_SNAPSHOT`, `STATE_SNAPSHOT`, `ACTIVITY_SNAPSHOT`, `RUN_FINISHED`, and `RUN_ERROR`.
+Strict public AG-UI transport is the durable chat Server-Sent Events mode selected with `live=sse`. In that mode, public durable chat runs emit AG-UI `BaseEvent` JSON objects using standard uppercase event types such as `RUN_STARTED`, `TEXT_MESSAGE_*`, `TOOL_CALL_*`, `TOOL_CALL_RESULT`, `MESSAGES_SNAPSHOT`, `STATE_SNAPSHOT`, `ACTIVITY_SNAPSHOT`, `RUN_FINISHED`, and `RUN_ERROR`.
 
-Legacy lowercase Sweatpants frames (`ag_ui_*`, `elicit_request`, `ag_ui_checkpoint`, `conversation_state`) are compatibility-reader concepts only and must not be produced by strict public streams for new sessions.
+The default NDJSON durable transport remains an internal/compatibility transport and may continue to use durable wrapper records such as `{ "lsn": 1, "event": { ... } }`; it is not the strict stock AG-UI public wire format.
+
+Legacy lowercase Sweatpants frames (`ag_ui_*`, `elicit_request`, `ag_ui_checkpoint`, `conversation_state`) and internal tool-session frames are compatibility-reader concepts only and must not be produced by strict public streams for new sessions.
 
 ## Request and resume shape
 
@@ -41,7 +43,7 @@ Public clients start or resume runs with a `RunAgentInput`-compatible JSON body:
 }
 ```
 
-`resume[].payload` is business response data only. Framework replay metadata belongs under `forwardedProps.sweatpants.clientReplayTraces[interruptId]`.
+`resume[].payload` is business response data only. Framework replay metadata belongs under `forwardedProps.sweatpants.clientReplayTraces[interruptId]`. Replay metadata is not projected into durable activity until the matching `resume[]` has been validated against the persisted open interrupt records for the thread/scope.
 
 ## Elicitation
 
@@ -109,7 +111,7 @@ Completed browser-rendered plugin UI is projected as AG-UI activity data:
 }
 ```
 
-One activity message is used per tool call. Repeated snapshots use the same `messageId` and `replace: true` so retries update the canonical activity instead of appending duplicates.
+One activity message is used per tool call. Repeated snapshots use the same `messageId` and `replace: true` so retries update the canonical activity instead of appending duplicates. Authoritative `MESSAGES_SNAPSHOT` events include the corresponding `role: "activity"` message; strict/public replay durability does not rely on top-level `replayState` or `STATE_SNAPSHOT.snapshot.replay`.
 
 ## Trace safety and limits
 

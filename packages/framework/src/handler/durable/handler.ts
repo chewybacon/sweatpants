@@ -44,11 +44,7 @@ import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import {
-  internalMessageToAgUiMessage,
-  internalMessagesToAgUiMessages,
-} from "../../lib/chat/session/ag-ui-compat.ts";
-import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
+import { messagesWithReplayActivities } from "../../lib/chat/session/ag-ui-projection.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
   recordConversationSession,
@@ -70,9 +66,16 @@ import type {
   ElicitResponse,
   ToolSchema,
 } from "./types.ts";
-import type { ConversationReplayState } from "../../lib/chat/session/streaming.ts";
 import type { Runtime } from "../../lib/chat/runtime/index.ts";
 import { ToolSessionSamplingProviderContext } from "../../lib/chat/mcp-tools/session/contexts.ts";
+import {
+  deriveResumeScopeFromEntries,
+  deriveResumeScopeId,
+  openInterruptsForThread,
+  registerInterruptsFromRunFinished,
+  validateResumeEntries,
+  type OpenInterruptRecord,
+} from "./interrupt-registry.ts";
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -102,6 +105,32 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
  * Create a serialized event stream from the chat engine.
  * Each event is JSON-serialized for storage in the buffer.
  */
+function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
+  switch ((event as { type: string }).type) {
+    case "tool_session_error":
+      return {
+        type: "RUN_ERROR",
+        message: (event as { message?: string }).message ?? "Tool session failed",
+        code: "TOOL_RESUME_FAILED",
+      };
+    case "tool_session_status":
+      return (event as { status?: string }).status === "aborted"
+        ? { type: "RUN_ERROR", message: "Tool execution aborted", code: "RUN_ABORTED" }
+        : null;
+    case "session_info":
+    case "elicit_request":
+    case "conversation_state":
+    case "ag_ui_checkpoint":
+      return null;
+    default:
+      return event;
+  }
+}
+
+/**
+ * Create a serialized event stream from the chat engine.
+ * Each event is JSON-serialized for storage in the buffer.
+ */
 function createSerializedEventStream(
   engine: Stream<StreamEvent, void>,
   initialEvents: StreamEvent[] = [],
@@ -112,97 +141,26 @@ function createSerializedEventStream(
 
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
-        if (initialIndex < initialEvents.length) {
-          const event = initialEvents[initialIndex++]!;
+        while (initialIndex < initialEvents.length) {
+          const event = toStrictPublicEvent(initialEvents[initialIndex++]!);
+          if (!event) continue;
+          registerInterruptsFromRunFinished(event);
           return { done: false, value: JSON.stringify(event) };
         }
 
-        const result = yield* subscription.next();
-        if (result.done) {
-          return { done: true, value: undefined };
+        while (true) {
+          const result = yield* subscription.next();
+          if (result.done) {
+            return { done: true, value: undefined };
+          }
+          const event = toStrictPublicEvent(result.value);
+          if (!event) continue;
+          registerInterruptsFromRunFinished(event);
+          return { done: false, value: JSON.stringify(event) };
         }
-        return { done: false, value: JSON.stringify(result.value) };
       },
     });
   });
-}
-
-function mergeReplayState(
-  base: ConversationReplayState | undefined,
-  _body: ChatRequestBody,
-): ConversationReplayState | undefined {
-  return base;
-}
-
-function replayActivityMessages(replayState: ConversationReplayState | undefined) {
-  return (replayState?.toolTraces ?? []).flatMap((toolTrace) => {
-    const activity = buildPluginReplayActivity({
-      toolCallId: toolTrace.callId,
-      toolName: toolTrace.toolName,
-      trace: toolTrace.trace,
-    });
-    return activity
-      ? [
-          {
-            id: activity.messageId,
-            role: "activity" as const,
-            activityType: activity.activityType,
-            content: activity.content,
-          },
-        ]
-      : [];
-  });
-}
-
-function messagesWithReplayActivities(
-  messages: ChatRequestBody["messages"],
-  replayState: ConversationReplayState | undefined,
-) {
-  const activitiesByCallId = new Map(
-    replayActivityMessages(replayState).map((message) => [message.content.toolCallId, message]),
-  );
-  if (activitiesByCallId.size === 0) {
-    return internalMessagesToAgUiMessages(messages);
-  }
-
-  const output: ReturnType<typeof internalMessagesToAgUiMessages> = [];
-  const inserted = new Set<string>();
-  const toolResultCallIds = new Set(
-    messages
-      .filter((message) => message.role === "tool" && message.tool_call_id)
-      .map((message) => message.tool_call_id!),
-  );
-
-  for (const message of messages) {
-    output.push(internalMessageToAgUiMessage(message));
-
-    const toolCallId =
-      message.role === "tool" && message.tool_call_id
-        ? message.tool_call_id
-        : message.role === "assistant" &&
-            message.tool_calls?.length === 1 &&
-            !toolResultCallIds.has(message.tool_calls[0]!.id)
-          ? message.tool_calls[0]?.id
-          : undefined;
-    if (!toolCallId || inserted.has(toolCallId)) {
-      continue;
-    }
-
-    const activity = activitiesByCallId.get(toolCallId);
-    if (!activity) {
-      continue;
-    }
-    output.push(activity);
-    inserted.add(toolCallId);
-  }
-
-  for (const [toolCallId, activity] of activitiesByCallId) {
-    if (!inserted.has(toolCallId)) {
-      output.push(activity);
-    }
-  }
-
-  return output;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -231,10 +189,12 @@ function parseToolArguments(value: unknown): Record<string, unknown> {
 
 function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages"] {
   if (!Array.isArray(messages)) return [];
-  return messages.map((message, index) => {
-    if (!isRecord(message)) {
-      return { id: `message:${index}`, role: "user", content: String(message) };
-    }
+  const normalized: ChatRequestBody["messages"] = [];
+
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index];
+    if (!isRecord(message)) continue;
+
     const role = message["role"];
     const id =
       typeof message["id"] === "string" && message["id"].length > 0
@@ -253,7 +213,7 @@ function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages
         : Array.isArray(message["toolCalls"])
           ? message["toolCalls"]
           : [];
-      return {
+      normalized.push({
         id,
         role: "assistant" as const,
         content,
@@ -272,7 +232,8 @@ function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages
               }),
             }
           : {}),
-      };
+      });
+      continue;
     }
 
     if (role === "tool") {
@@ -282,12 +243,26 @@ function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages
           : typeof message["toolCallId"] === "string"
             ? message["toolCallId"]
             : "";
-      return { id, role: "tool" as const, content, tool_call_id: toolCallId };
+      normalized.push({ id, role: "tool" as const, content, tool_call_id: toolCallId });
+      continue;
     }
 
-    if (role === "system") return { id, role: "system" as const, content };
-    return { id, role: "user" as const, content };
-  });
+    if (role === "activity") {
+      const activityType =
+        typeof message["activityType"] === "string"
+          ? message["activityType"]
+          : "sweatpants:activity";
+      normalized.push({ id, role: "activity" as const, activityType, content });
+      continue;
+    }
+
+    if (role === "developer") normalized.push({ id, role: "developer" as const, content });
+    else if (role === "system") normalized.push({ id, role: "system" as const, content });
+    else if (role === "reasoning") normalized.push({ id, role: "reasoning" as const, content });
+    else if (role === "user") normalized.push({ id, role: "user" as const, content });
+  }
+
+  return normalized;
 }
 
 function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
@@ -297,39 +272,38 @@ function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
   };
 }
 
-function latestToolCallForResume(messages: ChatRequestBody["messages"]): {
-  callId: string;
-  toolName: string;
-} | null {
-  for (const message of [...messages].reverse()) {
-    if (message.role !== "assistant" || !message.tool_calls?.length) continue;
-    const toolCall = message.tool_calls[message.tool_calls.length - 1];
-    if (!toolCall) continue;
-    return { callId: toolCall.id, toolName: toolCall.function.name };
-  }
-  return null;
-}
-
-function mapResumeEntriesToElicitResponses(body: ChatRequestBody): ElicitResponse[] {
+function mapResumeEntriesToElicitResponses(
+  body: ChatRequestBody,
+  records: OpenInterruptRecord[],
+): ElicitResponse[] {
   const resume = body.resume ?? [];
   if (resume.length === 0) return [];
 
-  const fallbackToolCall = latestToolCallForResume(body.messages);
   const traces = forwardedClientReplayTraces(body.forwardedProps);
+  const recordsByInterruptId = new Map(records.map((record) => [record.interruptId, record]));
   const mapped: ElicitResponse[] = [];
 
   for (const entry of resume) {
-    if (!fallbackToolCall) continue;
+    const record = recordsByInterruptId.get(entry.interruptId);
+    if (!record?.toolCallId) continue;
     const result =
       entry.status === "cancelled"
         ? { action: "cancel" as const }
         : mapResolvedResumePayload(entry.payload);
+    const sessionId = record.sessionId ?? record.executionId ?? record.toolCallId;
     const response: ElicitResponse = {
-      sessionId: fallbackToolCall.callId,
-      callId: fallbackToolCall.callId,
-      toolName: fallbackToolCall.toolName,
+      sessionId,
+      callId: record.toolCallId,
+      ...(record.toolName ? { toolName: record.toolName } : {}),
       elicitId: entry.interruptId,
       result,
+      ref: {
+        runtimeId: record.runtimeId ?? "local",
+        executionId: record.executionId ?? sessionId,
+        sessionId,
+        callId: record.toolCallId,
+        toolName: record.toolName ?? "",
+      },
     };
     const trace = traces[entry.interruptId];
     if (trace !== undefined) {
@@ -488,7 +462,35 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         contextStreamOptions || body.streamOptions
           ? { ...(contextStreamOptions ?? {}), ...(body.streamOptions ?? {}) }
           : undefined;
-      const publicResumeResponses = mapResumeEntriesToElicitResponses(body);
+      const agUiThreadId = body.threadId ?? requestedConversationId ?? sessionId;
+      const agUiRunId = body.runId ?? sessionId;
+      const requestedResumeScopeId = deriveResumeScopeId(agUiThreadId, body.parentRunId);
+      const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
+      const hasOpenInterrupts = openInterruptsForThread(agUiThreadId).length > 0;
+      const resumeValidation = body.resume
+        ? requestedResumeScopeId || resumeScopeFromEntries
+          ? validateResumeEntries({
+              threadId: resumeScopeFromEntries?.threadId ?? agUiThreadId,
+              scopeId: requestedResumeScopeId ?? resumeScopeFromEntries!.scopeId,
+              runId: agUiRunId,
+              resume: body.resume,
+            })
+          : ({
+              ok: false,
+              code: "INVALID_RESUME",
+              message: "Unable to determine resume scope",
+            } as const)
+        : hasOpenInterrupts && requestedResumeScopeId
+          ? validateResumeEntries({
+              threadId: agUiThreadId,
+              scopeId: requestedResumeScopeId,
+              runId: agUiRunId,
+              resume: [],
+            })
+          : null;
+      const publicResumeResponses = resumeValidation?.ok
+        ? mapResumeEntriesToElicitResponses(body, resumeValidation.records)
+        : [];
       const legacyElicitResponses = body.elicitResponses ?? [];
       const effectiveElicitResponses =
         legacyElicitResponses.length > 0 ? legacyElicitResponses : publicResumeResponses;
@@ -681,77 +683,89 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const engineAbortController = new AbortController();
 
         const agUiRun = {
-          threadId: body.threadId ?? requestedConversationId ?? sessionId,
-          runId: body.runId ?? sessionId,
+          threadId: agUiThreadId,
+          runId: agUiRunId,
           ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
         };
         void sessionInfo;
 
-        // Create the chat engine
-        // toolSchemas includes canonical tools exposed for this request
-        const engine = createChatEngine({
-          messages: body.messages,
-          ...(body.replayState ? { replayState: body.replayState } : {}),
-          ...(systemPrompt !== undefined && { systemPrompt }),
-          toolSchemas,
-          runtime,
-          model,
-          ...(streamOptions ? { streamOptions } : {}),
-          ...(initialToolChoice ? { initialToolChoice } : {}),
-          toolInventoryEntries: inventoryEntries,
-          toolRuntime: activeToolRuntime,
-          toolRuntimeId: activeToolRuntime.id,
-          maxIterations,
-          signal: engineAbortController.signal,
-          agUiRun,
-          // Plugin support for MCP tools
-          ...(pluginRegistry && { pluginRegistry }),
-          ...(mcpToolRegistry && { mcpToolRegistry }),
-          ...(pluginSessionManager && { pluginSessionManager }),
-          ...(pluginSamplingProvider && { pluginSamplingProvider }),
-          // Pass elicit responses if provided
-          ...(effectiveElicitResponses.length > 0 && {
-            elicitResponses: effectiveElicitResponses,
-          }),
-          ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
-        });
+        const resumePreflightError =
+          resumeValidation && !resumeValidation.ok ? resumeValidation : null;
+
+        // Create the chat engine. If public resume validation failed, use an
+        // empty engine and expose the failure as a schema-valid RUN_ERROR before
+        // any replay projection or runtime continuation can occur.
+        const engine = resumePreflightError
+          ? (createEmptyStream() as unknown as Stream<StreamEvent, void>)
+          : createChatEngine({
+              messages: body.messages,
+              ...(liveMode !== "sse" && body.replayState ? { replayState: body.replayState } : {}),
+              ...(systemPrompt !== undefined && { systemPrompt }),
+              toolSchemas,
+              runtime,
+              model,
+              ...(streamOptions ? { streamOptions } : {}),
+              ...(initialToolChoice ? { initialToolChoice } : {}),
+              toolInventoryEntries: inventoryEntries,
+              toolRuntime: activeToolRuntime,
+              toolRuntimeId: activeToolRuntime.id,
+              maxIterations,
+              signal: engineAbortController.signal,
+              agUiRun,
+              // Plugin support for MCP tools
+              ...(pluginRegistry && { pluginRegistry }),
+              ...(mcpToolRegistry && { mcpToolRegistry }),
+              ...(pluginSessionManager && { pluginSessionManager }),
+              ...(pluginSamplingProvider && { pluginSamplingProvider }),
+              // Pass elicit responses if provided
+              ...(effectiveElicitResponses.length > 0 && {
+                elicitResponses: effectiveElicitResponses,
+              }),
+              ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
+            });
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events
-        const initialReplayState = mergeReplayState(body.replayState, body);
-        const initialEvents: StreamEvent[] = [
-          {
-            type: "RUN_STARTED",
-            ...agUiRun,
-            input: {
-              ...agUiRun,
-              state: body.state ?? {},
-              messages: messagesWithReplayActivities(body.messages, initialReplayState),
-              tools: toolSchemas.map((tool) => ({
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.parameters,
-              })),
-              context: body.context ?? [],
-              forwardedProps: body.forwardedProps ?? {},
-              ...(body.resume ? { resume: body.resume } : {}),
-            },
-          },
-          ...(body.messages.length > 0
-            ? [
-                {
-                  type: "MESSAGES_SNAPSHOT" as const,
+        const initialReplayState = liveMode === "sse" ? undefined : body.replayState;
+        const initialEvents: StreamEvent[] = resumePreflightError
+          ? [
+              {
+                type: "RUN_ERROR",
+                message: resumePreflightError.message,
+                code: resumePreflightError.code,
+              },
+            ]
+          : [
+              {
+                type: "RUN_STARTED",
+                ...agUiRun,
+                input: {
+                  ...agUiRun,
+                  state: body.state ?? {},
                   messages: messagesWithReplayActivities(body.messages, initialReplayState),
+                  tools: toolSchemas.map((tool) => ({
+                    name: tool.name,
+                    description: tool.description,
+                    parameters: tool.parameters,
+                  })),
+                  context: body.context ?? [],
+                  forwardedProps: body.forwardedProps ?? {},
+                  ...(body.resume ? { resume: body.resume } : {}),
                 },
-              ]
-            : []),
-          {
-            type: "STATE_SNAPSHOT",
-            snapshot: buildAgUiCustomState({
-              ...(initialReplayState ? { replay: initialReplayState } : {}),
-            }),
-          },
-        ];
+              },
+              ...(body.messages.length > 0
+                ? [
+                    {
+                      type: "MESSAGES_SNAPSHOT" as const,
+                      messages: messagesWithReplayActivities(body.messages, initialReplayState),
+                    },
+                  ]
+                : []),
+              {
+                type: "STATE_SNAPSHOT",
+                snapshot: buildAgUiCustomState({}),
+              },
+            ];
         const serializedStream = createSerializedEventStream(engine, initialEvents);
         log.debug({ sessionId }, "new session path: serialized stream created");
 

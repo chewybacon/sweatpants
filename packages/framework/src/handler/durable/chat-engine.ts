@@ -42,13 +42,14 @@ import {
   createTranscriptState,
 } from "../../lib/chat/session/transcript.ts";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import { internalMessagesToAgUiMessages } from "../../lib/chat/session/ag-ui-compat.ts";
+import { messagesWithReplayActivities } from "../../lib/chat/session/ag-ui-projection.ts";
 import {
   buildPluginReplayActivity,
   mergePluginReplayTrace,
   normalizeClientReplayTrace,
 } from "../../lib/chat/session/plugin-replay.ts";
 import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
+import { randomUUID } from "node:crypto";
 
 // =============================================================================
 // INTERNAL STATE TYPES
@@ -543,7 +544,7 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     // The rest of the chat/runtime stack keys plugin sessions, elicit state,
     // tool results, and UI parts by call ID, so synthesize a per-run ID when
     // the provider does not supply a usable unique one.
-    const toRuntimeMessage = (message: ChatMessage): RuntimeMessage => {
+    const toRuntimeMessage = (message: ChatMessage): RuntimeMessage | null => {
       if (message.role === "system") {
         return { role: "system", content: message.content };
       }
@@ -560,6 +561,10 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
           content: [{ type: "text", text: message.content }],
           isError: message.content.startsWith("Error:"),
         };
+      }
+
+      if (message.role !== "assistant") {
+        return null;
       }
 
       const content: RuntimeAssistantMessage["content"] = [];
@@ -582,7 +587,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
       ...(systemPrompt ? { systemPrompt } : {}),
       messages: state.conversationMessages
         .filter((message) => !(message.role === "system" && message.content === systemPrompt))
-        .map(toRuntimeMessage),
+        .map(toRuntimeMessage)
+        .filter((message): message is RuntimeMessage => message !== null),
       ...(allSchemas.length > 0
         ? {
             tools: allSchemas.map((schema) => ({
@@ -625,17 +631,14 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
       const usedIds = collectUsedToolCallIds();
 
-      return calls.map((tc, index) => {
+      return calls.map((tc) => {
         const rawId = (tc as { id?: unknown }).id;
         let id = typeof rawId === "string" && rawId.trim().length > 0 ? rawId : "";
 
         if (!id || usedIds.has(id)) {
           const toolName = sanitizeToolCallIdPart(tc.function.name);
-          let suffix = 0;
           do {
-            const suffixPart = suffix === 0 ? "" : `:${suffix}`;
-            id = `call:${agUiRun.runId}:${state.iteration}:${index}:${toolName}${suffixPart}`;
-            suffix++;
+            id = `call:${randomUUID()}:${toolName}`;
           } while (usedIds.has(id));
         }
 
@@ -1127,19 +1130,13 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
               state.pendingEvents.push({
                 type: "MESSAGES_SNAPSHOT",
-                messages: internalMessagesToAgUiMessages(state.conversationMessages),
+                messages: messagesWithReplayActivities(state.conversationMessages, {
+                  toolTraces: Array.from(replayToolTraceMap.values()),
+                }),
               });
               state.pendingEvents.push({
                 type: "STATE_SNAPSHOT",
-                snapshot: buildAgUiCustomState({
-                  ...(replayToolTraceMap.size > 0
-                    ? {
-                        replay: {
-                          toolTraces: Array.from(replayToolTraceMap.values()),
-                        },
-                      }
-                    : {}),
-                }),
+                snapshot: buildAgUiCustomState({}),
               });
 
               for (const r of pluginAwaitingResults) {
@@ -1232,19 +1229,13 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
             state.pendingEvents.push({
               type: "MESSAGES_SNAPSHOT",
-              messages: internalMessagesToAgUiMessages(state.conversationMessages),
+              messages: messagesWithReplayActivities(state.conversationMessages, {
+                toolTraces: Array.from(replayToolTraceMap.values()),
+              }),
             });
             state.pendingEvents.push({
               type: "STATE_SNAPSHOT",
-              snapshot: buildAgUiCustomState({
-                ...(replayToolTraceMap.size > 0
-                  ? {
-                      replay: {
-                        toolTraces: Array.from(replayToolTraceMap.values()),
-                      },
-                    }
-                  : {}),
-              }),
+              snapshot: buildAgUiCustomState({}),
             });
             if (awaiting) {
               state.pendingEvents.push(toolResultToAgUiStreamEvent(awaiting, agUiRun));

@@ -93,6 +93,16 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
     for (const id of completedRef.current) {
       if (!currentPendingIds.has(id)) completedRef.current.delete(id);
     }
+    for (const [id, task] of tasksRef.current) {
+      if (!currentPendingIds.has(id)) {
+        task.halt().catch((e) => {
+          if (e instanceof Error && e.message !== "halted") {
+            console.error("[useElicitExecutor] halt error:", e);
+          }
+        });
+        tasksRef.current.delete(id);
+      }
+    }
     for (const id of executingRef.current) {
       if (!currentPendingIds.has(id)) executingRef.current.delete(id);
     }

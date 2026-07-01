@@ -1,4 +1,4 @@
-Welcome to your new TanStack app! 
+Welcome to your new TanStack app!
 
 # Getting Started
 
@@ -8,6 +8,31 @@ To run this application:
 pnpm install
 DEFAULT_CHAT_MODEL_PROVIDER=ollama DEFAULT_CHAT_MODEL_ID=gemma4:12b-mlx pnpm dev
 ```
+
+## GitHub Copilot auth
+
+The default local dev model is `github-copilot/claude-sonnet-4.5`. The app can read a Copilot token from `COPILOT_GITHUB_TOKEN` or the Sweatpants auth file at `SWEATPANTS_AUTH_FILE` / `~/.sweatpants/auth.json`.
+
+Use the root helper tasks to login, inspect, refresh, or export the token without committing secrets:
+
+```bash
+# Run GitHub Copilot device auth and save ~/.sweatpants/auth.json
+pnpm copilot:auth:login
+
+# Redacted status, source, expiry, and proxy endpoint
+pnpm copilot:auth
+
+# Refresh the stored Sweatpants token
+pnpm copilot:auth:refresh
+
+# Print shell exports for the current terminal session
+eval "$(pnpm -s copilot:auth:env)"
+
+# Write apps/yo-chat/.env.local with 0600 permissions; gitignored
+pnpm copilot:auth:sync
+```
+
+If `pnpm copilot:auth` reports no token or an expired token, run `pnpm copilot:auth:login`, `pnpm copilot:auth:refresh`, or export `COPILOT_GITHUB_TOKEN` directly before starting yo-chat.
 
 ## MCP tool runtime mode
 
@@ -80,7 +105,6 @@ AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 
 Unsupported names in `AGENTCORE_TOOL_NAMES` are rejected with a configuration error that lists the supported canonical names. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
 
-
 # Building For Production
 
 To build this application for production:
@@ -101,10 +125,8 @@ pnpm test
 
 This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
 
-
-
-
 ## Routing
+
 This project uses [TanStack Router](https://tanstack.com/router). The initial setup is a file based router. Which means that the routes are managed as files in `src/routes`.
 
 ### Adding A Route
@@ -140,31 +162,30 @@ In the File Based Routing setup the layout is located in `src/routes/__root.tsx`
 Here is an example layout that includes a header:
 
 ```tsx
-import { Outlet, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
 import { Link } from "@tanstack/react-router";
 
 export const Route = createRootRoute({
-  component: () => (
-    <>
-      <header>
-        <nav>
-          <Link to="/">Home</Link>
-          <Link to="/about">About</Link>
-        </nav>
-      </header>
-      <Outlet />
-      <TanStackRouterDevtools />
-    </>
-  ),
-})
+    component: () => (
+        <>
+            <header>
+                <nav>
+                    <Link to="/">Home</Link>
+                    <Link to="/about">About</Link>
+                </nav>
+            </header>
+            <Outlet />
+            <TanStackRouterDevtools />
+        </>
+    ),
+});
 ```
 
 The `<TanStackRouterDevtools />` component is not required so you can remove it if you don't want it in your layout.
 
 More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/react/guide/routing-concepts#layouts).
-
 
 ## Data Fetching
 
@@ -174,26 +195,26 @@ For example:
 
 ```tsx
 const peopleRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/people",
-  loader: async () => {
-    const response = await fetch("https://swapi.dev/api/people");
-    return response.json() as Promise<{
-      results: {
-        name: string;
-      }[];
-    }>;
-  },
-  component: () => {
-    const data = peopleRoute.useLoaderData();
-    return (
-      <ul>
-        {data.results.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    );
-  },
+    getParentRoute: () => rootRoute,
+    path: "/people",
+    loader: async () => {
+        const response = await fetch("https://swapi.dev/api/people");
+        return response.json() as Promise<{
+            results: {
+                name: string;
+            }[];
+        }>;
+    },
+    component: () => {
+        const data = peopleRoute.useLoaderData();
+        return (
+            <ul>
+                {data.results.map((person) => (
+                    <li key={person.name}>{person.name}</li>
+                ))}
+            </ul>
+        );
+    },
 });
 ```
 
@@ -221,13 +242,13 @@ const queryClient = new QueryClient();
 // ...
 
 if (!rootElement.innerHTML) {
-  const root = ReactDOM.createRoot(rootElement);
+    const root = ReactDOM.createRoot(rootElement);
 
-  root.render(
-    <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  );
+    root.render(
+        <QueryClientProvider client={queryClient}>
+            <RouterProvider router={router} />
+        </QueryClientProvider>,
+    );
 }
 ```
 
@@ -237,13 +258,13 @@ You can also add TanStack Query Devtools to the root route (optional).
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 const rootRoute = createRootRoute({
-  component: () => (
-    <>
-      <Outlet />
-      <ReactQueryDevtools buttonPosition="top-right" />
-      <TanStackRouterDevtools />
-    </>
-  ),
+    component: () => (
+        <>
+            <Outlet />
+            <ReactQueryDevtools buttonPosition="top-right" />
+            <TanStackRouterDevtools />
+        </>
+    ),
 });
 ```
 
@@ -255,24 +276,24 @@ import { useQuery } from "@tanstack/react-query";
 import "./App.css";
 
 function App() {
-  const { data } = useQuery({
-    queryKey: ["people"],
-    queryFn: () =>
-      fetch("https://swapi.dev/api/people")
-        .then((res) => res.json())
-        .then((data) => data.results as { name: string }[]),
-    initialData: [],
-  });
+    const { data } = useQuery({
+        queryKey: ["people"],
+        queryFn: () =>
+            fetch("https://swapi.dev/api/people")
+                .then((res) => res.json())
+                .then((data) => data.results as { name: string }[]),
+        initialData: [],
+    });
 
-  return (
-    <div>
-      <ul>
-        {data.map((person) => (
-          <li key={person.name}>{person.name}</li>
-        ))}
-      </ul>
-    </div>
-  );
+    return (
+        <div>
+            <ul>
+                {data.map((person) => (
+                    <li key={person.name}>{person.name}</li>
+                ))}
+            </ul>
+        </div>
+    );
 }
 
 export default App;
@@ -300,14 +321,12 @@ import "./App.css";
 const countStore = new Store(0);
 
 function App() {
-  const count = useStore(countStore);
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-    </div>
-  );
+    const count = useStore(countStore);
+    return (
+        <div>
+            <button onClick={() => countStore.setState((n) => n + 1)}>Increment - {count}</button>
+        </div>
+    );
 }
 
 export default App;
@@ -325,23 +344,21 @@ import "./App.css";
 const countStore = new Store(0);
 
 const doubledStore = new Derived({
-  fn: () => countStore.state * 2,
-  deps: [countStore],
+    fn: () => countStore.state * 2,
+    deps: [countStore],
 });
 doubledStore.mount();
 
 function App() {
-  const count = useStore(countStore);
-  const doubledCount = useStore(doubledStore);
+    const count = useStore(countStore);
+    const doubledCount = useStore(doubledStore);
 
-  return (
-    <div>
-      <button onClick={() => countStore.setState((n) => n + 1)}>
-        Increment - {count}
-      </button>
-      <div>Doubled - {doubledCount}</div>
-    </div>
-  );
+    return (
+        <div>
+            <button onClick={() => countStore.setState((n) => n + 1)}>Increment - {count}</button>
+            <div>Doubled - {doubledCount}</div>
+        </div>
+    );
 }
 
 export default App;

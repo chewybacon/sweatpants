@@ -13,6 +13,7 @@ export interface AgUiToolCall {
 }
 
 export type AgUiMessage =
+  | { id: string; role: "developer"; content: string }
   | { id: string; role: "system"; content: string }
   | { id: string; role: "user"; content: string }
   | { id: string; role: "assistant"; content?: string; toolCalls?: AgUiToolCall[] }
@@ -22,7 +23,8 @@ export type AgUiMessage =
       role: "activity";
       activityType: string;
       content: PluginReplayActivityContent | Record<string, unknown>;
-    };
+    }
+  | { id: string; role: "reasoning"; content: string };
 
 function serializeArguments(args: Record<string, unknown>): string {
   try {
@@ -91,11 +93,31 @@ export function internalMessageToAgUiMessage(
     };
   }
 
+  if (message.role === "activity") {
+    return {
+      id,
+      role: "activity",
+      activityType: message.activityType ?? "sweatpants:activity",
+      content: parseActivityContent(message.content),
+    };
+  }
+
   return {
     id,
     role: message.role,
     content: message.content,
   };
+}
+
+function parseActivityContent(content: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : { value: content };
+  } catch {
+    return { value: content };
+  }
 }
 
 export function internalMessagesToAgUiMessages(messages: Message[]): AgUiMessage[] {
@@ -105,7 +127,14 @@ export function internalMessagesToAgUiMessages(messages: Message[]): AgUiMessage
 }
 
 export function agUiMessageToInternalMessage(message: AgUiMessage): Message | null {
-  if (message.role === "activity") return null;
+  if (message.role === "activity") {
+    return {
+      id: message.id,
+      role: "activity",
+      activityType: message.activityType,
+      content: JSON.stringify(message.content),
+    };
+  }
 
   if (message.role === "tool") {
     return {
