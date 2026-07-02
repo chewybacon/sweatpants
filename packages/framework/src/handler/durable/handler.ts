@@ -484,6 +484,33 @@ function publicInterruptsFromRecords(records: OpenInterruptRecord[]) {
   });
 }
 
+/**
+ * REQ-042: the RUN_FINISHED interrupt marker is the authoritative pending resume
+ * source; STATE_SNAPSHOT.pendingClientActions is a derived compatibility view.
+ * Both derive from the same open interrupt records, so any divergence is an
+ * implementation error. This guard rejects contradictory pending state before
+ * it can be emitted to clients.
+ */
+export function assertPendingResumeConsistency(
+  elicits: ElicitRequestStreamEvent[],
+  openInterrupts: Pick<OpenInterruptRecord, "interruptId" | "toolCallId">[],
+): void {
+  const interruptIds = new Set(openInterrupts.map((record) => record.interruptId));
+  for (const elicit of elicits) {
+    if (!interruptIds.has(elicit.elicitId)) {
+      throw new Error(
+        `Pending resume state mismatch: derived pendingClientActions references interrupt "${elicit.elicitId}" that is not in the authoritative open interrupt set`,
+      );
+    }
+  }
+  const representable = openInterrupts.filter((record) => record.toolCallId);
+  if (elicits.length !== representable.length) {
+    throw new Error(
+      `Pending resume state mismatch: ${representable.length} open interrupt(s) with toolCallId but ${elicits.length} derived pendingClientActions`,
+    );
+  }
+}
+
 function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void> {
   return resource(function* (provide) {
     let emitted = false;
@@ -581,6 +608,7 @@ function storedCheckpointHydrateEvents(
   const elicits = openInterrupts
     .map(recordToElicit)
     .filter((value): value is ElicitRequestStreamEvent => value !== null);
+  assertPendingResumeConsistency(elicits, openInterrupts);
 
   return [
     ...checkpointEvents,
@@ -667,6 +695,7 @@ function* createConversationHydrateResponse(params: {
   const elicits = openInterrupts
     .map(recordToElicit)
     .filter((value): value is ElicitRequestStreamEvent => value !== null);
+  assertPendingResumeConsistency(elicits, openInterrupts);
   const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
   let resetRequested = false;
 

@@ -8,6 +8,18 @@ The default NDJSON durable transport remains an internal/compatibility transport
 
 Legacy lowercase Sweatpants frames (`ag_ui_*`, `elicit_request`, `ag_ui_checkpoint`, `conversation_state`) and internal tool-session frames are compatibility-reader concepts only and must not be produced by strict public streams for new sessions.
 
+## Snapshot hydration and checkpoints
+
+Durable chat hydration is snapshot-first. Idle and paused conversation reads (`GET /api/chat?conversationId=...`) emit checkpoint snapshot sequences — `MESSAGES_SNAPSHOT`, zero or more `ACTIVITY_SNAPSHOT` events, `STATE_SNAPSHOT`, and (for paused threads) a compact `RUN_FINISHED` interrupt marker — rather than replaying historical run lifecycle events.
+
+Hydrate responses are snapshot sequences, not stock AG-UI `RunAgent` streams. They may begin with `MESSAGES_SNAPSHOT` and are not required to begin with `RUN_STARTED`, so they must not be fed to the stock AG-UI run verifier or presented as stock AG-UI `HttpAgent` streams. A future stock AG-UI adapter must translate snapshot sequences into verifier-compatible run streams (for example by synthesizing a run envelope).
+
+Synthetic checkpoint frames in `/api/chat` hydrate responses keep the `{ lsn, event }` wrapper shape, but those `lsn` values are response-local ordering numbers only. The `Stream-Next-Offset` response header is the authoritative resume cursor; `Stream-Cursor-Reset: true` tells clients to discard any previously stored offset. For paused threads the `RUN_FINISHED` interrupt marker is the authoritative public pending-resume source; `STATE_SNAPSHOT.pendingClientActions` is a derived compatibility view of the same interrupt records.
+
+## Read-only chat stream endpoint
+
+The minimal chat stream endpoint (`GET`/`HEAD /api/streams/chat/:threadId`) is read-only and snapshot-aware. `GET` returns `application/x-ndjson` with one raw AG-UI event object per line (no `{ lsn, event }` wrappers) plus `Stream-Next-Offset`, `Stream-Up-To-Date`, and `Stream-Cursor-Reset` headers as applicable. It does not implement create, append, close, delete, long-poll, or SSE control events and is not a full Durable Streams conformance surface; those remain future work.
+
 ## Request and resume shape
 
 Public clients start or resume runs with a `RunAgentInput`-compatible JSON body:

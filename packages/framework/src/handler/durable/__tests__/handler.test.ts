@@ -23,7 +23,7 @@ import {
   setupDurableStreams,
 } from "../../../lib/chat/durable-streams/index.ts";
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
-import { createDurableChatHandler } from "../handler.ts";
+import { createDurableChatHandler, assertPendingResumeConsistency } from "../handler.ts";
 import type { ChatHandlerSetup } from "../types.ts";
 import {
   interruptRecordsForThread,
@@ -468,6 +468,56 @@ describe("Durable Chat Handler", () => {
         "sweatpants/key": "confirmAction",
         publicNote: "safe-public-note",
       });
+    });
+
+    it("rejects contradictory pending resume state instead of emitting it (TC-N04)", function* () {
+      // REQ-014 / REQ-042: derived pendingClientActions must describe the same
+      // pending set as the authoritative RUN_FINISHED interrupt marker. Force a
+      // divergence and verify the consistency guard throws rather than letting
+      // contradictory resume instructions reach a client.
+      const openInterrupts = [
+        { interruptId: "interrupt-a", toolCallId: "call-a" },
+        { interruptId: "interrupt-b", toolCallId: "call-b" },
+      ];
+      const elicitFor = (interruptId: string, callId: string) => ({
+        type: "elicit_request" as const,
+        sessionId: callId,
+        callId,
+        toolName: "confirm",
+        elicitId: interruptId,
+        key: interruptId,
+        message: "Need approval",
+        schema: {},
+      });
+
+      // Matched sets pass.
+      expect(() =>
+        assertPendingResumeConsistency(
+          [elicitFor("interrupt-a", "call-a"), elicitFor("interrupt-b", "call-b")],
+          openInterrupts,
+        ),
+      ).not.toThrow();
+
+      // Derived action referencing an interrupt outside the authoritative set fails.
+      expect(() =>
+        assertPendingResumeConsistency(
+          [elicitFor("interrupt-a", "call-a"), elicitFor("interrupt-stale", "call-stale")],
+          openInterrupts,
+        ),
+      ).toThrow(/mismatch/i);
+
+      // Missing derived action for an open interrupt with a toolCallId fails.
+      expect(() =>
+        assertPendingResumeConsistency([elicitFor("interrupt-a", "call-a")], openInterrupts),
+      ).toThrow(/mismatch/i);
+
+      // Interrupts without toolCallId cannot become pendingClientActions and are exempt.
+      expect(() =>
+        assertPendingResumeConsistency(
+          [elicitFor("interrupt-a", "call-a")],
+          [openInterrupts[0]!, { interruptId: "interrupt-no-call" }],
+        ),
+      ).not.toThrow();
     });
 
     it("should preserve the original private system prompt for later runs in the same thread", function* () {

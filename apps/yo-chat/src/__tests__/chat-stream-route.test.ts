@@ -8,6 +8,8 @@ vi.mock('@/server/chat-application', () => ({
 
 import { chatApp } from '@/server/chat-application'
 import { forwardSnapshotAwareChatRead } from '@/routes/api/streams/chat/$threadId'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 function ndjsonFrames(events: unknown[]): string {
   return events.map((event, index) => JSON.stringify({ lsn: index + 1, event })).join('\n') + '\n'
@@ -85,5 +87,24 @@ describe('snapshot-aware raw chat stream route', () => {
     expect(response.headers.get('Stream-Up-To-Date')).toBe('true')
     expect(response.headers.get('Content-Type')).toBe('application/x-ndjson')
     expect(await response.text()).toBe('')
+  })
+
+  it('declares only read-only GET/HEAD handlers (TC-033/TC-N09)', () => {
+    // REQ-033: the minimal stream endpoint is read-only. Mutable durable stream
+    // operations (create/append/close/delete) must not be routed. The TanStack
+    // Start plugin strips server.handlers from the client transform, so this is
+    // a static source check: the route file must declare GET and HEAD handlers
+    // and no mutable methods. Undeclared methods 404/405 at the router.
+    const source = readFileSync(
+      join(__dirname, '../routes/api/streams/chat/$threadId.ts'),
+      'utf8',
+    )
+    const declaredMethods = [...source.matchAll(/^\s*(GET|HEAD|POST|PUT|DELETE|PATCH):\s/gm)].map(
+      (m) => m[1],
+    )
+    expect(declaredMethods.sort()).toEqual(['GET', 'HEAD'])
+    for (const mutableMethod of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+      expect(declaredMethods).not.toContain(mutableMethod)
+    }
   })
 })

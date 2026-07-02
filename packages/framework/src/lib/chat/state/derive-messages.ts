@@ -214,6 +214,12 @@ export function deriveCompletedMessages<TComponent>(
   const pendingElicits = options.pendingElicits ?? {}
 
   return state.messages
+    // BREAKING (AG-UI checkpointing alignment): only display roles surface as
+    // chat messages. Previously this filtered out `tool` only; `activity`,
+    // `developer`, and `reasoning` messages now also stay out of the chat lane.
+    // Activity renders via ACTIVITY_SNAPSHOT-driven UI surfaces instead, and
+    // callers that rendered developer/reasoning bubbles must consume them from
+    // state.messages directly.
     .filter((msg) => msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system')
     .map((msg): ChatMessage<TComponent> => {
       const messageId = msg.id ?? `msg-${Date.now()}`
