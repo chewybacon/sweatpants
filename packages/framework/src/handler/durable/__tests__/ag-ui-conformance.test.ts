@@ -281,6 +281,36 @@ describe("strict AG-UI public conformance", () => {
     expect(events.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
   });
 
+  it("validates snapshot hydrate sequences against AG-UI schemas without run-lifecycle rules", function* () {
+    // TC-002/TC-003: hydrate responses are snapshot sequences. Every event must
+    // still validate against the AG-UI event schemas, but the sequence may begin
+    // with MESSAGES_SNAPSHOT rather than RUN_STARTED, so the run-lifecycle
+    // assertion is intentionally not applied here.
+    const provider = createMockProvider({ responses: "Hydrate me" });
+    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+
+    const conversationId = `thread-hydrate-schema-${Date.now()}`;
+    const { request: postRequest } = createChatRequest(
+      [{ id: "user:hydrate", role: "user", content: "Hello there" }],
+      { conversationId },
+    );
+    const postResponse = yield* call(() => handler(postRequest));
+    yield* call(() => consumeDurableResponse(postResponse));
+
+    const { request: getRequest } = createChatRequest([], {
+      method: "GET",
+      conversationId,
+    });
+    const getResponse = yield* call(() => handler(getRequest));
+    const hydrate = yield* call(() => consumeDurableResponse(getResponse));
+
+    const events = hydrate.events.map((entry) => entry.event as AgUiEvent);
+    assertSchemaValidPublicEvents(events);
+    expect(events[0]?.type).toBe("MESSAGES_SNAPSHOT");
+    expect(events.some((event) => event.type === "STATE_SNAPSHOT")).toBe(true);
+    expect(events.some((event) => event.type === "RUN_STARTED")).toBe(false);
+  });
+
   it("keeps replay activity out of message snapshots and emits activity snapshots separately", function* () {
     const callId = "call-replay-order";
     const provider = createMockProvider({ responses: "ok" });
