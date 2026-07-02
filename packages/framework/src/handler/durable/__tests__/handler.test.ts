@@ -25,6 +25,15 @@ import {
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
 import { createDurableChatHandler } from "../handler.ts";
 import type { ChatHandlerSetup } from "../types.ts";
+import {
+  interruptRecordsForThread,
+  registerInterruptsFromRunFinished,
+  resetInterruptRegistry,
+} from "../interrupt-registry.ts";
+import { recordThreadInterruptState } from "../interrupt-store.ts";
+import { ToolInventoryContext, createToolInventory } from "../../../lib/chat/tool-inventory.ts";
+import { ToolRuntimeContext } from "../../../lib/chat/tool-runtime.ts";
+import { resetPrivateModelContextRegistry } from "../model-context-registry.ts";
 type LegacyTestTool = any;
 import type { Message } from "../../../lib/chat/types.ts";
 import {
@@ -89,7 +98,7 @@ async function makeRequest(
 
 describe("Durable Chat Handler", () => {
   describe("New Session: Basic Streaming", () => {
-    it("should replay prior user and assistant state for conversationId GET", function* () {
+    it("should hydrate conversationId GET from snapshots instead of replaying terminal text events", function* () {
       const provider = createMockProvider({ responses: "Hello from durable world" });
       const handler = createDurableChatHandler({
         setup: createTestHooks(provider, [], {
@@ -124,8 +133,143 @@ describe("Durable Chat Handler", () => {
       expect(snapshots.length).toBeGreaterThan(0);
       expect(snapshots[0]?.messages).toMatchObject([
         { role: "user", content: "Hi durable handler" },
+        { role: "assistant", content: "Hello from durable world" },
       ]);
-      expect(replay.text).toContain("Hello from durable world");
+      expect(getEventsByType(replay, "TEXT_MESSAGE_CONTENT")).toEqual([]);
+      expect(replay.text).toBe("");
+    });
+
+    it("should hydrate from a stored conversation checkpoint even after the raw session is deleted", function* () {
+      const provider = createMockProvider({ responses: "Checkpoint survives" });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider),
+      });
+
+      const conversationId = `thread-checkpoint-${Date.now()}`;
+
+      yield* call(() =>
+        makeRequest(handler, [{ id: "user:checkpoint", role: "user", content: "Persist me" }], {
+          conversationId,
+        }),
+      );
+
+      const { request } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+      });
+      const response = yield* call(() => handler(request));
+      const replay = yield* call(() => consumeDurableResponse(response));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Stream-Next-Offset")).toBe("0000000000000000");
+      const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+        type: "MESSAGES_SNAPSHOT";
+        messages: Array<{ role: string; content?: string }>;
+      }>;
+      expect(snapshots[0]?.messages).toMatchObject([
+        { role: "user", content: "Persist me" },
+        { role: "assistant", content: "Checkpoint survives" },
+      ]);
+      expect(replay.text).toBe("");
+
+      const { request: echoCursorRequest } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+        offset: 0,
+      });
+      const echoCursorResponse = yield* call(() => handler(echoCursorRequest));
+      const echoCursorReplay = yield* call(() => consumeDurableResponse(echoCursorResponse));
+      expect(echoCursorResponse.headers.get("Stream-Cursor-Reset")).toBeNull();
+      expect(echoCursorResponse.headers.get("Stream-Up-To-Date")).toBe("true");
+      expect(echoCursorReplay.events).toEqual([]);
+    });
+
+    it("should persist a conversation checkpoint even if the client disconnects before stream completion", function* () {
+      const provider = createMockProvider({
+        responses: "Disconnect and finish",
+        tokenDelayMs: 50,
+      });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider),
+      });
+
+      const conversationId = `thread-disconnect-${Date.now()}`;
+      const { request: initialRequest } = createChatRequest(
+        [{ id: "user:disconnect", role: "user", content: "Keep going" }],
+        { conversationId },
+      );
+      const initialResponse = yield* call(() => handler(initialRequest));
+      yield* call(async () => {
+        await initialResponse.body?.cancel();
+      });
+
+      yield* call(() => new Promise((resolve) => setTimeout(resolve, 250)));
+
+      const { request } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+      });
+      const response = yield* call(() => handler(request));
+      const replay = yield* call(() => consumeDurableResponse(response));
+
+      const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+        type: "MESSAGES_SNAPSHOT";
+        messages: Array<{ role: string; content?: string }>;
+      }>;
+      expect(snapshots[0]?.messages).toMatchObject([
+        { role: "user", content: "Keep going" },
+        { role: "assistant", content: "Disconnect and finish" },
+      ]);
+    });
+
+    it("should return checkpoint metadata for HEAD conversation reads after raw session deletion", function* () {
+      const provider = createMockProvider({ responses: "Checkpoint head" });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider),
+      });
+
+      const conversationId = `thread-checkpoint-head-${Date.now()}`;
+      yield* call(() =>
+        makeRequest(handler, [{ id: "user:head", role: "user", content: "Persist head" }], {
+          conversationId,
+        }),
+      );
+
+      const { request } = createChatRequest([], {
+        method: "HEAD",
+        conversationId,
+      });
+      const response = yield* call(() => handler(request));
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Stream-Next-Offset")).toBe("0000000000000000");
+      expect(response.headers.get("Stream-Up-To-Date")).toBe("true");
+      expect(yield* call(() => response.text())).toBe("");
+    });
+
+    it("should normalize divergent body threadId to the durable conversationId", function* () {
+      const provider = createMockProvider({ responses: "normalized" });
+      const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+      const conversationId = `thread-normalized-${Date.now()}`;
+
+      const response = yield* call(() =>
+        handler(
+          new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              threadId: "divergent-client-thread-id",
+              messages: [{ id: "user:normalize", role: "user", content: "normalize" }],
+            }),
+          }),
+        ),
+      );
+      const result = yield* call(() => consumeDurableResponse(response));
+      const runStarted = getEventsByType(result, "RUN_STARTED") as Array<{
+        type: "RUN_STARTED";
+        threadId: string;
+      }>;
+      expect(runStarted[0]?.threadId).toBe(conversationId);
     });
 
     it("should reuse the same durable session for repeated conversationId requests", function* () {
@@ -155,7 +299,15 @@ describe("Durable Chat Handler", () => {
       expect(replayResponse.headers.get("X-Session-Id")).toBe(first.sessionId);
 
       const replayResult = yield* call(() => consumeDurableResponse(replayResponse));
-      expect(replayResult.text).toContain("First response");
+      const replaySnapshots = getEventsByType(replayResult, "MESSAGES_SNAPSHOT") as Array<{
+        type: "MESSAGES_SNAPSHOT";
+        messages: Array<{ role: string; content?: string }>;
+      }>;
+      expect(replaySnapshots[0]?.messages).toMatchObject([
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "First response" },
+      ]);
+      expect(replayResult.text).toBe("");
 
       const { request: headRequest } = createChatRequest([], {
         method: "HEAD",
@@ -164,6 +316,195 @@ describe("Durable Chat Handler", () => {
       const headResponse = yield* call(() => handler(headRequest));
       expect(headResponse.status).toBe(200);
       expect(headResponse.headers.get("X-Session-Id")).toBe(first.sessionId);
+    });
+
+    it("should reset stale conversation offsets to the current snapshot hydrate", function* () {
+      const provider = createMockProvider({ responses: "Reset me" });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider, [], {
+          retentionPolicy: { mode: "retain_forever" },
+        }),
+      });
+
+      const conversationId = "thread-reset";
+      yield* call(() =>
+        makeRequest(handler, [{ id: "user:reset", role: "user", content: "Hello" }], {
+          conversationId,
+        }),
+      );
+
+      const { request } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+        offset: 0,
+      });
+      const response = yield* call(() => handler(request));
+      const replay = yield* call(() => consumeDurableResponse(response));
+
+      expect(response.headers.get("Stream-Cursor-Reset")).toBe("true");
+      expect(response.headers.get("Stream-Next-Offset")).toBeTruthy();
+      const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+        type: "MESSAGES_SNAPSHOT";
+        messages: Array<{ role: string; content?: string }>;
+      }>;
+      expect(snapshots[0]?.messages).toMatchObject([
+        { role: "user", content: "Hello" },
+        { role: "assistant", content: "Reset me" },
+      ]);
+    });
+
+    it("should return snapshots plus active tail without resetting a valid hot-turn offset", function* () {
+      const provider = createMockProvider({
+        responses: "active tail",
+        tokenDelayMs: 100,
+      });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider, [], {
+          retentionPolicy: { mode: "retain_forever" },
+        }),
+      });
+
+      const conversationId = `thread-active-${Date.now()}`;
+      const { request: initialRequest } = createChatRequest([
+        { id: "user:active", role: "user", content: "Stream slowly" },
+      ], {
+        conversationId,
+      });
+      const initialResponse = yield* call(() => handler(initialRequest));
+      expect(initialResponse.headers.get("X-Session-Id")).toBeTruthy();
+
+      yield* call(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+      const { request } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+        offset: 3,
+      });
+      const response = yield* call(() => handler(request));
+      const replay = yield* call(() => consumeDurableResponse(response));
+
+      expect(response.headers.get("Stream-Cursor-Reset")).toBeNull();
+      expect(getEventsByType(replay, "MESSAGES_SNAPSHOT").length).toBeGreaterThan(0);
+
+      yield* call(async () => {
+        await initialResponse.body?.cancel();
+      });
+    });
+
+    it("should hydrate paused threads with snapshots plus a public interrupt marker", function* () {
+      const provider = createMockProvider({ responses: "Paused hello" });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider, [], {
+          retentionPolicy: { mode: "retain_forever" },
+        }),
+      });
+
+      const conversationId = `thread-paused-${Date.now()}`;
+      const first = yield* call(() =>
+        makeRequest(handler, [{ id: "user:paused", role: "user", content: "Pause me" }], {
+          conversationId,
+        }),
+      );
+
+      registerInterruptsFromRunFinished({
+        type: "RUN_FINISHED",
+        threadId: conversationId,
+        runId: first.sessionId!,
+        outcome: {
+          type: "interrupt",
+          interrupts: [
+            {
+              id: `interrupt-${conversationId}`,
+              reason: "input_required",
+              message: "Need approval",
+              toolCallId: "call-paused",
+              responseSchema: { type: "object", properties: { ok: { type: "boolean" } } },
+              metadata: {
+                "sweatpants/toolName": "confirm",
+                "sweatpants/key": "confirmAction",
+                "sweatpants/sessionId": "private-session-id",
+                "sweatpants/continuationRef": "private-continuation-ref",
+                publicNote: "safe-public-note",
+              },
+            },
+          ],
+        },
+      });
+
+      const { request } = createChatRequest([], {
+        method: "GET",
+        conversationId,
+      });
+      const response = yield* call(() => handler(request));
+      const replay = yield* call(() => consumeDurableResponse(response));
+
+      expect(response.headers.get("Stream-Cursor-Reset")).toBeNull();
+      const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+        type: "MESSAGES_SNAPSHOT";
+        messages: Array<{ role: string; content?: string }>;
+      }>;
+      expect(snapshots[0]?.messages).toMatchObject([
+        { role: "user", content: "Pause me" },
+        { role: "assistant", content: "Paused hello" },
+      ]);
+
+      const stateSnapshots = getEventsByType(replay, "STATE_SNAPSHOT") as Array<{
+        type: "STATE_SNAPSHOT";
+        snapshot: { pendingClientActions?: Array<{ sessionId: string; toolCallId: string }> };
+      }>;
+      expect(stateSnapshots[0]?.snapshot.pendingClientActions).toMatchObject([
+        { sessionId: "call-paused", toolCallId: "call-paused" },
+      ]);
+
+      const runFinished = getEventsByType(replay, "RUN_FINISHED") as Array<{
+        type: "RUN_FINISHED";
+        outcome?: { type: string; interrupts?: Array<{ metadata?: Record<string, unknown> }> };
+      }>;
+      expect(runFinished[0]?.outcome?.type).toBe("interrupt");
+      expect(JSON.stringify(runFinished[0])).not.toContain("private-session-id");
+      expect(JSON.stringify(runFinished[0])).not.toContain("private-continuation-ref");
+      expect(runFinished[0]?.outcome?.interrupts?.[0]?.metadata).toMatchObject({
+        "sweatpants/toolName": "confirm",
+        "sweatpants/key": "confirmAction",
+        publicNote: "safe-public-note",
+      });
+    });
+
+    it("should preserve the original private system prompt for later runs in the same thread", function* () {
+      const seenMessages: Message[][] = [];
+      const fallback = createMockProvider({ responses: ["first", "second"] });
+      const provider = createMockProvider({
+        customStream: (messages, options) => {
+          seenMessages.push(messages);
+          return fallback.stream(messages, options);
+        },
+      });
+      const handler = createDurableChatHandler({
+        setup: createTestHooks(provider, [], {
+          retentionPolicy: { mode: "retain_forever" },
+        }),
+      });
+
+      const conversationId = `thread-prompt-${Date.now()}`;
+      yield* call(() =>
+        makeRequest(handler, [{ id: "user:one", role: "user", content: "Hello" }], {
+          conversationId,
+          systemPrompt: "Prompt A",
+        }),
+      );
+      resetPrivateModelContextRegistry();
+
+      yield* call(() =>
+        makeRequest(handler, [{ id: "user:two", role: "user", content: "Again" }], {
+          conversationId,
+          systemPrompt: "Prompt B",
+        }),
+      );
+
+      expect(seenMessages[0]?.[0]?.role).toBe("system");
+      expect(seenMessages[0]?.[0]?.content).toBe("Prompt A");
+      expect(seenMessages[1]?.[0]?.role).toBe("system");
+      expect(seenMessages[1]?.[0]?.content).toBe("Prompt A");
     });
 
     it("should stream a simple text response with strict AG-UI run lifecycle", function* () {
@@ -434,6 +775,101 @@ describe("Durable Chat Handler", () => {
       // Should have error event
       expect(result.error).not.toBeNull();
       expect(result.error?.message).toContain("Provider error");
+    });
+
+    it("should restore persisted public resume state onto the active tool runtime", function* () {
+      const provider = createMockProvider({ responses: "Resumed successfully" });
+      const bufferStore = createInMemoryBufferStore<string>();
+      const handler = createDurableChatHandler({
+        setup: function* () {
+          const registryStore = createInMemoryRegistryStore();
+          yield* setupDurableStreams({ bufferStore, registryStore });
+          yield* setupMockModelProvider(provider);
+          yield* ToolInventoryContext.set(createToolInventory([]));
+          yield* ToolRuntimeContext.set({
+            id: "test",
+            *execute() {
+              throw new Error("execute should not be called in resume test");
+            },
+            *resume(request) {
+              return {
+                kind: "completed",
+                ref: request.ref,
+                result: "Resume result",
+              } as any;
+            },
+            *abort() {},
+          } as any);
+        },
+      });
+
+      const threadId = `thread-resume-${Date.now()}`;
+      registerInterruptsFromRunFinished({
+        type: "RUN_FINISHED",
+        threadId,
+        runId: "run-paused",
+        outcome: {
+          type: "interrupt",
+          interrupts: [
+            {
+              id: "interrupt-resume-1",
+              reason: "input_required",
+              toolCallId: "call-resume-1",
+              responseSchema: { type: "object" },
+              metadata: {
+                "sweatpants/toolName": "echo",
+                "sweatpants/sessionId": "call-resume-1",
+              },
+            },
+          ],
+        },
+      });
+      yield* recordThreadInterruptState(bufferStore, threadId, interruptRecordsForThread(threadId));
+      resetInterruptRegistry();
+
+      const request = new Request("http://localhost/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: threadId,
+          threadId,
+          parentRunId: "run-paused",
+          messages: [
+            { id: "user:1", role: "user", content: "resume" },
+            {
+              id: "assistant:tools:call-resume-1",
+              role: "assistant",
+              content: "",
+              tool_calls: [
+                {
+                  id: "call-resume-1",
+                  type: "function",
+                  function: { name: "echo", arguments: {} },
+                },
+              ],
+            },
+          ],
+          resume: [
+            {
+              interruptId: "interrupt-resume-1",
+              status: "resolved",
+              payload: { action: "accept", content: { ok: true } },
+            },
+          ],
+        }),
+      });
+
+      const response = yield* call(() => handler(request));
+      const result = yield* call(() => consumeDurableResponse(response));
+      expect(result.toolResults?.some((tool) => tool.content === "Resume result")).toBe(true);
+      expect(
+        result.events
+          .map((entry) => entry.event)
+          .filter((event): event is { type: "RUN_ERROR"; code?: string } =>
+            (event as { type?: string }).type === "RUN_ERROR",
+          )
+          .some((event) => event.code === "TOOL_RESUME_FAILED"),
+      ).toBe(false);
     });
 
     it("should reject mismatched continuation refs before runtime resume", function* () {

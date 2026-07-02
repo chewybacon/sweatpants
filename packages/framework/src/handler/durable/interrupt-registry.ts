@@ -8,6 +8,7 @@ export interface OpenInterruptRecord {
   interruptedRunId: string;
   interruptId: string;
   reason: string;
+  message?: string;
   toolCallId?: string;
   toolName?: string;
   sessionId?: string;
@@ -15,6 +16,7 @@ export interface OpenInterruptRecord {
   executionId?: string;
   continuationRef?: unknown;
   responseSchema?: unknown;
+  publicMetadata?: Record<string, unknown>;
   createdAt: string;
   expiresAt?: string;
   status: InterruptStatus;
@@ -175,12 +177,14 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
       interruptedRunId: runId,
       interruptId: candidate["id"],
       reason: typeof candidate["reason"] === "string" ? candidate["reason"] : "input_required",
+      ...(typeof candidate["message"] === "string" ? { message: candidate["message"] } : {}),
       ...(toolCallId ? { toolCallId } : {}),
       ...(toolName ? { toolName } : {}),
       ...(sessionId ? { sessionId, executionId: sessionId } : {}),
       ...(candidate["responseSchema"] !== undefined
         ? { responseSchema: candidate["responseSchema"] }
         : {}),
+      ...(Object.keys(metadata).length > 0 ? { publicMetadata: metadata } : {}),
       ...(typeof candidate["expiresAt"] === "string" ? { expiresAt: candidate["expiresAt"] } : {}),
       createdAt: new Date().toISOString(),
       status: "open",
@@ -189,10 +193,31 @@ export function registerInterruptsFromRunFinished(event: unknown): void {
   }
 }
 
+function isTerminalStatus(status: InterruptStatus): boolean {
+  return status === "resolved" || status === "cancelled" || status === "expired";
+}
+
+export function upsertInterruptRecords(records: OpenInterruptRecord[]): void {
+  for (const record of records) {
+    const key = keyFor(record.threadId, record.scopeId, record.interruptId);
+    const existing = recordsByKey.get(key);
+    if (existing && isTerminalStatus(existing.status) && !isTerminalStatus(record.status)) {
+      continue;
+    }
+    recordsByKey.set(key, record);
+  }
+}
+
+export function interruptRecordsForThread(threadId: string): OpenInterruptRecord[] {
+  return [...recordsByKey.values()].filter((record) => record.threadId === threadId);
+}
+
+export function resetInterruptRegistry(): void {
+  recordsByKey.clear();
+}
+
 export function openInterruptsForThread(threadId: string): OpenInterruptRecord[] {
-  return [...recordsByKey.values()].filter(
-    (record) => record.threadId === threadId && record.status === "open",
-  );
+  return interruptRecordsForThread(threadId).filter((record) => record.status === "open")
 }
 
 export function deriveResumeScopeId(

@@ -19,6 +19,7 @@ import {
 } from "./message-identity.ts";
 import { createTranscriptState, resetTranscriptState } from "./transcript.ts";
 import { agUiMessagesToInternalMessages } from "./ag-ui-compat.ts";
+import { providerHistoryMessages } from "./ag-ui-projection.ts";
 import {
   activitySnapshotToPluginReplayTrace,
   activityMessageToPluginReplayTrace,
@@ -217,6 +218,7 @@ export function* replayFramesToConversation(
   let seededAssistantContent: Set<string> = new Set();
   let replayState: ConversationReplayState | undefined = undefined;
   const emittedReplayCallIds = new Set<string>();
+  let toolHostAssistantText = "";
 
   function toolNameForCall(toolCallId: string, fallback = "unknown"): string {
     return (
@@ -224,6 +226,53 @@ export function* replayFramesToConversation(
       replayState?.toolTraces.find((trace) => trace.callId === toolCallId)?.toolName ??
       fallback
     );
+  }
+
+  function* emitAssistantToolHostIfNeeded(): Operation<void> {
+    if (pendingToolCalls.length === 0) return;
+
+    const hostedToolCalls = pendingToolCalls;
+    const hostedAssistantText = toolHostAssistantText;
+    pendingToolCalls = [];
+    toolHostAssistantText = "";
+
+    const toolCallIds = hostedToolCalls.map((call) => call.id);
+    const alreadySeeded =
+      seededFromConversationState && toolCallIds.every((id) => seededToolCallIds.has(id));
+
+    const alreadyInHistory = history.some(
+      (m) =>
+        m.role === "assistant" &&
+        m.tool_calls &&
+        m.tool_calls.length === toolCallIds.length &&
+        toolCallIds.every((id) => m.tool_calls!.some((tc) => tc.id === id)),
+    );
+
+    if (alreadySeeded || alreadyInHistory) return;
+
+    const assistantWithTools: Message = {
+      id: messageIdForAssistantTools(toolCallIds),
+      role: "assistant",
+      content: hostedAssistantText,
+      tool_calls: hostedToolCalls.map((call) => ({
+        id: call.id,
+        type: "function",
+        function: {
+          name: call.name,
+          arguments: call.arguments as Record<string, unknown>,
+        },
+      })),
+    };
+
+    const parts = yield* renderReplayMessageParts(hostedAssistantText, transforms);
+
+    history.push(assistantWithTools);
+    transcriptState.currentTurnKey = deriveTurnKeyFromToolCalls(toolCallIds);
+    patches.push({
+      type: "history_message",
+      message: assistantWithTools,
+      ...(parts ? { parts } : {}),
+    });
   }
 
   function* emitReplayEmissionPatches(
@@ -307,7 +356,11 @@ export function* replayFramesToConversation(
         replayState = mergeReplayState(replayState, activityReplayState);
 
         if (!seededFromConversationState && history.length === 0) {
-          const messages = deduplicateMessages(agUiMessagesToInternalMessages(event.messages));
+          const messages = deduplicateMessages(
+            agUiMessagesToInternalMessages(event.messages).filter(
+              (message) => message.role !== "activity",
+            ),
+          );
           const replayToolTraceByCallId = new Map(
             (replayState?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
           );
@@ -350,6 +403,10 @@ export function* replayFramesToConversation(
 
       case "TOOL_CALL_START":
       case "ag_ui_tool_call_start": {
+        if (pendingToolCalls.length === 0) {
+          toolHostAssistantText = currentAssistantText;
+          currentAssistantText = "";
+        }
         pendingToolCalls.push({
           id: event.toolCallId,
           name: event.toolCallName,
@@ -389,6 +446,8 @@ export function* replayFramesToConversation(
           history.some((m) => m.role === "tool" && m.tool_call_id === event.toolCallId);
 
         if (!alreadySeeded) {
+          yield* emitAssistantToolHostIfNeeded();
+
           const toolMessage: Message = {
             id: messageIdForTool(event.toolCallId),
             role: "tool",
@@ -422,6 +481,8 @@ export function* replayFramesToConversation(
 
         if (!alreadySeeded) {
           const replayedTrace = yield* replayToolTrace(tools, event.toolCallName, event.trace);
+
+          yield* emitAssistantToolHostIfNeeded();
 
           const toolMessage: Message = {
             id: messageIdForTool(event.toolCallId),
@@ -493,43 +554,31 @@ export function* replayFramesToConversation(
         const assistantText = currentAssistantText;
 
         if (pendingToolCalls.length > 0) {
-          const toolCallIds = pendingToolCalls.map((call) => call.id);
+          yield* emitAssistantToolHostIfNeeded();
 
-          const alreadySeeded =
-            seededFromConversationState && toolCallIds.every((id) => seededToolCallIds.has(id));
+          if (assistantText) {
+            const alreadySeededFinal =
+              seededFromConversationState && seededAssistantContent.has(assistantText);
+            const alreadyInHistoryFinal = history.some(
+              (m) => m.role === "assistant" && !m.tool_calls?.length && m.content === assistantText,
+            );
 
-          const alreadyInHistory = history.some(
-            (m) =>
-              m.role === "assistant" &&
-              m.tool_calls &&
-              m.tool_calls.length === toolCallIds.length &&
-              toolCallIds.every((id) => m.tool_calls!.some((tc) => tc.id === id)),
-          );
+            if (!alreadySeededFinal && !alreadyInHistoryFinal) {
+              const assistantMessage: Message = {
+                id: messageIdForAssistantFinal(transcriptState.currentTurnKey),
+                role: "assistant",
+                content: assistantText,
+              };
 
-          if (!alreadySeeded && !alreadyInHistory) {
-            const assistantWithTools: Message = {
-              id: messageIdForAssistantTools(toolCallIds),
-              role: "assistant",
-              content: assistantText,
-              tool_calls: pendingToolCalls.map((call) => ({
-                id: call.id,
-                type: "function",
-                function: {
-                  name: call.name,
-                  arguments: call.arguments as Record<string, unknown>,
-                },
-              })),
-            };
+              const parts = yield* renderReplayMessageParts(assistantText, transforms);
 
-            const parts = yield* renderReplayMessageParts(assistantText, transforms);
-
-            history.push(assistantWithTools);
-            transcriptState.currentTurnKey = deriveTurnKeyFromToolCalls(toolCallIds);
-            patches.push({
-              type: "history_message",
-              message: assistantWithTools,
-              ...(parts ? { parts } : {}),
-            });
+              history.push(assistantMessage);
+              patches.push({
+                type: "history_message",
+                message: assistantMessage,
+                ...(parts ? { parts } : {}),
+              });
+            }
           }
         } else if (assistantText) {
           const alreadySeeded =
@@ -569,10 +618,7 @@ export function* replayFramesToConversation(
               typeof metadata["sweatpants/key"] === "string"
                 ? metadata["sweatpants/key"]
                 : interrupt.id;
-            const sessionId =
-              typeof metadata["sweatpants/sessionId"] === "string"
-                ? metadata["sweatpants/sessionId"]
-                : callId;
+            const sessionId = callId;
             if (
               !patches.some((patch) => patch.type === "elicit_start" && patch.callId === callId)
             ) {
@@ -598,6 +644,7 @@ export function* replayFramesToConversation(
         }
 
         currentAssistantText = "";
+        toolHostAssistantText = "";
         pendingToolCalls = [];
         break;
       }
@@ -612,8 +659,17 @@ export function* replayFramesToConversation(
       }
 
       case "ag_ui_checkpoint": {
+        const checkpointActivityReplayState: ConversationReplayState = {
+          toolTraces: event.checkpoint.messages.messages
+            .map(activityMessageToPluginReplayTrace)
+            .filter(
+              (trace): trace is ConversationReplayState["toolTraces"][number] => trace !== null,
+            ),
+        };
+        replayState = mergeReplayState(replayState, checkpointActivityReplayState);
+
         const checkpointConversationState = {
-          messages: event.checkpoint.messages.messages,
+          messages: providerHistoryMessages(event.checkpoint.messages.messages),
           assistantContent: event.checkpoint.state.assistantContent,
           toolCalls: event.checkpoint.state.toolCalls,
           serverToolResults: event.checkpoint.state.serverToolResults,
@@ -743,6 +799,7 @@ export function* replayFramesToConversation(
         }
 
         currentAssistantText = checkpointConversationState.assistantContent;
+        toolHostAssistantText = "";
         pendingToolCalls = checkpointConversationState.toolCalls.map((toolCall) => ({
           id: toolCall.id,
           name: toolCall.name,

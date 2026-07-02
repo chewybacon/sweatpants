@@ -56,6 +56,7 @@ function ToolCallBlock({ toolCall }: { toolCall: ChatToolCall }) {
  */
 function Message({ message }: { message: ChatMessage }) {
   const isUser = message.role === 'user'
+  const isSystem = message.role === 'system'
 
   return (
     <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
@@ -65,7 +66,7 @@ function Message({ message }: { message: ChatMessage }) {
             isUser ? 'text-cyan-500' : 'text-purple-500'
           }`}
         >
-          {isUser ? 'You' : 'Assistant'}
+          {isUser ? 'You' : isSystem ? 'System' : 'Assistant'}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">streaming...</span>
           )}

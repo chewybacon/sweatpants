@@ -93,6 +93,208 @@ describe("mapStreamEventsToPatches", () => {
     expect(result).toMatchObject({ type: "complete", text: "Hello world" });
   });
 
+  it("keeps post-tool assistant text separate from the assistant tool-call host", async () => {
+    const { result } = await mapEvents([
+      {
+        type: "TEXT_MESSAGE_START",
+        messageId: "assistant:final:run-1",
+        role: "assistant",
+      },
+      {
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final:run-1",
+        delta: "Let me check.",
+      },
+      {
+        type: "TEXT_MESSAGE_END",
+        messageId: "assistant:final:run-1",
+      },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "call-ordering",
+        toolCallName: "pick_card",
+      },
+      {
+        type: "TOOL_CALL_ARGS",
+        toolCallId: "call-ordering",
+        delta: '{"count":3}',
+      },
+      {
+        type: "TOOL_CALL_END",
+        toolCallId: "call-ordering",
+      },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:call-ordering",
+        toolCallId: "call-ordering",
+        toolCallName: "pick_card",
+        content: "Selected Queen of Hearts",
+        role: "tool",
+      },
+      {
+        type: "TEXT_MESSAGE_START",
+        messageId: "assistant:final:run-1b",
+        role: "assistant",
+      },
+      {
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final:run-1b",
+        delta: "You picked the Queen of Hearts!",
+      },
+      {
+        type: "TEXT_MESSAGE_END",
+        messageId: "assistant:final:run-1b",
+      },
+      {
+        type: "RUN_FINISHED",
+        threadId: "thread-1",
+        runId: "run-1",
+        outcome: { type: "success" },
+      },
+    ]);
+
+    expect(result).toMatchObject({
+      type: "complete",
+      text: "You picked the Queen of Hearts!",
+      conversationState: {
+        messages: [
+          {
+            role: "assistant",
+            content: "Let me check.",
+            tool_calls: [
+              {
+                id: "call-ordering",
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: "Selected Queen of Hearts",
+            tool_call_id: "call-ordering",
+          },
+        ],
+        assistantContent: "You picked the Queen of Hearts!",
+      },
+    });
+  });
+
+  it("keeps sequential tool iterations separately hosted in conversation state", async () => {
+    const { result } = await mapEvents([
+      {
+        type: "TEXT_MESSAGE_START",
+        messageId: "assistant:pre-a",
+        role: "assistant",
+      },
+      {
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:pre-a",
+        delta: "Before A.",
+      },
+      {
+        type: "TEXT_MESSAGE_END",
+        messageId: "assistant:pre-a",
+      },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "call-A",
+        toolCallName: "first_tool",
+      },
+      {
+        type: "TOOL_CALL_ARGS",
+        toolCallId: "call-A",
+        delta: '{"value":"a"}',
+      },
+      {
+        type: "TOOL_CALL_END",
+        toolCallId: "call-A",
+      },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:call-A",
+        toolCallId: "call-A",
+        toolCallName: "first_tool",
+        content: "result A",
+        role: "tool",
+      },
+      {
+        type: "TEXT_MESSAGE_START",
+        messageId: "assistant:pre-b",
+        role: "assistant",
+      },
+      {
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:pre-b",
+        delta: "Between A and B.",
+      },
+      {
+        type: "TEXT_MESSAGE_END",
+        messageId: "assistant:pre-b",
+      },
+      {
+        type: "TOOL_CALL_START",
+        toolCallId: "call-B",
+        toolCallName: "second_tool",
+      },
+      {
+        type: "TOOL_CALL_ARGS",
+        toolCallId: "call-B",
+        delta: '{"value":"b"}',
+      },
+      {
+        type: "TOOL_CALL_END",
+        toolCallId: "call-B",
+      },
+      {
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:call-B",
+        toolCallId: "call-B",
+        toolCallName: "second_tool",
+        content: "result B",
+        role: "tool",
+      },
+      {
+        type: "TEXT_MESSAGE_START",
+        messageId: "assistant:final",
+        role: "assistant",
+      },
+      {
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final",
+        delta: "Done.",
+      },
+      {
+        type: "TEXT_MESSAGE_END",
+        messageId: "assistant:final",
+      },
+      {
+        type: "RUN_FINISHED",
+        threadId: "thread-1",
+        runId: "run-1",
+        outcome: { type: "success" },
+      },
+    ]);
+
+    expect(result.type).toBe("complete");
+    const messages = result.type === "complete" ? result.conversationState?.messages ?? [] : [];
+    const assistantHosts = messages.filter(
+      (message) => message.role === "assistant" && message.tool_calls?.length,
+    );
+
+    expect(assistantHosts.map((message) => message.tool_calls!.map((toolCall) => toolCall.id))).toEqual([
+      ["call-A"],
+      ["call-B"],
+    ]);
+    expect(assistantHosts.map((message) => message.content)).toEqual([
+      "Before A.",
+      "Between A and B.",
+    ]);
+    expect(messages.filter((message) => message.role === "tool").map((message) => message.tool_call_id)).toEqual([
+      "call-A",
+      "call-B",
+    ]);
+    expect(result).toMatchObject({ type: "complete", text: "Done." });
+  });
+
   it("maps AG-UI tool lifecycle into one tool_call_start patch", async () => {
     const { patches, result } = await mapEvents([
       {

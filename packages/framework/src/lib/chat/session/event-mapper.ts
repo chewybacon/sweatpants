@@ -10,7 +10,11 @@ import type {
 import type { Message } from "../types.ts";
 import type { StreamEventEntry } from "./options.ts";
 import { agUiMessagesToInternalMessages } from "./ag-ui-compat.ts";
-import { activitySnapshotToPluginReplayTrace } from "./plugin-replay.ts";
+import { providerHistoryMessages } from "./ag-ui-projection.ts";
+import {
+  activityMessageToPluginReplayTrace,
+  activitySnapshotToPluginReplayTrace,
+} from "./plugin-replay.ts";
 
 export function* mapStreamEventsToPatches(
   eventStream: Stream<unknown, void>,
@@ -94,7 +98,7 @@ export function* mapStreamEventsToPatches(
     const callId = interrupt.toolCallId ?? interrupt.id;
     const toolName = metadataString(interrupt.metadata, "sweatpants/toolName") ?? "unknown";
     const key = metadataString(interrupt.metadata, "sweatpants/key") ?? interrupt.id;
-    const sessionId = metadataString(interrupt.metadata, "sweatpants/sessionId") ?? callId;
+    const sessionId = callId;
     const elicitEvent: ElicitRequestStreamEvent = {
       type: "elicit_request",
       sessionId,
@@ -109,6 +113,7 @@ export function* mapStreamEventsToPatches(
   }
 
   let assistantText = "";
+  let toolHostAssistantText = "";
   const elicitRequests: ElicitRequestStreamEvent[] = [];
   const emissionStartedForCall = new Set<string>();
   let agUiConversationState: ConversationState | null = null;
@@ -118,25 +123,32 @@ export function* mapStreamEventsToPatches(
     string,
     { id: string; name: string; arguments: string; emitted: boolean }
   >();
+  const hostedToolCallIds = new Set<string>();
   let activeAgUiAssistantMessageId: string | null = null;
   let allowActiveAgUiAssistantText = false;
   const seenElicitKeys = new Set<string>();
 
   function ensureAssistantToolHostMessage() {
-    if (toolCalls.length === 0) return;
+    const pendingHostToolCalls = toolCalls.filter((toolCall) => !hostedToolCallIds.has(toolCall.id));
+    if (pendingHostToolCalls.length === 0) return;
     const state = ensureAgUiConversationState();
-    const toolCallIds = toolCalls.map((toolCall) => toolCall.id);
+    const toolCallIds = pendingHostToolCalls.map((toolCall) => toolCall.id);
     const alreadyPresent = state.messages.some(
       (message) =>
         message.role === "assistant" &&
-        message.tool_calls?.some((toolCall) => toolCallIds.includes(toolCall.id)),
+        message.tool_calls &&
+        message.tool_calls.length === toolCallIds.length &&
+        toolCallIds.every((id) => message.tool_calls!.some((toolCall) => toolCall.id === id)),
     );
+    for (const id of toolCallIds) hostedToolCallIds.add(id);
+    const hostedAssistantText = toolHostAssistantText;
+    toolHostAssistantText = "";
     if (alreadyPresent) return;
     state.messages.push({
       id: `assistant:tools:${toolCallIds.join(":")}`,
       role: "assistant",
-      content: assistantText,
-      tool_calls: toolCalls.map((toolCall) => ({
+      content: hostedAssistantText,
+      tool_calls: pendingHostToolCalls.map((toolCall) => ({
         id: toolCall.id,
         type: "function" as const,
         function: {
@@ -187,22 +199,48 @@ export function* mapStreamEventsToPatches(
       case "MESSAGES_SNAPSHOT": {
         const priorState = agUiConversationState as ConversationState | null;
         agUiConversationState = {
-          messages: agUiMessagesToInternalMessages(event.messages),
+          messages: agUiMessagesToInternalMessages(event.messages).filter(
+            (message) => message.role !== "activity",
+          ),
           assistantContent: priorState?.assistantContent ?? assistantText,
           toolCalls: priorState?.toolCalls ?? [],
           serverToolResults: priorState?.serverToolResults ?? [],
           ...(priorState?.replay ? { replay: priorState.replay } : {}),
         };
         for (const message of event.messages) {
-          rememberActivityReplayTrace(message);
+          const replayTrace = activityMessageToPluginReplayTrace(message);
+          if (!replayTrace) continue;
+          const state = ensureAgUiConversationState();
+          const existing = state.replay?.toolTraces ?? [];
+          state.replay = {
+            toolTraces: [
+              ...existing.filter((trace) => trace.callId !== replayTrace.callId),
+              replayTrace,
+            ],
+          };
         }
         break;
       }
 
       case "ag_ui_messages_snapshot": {
         const priorState = agUiConversationState as ConversationState | null;
+        for (const message of event.messages) {
+          const replayTrace = activityMessageToPluginReplayTrace(message);
+          if (replayTrace) rememberActivityReplayTrace({
+            type: "ACTIVITY_SNAPSHOT",
+            messageId: `sweatpants:plugin-replay:${replayTrace.callId}`,
+            activityType: "sweatpants:plugin-replay",
+            content: {
+              version: 1,
+              toolCallId: replayTrace.callId,
+              toolName: replayTrace.toolName,
+              trace: replayTrace.trace,
+            },
+            replace: true,
+          });
+        }
         agUiConversationState = {
-          messages: event.messages,
+          messages: providerHistoryMessages(event.messages),
           assistantContent: priorState?.assistantContent ?? assistantText,
           toolCalls: priorState?.toolCalls ?? [],
           serverToolResults: priorState?.serverToolResults ?? [],
@@ -395,6 +433,13 @@ export function* mapStreamEventsToPatches(
 
       case "TOOL_CALL_START":
       case "ag_ui_tool_call_start": {
+        const hasUnhostedToolCall = [...agUiToolCalls.values()].some(
+          (toolCall) => !hostedToolCallIds.has(toolCall.id),
+        );
+        if (!hasUnhostedToolCall) {
+          toolHostAssistantText = assistantText;
+          setAssistantContent("");
+        }
         const existing = agUiToolCalls.get(event.toolCallId);
         agUiToolCalls.set(event.toolCallId, {
           id: event.toolCallId,
@@ -517,6 +562,7 @@ export function* mapStreamEventsToPatches(
         allowActiveAgUiAssistantText = false;
         setAssistantContent(assistantText);
         ensureAssistantToolHostMessage();
+        toolHostAssistantText = "";
         if (event.outcome?.type === "interrupt") {
           for (const interrupt of event.outcome.interrupts) {
             const elicitEvent = emitInterruptElicit(interrupt);
@@ -554,6 +600,7 @@ export function* mapStreamEventsToPatches(
         activeAgUiAssistantMessageId = null;
         allowActiveAgUiAssistantText = false;
         setAssistantContent(assistantText);
+        toolHostAssistantText = "";
         break;
 
       case "RUN_ERROR":
