@@ -37,12 +37,14 @@ import {
 } from "../../lib/chat/index.ts";
 import {
   appendAssistantToolCallMessage,
-  appendSystemMessage,
   appendToolMessage,
   createTranscriptState,
 } from "../../lib/chat/session/transcript.ts";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import { messagesWithReplayActivities } from "../../lib/chat/session/ag-ui-projection.ts";
+import {
+  activitySnapshotsForMessages,
+  toProviderHistorySnapshot,
+} from "../../lib/chat/session/ag-ui-projection.ts";
 import {
   buildPluginReplayActivity,
   mergePluginReplayTrace,
@@ -488,10 +490,8 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
     };
     const conversationTranscriptState = createTranscriptState(state.conversationMessages);
 
-    // Prepend system prompt if provided
-    if (systemPrompt) {
-      appendSystemMessage(state.conversationMessages, conversationTranscriptState, systemPrompt);
-    }
+    // Hidden/default prompts stay at the provider boundary and are not added
+    // to client-visible conversation history.
 
     const replayToolTraceMap = new Map(
       (replayState?.toolTraces ?? []).map((trace) => [trace.callId, trace]),
@@ -1130,10 +1130,15 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
               state.pendingEvents.push({
                 type: "MESSAGES_SNAPSHOT",
-                messages: messagesWithReplayActivities(state.conversationMessages, {
+                messages: toProviderHistorySnapshot(state.conversationMessages, {
                   toolTraces: Array.from(replayToolTraceMap.values()),
                 }),
               });
+              state.pendingEvents.push(
+                ...activitySnapshotsForMessages(state.conversationMessages, {
+                  toolTraces: Array.from(replayToolTraceMap.values()),
+                }),
+              );
               state.pendingEvents.push({
                 type: "STATE_SNAPSHOT",
                 snapshot: buildAgUiCustomState({}),
@@ -1229,10 +1234,15 @@ export function createChatEngine(params: ChatEngineParams): ChatEngine {
 
             state.pendingEvents.push({
               type: "MESSAGES_SNAPSHOT",
-              messages: messagesWithReplayActivities(state.conversationMessages, {
+              messages: toProviderHistorySnapshot(state.conversationMessages, {
                 toolTraces: Array.from(replayToolTraceMap.values()),
               }),
             });
+            state.pendingEvents.push(
+              ...activitySnapshotsForMessages(state.conversationMessages, {
+                toolTraces: Array.from(replayToolTraceMap.values()),
+              }),
+            );
             state.pendingEvents.push({
               type: "STATE_SNAPSHOT",
               snapshot: buildAgUiCustomState({}),

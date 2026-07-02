@@ -21,6 +21,7 @@ import { Route as ChatCardsIndexRouteImport } from './routes/chat/cards/index'
 import { Route as ChatBasicIndexRouteImport } from './routes/chat/basic/index'
 import { Route as ApiThreadedChatThreadsIndexRouteImport } from './routes/api/threaded-chat/threads/index'
 import { Route as ApiThreadedChatThreadsThreadIdRouteImport } from './routes/api/threaded-chat/threads/$threadId'
+import { Route as ApiStreamsChatThreadIdRouteImport } from './routes/api/streams/chat/$threadId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -84,6 +85,11 @@ const ApiThreadedChatThreadsThreadIdRoute =
     path: '/api/threaded-chat/threads/$threadId',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiStreamsChatThreadIdRoute = ApiStreamsChatThreadIdRouteImport.update({
+  id: '/api/streams/chat/$threadId',
+  path: '/api/streams/chat/$threadId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -96,6 +102,7 @@ export interface FileRoutesByFullPath {
   '/chat/play-ttt': typeof ChatPlayTttIndexRoute
   '/chat/threaded': typeof ChatThreadedIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
+  '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
 }
@@ -110,6 +117,7 @@ export interface FileRoutesByTo {
   '/chat/play-ttt': typeof ChatPlayTttIndexRoute
   '/chat/threaded': typeof ChatThreadedIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
+  '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
 }
@@ -125,6 +133,7 @@ export interface FileRoutesById {
   '/chat/play-ttt/': typeof ChatPlayTttIndexRoute
   '/chat/threaded/': typeof ChatThreadedIndexRoute
   '/chat/tictactoe/': typeof ChatTictactoeIndexRoute
+  '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads/': typeof ApiThreadedChatThreadsIndexRoute
 }
@@ -141,6 +150,7 @@ export interface FileRouteTypes {
     | '/chat/play-ttt'
     | '/chat/threaded'
     | '/chat/tictactoe'
+    | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads'
   fileRoutesByTo: FileRoutesByTo
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/chat/play-ttt'
     | '/chat/threaded'
     | '/chat/tictactoe'
+    | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads'
   id:
@@ -169,6 +180,7 @@ export interface FileRouteTypes {
     | '/chat/play-ttt/'
     | '/chat/threaded/'
     | '/chat/tictactoe/'
+    | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads/'
   fileRoutesById: FileRoutesById
@@ -184,6 +196,7 @@ export interface RootRouteChildren {
   ChatPlayTttIndexRoute: typeof ChatPlayTttIndexRoute
   ChatThreadedIndexRoute: typeof ChatThreadedIndexRoute
   ChatTictactoeIndexRoute: typeof ChatTictactoeIndexRoute
+  ApiStreamsChatThreadIdRoute: typeof ApiStreamsChatThreadIdRoute
   ApiThreadedChatThreadsThreadIdRoute: typeof ApiThreadedChatThreadsThreadIdRoute
   ApiThreadedChatThreadsIndexRoute: typeof ApiThreadedChatThreadsIndexRoute
 }
@@ -274,6 +287,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiThreadedChatThreadsThreadIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/streams/chat/$threadId': {
+      id: '/api/streams/chat/$threadId'
+      path: '/api/streams/chat/$threadId'
+      fullPath: '/api/streams/chat/$threadId'
+      preLoaderRoute: typeof ApiStreamsChatThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -288,6 +308,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatPlayTttIndexRoute: ChatPlayTttIndexRoute,
   ChatThreadedIndexRoute: ChatThreadedIndexRoute,
   ChatTictactoeIndexRoute: ChatTictactoeIndexRoute,
+  ApiStreamsChatThreadIdRoute: ApiStreamsChatThreadIdRoute,
   ApiThreadedChatThreadsThreadIdRoute: ApiThreadedChatThreadsThreadIdRoute,
   ApiThreadedChatThreadsIndexRoute: ApiThreadedChatThreadsIndexRoute,
 }

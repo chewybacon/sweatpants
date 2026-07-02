@@ -126,12 +126,13 @@ function MessageBubble({
   message: ChatMessage
 }) {
   const isUser = message.role === 'user'
+  const isSystem = message.role === 'system'
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`} data-testid={`message-${message.role}`}>
       <div className={`max-w-3xl rounded-[24px] px-5 py-4 shadow-lg ${isUser ? 'bg-amber-300 text-slate-950 shadow-amber-500/10' : 'border border-slate-800 bg-slate-900/90 text-slate-100 shadow-black/20'}`}>
         <div className={`mb-2 text-[11px] uppercase tracking-[0.28em] ${isUser ? 'text-slate-800/70' : 'text-sky-300/70'}`}>
-          {isUser ? 'You' : 'Assistant'}
+          {isUser ? 'You' : isSystem ? 'System' : 'Assistant'}
           {message.isStreaming ? ' - streaming' : ''}
         </div>
 

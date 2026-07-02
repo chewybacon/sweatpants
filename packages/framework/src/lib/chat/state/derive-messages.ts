@@ -214,7 +214,7 @@ export function deriveCompletedMessages<TComponent>(
   const pendingElicits = options.pendingElicits ?? {}
 
   return state.messages
-    .filter((msg) => msg.role !== 'tool') // Filter out tool result messages
+    .filter((msg) => msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system')
     .map((msg): ChatMessage<TComponent> => {
       const messageId = msg.id ?? `msg-${Date.now()}`
       

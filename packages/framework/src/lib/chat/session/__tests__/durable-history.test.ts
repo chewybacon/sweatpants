@@ -77,6 +77,43 @@ function getHistoryMessages(patches: ChatPatch[]): Message[] {
 }
 
 describe('replayFramesToConversation', () => {
+  it('emits one assistant tool host per sequential tool iteration', async () => {
+    const frames: DurableFrame[] = [
+      makeFrame(makeTextContent('assistant:pre-a', 'Before A.'), 1),
+      makeFrame(makeToolCallStart('call-A', 'first_tool'), 2),
+      makeFrame(makeToolCallArgs('call-A', '{"value":"a"}'), 3),
+      makeFrame(makeToolCallResult('call-A', 'first_tool', 'result A'), 4),
+      makeFrame(makeTextContent('assistant:pre-b', 'Between A and B.'), 5),
+      makeFrame(makeToolCallStart('call-B', 'second_tool'), 6),
+      makeFrame(makeToolCallArgs('call-B', '{"value":"b"}'), 7),
+      makeFrame(makeToolCallResult('call-B', 'second_tool', 'result B'), 8),
+      makeFrame(makeTextContent('assistant:final', 'Done.'), 9),
+      makeFrame(makeRunFinished(), 10),
+    ]
+
+    const result = await run(function* () {
+      return yield* replayFramesToConversation(frames, [], [])
+    })
+
+    const messages = getHistoryMessages(result.patches)
+    const assistantHosts = messages.filter(
+      (message) => message.role === 'assistant' && message.tool_calls?.length,
+    )
+
+    expect(assistantHosts.map((message) => message.tool_calls!.map((toolCall) => toolCall.id))).toEqual([
+      ['call-A'],
+      ['call-B'],
+    ])
+    expect(assistantHosts.map((message) => message.content)).toEqual([
+      'Before A.',
+      'Between A and B.',
+    ])
+    expect(messages.filter((message) => message.role === 'tool').map((message) => message.tool_call_id)).toEqual([
+      'call-A',
+      'call-B',
+    ])
+  })
+
   it('seeds messages from first checkpoint and deduplicates subsequent events', async () => {
     const callId1 = 'call_pick_card_1'
     const callId2 = 'call_pick_card_2'
@@ -285,6 +322,36 @@ describe('replayFramesToConversation', () => {
     expect(toolCallIds).toContain(callId1)
     expect(toolCallIds).toContain(callId2)
     expect(uniqueToolCallIds).toHaveLength(2)
+  })
+
+  it('keeps post-tool assistant narrative separate from the assistant tool-call host', async () => {
+    const callId = 'call_pick_card_ordering'
+
+    const frames: DurableFrame[] = [
+      makeFrame({
+        type: 'MESSAGES_SNAPSHOT',
+        messages: [{ id: 'msg-1', role: 'user', content: 'Draw a card' } as any],
+      } as StreamEvent, 1),
+      makeFrame(makeTextContent('assistant:final:run-1', 'Let me check the cards.'), 2),
+      makeFrame(makeToolCallStart(callId, 'pick_card'), 3),
+      makeFrame(makeToolCallArgs(callId, JSON.stringify({ count: 3 })), 4),
+      makeFrame(makeToolCallResult(callId, 'pick_card', 'Selected Queen of Hearts'), 5),
+      makeFrame(makeTextContent('assistant:final:run-1', 'You picked the Queen of Hearts!'), 6),
+      makeFrame(makeRunFinished(), 7),
+    ]
+
+    const result = await run(function* () {
+      return yield* replayFramesToConversation(frames, [], [])
+    })
+
+    const messages = getHistoryMessages(result.patches)
+    expect(messages.map((message) => [message.role, message.content])).toEqual([
+      ['user', 'Draw a card'],
+      ['assistant', 'Let me check the cards.'],
+      ['tool', 'Selected Queen of Hearts'],
+      ['assistant', 'You picked the Queen of Hearts!'],
+    ])
+    expect(messages[1]?.tool_calls?.[0]?.id).toBe(callId)
   })
 
   it('deduplicates ag_ui_run_finished events against local history when they come before second checkpoint', async () => {

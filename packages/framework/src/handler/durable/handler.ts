@@ -13,7 +13,11 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { call, resource, type Operation, type Stream } from "effection";
-import type { SessionHandle, SessionRegistry } from "../../lib/chat/durable-streams/index.ts";
+import type {
+  SessionHandle,
+  SessionRegistry,
+  TokenBufferStore,
+} from "../../lib/chat/durable-streams/index.ts";
 import {
   useSessionRegistryStore,
   useSessionRegistry,
@@ -44,9 +48,20 @@ import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createChatEngine } from "./chat-engine.ts";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
-import { messagesWithReplayActivities } from "../../lib/chat/session/ag-ui-projection.ts";
+import {
+  activitySnapshotsForMessages,
+  toProviderHistorySnapshot,
+} from "../../lib/chat/session/ag-ui-projection.ts";
+import { agUiMessagesToInternalMessages } from "../../lib/chat/session/ag-ui-compat.ts";
+import {
+  replayFramesToConversation,
+  type DurableFrame,
+} from "../../lib/chat/session/durable-history.ts";
+import type { ElicitRequestStreamEvent } from "../../lib/chat/session/streaming.ts";
 import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
+  readLatestConversationCheckpoint,
+  recordConversationCheckpoint,
   recordConversationSession,
   resolveLatestConversationSession,
 } from "./conversation-index.ts";
@@ -59,6 +74,7 @@ import {
   parseOffsetParam,
   parseSessionIdFromPath,
   parseTimeoutMs,
+  toOffsetString,
 } from "@sweatpants/durable-streams";
 import type {
   ChatRequestBody,
@@ -71,11 +87,22 @@ import { ToolSessionSamplingProviderContext } from "../../lib/chat/mcp-tools/ses
 import {
   deriveResumeScopeFromEntries,
   deriveResumeScopeId,
+  interruptRecordsForThread,
   openInterruptsForThread,
   registerInterruptsFromRunFinished,
+  upsertInterruptRecords,
   validateResumeEntries,
   type OpenInterruptRecord,
 } from "./interrupt-registry.ts";
+import { resolvePrivateSystemPrompt } from "./model-context-registry.ts";
+import {
+  readLatestThreadInterruptState,
+  recordThreadInterruptState,
+} from "./interrupt-store.ts";
+import {
+  readLatestThreadSystemPrompt,
+  recordThreadSystemPrompt,
+} from "./model-context-store.ts";
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -105,6 +132,27 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
  * Create a serialized event stream from the chat engine.
  * Each event is JSON-serialized for storage in the buffer.
  */
+const PUBLIC_SWEATPANTS_METADATA_KEYS = new Set(["sweatpants/toolName", "sweatpants/key"]);
+
+function sanitizePublicMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(metadata ?? {})) {
+    if (!key.startsWith("sweatpants/") || PUBLIC_SWEATPANTS_METADATA_KEYS.has(key)) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(value: T): Omit<T, "metadata"> & { metadata?: Record<string, unknown> } {
+  const { metadata: rawMetadata, ...rest } = value;
+  const metadata = sanitizePublicMetadata(rawMetadata);
+  return {
+    ...rest,
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+  };
+}
+
 function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
   switch ((event as { type: string }).type) {
     case "tool_session_error":
@@ -122,6 +170,19 @@ function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
     case "conversation_state":
     case "ag_ui_checkpoint":
       return null;
+    case "RUN_FINISHED": {
+      const runFinished = event as Extract<StreamEvent, { type: "RUN_FINISHED" }>;
+      if (runFinished.outcome?.type !== "interrupt") return runFinished;
+      return {
+        ...runFinished,
+        outcome: {
+          ...runFinished.outcome,
+          interrupts: runFinished.outcome.interrupts.map((interrupt) =>
+            withPublicMetadata(interrupt),
+          ),
+        },
+      };
+    }
     default:
       return event;
   }
@@ -134,28 +195,69 @@ function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
 function createSerializedEventStream(
   engine: Stream<StreamEvent, void>,
   initialEvents: StreamEvent[] = [],
+  options?: {
+    conversationId?: string;
+    checkpointStore?: TokenBufferStore<string>;
+  },
 ): Stream<string, void> {
   return resource(function* (provide) {
     const subscription = yield* engine;
     let initialIndex = 0;
+    let emittedCount = 0;
+    let checkpointPersisted = false;
+    const emittedFrames: DurableFrame[] = [];
+
+    function* persistCheckpointIfNeeded(): Operation<void> {
+      if (checkpointPersisted || !options?.conversationId || !options.checkpointStore) return;
+      checkpointPersisted = true;
+      const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(emittedFrames);
+      if (checkpointEvents.length === 0) return;
+      yield* recordConversationCheckpoint(
+        options.checkpointStore,
+        options.conversationId,
+        JSON.stringify(checkpointEvents),
+      );
+    }
+
+    function* persistInterruptStateIfNeeded(rawEvent: StreamEvent): Operation<void> {
+      if (
+        rawEvent.type !== "RUN_FINISHED" ||
+        !options?.conversationId ||
+        !options.checkpointStore
+      ) {
+        return;
+      }
+
+      yield* recordThreadInterruptState(
+        options.checkpointStore,
+        options.conversationId,
+        interruptRecordsForThread(options.conversationId),
+      );
+    }
 
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
         while (initialIndex < initialEvents.length) {
-          const event = toStrictPublicEvent(initialEvents[initialIndex++]!);
+          const rawEvent = initialEvents[initialIndex++]!;
+          registerInterruptsFromRunFinished(rawEvent);
+          yield* persistInterruptStateIfNeeded(rawEvent);
+          const event = toStrictPublicEvent(rawEvent);
           if (!event) continue;
-          registerInterruptsFromRunFinished(event);
+          emittedFrames.push({ lsn: ++emittedCount, event });
           return { done: false, value: JSON.stringify(event) };
         }
 
         while (true) {
           const result = yield* subscription.next();
           if (result.done) {
+            yield* persistCheckpointIfNeeded();
             return { done: true, value: undefined };
           }
+          registerInterruptsFromRunFinished(result.value);
+          yield* persistInterruptStateIfNeeded(result.value);
           const event = toStrictPublicEvent(result.value);
           if (!event) continue;
-          registerInterruptsFromRunFinished(event);
+          emittedFrames.push({ lsn: ++emittedCount, event });
           return { done: false, value: JSON.stringify(event) };
         }
       },
@@ -275,6 +377,7 @@ function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
 function mapResumeEntriesToElicitResponses(
   body: ChatRequestBody,
   records: OpenInterruptRecord[],
+  runtimeId: string,
 ): ElicitResponse[] {
   const resume = body.resume ?? [];
   if (resume.length === 0) return [];
@@ -298,7 +401,7 @@ function mapResumeEntriesToElicitResponses(
       elicitId: entry.interruptId,
       result,
       ref: {
-        runtimeId: record.runtimeId ?? "local",
+        runtimeId: record.runtimeId ?? runtimeId,
         executionId: record.executionId ?? sessionId,
         sessionId,
         callId: record.toolCallId,
@@ -340,6 +443,308 @@ function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runt
     },
     *generateImages() {
       throw new Error("ModelProviderApi runtime adapter does not support image generation");
+    },
+  };
+}
+
+function recordToElicit(record: OpenInterruptRecord): ElicitRequestStreamEvent | null {
+  if (!record.toolCallId) return null;
+  return {
+    type: "elicit_request",
+    sessionId: record.toolCallId,
+    callId: record.toolCallId,
+    toolName: record.toolName ?? "unknown",
+    elicitId: record.interruptId,
+    key:
+      typeof record.publicMetadata?.["sweatpants/key"] === "string"
+        ? String(record.publicMetadata["sweatpants/key"])
+        : record.interruptId,
+    message: record.message ?? "Input required",
+    schema:
+      record.responseSchema && isRecord(record.responseSchema)
+        ? record.responseSchema
+        : {},
+  };
+}
+
+function publicInterruptsFromRecords(records: OpenInterruptRecord[]) {
+  return records.map((record) => {
+    const metadata = sanitizePublicMetadata(record.publicMetadata);
+    return {
+      id: record.interruptId,
+      reason: record.reason,
+      ...(record.message ? { message: record.message } : {}),
+      ...(record.toolCallId ? { toolCallId: record.toolCallId } : {}),
+      ...(record.responseSchema && isRecord(record.responseSchema)
+        ? { responseSchema: record.responseSchema }
+        : {}),
+      ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+    };
+  });
+}
+
+function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void> {
+  return resource(function* (provide) {
+    let emitted = false;
+    const chunk = frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n";
+    yield* provide({
+      *next(): Operation<IteratorResult<string, void>> {
+        if (emitted) return { done: true, value: undefined };
+        emitted = true;
+        return { done: false, value: chunk };
+      },
+    });
+  });
+}
+
+function parseBufferedFrames(tokens: string[]): DurableFrame[] {
+  const frames: DurableFrame[] = [];
+  for (let index = 0; index < tokens.length; index++) {
+    try {
+      frames.push({ lsn: index + 1, event: JSON.parse(tokens[index]!) as StreamEvent });
+    } catch {
+      // Ignore malformed buffered tokens during hydrate synthesis.
+    }
+  }
+  return frames;
+}
+
+function initialSnapshotBoundary(frames: DurableFrame[]): {
+  messages: Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }> | null;
+  activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>;
+  state: Extract<StreamEvent, { type: "STATE_SNAPSHOT" }> | null;
+  nextIndex: number;
+} {
+  let index = 0;
+  if (frames[index]?.event.type === "RUN_STARTED") index += 1;
+
+  const messages =
+    frames[index]?.event.type === "MESSAGES_SNAPSHOT"
+      ? (frames[index++]!.event as Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }>)
+      : null;
+
+  const activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>> = [];
+  while (frames[index]?.event.type === "ACTIVITY_SNAPSHOT") {
+    activities.push(frames[index++]!.event as Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>);
+  }
+
+  const state =
+    frames[index]?.event.type === "STATE_SNAPSHOT"
+      ? (frames[index++]!.event as Extract<StreamEvent, { type: "STATE_SNAPSHOT" }>)
+      : null;
+
+  return { messages, activities, state, nextIndex: index };
+}
+
+function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnapshotBoundary>) {
+  const internalMessages = boundary.messages
+    ? agUiMessagesToInternalMessages(boundary.messages.messages)
+    : [];
+  const messages = boundary.messages
+    ? ({
+        type: "MESSAGES_SNAPSHOT" as const,
+        messages: toProviderHistorySnapshot(internalMessages, undefined),
+      })
+    : null;
+  const extractedActivities = activitySnapshotsForMessages(internalMessages, undefined);
+  const activitiesByMessageId = new Map<string, Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>();
+  for (const activity of [...extractedActivities, ...boundary.activities]) {
+    activitiesByMessageId.set(activity.messageId, activity);
+  }
+  return {
+    messages,
+    activities: [...activitiesByMessageId.values()],
+    state: boundary.state,
+    nextIndex: boundary.nextIndex,
+  };
+}
+
+function* buildCheckpointSnapshotEventsFromFrames(
+  frames: DurableFrame[],
+): Operation<StreamEvent[]> {
+  const replay = yield* replayFramesToConversation(frames);
+  return [
+    {
+      type: "MESSAGES_SNAPSHOT",
+      messages: toProviderHistorySnapshot(replay.history, replay.replayState),
+    },
+    ...activitySnapshotsForMessages(replay.history, replay.replayState),
+  ];
+}
+
+function storedCheckpointHydrateEvents(
+  checkpointEvents: StreamEvent[],
+  conversationId: string,
+): StreamEvent[] {
+  const openInterrupts = openInterruptsForThread(conversationId);
+  const elicits = openInterrupts
+    .map(recordToElicit)
+    .filter((value): value is ElicitRequestStreamEvent => value !== null);
+
+  return [
+    ...checkpointEvents,
+    {
+      type: "STATE_SNAPSHOT",
+      snapshot: buildAgUiCustomState({ elicits }),
+    },
+    ...(openInterrupts.length > 0
+      ? [
+          {
+            type: "RUN_FINISHED" as const,
+            threadId: conversationId,
+            runId: openInterrupts[0]?.interruptedRunId ?? conversationId,
+            outcome: {
+              type: "interrupt" as const,
+              interrupts: publicInterruptsFromRecords(openInterrupts),
+            },
+          },
+        ]
+      : []),
+  ];
+}
+
+function* createStoredConversationCheckpointResponse(params: {
+  ctx: { request: Request; headers: Headers; status?: number };
+  conversationId: string;
+  checkpointEvents: StreamEvent[];
+  parsedOffset: ReturnType<typeof parseOffsetParam>;
+}): Operation<{
+  subscription: import("effection").Subscription<string, void>;
+  cleanup?: () => Operation<void>;
+}> {
+  const { ctx, conversationId, checkpointEvents, parsedOffset } = params;
+  const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
+  const resetRequested =
+    offsetRequested && !parsedOffset.isNow && parsedOffset.value !== 0;
+  const emptyRequested = offsetRequested && (parsedOffset.isNow || parsedOffset.value === 0);
+
+  ctx.headers.set("Stream-Next-Offset", toOffsetString(0));
+  ctx.headers.set("Stream-Up-To-Date", "true");
+  if (resetRequested) ctx.headers.set("Stream-Cursor-Reset", "true");
+
+  if (ctx.request.method.toUpperCase() === "HEAD" || emptyRequested) {
+    const subscription = yield* createEmptyStream();
+    return { subscription };
+  }
+
+  const subscription = yield* createSyntheticFrameStream(
+    storedCheckpointHydrateEvents(checkpointEvents, conversationId).map((event, index) => ({
+      lsn: index + 1,
+      event,
+    })),
+  );
+
+  return { subscription };
+}
+
+function* restoreThreadInterruptStateIfNeeded(
+  bufferStore: TokenBufferStore<string>,
+  threadId: string | undefined,
+): Operation<void> {
+  if (!threadId) return;
+  const stored = yield* readLatestThreadInterruptState(bufferStore, threadId);
+  if (!stored || stored.length === 0) return;
+  upsertInterruptRecords(stored);
+}
+
+function* createConversationHydrateResponse(params: {
+  ctx: { request: Request; headers: Headers };
+  registry: SessionRegistry<string>;
+  session: SessionHandle<string>;
+  sessionId: string;
+  conversationId: string;
+  parsedOffset: ReturnType<typeof parseOffsetParam>;
+}): Operation<{
+  subscription: import("effection").Subscription<string, void>;
+  cleanup?: () => Operation<void>;
+}> {
+  const { ctx, registry, session, sessionId, conversationId, parsedOffset } = params;
+  const { tokens, lsn } = yield* session.buffer.read(0);
+  const frames = parseBufferedFrames(tokens);
+  const complete = yield* session.buffer.isComplete();
+  const openInterrupts = openInterruptsForThread(conversationId);
+  const elicits = openInterrupts
+    .map(recordToElicit)
+    .filter((value): value is ElicitRequestStreamEvent => value !== null);
+  const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
+  let resetRequested = false;
+
+  ctx.headers.set("Stream-Next-Offset", toOffsetString(lsn));
+
+  let syntheticEvents: StreamEvent[] = [];
+
+  if (complete) {
+    resetRequested = offsetRequested && !parsedOffset.isNow;
+    const replay = yield* replayFramesToConversation(frames);
+    syntheticEvents = [
+      {
+        type: "MESSAGES_SNAPSHOT",
+        messages: toProviderHistorySnapshot(replay.history, replay.replayState),
+      },
+      ...activitySnapshotsForMessages(replay.history, replay.replayState),
+      {
+        type: "STATE_SNAPSHOT",
+        snapshot: buildAgUiCustomState({ elicits }),
+      },
+      ...(openInterrupts.length > 0
+        ? [
+            {
+              type: "RUN_FINISHED" as const,
+              threadId: conversationId,
+              runId:
+                openInterrupts[0]?.interruptedRunId ??
+                sessionId,
+              outcome: {
+                type: "interrupt" as const,
+                interrupts: publicInterruptsFromRecords(openInterrupts),
+              },
+            },
+          ]
+        : []),
+    ];
+  } else {
+    const boundary = sanitizeBoundarySnapshot(initialSnapshotBoundary(frames));
+    let tailStartIndex = boundary.nextIndex;
+
+    if (parsedOffset.isNow) {
+      tailStartIndex = lsn;
+    } else if (offsetRequested) {
+      if (
+        parsedOffset.value !== null &&
+        parsedOffset.value >= boundary.nextIndex &&
+        parsedOffset.value <= lsn
+      ) {
+        tailStartIndex = parsedOffset.value;
+      } else {
+        resetRequested = true;
+      }
+    }
+
+    syntheticEvents = [
+      ...(boundary.messages ? [boundary.messages] : []),
+      ...boundary.activities,
+      ...(boundary.state
+        ? [boundary.state]
+        : [
+            {
+              type: "STATE_SNAPSHOT" as const,
+              snapshot: buildAgUiCustomState({ elicits }),
+            },
+          ]),
+      ...frames.slice(tailStartIndex).map((frame) => frame.event),
+    ];
+  }
+
+  if (resetRequested) ctx.headers.set("Stream-Cursor-Reset", "true");
+
+  const syntheticFrames = syntheticEvents.map((event, index) => ({ lsn: index + 1, event }));
+
+  const subscription = yield* createSyntheticFrameStream(syntheticFrames);
+  return {
+    subscription,
+    cleanup: function* () {
+      yield* registry.release(sessionId);
     },
   };
 }
@@ -394,6 +799,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       const bufferStore = yield* useTokenBufferStore<string>();
+      yield* restoreThreadInterruptStateIfNeeded(bufferStore, requestedConversationId);
       const shouldResolveConversation =
         requestedConversationId !== undefined &&
         pathSessionId === undefined &&
@@ -402,15 +808,21 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const resolvedConversationSessionId = shouldResolveConversation
         ? yield* resolveLatestConversationSession(bufferStore, requestedConversationId)
         : null;
+      const storedConversationCheckpoint = shouldResolveConversation
+        ? yield* readLatestConversationCheckpoint(bufferStore, requestedConversationId)
+        : null;
 
-      if (shouldResolveConversation && !resolvedConversationSessionId) {
+      if (shouldResolveConversation && !resolvedConversationSessionId && !storedConversationCheckpoint) {
         ctx.status = 404;
         return yield* createEmptyStream();
       }
 
       // Determine session ID
       const sessionId =
-        pathSessionId ?? requestedSessionId ?? resolvedConversationSessionId ?? crypto.randomUUID();
+        pathSessionId ??
+        requestedSessionId ??
+        resolvedConversationSessionId ??
+        (storedConversationCheckpoint ? requestedConversationId! : crypto.randomUUID());
       const isReconnect =
         (pathSessionId !== undefined ||
           requestedSessionId !== undefined ||
@@ -450,6 +862,16 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         });
       }
 
+      if (shouldResolveConversation && !resolvedConversationSessionId && storedConversationCheckpoint) {
+        const checkpointEvents = JSON.parse(storedConversationCheckpoint) as StreamEvent[];
+        return yield* createStoredConversationCheckpointResponse({
+          ctx,
+          conversationId: requestedConversationId!,
+          checkpointEvents,
+          parsedOffset,
+        });
+      }
+
       // Get dependencies from contexts
       const modelProviderDriver = yield* ModelProviderContext.get();
       if (!modelProviderDriver) {
@@ -462,7 +884,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         contextStreamOptions || body.streamOptions
           ? { ...(contextStreamOptions ?? {}), ...(body.streamOptions ?? {}) }
           : undefined;
-      const agUiThreadId = body.threadId ?? requestedConversationId ?? sessionId;
+      const durableConversationId = requestedConversationId ?? body.threadId;
+      const agUiThreadId = durableConversationId ?? sessionId;
+      yield* restoreThreadInterruptStateIfNeeded(bufferStore, agUiThreadId);
       const agUiRunId = body.runId ?? sessionId;
       const requestedResumeScopeId = deriveResumeScopeId(agUiThreadId, body.parentRunId);
       const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
@@ -488,15 +912,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               resume: [],
             })
           : null;
-      const publicResumeResponses = resumeValidation?.ok
-        ? mapResumeEntriesToElicitResponses(body, resumeValidation.records)
-        : [];
+      if (resumeValidation) {
+        yield* recordThreadInterruptState(
+          bufferStore,
+          agUiThreadId,
+          interruptRecordsForThread(agUiThreadId),
+        );
+      }
+
       const legacyElicitResponses = body.elicitResponses ?? [];
-      const effectiveElicitResponses =
-        legacyElicitResponses.length > 0 ? legacyElicitResponses : publicResumeResponses;
-      const initialToolChoice = effectiveElicitResponses.length
-        ? undefined
-        : body.initialToolChoice;
       log.debug(
         { provider: model.provider, model: model.id, api: model.api },
         "model provider configured",
@@ -559,6 +983,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       if (!activeToolRuntime) {
         throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
       }
+
+      const publicResumeResponses = resumeValidation?.ok
+        ? mapResumeEntriesToElicitResponses(body, resumeValidation.records, activeToolRuntime.id)
+        : [];
+      const effectiveElicitResponses =
+        legacyElicitResponses.length > 0 ? legacyElicitResponses : publicResumeResponses;
+      const initialToolChoice = effectiveElicitResponses.length
+        ? undefined
+        : body.initialToolChoice;
 
       // Build tool schemas
       const enabledToolNames = new Set<string>();
@@ -625,6 +1058,15 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           },
           persona: null,
         };
+      }
+
+      const storedSystemPrompt = yield* readLatestThreadSystemPrompt(bufferStore, agUiThreadId);
+      systemPrompt = resolvePrivateSystemPrompt(
+        agUiThreadId,
+        storedSystemPrompt ?? systemPrompt,
+      );
+      if (systemPrompt && storedSystemPrompt == null) {
+        yield* recordThreadSystemPrompt(bufferStore, agUiThreadId, systemPrompt);
       }
 
       // Build model-facing tool schemas through inventory + exposure policy.
@@ -742,7 +1184,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 input: {
                   ...agUiRun,
                   state: body.state ?? {},
-                  messages: messagesWithReplayActivities(body.messages, initialReplayState),
+                  messages: toProviderHistorySnapshot(body.messages, initialReplayState),
                   tools: toolSchemas.map((tool) => ({
                     name: tool.name,
                     description: tool.description,
@@ -757,8 +1199,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 ? [
                     {
                       type: "MESSAGES_SNAPSHOT" as const,
-                      messages: messagesWithReplayActivities(body.messages, initialReplayState),
+                      messages: toProviderHistorySnapshot(body.messages, initialReplayState),
                     },
+                    ...activitySnapshotsForMessages(body.messages, initialReplayState),
                   ]
                 : []),
               {
@@ -766,7 +1209,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 snapshot: buildAgUiCustomState({}),
               },
             ];
-        const serializedStream = createSerializedEventStream(engine, initialEvents);
+        const serializedStream = createSerializedEventStream(engine, initialEvents, {
+          ...(durableConversationId ? { conversationId: durableConversationId } : {}),
+          checkpointStore: bufferStore,
+        });
         log.debug({ sessionId }, "new session path: serialized stream created");
 
         // Acquire session with the engine as source
@@ -778,8 +1224,19 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         log.debug({ sessionId }, "new session path: session acquired");
       }
 
-      if (requestedConversationId) {
-        yield* recordConversationSession(bufferStore, requestedConversationId, sessionId);
+      if (durableConversationId && method === "POST") {
+        yield* recordConversationSession(bufferStore, durableConversationId, sessionId);
+      }
+
+      if (shouldResolveConversation && method === "GET" && liveMode === undefined) {
+        return yield* createConversationHydrateResponse({
+          ctx,
+          registry,
+          session,
+          sessionId,
+          conversationId: requestedConversationId!,
+          parsedOffset,
+        });
       }
 
       return yield* createProtocolReadResponse({

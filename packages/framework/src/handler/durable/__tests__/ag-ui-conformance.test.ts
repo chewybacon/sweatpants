@@ -281,7 +281,7 @@ describe("strict AG-UI public conformance", () => {
     expect(events.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
   });
 
-  it("interleaves replay activity messages with their tool result in snapshots", function* () {
+  it("keeps replay activity out of message snapshots and emits activity snapshots separately", function* () {
     const callId = "call-replay-order";
     const provider = createMockProvider({ responses: "ok" });
     const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
@@ -354,9 +354,48 @@ describe("strict AG-UI public conformance", () => {
       "user:u1",
       `assistant:tools:${callId}`,
       `tool:${callId}`,
-      `sweatpants:plugin-replay:${callId}`,
       "user:u2",
     ]);
+
+    const activitySnapshots = result.events
+      .map((entry) => entry.event as AgUiEvent)
+      .filter((event) => event.type === "ACTIVITY_SNAPSHOT") as Array<{
+      type: "ACTIVITY_SNAPSHOT";
+      messageId: string;
+    }>;
+    expect(activitySnapshots.map((event) => event.messageId)).toContain(
+      `sweatpants:plugin-replay:${callId}`,
+    );
+  });
+
+  it("does not leak server-injected system prompts into public snapshots", function* () {
+    const provider = createMockProvider({ responses: "prompt safe" });
+    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+
+    const response = yield* call(() =>
+      handler(
+        new Request("http://localhost/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ id: "user:prompt", role: "user", content: "hello" }],
+            systemPrompt: "__SECRET_DEFAULT_PROMPT_DO_NOT_LEAK__",
+          }),
+        }),
+      ),
+    );
+    const result = yield* call(() => consumeDurableResponse(response));
+    const snapshots = result.events
+      .map((entry) => entry.event as AgUiEvent)
+      .filter((event) => event.type === "MESSAGES_SNAPSHOT") as Array<{
+      type: "MESSAGES_SNAPSHOT";
+      messages: Array<{ role: string; content?: string }>;
+    }>;
+
+    expect(JSON.stringify(result.events)).not.toContain("__SECRET_DEFAULT_PROMPT_DO_NOT_LEAK__");
+    expect(
+      snapshots.flatMap((snapshot) => snapshot.messages).some((message) => message.role === "system"),
+    ).toBe(false);
   });
 
   it("emits raw strict SSE frames whose data payloads are AG-UI events", function* () {
@@ -376,7 +415,7 @@ describe("strict AG-UI public conformance", () => {
     assertPublicConformance(events);
   });
 
-  it("preserves AG-UI activity, developer, and reasoning roles without replayState", function* () {
+  it("preserves developer and reasoning roles while excluding non-history activity", function* () {
     const provider = createMockProvider({ responses: "role safe" });
     const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
 
@@ -414,11 +453,43 @@ describe("strict AG-UI public conformance", () => {
     expect(snapshot?.messages.map((message) => [message.id, message.role])).toEqual([
       ["developer:1", "developer"],
       ["system:1", "system"],
-      ["activity:1", "activity"],
       ["reasoning:1", "reasoning"],
       ["user:1", "user"],
     ]);
     expect(snapshot?.messages.some((message) => message.id === "unknown:1")).toBe(false);
+
+    const activitySnapshots = result.events
+      .map((entry) => entry.event as AgUiEvent)
+      .filter((event) => event.type === "ACTIVITY_SNAPSHOT");
+    expect(activitySnapshots).toEqual([]);
+  });
+
+  it("strips private runtime session metadata from public interrupts", function* () {
+    const provider = createMockProvider({ responses: "interrupt safe" });
+    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+
+    const response = yield* call(() =>
+      handler(
+        new Request("http://localhost/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [{ id: "user:u1", role: "user", content: "resume me" }],
+            elicitResponses: [
+              {
+                sessionId: "private-session",
+                callId: "call-1",
+                elicitId: "interrupt-1",
+                toolName: "book_flight",
+                result: { action: "accept", content: { ok: true } },
+              },
+            ],
+          }),
+        }),
+      ),
+    );
+    const result = yield* call(() => consumeDurableResponse(response));
+    expect(JSON.stringify(result.events)).not.toContain("sweatpants/sessionId");
   });
 
   it("rejects injected legacy public events in the conformance harness", function* () {
