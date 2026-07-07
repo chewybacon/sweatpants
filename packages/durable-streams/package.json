@@ -73,6 +73,16 @@
         "types": "./dist/sse-formatter.d.ts",
         "default": "./dist/sse-formatter.js"
       }
+    },
+    "./redis": {
+      "development": {
+        "import": "./src/redis-store.ts",
+        "types": "./src/redis-store.ts"
+      },
+      "import": {
+        "types": "./dist/redis-store.d.ts",
+        "default": "./dist/redis-store.js"
+      }
     }
   },
   "files": [
@@ -86,12 +96,22 @@
     "test": "vitest"
   },
   "dependencies": {
-    "effection": "catalog:",
+    "effection": "catalog:"
+  },
+  "peerDependencies": {
     "redis": "^4.7.0"
+  },
+  "peerDependenciesMeta": {
+    "redis": {
+      "optional": true
+    }
+  },
+  "optionalDependencies": {
   },
   "devDependencies": {
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
+    "redis": "^4.7.0",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

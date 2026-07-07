@@ -638,43 +638,6 @@ importers:
         specifier: ^1.40.0
         version: 1.57.0
 
-  packages/agents:
-    dependencies:
-      '@sweatpants/core':
-        specifier: workspace:*
-        version: link:../core
-      '@sweatpants/durable-streams':
-        specifier: workspace:*
-        version: link:../durable-streams
-      '@sweatpants/framework':
-        specifier: workspace:*
-        version: link:../framework
-      effection:
-        specifier: 4.1.0-alpha.9
-        version: 4.1.0-alpha.9
-      zod:
-        specifier: 'catalog:'
-        version: 4.1.13
-    devDependencies:
-      '@effectionx/vitest':
-        specifier: 'catalog:'
-        version: 0.3.1(effection@4.1.0-alpha.9)(vitest@3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
-      '@sweatpants/ts-config':
-        specifier: workspace:*
-        version: link:../ts-config
-      '@types/node':
-        specifier: 'catalog:'
-        version: 22.19.5
-      tsup:
-        specifier: 'catalog:'
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
-      typescript:
-        specifier: 'catalog:'
-        version: 5.9.3
-      vitest:
-        specifier: 'catalog:'
-        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
-
   packages/cli:
     dependencies:
       citty:
@@ -745,9 +708,6 @@ importers:
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
-      redis:
-        specifier: ^4.7.0
-        version: 4.7.1
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
@@ -755,6 +715,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
+      redis:
+        specifier: ^4.7.0
+        version: 4.7.1
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
@@ -791,6 +754,9 @@ importers:
       '@sweatpants/elicit-context':
         specifier: workspace:*
         version: link:../elicit-context
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../stream-bridge
@@ -965,6 +931,28 @@ importers:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
+  packages/session-contract:
+    dependencies:
+      '@sweatpants/durable-streams':
+        specifier: workspace:*
+        version: link:../durable-streams
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+
   packages/stream-bridge:
     dependencies:
       effection:
@@ -992,6 +980,9 @@ importers:
       '@aws-sdk/client-bedrock-agentcore':
         specifier: ^3.996.0
         version: 3.1071.0
+      '@sweatpants/durable-streams':
+        specifier: workspace:*
+        version: link:../durable-streams
       redis:
         specifier: ^4.7.0
         version: 4.7.1
@@ -1002,6 +993,9 @@ importers:
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../framework
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -1029,6 +1023,9 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
     devDependencies:
       '@sweatpants/framework':
         specifier: workspace:*

@@ -52,7 +52,7 @@ test.describe('Echo Tool', () => {
   
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await expect(page.locator('#transport-type-select')).toBeVisible({ timeout: 10000 })
     await connectToServer(page)
     await ensureToolsListed(page)
   })

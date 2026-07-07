@@ -9,6 +9,9 @@
       "path": "./packages/durable-streams"
     },
     {
+      "path": "./packages/session-contract"
+    },
+    {
       "path": "./packages/elicit-context"
     },
     {

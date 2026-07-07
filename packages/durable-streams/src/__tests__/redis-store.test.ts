@@ -4,6 +4,10 @@ import { createClient, type RedisClientType } from 'redis'
 
 import { createRedisTokenBufferStore } from '../redis-store.ts'
 import { defineTokenBufferStoreConformance } from './token-buffer-store-conformance.ts'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+const packageRoot = resolve(process.cwd())
 
 function redisUrl(): string {
   return process.env['REDIS_URL'] ?? 'redis://localhost:6379'
@@ -178,5 +182,20 @@ describe('RedisTokenBufferStore', () => {
 
     const result = await run(() => buffer.read(1))
     expect(result.tokens).toEqual(['b'])
+  })
+
+  // REQ-064: append MUST use XLEN (O(1)) for the token count, not xRange
+  // (O(n) over the full stream). This is a static source check that runs
+  // without a Redis instance.
+  it('uses XLEN for append count, not xRange (REQ-064)', () => {
+    const source = readFileSync(resolve(packageRoot, 'src/redis-store.ts'), 'utf8')
+    // Extract the append method body
+    const appendMatch = source.match(/\*append\(tokens\)[\s\S]*?return count/)
+    expect(appendMatch, 'append method should be found in source').not.toBeNull()
+    const appendBody = appendMatch![0]
+    // XLEN should be used for counting
+    expect(appendBody).toContain('xLen')
+    // xRange should NOT be called in the append method body
+    expect(appendBody).not.toContain('xRange')
   })
 }, 30_000)

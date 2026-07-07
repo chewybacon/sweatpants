@@ -1,5 +1,13 @@
 # Purpose
 
+> **⚠ ARCHIVED — STALE REFERENCE**: The `createAgent` API from `@sweatpants/core` and
+> the `@sweatpants/agent` package described in this document have been removed.
+> The current agent/session model lives in
+> [`@sweatpants/session-contract`](../packages/session-contract/) — see its
+> [authoring contract docs](../packages/session-contract/docs/authoring-contract.md)
+> and the [wait-based session kernel spec](../.pi/specs/wait-based-session-kernel-spec.md).
+> This document is retained as a historical design reference only.
+
 Propose an alternative API for defining agents that aligns better with Effection
 to leverage Structure Concurrency and simplify the API. The simplifaction comes
 from dramatically reducing API surface and leveraging Effection features and

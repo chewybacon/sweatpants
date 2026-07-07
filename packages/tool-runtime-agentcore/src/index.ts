@@ -62,6 +62,11 @@ export {
 } from './agentcore-redis-store.ts'
 
 export {
+  createRedisSessionStore,
+  type CreateRedisSessionStoreOptions,
+} from './redis-session-store.ts'
+
+export {
   createAgentCoreRemoteToolRuntimeClient,
   streamFromAgentCoreResponses,
   protocolErrorStream,

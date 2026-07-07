@@ -37,3 +37,7 @@ export {
   createContextWithElicitsFromTransport,
   type CoreContextOptions,
 } from './core-context.ts'
+
+export {
+  adaptToolSessionToSessionContract,
+} from './contract-adapter.ts'

@@ -40,7 +40,7 @@ Documentation for core contributors to the Sweatpants framework.
 | Component | Location |
 |-----------|----------|
 | createTool | [`packages/core/src/tool/create.ts`](../../core/src/tool/create.ts) |
-| createAgent | [`packages/core/src/agent/create.ts`](../../core/src/agent/create.ts) |
+| createAgent | Deleted legacy sketch; fresh fold-mode implementation lives in [`packages/session-contract/src/create-agent.ts`](../../session-contract/src/create-agent.ts), with reference salvage in [`packages/session-contract/docs/legacy-agent-salvage.md`](../../session-contract/docs/legacy-agent-salvage.md) |
 | Built-ins (elicit, notify, sample) | [`packages/core/src/builtins/api.ts`](../../core/src/builtins/api.ts) |
 | Transport Types | [`packages/core/src/types/transport.ts`](../../core/src/types/transport.ts) |
 

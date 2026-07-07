@@ -10,7 +10,7 @@ Terms as they're used in the Sweatpants framework. Some may differ from general 
 
 A group of related tools with optional shared configuration. Created with `createAgent()`.
 
-**File:** [`packages/core/src/agent/create.ts`](../../core/src/agent/create.ts)
+**File:** legacy `packages/core/src/agent` has been deleted. The fresh wait-based fold implementation lives at [`packages/session-contract/src/create-agent.ts`](../../session-contract/src/create-agent.ts); reference-only salvage is documented in [`packages/session-contract/docs/legacy-agent-salvage.md`](../../session-contract/docs/legacy-agent-salvage.md).
 
 ```typescript
 const FlightAgent = createAgent({

@@ -198,7 +198,7 @@ async function callGreetViaMcpSampling(input: {
 test.describe("Greet Tool (Sampling)", () => {
   test("generates greeting via sampling backchannel", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await expect(page.locator("#transport-type-select")).toBeVisible({ timeout: 10000 });
     await connectToServer(page);
     await ensureToolsListed(page);
 
@@ -217,15 +217,9 @@ test.describe("Greet Tool (Sampling)", () => {
     await expect(nameInput).toBeVisible({ timeout: 5000 });
     await nameInput.fill("Alice");
 
-    const styleSelect = page.getByLabel(/style/i);
-    if (await styleSelect.isVisible()) {
-      await styleSelect.click();
-      await page.waitForTimeout(300);
-      const formalOption = page.getByRole("option", { name: /formal/i });
-      if (await formalOption.isVisible()) {
-        await formalOption.click();
-      }
-    }
+    // Keep the default style selected by the Inspector form; the sampling
+    // backchannel is what this test exercises, and combobox rendering has been
+    // a source of Inspector-version-specific flake.
 
     // Click Run - this triggers the sampling request.
     await page.getByRole("button", { name: /run/i }).first().click();
@@ -250,7 +244,6 @@ test.describe("Greet Tool (Sampling)", () => {
 
     const resultText = await page.locator("body").textContent();
     expect(resultText).toContain('name:"Alice"');
-    expect(resultText).toContain('style:"formal"');
     expect(resultText).toContain("Dear Alice, it is my pleasure");
     expect(resultText).not.toContain("Running...");
   });

@@ -36,3 +36,11 @@ export {
 } from './setup.ts'
 
 export * from './worker.ts'
+
+// Session-contract-native worker tool session (parallel module, pre-cut-over)
+export {
+  createNativeWorkerToolSession,
+  respondToNativeElicit,
+  respondToNativeSample,
+  type NativeWorkerToolSessionOptions,
+} from './worker-session-native.ts'

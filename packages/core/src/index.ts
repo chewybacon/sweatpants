@@ -88,21 +88,6 @@ export {
   type SampleMessage,
 } from "./builtins/index.ts";
 
-// Re-export agent utilities and types
-export {
-  createAgent,
-  type AgentConfig,
-  type Agent,
-  type AgentFactory,
-  type AgentFactoryWithConfig,
-  type AgentFactoryWithoutConfig,
-  type AgentMiddleware,
-  type AnyToolFactory,
-  type ToolFromFactory,
-  type InputFromFactory,
-  type OutputFromFactory,
-} from "./agent/index.ts";
-
 // Re-export protocol utilities and types
 export {
   createProtocol,

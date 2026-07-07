@@ -1,5 +1,13 @@
 # Sweatpants Architecture
 
+> **⚠ PARTIALLY STALE**: The `@sweatpants/agent` package and the `createAgent`
+> API from `@sweatpants/core` described in this document have been removed.
+> The current session/agent model lives in
+> [`@sweatpants/session-contract`](../packages/session-contract/) — see the
+> [wait-based session kernel spec](../.pi/specs/wait-based-session-kernel-spec.md)
+> and [authoring contract docs](../packages/session-contract/docs/authoring-contract.md).
+> Sections describing transport and framework internals remain current.
+
 This document describes the architecture for Sweatpants, an agent framework built on Effection's structured concurrency primitives.
 
 ## Overview

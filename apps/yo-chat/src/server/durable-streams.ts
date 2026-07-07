@@ -1,12 +1,12 @@
 import { call, type Operation } from 'effection'
 import {
   createInMemoryRegistryStore,
-  createRedisTokenBufferStore,
   createSharedStorage,
   getSharedStores,
   setupDurableStreams,
   type RetentionPolicy,
 } from '@sweatpants/framework/chat/durable-streams'
+import { createRedisTokenBufferStore } from '@sweatpants/durable-streams/redis'
 import { getSharedRedisClient } from '@/lib/shared-redis'
 
 const sharedStorage = createSharedStorage<string>()

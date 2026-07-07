@@ -9,6 +9,7 @@ export default defineConfig({
     'read-transport': 'src/read-transport.ts',
     'mutation-transport': 'src/mutation-transport.ts',
     'sse-formatter': 'src/sse-formatter.ts',
+    'redis-store': 'src/redis-store.ts',
   },
   format: ['esm'],
   dts: {

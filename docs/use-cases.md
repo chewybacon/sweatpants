@@ -1,5 +1,12 @@
 # Elicit Use Cases
 
+> **⚠ ARCHIVED — STALE REFERENCE**: The `@sweatpants/agent` package and
+> `createAgent`/`createElicit` APIs from `@sweatpants/core` referenced in this
+> document have been removed. Elicitation is now modelled as an `elicit` wait
+> kind in [`@sweatpants/session-contract`](../packages/session-contract/).
+> See the [wait-based session kernel spec](../.pi/specs/wait-based-session-kernel-spec.md).
+> This document is retained as a historical design reference only.
+
 This document describes key use cases for the elicit system, capturing design decisions and architectural implications.
 
 ## 1. Multiple Agents Sharing Same Elicit
