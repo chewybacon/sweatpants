@@ -17,6 +17,8 @@ export { createDurableChatHandler as createChatHandler } from './handler.ts'
 
 // Chat engine
 export { createChatEngine } from './chat-engine.ts'
+export { createDurableChatEngineSessionAdapter } from './session-contract-adapter.ts'
+export type { DurableChatEngineSessionAdapterOptions } from './session-contract-adapter.ts'
 
 // Plugin session manager
 export { createPluginSessionManager } from './plugin-session-manager.ts'

@@ -42,21 +42,24 @@
     "build:deps": "pnpm --filter @sweatpants/framework build:types",
     "dev": "tsup --watch",
     "check": "pnpm build:deps && tsc -b",
-    "test": "vitest run src --passWithNoTests",
+    "test": "vitest run src acceptance --passWithNoTests",
     "test:acceptance": "vitest run acceptance",
     "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",
     "build:types": "tsc -b tsconfig.json --force"
   },
   "peerDependencies": {
     "@sweatpants/framework": "workspace:*",
+    "@sweatpants/session-contract": "workspace:*",
     "effection": ">=4.1.0-alpha.9 <5.0.0"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
+    "@sweatpants/durable-streams": "workspace:*",
     "redis": "^4.7.0"
   },
   "devDependencies": {
     "@sweatpants/framework": "workspace:*",
+    "@sweatpants/session-contract": "workspace:*",
     "@sweatpants/ts-config": "workspace:*",
     "@types/node": "catalog:",
     "effection": "catalog:",

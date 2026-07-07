@@ -602,7 +602,7 @@ describe("Durable Chat Handler HTTP Smoke Tests", () => {
       expect(createResponse.status).toBe(201);
 
       const pollUrl = new URL(sessionUrl);
-      pollUrl.searchParams.set("offset", "0");
+      pollUrl.searchParams.set("offset", "now");
       pollUrl.searchParams.set("live", "long-poll");
       pollUrl.searchParams.set("timeout", "10");
 

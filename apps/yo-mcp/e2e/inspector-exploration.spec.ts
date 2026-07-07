@@ -34,7 +34,7 @@ test.describe('MCP Inspector UI Exploration', () => {
   
   test('connect and list tools', async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.locator('#transport-type-select').waitFor({ state: 'visible', timeout: 10000 })
     
     await page.screenshot({ path: 'test-results/01-initial-load.png', fullPage: true })
     
@@ -92,7 +92,7 @@ test.describe('MCP Inspector UI Exploration', () => {
 
   test('explore tool detail view', async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.locator('#transport-type-select').waitFor({ state: 'visible', timeout: 10000 })
     
     // Connect to server
     await connectToServer(page)
@@ -128,7 +128,7 @@ test.describe('MCP Inspector UI Exploration', () => {
 
   test('dump DOM structure after connection', async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await page.locator('#transport-type-select').waitFor({ state: 'visible', timeout: 10000 })
     
     // Connect
     await connectToServer(page)

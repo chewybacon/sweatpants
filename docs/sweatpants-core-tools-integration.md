@@ -1,5 +1,11 @@
 # @sweatpants/core Tools Integration into Framework
 
+> **⚠ PARTIALLY STALE**: The `@sweatpants/core` agent API referenced in this
+> document has been removed. The current session/agent model lives in
+> [`@sweatpants/session-contract`](../packages/session-contract/). This
+> document is retained as a historical design reference for the tools
+> integration migration.
+
 ## Overview
 
 This document describes the design for integrating `@sweatpants/core` tools into the existing `@sweatpants/framework` chat system. The goal is gradual migration: keep the existing framework working while allowing core tools to be registered and executed alongside isomorphic tools.
@@ -565,7 +571,7 @@ c. Wait for patch to be written to stream
 ## Related Documents
 
 - [Architecture](./architecture.md) - Core architecture vision
-- [Protocol Layer Plan](./protocol-layer-plan.md) - Implementation status of core
+- [Protocol Layer Plan](./archive/unified-tools-finalization/protocol-layer-plan.md) - Implementation status of core
 - [Simplified Agents API](./simplified-agents-api.md) - API design rationale
 - [MCP Plugin Bridge Design](./mcp-plugin-bridge-design.md) - Similar integration pattern
 

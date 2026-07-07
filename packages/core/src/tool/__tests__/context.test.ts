@@ -2,7 +2,6 @@ import { describe, it, expect } from "@effectionx/vitest";
 import { createContext } from "effection";
 import { z } from "zod";
 import { createTool } from "../create.ts";
-import { createAgent } from "../../agent/create.ts";
 
 describe("Tool.withContext()", () => {
   describe("single context binding", () => {
@@ -147,41 +146,6 @@ describe("Tool.withContext()", () => {
 
       expect(stdioResult.transport).toBe("stdio");
       expect(sseResult.transport).toBe("sse");
-    });
-  });
-
-  describe("with agent integration", () => {
-    it("should work when tool with context is used in agent", function* () {
-      const ConfigContext = createContext<{ apiKey: string }>("config");
-      let capturedKey: string | undefined;
-
-      const ApiTool = createTool({
-        name: "api-call",
-        description: "Makes API call",
-        input: z.object({}),
-        output: z.object({ key: z.string() }),
-        progress: z.object({}),
-        impl: function* () {
-          const config = yield* ConfigContext.expect();
-          capturedKey = config.apiKey;
-          return { key: config.apiKey };
-        },
-      });
-
-      const Agent = createAgent({
-        name: "api-agent",
-        description: "Agent with configured tool",
-        tools: {
-          // Tool with context binding used in agent
-          apiCall: ApiTool.withContext(ConfigContext, { apiKey: "sk-test-123" }),
-        },
-      });
-
-      const agent = yield* Agent();
-      const result = yield* agent.apiCall({});
-
-      expect(result.key).toBe("sk-test-123");
-      expect(capturedKey).toBe("sk-test-123");
     });
   });
 });

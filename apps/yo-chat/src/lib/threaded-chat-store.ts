@@ -1,9 +1,9 @@
 import {
   createInMemoryBufferStore,
-  createRedisTokenBufferStore,
   type TokenBuffer,
   type TokenBufferStore,
 } from '@sweatpants/framework/chat/durable-streams'
+import { createRedisTokenBufferStore } from '@sweatpants/durable-streams/redis'
 import type { Message } from '@sweatpants/framework/chat'
 import {
   createPiAiModelProviderDriver,

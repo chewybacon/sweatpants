@@ -51,7 +51,7 @@ async function selectTool(page: import("@playwright/test").Page, toolName: strin
 test.describe("Pick Card Tool (Elicitation)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    await expect(page.locator("#transport-type-select")).toBeVisible({ timeout: 10000 });
     await connectToServer(page);
     await ensureToolsListed(page);
   });

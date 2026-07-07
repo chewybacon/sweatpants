@@ -61,7 +61,7 @@ export class McpInspector {
       ? `/?MCP_PROXY_AUTH_TOKEN=${authToken}`
       : '/'
     await this.page.goto(url)
-    await this.page.waitForLoadState('networkidle')
+    await this.page.locator('#transport-type-select').waitFor({ state: 'visible', timeout: 10000 })
   }
 
   /**

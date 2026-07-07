@@ -19,7 +19,7 @@ export default defineConfig({
   retries: isCI ? 2 : 0,
   workers: 1, // Single worker to avoid port conflicts
   reporter: isCI ? 'github' : 'html',
-  timeout: 60000, // 60s per test (tools can be slow)
+  timeout: 120000, // Inspector-driven tool flows can be slow and occasionally need more than 60s
   
   use: {
     // MCP Inspector runs on port 6274

@@ -73,9 +73,12 @@ export {
   createInMemoryRegistryStore,
   createPullStream,
   writeFromStreamToBuffer,
-  createRedisTokenBufferStore,
-  type RedisTokenBufferStore,
 } from '@sweatpants/durable-streams'
+
+// Redis store is imported from the `/redis` subpath at consumer sites that
+// need it (e.g. tool-runtime-agentcore). It is not re-exported here to avoid
+// pulling `redis` into the install graph of packages that only need the
+// in-memory substrate. See REQ-060 / NFR-012.
 
 // Session registry (framework-specific orchestration)
 export { createSessionRegistry } from './session-registry.ts'

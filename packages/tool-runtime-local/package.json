@@ -41,12 +41,13 @@
     "build": "tsup && pnpm build:types",
     "dev": "tsup --watch",
     "check": "tsc -b",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run src acceptance --passWithNoTests",
     "test:acceptance": "vitest run acceptance",
     "build:types": "tsc -b tsconfig.json --force"
   },
   "peerDependencies": {
     "@sweatpants/framework": "workspace:*",
+    "@sweatpants/session-contract": "workspace:*",
     "effection": ">=4.1.0-alpha.9 <5.0.0"
   },
   "devDependencies": {
@@ -61,6 +62,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@sweatpants/core": "workspace:*"
+    "@sweatpants/core": "workspace:*",
+    "@sweatpants/session-contract": "workspace:*"
   }
 }
