@@ -7,7 +7,7 @@
  * ## Usage
  *
  * ```typescript
- * // In chat-engine when handling an elicit event
+ * // In durable chat execution when handling an elicit event
  * const ctx = createPluginClientContext({
  *   callId: event.request.callId,
  *   toolName: 'book_flight',

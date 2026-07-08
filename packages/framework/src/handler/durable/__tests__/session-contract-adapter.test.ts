@@ -1,124 +1,340 @@
-import { resource, run } from "effection";
+import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 
-import { createSessionContractInMemoryStore, waitToken } from "@sweatpants/session-contract";
-
-import { createDurableChatEngineSessionAdapter } from "../session-contract-adapter.ts";
+import { createSessionContractChatEngine } from "../session-contract-adapter.ts";
+import type { SessionContractChatEngineParams } from "../types.ts";
+import type {
+  AssistantMessage,
+  Model,
+  Runtime,
+  StreamEvent as RuntimeStreamEvent,
+} from "../../../lib/chat/runtime/index.ts";
 import type { StreamEvent } from "../../../lib/chat/session/streaming.ts";
+import type { ToolRuntime } from "../../../lib/chat/tool-runtime.ts";
 
-function streamOf(events: StreamEvent[]) {
+function model(): Model {
+  return {
+    id: "mock-model",
+    name: "Mock Model",
+    api: "mock",
+    provider: "mock",
+    reasoning: false,
+    input: ["text"],
+    contextWindow: 128000,
+    maxTokens: 4096,
+  };
+}
+
+function streamRuntimeTurn(events: RuntimeStreamEvent[], result: AssistantMessage): Stream<RuntimeStreamEvent, AssistantMessage> {
   return resource(function* (provide) {
     let index = 0;
     yield* provide({
-      *next() {
+      *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
         const value = events[index++];
-        return value === undefined ? { done: true, value: undefined } : { done: false, value };
+        return value === undefined ? { done: true, value: result } : { done: false, value };
       },
     });
   });
 }
 
-describe("durable chat engine session-contract adapter", () => {
-  it("projects chat-engine emissions, interrupts, resumes, and turn boundaries into the session contract", async () => {
-    await run(function* () {
-      const bufferStore = createSessionContractInMemoryStore();
-      const session = yield* createDurableChatEngineSessionAdapter({
-        sessionId: "cea-contract",
-        bufferStore,
-        *createEngine() {
-          return streamOf([
-            { type: "TEXT_MESSAGE_START", messageId: "m1", role: "assistant" },
-            { type: "TEXT_MESSAGE_CONTENT", messageId: "m1", delta: "hello" },
-            {
-              type: "RUN_FINISHED",
-              threadId: "t1",
-              runId: "r1",
-              outcome: {
-                type: "interrupt",
-                interrupts: [
-                  {
-                    id: "approve",
-                    reason: "input_required",
-                    message: "Approve?",
-                    responseSchema: { type: "object" },
-                    expiresAt: "2099-01-01T00:00:00.000Z",
-                    metadata: { source: "chat-engine", sessionId: "leaked-topology" },
-                  },
-                ],
-              },
-            },
-          ]);
+function* collect(engine: Stream<StreamEvent, void>): Operation<StreamEvent[]> {
+  const subscription = yield* engine;
+  const events: StreamEvent[] = [];
+  let next = yield* subscription.next();
+  while (!next.done) {
+    events.push(next.value);
+    next = yield* subscription.next();
+  }
+  return events;
+}
+
+function baseParams(overrides: Partial<SessionContractChatEngineParams>): SessionContractChatEngineParams {
+  const runtime: Runtime = {
+    stream() {
+      return streamRuntimeTurn([
+        {
+          type: "text_delta",
+          contentIndex: 0,
+          delta: "hello",
+          partial: { role: "assistant", content: [{ type: "text", text: "hello" }] },
         },
-      });
+      ], { role: "assistant", content: [{ type: "text", text: "hello" }], stopReason: "stop" });
+    },
+    *generateImages() {
+      return { output: [] };
+    },
+  };
 
-      yield* session.send({ role: "user", content: "hello" }, { idempotencyKey: "cea-message" });
-      let status = yield* session.status();
-      expect(status.state).toBe("parked");
-      const elicitWait = status.pendingWaits.at(-1)!;
-      expect(elicitWait).toMatchObject({ kind: "elicit", expiresAt: "2099-01-01T00:00:00.000Z" });
-      // Topology fields in metadata must be sanitized so the log validates.
-      const replayEvents = yield* session.events();
-      let elicitContext: Record<string, unknown> | undefined;
-      for (let i = 0; i < 10; i += 1) {
-        const next = yield* replayEvents.next();
-        if (next.done) break;
-        if (next.value.kind === "wait" && next.value.wait === "elicit") {
-          elicitContext = (next.value as { payload: { context?: Record<string, unknown> } }).payload.context;
-          break;
-        }
-      }
-      expect(elicitContext).not.toHaveProperty("sessionId");
+  return {
+    messages: [{ id: "user:1", role: "user", content: "hello" }],
+    toolSchemas: [],
+    runtime,
+    model: model(),
+    maxIterations: 5,
+    signal: new AbortController().signal,
+    agUiRun: { threadId: "thread-1", runId: "run-1" },
+    ...overrides,
+  } as SessionContractChatEngineParams;
+}
 
-      yield* session.respond(waitToken("cea-contract", elicitWait.waitSeq), { approved: true }, {
-        idempotencyKey: "cea-resume",
-        wait: "elicit",
-      });
-      status = yield* session.status();
-      expect(status.pendingWaits.at(-1)?.kind).toBe("message");
+describe("session-contract chat engine adapter", () => {
+  it("projects a plain fold turn into a bounded AG-UI StreamEvent sequence", async () => {
+    await run(function* () {
+      const engine = createSessionContractChatEngine(baseParams({}));
+      const events = yield* collect(engine);
 
-      const replay = yield* session.events();
-      const kinds: string[] = [];
-      for (let i = 0; i < 9; i += 1) {
-        const next = yield* replay.next();
-        if (next.done) break;
-        kinds.push(next.value.kind);
-      }
-      expect(kinds).toContain("emission");
-      expect(kinds).toContain("wait");
-      expect(kinds).toContain("answer");
-      expect(kinds).toContain("checkpoint");
+      expect(events).toEqual([
+        { type: "TEXT_MESSAGE_START", messageId: "assistant:final:run-1", role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId: "assistant:final:run-1", delta: "hello" },
+        { type: "TEXT_MESSAGE_END", messageId: "assistant:final:run-1" },
+        { type: "RUN_FINISHED", threadId: "thread-1", runId: "run-1", outcome: { type: "success" } },
+      ]);
     });
   });
 
-  it("projects every AG-UI interrupt as a separate elicit wait", async () => {
+  it("projects canonical tool calls, tool results, follow-up text, and stream completion", async () => {
     await run(function* () {
-      const bufferStore = createSessionContractInMemoryStore();
-      const session = yield* createDurableChatEngineSessionAdapter({
-        sessionId: "cea-multi-interrupt",
-        bufferStore,
-        *createEngine() {
-          return streamOf([
-            {
-              type: "RUN_FINISHED",
-              threadId: "t1",
-              runId: "r1",
-              outcome: {
-                type: "interrupt",
-                interrupts: [
-                  { id: "confirm", reason: "input_required", message: "Confirm?", responseSchema: {} },
-                  { id: "details", reason: "input_required", message: "Details?", responseSchema: {} },
-                ],
+      let sampleCount = 0;
+      const runtime: Runtime = {
+        stream() {
+          sampleCount += 1;
+          if (sampleCount === 1) {
+            const toolCall = { type: "toolCall" as const, id: "calc-1", name: "calculator", arguments: { expression: "2+2" } };
+            return streamRuntimeTurn([
+              {
+                type: "toolcall_end",
+                contentIndex: 0,
+                toolCall,
+                partial: { role: "assistant", content: [toolCall] },
               },
+            ], { role: "assistant", content: [toolCall], stopReason: "toolUse" });
+          }
+          return streamRuntimeTurn([
+            {
+              type: "text_delta",
+              contentIndex: 0,
+              delta: "The answer is 4.",
+              partial: { role: "assistant", content: [{ type: "text", text: "The answer is 4." }] },
             },
-          ]);
+          ], { role: "assistant", content: [{ type: "text", text: "The answer is 4." }], stopReason: "stop" });
         },
-      });
+        *generateImages() {
+          return { output: [] };
+        },
+      };
 
-      yield* session.send({ role: "user", content: "hello" }, { idempotencyKey: "cea-multi-msg" });
-      const status = yield* session.status();
-      const elicitWaits = status.pendingWaits.filter((w) => w.kind === "elicit");
-      expect(elicitWaits).toHaveLength(2);
-      expect(elicitWaits[0]!.token).not.toBe(elicitWaits[1]!.token);
+      const toolRuntime: ToolRuntime = {
+        id: "test-runtime",
+        *execute(request) {
+          return {
+            kind: "completed",
+            ref: {
+              runtimeId: "test-runtime",
+              executionId: request.call.id,
+              callId: request.call.id,
+              toolName: request.call.function.name,
+            },
+            result: "4",
+          };
+        },
+        *resume(request) {
+          return { kind: "failed", ref: request.ref, error: { code: "missing", message: "missing" } };
+        },
+        *abort() {},
+      };
+
+      const engine = createSessionContractChatEngine(baseParams({
+        runtime,
+        toolSchemas: [{ name: "calculator", description: "calculate", parameters: { type: "object" } }],
+        toolInventoryEntries: [{
+          definition: { name: "calculator", description: "calculate", parameters: { type: "object" } },
+        }],
+        toolRuntime,
+        toolRuntimeId: toolRuntime.id,
+      }));
+      const events = yield* collect(engine);
+
+      expect(events).toContainEqual({
+        type: "TOOL_CALL_START",
+        toolCallId: "calc-1",
+        toolCallName: "calculator",
+        parentMessageId: "assistant:tools:calc-1",
+      });
+      expect(events).toContainEqual({
+        type: "TOOL_CALL_ARGS",
+        toolCallId: "calc-1",
+        delta: JSON.stringify({ expression: "2+2" }),
+      });
+      expect(events).toContainEqual({ type: "TOOL_CALL_END", toolCallId: "calc-1" });
+      expect(events).toContainEqual({
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:calc-1",
+        toolCallId: "calc-1",
+        toolCallName: "calculator",
+        content: "4",
+        role: "tool",
+      });
+      expect(events).toContainEqual({
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final:run-1",
+        delta: "The answer is 4.",
+      });
+      expect(events.at(-1)).toEqual({
+        type: "RUN_FINISHED",
+        threadId: "thread-1",
+        runId: "run-1",
+        outcome: { type: "success" },
+      });
+      expect(sampleCount).toBe(2);
+    });
+  });
+
+  it("resumes a final tool result by calling the model again, not by synthesizing text", async () => {
+    await run(function* () {
+      let sampleCount = 0;
+      const runtime: Runtime = {
+        stream() {
+          sampleCount += 1;
+          return streamRuntimeTurn(
+            [
+              {
+                type: "text_delta",
+                contentIndex: 0,
+                delta: "Your flight is booked, ticket TKT-42.",
+                partial: { role: "assistant", content: [{ type: "text", text: "Your flight is booked, ticket TKT-42." }] },
+              },
+            ],
+            { role: "assistant", content: [{ type: "text", text: "Your flight is booked, ticket TKT-42." }], stopReason: "stop" },
+          );
+        },
+        *generateImages() {
+          return { output: [] };
+        },
+      };
+
+      let resumed = false;
+      const toolRuntime: ToolRuntime = {
+        id: "test-runtime",
+        *execute(request) {
+          return { kind: "failed", ref: { runtimeId: "test-runtime", executionId: request.call.id, callId: request.call.id, toolName: request.call.function.name }, error: { code: "unused", message: "unused" } };
+        },
+        *resume(request) {
+          resumed = true;
+          return {
+            kind: "completed",
+            ref: request.ref,
+            result: { ticketNumber: "TKT-42", message: "Booked" },
+          };
+        },
+        *abort() {},
+      };
+
+      const engine = createSessionContractChatEngine(baseParams({
+        messages: [
+          { id: "user:1", role: "user", content: "book a flight" },
+          {
+            id: "assistant:1",
+            role: "assistant",
+            content: "",
+            tool_calls: [{ id: "call-1", type: "function", function: { name: "book_flight", arguments: {} } }],
+          },
+        ],
+        runtime,
+        toolSchemas: [{ name: "book_flight", description: "book", parameters: { type: "object" } }],
+        toolInventoryEntries: [{ definition: { name: "book_flight", description: "book", parameters: { type: "object" } } }],
+        toolRuntime,
+        toolRuntimeId: toolRuntime.id,
+        elicitResponses: [{
+          sessionId: "call-1",
+          callId: "call-1",
+          toolName: "book_flight",
+          elicitId: "interrupt-1",
+          result: { action: "accept", content: { seat: "3A" } },
+          ref: { runtimeId: "test-runtime", executionId: "call-1", sessionId: "call-1", callId: "call-1", toolName: "book_flight" },
+        }],
+      }));
+      const events = yield* collect(engine);
+
+      // The tool runtime was resumed with the elicit response.
+      expect(resumed).toBe(true);
+      // The final tool result is projected.
+      expect(events).toContainEqual({
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:call-1",
+        toolCallId: "call-1",
+        toolCallName: "book_flight",
+        content: JSON.stringify({ ticketNumber: "TKT-42", message: "Booked" }),
+        role: "tool",
+      });
+      // The assistant text comes from a real model sample, not synthesized from
+      // the tool result.
+      expect(sampleCount).toBe(1);
+      expect(events).toContainEqual({
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final:run-1",
+        delta: "Your flight is booked, ticket TKT-42.",
+      });
+      expect(events.at(-1)).toEqual({
+        type: "RUN_FINISHED",
+        threadId: "thread-1",
+        runId: "run-1",
+        outcome: { type: "success" },
+      });
+    });
+  });
+
+  it("resumes into another elicit by emitting a bounded RUN_FINISHED interrupt without calling the model", async () => {
+    await run(function* () {
+      let sampleCount = 0;
+      const runtime: Runtime = {
+        stream() {
+          sampleCount += 1;
+          return streamRuntimeTurn([], { role: "assistant", content: [{ type: "text", text: "" }], stopReason: "stop" });
+        },
+        *generateImages() {
+          return { output: [] };
+        },
+      };
+
+      const toolRuntime: ToolRuntime = {
+        id: "test-runtime",
+        *execute(request) {
+          return { kind: "failed", ref: { runtimeId: "test-runtime", executionId: request.call.id, callId: request.call.id, toolName: request.call.function.name }, error: { code: "unused", message: "unused" } };
+        },
+        *resume(request) {
+          return {
+            kind: "awaiting_elicit",
+            ref: request.ref,
+            request: { elicitId: "interrupt-2", key: "seat", message: "Pick a seat", schema: { type: "object" } },
+          };
+        },
+        *abort() {},
+      };
+
+      const engine = createSessionContractChatEngine(baseParams({
+        messages: [{ id: "user:1", role: "user", content: "book a flight" }],
+        runtime,
+        toolSchemas: [{ name: "book_flight", description: "book", parameters: { type: "object" } }],
+        toolInventoryEntries: [{ definition: { name: "book_flight", description: "book", parameters: { type: "object" } } }],
+        toolRuntime,
+        toolRuntimeId: toolRuntime.id,
+        elicitResponses: [{
+          sessionId: "call-1",
+          callId: "call-1",
+          toolName: "book_flight",
+          elicitId: "interrupt-1",
+          result: { action: "accept", content: { flight: "NYC-LAX" } },
+          ref: { runtimeId: "test-runtime", executionId: "call-1", sessionId: "call-1", callId: "call-1", toolName: "book_flight" },
+        }],
+      }));
+      const events = yield* collect(engine);
+
+      // The model is not called when the resume yields another elicit.
+      expect(sampleCount).toBe(0);
+      const last = events.at(-1) as Extract<StreamEvent, { type: "RUN_FINISHED" }>;
+      expect(last.type).toBe("RUN_FINISHED");
+      expect(last.outcome.type).toBe("interrupt");
+      expect(last.outcome.type === "interrupt" && last.outcome.interrupts[0]?.id).toBe("interrupt-2");
     });
   });
 });

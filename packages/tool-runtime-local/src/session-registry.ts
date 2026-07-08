@@ -13,7 +13,7 @@
  *
  * @packageDocumentation
  */
-import { type Operation, spawn, resource, sleep, createChannel, createScope, suspend } from 'effection'
+import { type Operation, spawn, resource, sleep, createQueue, createScope, suspend } from 'effection'
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -135,8 +135,11 @@ export function createToolSessionRegistry(
           callId: mergedOptions.sessionId ?? tool.name,
         })
 
-        // Use a channel to receive the session from the spawned task
-        const sessionChannel = createChannel<ToolSession<TResult>, void>()
+        // Use a queue to receive the session from the spawned background task.
+        // This handoff crosses detached scopes, so it must be buffered: an
+        // unbuffered Channel can deadlock if the background task sends before
+        // the caller has subscribed.
+        const sessionQueue = createQueue<ToolSession<TResult>, void>()
 
         // CRITICAL: Run tool sessions in an independent background scope.
         //
@@ -166,7 +169,7 @@ export function createToolSessionRegistry(
               )) as ToolSession<TResult>
 
         // Send session back to caller
-        yield* sessionChannel.send(session)
+        sessionQueue.add(session)
 
           // Keep this task alive until the session completes
           // This ensures the session's spawned tasks continue running
@@ -180,8 +183,7 @@ export function createToolSessionRegistry(
         })
 
         // Receive the session from the spawned task
-        const sub = yield* sessionChannel
-        const result = yield* sub.next()
+        const result = yield* sessionQueue.next()
         if (result.done) {
           throw new Error('Session channel closed unexpectedly')
         }

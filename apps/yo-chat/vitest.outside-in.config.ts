@@ -1,0 +1,45 @@
+import type { UserConfig } from "vite";
+import baseConfig from "./vite.config";
+
+/**
+ * Vitest config for the outside-in HTTP test tier (design R11/C6).
+ *
+ * Runs ONLY `src/outside-in/**` under a Node environment (worker_threads +
+ * effection + real server), separate from the hermetic default unit run.
+ *
+ *   pnpm test:outside-in          # full integration: real model + Tier A + Tier B
+ *   pnpm test:outside-in:tier-a   # faster integration: real model + Tier A
+ *   pnpm test:outside-in:hermetic # no-network worker-boundary guard only
+ *
+ * Live flows run when `RUN_LIVE=1`; missing/expired Copilot auth fails fast in
+ * test setup instead of silently skipping requested integration coverage. Tier B
+ * runs when `OUTSIDE_IN_TIER_B=1`.
+ *
+ * NOTE: `test` is replaced (not merged) so the base run's outside-in exclude
+ * glob does not leak in and hide these tests.
+ */
+const base = baseConfig as UserConfig;
+
+const config: UserConfig = {
+  ...base,
+  test: {
+    environment: "node",
+    env: {
+      DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
+      DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
+    },
+    include: ["src/outside-in/**/*.test.ts"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
+    globalSetup: ["./src/outside-in/global-setup.ts"],
+    // Fork pool: tool workers are real worker threads; a plain-JS bootstrap
+    // registers tsx in-thread, so no special execArgv is required here.
+    pool: "forks",
+    // Live-model flows share one provider/server; keep them serial to avoid
+    // provider throttling (mirrors playwright workers: 1 / design C7).
+    fileParallelism: false,
+    testTimeout: Number.parseInt(process.env["OUTSIDE_IN_TEST_TIMEOUT_MS"] ?? "180000", 10),
+    hookTimeout: Number.parseInt(process.env["OUTSIDE_IN_HOOK_TIMEOUT_MS"] ?? "60000", 10),
+  },
+};
+
+export default config;

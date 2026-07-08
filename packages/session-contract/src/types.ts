@@ -162,6 +162,11 @@ export interface RespondAck {
   idempotencyKey: string
 }
 
+export type RespondIfPendingResult =
+  | { type: 'accepted'; ack: RespondAck }
+  | { type: 'not_pending'; waitSeq: number; reason: 'unknown' | 'answered' | 'fated' | 'expired' }
+  | { type: 'terminal'; waitSeq: number; outcome: TerminalOutcome; payload?: unknown }
+
 export interface ResolutionMeta {
   provider?: string
   childSessionId?: string
@@ -183,6 +188,21 @@ export interface Session {
   respond(waitToken: string, payload: unknown, opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta }): Operation<RespondAck>
   cancel(reason?: string): Operation<void>
   status(): Operation<SessionStatus>
+}
+
+export interface FoldSessionHost extends Session {
+  records(): Operation<LogRecord[]>
+  emitWait<K extends WaitKind>(wait: K, payload: WaitPayloadByKind[K], options?: { expiresAt?: string }): Operation<WaitRecord<K>>
+  emitEmission(payload: unknown): Operation<EmissionRecord>
+  checkpoint(mode: AuthoringMode, state?: unknown): Operation<CheckpointRecord>
+  terminal(outcome: TerminalOutcome, payload?: unknown): Operation<TerminalRecord>
+  expire(waitSeq: number, reason?: string): Operation<FateRecord>
+  orphan(waitSeq: number, reason?: string): Operation<FateRecord>
+  respondIfPending(
+    waitToken: string,
+    payload: unknown,
+    opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta },
+  ): Operation<RespondIfPendingResult>
 }
 
 export interface CapabilityDeclaration<I = unknown, O = unknown> {

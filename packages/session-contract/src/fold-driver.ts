@@ -24,15 +24,16 @@ import type { Operation } from 'effection'
 
 import { CapabilityResolverContext, ModelProviderContext } from './contexts.ts'
 import { deriveLogState } from './derive.ts'
-import type { InMemorySession } from './in-memory-session.ts'
 import { waitToken } from './token.ts'
 import {
   type AnswerPayload,
   type CapabilityMap,
+  type FoldSessionHost,
   type LogRecord,
   type MessageInput,
   type ModelProvider,
   type CapabilityResolver,
+  type WaitKind,
 } from './types.ts'
 import { assertDeclaredCapability } from './capabilities.ts'
 import type { AgentConfig } from './create-agent.ts'
@@ -46,7 +47,7 @@ import type { AgentConfig } from './create-agent.ts'
  * from the session log via `deriveLogState()`.
  */
 export function* spawnFoldDriver<C extends CapabilityMap = CapabilityMap>(
-  session: InMemorySession,
+  session: FoldSessionHost,
   config: AgentConfig<C>,
 ): Operation<void> {
   // Main driver loop
@@ -154,69 +155,133 @@ function decideAction(state: ReturnType<typeof deriveLogState>): DriverAction {
   return { type: 'park' }
 }
 
+type ToolCallRequest = { id: string; target: string; input: unknown }
+type TranscriptEntry = {
+  role: string
+  content?: unknown
+  tool_calls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: unknown } }>
+  tool_call_id?: string
+}
+
+type ToolCallModelValue = { calls: ToolCallRequest[]; assistantText?: string }
+type SessionAwareModelProvider = ModelProvider & {
+  sampleWithSession?: (
+    request: Parameters<ModelProvider['sample']>[0],
+    context: { session: FoldSessionHost; sampleWaitSeq: number },
+  ) => Operation<AnswerPayload>
+}
+
 /**
- * Run a single fold turn: sample → dispatch → answer calls → checkpoint →
- * message wait.
+ * Run a single fold turn: iterative sample → parallel call waits → tool
+ * results transcript → sample, then checkpoint → message wait.
  */
 function* runFoldTurn<C extends CapabilityMap>(
-  session: InMemorySession,
+  session: FoldSessionHost,
   config: AgentConfig<C>,
   input: MessageInput,
 ): Operation<void> {
   const capabilities = config.capabilities ?? ({} as C)
+  const maxIterations = config.maxIterations ?? 10
+  const transcript: TranscriptEntry[] = [{ role: input.role ?? 'user', content: input.content }]
+  let turnResult: AnswerPayload = { ok: true, value: '' }
+  let completed = false
 
-  // 1. Emit sample wait
-  const sampleWait = yield* session.emitWait('sample', {
-    messages: [{ role: input.role ?? 'user', content: input.content }],
-    ...(config.system ? { options: { system: config.system } } : {}),
-  })
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const sampleWait = yield* session.emitWait('sample', {
+      messages: transcript,
+      options: {
+        ...(config.system ? { system: config.system } : {}),
+      },
+    })
 
-  // 2. Call model provider and answer the sample wait
-  const modelProvider: ModelProvider | undefined = config.model ?? (yield* ModelProviderContext.get())
-  const modelAnswer: AnswerPayload = modelProvider
-    ? yield* modelProvider.sample(sampleWait.payload)
-    : { ok: true, value: input.content }
+    const modelProvider: ModelProvider | undefined = config.model ?? (yield* ModelProviderContext.get())
+    const modelAnswer: AnswerPayload = modelProvider
+      ? yield* sampleModel(modelProvider, sampleWait.payload, session, sampleWait.waitSeq)
+      : { ok: true, value: String(input.content ?? '') }
 
-  yield* session.respond(waitToken(session.id, sampleWait.waitSeq), modelAnswer, {
-    idempotencyKey: `fold:sample:${sampleWait.waitSeq}`,
-    wait: 'sample',
-  })
+    const sampleRecorded = yield* recordResponseIfPending(session, waitToken(session.id, sampleWait.waitSeq), modelAnswer, {
+      idempotencyKey: `fold:sample:${sampleWait.waitSeq}`,
+      wait: 'sample',
+    })
+    if (!sampleRecorded) return
 
-  if (!modelAnswer.ok) {
-    // Model error → terminal
-    yield* session.terminal('error', modelAnswer)
+    turnResult = modelAnswer
+
+    if (!modelAnswer.ok) {
+      yield* session.terminal('error', modelAnswer)
+      return
+    }
+
+    if (typeof modelAnswer.value === 'string') {
+      transcript.push({ role: 'assistant', content: modelAnswer.value })
+      completed = true
+      break
+    }
+
+    if (isToolCallModelValue(modelAnswer.value) && modelAnswer.value.calls.length > 0) {
+      const toolCallValue = modelAnswer.value
+      const calls = toolCallValue.calls
+      transcript.push({
+        role: 'assistant',
+        content: toolCallValue.assistantText ?? '',
+        tool_calls: calls.map((call) => ({
+          id: call.id,
+          type: 'function' as const,
+          function: { name: call.target, arguments: call.input },
+        })),
+      })
+
+      const waits: Array<{ call: ToolCallRequest; wait: LogRecord & { kind: 'wait'; waitSeq: number } }> = []
+      for (const call of calls) {
+        assertDeclaredCapability(capabilities, call.target)
+        const wait = yield* session.emitWait('call', { target: call.target, input: call.input })
+        waits.push({ call, wait })
+      }
+
+      const resolver: CapabilityResolver | undefined = config.resolver ?? (yield* CapabilityResolverContext.get())
+      const answers: Array<{ call: ToolCallRequest; answer: AnswerPayload }> = []
+      for (const { call, wait } of waits) {
+        const answer: AnswerPayload = resolver
+          ? yield* callResolver(resolver, call.target, call.input, session, wait.waitSeq, call.id)
+          : { ok: false, code: 'unknown_target', message: `No resolver for ${call.target}` }
+        const callRecorded = yield* recordResponseIfPending(session, waitToken(session.id, wait.waitSeq), answer, {
+          idempotencyKey: `fold:call:${wait.waitSeq}`,
+          wait: 'call',
+        })
+        if (!callRecorded) return
+        answers.push({ call, answer })
+      }
+
+      const parked = answers.find(({ answer }) => !answer.ok && answer.code === 'tool_awaiting_elicit')
+      if (parked) {
+        return
+      }
+
+      for (const { call, answer } of answers) {
+        const content = answer.ok
+          ? stringifyToolResult(answer.value)
+          : `Error: ${answer.message ?? answer.code}`
+        transcript.push({ role: 'tool', tool_call_id: call.id, content })
+      }
+
+      const fatal = answers.find(({ answer }) => !answer.ok && answer.code !== 'tool_error')
+      if (fatal) {
+        yield* session.terminal('error', fatal.answer)
+        return
+      }
+
+      continue
+    }
+
+    yield* session.terminal('error', { ok: false, code: 'model_error', message: 'Model returned an unsupported fold value' })
     return
   }
 
-  // 3. Check for tool calls in the model response
-  const value = modelAnswer.value as { call?: { target: string; input: unknown } } | unknown
-  if (isCallRequest(value)) {
-    assertDeclaredCapability(capabilities, value.call.target)
-    const callWait = yield* session.emitWait('call', {
-      target: value.call.target,
-      input: value.call.input,
-    })
-
-    const resolver: CapabilityResolver | undefined = config.resolver ?? (yield* CapabilityResolverContext.get())
-    const callAnswer: AnswerPayload = resolver
-      ? yield* callResolver(resolver, value.call.target, value.call.input, session, callWait.waitSeq)
-      : { ok: false, code: 'unknown_target', message: `No resolver for ${value.call.target}` }
-
-    yield* session.respond(waitToken(session.id, callWait.waitSeq), callAnswer, {
-      idempotencyKey: `fold:call:${callWait.waitSeq}`,
-      wait: 'call',
-    })
-
-    if (!callAnswer.ok) {
-      yield* session.terminal('error', callAnswer)
-      return
-    }
+  if (!completed) {
+    yield* session.emitEmission({ type: 'max_iterations_reached' })
   }
 
-  // 4. Emit emission with the turn result
-  yield* session.emitEmission({ type: 'agent_turn_result', result: modelAnswer })
-
-  // 5. Checkpoint + message wait (turn boundary)
+  yield* session.emitEmission({ type: 'agent_turn_result', result: turnResult })
   yield* session.checkpoint('fold')
   yield* session.emitWait('message', config.system !== undefined ? { prompt: config.system } : {})
 }
@@ -229,16 +294,18 @@ function* runFoldTurn<C extends CapabilityMap>(
  * REQ-072: The sample wait identity (waitSeq, token) is preserved.
  */
 function* resample<C extends CapabilityMap>(
-  session: InMemorySession,
+  session: FoldSessionHost,
   config: AgentConfig<C>,
   sampleWaitSeq: number,
 ): Operation<void> {
   // Answer the old sample wait with session_lost (it's inert history now)
-  yield* session.respond(
+  const lostRecorded = yield* recordResponseIfPending(
+    session,
     waitToken(session.id, sampleWaitSeq),
     { ok: false, code: 'session_lost', message: 'mid-stream crash — re-sampling' },
     { wait: 'sample' },
   )
+  if (!lostRecorded) return
 
   // Re-run the model request with the same payload
   const records = yield* session.records()
@@ -252,13 +319,14 @@ function* resample<C extends CapabilityMap>(
 
   const modelProvider: ModelProvider | undefined = config.model ?? (yield* ModelProviderContext.get())
   const modelAnswer: AnswerPayload = modelProvider
-    ? yield* modelProvider.sample(newSample.payload)
+    ? yield* sampleModel(modelProvider, newSample.payload, session, newSample.waitSeq)
     : { ok: true, value: 're-sampled' }
 
-  yield* session.respond(waitToken(session.id, newSample.waitSeq), modelAnswer, {
+  const newSampleRecorded = yield* recordResponseIfPending(session, waitToken(session.id, newSample.waitSeq), modelAnswer, {
     idempotencyKey: `fold:sample:${newSample.waitSeq}`,
     wait: 'sample',
   })
+  if (!newSampleRecorded) return
 
   // Continue the turn: checkpoint + message wait
   yield* session.emitEmission({ type: 'agent_turn_result', result: modelAnswer })
@@ -271,13 +339,14 @@ function* resample<C extends CapabilityMap>(
  * pending call wait (REQ-043, REQ-088).
  */
 function* reattachCall<C extends CapabilityMap>(
-  session: InMemorySession,
+  session: FoldSessionHost,
   config: AgentConfig<C>,
   callWaitSeq: number,
 ): Operation<void> {
   const resolver: CapabilityResolver | undefined = config.resolver ?? (yield* CapabilityResolverContext.get())
   if (!resolver) {
-    yield* session.respond(
+    yield* recordResponseIfPending(
+      session,
       waitToken(session.id, callWaitSeq),
       { ok: false, code: 'session_lost', message: 'No resolver to reattach' },
       { wait: 'call' },
@@ -294,7 +363,7 @@ function* reattachCall<C extends CapabilityMap>(
   if (maybeSessionAware.reattachCall) {
     const result = yield* maybeSessionAware.reattachCall(callWaitSeq)
     if (result) {
-      yield* session.respond(waitToken(session.id, callWaitSeq), result, {
+      yield* recordResponseIfPending(session, waitToken(session.id, callWaitSeq), result, {
         wait: 'call',
       })
       return
@@ -302,7 +371,8 @@ function* reattachCall<C extends CapabilityMap>(
   }
 
   // Deliver session_lost
-  yield* session.respond(
+  yield* recordResponseIfPending(
+    session,
     waitToken(session.id, callWaitSeq),
     { ok: false, code: 'session_lost', message: 'Child session unavailable after restore' },
     { wait: 'call' },
@@ -314,7 +384,7 @@ function* reattachCall<C extends CapabilityMap>(
  * delay. This is a simple implementation; a production version would use
  * `session.events()` for push-based notification.
  */
-function* waitForLogChange(session: InMemorySession): Operation<void> {
+function* waitForLogChange(session: FoldSessionHost): Operation<void> {
   const initialCount = (yield* session.records()).length
   while (true) {
     yield* sleep(10)
@@ -326,28 +396,67 @@ function* waitForLogChange(session: InMemorySession): Operation<void> {
   }
 }
 
+function* recordResponseIfPending(
+  session: FoldSessionHost,
+  token: string,
+  payload: unknown,
+  opts?: { idempotencyKey?: string; wait?: WaitKind },
+): Operation<boolean> {
+  const result = yield* session.respondIfPending(token, payload, opts)
+  return result.type === 'accepted'
+}
+
 function* callResolver(
   resolver: CapabilityResolver,
   target: string,
   input: unknown,
-  session: InMemorySession,
+  session: FoldSessionHost,
   callWaitSeq: number,
+  callId?: string,
 ): Operation<AnswerPayload> {
   const maybeSessionAware = resolver as CapabilityResolver & {
-    callWithSession?: (target: string, input: unknown, context: { parent: InMemorySession; callWaitSeq: number }) => Operation<AnswerPayload>
+    callWithId?: (target: string, input: unknown, callId: string) => Operation<AnswerPayload>
+    callWithSession?: (target: string, input: unknown, context: { parent: FoldSessionHost; callWaitSeq: number; callId?: string }) => Operation<AnswerPayload>
   }
   if (maybeSessionAware.callWithSession) {
-    return yield* maybeSessionAware.callWithSession(target, input, { parent: session, callWaitSeq })
+    return yield* maybeSessionAware.callWithSession(target, input, { parent: session, callWaitSeq, ...(callId ? { callId } : {}) })
+  }
+  if (callId && maybeSessionAware.callWithId) {
+    return yield* maybeSessionAware.callWithId(target, input, callId)
   }
   return yield* resolver.call(target, input)
 }
 
-function isCallRequest(value: unknown): value is { call: { target: string; input: unknown } } {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      'call' in value &&
-      (value as { call?: unknown }).call &&
-      typeof (value as { call: { target?: unknown } }).call.target === 'string',
-  )
+function* sampleModel(
+  modelProvider: ModelProvider,
+  request: Parameters<ModelProvider['sample']>[0],
+  session: FoldSessionHost,
+  sampleWaitSeq: number,
+): Operation<AnswerPayload> {
+  const sessionAware = modelProvider as SessionAwareModelProvider
+  if (sessionAware.sampleWithSession) {
+    return yield* sessionAware.sampleWithSession(request, { session, sampleWaitSeq })
+  }
+  return yield* modelProvider.sample(request)
+}
+
+function isToolCallModelValue(value: unknown): value is ToolCallModelValue {
+  if (!value || typeof value !== 'object') return false
+  const calls = (value as { calls?: unknown }).calls
+  return Array.isArray(calls) && calls.every((call) => Boolean(
+    call &&
+      typeof call === 'object' &&
+      typeof (call as { id?: unknown }).id === 'string' &&
+      typeof (call as { target?: unknown }).target === 'string' &&
+      'input' in call,
+  ))
+}
+
+function stringifyToolResult(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
 }

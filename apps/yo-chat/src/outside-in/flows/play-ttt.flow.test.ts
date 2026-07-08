@@ -1,0 +1,113 @@
+/**
+ * play_ttt flow (design R7): the agentic tic-tac-toe tool that combines
+ * worker-side model **sampling** (`ctx.sampleTools` / `ctx.sampleSchema` pick the
+ * model's move and strategy) with `pickMove` elicits for the human's move —
+ * driven headlessly over the fetch seam with the real model.
+ *
+ * This is the only flow that exercises the worker sampling round-trip. It plays
+ * the game to a real terminal tool result and final board (instead of stopping
+ * at the first interrupt) so the outside-in tier stays equivalent to the old
+ * browser outcome coverage while remaining headless and fail-fast.
+ */
+import { afterAll, beforeAll, describe, it } from "vitest";
+import {
+  expectElicit,
+  expectNoRunError,
+  expectOutcome,
+  expectRunFinished,
+  expectTerminalTicTacToeResult,
+  expectToolCalled,
+} from "../lib/assertions.ts";
+import { requireCopilotAuth } from "../lib/auth.ts";
+import type { ElicitState } from "@sweatpants/framework/chat";
+import type { ChatBinding } from "../lib/chat-fetch.ts";
+import { runChatFlow } from "../lib/driver.ts";
+import { AssertionFailure, withFlakePolicy } from "../lib/flake.ts";
+import { liveReady, selectedTiers } from "./tiers.ts";
+
+function parseContextFromMessage(message: string): Record<string, unknown> | null {
+  const marker = "\n--x-elicit-context:";
+  const markerIndex = message.indexOf(marker);
+  if (markerIndex < 0) {
+    return null;
+  }
+  const payloadStart = message.indexOf("\n", markerIndex + marker.length);
+  if (payloadStart < 0) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(message.slice(payloadStart + 1).trim()) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function elicitContext(elicit: ElicitState): Record<string, unknown> {
+  if (elicit.context && typeof elicit.context === "object") {
+    return elicit.context as Record<string, unknown>;
+  }
+  const schemaContext =
+    elicit.schema["x-elicit-context"] ?? elicit.schema["x-model-context"] ?? null;
+  if (schemaContext && typeof schemaContext === "object") {
+    return schemaContext as Record<string, unknown>;
+  }
+  return parseContextFromMessage(elicit.message) ?? {};
+}
+
+function chooseDeterministicMove(elicit: ElicitState) {
+  const context = elicitContext(elicit) as { board?: unknown; gameOver?: unknown };
+  if (context.gameOver === true) {
+    return { action: "accept" as const, content: { position: -1 } };
+  }
+  if (!Array.isArray(context.board)) {
+    throw new AssertionFailure("pickMove elicit missing board context");
+  }
+  const position = context.board.findIndex((cell) => cell === null);
+  if (position < 0) {
+    throw new AssertionFailure("pickMove elicit has no legal empty cell");
+  }
+  return { action: "accept" as const, content: { position } };
+}
+
+for (const tier of selectedTiers()) {
+  describe.skipIf(!liveReady())(`play_ttt flow [${tier.name}]`, () => {
+    let binding: ChatBinding;
+
+    beforeAll(async () => {
+      requireCopilotAuth();
+      binding = await tier.create();
+    });
+    afterAll(async () => {
+      await binding?.close();
+    });
+
+    it("plays through the worker sampling loop to a terminal board", async () => {
+      const { playTttPlugin } = await import("@/tools/play-ttt");
+      const transcript = await withFlakePolicy(() =>
+        runChatFlow(binding, {
+          plugins: [playTttPlugin],
+          initialToolChoice: "required",
+          turns: [
+            {
+              message:
+                "Play exactly one game of tic-tac-toe with me using the play_ttt tool. Make your moves and let me make mine. Do not answer directly.",
+              respondToElicit: (elicit) =>
+                elicit.key === "pickMove" ? chooseDeterministicMove(elicit) : { action: "decline" },
+            },
+          ],
+        }),
+      );
+
+      expectToolCalled(transcript, "play_ttt");
+      // A pickMove elicit can only be emitted after the worker sampled the
+      // model's move, so this proves the worker sampling round-trip ran; the
+      // terminal result proves the full elicit→resume loop completed.
+      expectElicit(transcript, "pickMove");
+      expectTerminalTicTacToeResult(transcript, "play_ttt");
+      expectNoRunError(transcript);
+      expectRunFinished(transcript);
+      expectOutcome(transcript, "success");
+    }, 150_000);
+  });
+}

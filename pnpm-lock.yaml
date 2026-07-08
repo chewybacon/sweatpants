@@ -400,6 +400,9 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@sweatpants/durable-streams':
+        specifier: workspace:*
+        version: link:../../packages/durable-streams
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework

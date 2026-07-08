@@ -12,6 +12,7 @@ import {
   type AnswerPayload,
   type ModelProvider,
   type LogRecord,
+  type CapabilityResolver,
 } from '../index.ts'
 
 /**
@@ -127,6 +128,61 @@ describe('spawnFoldDriver (REQ-087, REQ-088)', () => {
       // Should have 2 sample waits (one per turn)
       const sampleWaits = records.filter((r) => r.kind === 'wait' && r.wait === 'sample')
       expect(sampleWaits.length).toBe(2)
+    })
+  })
+
+  it('emits parallel call waits before resolving any call answer', async () => {
+    await run(function* () {
+      const store = createSessionContractInMemoryStore()
+      const session = yield* createInMemorySession({ sessionId: 'parallel-calls', mode: 'fold', bufferStore: store })
+
+      yield* session.checkpoint('fold')
+      yield* session.emitWait('message', {})
+
+      const resolver: CapabilityResolver = {
+        *call() {
+          return { ok: true, value: 'result' }
+        },
+      }
+
+      const config: AgentConfig = {
+        name: 'test',
+        capabilities: { echo: { description: 'echo' } },
+        model: createStubModel([
+          {
+            ok: true,
+            value: {
+              calls: [
+                { id: 'c1', target: 'echo', input: {} },
+                { id: 'c2', target: 'echo', input: {} },
+              ],
+              assistantText: '',
+            },
+          },
+          { ok: true, value: 'done' },
+        ]),
+        resolver,
+      }
+
+      yield* spawn(function* () {
+        yield* spawnFoldDriver(session, config)
+      })
+
+      yield* session.send({ role: 'user', content: 'use tools' })
+      yield* sleep(100)
+
+      const records = yield* session.records()
+      const callWaits = records.filter((r) => r.kind === 'wait' && r.wait === 'call')
+      const callAnswers = records.filter((r) => r.kind === 'answer' && r.wait === 'call')
+      const sampleWaits = records.filter((r) => r.kind === 'wait' && r.wait === 'sample')
+      const messageWaits = records.filter((r) => r.kind === 'wait' && r.wait === 'message')
+
+      expect(callWaits).toHaveLength(2)
+      expect(sampleWaits).toHaveLength(2)
+      expect(messageWaits.at(-1)?.wait).toBe('message')
+
+      const firstCallAnswerLsn = Math.min(...callAnswers.map((r) => r.lsn))
+      expect(callWaits.every((wait) => wait.lsn < firstCallAnswerLsn)).toBe(true)
     })
   })
 

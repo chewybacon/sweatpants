@@ -10,18 +10,24 @@
  */
 
 // Main handler factory
-export { createDurableChatHandler } from './handler.ts'
+export { createDurableChatHandler } from "./handler.ts";
 
 // Alias for consolidation - createChatHandler is the durable handler
-export { createDurableChatHandler as createChatHandler } from './handler.ts'
+export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 
-// Chat engine
-export { createChatEngine } from './chat-engine.ts'
-export { createDurableChatEngineSessionAdapter } from './session-contract-adapter.ts'
-export type { DurableChatEngineSessionAdapterOptions } from './session-contract-adapter.ts'
+// Session-contract chat execution adapter
+export { createSessionContractChatEngine } from "./session-contract-adapter.ts";
+
+// Fold session buffer store context + factory (for wiring shared persistence)
+export {
+  FoldSessionBufferStoreContext,
+  useFoldSessionBufferStore,
+  useOptionalFoldSessionBufferStore,
+} from "@sweatpants/session-contract";
+export { createSessionContractInMemoryStore } from "@sweatpants/session-contract";
 
 // Plugin session manager
-export { createPluginSessionManager } from './plugin-session-manager.ts'
+export { createPluginSessionManager } from "./plugin-session-manager.ts";
 export type {
   PluginSessionManager,
   PluginSession,
@@ -30,20 +36,16 @@ export type {
   PluginSessionInfo,
   PluginSessionManagerOptions,
   CreatePluginSessionConfig,
-} from './plugin-session-manager.ts'
+} from "./plugin-session-manager.ts";
 
 // Types
 export type {
-  // Engine types
-  EnginePhase,
-  ChatEngine,
-  ChatEngineParams,
+  // Execution adapter types
+  SessionContractChatEngine,
+  SessionContractChatEngineParams,
 
   // Tool types
-  ToolCall,
   ToolSchema,
-  ToolExecutionResult,
-  ElicitRequestData,
 
   // Handler types
   DurableChatHandlerConfig,
@@ -61,4 +63,4 @@ export type {
 
   // MCP tool registry
   McpToolRegistry,
-} from './types.ts'
+} from "./types.ts";

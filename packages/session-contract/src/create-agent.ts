@@ -2,12 +2,13 @@ import type { Operation } from 'effection'
 
 import { assertDeclaredCapability, listCapabilities } from './capabilities.ts'
 import { CapabilityResolverContext, ModelProviderContext } from './contexts.ts'
-import { createInMemorySession, type CreateInMemorySessionOptions, type InMemorySession } from './in-memory-session.ts'
+import { createInMemorySession, type CreateInMemorySessionOptions } from './in-memory-session.ts'
 import { waitToken } from './token.ts'
 import {
   type AnswerPayload,
   type CapabilityMap,
   type CapabilityResolver,
+  type FoldSessionHost,
   type MessageInput,
   type ModelProvider,
   type Session,
@@ -19,6 +20,7 @@ export interface AgentConfig<C extends CapabilityMap = CapabilityMap> {
   model?: ModelProvider
   resolver?: CapabilityResolver
   system?: string
+  maxIterations?: number
 }
 
 export interface Agent<C extends CapabilityMap = CapabilityMap> {
@@ -72,7 +74,7 @@ export function createAgent<C extends CapabilityMap = CapabilityMap>(config: Age
 }
 
 function createFoldSession<C extends CapabilityMap>(
-  session: InMemorySession,
+  session: FoldSessionHost,
   capabilities: C,
   config: AgentConfig<C>,
 ): Session {
@@ -101,7 +103,7 @@ function createFoldSession<C extends CapabilityMap>(
 }
 
 export function* runOneFoldTurn<C extends CapabilityMap>(
-  session: InMemorySession,
+  session: FoldSessionHost,
   capabilities: C,
   input: MessageInput,
   config: AgentConfig<C>,
@@ -146,11 +148,11 @@ function* callResolver(
   resolver: CapabilityResolver,
   target: string,
   input: unknown,
-  session: InMemorySession,
+  session: FoldSessionHost,
   callWaitSeq: number,
 ): Operation<AnswerPayload> {
   const maybeSessionAware = resolver as CapabilityResolver & {
-    callWithSession?: (target: string, input: unknown, context: { parent: InMemorySession; callWaitSeq: number }) => Operation<AnswerPayload>
+    callWithSession?: (target: string, input: unknown, context: { parent: FoldSessionHost; callWaitSeq: number }) => Operation<AnswerPayload>
   }
   if (maybeSessionAware.callWithSession) {
     return yield* maybeSessionAware.callWithSession(target, input, { parent: session, callWaitSeq })

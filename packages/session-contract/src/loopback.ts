@@ -1,18 +1,18 @@
 import type { Operation } from 'effection'
 
-import type { InMemorySession } from './in-memory-session.ts'
 import { waitToken } from './token.ts'
 import {
   type AnswerPayload,
   type CapabilityResolver,
   type LogRecord,
+  type FoldSessionHost,
   type Session,
   type WaitKind,
   type WaitPayloadByKind,
 } from './types.ts'
 
 export interface ResolverCallContext {
-  parent: Session
+  parent: FoldSessionHost
   callWaitSeq: number
 }
 
@@ -52,7 +52,7 @@ export function createLoopbackResolver(options: LoopbackResolverOptions): Sessio
       }
     },
     *callWithSession(target: string, input: unknown, context: ResolverCallContext): Operation<AnswerPayload> {
-      if (!isInMemorySession(context.parent)) {
+      if (!isFoldSessionHost(context.parent)) {
         return yield* this.call(target, input)
       }
 
@@ -66,7 +66,7 @@ export function createLoopbackResolver(options: LoopbackResolverOptions): Sessio
           if (record.kind === 'wait' && isReparentableWait(record.wait)) {
             const correlationKey = `${context.parent.id}:${context.callWaitSeq}:${child.id}:${record.waitSeq}`
             const existingParentWaitSeq = correlations.get(correlationKey)
-            const parentWaitSeq = existingParentWaitSeq ?? (yield* reemitChildWait({ ...context, parent: context.parent as InMemorySession }, record, options)).waitSeq
+            const parentWaitSeq = existingParentWaitSeq ?? (yield* reemitChildWait(context, record, options)).waitSeq
             correlations.set(correlationKey, parentWaitSeq)
             const parentAnswer = yield* waitForAnswer(context.parent, parentWaitSeq)
             try {
@@ -108,7 +108,7 @@ export function createLoopbackResolver(options: LoopbackResolverOptions): Sessio
 }
 
 function* reemitChildWait<K extends WaitKind>(
-  context: ResolverCallContext & { parent: InMemorySession },
+  context: ResolverCallContext,
   record: Extract<LogRecord, { kind: 'wait'; wait: K }>,
   options: LoopbackResolverOptions,
 ): Operation<{ waitSeq: number }> {
@@ -140,7 +140,7 @@ function clampTtl(
     : parentPolicyExpiresAt
 }
 
-function isInMemorySession(session: Session): session is InMemorySession {
+function isFoldSessionHost(session: Session): session is FoldSessionHost {
   return 'emitWait' in session && typeof (session as { emitWait?: unknown }).emitWait === 'function'
 }
 
@@ -148,7 +148,7 @@ function isReparentableWait(kind: WaitKind): kind is 'elicit' | 'sample' | 'mess
   return kind === 'elicit' || kind === 'sample' || kind === 'message'
 }
 
-function* waitForAnswer(session: InMemorySession, waitSeq: number): Operation<AnswerPayload> {
+function* waitForAnswer(session: Session, waitSeq: number): Operation<AnswerPayload> {
   const events = yield* session.events()
   let next = yield* events.next()
   while (!next.done) {
