@@ -14,13 +14,14 @@ import {
   type CheckpointRecord,
   type EmissionRecord,
   type FateRecord,
+  type FoldSessionHost,
   type LogRecord,
   type MessageInput,
   type PostOrphanPolicy,
   type ResolutionMeta,
   type RespondAck,
+  type RespondIfPendingResult,
   type SendAck,
-  type Session,
   type TerminalRecord,
   type WaitKind,
   type WaitPayloadByKind,
@@ -29,15 +30,7 @@ import {
 
 export type { TokenBuffer, TokenBufferStore }
 
-export interface InMemorySession extends Session {
-  emitWait<K extends WaitKind>(wait: K, payload: WaitPayloadByKind[K], options?: { expiresAt?: string }): Operation<WaitRecord<K>>
-  emitEmission(payload: unknown): Operation<EmissionRecord>
-  checkpoint(mode: AuthoringMode, state?: unknown): Operation<CheckpointRecord>
-  terminal(outcome: TerminalRecord['outcome'], payload?: unknown): Operation<TerminalRecord>
-  expire(waitSeq: number, reason?: string): Operation<FateRecord>
-  orphan(waitSeq: number, reason?: string): Operation<FateRecord>
-  records(): Operation<LogRecord[]>
-}
+export interface InMemorySession extends FoldSessionHost {}
 
 export interface CreateInMemorySessionOptions {
   sessionId: string
@@ -118,6 +111,105 @@ function createSessionFromBuffer(id: string, mode: AuthoringMode, buffer: TokenB
     return yield* appendRecord<FateRecord>(record)
   }
 
+  function* respondCore(
+    waitTokenString: string,
+    payload: unknown,
+    opts: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta } | undefined,
+    mode: 'throw' | 'ifPending',
+  ): Operation<RespondAck | RespondIfPendingResult> {
+    const parsed = parseWaitToken(waitTokenString)
+    if (parsed.sessionId !== id) {
+      if (mode === 'ifPending') {
+        return { type: 'not_pending', waitSeq: parsed.waitSeq, reason: 'unknown' }
+      }
+      throw new SessionContractError('unknown_wait', 'Wait token belongs to another session')
+    }
+
+    const records = yield* readRecords()
+    const state = deriveLogState(id, records)
+    const idempotencyKey = opts?.idempotencyKey ?? mintEdgeIdempotencyKey(id)
+    const answerPayload = normalizeAnswerPayload(payload)
+    const existing = state.idempotency.get(idempotencyKey)
+    if (existing) {
+      if (
+        existing.kind === 'answer' &&
+        existing.waitSeq === parsed.waitSeq &&
+        sameValue(existing.payload, answerPayload)
+      ) {
+        const ack = { lsn: existing.lsn, waitSeq: parsed.waitSeq, idempotencyKey }
+        return mode === 'ifPending' ? { type: 'accepted', ack } : ack
+      }
+      throw new SessionContractError('idempotency_conflict', 'Duplicate idempotency key with different payload')
+    }
+
+    if (state.terminal) {
+      if (mode === 'ifPending') {
+        return {
+          type: 'terminal',
+          waitSeq: parsed.waitSeq,
+          outcome: state.terminal.outcome,
+          ...(state.terminal.payload !== undefined ? { payload: state.terminal.payload } : {}),
+        }
+      }
+    }
+
+    const wait = state.waits.get(parsed.waitSeq)
+    if (!wait) {
+      if (mode === 'ifPending') {
+        return { type: 'not_pending', waitSeq: parsed.waitSeq, reason: 'unknown' }
+      }
+      throw new SessionContractError('unknown_wait', `Unknown wait ${parsed.waitSeq}`)
+    }
+    if (state.answers.has(parsed.waitSeq)) {
+      if (mode === 'ifPending') {
+        return { type: 'not_pending', waitSeq: parsed.waitSeq, reason: 'answered' }
+      }
+      throw new SessionContractError('resume_unavailable', `Wait ${parsed.waitSeq} is not pending`)
+    }
+    if (state.fates.has(parsed.waitSeq)) {
+      if (mode === 'ifPending') {
+        return { type: 'not_pending', waitSeq: parsed.waitSeq, reason: 'fated' }
+      }
+      throw new SessionContractError('resume_unavailable', `Wait ${parsed.waitSeq} is not pending`)
+    }
+    if (isExpired(wait.expiresAt)) {
+      yield* appendFate(parsed.waitSeq, 'expired', 'expiresAt')
+      if (mode === 'ifPending') {
+        return { type: 'not_pending', waitSeq: parsed.waitSeq, reason: 'expired' }
+      }
+      throw new SessionContractError('resume_unavailable', `Wait ${parsed.waitSeq} expired`)
+    }
+    if (opts?.wait !== undefined && opts.wait !== wait.wait) {
+      throw new SessionContractError('wait_kind_mismatch', `Expected ${wait.wait}, got ${opts.wait}`)
+    }
+
+    const answerRecord: Omit<LogRecord & { kind: 'answer' }, 'lsn'> = {
+      kind: 'answer',
+      waitSeq: parsed.waitSeq,
+      wait: wait.wait,
+      payload: answerPayload,
+      idempotencyKey,
+      ...(opts?.resolution !== undefined ? { resolution: opts.resolution } : {}),
+    }
+
+    try {
+      const record = yield* appendRecord<LogRecord & { kind: 'answer' }>(answerRecord)
+      const ack = { lsn: record.lsn, waitSeq: parsed.waitSeq, idempotencyKey }
+      return mode === 'ifPending' ? { type: 'accepted', ack } : ack
+    } catch (error) {
+      if (mode === 'ifPending' && error instanceof SessionContractError && error.code === 'terminal_session') {
+        const terminal = deriveLogState(id, yield* readRecords()).terminal
+        return {
+          type: 'terminal',
+          waitSeq: parsed.waitSeq,
+          outcome: terminal?.outcome ?? 'error',
+          ...(terminal?.payload !== undefined ? { payload: terminal.payload } : {}),
+        }
+      }
+      throw error
+    }
+  }
+
   const session: InMemorySession = {
     id,
     events(afterLSN = 0): Stream<LogRecord, void> {
@@ -150,6 +242,9 @@ function createSessionFromBuffer(id: string, mode: AuthoringMode, buffer: TokenB
       })
     },
     *send(message: MessageInput, opts?: { idempotencyKey?: string }): Operation<SendAck> {
+      if (mode === 'body') {
+        throw new SessionContractError('unsupported_operation', 'send() is not supported on body-mode sessions')
+      }
       const records = yield* readRecords()
       const state = deriveLogState(id, records)
       if (state.terminal) {
@@ -178,48 +273,10 @@ function createSessionFromBuffer(id: string, mode: AuthoringMode, buffer: TokenB
       return { lsn: record.lsn, idempotencyKey }
     },
     *respond(waitToken: string, payload: unknown, opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta }): Operation<RespondAck> {
-      const parsed = parseWaitToken(waitToken)
-      if (parsed.sessionId !== id) {
-        throw new SessionContractError('unknown_wait', 'Wait token belongs to another session')
-      }
-      const records = yield* readRecords()
-      const state = deriveLogState(id, records)
-      const idempotencyKey = opts?.idempotencyKey ?? mintEdgeIdempotencyKey(id)
-      const answerPayload = normalizeAnswerPayload(payload)
-      const existing = state.idempotency.get(idempotencyKey)
-      if (existing) {
-        if (
-          existing.kind === 'answer' &&
-          existing.waitSeq === parsed.waitSeq &&
-          sameValue(existing.payload, answerPayload)
-        ) {
-          return { lsn: existing.lsn, waitSeq: parsed.waitSeq, idempotencyKey }
-        }
-        throw new SessionContractError('idempotency_conflict', 'Duplicate idempotency key with different payload')
-      }
-      const wait = state.waits.get(parsed.waitSeq)
-      if (!wait) {
-        throw new SessionContractError('unknown_wait', `Unknown wait ${parsed.waitSeq}`)
-      }
-      if (state.answers.has(parsed.waitSeq) || state.fates.has(parsed.waitSeq)) {
-        throw new SessionContractError('resume_unavailable', `Wait ${parsed.waitSeq} is not pending`)
-      }
-      if (isExpired(wait.expiresAt)) {
-        yield* appendFate(parsed.waitSeq, 'expired', 'expiresAt')
-        throw new SessionContractError('resume_unavailable', `Wait ${parsed.waitSeq} expired`)
-      }
-      if (opts?.wait !== undefined && opts.wait !== wait.wait) {
-        throw new SessionContractError('wait_kind_mismatch', `Expected ${wait.wait}, got ${opts.wait}`)
-      }
-      const record = yield* appendRecord<LogRecord & { kind: 'answer' }>({
-        kind: 'answer',
-        waitSeq: parsed.waitSeq,
-        wait: wait.wait,
-        payload: answerPayload,
-        idempotencyKey,
-        ...(opts?.resolution !== undefined ? { resolution: opts.resolution } : {}),
-      })
-      return { lsn: record.lsn, waitSeq: parsed.waitSeq, idempotencyKey }
+      return (yield* respondCore(waitToken, payload, opts, 'throw')) as RespondAck
+    },
+    *respondIfPending(waitToken: string, payload: unknown, opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta }): Operation<RespondIfPendingResult> {
+      return (yield* respondCore(waitToken, payload, opts, 'ifPending')) as RespondIfPendingResult
     },
     *cancel(reason?: string): Operation<void> {
       const state = deriveLogState(id, yield* readRecords())

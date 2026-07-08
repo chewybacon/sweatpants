@@ -29,7 +29,6 @@ import {
   PersonaResolverContext,
   PluginRegistryContext,
   PluginSessionManagerContext,
-  PluginSessionRegistryContext,
 } from "../../lib/chat/contexts.ts";
 import {
   ModelProviderApi,
@@ -46,7 +45,8 @@ import { useLogger } from "../../lib/logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
-import { createChatEngine } from "./chat-engine.ts";
+import { createSessionContractChatEngine } from "./session-contract-adapter.ts";
+import { useOptionalFoldSessionBufferStore } from "@sweatpants/session-contract";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
 import {
   activitySnapshotsForMessages,
@@ -58,7 +58,6 @@ import {
   type DurableFrame,
 } from "../../lib/chat/session/durable-history.ts";
 import type { ElicitRequestStreamEvent } from "../../lib/chat/session/streaming.ts";
-import { createPluginSessionManager } from "./plugin-session-manager.ts";
 import {
   readLatestConversationCheckpoint,
   recordConversationCheckpoint,
@@ -95,14 +94,8 @@ import {
   type OpenInterruptRecord,
 } from "./interrupt-registry.ts";
 import { resolvePrivateSystemPrompt } from "./model-context-registry.ts";
-import {
-  readLatestThreadInterruptState,
-  recordThreadInterruptState,
-} from "./interrupt-store.ts";
-import {
-  readLatestThreadSystemPrompt,
-  recordThreadSystemPrompt,
-} from "./model-context-store.ts";
+import { readLatestThreadInterruptState, recordThreadInterruptState } from "./interrupt-store.ts";
+import { readLatestThreadSystemPrompt, recordThreadSystemPrompt } from "./model-context-store.ts";
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -134,7 +127,9 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
  */
 const PUBLIC_SWEATPANTS_METADATA_KEYS = new Set(["sweatpants/toolName", "sweatpants/key"]);
 
-function sanitizePublicMetadata(metadata: Record<string, unknown> | undefined): Record<string, unknown> {
+function sanitizePublicMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(metadata ?? {})) {
     if (!key.startsWith("sweatpants/") || PUBLIC_SWEATPANTS_METADATA_KEYS.has(key)) {
@@ -144,7 +139,9 @@ function sanitizePublicMetadata(metadata: Record<string, unknown> | undefined): 
   return sanitized;
 }
 
-function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(value: T): Omit<T, "metadata"> & { metadata?: Record<string, unknown> } {
+function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(
+  value: T,
+): Omit<T, "metadata"> & { metadata?: Record<string, unknown> } {
   const { metadata: rawMetadata, ...rest } = value;
   const metadata = sanitizePublicMetadata(rawMetadata);
   return {
@@ -172,7 +169,9 @@ function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
       return null;
     case "RUN_FINISHED": {
       const runFinished = event as Extract<StreamEvent, { type: "RUN_FINISHED" }>;
-      if (runFinished.outcome?.type !== "interrupt") return runFinished;
+      if (runFinished.outcome?.type !== "interrupt") {
+        return runFinished;
+      }
       return {
         ...runFinished,
         outcome: {
@@ -208,10 +207,14 @@ function createSerializedEventStream(
     const emittedFrames: DurableFrame[] = [];
 
     function* persistCheckpointIfNeeded(): Operation<void> {
-      if (checkpointPersisted || !options?.conversationId || !options.checkpointStore) return;
+      if (checkpointPersisted || !options?.conversationId || !options.checkpointStore) {
+        return;
+      }
       checkpointPersisted = true;
       const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(emittedFrames);
-      if (checkpointEvents.length === 0) return;
+      if (checkpointEvents.length === 0) {
+        return;
+      }
       yield* recordConversationCheckpoint(
         options.checkpointStore,
         options.conversationId,
@@ -242,7 +245,9 @@ function createSerializedEventStream(
           registerInterruptsFromRunFinished(rawEvent);
           yield* persistInterruptStateIfNeeded(rawEvent);
           const event = toStrictPublicEvent(rawEvent);
-          if (!event) continue;
+          if (!event) {
+            continue;
+          }
           emittedFrames.push({ lsn: ++emittedCount, event });
           return { done: false, value: JSON.stringify(event) };
         }
@@ -256,7 +261,9 @@ function createSerializedEventStream(
           registerInterruptsFromRunFinished(result.value);
           yield* persistInterruptStateIfNeeded(result.value);
           const event = toStrictPublicEvent(result.value);
-          if (!event) continue;
+          if (!event) {
+            continue;
+          }
           emittedFrames.push({ lsn: ++emittedCount, event });
           return { done: false, value: JSON.stringify(event) };
         }
@@ -270,9 +277,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function forwardedClientReplayTraces(forwardedProps: unknown): Record<string, unknown> {
-  if (!isRecord(forwardedProps)) return {};
+  if (!isRecord(forwardedProps)) {
+    return {};
+  }
   const sweatpants = forwardedProps["sweatpants"];
-  if (!isRecord(sweatpants)) return {};
+  if (!isRecord(sweatpants)) {
+    return {};
+  }
   const traces = sweatpants["clientReplayTraces"];
   return isRecord(traces) ? traces : {};
 }
@@ -290,12 +301,16 @@ function parseToolArguments(value: unknown): Record<string, unknown> {
 }
 
 function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages"] {
-  if (!Array.isArray(messages)) return [];
+  if (!Array.isArray(messages)) {
+    return [];
+  }
   const normalized: ChatRequestBody["messages"] = [];
 
   for (let index = 0; index < messages.length; index++) {
     const message = messages[index];
-    if (!isRecord(message)) continue;
+    if (!isRecord(message)) {
+      continue;
+    }
 
     const role = message["role"];
     const id =
@@ -358,10 +373,15 @@ function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages
       continue;
     }
 
-    if (role === "developer") normalized.push({ id, role: "developer" as const, content });
-    else if (role === "system") normalized.push({ id, role: "system" as const, content });
-    else if (role === "reasoning") normalized.push({ id, role: "reasoning" as const, content });
-    else if (role === "user") normalized.push({ id, role: "user" as const, content });
+    if (role === "developer") {
+      normalized.push({ id, role: "developer" as const, content });
+    } else if (role === "system") {
+      normalized.push({ id, role: "system" as const, content });
+    } else if (role === "reasoning") {
+      normalized.push({ id, role: "reasoning" as const, content });
+    } else if (role === "user") {
+      normalized.push({ id, role: "user" as const, content });
+    }
   }
 
   return normalized;
@@ -380,7 +400,9 @@ function mapResumeEntriesToElicitResponses(
   runtimeId: string,
 ): ElicitResponse[] {
   const resume = body.resume ?? [];
-  if (resume.length === 0) return [];
+  if (resume.length === 0) {
+    return [];
+  }
 
   const traces = forwardedClientReplayTraces(body.forwardedProps);
   const recordsByInterruptId = new Map(records.map((record) => [record.interruptId, record]));
@@ -388,7 +410,9 @@ function mapResumeEntriesToElicitResponses(
 
   for (const entry of resume) {
     const record = recordsByInterruptId.get(entry.interruptId);
-    if (!record?.toolCallId) continue;
+    if (!record?.toolCallId) {
+      continue;
+    }
     const result =
       entry.status === "cancelled"
         ? { action: "cancel" as const }
@@ -448,7 +472,9 @@ function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runt
 }
 
 function recordToElicit(record: OpenInterruptRecord): ElicitRequestStreamEvent | null {
-  if (!record.toolCallId) return null;
+  if (!record.toolCallId) {
+    return null;
+  }
   return {
     type: "elicit_request",
     sessionId: record.toolCallId,
@@ -460,10 +486,7 @@ function recordToElicit(record: OpenInterruptRecord): ElicitRequestStreamEvent |
         ? String(record.publicMetadata["sweatpants/key"])
         : record.interruptId,
     message: record.message ?? "Input required",
-    schema:
-      record.responseSchema && isRecord(record.responseSchema)
-        ? record.responseSchema
-        : {},
+    schema: record.responseSchema && isRecord(record.responseSchema) ? record.responseSchema : {},
   };
 }
 
@@ -517,7 +540,9 @@ function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void
     const chunk = frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n";
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
-        if (emitted) return { done: true, value: undefined };
+        if (emitted) {
+          return { done: true, value: undefined };
+        }
         emitted = true;
         return { done: false, value: chunk };
       },
@@ -544,7 +569,9 @@ function initialSnapshotBoundary(frames: DurableFrame[]): {
   nextIndex: number;
 } {
   let index = 0;
-  if (frames[index]?.event.type === "RUN_STARTED") index += 1;
+  if (frames[index]?.event.type === "RUN_STARTED") {
+    index += 1;
+  }
 
   const messages =
     frames[index]?.event.type === "MESSAGES_SNAPSHOT"
@@ -569,13 +596,16 @@ function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnapshotBou
     ? agUiMessagesToInternalMessages(boundary.messages.messages)
     : [];
   const messages = boundary.messages
-    ? ({
+    ? {
         type: "MESSAGES_SNAPSHOT" as const,
         messages: toProviderHistorySnapshot(internalMessages, undefined),
-      })
+      }
     : null;
   const extractedActivities = activitySnapshotsForMessages(internalMessages, undefined);
-  const activitiesByMessageId = new Map<string, Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>();
+  const activitiesByMessageId = new Map<
+    string,
+    Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>
+  >();
   for (const activity of [...extractedActivities, ...boundary.activities]) {
     activitiesByMessageId.set(activity.messageId, activity);
   }
@@ -643,13 +673,14 @@ function* createStoredConversationCheckpointResponse(params: {
 }> {
   const { ctx, conversationId, checkpointEvents, parsedOffset } = params;
   const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
-  const resetRequested =
-    offsetRequested && !parsedOffset.isNow && parsedOffset.value !== 0;
+  const resetRequested = offsetRequested && !parsedOffset.isNow && parsedOffset.value !== 0;
   const emptyRequested = offsetRequested && (parsedOffset.isNow || parsedOffset.value === 0);
 
   ctx.headers.set("Stream-Next-Offset", toOffsetString(0));
   ctx.headers.set("Stream-Up-To-Date", "true");
-  if (resetRequested) ctx.headers.set("Stream-Cursor-Reset", "true");
+  if (resetRequested) {
+    ctx.headers.set("Stream-Cursor-Reset", "true");
+  }
 
   if (ctx.request.method.toUpperCase() === "HEAD" || emptyRequested) {
     const subscription = yield* createEmptyStream();
@@ -670,9 +701,13 @@ function* restoreThreadInterruptStateIfNeeded(
   bufferStore: TokenBufferStore<string>,
   threadId: string | undefined,
 ): Operation<void> {
-  if (!threadId) return;
+  if (!threadId) {
+    return;
+  }
   const stored = yield* readLatestThreadInterruptState(bufferStore, threadId);
-  if (!stored || stored.length === 0) return;
+  if (!stored || stored.length === 0) {
+    return;
+  }
   upsertInterruptRecords(stored);
 }
 
@@ -721,9 +756,7 @@ function* createConversationHydrateResponse(params: {
             {
               type: "RUN_FINISHED" as const,
               threadId: conversationId,
-              runId:
-                openInterrupts[0]?.interruptedRunId ??
-                sessionId,
+              runId: openInterrupts[0]?.interruptedRunId ?? sessionId,
               outcome: {
                 type: "interrupt" as const,
                 interrupts: publicInterruptsFromRecords(openInterrupts),
@@ -765,7 +798,9 @@ function* createConversationHydrateResponse(params: {
     ];
   }
 
-  if (resetRequested) ctx.headers.set("Stream-Cursor-Reset", "true");
+  if (resetRequested) {
+    ctx.headers.set("Stream-Cursor-Reset", "true");
+  }
 
   const syntheticFrames = syntheticEvents.map((event, index) => ({ lsn: index + 1, event }));
 
@@ -819,8 +854,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ? normalizeChatRequestBody((yield* call(() => request.json())) as ChatRequestBody)
           : ({ messages: [] } as ChatRequestBody);
 
-      const requestedConversationId =
+      const clientConversationId =
         body.conversationId?.trim() || requestedConversationIdParam?.trim() || undefined;
+      // When the client doesn't provide a conversationId, the server mints one
+      // so multi-turn conversations can persist fold session state across
+      // requests. The minted id is returned in the X-Conversation-Id response
+      // header so the client can reuse it for subsequent turns.
+      const requestedConversationId = clientConversationId ?? crypto.randomUUID();
 
       // Run request-scoped setup before resolving durable dependencies.
       if (setup) {
@@ -841,7 +881,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         ? yield* readLatestConversationCheckpoint(bufferStore, requestedConversationId)
         : null;
 
-      if (shouldResolveConversation && !resolvedConversationSessionId && !storedConversationCheckpoint) {
+      if (
+        shouldResolveConversation &&
+        !resolvedConversationSessionId &&
+        !storedConversationCheckpoint
+      ) {
         ctx.status = 404;
         return yield* createEmptyStream();
       }
@@ -857,10 +901,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           requestedSessionId !== undefined ||
           requestedConversationId !== undefined) &&
         (parsedOffset.value !== null || parsedOffset.isNow);
-      let startLSN = parsedOffset.value ?? 0;
+      const startLSN = parsedOffset.value ?? 0;
 
       // Set response headers
       ctx.headers.set("X-Session-Id", sessionId);
+      ctx.headers.set("X-Conversation-Id", requestedConversationId);
       ctx.headers.set("Cache-Control", "no-store");
 
       // Get logger after hooks run (so setupLogger has executed)
@@ -891,7 +936,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         });
       }
 
-      if (shouldResolveConversation && !resolvedConversationSessionId && storedConversationCheckpoint) {
+      if (
+        shouldResolveConversation &&
+        !resolvedConversationSessionId &&
+        storedConversationCheckpoint
+      ) {
         const checkpointEvents = JSON.parse(storedConversationCheckpoint) as StreamEvent[];
         return yield* createStoredConversationCheckpointResponse({
           ctx,
@@ -911,7 +960,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const contextStreamOptions = yield* ModelProviderApi.streamOptions();
       const streamOptions =
         contextStreamOptions || body.streamOptions
-          ? { ...(contextStreamOptions ?? {}), ...(body.streamOptions ?? {}) }
+          ? { ...contextStreamOptions, ...body.streamOptions }
           : undefined;
       const durableConversationId = requestedConversationId ?? body.threadId;
       const agUiThreadId = durableConversationId ?? sessionId;
@@ -974,32 +1023,20 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         log.debug("mcp tool registry configured");
       }
 
-      // Get or create plugin session manager if we have plugin support
-      // The manager must be created at server startup for multi-step elicitation to work
+      // Get the shared plugin session manager. It must be installed at server
+      // startup (via PluginSessionManagerContext) so multi-step elicitation
+      // sessions survive across request boundaries.
       let pluginSessionManager = undefined;
       if (pluginRegistry && mcpToolRegistry) {
-        // Try to get shared manager from context first (preferred)
         const sharedManager = yield* PluginSessionManagerContext.get();
-
         if (sharedManager) {
           pluginSessionManager = sharedManager;
           log.debug("using shared plugin session manager from context");
         } else {
-          // Fallback: try to create from shared registry (legacy path)
-          const sharedRegistry = yield* PluginSessionRegistryContext.get();
-
-          if (sharedRegistry) {
-            pluginSessionManager = yield* createPluginSessionManager({
-              registry: sharedRegistry,
-              ...(pluginSamplingProvider ? { samplingProvider: pluginSamplingProvider } : {}),
-            });
-            log.warn(
-              "PluginSessionManagerContext not set - creating per-request manager (multi-step elicitation may not work)",
-            );
-          } else {
-            log.error("Neither PluginSessionManagerContext nor PluginSessionRegistryContext set!");
-            log.error("Multi-step elicitation will not work.");
-          }
+          log.error(
+            "PluginSessionManagerContext not set - multi-step elicitation will not work. " +
+              "Install a shared PluginSessionManager at server startup.",
+          );
         }
       }
 
@@ -1055,7 +1092,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           capabilities: {
             ...resolved.capabilities,
             tools: Array.from(
-              new Set([...resolved.capabilities.tools.filter((name) => inventoryNames.has(name))]),
+              new Set(resolved.capabilities.tools.filter((name) => inventoryNames.has(name))),
             ),
           },
           persona: resolved.name,
@@ -1090,10 +1127,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       }
 
       const storedSystemPrompt = yield* readLatestThreadSystemPrompt(bufferStore, agUiThreadId);
-      systemPrompt = resolvePrivateSystemPrompt(
-        agUiThreadId,
-        storedSystemPrompt ?? systemPrompt,
-      );
+      systemPrompt = resolvePrivateSystemPrompt(agUiThreadId, storedSystemPrompt ?? systemPrompt);
       if (systemPrompt && storedSystemPrompt == null) {
         yield* recordThreadSystemPrompt(bufferStore, agUiThreadId, systemPrompt);
       }
@@ -1160,6 +1194,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         };
         void sessionInfo;
 
+        // Read the shared fold-session buffer store from context (optional).
+        const foldSessionBufferStore = yield* useOptionalFoldSessionBufferStore();
+
         const resumePreflightError =
           resumeValidation && !resumeValidation.ok ? resumeValidation : null;
 
@@ -1168,7 +1205,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // any replay projection or runtime continuation can occur.
         const engine = resumePreflightError
           ? (createEmptyStream() as unknown as Stream<StreamEvent, void>)
-          : createChatEngine({
+          : createSessionContractChatEngine({
               messages: body.messages,
               ...(liveMode !== "sse" && body.replayState ? { replayState: body.replayState } : {}),
               ...(systemPrompt !== undefined && { systemPrompt }),
@@ -1192,6 +1229,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               ...(effectiveElicitResponses.length > 0 && {
                 elicitResponses: effectiveElicitResponses,
               }),
+              // Pass the shared fold-session buffer store so the adapter can
+              // reopen existing fold sessions across HTTP requests.
+              ...(foldSessionBufferStore ? { foldSessionBufferStore } : {}),
               ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
             });
         log.debug({ sessionId }, "new session path: chat engine created");
@@ -1239,7 +1279,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               },
             ];
         const serializedStream = createSerializedEventStream(engine, initialEvents, {
-          ...(durableConversationId ? { conversationId: durableConversationId } : {}),
+          ...(clientConversationId ? { conversationId: durableConversationId } : {}),
           checkpointStore: bufferStore,
         });
         log.debug({ sessionId }, "new session path: serialized stream created");
@@ -1253,7 +1293,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         log.debug({ sessionId }, "new session path: session acquired");
       }
 
-      if (durableConversationId && method === "POST") {
+      // Only record the conversation session index when the client explicitly
+      // provided a conversationId. When the server minted one (client didn't
+      // send one), the index is recorded on the next request when the client
+      // sends the minted id back (received from the X-Conversation-Id header).
+      if (clientConversationId && method === "POST") {
         yield* recordConversationSession(bufferStore, durableConversationId, sessionId);
       }
 

@@ -3,6 +3,7 @@ import type { Model, Runtime, StreamOptions } from "../../lib/chat/runtime/index
 import type { ToolSessionSamplingProvider } from "../../lib/chat/mcp-tools/session/types.ts";
 import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
 import type { StreamEvent, ChatMessage } from "../types.ts";
+import type { TokenBufferStore, LogRecord } from "@sweatpants/session-contract";
 import type { PluginRegistry } from "../../lib/chat/mcp-tools/plugin-registry.ts";
 import type {
   ComponentEmissionPayload,
@@ -11,33 +12,6 @@ import type {
 } from "../../lib/chat/browser-rendering/index.ts";
 import type { PluginSessionManager } from "./plugin-session-manager.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
-import type {
-  ToolParameterValidationErrorPayload,
-  ToolParameterValidationIssue,
-} from "../../lib/chat/tool-parameters.ts";
-
-export type EnginePhase =
-  | "init"
-  | "process_plugin_abort"
-  | "process_plugin_responses"
-  | "start_iteration"
-  | "streaming_provider"
-  | "provider_complete"
-  | "executing_tools"
-  | "tools_complete"
-  | "awaiting_elicit"
-  | "complete"
-  | "error"
-  | "done";
-
-export interface ToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: Record<string, unknown>;
-  };
-}
 
 export interface ToolSchema {
   name: string;
@@ -51,46 +25,7 @@ export interface McpToolRegistry {
   names(): string[];
 }
 
-export interface ElicitRequestData {
-  sessionId: string;
-  callId: string;
-  toolName: string;
-  elicitId: string;
-  key: string;
-  message: string;
-  schema: Record<string, unknown>;
-}
-
-export type ToolExecutionResult =
-  | {
-      ok: true;
-      kind: "result";
-      callId: string;
-      toolName: string;
-      serverOutput: unknown;
-      trace?: ToolExecutionTrace;
-    }
-  | {
-      ok: true;
-      kind: "plugin_awaiting";
-      callId: string;
-      toolName: string;
-      sessionId: string;
-      elicitRequest: ElicitRequestData;
-    }
-  | {
-      ok: false;
-      error: {
-        callId: string;
-        toolName: string;
-        message: string;
-        code?: string;
-        issues?: ToolParameterValidationIssue[];
-        validation?: ToolParameterValidationErrorPayload;
-      };
-    };
-
-export interface ChatEngineParams {
+export interface SessionContractChatEngineParams {
   messages: ChatMessage[];
   replayState?: ConversationReplayState;
   systemPrompt?: string;
@@ -111,6 +46,12 @@ export interface ChatEngineParams {
   pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>;
   mcpToolRegistry?: McpToolRegistry;
   pluginSessionManager?: PluginSessionManager;
+  /**
+   * Optional shared fold-session buffer store. When provided, the adapter
+   * reopens the existing fold session on resume instead of creating an
+   * ephemeral one, enabling the fold driver's restore/continuation path.
+   */
+  foldSessionBufferStore?: TokenBufferStore<LogRecord>;
   elicitResponses?: ElicitResponse[];
   pluginAbort?: PluginAbortRequest;
 }
@@ -196,4 +137,4 @@ export interface DurableStreamParams {
   lastLSN?: number;
 }
 
-export type ChatEngine = Stream<StreamEvent, void>;
+export type SessionContractChatEngine = Stream<StreamEvent, void>;

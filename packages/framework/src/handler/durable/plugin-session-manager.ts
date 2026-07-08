@@ -44,7 +44,7 @@
  *
  * @packageDocumentation
  */
-import { type Operation, type Channel, resource } from 'effection'
+import { type Operation, type Channel, resource } from "effection";
 import type {
   ToolSession,
   ToolSessionStatus,
@@ -53,11 +53,14 @@ import type {
   RawSampleResultWithParsed,
   RawSampleResultWithToolCalls,
   ToolSessionSamplingProvider,
-} from '../../lib/chat/mcp-tools/session/types.ts'
+} from "../../lib/chat/mcp-tools/session/types.ts";
 // Note: concrete tool session registries should be created at server startup, not here.
-import type { ElicitsMap, RawElicitResult } from '../../lib/chat/mcp-tools/mcp-tool-types.ts'
-import type { McpRuntimeTool } from '../../lib/chat/mcp-tools/mcp-runtime-tool.ts'
-import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/browser-rendering/emissions.ts'
+import type { ElicitsMap, RawElicitResult } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
+import type { McpRuntimeTool } from "../../lib/chat/mcp-tools/mcp-runtime-tool.ts";
+import type {
+  ComponentEmissionPayload,
+  PendingEmission,
+} from "../../lib/chat/browser-rendering/emissions.ts";
 
 // =============================================================================
 // TYPES
@@ -66,17 +69,17 @@ import type { ComponentEmissionPayload, PendingEmission } from '../../lib/chat/b
 /**
  * Status of a plugin session.
  */
-export type PluginSessionStatus = ToolSessionStatus | 'aborted'
+export type PluginSessionStatus = ToolSessionStatus | "aborted";
 
 /**
  * Information about an active plugin session (for inspection).
  */
 export interface PluginSessionInfo {
-  id: string
-  toolName: string
-  callId: string
-  status: PluginSessionStatus
-  createdAt: number
+  id: string;
+  toolName: string;
+  callId: string;
+  status: PluginSessionStatus;
+  createdAt: number;
 }
 
 /**
@@ -85,87 +88,87 @@ export interface PluginSessionInfo {
  */
 export type PluginSessionEvent =
   | {
-      type: 'elicit_request'
-      elicitId: string
-      key: string
-      message: string
-      schema: Record<string, unknown>
+      type: "elicit_request";
+      elicitId: string;
+      key: string;
+      message: string;
+      schema: Record<string, unknown>;
     }
   | {
-      type: 'result'
-      result: unknown
+      type: "result";
+      result: unknown;
     }
   | {
-      type: 'error'
-      name: string
-      message: string
+      type: "error";
+      name: string;
+      message: string;
     }
   | {
-      type: 'cancelled'
-      reason?: string | undefined
-    }
+      type: "cancelled";
+      reason?: string | undefined;
+    };
 
 /**
  * Configuration for creating a plugin session.
  */
 export interface CreatePluginSessionConfig {
   /** The MCP tool to execute */
-  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>
+  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>;
 
   /** Tool parameters */
-  params: unknown
+  params: unknown;
 
   /** Call ID from the LLM's tool_call (used as session ID) */
-  callId: string
+  callId: string;
 
   /** Emission channel for plugin UI rendering (optional) */
-  emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined
+  emissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void> | undefined;
 
   /** Abort signal for cancellation */
-  signal?: AbortSignal
+  signal?: AbortSignal;
 }
 
 /**
  * A plugin session handle.
- * 
+ *
  * Wraps a ToolSession with chat-engine-specific functionality:
  * - Server-side sampling handling
  * - Simplified event interface
  */
 export interface PluginSession {
   /** Session ID (same as callId) */
-  readonly id: string
+  readonly id: string;
 
   /** Tool name */
-  readonly toolName: string
+  readonly toolName: string;
 
   /** Original call ID from LLM */
-  readonly callId: string
+  readonly callId: string;
 
   /** Get current session status */
-  status(): Operation<PluginSessionStatus>
+  status(): Operation<PluginSessionStatus>;
 
   /**
    * Get the next event from the session.
    * Blocks until an event is available or session completes.
    * Handles sample_request events internally (server-side sampling).
    */
-  nextEvent(): Operation<PluginSessionEvent | null>
+  nextEvent(): Operation<PluginSessionEvent | null>;
 
   /**
    * Respond to an elicitation request.
-   * 
+   *
    * @param elicitId - The elicit ID from the elicit_request event
    * @param result - The user's response
    */
-  respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void>
+  respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void>;
 
   /**
    * Abort the session.
-   * 
+   *
    * @param reason - Optional abort reason
    */
-  abort(reason?: string): Operation<void>
+  abort(reason?: string): Operation<void>;
 }
 
 /**
@@ -174,32 +177,32 @@ export interface PluginSession {
 export interface PluginSessionManager {
   /**
    * Create a new plugin session for a tool execution.
-   * 
+   *
    * @param config - Session configuration
    * @returns The created session
    */
-  create(config: CreatePluginSessionConfig): Operation<PluginSession>
+  create(config: CreatePluginSessionConfig): Operation<PluginSession>;
 
   /**
    * Get an existing session by ID (callId).
    * Returns null if session doesn't exist.
-   * 
+   *
    * @param sessionId - Session to retrieve
    */
-  get(sessionId: string): Operation<PluginSession | null>
+  get(sessionId: string): Operation<PluginSession | null>;
 
   /**
    * Abort a session by ID.
-   * 
+   *
    * @param sessionId - Session to abort
    * @param reason - Optional abort reason
    */
-  abort(sessionId: string, reason?: string): Operation<void>
+  abort(sessionId: string, reason?: string): Operation<void>;
 
   /**
    * List all active sessions (for debugging/inspection).
    */
-  listActive(): Operation<PluginSessionInfo[]>
+  listActive(): Operation<PluginSessionInfo[]>;
 }
 
 /**
@@ -208,11 +211,11 @@ export interface PluginSessionManager {
 export interface PluginSessionManagerOptions {
   /**
    * The tool session registry to use.
-   * 
+   *
    * IMPORTANT: This registry must be created in a long-lived scope (at server
    * startup) to persist across HTTP requests. Sessions created by this manager
    * will live in the registry's scope, enabling multi-step elicitation flows.
-   * 
+   *
    * Example setup at server initialization:
    * ```typescript
    * const { registry } = await run(function* () {
@@ -223,10 +226,10 @@ export interface PluginSessionManagerOptions {
    * // createInMemoryToolSessionStore/createToolSessionRegistry are provided by the local tool runtime package.
    * ```
    */
-  registry: ToolSessionRegistry
+  registry: ToolSessionRegistry;
 
   /** Provider used for server-side sampling when a plugin tool calls ctx.sample(). */
-  samplingProvider?: ToolSessionSamplingProvider
+  samplingProvider?: ToolSessionSamplingProvider;
 }
 
 // =============================================================================
@@ -235,32 +238,35 @@ export interface PluginSessionManagerOptions {
 
 /**
  * Create a PluginSessionManager.
- * 
+ *
  * The manager wraps a ToolSessionRegistry to provide plugin-specific functionality:
  * - Per-session provider management for server-side sampling
  * - Simplified event interface (hides sample_request handling)
  * - Session recovery across HTTP request boundaries
- * 
+ *
  * IMPORTANT: The registry must be created in a long-lived scope at server startup.
  * The manager itself can be created per-request - it just tracks wrappers.
  */
 export function createPluginSessionManager(
-  options: PluginSessionManagerOptions
+  options: PluginSessionManagerOptions,
 ): Operation<PluginSessionManager> {
   return resource<PluginSessionManager>(function* (provide) {
-    const { registry, samplingProvider } = options
+    const { registry, samplingProvider } = options;
 
     // Track active plugin sessions.
-    const pluginSessions = new Map<string, {
-      session: PluginSession
-      toolSession: ToolSession
-      info: PluginSessionInfo
-    }>()
+    const pluginSessions = new Map<
+      string,
+      {
+        session: PluginSession;
+        toolSession: ToolSession;
+        info: PluginSessionInfo;
+      }
+    >();
 
     /**
      * Create a PluginSession wrapper around a ToolSession.
      * Handles server-side sampling and provides a simplified event interface.
-     * 
+     *
      * @param onTerminal - Callback invoked when a terminal event is emitted (result/error/cancelled)
      */
     function createPluginSessionWrapper(
@@ -268,12 +274,12 @@ export function createPluginSessionManager(
       callId: string,
       _createdAt: number,
       initialLastLSN: number = 0,
-      onTerminal?: () => void
+      onTerminal?: () => void,
     ): PluginSession {
-      let aborted = false
-      let abortReason: string | undefined
+      let aborted = false;
+      let abortReason: string | undefined;
       // Track the last LSN we've processed to avoid replaying old events
-      let lastProcessedLSN = initialLastLSN
+      let lastProcessedLSN = initialLastLSN;
 
       const pluginSession: PluginSession = {
         id: toolSession.id,
@@ -281,13 +287,15 @@ export function createPluginSessionManager(
         callId,
 
         *status(): Operation<PluginSessionStatus> {
-          if (aborted) return 'aborted'
-          return yield* toolSession.status()
+          if (aborted) {
+            return "aborted";
+          }
+          return yield* toolSession.status();
         },
 
         *nextEvent(): Operation<PluginSessionEvent | null> {
           if (aborted) {
-            return { type: 'cancelled', reason: abortReason }
+            return { type: "cancelled", reason: abortReason };
           }
 
           // IMPORTANT: Create a fresh subscription each call.
@@ -300,126 +308,141 @@ export function createPluginSessionManager(
           //
           // Instead, we use lastProcessedLSN to resume from where we left off,
           // so events are never replayed.
-          const stream = toolSession.events(lastProcessedLSN)
-          const eventSubscription = yield* stream
+          const stream = toolSession.events(lastProcessedLSN);
+          const eventSubscription = yield* stream;
 
           // Get next event
           while (true) {
-            const result = yield* eventSubscription.next()
+            const result = yield* eventSubscription.next();
 
             if (result.done) {
-              return null // Session completed
+              return null; // Session completed
             }
 
-            const event = result.value
-            
+            const event = result.value;
+
             // Update lastProcessedLSN to track our position
-            lastProcessedLSN = event.lsn
+            lastProcessedLSN = event.lsn;
 
             switch (event.type) {
-              case 'elicit_request':
+              case "elicit_request":
                 // Pass through to caller
                 return {
-                  type: 'elicit_request',
+                  type: "elicit_request",
                   elicitId: event.elicitId,
                   key: event.key,
                   message: event.message,
                   schema: event.schema,
-                }
+                };
 
-              case 'sample_request': {
-                const sampleEvent = event
+              case "sample_request": {
+                const sampleEvent = event;
                 try {
                   if (!samplingProvider) {
-                    throw new Error('Plugin sampling provider not configured')
+                    throw new Error("Plugin sampling provider not configured");
                   }
 
-                  const result: RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls =
-                    yield* samplingProvider.sample(sampleEvent.messages, {
-                      ...(sampleEvent.systemPrompt ? { systemPrompt: sampleEvent.systemPrompt } : {}),
-                      ...(sampleEvent.maxTokens !== undefined ? { maxTokens: sampleEvent.maxTokens } : {}),
+                  const result:
+                    | RawSampleResultBase
+                    | RawSampleResultWithParsed<unknown>
+                    | RawSampleResultWithToolCalls = yield* samplingProvider.sample(
+                    sampleEvent.messages,
+                    {
+                      ...(sampleEvent.systemPrompt
+                        ? { systemPrompt: sampleEvent.systemPrompt }
+                        : {}),
+                      ...(sampleEvent.maxTokens !== undefined
+                        ? { maxTokens: sampleEvent.maxTokens }
+                        : {}),
                       ...(sampleEvent.tools ? { tools: sampleEvent.tools } : {}),
                       ...(sampleEvent.toolChoice ? { toolChoice: sampleEvent.toolChoice } : {}),
                       ...(sampleEvent.schema ? { schema: sampleEvent.schema } : {}),
-                    })
+                    },
+                  );
 
-                  yield* toolSession.respondToSample(sampleEvent.sampleId, result)
+                  yield* toolSession.respondToSample(sampleEvent.sampleId, result);
                 } catch (error) {
                   yield* toolSession.respondToSample(sampleEvent.sampleId, {
                     text: `[Sampling error: ${error instanceof Error ? error.message : String(error)}]`,
-                  })
+                  });
                 }
                 // Continue to next event (don't return sample_request to caller)
-                continue
+                continue;
               }
 
-              case 'result':
+              case "result":
                 // Notify manager of terminal event for cleanup
-                if (onTerminal) onTerminal()
-                return {
-                  type: 'result',
-                  result: event.result,
+                if (onTerminal) {
+                  onTerminal();
                 }
-
-              case 'error':
-                // Notify manager of terminal event for cleanup
-                if (onTerminal) onTerminal()
                 return {
-                  type: 'error',
+                  type: "result",
+                  result: event.result,
+                };
+
+              case "error":
+                // Notify manager of terminal event for cleanup
+                if (onTerminal) {
+                  onTerminal();
+                }
+                return {
+                  type: "error",
                   name: event.name,
                   message: event.message,
-                }
+                };
 
-              case 'cancelled':
+              case "cancelled":
                 // Notify manager of terminal event for cleanup
-                if (onTerminal) onTerminal()
-                return {
-                  type: 'cancelled',
-                  reason: event.reason,
+                if (onTerminal) {
+                  onTerminal();
                 }
+                return {
+                  type: "cancelled",
+                  reason: event.reason,
+                };
 
-              case 'progress':
-              case 'log':
-              case 'sample_response_queued':
+              case "progress":
+              case "log":
+              case "sample_response_queued":
                 // These are informational - skip and get next event
-                continue
+                continue;
 
               default:
                 // Unknown event type - skip
-                continue
+                continue;
             }
           }
         },
 
         *respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void> {
-          yield* toolSession.respondToElicit(elicitId, result)
+          yield* toolSession.respondToElicit(elicitId, result);
         },
 
         *abort(reason?: string): Operation<void> {
-          aborted = true
-          abortReason = reason
-          yield* toolSession.cancel(reason)
+          aborted = true;
+          abortReason = reason;
+          yield* toolSession.cancel(reason);
         },
-      }
+      };
 
-      return pluginSession
+      return pluginSession;
     }
 
     const manager: PluginSessionManager = {
       *create(config: CreatePluginSessionConfig): Operation<PluginSession> {
-        const { tool, params, callId, signal } = config
+        const { tool, params, callId, signal } = config;
 
         // Create the underlying tool session
         const sessionOptions: { sessionId: string; signal?: AbortSignal } = {
           sessionId: callId, // Use callId as session ID
-        }
+        };
         if (signal !== undefined) {
-          sessionOptions.signal = signal
+          sessionOptions.signal = signal;
         }
-        const toolSession = yield* registry.create(tool, params, sessionOptions)
+        const toolSession = yield* registry.create(tool, params, sessionOptions);
 
         // Create wrapper with cleanup callback
-        const createdAt = Date.now()
+        const createdAt = Date.now();
         const pluginSession = createPluginSessionWrapper(
           toolSession,
           callId,
@@ -428,93 +451,70 @@ export function createPluginSessionManager(
           () => {
             // Cleanup callback - called when terminal event is emitted
             // Remove from tracking map immediately
-            pluginSessions.delete(callId)
+            pluginSessions.delete(callId);
             // Note: We don't release from registry here because that's an Operation
             // The registry will clean up eventually based on its own lifecycle
-          }
-        )
+          },
+        );
 
         // Track it
         const info: PluginSessionInfo = {
           id: callId,
           toolName: tool.name,
           callId,
-          status: 'running',
+          status: "running",
           createdAt,
-        }
+        };
 
         pluginSessions.set(callId, {
           session: pluginSession,
           toolSession,
           info,
-        })
+        });
 
-        return pluginSession
+        return pluginSession;
       },
 
       *get(sessionId: string): Operation<PluginSession | null> {
-        const entry = pluginSessions.get(sessionId)
+        const entry = pluginSessions.get(sessionId);
         if (entry) {
-          return entry.session
+          return entry.session;
         }
 
-        // Try to recover from registry (in case of reconnection)
-        const toolSession = yield* registry.get(sessionId)
-        if (!toolSession) {
-          return null
-        }
-
-        // Recover the session by creating a new wrapper with cleanup callback
-        const createdAt = Date.now()
-        const pluginSession = createPluginSessionWrapper(
-          toolSession,
-          sessionId, // callId is the same as sessionId
-          createdAt,
-          0, // initialLastLSN
-          () => {
-            // Cleanup callback - called when terminal event is emitted
-            pluginSessions.delete(sessionId)
-          }
-        )
-
-        // Track it
-        const info: PluginSessionInfo = {
-          id: sessionId,
-          toolName: toolSession.toolName,
-          callId: sessionId,
-          status: 'running',
-          createdAt,
-        }
-
-        pluginSessions.set(sessionId, {
-          session: pluginSession,
-          toolSession,
-          info,
-        })
-
-        return pluginSession
+        // The session is not in our tracking map. We cannot safely recover
+        // it because we don't know the replay cursor (lastProcessedLSN).
+        // Replaying from LSN 0 would replay stale elicit_request events that
+        // the caller already answered. Instead, return null and let the
+        // caller surface a typed resume_unavailable error — this is more
+        // honest than silently replaying stale state.
+        //
+        // In the current wiring the manager is long-lived and shared, so
+        // its tracking map should always have active sessions. This path
+        // is only hit after manager re-creation/eviction, which is a
+        // genuine unrecoverable scenario.
+        return null;
       },
 
       *abort(sessionId: string, reason?: string): Operation<void> {
-        const entry = pluginSessions.get(sessionId)
+        const entry = pluginSessions.get(sessionId);
         if (entry) {
-          yield* entry.session.abort(reason)
-          pluginSessions.delete(sessionId)
-          yield* registry.release(sessionId)
+          yield* entry.session.abort(reason);
+          pluginSessions.delete(sessionId);
+          yield* registry.release(sessionId);
         }
       },
 
       *listActive(): Operation<PluginSessionInfo[]> {
-        const infos: PluginSessionInfo[] = []
+        const infos: PluginSessionInfo[] = [];
         for (const entry of pluginSessions.values()) {
           // Update status before returning
-          entry.info.status = yield* entry.session.status()
-          infos.push({ ...entry.info })
+          entry.info.status = yield* entry.session.status();
+          infos.push({ ...entry.info });
         }
-        return infos
+        return infos;
       },
-    }
+    };
 
-    yield* provide(manager)
-  })
+    yield* provide(manager);
+  });
 }

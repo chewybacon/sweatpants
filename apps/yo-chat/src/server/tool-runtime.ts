@@ -39,6 +39,12 @@ import { getSharedRedisClient } from "@/lib/shared-redis";
 import { activeAgentCoreToolNames, activePluginTools, allTools } from "./tools";
 import { pluginSamplingProvider } from "./plugin-sampling-provider";
 
+// Bundled worker entry (auto-generated). The nodeWorkerPlugin turns this
+// `?modulePath` import into a URL to the built worker script so local tool
+// sessions run their `execute` generators inside a worker thread, preserving
+// the same serialization boundary the AgentCore runtime enforces remotely.
+import toolWorkerUrl from "../__generated__/tool-worker.gen.ts?modulePath";
+
 type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
 type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0];
 
@@ -50,6 +56,10 @@ function* createLocalPluginToolSessionRegistry(): Operation<ToolSessionRegistry>
   const store = createInMemoryToolSessionStore();
   return yield* createToolSessionRegistry(store, {
     samplingProvider: pluginSamplingProvider,
+    worker: {
+      workerUrl: toolWorkerUrl,
+      isDev: process.env["NODE_ENV"] !== "production",
+    },
   });
 }
 

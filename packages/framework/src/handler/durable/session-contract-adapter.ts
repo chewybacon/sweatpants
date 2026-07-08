@@ -1,146 +1,1245 @@
-import type { Operation, Stream } from "effection";
-
+import { resource, spawn, type Operation, type Stream } from "effection";
 import {
   createInMemorySession,
-  type CreateInMemorySessionOptions,
-  type InMemorySession,
-  type MessageInput,
-  type ResolutionMeta,
-  type RespondAck,
-  type SendAck,
-  type Session,
-  type WaitKind,
+  spawnFoldDriver,
+  waitToken,
+  type AgentConfig,
+  type AnswerPayload,
+  type CapabilityResolver,
+  type FoldSessionHost,
+  type ModelProvider,
+  type SampleWaitPayload,
+  type WaitRecord,
 } from "@sweatpants/session-contract";
 
+import type {
+  AssistantMessage,
+  Context as RuntimeContext,
+  Message as RuntimeMessage,
+  StreamEvent as RuntimeStreamEvent,
+  ToolCallBlock,
+} from "../../lib/chat/runtime/index.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
+import type { ElicitResponse, SessionContractChatEngineParams } from "./types.ts";
+import type { ToolExecution } from "../../lib/chat/tool-runtime.ts";
+import type { ToolInventoryEntry } from "../../lib/chat/tool-inventory.ts";
+import type { PluginSessionEvent } from "./plugin-session-manager.ts";
+import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
 
-export interface DurableChatEngineSessionAdapterOptions {
-  sessionId: string;
-  bufferStore?: CreateInMemorySessionOptions["bufferStore"];
-  createEngine(input: MessageInput, context: { sessionId: string }): Operation<Stream<StreamEvent, void>>;
+/**
+ * Session-contract-native chat engine adapter.
+ *
+ * This is the Phase 3 bridge: internally it runs the canonical fold driver;
+ * externally it is still a bounded `Stream<StreamEvent, void>` so the durable
+ * chat handler, replay layer, React client, and e2e `networkidle` behavior do
+ * not change.
+ */
+export function createSessionContractChatEngine(
+  params: SessionContractChatEngineParams,
+): Stream<StreamEvent, void> {
+  return resource(function* (provide) {
+    // Key by threadId (stable across resume) so the fold session persists
+    // across HTTP requests. runId is per-request and would prevent restore.
+    const sessionId = params.agUiRun.threadId || params.agUiRun.runId;
+
+    // Read the shared buffer store from params (optional — falls back to
+    // an ephemeral store if not provided, preserving hermetic test behavior).
+    const bufferStore = params.foldSessionBufferStore;
+    const session = yield* createInMemorySession({
+      sessionId,
+      mode: "fold",
+      ...(bufferStore ? { bufferStore } : {}),
+    });
+
+    const existing = yield* session.records();
+    let cursor: number;
+    if (existing.length === 0) {
+      // New session: seed checkpoint + message wait, then read from after seeds.
+      yield* session.checkpoint("fold");
+      yield* session.emitWait("message", {});
+      const afterSeed = yield* session.records();
+      cursor = afterSeed.length;
+    } else {
+      // Resuming: the fold session already has records from the previous
+      // request(s). Read from after the existing records so only new events
+      // (produced by the resume/continuation) are projected to the client.
+      cursor = existing.length;
+    }
+
+    const model = createChatFoldModelProvider(params);
+    const resolver = createChatFoldCapabilityResolver(params);
+    const config: AgentConfig = {
+      name: "durable-chat",
+      capabilities: Object.fromEntries(
+        params.toolSchemas.map((tool) => [
+          tool.name,
+          {
+            description: tool.description,
+            input: tool.parameters,
+          },
+        ]),
+      ),
+      model,
+      resolver,
+      ...(params.systemPrompt !== undefined ? { system: params.systemPrompt } : {}),
+      maxIterations: params.maxIterations,
+    };
+
+    const isResume = (params.elicitResponses ?? []).length > 0;
+
+    if (isResume) {
+      // Resume path: continue the parked tool/plugin session across the HTTP
+      // boundary. The fold session is reopened from the shared buffer store,
+      // so the prior turn's log (including pending waits) is available.
+      // projectResumeResponses resolves the elicit responses and, if final tool
+      // results are produced, runModelContinuation drives the model to produce
+      // a real post-tool assistant response.
+      yield* spawn(function* () {
+        try {
+          const handled = yield* projectResumeResponses(params, session, config);
+          if (!handled) {
+            // The resume could not be routed to any live execution (e.g. the
+            // session/ref is gone). Surface a typed error instead of silently
+            // re-running a fresh fold turn that could double-execute tools.
+            yield* session.terminal("error", {
+              ok: false,
+              code: "resume_unavailable",
+              message: "Resume could not be routed to any live execution (session/ref not found)",
+            });
+          }
+        } catch (error) {
+          // On scope close (halt), do NOT terminal the session — the fold
+          // session persists in the shared buffer store and must stay open
+          // for the next HTTP request. Only terminal on genuine errors.
+          if (!isHaltError(error)) {
+            try {
+              yield* session.terminal("error", {
+                ok: false,
+                code: "runtime_error",
+                message: error instanceof Error ? error.message : String(error),
+              });
+            } catch {
+              // Session may already be terminal/cancelled.
+            }
+          }
+        }
+      });
+    } else {
+      yield* spawn(function* () {
+        try {
+          yield* spawnFoldDriver(session, config);
+        } catch (error) {
+          if (!isHaltError(error)) {
+            try {
+              yield* session.terminal("error", {
+                ok: false,
+                code: "runtime_error",
+                message: error instanceof Error ? error.message : String(error),
+              });
+            } catch {
+              // Session may already be terminal/cancelled.
+            }
+          }
+        }
+      });
+
+      const userMessage = latestUserMessage(params);
+      yield* session.send(userMessage, {
+        idempotencyKey: `chat:${sessionId}:message:${params.messages.length}`,
+      });
+    }
+
+    const records = yield* session.events(cursor);
+    const queue: StreamEvent[] = [];
+    let done = false;
+    let sawCheckpoint = false;
+    let assistantTextOpen = false;
+    let sawTurnActivity = false;
+
+    function enqueue(event: StreamEvent): void {
+      queue.push(event);
+      sawTurnActivity = true;
+    }
+
+    yield* provide({
+      *next(): Operation<IteratorResult<StreamEvent, void>> {
+        while (queue.length > 0) {
+          return { done: false, value: queue.shift()! };
+        }
+        if (done) {
+          return { done: true, value: undefined };
+        }
+
+        while (queue.length === 0 && !done) {
+          const next = yield* records.next();
+          if (next.done) {
+            if (!done) {
+              if (assistantTextOpen) {
+                enqueue({ type: "TEXT_MESSAGE_END", messageId: assistantMessageId(params) });
+                assistantTextOpen = false;
+              }
+              enqueue({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+              done = true;
+            }
+            break;
+          }
+
+          const record = next.value;
+          switch (record.kind) {
+            case "emission": {
+              for (const event of eventsFromEmission(record.payload)) {
+                if (event.type === "TEXT_MESSAGE_START") {
+                  assistantTextOpen = true;
+                }
+                if (event.type === "TEXT_MESSAGE_END") {
+                  assistantTextOpen = false;
+                }
+                enqueue(event);
+              }
+              break;
+            }
+            case "answer": {
+              if (record.wait === "call") {
+                const event = toolResultEventFromCallAnswer(record.payload);
+                if (event) {
+                  enqueue(event);
+                }
+              }
+              break;
+            }
+            case "wait": {
+              if (record.wait === "elicit") {
+                if (assistantTextOpen) {
+                  enqueue({ type: "TEXT_MESSAGE_END", messageId: assistantMessageId(params) });
+                  assistantTextOpen = false;
+                }
+                enqueue(elicitRunFinished(params, record as WaitRecord<"elicit">));
+                done = true;
+              } else if (record.wait === "message" && sawCheckpoint && sawTurnActivity) {
+                if (assistantTextOpen) {
+                  enqueue({ type: "TEXT_MESSAGE_END", messageId: assistantMessageId(params) });
+                  assistantTextOpen = false;
+                }
+                enqueue({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+                done = true;
+              }
+              break;
+            }
+            case "checkpoint": {
+              sawCheckpoint = true;
+              break;
+            }
+            case "terminal": {
+              if (record.outcome === "error") {
+                enqueue({
+                  type: "RUN_ERROR",
+                  message: terminalMessage(record.payload),
+                  ...(terminalCode(record.payload) ? { code: terminalCode(record.payload)! } : {}),
+                });
+              } else if (record.outcome === "cancelled") {
+                enqueue({ type: "RUN_ERROR", message: "Run cancelled", code: "RUN_ABORTED" });
+              } else {
+                enqueue({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+              }
+              done = true;
+              break;
+            }
+            case "fate":
+              break;
+          }
+        }
+
+        if (queue.length > 0) {
+          return { done: false, value: queue.shift()! };
+        }
+        return { done: true, value: undefined };
+      },
+    });
+  });
+}
+
+function createChatFoldModelProvider(params: SessionContractChatEngineParams): ModelProvider {
+  return {
+    *sampleWithSession(
+      request: SampleWaitPayload,
+      { session }: { session: FoldSessionHost },
+    ): Operation<AnswerPayload> {
+      const runtimeContext = toRuntimeContext(request, params);
+      let subscription;
+      try {
+        const stream = params.runtime.stream(params.model, runtimeContext, {
+          ...params.streamOptions,
+          signal: params.signal,
+          ...(params.initialToolChoice && runtimeContext.messages.length === 1
+            ? { toolChoice: params.initialToolChoice }
+            : {}),
+        });
+        subscription = yield* stream;
+      } catch (error) {
+        return {
+          ok: false,
+          code: "runtime_error",
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const toolCalls: ToolCallBlock[] = [];
+      let text = "";
+      let textStarted = false;
+
+      while (true) {
+        const next = yield* subscription.next();
+        if (next.done) {
+          const final = next.value;
+          const finalText = text || textFromAssistant(final);
+          for (const block of final.content) {
+            if (block.type !== "toolCall") {
+              continue;
+            }
+            const canonical = canonicalToolCall(block, params);
+            if (!canonical) {
+              continue;
+            }
+            if (toolCalls.some((call) => call.id === canonical.id)) {
+              continue;
+            }
+            toolCalls.push(canonical);
+          }
+          if (toolCalls.length > 0) {
+            if (textStarted) {
+              yield* session.emitEmission({
+                protocol: "ag-ui",
+                event: { type: "TEXT_MESSAGE_END", messageId: assistantMessageId(params) },
+              });
+            }
+            return {
+              ok: true,
+              value: {
+                calls: toolCalls.map((call) => ({
+                  id: call.id,
+                  target: call.name,
+                  input: call.arguments,
+                })),
+                assistantText: finalText,
+              },
+            };
+          }
+          if (textStarted) {
+            yield* session.emitEmission({
+              protocol: "ag-ui",
+              event: { type: "TEXT_MESSAGE_END", messageId: assistantMessageId(params) },
+            });
+          }
+          return { ok: true, value: finalText };
+        }
+
+        const event = next.value;
+        for (const projected of runtimeEventToStreamEvents(event, params, { textStarted })) {
+          if (projected.type === "TEXT_MESSAGE_START") {
+            textStarted = true;
+          }
+          yield* session.emitEmission({ protocol: "ag-ui", event: projected });
+        }
+        if (event.type === "text_delta") {
+          text += event.delta;
+        }
+        if (event.type === "toolcall_end") {
+          const canonical = canonicalToolCall(event.toolCall, params);
+          if (!canonical) {
+            continue;
+          }
+          toolCalls.push(canonical);
+          yield* session.emitEmission({ protocol: "ag-ui", event: toolCallStartEvent(canonical) });
+          yield* session.emitEmission({ protocol: "ag-ui", event: toolCallArgsEvent(canonical) });
+          yield* session.emitEmission({ protocol: "ag-ui", event: toolCallEndEvent(canonical) });
+        }
+      }
+    },
+    *sample() {
+      return {
+        ok: false,
+        code: "unsupported_operation",
+        message: "chat fold model requires session context",
+      };
+    },
+  } as ModelProvider;
+}
+
+function createChatFoldCapabilityResolver(
+  params: SessionContractChatEngineParams,
+): CapabilityResolver {
+  return {
+    *callWithSession(
+      target: string,
+      input: unknown,
+      context: { parent: FoldSessionHost; callWaitSeq: number; callId?: string },
+    ): Operation<AnswerPayload> {
+      return yield* executeToolCall(
+        params,
+        target,
+        input,
+        context.callId ?? `call:${target}`,
+        context.parent,
+      );
+    },
+    *call(target: string, input: unknown): Operation<AnswerPayload> {
+      return yield* executeToolCall(params, target, input, `call:${target}`);
+    },
+  } as CapabilityResolver;
+}
+
+function* executeToolCall(
+  params: SessionContractChatEngineParams,
+  target: string,
+  input: unknown,
+  callId: string,
+  parent?: FoldSessionHost,
+): Operation<AnswerPayload> {
+  const entry = resolveToolEntry(params, target);
+  if (!entry) {
+    return {
+      ok: true,
+      value: { callId, toolName: target, result: `Error: Tool not found: ${target}` },
+    };
+  }
+  const pluginTool = pluginToolImplementation(entry.implementation);
+  if (pluginTool && params.pluginSessionManager) {
+    return yield* executePluginToolCall(
+      params,
+      pluginTool,
+      entry.definition.name,
+      input,
+      callId,
+      parent,
+    );
+  }
+  if (!params.toolRuntime) {
+    return {
+      ok: true,
+      value: {
+        callId,
+        toolName: entry.definition.name,
+        result: `Error: Tool runtime not configured for ${entry.definition.name}`,
+      },
+    };
+  }
+  try {
+    const execution = yield* params.toolRuntime.execute({
+      entry,
+      call: {
+        id: callId,
+        type: "function",
+        function: { name: entry.definition.name, arguments: asRecord(input) },
+      },
+      signal: params.signal,
+      metadata: { threadId: params.agUiRun.threadId, runId: params.agUiRun.runId },
+    });
+    return yield* answerFromToolExecution(execution, entry.definition.name, parent);
+  } catch (error) {
+    const validation = getToolParameterValidationErrorPayload(error);
+    const message = validation?.message ?? (error instanceof Error ? error.message : String(error));
+    return {
+      ok: true,
+      value: {
+        callId,
+        toolName: entry.definition.name,
+        result: `Error: ${message}`,
+        ...(validation ? { error: validation } : {}),
+      },
+    };
+  }
+}
+
+function* executePluginToolCall(
+  params: SessionContractChatEngineParams,
+  tool: unknown,
+  toolName: string,
+  input: unknown,
+  callId: string,
+  parent?: FoldSessionHost,
+): Operation<AnswerPayload> {
+  const session = yield* params.pluginSessionManager!.create({
+    tool: tool as never,
+    params: input,
+    callId,
+    signal: params.signal,
+  });
+  const event = yield* session.nextEvent();
+  return yield* answerFromPluginSessionEvent(event, toolName, callId, parent);
+}
+
+function* answerFromPluginSessionEvent(
+  event: PluginSessionEvent | null,
+  toolName: string,
+  callId: string,
+  parent?: FoldSessionHost,
+): Operation<AnswerPayload> {
+  if (!event) {
+    return { ok: false, code: "session_lost", message: "Plugin session ended without a result" };
+  }
+  switch (event.type) {
+    case "elicit_request":
+      if (parent) {
+        yield* emitParentElicitWait(parent, toolName, callId, event.elicitId, {
+          key: event.key,
+          message: event.message,
+          schema: event.schema,
+          ref: {
+            runtimeId: "plugin-session-manager",
+            executionId: callId,
+            sessionId: callId,
+            callId,
+            toolName,
+          },
+        });
+      }
+      return {
+        ok: false,
+        code: "tool_awaiting_elicit",
+        message: event.message,
+        details: { callId, toolName, elicitId: event.elicitId, key: event.key },
+      };
+    case "result":
+      return { ok: true, value: { callId, toolName, result: event.result } };
+    case "error":
+      return { ok: false, code: "tool_error", message: event.message };
+    case "cancelled":
+      return {
+        ok: false,
+        code: "resume_unavailable",
+        message: event.reason ?? "Plugin session cancelled",
+      };
+  }
+}
+
+function pluginToolImplementation(implementation: unknown): unknown | null {
+  return implementation &&
+    typeof implementation === "object" &&
+    (implementation as { kind?: unknown }).kind === "mcp" &&
+    "tool" in implementation
+    ? (implementation as { tool: unknown }).tool
+    : null;
+}
+
+function resolveToolEntry(
+  params: SessionContractChatEngineParams,
+  target: string,
+): ToolInventoryEntry | undefined {
+  const entries = params.toolInventoryEntries ?? [];
+  const exact = entries.find((entry) => entry.definition.name === target);
+  if (exact) {
+    return exact;
+  }
+  const aliasMatches = entries.filter((entry) => entry.definition.name.startsWith(`${target}_`));
+  return aliasMatches.length === 1 ? aliasMatches[0] : undefined;
+}
+
+function canonicalToolCall(
+  toolCall: ToolCallBlock,
+  params: SessionContractChatEngineParams,
+): ToolCallBlock | null {
+  const entry = resolveToolEntry(params, toolCall.name);
+  if (!entry) {
+    return null;
+  }
+  const name = entry.definition.name;
+  // Some providers omit tool-call ids. The fold driver requires a stable string
+  // id per call (it becomes the tool_call_id, the resolver callId, the plugin
+  // session key, and the interrupt/resume ref). Synthesize a deterministic id
+  // from the turn + call signature so the streaming and final-message passes
+  // agree on the same id and downstream resume can address the call.
+  const id =
+    typeof toolCall.id === "string" && toolCall.id.length > 0
+      ? toolCall.id
+      : synthesizeToolCallId(params, name, toolCall.arguments);
+  return { ...toolCall, id, name };
+}
+
+function synthesizeToolCallId(
+  params: SessionContractChatEngineParams,
+  name: string,
+  args: unknown,
+): string {
+  const seed = `${name}:${stableStringify(args)}`;
+  let hash = 5381;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = ((hash << 5) + hash + seed.charCodeAt(i)) >>> 0;
+  }
+  return `${assistantMessageId(params)}-call-${hash.toString(36)}`;
+}
+
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value ?? null);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  const entries = Object.keys(value as Record<string, unknown>)
+    .slice()
+    .sort()
+    .map(
+      (key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`,
+    );
+  return `{${entries.join(",")}}`;
+}
+
+function* answerFromToolExecution(
+  execution: ToolExecution,
+  target: string,
+  parent?: FoldSessionHost,
+): Operation<AnswerPayload> {
+  switch (execution.kind) {
+    case "completed":
+      return {
+        ok: true,
+        value: { callId: execution.ref.callId, toolName: target, result: execution.result },
+      };
+    case "failed": {
+      const validation = getToolParameterValidationErrorPayload(execution.error.cause);
+      return {
+        ok: true,
+        value: {
+          callId: execution.ref.callId,
+          toolName: target,
+          result: `Error: ${execution.error.message}`,
+          ...(validation ? { error: validation } : {}),
+        },
+      };
+    }
+    case "awaiting_elicit": {
+      if (parent) {
+        yield* emitParentElicitWait(
+          parent,
+          target,
+          execution.ref.callId,
+          execution.request.elicitId,
+          {
+            key: execution.request.key,
+            message: execution.request.message,
+            schema: execution.request.schema,
+            ...(execution.request.context ? { context: execution.request.context } : {}),
+            ref: execution.ref,
+          },
+        );
+      }
+      return {
+        ok: false,
+        code: "tool_awaiting_elicit",
+        message: execution.request.message,
+        details: { callId: execution.ref.callId, toolName: target, request: execution.request },
+      };
+    }
+    case "running":
+      return yield* answerFromRunningToolExecution(execution, target, parent);
+  }
+}
+
+function* projectResumeResponses(
+  params: SessionContractChatEngineParams,
+  session: FoldSessionHost,
+  config: AgentConfig,
+): Operation<boolean> {
+  const toolResults: Array<{ callId: string; toolName: string; content: string }> = [];
+  let sawElicit = false;
+  let handled = false;
+
+  for (const response of params.elicitResponses ?? []) {
+    const answer = yield* resolveResumeResponse(params, response, session);
+    if (!answer) {
+      continue;
+    }
+    handled = true;
+
+    if (answer.ok) {
+      const event = toolResultEventFromCallAnswer(answer);
+      if (event) {
+        yield* session.emitEmission({ protocol: "ag-ui", event });
+      }
+      const value = answer.value as { callId?: unknown; toolName?: unknown; result?: unknown };
+      if (typeof value?.callId === "string") {
+        toolResults.push({
+          callId: value.callId,
+          toolName:
+            typeof value.toolName === "string" ? value.toolName : (response.toolName ?? "tool"),
+          content: stringifyToolResult(value.result),
+        });
+      }
+      continue;
+    }
+
+    if (answer.code === "tool_awaiting_elicit") {
+      // The resolver already emitted a parent `elicit` wait; the adapter stream
+      // projects it into a fresh RUN_FINISHED interrupt. No model continuation.
+      sawElicit = true;
+      continue;
+    }
+
+    yield* session.terminal("error", { code: answer.code, message: answer.message ?? answer.code });
+    return true;
+  }
+
+  if (sawElicit || toolResults.length === 0) {
+    return handled;
+  }
+
+  // Final tool result(s) are in. Continue the model turn from the tool output
+  // so the assistant produces its own real post-tool response. This is the fold
+  // driver's post-tool continuation, carried across the resume boundary — the
+  // model is called for real; nothing about the tool output is synthesized.
+  yield* runModelContinuation(params, session, config, toolResults);
+  return true;
 }
 
 /**
- * Phase-1 session-contract adapter for the durable chat engine projection.
- *
- * IMPORTANT: This is a projection sketch, not a full-profile conforming
- * adapter. It records the kernel log beside an engine stream but does NOT
- * integrate with the durable chat engine's interrupt/resume path — `respond()`
- * appends an overlay answer and re-parks without relaying the answer into the
- * engine or continuing the interrupted turn. See REQ-051 (scaffolded).
- *
- * The adapter keeps the public chat/useChat API untouched: callers provide the
- * same durable chat engine stream factory used by the handler, and this layer
- * records the kernel log beside it. Chat events project to inert emissions;
- * AG-UI interrupts project to elicit waits (one wait per interrupt); turn
- * boundaries project to fold checkpoints followed by message waits.
+ * Resolve a single elicit response against its owning execution and return the
+ * resulting {@link AnswerPayload}. Resumes normally carry a continuation ref
+ * that addresses the parked execution on the tool runtime. When the provider
+ * omitted tool-call ids, no ref can be built, so the response is routed to a
+ * live plugin session directly. Returns `null` when neither a plugin session
+ * nor a continuation ref can be resolved (nothing to resume).
  */
-export function* createDurableChatEngineSessionAdapter(
-  options: DurableChatEngineSessionAdapterOptions,
-): Operation<Session> {
-  const session = yield* createInMemorySession({
-    sessionId: options.sessionId,
-    mode: "fold",
-    ...(options.bufferStore !== undefined ? { bufferStore: options.bufferStore } : {}),
-  });
-  const existing = yield* session.records();
-  if (existing.length === 0) {
-    yield* session.checkpoint("fold");
-    yield* session.emitWait("message", {});
+function* resolveResumeResponse(
+  params: SessionContractChatEngineParams,
+  response: ElicitResponse,
+  session: FoldSessionHost,
+): Operation<AnswerPayload | null> {
+  // Plugin-session resume: responses without a continuation ref (e.g. the
+  // provider omitted tool-call ids) address a live plugin session directly.
+  if (!response.ref && params.pluginSessionManager) {
+    const pluginSession = yield* params.pluginSessionManager.get(
+      response.sessionId || response.callId,
+    );
+    if (pluginSession) {
+      yield* pluginSession.respondToElicit(response.elicitId, response.result as never);
+      const event = yield* pluginSession.nextEvent();
+      return yield* answerFromPluginSessionEvent(
+        event,
+        response.toolName ?? pluginSession.toolName,
+        response.callId,
+        session,
+      );
+    }
   }
-  return wrapDurableChatEngineSession(session, options);
+
+  const ref = response.ref;
+  if (!ref || !params.toolRuntime) {
+    return null;
+  }
+  if (params.toolRuntimeId && ref.runtimeId !== params.toolRuntimeId) {
+    return {
+      ok: false,
+      code: "TOOL_RESUME_FAILED",
+      message: `Continuation ref mismatch: runtimeId expected ${params.toolRuntimeId}, received ${ref.runtimeId}`,
+    };
+  }
+  try {
+    const execution = yield* params.toolRuntime.resume({
+      ref,
+      input: { type: "elicit_response", elicitId: response.elicitId, result: response.result },
+      signal: params.signal,
+      metadata: { threadId: params.agUiRun.threadId, runId: params.agUiRun.runId },
+    });
+    return yield* answerFromToolExecution(execution, ref.toolName, session);
+  } catch (error) {
+    return {
+      ok: false,
+      code: "TOOL_RESUME_FAILED",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
-function wrapDurableChatEngineSession(
-  session: InMemorySession,
-  options: DurableChatEngineSessionAdapterOptions,
-): Session {
-  return {
-    id: session.id,
-    events: session.events,
-    *send(message: MessageInput, opts?: { idempotencyKey?: string }): Operation<SendAck> {
-      const ack = yield* session.send(message, opts);
-      const engine = yield* options.createEngine(message, { sessionId: session.id });
-      const subscription = yield* engine;
-      let next = yield* subscription.next();
-      while (!next.done) {
-        const event = next.value;
-        yield* session.emitEmission({ protocol: "ag-ui", event });
-        if (event.type === "RUN_ERROR") {
-          yield* session.terminal("error", { code: event.code ?? "session_lost", message: event.message });
-          return ack;
+/**
+ * Continue a fold turn after a tool/plugin execution completed across the
+ * resume boundary. Rebuilds the transcript from the request history plus the
+ * final tool result(s), then drives the model to a real response. Mirrors the
+ * fold driver's post-tool iteration: sample -> (optional) tool calls -> sample,
+ * then checkpoint + message wait so the adapter stream closes with success.
+ */
+function* runModelContinuation(
+  params: SessionContractChatEngineParams,
+  session: FoldSessionHost,
+  config: AgentConfig,
+  toolResults: Array<{ callId: string; toolName: string; content: string }>,
+): Operation<void> {
+  const model = createChatFoldModelProvider(params) as ModelProvider & {
+    sampleWithSession(
+      request: SampleWaitPayload,
+      context: { session: FoldSessionHost; sampleWaitSeq: number },
+    ): Operation<AnswerPayload>;
+  };
+  const transcript: unknown[] = [
+    ...params.messages,
+    ...toolResults.map((result) => ({
+      role: "tool",
+      tool_call_id: result.callId,
+      content: result.content,
+    })),
+  ];
+  const maxIterations = config.maxIterations ?? params.maxIterations ?? 10;
+
+  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    const request: SampleWaitPayload = {
+      messages: transcript,
+      options: params.systemPrompt !== undefined ? { system: params.systemPrompt } : {},
+    };
+    const wait = yield* session.emitWait("sample", request);
+    const answer = yield* model.sampleWithSession(request, {
+      session,
+      sampleWaitSeq: wait.waitSeq,
+    });
+    yield* session.respondIfPending(waitToken(session.id, wait.waitSeq), answer, {
+      wait: "sample",
+    });
+
+    if (!answer.ok) {
+      yield* session.terminal("error", answer);
+      return;
+    }
+
+    const value = answer.value;
+    if (typeof value === "string") {
+      transcript.push({ role: "assistant", content: value });
+      break;
+    }
+
+    if (isContinuationToolCallValue(value) && value.calls.length > 0) {
+      transcript.push({
+        role: "assistant",
+        content: value.assistantText ?? "",
+        tool_calls: value.calls.map((toolCall) => ({
+          id: toolCall.id,
+          type: "function" as const,
+          function: { name: toolCall.target, arguments: toolCall.input },
+        })),
+      });
+      let parked = false;
+      for (const toolCall of value.calls) {
+        const callAnswer = yield* executeToolCall(
+          params,
+          toolCall.target,
+          toolCall.input,
+          toolCall.id,
+          session,
+        );
+        if (!callAnswer.ok && callAnswer.code === "tool_awaiting_elicit") {
+          // Nested elicit during continuation: the parent elicit wait is already
+          // emitted, so the adapter stream projects a fresh interrupt.
+          parked = true;
+          break;
         }
-        if (event.type === "RUN_FINISHED") {
-          if (event.outcome?.type === "interrupt" && event.outcome.interrupts.length > 0) {
-            for (const interrupt of event.outcome.interrupts) {
-              yield* session.emitWait(
-                "elicit",
-                {
-                  key: interrupt.id,
-                  message: interrupt.message ?? interrupt.reason,
-                  responseSchema: interrupt.responseSchema ?? {},
-                  ...(interrupt.metadata !== undefined ? { context: sanitizeMetadata(interrupt.metadata) } : {}),
-                },
-                interrupt.expiresAt !== undefined ? { expiresAt: interrupt.expiresAt } : undefined,
-              );
-            }
-            return ack;
-          }
-          yield* session.checkpoint("fold");
-          yield* session.emitWait("message", {});
-          return ack;
+        const event = toolResultEventFromCallAnswer(callAnswer);
+        if (event) {
+          yield* session.emitEmission({ protocol: "ag-ui", event });
         }
-        next = yield* subscription.next();
+        const content = callAnswer.ok
+          ? stringifyToolResult((callAnswer.value as { result?: unknown }).result)
+          : `Error: ${callAnswer.message ?? callAnswer.code}`;
+        transcript.push({ role: "tool", tool_call_id: toolCall.id, content });
       }
-      yield* session.checkpoint("fold");
-      yield* session.emitWait("message", {});
-      return ack;
+      if (parked) {
+        return;
+      }
+      continue;
+    }
+
+    break;
+  }
+
+  yield* session.checkpoint("fold");
+  yield* session.emitWait(
+    "message",
+    params.systemPrompt !== undefined ? { prompt: params.systemPrompt } : {},
+  );
+}
+
+type ContinuationToolCallValue = {
+  calls: Array<{ id: string; target: string; input: unknown }>;
+  assistantText?: string;
+};
+
+function isContinuationToolCallValue(value: unknown): value is ContinuationToolCallValue {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const calls = (value as { calls?: unknown }).calls;
+  return (
+    Array.isArray(calls) &&
+    calls.every((call) =>
+      Boolean(
+        call &&
+        typeof call === "object" &&
+        typeof (call as { id?: unknown }).id === "string" &&
+        typeof (call as { target?: unknown }).target === "string" &&
+        "input" in call,
+      ),
+    )
+  );
+}
+
+function* emitParentElicitWait(
+  parent: FoldSessionHost,
+  toolName: string,
+  callId: string,
+  elicitId: string,
+  request: {
+    key: string;
+    message: string;
+    schema: Record<string, unknown>;
+    context?: Record<string, unknown>;
+    ref: unknown;
+  },
+): Operation<void> {
+  yield* parent.emitWait("elicit", {
+    key: request.key,
+    message: request.message,
+    responseSchema: withModelContext(request.schema, request.context),
+    metadata: {
+      "sweatpants/toolName": toolName,
+      "sweatpants/key": request.key,
+      callId,
+      elicitId,
+      ref: request.ref,
     },
-    *respond(waitToken: string, payload: unknown, opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta }): Operation<RespondAck> {
-      const ack = yield* session.respond(waitToken, payload, opts);
-      // Record a neutral projection emission for the resume overlay. The
-      // previous implementation emitted a synthetic AG-UI `RESUME_ACCEPTED`
-      // event that does not exist in the protocol; this neutral emission
-      // records the resume without impersonating a protocol event.
-      yield* session.emitEmission({ protocol: "session-contract", event: { type: "resume_projected", waitToken, payload } });
-      yield* session.checkpoint("fold");
-      yield* session.emitWait("message", {});
-      return ack;
-    },
-    cancel: session.cancel,
-    status: session.status,
+  });
+}
+
+function* answerFromRunningToolExecution(
+  execution: Extract<ToolExecution, { kind: "running" }>,
+  target: string,
+  parent?: FoldSessionHost,
+): Operation<AnswerPayload> {
+  const events = yield* execution.events;
+  let next = yield* events.next();
+  while (!next.done) {
+    const event = next.value;
+    switch (event.type) {
+      case "elicit_request": {
+        if (parent) {
+          const context = asOptionalRecord(event["context"]);
+          yield* emitParentElicitWait(parent, target, execution.ref.callId, event.elicitId, {
+            key: event.key,
+            message: event.message,
+            schema: event.schema,
+            ...(context ? { context } : {}),
+            ref: execution.ref,
+          });
+        }
+        return {
+          ok: false,
+          code: "tool_awaiting_elicit",
+          message: event.message,
+          details: {
+            callId: execution.ref.callId,
+            toolName: target,
+            elicitId: event.elicitId,
+            key: event.key,
+          },
+        };
+      }
+      case "result":
+        return {
+          ok: true,
+          value: { callId: execution.ref.callId, toolName: target, result: event.result },
+        };
+      case "error":
+        return { ok: false, code: event.code ?? "tool_error", message: event.message };
+      case "cancelled":
+        return {
+          ok: false,
+          code: "resume_unavailable",
+          message: event.reason ?? "Tool execution cancelled",
+        };
+      default:
+        break;
+    }
+    next = yield* events.next();
+  }
+  return { ok: false, code: "session_lost", message: "Tool execution ended without a result" };
+}
+
+function runtimeEventToStreamEvents(
+  event: RuntimeStreamEvent,
+  params: SessionContractChatEngineParams,
+  state: { textStarted: boolean },
+): StreamEvent[] {
+  switch (event.type) {
+    case "text_delta":
+      return [
+        ...(state.textStarted
+          ? []
+          : [
+              {
+                type: "TEXT_MESSAGE_START" as const,
+                messageId: assistantMessageId(params),
+                role: "assistant" as const,
+              },
+            ]),
+        { type: "TEXT_MESSAGE_CONTENT", messageId: assistantMessageId(params), delta: event.delta },
+      ];
+    case "thinking_delta":
+      return [
+        {
+          type: "REASONING_MESSAGE_CONTENT",
+          messageId: `reasoning:${params.agUiRun.runId}`,
+          delta: event.delta,
+        },
+      ];
+    case "error":
+      return [
+        {
+          type: "RUN_ERROR",
+          message: event.error.errorMessage ?? "Runtime error",
+          code: "runtime_error",
+        },
+      ];
+    default:
+      return [];
+  }
+}
+
+function eventsFromEmission(payload: unknown): StreamEvent[] {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+  const record = payload as { protocol?: unknown; event?: unknown; type?: unknown };
+  if (record.protocol === "ag-ui" && record.event && typeof record.event === "object") {
+    return [record.event as StreamEvent];
+  }
+  return [];
+}
+
+function toolResultEventFromCallAnswer(payload: AnswerPayload): StreamEvent | null {
+  if (!payload.ok) {
+    return null;
+  }
+  const value = payload.value as
+    | { callId?: unknown; toolName?: unknown; result?: unknown; error?: unknown }
+    | undefined;
+  if (!value || typeof value.callId !== "string") {
+    return null;
+  }
+  return {
+    type: "TOOL_CALL_RESULT",
+    messageId: `tool:${value.callId}`,
+    toolCallId: value.callId,
+    ...(typeof value.toolName === "string" ? { toolCallName: value.toolName } : {}),
+    content: stringifyToolResult(value.result),
+    role: "tool",
+    ...(value.error && typeof value.error === "object" ? { error: value.error as never } : {}),
   };
 }
 
-/**
- * Strip keys that the contract validator recursively rejects as topology
- * fields (sessionId, url, endpoint, …) from adapter-forwarded metadata so
- * that projected elicit waits pass `validateLog`.
- */
-const FORBIDDEN_TOPOLOGY_KEYS = new Set([
-  "endpoint",
-  "url",
-  "transport",
-  "handle",
-  "factory",
-  "childSessionId",
-  "childWaitSeq",
-  "sessionId",
-]);
+function elicitRunFinished(
+  params: SessionContractChatEngineParams,
+  wait: WaitRecord<"elicit">,
+): StreamEvent {
+  return {
+    type: "RUN_FINISHED",
+    ...params.agUiRun,
+    outcome: {
+      type: "interrupt",
+      interrupts: [
+        {
+          id:
+            metadataString(wait.payload.metadata, "elicitId") ??
+            String(wait.payload.key || `wait:${wait.waitSeq}`),
+          reason: "input_required",
+          ...(metadataString(wait.payload.metadata, "callId")
+            ? { toolCallId: metadataString(wait.payload.metadata, "callId")! }
+            : {}),
+          message: wait.payload.message,
+          responseSchema: asRecord(wait.payload.responseSchema),
+          ...(wait.expiresAt ? { expiresAt: wait.expiresAt } : {}),
+          ...(publicInterruptMetadata(wait.payload.metadata)
+            ? { metadata: publicInterruptMetadata(wait.payload.metadata)! }
+            : {}),
+        },
+      ],
+    },
+  };
+}
 
-function sanitizeMetadata(value: unknown): unknown {
-  if (value == null || typeof value !== "object") {
-    return value;
+function isHaltError(error: unknown): boolean {
+  return error instanceof Error && error.message === "halted";
+}
+
+function latestUserMessage(params: SessionContractChatEngineParams) {
+  const last = [...params.messages].reverse().find((message) => message.role === "user");
+  return { role: "user", content: last?.content ?? "" };
+}
+
+function toRuntimeContext(
+  request: SampleWaitPayload,
+  params: SessionContractChatEngineParams,
+): RuntimeContext {
+  return {
+    ...(params.systemPrompt ? { systemPrompt: params.systemPrompt } : {}),
+    messages: request.messages.map(toRuntimeMessage),
+    tools: params.toolSchemas.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+    })),
+  };
+}
+
+function toRuntimeMessage(message: unknown): RuntimeMessage {
+  const record =
+    typeof message === "object" && message !== null
+      ? (message as Record<string, unknown>)
+      : { role: "user", content: String(message ?? "") };
+  const role = record["role"];
+  if (role === "assistant") {
+    const content = typeof record["content"] === "string" ? record["content"] : "";
+    const toolCalls = Array.isArray(record["tool_calls"]) ? record["tool_calls"] : [];
+    return {
+      role: "assistant",
+      content: [
+        ...(content ? [{ type: "text" as const, text: content }] : []),
+        ...toolCalls.map((call) => {
+          const c = call as { id?: unknown; function?: { name?: unknown; arguments?: unknown } };
+          return {
+            type: "toolCall" as const,
+            id: typeof c.id === "string" ? c.id : "tool-call",
+            name: typeof c.function?.name === "string" ? c.function.name : "unknown",
+            arguments: asRecord(c.function?.arguments),
+          };
+        }),
+      ],
+    };
   }
-  if (Array.isArray(value)) {
-    return value.map(sanitizeMetadata);
+  if (role === "tool") {
+    return {
+      role: "toolResult",
+      toolCallId: typeof record["tool_call_id"] === "string" ? record["tool_call_id"] : "tool-call",
+      toolName: "tool",
+      content: [
+        {
+          type: "text",
+          text:
+            typeof record["content"] === "string"
+              ? record["content"]
+              : stringifyToolResult(record["content"]),
+        },
+      ],
+      isError: false,
+    };
+  }
+  if (role === "system") {
+    return {
+      role: "system",
+      content:
+        typeof record["content"] === "string"
+          ? record["content"]
+          : stringifyToolResult(record["content"]),
+    };
+  }
+  return {
+    role: "user",
+    content:
+      typeof record["content"] === "string"
+        ? record["content"]
+        : stringifyToolResult(record["content"]),
+  };
+}
+
+function textFromAssistant(message: AssistantMessage): string {
+  return message.content
+    .filter(
+      (block): block is Extract<AssistantMessage["content"][number], { type: "text" }> =>
+        block.type === "text",
+    )
+    .map((block) => block.text)
+    .join("");
+}
+
+function assistantMessageId(params: SessionContractChatEngineParams): string {
+  return `assistant:final:${params.agUiRun.runId}`;
+}
+
+function toolCallStartEvent(toolCall: ToolCallBlock): StreamEvent {
+  return {
+    type: "TOOL_CALL_START",
+    toolCallId: toolCall.id,
+    toolCallName: toolCall.name,
+    parentMessageId: `assistant:tools:${toolCall.id}`,
+  };
+}
+
+function toolCallArgsEvent(toolCall: ToolCallBlock): StreamEvent {
+  return {
+    type: "TOOL_CALL_ARGS",
+    toolCallId: toolCall.id,
+    delta: JSON.stringify(toolCall.arguments),
+  };
+}
+
+function toolCallEndEvent(toolCall: ToolCallBlock): StreamEvent {
+  return { type: "TOOL_CALL_END", toolCallId: toolCall.id };
+}
+
+function metadataString(
+  metadata: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function publicInterruptMetadata(
+  metadata: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!metadata) {
+    return undefined;
   }
   const result: Record<string, unknown> = {};
-  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
-    if (FORBIDDEN_TOPOLOGY_KEYS.has(key)) {
-      continue;
+  for (const key of ["sweatpants/toolName", "sweatpants/key"]) {
+    if (metadata[key] !== undefined) {
+      result[key] = metadata[key];
     }
-    result[key] = sanitizeMetadata(nested);
   }
-  return result;
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function withModelContext(
+  schema: Record<string, unknown>,
+  context: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  return context ? { ...schema, "x-model-context": context } : schema;
+}
+
+function asOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function stringifyToolResult(value: unknown): string {
+  return typeof value === "string" ? value : JSON.stringify(value ?? null);
+}
+
+function terminalMessage(payload: unknown): string {
+  if (
+    payload &&
+    typeof payload === "object" &&
+    typeof (payload as { message?: unknown }).message === "string"
+  ) {
+    return (payload as { message: string }).message;
+  }
+  return "Session failed";
+}
+
+function terminalCode(payload: unknown): string | undefined {
+  return payload &&
+    typeof payload === "object" &&
+    typeof (payload as { code?: unknown }).code === "string"
+    ? (payload as { code: string }).code
+    : undefined;
 }

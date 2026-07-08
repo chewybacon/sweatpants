@@ -12,6 +12,7 @@ export type {
   ElicitWaitPayload,
   EmissionRecord,
   FateRecord,
+  FoldSessionHost,
   LogRecord,
   MessageInput,
   MessageWaitPayload,
@@ -20,6 +21,7 @@ export type {
   PostOrphanPolicy,
   ResolutionMeta,
   RespondAck,
+  RespondIfPendingResult,
   SampleWaitPayload,
   SendAck,
   Session,
@@ -35,13 +37,13 @@ export type {
   WaitPayload,
   WaitPayloadByKind,
   WaitRecord,
-} from './types.ts'
+} from "./types.ts";
 
-export { SessionContractError } from './types.ts'
-export { deriveLogState, deriveStatus, nextWaitSeq, type DerivedLogState } from './derive.ts'
-export { parseWaitToken, waitToken } from './token.ts'
-export { validateLog, type ValidationResult } from './validator.ts'
-export { assertDeclaredCapability, listCapabilities } from './capabilities.ts'
+export { SessionContractError } from "./types.ts";
+export { deriveLogState, deriveStatus, nextWaitSeq, type DerivedLogState } from "./derive.ts";
+export { parseWaitToken, waitToken } from "./token.ts";
+export { validateLog, type ValidationResult } from "./validator.ts";
+export { assertDeclaredCapability, listCapabilities } from "./capabilities.ts";
 export {
   createInMemorySession,
   createSessionContractInMemoryStore,
@@ -50,23 +52,26 @@ export {
   type InMemorySession,
   type TokenBuffer,
   type TokenBufferStore,
-} from './in-memory-session.ts'
-export { createAgent, runOneFoldTurn, type Agent, type AgentConfig } from './create-agent.ts'
-export { spawnFoldDriver } from './fold-driver.ts'
+} from "./in-memory-session.ts";
+export { createAgent, runOneFoldTurn, type Agent, type AgentConfig } from "./create-agent.ts";
+export { spawnFoldDriver } from "./fold-driver.ts";
 export {
   createLoopbackResolver,
   type LoopbackResolverOptions,
   type ResolverCallContext,
   type SessionAwareCapabilityResolver,
-} from './loopback.ts'
+} from "./loopback.ts";
 export {
   CapabilityResolverContext,
+  FoldSessionBufferStoreContext,
   ModelProviderContext,
   PostOrphanPolicyContext,
   useCapabilityResolver,
+  useFoldSessionBufferStore,
   useModelProvider,
+  useOptionalFoldSessionBufferStore,
   usePostOrphanPolicy,
-} from './contexts.ts'
+} from "./contexts.ts";
 
 // Projection helpers (AG-UI, task-oriented) have been moved to the
 // `@sweatpants/session-contract/projections` subpath export to preserve

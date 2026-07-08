@@ -37,8 +37,12 @@ const config = defineConfig({
   },
 
   plugins: [
-    // Node.js worker_threads support with ?nodeWorker and ?modulePath imports
-    nodeWorkerPlugin(),
+    // Node.js worker_threads support with ?nodeWorker and ?modulePath imports.
+    // Skipped under Vitest: its resolveId rewrites the worker id (appending
+    // &importer=...), which defeats vitest's module mocking of the `?modulePath`
+    // import and makes esbuild choke on the query-laden .ts path. Tests mock the
+    // worker URL directly; real dev/prod builds keep the plugin.
+    ...(process.env["VITEST"] ? [] : [nodeWorkerPlugin()]),
     devtools(),
     viteTsConfigPaths({
       projects: ["./tsconfig.json"],
@@ -71,8 +75,10 @@ const config = defineConfig({
       DEFAULT_CHAT_MODEL_PROVIDER: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
       DEFAULT_CHAT_MODEL_ID: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "claude-sonnet-4.5",
     },
-    // Exclude Playwright e2e tests from Vitest
-    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
+    // Exclude Playwright e2e tests from Vitest.
+    // The outside-in HTTP tier is excluded from the default (hermetic) run and
+    // is run selectively via vitest.outside-in.config.ts.
+    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**", "**/outside-in/**"],
   },
 });
 
