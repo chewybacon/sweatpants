@@ -17,7 +17,7 @@ import {
   type ElicitState,
   type PluginHandleInput,
 } from "@sweatpants/framework/chat";
-import { withChatFetch, type ChatBinding } from "./chat-fetch.ts";
+import { withChatFetch, type ChatBinding, type ChatFetch } from "./chat-fetch.ts";
 import { createTranscriptCollector, normalizeStreamEvent, type Transcript } from "./transcript.ts";
 
 /** A reply to a single elicit request. `null` means "stop, do not answer". */

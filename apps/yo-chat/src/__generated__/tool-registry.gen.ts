@@ -5,10 +5,10 @@
  * Regenerate by modifying files in src/tools/
  */
 
-import { askQuestion } from '../tools/general/ask_question'
+import { askQuestion } from '../tools/general/ask-question/tool'
 import { bookFlightTool } from '../tools/book-flight/tool'
 import { calculator } from '../tools/calculator'
-import { pickCard } from '../tools/pick-card'
+import { pickCard } from '../tools/pick-card/tool'
 import { playTttTool } from '../tools/play-ttt/tool'
 import { tictactoeTool } from '../tools/tictactoe/tool'
 
