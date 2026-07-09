@@ -159,7 +159,7 @@ describe('spawnFoldDriver Phase 2 parity and robustness', () => {
             content: 'I will calculate.',
             tool_calls: [expect.objectContaining({ id: 'calculator-call', function: { name: 'calculator', arguments: { expression: '2+2' } } })],
           },
-          { role: 'tool', tool_call_id: 'calculator-call', content: JSON.stringify({ target: 'calculator', input: { expression: '2+2' }, result: 4 }) },
+          { role: 'tool', tool_call_id: 'calculator-call', content: '4' },
         ],
       })
     })

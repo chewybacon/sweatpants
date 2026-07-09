@@ -104,6 +104,14 @@ type DriverAction =
  * function — no in-memory state.
  */
 function decideAction(state: ReturnType<typeof deriveLogState>): DriverAction {
+  // If there are pending elicit waits, the client needs to answer them
+  // before the fold driver can make progress. Park and wait for the log
+  // to change (the client will respond via respond()).
+  const hasPendingElicit = state.pendingWaits.some((w) => w.kind === 'elicit')
+  if (hasPendingElicit) {
+    return { type: 'park' }
+  }
+
   // Check for pending waits that need restore action
   for (const wait of state.pendingWaits) {
     if (wait.kind === 'sample') {
@@ -112,10 +120,12 @@ function decideAction(state: ReturnType<typeof deriveLogState>): DriverAction {
       return { type: 're_sample', sampleWaitSeq: wait.waitSeq }
     }
     if (wait.kind === 'call') {
-      // Pending call: resolver should reattach or deliver session_lost
+      // Pending call: resolver should reattach or deliver session_lost.
+      // This fires after an elicit was answered — the tool continues and
+      // either produces a result or emits another elicit.
       return { type: 'reattach_call', callWaitSeq: wait.waitSeq }
     }
-    // elicit waits: the client re-answers via respond(). Park.
+    // elicit waits: handled above (park if any pending).
   }
 
   // Check for unconsumed messages (message waits matched to message answers)
@@ -164,6 +174,12 @@ type TranscriptEntry = {
 }
 
 type ToolCallModelValue = { calls: ToolCallRequest[]; assistantText?: string }
+type SuspendedCallBatchState = {
+  kind: 'call_batch'
+  nextIteration: number
+  transcript: TranscriptEntry[]
+  calls: ToolCallRequest[]
+}
 type SessionAwareModelProvider = ModelProvider & {
   sampleWithSession?: (
     request: Parameters<ModelProvider['sample']>[0],
@@ -172,21 +188,30 @@ type SessionAwareModelProvider = ModelProvider & {
 }
 
 /**
- * Run a single fold turn: iterative sample → parallel call waits → tool
- * results transcript → sample, then checkpoint → message wait.
+ * Run a single fold turn: iterative sample → call batch → tool-result
+ * transcript → sample, then checkpoint → message wait.
  */
 function* runFoldTurn<C extends CapabilityMap>(
   session: FoldSessionHost,
   config: AgentConfig<C>,
   input: MessageInput,
 ): Operation<void> {
+  const transcript: TranscriptEntry[] = [{ role: input.role ?? 'user', content: input.content }]
+  yield* continueFoldTurn(session, config, transcript, 0)
+}
+
+function* continueFoldTurn<C extends CapabilityMap>(
+  session: FoldSessionHost,
+  config: AgentConfig<C>,
+  transcript: TranscriptEntry[],
+  startIteration: number,
+): Operation<void> {
   const capabilities = config.capabilities ?? ({} as C)
   const maxIterations = config.maxIterations ?? 10
-  const transcript: TranscriptEntry[] = [{ role: input.role ?? 'user', content: input.content }]
   let turnResult: AnswerPayload = { ok: true, value: '' }
   let completed = false
 
-  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+  for (let iteration = startIteration; iteration < maxIterations; iteration += 1) {
     const sampleWait = yield* session.emitWait('sample', {
       messages: transcript,
       options: {
@@ -197,7 +222,7 @@ function* runFoldTurn<C extends CapabilityMap>(
     const modelProvider: ModelProvider | undefined = config.model ?? (yield* ModelProviderContext.get())
     const modelAnswer: AnswerPayload = modelProvider
       ? yield* sampleModel(modelProvider, sampleWait.payload, session, sampleWait.waitSeq)
-      : { ok: true, value: String(input.content ?? '') }
+      : { ok: true, value: String(transcript[0]?.content ?? '') }
 
     const sampleRecorded = yield* recordResponseIfPending(session, waitToken(session.id, sampleWait.waitSeq), modelAnswer, {
       idempotencyKey: `fold:sample:${sampleWait.waitSeq}`,
@@ -231,45 +256,27 @@ function* runFoldTurn<C extends CapabilityMap>(
         })),
       })
 
-      const waits: Array<{ call: ToolCallRequest; wait: LogRecord & { kind: 'wait'; waitSeq: number } }> = []
-      for (const call of calls) {
-        assertDeclaredCapability(capabilities, call.target)
-        const wait = yield* session.emitWait('call', { target: call.target, input: call.input })
-        waits.push({ call, wait })
-      }
+      yield* session.checkpoint('fold', cloneForLog<SuspendedCallBatchState>({
+        kind: 'call_batch',
+        nextIteration: iteration + 1,
+        transcript,
+        calls,
+      }))
 
-      const resolver: CapabilityResolver | undefined = config.resolver ?? (yield* CapabilityResolverContext.get())
-      const answers: Array<{ call: ToolCallRequest; answer: AnswerPayload }> = []
-      for (const { call, wait } of waits) {
-        const answer: AnswerPayload = resolver
-          ? yield* callResolver(resolver, call.target, call.input, session, wait.waitSeq, call.id)
-          : { ok: false, code: 'unknown_target', message: `No resolver for ${call.target}` }
-        const callRecorded = yield* recordResponseIfPending(session, waitToken(session.id, wait.waitSeq), answer, {
-          idempotencyKey: `fold:call:${wait.waitSeq}`,
-          wait: 'call',
-        })
-        if (!callRecorded) return
-        answers.push({ call, answer })
-      }
-
-      const parked = answers.find(({ answer }) => !answer.ok && answer.code === 'tool_awaiting_elicit')
-      if (parked) {
+      const callBatch = yield* resolveCallBatch(session, config, capabilities, calls)
+      if (callBatch === 'parked') {
         return
       }
 
-      for (const { call, answer } of answers) {
-        const content = answer.ok
-          ? stringifyToolResult(answer.value)
-          : `Error: ${answer.message ?? answer.code}`
-        transcript.push({ role: 'tool', tool_call_id: call.id, content })
-      }
-
-      const fatal = answers.find(({ answer }) => !answer.ok && answer.code !== 'tool_error')
-      if (fatal) {
-        yield* session.terminal('error', fatal.answer)
+      const resumed = yield* collectCallBatchTranscript(session, calls)
+      if (!resumed.ready) {
         return
       }
-
+      if (resumed.fatal) {
+        yield* session.terminal('error', resumed.fatal)
+        return
+      }
+      transcript.push(...resumed.entries)
       continue
     }
 
@@ -281,6 +288,132 @@ function* runFoldTurn<C extends CapabilityMap>(
     yield* session.emitEmission({ type: 'max_iterations_reached' })
   }
 
+  yield* finishTurn(session, config, turnResult)
+}
+
+function* resolveCallBatch<C extends CapabilityMap>(
+  session: FoldSessionHost,
+  config: AgentConfig<C>,
+  capabilities: C,
+  calls: ToolCallRequest[],
+): Operation<'completed' | 'parked'> {
+  const waits: Array<{ call: ToolCallRequest; wait: LogRecord & { kind: 'wait'; waitSeq: number } }> = []
+  for (const call of calls) {
+    assertDeclaredCapability(capabilities, call.target)
+    const wait = yield* session.emitWait('call', { target: call.target, input: call.input, ...(call.id ? { callId: call.id } : {}) })
+    waits.push({ call, wait })
+  }
+
+  const resolver: CapabilityResolver | undefined = config.resolver ?? (yield* CapabilityResolverContext.get())
+  let parked = false
+  for (const { call, wait } of waits) {
+    const answer: AnswerPayload = resolver
+      ? yield* callResolver(resolver, call.target, call.input, session, wait.waitSeq, call.id)
+      : { ok: false, code: 'unknown_target', message: `No resolver for ${call.target}` }
+
+    if (!answer.ok && answer.code === 'tool_awaiting_elicit') {
+      parked = true
+      continue
+    }
+
+    const callRecorded = yield* recordResponseIfPending(session, waitToken(session.id, wait.waitSeq), answer, {
+      idempotencyKey: `fold:call:${wait.waitSeq}`,
+      wait: 'call',
+    })
+    if (!callRecorded) return 'parked'
+  }
+
+  return parked ? 'parked' : 'completed'
+}
+
+function* resumeSuspendedCallBatch<C extends CapabilityMap>(
+  session: FoldSessionHost,
+  config: AgentConfig<C>,
+  callWaitSeq: number,
+  callId?: string,
+): Operation<void> {
+  const records = yield* session.records()
+  const suspended = findSuspendedCallBatchState(records, callWaitSeq, callId)
+  if (!suspended) {
+    return
+  }
+
+  const resumed = yield* collectCallBatchTranscript(session, suspended.calls)
+  if (!resumed.ready) {
+    return
+  }
+  if (resumed.fatal) {
+    yield* session.terminal('error', resumed.fatal)
+    return
+  }
+
+  const transcript = cloneForLog(suspended.transcript)
+  transcript.push(...resumed.entries)
+  yield* continueFoldTurn(session, config, transcript, suspended.nextIteration)
+}
+
+function findSuspendedCallBatchState(
+  records: readonly LogRecord[],
+  _callWaitSeq: number,
+  callId?: string,
+): SuspendedCallBatchState | null {
+  for (const record of [...records].reverse()) {
+    if (record.kind !== 'checkpoint' || !isSuspendedCallBatchState(record.state)) {
+      continue
+    }
+    if (!callId || record.state.calls.some((call) => call.id === callId)) {
+      return record.state
+    }
+  }
+  return null
+}
+
+function* collectCallBatchTranscript(
+  session: FoldSessionHost,
+  calls: ToolCallRequest[],
+): Operation<{ ready: boolean; entries: TranscriptEntry[]; fatal?: AnswerPayload }> {
+  const records = yield* session.records()
+  const state = deriveLogState(session.id, records)
+  const entries: TranscriptEntry[] = []
+  let fatal: AnswerPayload | undefined
+
+  for (const call of calls) {
+    const wait = records.find(
+      (record): record is LogRecord & { kind: 'wait'; wait: 'call'; waitSeq: number } =>
+        record.kind === 'wait' &&
+        record.wait === 'call' &&
+        (record.payload as { callId?: unknown }).callId === call.id,
+    )
+    if (!wait) {
+      return { ready: false, entries: [] }
+    }
+
+    const answer = state.answers.get(wait.waitSeq)?.payload as AnswerPayload | undefined
+    if (!answer) {
+      return { ready: false, entries: [] }
+    }
+
+    entries.push({
+      role: 'tool',
+      tool_call_id: call.id,
+      content: answer.ok
+        ? toolTranscriptContent(answer.value)
+        : `Error: ${answer.message ?? answer.code}`,
+    })
+
+    if (!answer.ok && answer.code !== 'tool_error' && !fatal) {
+      fatal = answer
+    }
+  }
+
+  return fatal ? { ready: true, entries, fatal } : { ready: true, entries }
+}
+
+function* finishTurn<C extends CapabilityMap>(
+  session: FoldSessionHost,
+  config: AgentConfig<C>,
+  turnResult: AnswerPayload,
+): Operation<void> {
   yield* session.emitEmission({ type: 'agent_turn_result', result: turnResult })
   yield* session.checkpoint('fold')
   yield* session.emitWait('message', config.system !== undefined ? { prompt: config.system } : {})
@@ -357,26 +490,46 @@ function* reattachCall<C extends CapabilityMap>(
   // Try to reattach via the resolver. If the resolver doesn't support
   // reattachment, deliver session_lost.
   const maybeSessionAware = resolver as CapabilityResolver & {
-    reattachCall?: (waitSeq: number) => Operation<AnswerPayload | null>
+    reattachCall?: (waitSeq: number, context: { session: FoldSessionHost; callId?: string }) => Operation<AnswerPayload | null>
   }
 
+  const records = yield* session.records()
+  const callWait = records.find(
+    (r) => r.kind === 'wait' && r.wait === 'call' && r.waitSeq === callWaitSeq,
+  ) as { payload: { callId?: string } } | undefined
+  const callId = callWait?.payload.callId
+
   if (maybeSessionAware.reattachCall) {
-    const result = yield* maybeSessionAware.reattachCall(callWaitSeq)
+    // Look up the call wait record to extract the callId for plugin session lookup.
+    const result = yield* maybeSessionAware.reattachCall(callWaitSeq, { session, ...(callId ? { callId } : {}) })
     if (result) {
-      yield* recordResponseIfPending(session, waitToken(session.id, callWaitSeq), result, {
+      // If the tool parks for another elicit during reattach, do NOT record
+      // the call as a failure. Leave the call wait pending so the fold driver
+      // can reattach again after the new elicit is answered. The resolver
+      // has already emitted the new elicit wait on the parent session.
+      if (!result.ok && result.code === 'tool_awaiting_elicit') {
+        return
+      }
+      const recorded = yield* recordResponseIfPending(session, waitToken(session.id, callWaitSeq), result, {
         wait: 'call',
       })
+      if (recorded) {
+        yield* resumeSuspendedCallBatch(session, config, callWaitSeq, callId)
+      }
       return
     }
   }
 
   // Deliver session_lost
-  yield* recordResponseIfPending(
+  const recorded = yield* recordResponseIfPending(
     session,
     waitToken(session.id, callWaitSeq),
     { ok: false, code: 'session_lost', message: 'Child session unavailable after restore' },
     { wait: 'call' },
   )
+  if (recorded) {
+    yield* resumeSuspendedCallBatch(session, config, callWaitSeq, callId)
+  }
 }
 
 /**
@@ -450,6 +603,32 @@ function isToolCallModelValue(value: unknown): value is ToolCallModelValue {
       typeof (call as { target?: unknown }).target === 'string' &&
       'input' in call,
   ))
+}
+
+function isSuspendedCallBatchState(value: unknown): value is SuspendedCallBatchState {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      (value as { kind?: unknown }).kind === 'call_batch' &&
+      typeof (value as { nextIteration?: unknown }).nextIteration === 'number' &&
+      Array.isArray((value as { transcript?: unknown }).transcript) &&
+      Array.isArray((value as { calls?: unknown }).calls),
+  )
+}
+
+function toolTranscriptContent(value: unknown): string {
+  if (value && typeof value === 'object' && 'result' in value) {
+    return stringifyToolResult((value as { result?: unknown }).result)
+  }
+  return stringifyToolResult(value)
+}
+
+function cloneForLog<T>(value: T): T {
+  try {
+    return structuredClone(value)
+  } catch {
+    return JSON.parse(JSON.stringify(value)) as T
+  }
 }
 
 function stringifyToolResult(value: unknown): string {
