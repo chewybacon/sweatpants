@@ -138,12 +138,12 @@ function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegi
 }
 
 function runtimePluginTools(): LocalSessionTool[] {
-  return activePluginTools as LocalSessionTool[];
+  return activePluginTools;
 }
 
 function localTools(): LocalSessionTool[] {
   const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));
-  return allTools.filter((tool) => !pluginNames.has(tool.name)) as LocalSessionTool[];
+  return allTools.filter((tool) => !pluginNames.has(tool.name));
 }
 
 function parametersToSchema(parameters: unknown): Record<string, unknown> {
@@ -180,7 +180,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
     createToolInventory([
       ...localRuntimeTools.map((tool) => createToolInventoryEntry(tool)),
       ...(env.MCP_TOOL_RUNTIME === "agentcore"
-        ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool as AgentCoreMcpTool))
+        ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool))
         : pluginTools.map((tool) => createToolInventoryEntry(tool))),
     ]),
   );
@@ -190,7 +190,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
       id: "agentcore",
       strategies: [
         createAgentCoreToolExecutionStrategy({
-          tools: pluginTools as AgentCoreMcpTool[],
+          tools: pluginTools,
           registry: sharedPluginSessionRegistry,
           samplingProvider: pluginSamplingProvider,
         }),

@@ -288,21 +288,23 @@ export function createSampleResponse(
 export function createElicitResponse(
   id: string,
   options: {
-    status: "accepted" | "declined" | "cancelled";
+    action: "accept" | "decline" | "cancel";
     content?: unknown;
+    reason?: string;
   }
 ): WorkerResponse {
-  if (options.status === "accepted") {
+  if (options.action === "accept") {
     return {
       id,
       type: "elicit",
-      status: "accepted",
+      action: "accept",
       content: options.content,
     };
   }
   return {
     id,
     type: "elicit",
-    status: options.status,
+    action: options.action,
+    ...(options.reason !== undefined && { reason: options.reason }),
   };
 }

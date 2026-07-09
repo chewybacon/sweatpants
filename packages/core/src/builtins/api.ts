@@ -53,8 +53,8 @@ export const SweatpantsApi = createApi("sweatpants", {
    *   schema: z.boolean(),
    * });
    * 
-   * if (result.status === "accepted") {
-   *   console.log("User confirmed:", result.value);
+   * if (result.action === "accept") {
+   *   console.log("User confirmed:", result.content);
    * }
    * ```
    */
@@ -86,15 +86,14 @@ export const SweatpantsApi = createApi("sweatpants", {
 
     const response = result.value;
 
+    // Map Principal/Operative transport status dialect → action vocabulary
     if (response.status === "accepted") {
-      // Validate and return the content
-      // In a real implementation, we'd validate against the schema
-      type AcceptedResult = Extract<ElicitResult<TSchema>, { status: "accepted" }>;
-      return { status: "accepted", value: response.content as AcceptedResult["value"] };
+      type AcceptedResult = Extract<ElicitResult<TSchema>, { action: "accept" }>;
+      return { action: "accept", content: response.content as AcceptedResult["content"] };
     } else if (response.status === "declined") {
-      return { status: "declined" };
+      return { action: "decline" };
     } else if (response.status === "cancelled") {
-      return { status: "cancelled" };
+      return { action: "cancel" };
     } else if (response.status === "denied") {
       throw new Error("Elicit request was denied");
     } else if (response.status === "other") {

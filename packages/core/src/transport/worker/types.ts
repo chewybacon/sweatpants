@@ -119,9 +119,11 @@ export interface WorkerSampleResponse extends WorkerResponseBase {
  */
 export interface WorkerElicitResponse extends WorkerResponseBase {
   type: "elicit";
-  status: "accepted" | "declined" | "cancelled";
-  /** User's response content (only if accepted) */
+  action: "accept" | "decline" | "cancel";
+  /** User's response content (only if accept) */
   content?: unknown;
+  /** Optional reason on decline/cancel */
+  reason?: string;
 }
 
 /**

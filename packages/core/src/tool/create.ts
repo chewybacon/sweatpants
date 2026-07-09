@@ -11,7 +11,7 @@ import type {
   ContextBinding,
   CreateToolBuilderBase,
   CoreToolCtx,
-  UnifiedToolFactory,
+  ToolDefinition,
   ElicitDefinition,
   ElicitsMap,
   SamplesMap,
@@ -505,7 +505,7 @@ function finalizeCoreUnifiedTool(options: {
   annotations: Record<string, unknown>;
   extensions: ToolExtensionMetadata[];
   impl: (input: unknown, ctx: CoreToolCtx) => Operation<unknown>;
-}): UnifiedToolFactory {
+}): ToolDefinition {
   const normalizedElicits = normalizeCoreElicits(options.elicits);
   const normalizedSamples = options.samples === true ? {} : normalizeCoreSamples(options.samples ?? {});
   const factory = function unifiedToolFactory(ctx: CoreToolCtx): Operation<(input: unknown) => Operation<unknown>> {
@@ -559,7 +559,7 @@ function finalizeCoreUnifiedTool(options: {
     extensions: { value: Object.freeze([...options.extensions]), enumerable: true, writable: false, configurable: true },
   });
 
-  return factory as unknown as UnifiedToolFactory;
+  return factory as unknown as ToolDefinition;
 }
 
 function codedToolError(code: string, message: string): Error & { code: string } {

@@ -251,7 +251,7 @@ export const bookFlightTool = createTool("book_flight")
         from: params.from,
         to: params.destination,
       },
-      travelTip: tip.text ?? tip.content ?? "",
+      travelTip: tip.text ?? "",
       message: `Successfully booked ${selectedFlight.airline} ${selectedFlight.flightNumber} from ${params.from} to ${params.destination}. Seat ${seatCode}. Ticket: ${ticketNumber}`,
     };
   });

@@ -49,14 +49,14 @@ import type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionRegistry,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
   ToolSessionSamplingProvider,
 } from "../../lib/chat/mcp-tools/session/types.ts";
 // Note: concrete tool session registries should be created at server startup, not here.
-import type { ElicitsMap, RawElicitResult } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
-import type { McpRuntimeTool } from "../../lib/chat/mcp-tools/mcp-runtime-tool.ts";
+import type { ElicitsMap, WireElicitResult } from "../../lib/chat/mcp-tools/mcp-tool-types.ts";
+import type { ToolDefinition } from "../../lib/chat/mcp-tools/mcp-runtime-tool.ts";
 import type {
   ComponentEmissionPayload,
   PendingEmission,
@@ -113,7 +113,7 @@ export type PluginSessionEvent =
  */
 export interface CreatePluginSessionConfig {
   /** The MCP tool to execute */
-  tool: McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>;
+  tool: ToolDefinition<string, unknown, unknown, ElicitsMap>;
 
   /** Tool parameters */
   params: unknown;
@@ -161,7 +161,7 @@ export interface PluginSession {
    * @param elicitId - The elicit ID from the elicit_request event
    * @param result - The user's response
    */
-  respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void>;
+  respondToElicit(elicitId: string, result: WireElicitResult<unknown>): Operation<void>;
 
   /**
    * Abort the session.
@@ -343,9 +343,9 @@ export function createPluginSessionManager(
                   }
 
                   const result:
-                    | RawSampleResultBase
-                    | RawSampleResultWithParsed<unknown>
-                    | RawSampleResultWithToolCalls = yield* samplingProvider.sample(
+                    | WireSampleResultBase
+                    | WireSampleResultWithParsed<unknown>
+                    | WireSampleResultWithToolCalls = yield* samplingProvider.sample(
                     sampleEvent.messages,
                     {
                       ...(sampleEvent.systemPrompt
@@ -414,7 +414,7 @@ export function createPluginSessionManager(
           }
         },
 
-        *respondToElicit(elicitId: string, result: RawElicitResult<unknown>): Operation<void> {
+        *respondToElicit(elicitId: string, result: WireElicitResult<unknown>): Operation<void> {
           yield* toolSession.respondToElicit(elicitId, result);
         },
 

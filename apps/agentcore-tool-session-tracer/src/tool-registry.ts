@@ -1,10 +1,10 @@
-import type { McpRuntimeTool } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-runtime-tool.ts";
+import type { ToolDefinition } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-runtime-tool.ts";
 import type { ElicitsMap } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
 import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
 
-type RuntimeMcpTool = McpRuntimeTool<
+type RuntimeMcpTool = ToolDefinition<
   string,
   unknown,
   unknown,

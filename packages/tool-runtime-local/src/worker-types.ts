@@ -45,12 +45,12 @@ import type {
   Message,
   ExtendedMessage,
   LogLevel,
-  RawSampleResult,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
+  WireSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
   ElicitResult,
-  RawElicitResult,
+  WireElicitResult,
   SamplingToolDefinition,
   SamplingToolChoice,
   SamplingToolCall,
@@ -187,7 +187,7 @@ export interface McpLogResponse {
 export interface McpSampleResponse {
   type: 'sample'
   /** The LLM's response (raw result without exchange) */
-  result: RawSampleResult
+  result: WireSampleResult
 }
 
 /**
@@ -196,7 +196,7 @@ export interface McpSampleResponse {
 export interface McpElicitResponse {
   type: 'elicit'
   /** The user's response */
-  result: RawElicitResult<unknown>
+  result: WireElicitResult<unknown>
 }
 
 /**
@@ -562,11 +562,11 @@ export type {
   Message,
   ExtendedMessage,
   // Raw result types (wire format)
-  RawSampleResult,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
-  RawElicitResult,
+  WireSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
+  WireElicitResult,
   // Full result types (with exchange)
   SampleResultBase,
   SampleResultWithParsed,

@@ -464,26 +464,21 @@ function createMcpWorkerContext(
         message: string
         schema?: Record<string, unknown>
         context?: Record<string, unknown>
-        [key: string]: unknown
       }
     ): Operation<ElicitResult<unknown, T>> {
-      const { message, schema, context, ...spreadContext } = options
-      const resolvedContext = context !== undefined
-        ? context
-        : (Object.keys(spreadContext).length > 0 ? spreadContext : undefined)
+      const { message, schema, context } = options
 
       const response: WorkerElicitResponse = yield* coreCtx.elicit(key, {
         message,
         schema: schema ?? { type: 'object' },
-        ...(resolvedContext !== undefined && { context: resolvedContext }),
+        ...(context !== undefined && { context }),
       })
 
-      // Map core response to MCP elicit result
-      if (response.status === 'accepted') {
+      // Construct exchange on accept only (truthful ToolElicitResult arms)
+      if (response.action === 'accept') {
         const content = response.content as T
         const toolUseId = `elicit_${sessionId}_${key}_${Date.now()}`
 
-        // Build exchange
         const request = {
           role: 'assistant' as const,
           content: [{
@@ -506,12 +501,12 @@ function createMcpWorkerContext(
           action: 'accept',
           content,
           exchange: {
-            context: (resolvedContext ?? {}) as unknown,
+            context: (context ?? {}) as unknown,
             request,
             response: responseMsg,
             messages: [request, responseMsg] as [typeof request, typeof responseMsg],
             withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
-              const args = fn(resolvedContext ?? {})
+              const args = fn(context ?? {})
               const requestWithArgs = {
                 role: 'assistant' as const,
                 content: [{
@@ -527,11 +522,11 @@ function createMcpWorkerContext(
         }
       }
 
-      if (response.status === 'declined') {
-        return { action: 'decline' }
+      if (response.action === 'decline') {
+        return { action: 'decline', ...(response.reason !== undefined && { reason: response.reason }) }
       }
 
-      return { action: 'cancel' }
+      return { action: 'cancel', ...(response.reason !== undefined && { reason: response.reason }) }
     },
   }
 

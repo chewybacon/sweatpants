@@ -62,7 +62,7 @@ const TOOL_WORKER_GEN_URL = new URL("../../__generated__/tool-worker.gen.ts", im
 
 function localOnlyTools(): LocalSessionTool[] {
   const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));
-  return allTools.filter((tool) => !pluginNames.has(tool.name)) as LocalSessionTool[];
+  return allTools.filter((tool) => !pluginNames.has(tool.name));
 }
 
 function* setupTierAWorkerRuntime(): Operation<void> {
@@ -91,7 +91,7 @@ function* setupTierAWorkerRuntime(): Operation<void> {
   yield* PluginSessionRegistryContext.set(registry);
   yield* PluginSessionManagerContext.set(manager);
 
-  const pluginTools = activePluginTools as unknown as LocalSessionTool[];
+  const pluginTools = activePluginTools;
   const localTools = localOnlyTools();
 
   yield* ToolInventoryContext.set(

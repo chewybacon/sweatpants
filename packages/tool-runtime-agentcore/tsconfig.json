@@ -5,7 +5,10 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "ignoreDeprecations": "5.0"
+    "ignoreDeprecations": "5.0",
+    "customConditions": [
+      "development"
+    ]
   },
   "include": [
     "src/**/*.ts"

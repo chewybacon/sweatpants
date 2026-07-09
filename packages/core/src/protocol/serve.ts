@@ -115,13 +115,14 @@ function* handleRequest<M extends Methods>(
     if (usedKindFallback && request.kind === "notify") {
       finalResponse = streamResult.value as ResponseMessage["response"];
     } else if (usedKindFallback && request.kind === "elicit") {
+      // Builtins protocol returns action vocabulary; transport uses status dialect.
       const elicitResult = streamResult.value as {
-        status: "accepted" | "declined" | "cancelled";
-        value?: unknown;
+        action: "accept" | "decline" | "cancel";
+        content?: unknown;
       };
-      if (elicitResult.status === "accepted") {
-        finalResponse = { status: "accepted", content: elicitResult.value };
-      } else if (elicitResult.status === "declined") {
+      if (elicitResult.action === "accept") {
+        finalResponse = { status: "accepted", content: elicitResult.content };
+      } else if (elicitResult.action === "decline") {
         finalResponse = { status: "declined" };
       } else {
         finalResponse = { status: "cancelled" };

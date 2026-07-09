@@ -38,7 +38,7 @@ import type {
   SampleResultWithToolCalls,
   SamplingToolDefinition,
   SamplingToolChoice,
-  RawElicitResult,
+  WireElicitResult,
   ElicitExchange,
   McpMessage,
   LogLevel,
@@ -56,7 +56,7 @@ import {
   createRawSampleExchange,
   createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
-import type { McpRuntimeTool } from './mcp-runtime-tool.ts'
+import type { ToolDefinition } from '@sweatpants/core'
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
@@ -187,7 +187,7 @@ function createBufferedChannel<T>(): Channel<T, void> {
 /**
  * Elicitation response from the client.
  * 
- * Uses RawElicitResult (without exchange) because the transport layer
+ * Uses WireElicitResult (without exchange) because the transport layer
  * only sends the action and content. The bridge-runtime constructs
  * the full ElicitResult with exchange internally.
  */
@@ -196,14 +196,14 @@ export interface ElicitResponse<TResponse = unknown> {
   id: ElicitId
 
   /** The user's response (without exchange - exchange is constructed by bridge) */
-  result: RawElicitResult<TResponse>
+  result: WireElicitResult<TResponse>
 }
 
 /**
- * Raw sample result from provider (without exchange).
- * The bridge constructs the exchange after receiving this.
+ * Provider sample payload before exchange construction.
+ * Distinct from the exported WireSampleResult union (which includes parsed/toolCalls variants).
  */
-interface RawSampleResult {
+interface BridgeProviderSampleResult {
   text: string
   model?: string
   stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
@@ -214,7 +214,7 @@ interface RawSampleResult {
  * Sample response from external handler.
  */
 export interface SampleResponse {
-  result: RawSampleResult
+  result: BridgeProviderSampleResult
 }
 
 /**
@@ -261,13 +261,13 @@ export interface BridgeSamplingProvider {
 export interface BridgeHostConfig<
   TName extends string = string,
   TParams = unknown,
-  TInteraction = unknown,
-  TClient = unknown,
   TResult = unknown,
   TElicits extends ElicitsMap = ElicitsMap,
 > {
   /** Tool being executed */
-  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits>
+  tool: ToolDefinition<TName, TParams, TResult, TElicits>
+  /** Optional execution limits (host-level; not a tool property) */
+  limits?: McpToolLimits
 
   /** Tool parameters */
   params: TParams
@@ -277,9 +277,6 @@ export interface BridgeHostConfig<
 
   /** Tool call ID (generated if not provided) */
   callId?: string
-
-  /** Override limits from tool definition */
-  limits?: McpToolLimits
 
   /** Initial messages (parent context) */
   parentMessages?: ExtendedMessage[]
@@ -941,23 +938,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             seq,
           }
 
-          // Extract message and context data. Canonical core tools pass rich
-          // elicitation data under `context`, while older framework tools passed
-          // it as top-level option fields. Support both shapes and expose the
-          // declared context itself to plugin handlers.
-          const { message, context, ...legacyContextData } = options
-          const hasLegacyContextData = Object.keys(legacyContextData).length > 0
-          const contextData =
-            context !== undefined && !hasLegacyContextData
-              ? context
-              : context !== undefined && typeof context === 'object' && context !== null
-                ? { ...(context as Record<string, unknown>), ...legacyContextData }
-                : context !== undefined
-                  ? { context, ...legacyContextData }
-                  : legacyContextData
+          // Canonical dialect: { message, context? }
+          const { message, context } = options
+          const contextData = context
 
           // Encode context into schema and message using x-elicit-context transport
-          const baseSchema = zodToJsonSchema(responseSchema as any)
+          const baseSchema = zodToJsonSchema(responseSchema as Parameters<typeof Object>[0])
           const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(
             message,
             contextData,
@@ -1211,12 +1197,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 export function createBridgeHost<
   TName extends string,
   TParams,
-  TInteraction,
-  TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(
-  config: BridgeHostConfig<TName, TParams, TInteraction, TClient, TResult, TElicits>
+  config: BridgeHostConfig<TName, TParams, TResult, TElicits>
 ): BridgeHost<TResult> {
   // Use a buffered channel to avoid subscribe-before-send race condition.
   // Messages are queued until a subscriber starts iterating.
@@ -1238,9 +1222,9 @@ export function createBridgeHost<
             callId,
           })
 
-          // Merge limits
+          // Merge limits (host options only; tools no longer carry limits)
           const limits: McpToolLimits = {
-            ...tool.limits,
+            ...((config as { limits?: McpToolLimits }).limits ?? {}),
             ...overrideLimits,
           }
 
@@ -1271,16 +1255,14 @@ export function createBridgeHost<
 
           let result: TResult
 
-          if (isCanonicalCoreRuntimeTool(tool)) {
-            const branchCtx = createBridgeContext(initialState)
-            const invoke = yield* tool(branchCtx as never)
-            result = (yield* invoke(validatedParams as never)) as TResult
-          } else if (tool.execute) {
-            const branchCtx = createBridgeContext(initialState)
-            result = yield* tool.execute(validatedParams, branchCtx as never)
-          } else {
-            throw new Error(`Tool "${tool.name}" has no execute function`)
+          const branchCtx = createBridgeContext(initialState)
+          // Factory-only path (ToolDefinition callable)
+          const toolFactory = tool as unknown as (ctx: typeof branchCtx) => Operation<(input: unknown) => Operation<TResult>>
+          if (typeof toolFactory !== 'function') {
+            throw new Error(`Tool "${String((tool as { name?: string }).name ?? '<unknown>')}" is not a callable ToolDefinition factory`)
           }
+          const invoke = yield* toolFactory(branchCtx)
+          result = yield* invoke(validatedParams)
 
           // Close channel when done
           yield* eventChannel.close()
@@ -1292,14 +1274,6 @@ export function createBridgeHost<
   }
 }
 
-function isCanonicalCoreRuntimeTool(tool: unknown): tool is { (ctx: unknown): Operation<(input: unknown) => Operation<unknown>>; annotations: unknown; samples: unknown; capabilities: unknown; schemas: unknown } {
-  return typeof tool === 'function' &&
-    tool !== null &&
-    'annotations' in tool &&
-    'samples' in tool &&
-    'capabilities' in tool &&
-    'schemas' in tool
-}
 
 // =============================================================================
 // CONVENIENCE: RUN WITH AUTO-HANDLER
@@ -1309,13 +1283,13 @@ function isCanonicalCoreRuntimeTool(tool: unknown): tool is { (ctx: unknown): Op
  * Handler map for elicitation requests.
  * Each key maps to a generator that handles that elicitation.
  * 
- * Handlers return RawElicitResult (without exchange) - the bridge-runtime
+ * Handlers return WireElicitResult (without exchange) - the bridge-runtime
  * constructs the exchange internally when the result is accepted.
  */
 export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
   [K in keyof TElicits]: (
     request: ElicitRequest<K & string, any>
-  ) => Operation<RawElicitResult<any>>
+  ) => Operation<WireElicitResult<any>>
 }
 
 /**
@@ -1345,12 +1319,10 @@ export type BridgeElicitHandlers<TElicits extends ElicitsMap> = {
 export function runBridgeTool<
   TName extends string,
   TParams,
-  TInteraction,
-  TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(config: {
-  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits>
+  tool: ToolDefinition<TName, TParams, TResult, TElicits>
   params: TParams
   samplingProvider: BridgeSamplingProvider
   handlers: BridgeElicitHandlers<TElicits>
@@ -1375,7 +1347,7 @@ export function runBridgeTool<
 
       // createBridgeHost now uses a buffered channel internally,
       // so no sleep(0) hacks are needed. Events are queued until subscriber is ready.
-      const hostConfig: BridgeHostConfig<TName, TParams, TInteraction, TClient, TResult, TElicits> = {
+      const hostConfig: BridgeHostConfig<TName, TParams, TResult, TElicits> = {
         tool: config.tool,
         params,
       }
@@ -1406,7 +1378,7 @@ export function runBridgeTool<
               if (!handler) {
                 throw new Error(`No handler for elicitation key "${event.request.key}"`)
               }
-              const result = yield* handler(event.request as any)
+              const result = yield* handler(event.request as Parameters<typeof Object>[0])
               event.responseSignal.send({ id: event.request.id, result })
               break
             }

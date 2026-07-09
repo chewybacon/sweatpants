@@ -39,10 +39,9 @@ describe("createTool(name) unified builder", () => {
       });
 
     const invoke = yield* Tool({
+      messages: [],
       history: [],
-      elicit: (() => { throw new Error("not used"); }) as never,
-      elicitDynamic: (() => { throw new Error("not used"); }) as never,
-      sample: (() => { throw new Error("not used"); }) as never,
+      *branch(fn) { return yield* fn(this as never); },
       notify: function* () {},
       log: function* () {},
     });
@@ -72,10 +71,9 @@ describe("createTool(name) unified builder", () => {
 
     const history: unknown[] = [];
     const invoke = yield* Tool({
+      messages: [],
       history,
-      elicit: (() => { throw new Error("not used"); }) as never,
-      elicitDynamic: (() => { throw new Error("not used"); }) as never,
-      sample: (() => { throw new Error("not used"); }) as never,
+      *branch(fn) { return yield* fn(this as never); },
       notify: function* () {},
       log: function* () {},
     });

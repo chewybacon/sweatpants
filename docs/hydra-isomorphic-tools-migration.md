@@ -1,5 +1,13 @@
 # Hydra Tools Migration to Isomorphic Pattern
 
+> **⚠ ARCHIVED — STALE REFERENCE**: Isomorphic tool public authoring
+> (`createIsomorphicTool` / `@sweatpants/framework/chat/isomorphic-tools`) is
+> **experimental / salvage**, not the product happy path. Product tool authoring
+> uses `createTool` from `@sweatpants/core` and plugin UI binding via
+> `makePlugin` from `@sweatpants/framework/chat`. See
+> [`docs/product-surface.md`](./product-surface.md) and the root README.
+> This document is retained as a historical migration note only.
+
 ## Context
 
 The `apps/hydra/docs/ts/` directory contains tutorial/documentation files that define their own legacy-style tool system:

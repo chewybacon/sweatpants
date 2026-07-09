@@ -28,9 +28,9 @@ import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } fro
 import type { 
   ElicitResult,
   ElicitExchange,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
   SamplingToolCall,
 } from '../mcp-tool-types.ts'
 
@@ -44,7 +44,7 @@ import type {
  * access to the original prompt text needed to construct exchanges.
  * The exchange is added by the runtime layer (bridge-runtime, branch-runtime).
  */
-export type DecodedSampleResult = RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls
+export type DecodedSampleResult = WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls
 
 /**
  * Result of decoding an MCP message.
@@ -202,7 +202,7 @@ export function decodeSamplingResponse(
   // Check if this is a tool use response
   if (mcpResult.stopReason === 'toolUse') {
     const toolCalls = extractToolCallsFromContent(mcpResult.content)
-    const result: RawSampleResultWithToolCalls = {
+    const result: WireSampleResultWithToolCalls = {
       text,
       model: mcpResult.model,
       stopReason: 'toolUse',
@@ -216,7 +216,7 @@ export function decodeSamplingResponse(
   }
 
   // Return base result (structured output parsing happens at runtime layer)
-  const result: RawSampleResultBase = {
+  const result: WireSampleResultBase = {
     text,
     model: mcpResult.model,
     ...(mcpResult.stopReason !== undefined && { stopReason: mcpResult.stopReason }),

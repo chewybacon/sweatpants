@@ -48,9 +48,9 @@ import type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionEvent,
-  RawSampleResult,
+  WireSampleResult,
 } from '@sweatpants/framework/chat/mcp-tools'
-import type { RawElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
 import type { McpWorkerInitData } from './worker-types.ts'
 import { WorkerSessionStateContext, type WorkerSessionState } from './worker-session-context.ts'
 import { WorkerSessionApi } from './worker-session-api.ts'
@@ -104,8 +104,8 @@ export function createWorkerToolSession(
     // Channel for streaming events to subscribers
     const eventChannel = createChannel<ToolSessionEvent, void>()
 
-    const pendingSamples = new Map<string, Channel<RawSampleResult, void>>()
-    const pendingElicits = new Map<string, Channel<RawElicitResult<unknown>, void>>()
+    const pendingSamples = new Map<string, Channel<WireSampleResult, void>>()
+    const pendingElicits = new Map<string, Channel<WireElicitResult<unknown>, void>>()
 
     function nextLsn(): number {
       lsn += 1
@@ -277,13 +277,13 @@ export function createWorkerToolSession(
         })
       },
 
-      *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
+      *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
         yield* WorkerSessionStateContext.with(sessionState, function* () {
           yield* WorkerSessionApi.operations.respondToElicit(elicitId, response)
         })
       },
 
-      *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
+      *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
         yield* WorkerSessionStateContext.with(sessionState, function* () {
           yield* WorkerSessionApi.operations.respondToSample(sampleId, response)
         })

@@ -1,11 +1,10 @@
+import type { ToolDefinition, ElicitsMap } from '@sweatpants/core'
 import type { Operation, Stream } from 'effection'
 import type {
   ToolSession,
   ToolSessionRegistry,
   ToolSessionOptions,
 } from '@sweatpants/framework/chat/mcp-tools'
-import type { McpRuntimeTool } from '@sweatpants/framework/chat/mcp-tools'
-import type { ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
 import { validateToolParameters } from '@sweatpants/framework/chat'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
@@ -168,8 +167,8 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
   }
 
   return {
-    *create<TParams, TInteraction, TClient, TResult, TElicits extends ElicitsMap>(
-      tool: McpRuntimeTool<string, TParams, TInteraction, TClient, TResult, TElicits>,
+    *create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
+      tool: ToolDefinition<string, TParams, TResult, TElicits>,
       params: TParams,
       sessionOptions?: ToolSessionOptions
     ): Operation<ToolSession<TResult>> {

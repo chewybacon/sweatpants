@@ -1,6 +1,6 @@
 import { resource, type Operation, type Stream, type Subscription } from 'effection'
-import type { ToolSession, ToolSessionEvent, ToolSessionStatus, RawSampleResult } from '@sweatpants/framework/chat/mcp-tools'
-import type { RawElicitResult } from '@sweatpants/framework/chat/mcp-tools'
+import type { ToolSession, ToolSessionEvent, ToolSessionStatus, WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult } from '@sweatpants/framework/chat/mcp-tools'
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   type AgentCoreToolEvent,
@@ -271,7 +271,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       })
     },
 
-    *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
+    *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
       const handle = yield* getHandle()
       if (handle.pendingRequest && (handle.pendingRequest.type !== 'elicit' || handle.pendingRequest.elicitId !== elicitId)) {
         throw new Error(`Elicitation ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${elicitId}`)
@@ -287,7 +287,7 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
       yield* ingestStream(stream)
     },
 
-    *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
+    *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
       const handle = yield* getHandle()
       if (handle.pendingRequest && (handle.pendingRequest.type !== 'sample' || handle.pendingRequest.sampleId !== sampleId)) {
         throw new Error(`Sample ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${sampleId}`)

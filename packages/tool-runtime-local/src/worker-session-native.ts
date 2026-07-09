@@ -38,8 +38,8 @@ import {
   waitToken,
   type TokenBufferStore,
 } from '@sweatpants/session-contract'
-import type { RawElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
-import type { RawSampleResult } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
 import type { McpWorkerInitData } from './worker-types.ts'
 import type { WorkerElicitRequest, WorkerElicitResponse, WorkerSampleRequest, WorkerSampleResponse } from '@sweatpants/core/transport/worker'
 
@@ -168,21 +168,21 @@ export function createNativeWorkerToolSession(
       const answer = yield* waitForAnswer(waitRecord.waitSeq)
       elicitWaitMap.delete(elicitId)
 
-      const payload = answer.payload as { ok: boolean; value?: RawElicitResult<unknown> }
+      const payload = answer.payload as { ok: boolean; value?: WireElicitResult<unknown> }
       if (!payload.ok) {
-        return { id: elicitId, type: 'elicit', status: 'cancelled' }
+        return { id: elicitId, type: 'elicit', action: 'cancel' }
       }
 
-      const rawResult = payload.value as RawElicitResult<unknown>
-      const responseStatus = rawResult.action === 'accept' ? 'accepted'
-        : rawResult.action === 'decline' ? 'declined'
-        : 'cancelled'
+      const rawResult = payload.value as WireElicitResult<unknown>
 
       return {
         id: elicitId,
         type: 'elicit',
-        status: responseStatus,
+        action: rawResult.action,
         ...(rawResult.action === 'accept' && { content: rawResult.content }),
+        ...((rawResult.action === 'decline' || rawResult.action === 'cancel') &&
+          'reason' in rawResult &&
+          rawResult.reason !== undefined && { reason: rawResult.reason }),
       }
     }
 
@@ -214,12 +214,12 @@ export function createNativeWorkerToolSession(
       const answer = yield* waitForAnswer(waitRecord.waitSeq)
       sampleWaitMap.delete(sampleId)
 
-      const payload = answer.payload as { ok: boolean; value?: RawSampleResult }
+      const payload = answer.payload as { ok: boolean; value?: WireSampleResult }
       if (!payload.ok) {
         return { id: sampleId, type: 'sample', status: 'accepted', text: '' }
       }
 
-      const rawResult = payload.value as RawSampleResult
+      const rawResult = payload.value as WireSampleResult
       return {
         id: sampleId,
         type: 'sample',
@@ -285,7 +285,7 @@ export function createNativeWorkerToolSession(
 export function* respondToNativeElicit(
   session: InMemorySession,
   elicitId: string,
-  response: RawElicitResult<unknown>,
+  response: WireElicitResult<unknown>,
 ): Operation<void> {
   // We need to find the waitSeq from the session log by matching the elicit key
   // The elicitId is stored in the wait payload's key field
@@ -311,7 +311,7 @@ export function* respondToNativeElicit(
 export function* respondToNativeSample(
   session: InMemorySession,
   _sampleId: string,
-  response: RawSampleResult,
+  response: WireSampleResult,
 ): Operation<void> {
   // Sample IDs are mapped by waitSeq; we look up from the log
   const records = yield* session.records()

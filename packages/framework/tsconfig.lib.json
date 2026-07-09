@@ -5,9 +5,17 @@
     "emitDeclarationOnly": true,
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "customConditions": [
+      "development"
+    ]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ],
   "exclude": [
     "dist",
     "node_modules",
@@ -19,5 +27,12 @@
     "tests",
     "e2e"
   ],
-  "references": [{ "path": "../elicit-context" }, { "path": "../durable-streams" }]
+  "references": [
+    {
+      "path": "../elicit-context"
+    },
+    {
+      "path": "../durable-streams"
+    }
+  ]
 }
