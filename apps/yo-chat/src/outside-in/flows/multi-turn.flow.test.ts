@@ -11,6 +11,7 @@
  * respect real-model nondeterminism (design R10).
  */
 import { afterAll, beforeAll, describe, it } from "vitest";
+import { calculator } from "@/tools/calculator";
 import {
   expectNoOpenInterruptError,
   expectNoRunError,
@@ -37,7 +38,6 @@ for (const tier of selectedTiers()) {
     });
 
     it("calls the calculator tool on two consecutive turns", async () => {
-      const { calculator } = await import("@/tools/calculator");
       const transcript = await withFlakePolicy(() =>
         runChatFlow(binding, {
           tools: [calculator],

@@ -1,5 +1,6 @@
 import type { Capabilities, ToolCallInfo, ServerToolResult } from "../core-types.ts";
 import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
+import type { ToolParameterValidationErrorPayload } from "../tool-parameters.ts";
 import type { Message } from "../types.ts";
 import type { AgUiMessage } from "./ag-ui-compat.ts";
 import type { PluginReplayActivitySnapshotEvent } from "./plugin-replay.ts";
@@ -252,7 +253,7 @@ export interface AgUiToolCallResultStreamEvent {
   toolCallName?: string;
   content: string;
   role?: "tool";
-  error?: import("../tool-parameters.ts").ToolParameterValidationErrorPayload;
+  error?: ToolParameterValidationErrorPayload;
 }
 
 export interface LegacyAgUiToolCallResultStreamEvent {
@@ -268,7 +269,7 @@ export interface LegacyAgUiToolCallErrorStreamEvent {
   toolCallId: string;
   toolCallName: string;
   message: string;
-  error?: import("../tool-parameters.ts").ToolParameterValidationErrorPayload;
+  error?: ToolParameterValidationErrorPayload;
 }
 
 export interface AgUiReasoningMessageContentStreamEvent {
