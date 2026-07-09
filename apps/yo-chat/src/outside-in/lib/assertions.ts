@@ -29,21 +29,61 @@ function fail(transcript: Transcript, message: string): never {
   throw new AssertionFailure(`${message}\n  ${summarize(transcript)}`);
 }
 
+/** Count TOOL_CALL_START events for a tool name. */
+export function countToolCalls(transcript: Transcript, toolName: string): number {
+  return transcript.events.filter(
+    (event) => event.type === "tool_call_start" && event.name === toolName,
+  ).length;
+}
+
+/** Count elicit events for a key. */
+export function countElicits(transcript: Transcript, key: string): number {
+  return transcript.events.filter((event) => event.type === "elicit" && event.key === key).length;
+}
+
 /** A tool with the given name was invoked (TOOL_CALL_START seen). */
 export function expectToolCalled(transcript: Transcript, toolName: string): void {
-  const called = transcript.events.some(
-    (event) => event.type === "tool_call_start" && event.name === toolName,
-  );
-  if (!called) {
+  if (countToolCalls(transcript, toolName) === 0) {
     fail(transcript, `expected tool "${toolName}" to be called`);
+  }
+}
+
+/** A tool was invoked at least `minimum` times. */
+export function expectToolCallCount(
+  transcript: Transcript,
+  toolName: string,
+  minimum: number,
+): void {
+  const count = countToolCalls(transcript, toolName);
+  if (count < minimum) {
+    fail(transcript, `expected tool "${toolName}" to be called >=${minimum} times, saw ${count}`);
+  }
+}
+
+/** A tool was invoked at most `maximum` times (inclusive). */
+export function expectToolCallCountAtMost(
+  transcript: Transcript,
+  toolName: string,
+  maximum: number,
+): void {
+  const count = countToolCalls(transcript, toolName);
+  if (count > maximum) {
+    fail(transcript, `expected tool "${toolName}" to be called <=${maximum} times, saw ${count}`);
   }
 }
 
 /** An elicit for the given key was emitted. */
 export function expectElicit(transcript: Transcript, key: string): void {
-  const emitted = transcript.events.some((event) => event.type === "elicit" && event.key === key);
-  if (!emitted) {
+  if (countElicits(transcript, key) === 0) {
     fail(transcript, `expected elicit for key "${key}"`);
+  }
+}
+
+/** An elicit key was emitted at least `minimum` times. */
+export function expectElicitCount(transcript: Transcript, key: string, minimum: number): void {
+  const count = countElicits(transcript, key);
+  if (count < minimum) {
+    fail(transcript, `expected elicit "${key}" >=${minimum} times, saw ${count}`);
   }
 }
 
@@ -69,6 +109,43 @@ export function expectNoRunError(transcript: Transcript): void {
   );
   if (error) {
     fail(transcript, `expected no RUN_ERROR (got: ${error.message})`);
+  }
+}
+
+/**
+ * Free-form follow-ups must not be rejected by the interrupt gate.
+ * Covers the regression: "Open interrupts require resume[]".
+ */
+export function expectNoOpenInterruptError(transcript: Transcript): void {
+  const error = transcript.events.find(
+    (event): event is Extract<NormalizedEvent, { type: "run_error" }> =>
+      event.type === "run_error" && /Open interrupts require resume/i.test(event.message),
+  );
+  if (error) {
+    fail(transcript, `expected no open-interrupt gate error (got: ${error.message})`);
+  }
+
+  // Also catch the same message if it leaked into assistant text.
+  if (/Open interrupts require resume/i.test(transcript.text)) {
+    fail(transcript, `open-interrupt gate error leaked into assistant text`);
+  }
+}
+
+/**
+ * After a completed interactive tool flow, a free-form follow-up must not
+ * re-launch the same tool (history/answer path, not a fresh tool call).
+ */
+export function expectNoToolRelaunchAfter(
+  transcript: Transcript,
+  toolName: string,
+  completedCallCount: number,
+): void {
+  const count = countToolCalls(transcript, toolName);
+  if (count > completedCallCount) {
+    fail(
+      transcript,
+      `expected no re-launch of "${toolName}" after ${completedCallCount} completed call(s), saw ${count}`,
+    );
   }
 }
 
@@ -100,6 +177,36 @@ export function expectConfirmationToken(
   pattern: RegExp = /TKT-[A-Z0-9]+/,
 ): void {
   expectFinalTextMatches(transcript, pattern);
+}
+
+/** Count confirmation tokens across assistant text + tool results. */
+export function countConfirmationTokens(
+  transcript: Transcript,
+  pattern: RegExp = /TKT-[A-Z0-9]+/g,
+): number {
+  const toolResults = transcript.events
+    .filter(
+      (event): event is Extract<NormalizedEvent, { type: "tool_call_result" }> =>
+        event.type === "tool_call_result",
+    )
+    .map((event) => event.content)
+    .join("\n");
+  const haystack = `${transcript.text}\n${toolResults}`;
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const global = new RegExp(pattern.source, flags);
+  return haystack.match(global)?.length ?? 0;
+}
+
+/** At least `minimum` booking confirmation tokens appear. */
+export function expectConfirmationTokenCount(
+  transcript: Transcript,
+  minimum: number,
+  pattern: RegExp = /TKT-[A-Z0-9]+/g,
+): void {
+  const count = countConfirmationTokens(transcript, pattern);
+  if (count < minimum) {
+    fail(transcript, `expected >=${minimum} confirmation token(s), saw ${count}`);
+  }
 }
 
 function tryParseJson(content: string): unknown {
