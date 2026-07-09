@@ -120,7 +120,7 @@ function createFakeRegistry(): ToolSessionRegistry {
 }
 
 describe("AgentCore ToolRuntimeDriver", () => {
-  it("lists tools and adapts AgentCore registry sessions", async () => {
+  it("executes AgentCore registry sessions via the canonical runtime surface", async () => {
     await run(function* () {
       const driver = createAgentCoreToolRuntimeDriver({
         tools: [remoteTool],
@@ -128,22 +128,21 @@ describe("AgentCore ToolRuntimeDriver", () => {
         samplingProvider,
       });
 
-      const tools = yield* driver.listTools();
-      expect(tools.map((tool) => tool.name)).toEqual(["remote_echo"]);
-
-      const session = yield* driver.startToolCall({
-        toolName: "remote_echo",
-        callId: "call-remote",
-        arguments: { message: "hello" },
+      const result = yield* driver.execute({
+        entry: createAgentCoreToolInventoryEntry(remoteTool),
+        call: {
+          id: "call-remote",
+          type: "function",
+          function: { name: "remote_echo", arguments: { message: "hello" } },
+        },
       });
-      expect(session.runtimeId).toBe("agentcore");
 
-      const events = yield* session.events();
-      const next = yield* events.next();
-      expect(next.done).toBe(false);
-      if (!next.done) {
-        expect(next.value.type).toBe("result");
-      }
+      expect(result).toMatchObject({ kind: "completed", result: { ok: true } });
+      expect(result.ref).toMatchObject({
+        runtimeId: "agentcore",
+        callId: "call-remote",
+        toolName: "remote_echo",
+      });
     });
   });
 

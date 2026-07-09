@@ -3,26 +3,19 @@ import { resource, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
   ToolRuntimeError,
+  createStrategyToolRuntime,
   createToolExecutionRef,
   toToolParameterJsonSchema,
   validateToolParameters,
   type ElicitToolRequest,
-  type StartToolCallRequest,
   type ToolCall,
   type ToolDefinition,
-  type ToolExecuteRequest,
   type ToolExecution,
   type ToolExecutionContext,
   type ToolExecutionEvent,
-  type ToolExecutionRef,
   type ToolExecutionStrategy,
   type ToolInventoryEntry,
-  type ToolResumeRequest,
   type ToolRuntime,
-  type ToolRuntimeToolSchema,
-  type ToolSession as RuntimeToolSession,
-  type ToolSessionEvent as RuntimeToolSessionEvent,
-  type ToolSessionRef,
 } from "@sweatpants/framework/chat";
 import type {
   WireElicitResult,
@@ -76,10 +69,6 @@ export function createAgentCoreToolInventoryEntry<T extends AnyToolDefinition>(
   };
 }
 
-function toToolSchema(tool: AnyToolDefinition): ToolRuntimeToolSchema {
-  return toDefinition(tool);
-}
-
 function validateParams(tool: AnyToolDefinition, params: unknown, callId: string): unknown {
   return validateToolParameters({
     schema: tool.parameters,
@@ -89,32 +78,7 @@ function validateParams(tool: AnyToolDefinition, params: unknown, callId: string
   });
 }
 
-function adaptEvent(event: McpToolSessionEvent): RuntimeToolSessionEvent {
-  return event;
-}
-
-function adaptSession(runtimeId: string, session: McpToolSession): RuntimeToolSession {
-  return {
-    id: session.id,
-    runtimeId,
-    toolName: session.toolName,
-    events(afterLSN?: number): Stream<RuntimeToolSessionEvent, void> {
-      const source = session.events(afterLSN);
-      return resource(function* (provide) {
-        const subscription = yield* source;
-        yield* provide({
-          *next(): Operation<IteratorResult<RuntimeToolSessionEvent, void>> {
-            const next = yield* subscription.next();
-            if (next.done) return { done: true, value: undefined };
-            return { done: false, value: adaptEvent(next.value) };
-          },
-        });
-      });
-    },
-  };
-}
-
-function eventStreamFromSession(session: RuntimeToolSession): Stream<ToolExecutionEvent, void> {
+function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
   return resource(function* (provide) {
     const subscription = yield* session.events();
     yield* provide({
@@ -128,8 +92,8 @@ function eventStreamFromSession(session: RuntimeToolSession): Stream<ToolExecuti
 function sessionEventToExecution(
   runtimeId: string,
   call: ToolCall,
-  session: RuntimeToolSession,
-  event: RuntimeToolSessionEvent | null,
+  session: McpToolSession,
+  event: McpToolSessionEvent | null,
 ): ToolExecution {
   const ref = createToolExecutionRef({
     runtimeId,
@@ -243,12 +207,11 @@ function* nextAgentCoreExecution(
   samplingProvider: ToolSessionSamplingProvider,
   afterLSN?: number,
 ): Operation<ToolExecution> {
-  const runtimeSession = adaptSession(runtimeId, session);
   const subscription = yield* session.events(afterLSN);
 
   while (true) {
     const next = yield* subscription.next();
-    if (next.done) return sessionEventToExecution(runtimeId, call, runtimeSession, null);
+    if (next.done) return sessionEventToExecution(runtimeId, call, session, null);
 
     if (next.value.type === "sample_request") {
       const result = yield* samplingProvider.sample(next.value.messages, {
@@ -270,7 +233,7 @@ function* nextAgentCoreExecution(
       continue;
     }
 
-    return sessionEventToExecution(runtimeId, call, runtimeSession, next.value);
+    return sessionEventToExecution(runtimeId, call, session, next.value);
   }
 }
 
@@ -356,15 +319,8 @@ export function createAgentCoreToolExecutionStrategy(
 
 export function createAgentCoreToolRuntimeDriver(
   options: AgentCoreToolRuntimeDriverOptions,
-): ToolRuntime & {
-  listTools(): Operation<ToolRuntimeToolSchema[]>;
-  startToolCall(request: StartToolCallRequest): Operation<RuntimeToolSession>;
-  getSession(ref: ToolSessionRef): Operation<RuntimeToolSession | null>;
-  respondToElicit(ref: ToolSessionRef, elicitId: string, response: unknown): Operation<void>;
-  abortSession(ref: ToolSessionRef, reason?: string): Operation<void>;
-} {
+): ToolRuntime {
   const runtimeId = options.id ?? "agentcore";
-  const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool] as const));
   const registry =
     options.registry ??
     (options.registryOptions
@@ -374,137 +330,17 @@ export function createAgentCoreToolRuntimeDriver(
     throw new Error("AgentCore tool runtime requires registry or registryOptions");
   }
 
-  const startSession = function* (request: StartToolCallRequest): Operation<RuntimeToolSession> {
-    const tool = toolsByName.get(request.toolName);
-    if (!tool) {
-      throw new ToolRuntimeError(
-        "TOOL_NOT_FOUND",
-        `Tool not found in AgentCore runtime: ${request.toolName}`,
-      );
-    }
-    const params = validateParams(tool, request.arguments, request.callId);
-    const session = yield* registry.create(tool, params, {
-      sessionId: request.callId,
-      ...(request.signal ? { signal: request.signal } : {}),
-    });
-    return adaptSession(runtimeId, session);
-  };
-
-  return {
+  return createStrategyToolRuntime({
     id: runtimeId,
-
-    *listTools(): Operation<ToolRuntimeToolSchema[]> {
-      return Array.from(toolsByName.values()).map(toToolSchema);
-    },
-
-    *startToolCall(request: StartToolCallRequest): Operation<RuntimeToolSession> {
-      return yield* startSession(request);
-    },
-
-    *getSession(ref: ToolSessionRef): Operation<RuntimeToolSession | null> {
-      if (ref.runtimeId !== runtimeId) return null;
-      const session = yield* registry.get(ref.id);
-      if (!session) return null;
-      if (session.toolName !== ref.toolName) return null;
-      return adaptSession(runtimeId, session);
-    },
-
-    *respondToElicit(ref: ToolSessionRef, elicitId: string, response: unknown): Operation<void> {
-      const session = yield* registry.get(ref.id);
-      if (!session)
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${ref.id}`,
-        );
-      yield* session.respondToElicit(elicitId, response as WireElicitResult<unknown>);
-    },
-
-    *abortSession(ref: ToolSessionRef, reason?: string): Operation<void> {
-      const session = yield* registry.get(ref.id);
-      if (!session)
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${ref.id}`,
-        );
-      yield* session.cancel(reason);
-    },
-
-    *execute(request: ToolExecuteRequest): Operation<ToolExecution> {
-      const implementation = request.entry.implementation;
-      const tool = isAgentCoreImplementation(implementation)
-        ? implementation.tool
-        : toolsByName.get(request.call.function.name);
-      if (!tool) {
-        throw new ToolRuntimeError(
-          "NO_MATCHING_TOOL_STRATEGY",
-          `AgentCore runtime cannot execute tool: ${request.call.function.name}`,
-        );
-      }
-      const selectedModel = modelSelectionFromMetadata(request.metadata);
-      const params = validateParams(tool, request.call.function.arguments, request.call.id);
-      const session = yield* registry.create(tool, params, {
-        sessionId: request.call.id,
-        ...(request.signal ? { signal: request.signal } : {}),
-        ...(selectedModel ? { model: selectedModel } : {}),
-      });
-      return yield* nextAgentCoreExecution(
-        runtimeId,
-        request.call,
-        session,
-        options.samplingProvider,
-      );
-    },
-
-    *resume(request: ToolResumeRequest): Operation<ToolExecution> {
-      const sessionId = request.ref.sessionId ?? request.ref.executionId;
-      const session = yield* registry.get(sessionId);
-      if (!session)
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${sessionId}`,
-        );
-      if (request.ref.toolName && session.toolName !== request.ref.toolName)
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${sessionId}`,
-        );
-
-      const pendingId =
-        request.input.type === "elicit_response" ? request.input.elicitId : undefined;
-      const pendingLsn = yield* findPendingRequestLsn(session, pendingId);
-      if (request.input.type === "elicit_response") {
-        if (!request.input.elicitId)
-          throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
-        yield* session.respondToElicit(
-          request.input.elicitId,
-          request.input.result as WireElicitResult<unknown>,
-        );
-      }
-
-      return yield* nextAgentCoreExecution(
-        runtimeId,
-        {
-          id: request.ref.callId,
-          type: "function",
-          function: { name: request.ref.toolName || session.toolName, arguments: {} },
-        },
-        session,
-        options.samplingProvider,
-        pendingLsn ?? afterLsnFromPendingId(pendingId),
-      );
-    },
-
-    *abort(ref: ToolExecutionRef, reason?: string): Operation<void> {
-      const sessionId = ref.sessionId ?? ref.executionId;
-      const session = yield* registry.get(sessionId);
-      if (!session)
-        throw new ToolRuntimeError(
-          "EXECUTION_NOT_FOUND",
-          `AgentCore tool session not found: ${sessionId}`,
-        );
-      yield* session.cancel(reason);
-    },
-  };
+    strategies: [
+      createAgentCoreToolExecutionStrategy({
+        id: runtimeId,
+        registry,
+        samplingProvider: options.samplingProvider,
+        tools: options.tools,
+      }),
+    ],
+  });
 }
 
 export function* installAgentCoreToolRuntime(

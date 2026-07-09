@@ -18,7 +18,7 @@ const echoTool = createTool("echo")
   });
 
 describe("local ToolRuntimeDriver", () => {
-  it("lists tools and executes a local session", async () => {
+  it("executes a local tool via the canonical runtime surface", async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [echoTool],
@@ -29,30 +29,21 @@ describe("local ToolRuntimeDriver", () => {
         },
       });
 
-      const tools = yield* driver.listTools();
-      expect(tools.map((tool) => tool.name)).toEqual(["echo"]);
-
-      const session = yield* driver.startToolCall({
-        toolName: "echo",
-        callId: "call-echo",
-        arguments: { message: "hello" },
+      const result = yield* driver.execute({
+        entry: createToolInventoryEntry(echoTool),
+        call: {
+          id: "call-echo",
+          type: "function",
+          function: { name: "echo", arguments: { message: "hello" } },
+        },
       });
 
-      expect(session.runtimeId).toBe("local");
-      expect(session.id).toBe("call-echo");
-
-      const events = yield* session.events();
-      let finalResult: unknown;
-      while (true) {
-        const next = yield* events.next();
-        if (next.done) break;
-        if (next.value.type === "result") {
-          finalResult = next.value.result;
-          break;
-        }
-      }
-
-      expect(finalResult).toEqual({ echoed: "hello" });
+      expect(result).toMatchObject({ kind: "completed", result: { echoed: "hello" } });
+      expect(result.ref).toMatchObject({
+        runtimeId: "local",
+        callId: "call-echo",
+        toolName: "echo",
+      });
     });
   });
 
@@ -78,10 +69,13 @@ describe("local ToolRuntimeDriver", () => {
       });
 
       try {
-        yield* driver.startToolCall({
-          toolName: "strict_echo",
-          callId: "call-invalid-session",
-          arguments: {},
+        yield* driver.execute({
+          entry: createToolInventoryEntry(strictTool),
+          call: {
+            id: "call-invalid-session",
+            type: "function",
+            function: { name: "strict_echo", arguments: {} },
+          },
         });
         throw new Error("expected validation failure");
       } catch (error) {
