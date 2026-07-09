@@ -1,40 +1,43 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.base.json",
-  "compilerOptions": {
-    "declaration": true,
-    "ignoreDeprecations": "5.0"
-  },
-  "references": [
-    {
-      "path": "./packages/durable-streams"
+    "extends": "@sweatpants/ts-config/tsconfig.base.json",
+    "compilerOptions": {
+        "declaration": true,
+        "ignoreDeprecations": "5.0"
     },
-    {
-      "path": "./packages/session-contract"
-    },
-    {
-      "path": "./packages/elicit-context"
-    },
-    {
-      "path": "./packages/cli"
-    },
-    {
-      "path": "./packages/framework"
-    },
-    {
-      "path": "./packages/model-provider-pi-ai"
-    },
-    {
-      "path": "./packages/react-chat"
-    },
-    {
-      "path": "./packages/tool-runtime-agentcore"
-    },
-    {
-      "path": "./packages/tool-runtime-local"
-    },
-    {
-      "path": "./packages/vite-plugin"
-    }
-  ],
-  "files": []
+    "references": [
+        {
+            "path": "./packages/core"
+        },
+        {
+            "path": "./packages/durable-streams"
+        },
+        {
+            "path": "./packages/session-contract"
+        },
+        {
+            "path": "./packages/elicit-context"
+        },
+        {
+            "path": "./packages/cli"
+        },
+        {
+            "path": "./packages/framework"
+        },
+        {
+            "path": "./packages/model-provider-pi-ai"
+        },
+        {
+            "path": "./packages/react-chat"
+        },
+        {
+            "path": "./packages/tool-runtime-agentcore"
+        },
+        {
+            "path": "./packages/tool-runtime-local"
+        },
+        {
+            "path": "./packages/vite-plugin"
+        }
+    ],
+    "files": []
 }

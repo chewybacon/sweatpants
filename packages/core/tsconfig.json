@@ -1,14 +1,19 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.base.json",
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src",
-    "noEmit": true,
-    "customConditions": [
-      "development"
+    "extends": "@sweatpants/ts-config/tsconfig.package.json",
+    "compilerOptions": {
+        "composite": true,
+        "emitDeclarationOnly": true,
+        "outDir": "./dist",
+        "rootDir": "./src",
+        "customConditions": ["development"]
+    },
+    "include": ["src/**/*.ts"],
+    "exclude": [
+        "dist",
+        "node_modules",
+        "**/__tests__/**",
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "acceptance"
     ]
-  },
-  "include": [
-    "src"
-  ]
 }
