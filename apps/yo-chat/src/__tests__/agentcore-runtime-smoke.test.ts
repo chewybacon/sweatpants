@@ -70,8 +70,8 @@ describe("yo-chat AgentCore runtime smoke", () => {
     await run(function* () {
       yield* setupYoChatPluginsAndRuntime();
 
-      const tools = yield* ToolRuntimeApi.listTools();
-      expect(tools.some((tool) => tool.name === "book_flight")).toBe(true);
+      const inventory = yield* ToolInventoryApi.list();
+      expect(inventory.some((tool) => tool.definition.name === "book_flight")).toBe(true);
 
       const entry = yield* ToolInventoryApi.resolve("book_flight");
       const result = yield* ToolRuntimeApi.execute({
