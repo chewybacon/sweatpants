@@ -271,14 +271,6 @@ export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): 
 
 export const ToolRuntimeContext = createContext<ToolRuntime>("ToolRuntime");
 
-type LegacyRuntimeAdapter = ToolRuntime & {
-  listTools?: () => Operation<ToolRuntimeToolSchema[]>;
-  startToolCall?: (request: StartToolCallRequest) => Operation<ToolSession>;
-  getSession?: (ref: ToolSessionRef) => Operation<ToolSession | null>;
-  respondToElicit?: (ref: ToolSessionRef, elicitId: string, response: unknown) => Operation<void>;
-  abortSession?: (ref: ToolSessionRef, reason?: string) => Operation<void>;
-};
-
 function* activeRuntime(): Operation<ToolRuntime> {
   const runtime = yield* ToolRuntimeContext.get();
   if (!runtime)
@@ -316,76 +308,10 @@ export const ToolRuntimeApi = {
     }
     yield* runtime.abort(ref, reason);
   },
-
-  *listTools(): Operation<ToolRuntimeToolSchema[]> {
-    const runtime = (yield* activeRuntime()) as LegacyRuntimeAdapter;
-    if (!runtime.listTools)
-      throw new ToolRuntimeError(
-        "LEGACY_RUNTIME_METHOD_UNAVAILABLE",
-        "Active tool runtime does not implement listTools",
-      );
-    return yield* runtime.listTools();
-  },
-
-  *startToolCall(request: StartToolCallRequest): Operation<ToolSession> {
-    const runtime = (yield* activeRuntime()) as LegacyRuntimeAdapter;
-    if (!runtime.startToolCall)
-      throw new ToolRuntimeError(
-        "LEGACY_RUNTIME_METHOD_UNAVAILABLE",
-        "Active tool runtime does not implement startToolCall",
-      );
-    return yield* runtime.startToolCall(request);
-  },
-
-  *getSession(ref: ToolSessionRef): Operation<ToolSession | null> {
-    const runtime = (yield* activeRuntime()) as LegacyRuntimeAdapter;
-    if (ref.runtimeId !== runtime.id)
-      throw new ToolRuntimeError(
-        "WRONG_TOOL_RUNTIME",
-        `Wrong tool runtime: expected ${runtime.id}, received ${ref.runtimeId}`,
-      );
-    if (!runtime.getSession)
-      throw new ToolRuntimeError(
-        "LEGACY_RUNTIME_METHOD_UNAVAILABLE",
-        "Active tool runtime does not implement getSession",
-      );
-    return yield* runtime.getSession(ref);
-  },
-
-  *respondToElicit(ref: ToolSessionRef, elicitId: string, response: unknown): Operation<void> {
-    const runtime = (yield* activeRuntime()) as LegacyRuntimeAdapter;
-    if (ref.runtimeId !== runtime.id)
-      throw new ToolRuntimeError(
-        "WRONG_TOOL_RUNTIME",
-        `Wrong tool runtime: expected ${runtime.id}, received ${ref.runtimeId}`,
-      );
-    if (!runtime.respondToElicit)
-      throw new ToolRuntimeError(
-        "LEGACY_RUNTIME_METHOD_UNAVAILABLE",
-        "Active tool runtime does not implement respondToElicit",
-      );
-    yield* runtime.respondToElicit(ref, elicitId, response);
-  },
-
-  *abortSession(ref: ToolSessionRef, reason?: string): Operation<void> {
-    const runtime = (yield* activeRuntime()) as LegacyRuntimeAdapter;
-    if (ref.runtimeId !== runtime.id)
-      throw new ToolRuntimeError(
-        "WRONG_TOOL_RUNTIME",
-        `Wrong tool runtime: expected ${runtime.id}, received ${ref.runtimeId}`,
-      );
-    if (!runtime.abortSession)
-      throw new ToolRuntimeError(
-        "LEGACY_RUNTIME_METHOD_UNAVAILABLE",
-        "Active tool runtime does not implement abortSession",
-      );
-    yield* runtime.abortSession(ref, reason);
-  },
 };
 
-// Backward-compatible structural names for in-repo packages while the runtime
-// implementation migrates. These are not exposed as separate public subpaths.
-export type ToolRuntimeDriver = ToolRuntime;
+// Session-style helper types used by concrete driver packages and acceptance
+// harnesses. These are not part of the canonical ToolRuntime API.
 export type ToolRuntimeToolSchema = InventoryToolDefinition;
 export interface ToolSessionRef {
   id: string;
@@ -401,7 +327,4 @@ export interface StartToolCallRequest {
   callId: string;
   arguments: Record<string, unknown>;
   signal?: AbortSignal;
-}
-export interface ToolSessionLookupRequest extends ToolSessionRef {
-  afterLSN?: number;
 }
