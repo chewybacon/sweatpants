@@ -7,8 +7,14 @@
  * - Full session replay
  *
  * Protocol:
- * - Request params: sessionId (query/path), offset (query)
- * - Response: NDJSON with LSN in each event, X-Session-Id header
+ * - Request params: sessionId/stream id (query/path), offset (query)
+ * - Response: NDJSON with LSN in each event, X-Session-Id + X-Conversation-Id headers
+ *
+ * Identity law (kernel vs wire vs transport):
+ * - conversationId: only durable chat key (fold log / history / resume)
+ * - threadId: AG-UI wire alias of conversationId (always equal on the wire)
+ * - runId: ephemeral AG-UI turn correlator (never keys fold state)
+ * - sessionId (X-Session-Id): response-stream / reconnect buffer id only
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
@@ -854,12 +860,17 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ? normalizeChatRequestBody((yield* call(() => request.json())) as ChatRequestBody)
           : ({ messages: [] } as ChatRequestBody);
 
+      // Durable conversation identity resolution:
+      //   1. explicit conversationId (body)
+      //   2. conversationId query/header
+      //   3. AG-UI threadId as alias
+      //   4. server-minted id (returned via X-Conversation-Id)
+      // Divergent body.threadId never forks identity once conversationId is set.
       const clientConversationId =
-        body.conversationId?.trim() || requestedConversationIdParam?.trim() || undefined;
-      // When the client doesn't provide a conversationId, the server mints one
-      // so multi-turn conversations can persist fold session state across
-      // requests. The minted id is returned in the X-Conversation-Id response
-      // header so the client can reuse it for subsequent turns.
+        body.conversationId?.trim() ||
+        requestedConversationIdParam?.trim() ||
+        body.threadId?.trim() ||
+        undefined;
       const requestedConversationId = clientConversationId ?? crypto.randomUUID();
 
       // Run request-scoped setup before resolving durable dependencies.
@@ -890,7 +901,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         return yield* createEmptyStream();
       }
 
-      // Determine session ID
+      // Response-stream id (transport reconnect buffer). Not durable chat state.
+      // Prefer path/query stream ids, then conversation→stream index, else mint.
       const sessionId =
         pathSessionId ??
         requestedSessionId ??
@@ -904,6 +916,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const startLSN = parsedOffset.value ?? 0;
 
       // Set response headers
+      // X-Session-Id = response stream / reconnect buffer id (transport)
+      // X-Conversation-Id = durable conversation key (kernel)
       ctx.headers.set("X-Session-Id", sessionId);
       ctx.headers.set("X-Conversation-Id", requestedConversationId);
       ctx.headers.set("Cache-Control", "no-store");
@@ -962,10 +976,13 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         contextStreamOptions || body.streamOptions
           ? { ...contextStreamOptions, ...body.streamOptions }
           : undefined;
-      const durableConversationId = requestedConversationId ?? body.threadId;
-      const agUiThreadId = durableConversationId ?? sessionId;
+      // conversationId is the only durable chat key. threadId is always its
+      // AG-UI alias. runId is request-scoped and must never fall back to the
+      // response-stream id (sessionId).
+      const durableConversationId = requestedConversationId;
+      const agUiThreadId = durableConversationId;
       yield* restoreThreadInterruptStateIfNeeded(bufferStore, agUiThreadId);
-      const agUiRunId = body.runId ?? sessionId;
+      const agUiRunId = body.runId?.trim() || crypto.randomUUID();
       const requestedResumeScopeId = deriveResumeScopeId(agUiThreadId, body.parentRunId);
       const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
       const hasOpenInterrupts = openInterruptsForThread(agUiThreadId).length > 0;
@@ -1219,6 +1236,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               toolRuntimeId: activeToolRuntime.id,
               maxIterations,
               signal: engineAbortController.signal,
+              // Fold session identity is the durable conversation id only.
+              conversationId: requestedConversationId,
               agUiRun,
               // Plugin support for MCP tools
               ...(pluginRegistry && { pluginRegistry }),

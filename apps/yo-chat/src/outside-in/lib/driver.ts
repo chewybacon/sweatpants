@@ -104,11 +104,11 @@ export async function runChatFlow(
 
   const conversationId = options.conversationId ?? crypto.randomUUID();
 
-  // Wrap the binding's fetch to inject the conversation ID into every POST
-  // body that targets the chat endpoint. This avoids triggering
-  // readDurableHistory (which a session-level conversationId would do) while
-  // still sending the stable threadId the server needs to key the fold session.
-  // We only modify requests to the chat URL — external API calls (e.g. the
+  // Wrap the binding's fetch to inject the durable conversation ID into every
+  // POST body that targets the chat endpoint. The server keys the fold session
+  // log by conversationId only (AG-UI runId is ephemeral). We inject both
+  // conversationId and threadId for wire compatibility, but avoid the session
+  // option that triggers readDurableHistory GETs. External API calls (e.g. the
   // model provider's POST to Copilot) must NOT be modified.
   const wrappedFetch: ChatFetch = async (input, init) => {
     const url =
@@ -132,13 +132,10 @@ export async function runChatFlow(
 
   return withChatFetch(wrappedFetch, () =>
     run(function* (): Operation<Transcript> {
-      // Generate a stable conversation ID so the fold session persists
-      // across turns. We inject it into every POST body via a fetch wrapper
-      // rather than using the session's conversationId option — the latter
-      // triggers readDurableHistory (a GET request) which requires the server
-      // to support conversation-level replay. The fold session persistence
-      // only needs the server to receive the same threadId on every POST.
-      const conversationId = options.conversationId ?? crypto.randomUUID();
+      // Stable conversation identity is injected by the fetch wrapper above.
+      // createChatSession intentionally does not take conversationId here —
+      // that option triggers readDurableHistory GETs. Fold persistence only
+      // needs the same conversationId on every chat POST.
       const session = yield* createChatSession({
         baseUrl: binding.baseUrl,
         ...(options.plugins ? { plugins: options.plugins } : {}),

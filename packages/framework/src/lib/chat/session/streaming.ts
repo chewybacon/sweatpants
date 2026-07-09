@@ -14,6 +14,14 @@ export interface ConversationReplayState {
   toolTraces: ConversationReplayToolTrace[];
 }
 
+/**
+ * AG-UI run correlation metadata (wire projection only).
+ *
+ * Identity law:
+ * - threadId MUST equal the durable conversationId
+ * - runId is request/turn scoped and MUST NOT key durable fold state
+ * - X-Session-Id / stream buffer ids are transport-only and MUST NOT appear here
+ */
 export interface AgUiRunMetadata {
   threadId: string;
   runId: string;

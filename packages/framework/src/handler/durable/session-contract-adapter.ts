@@ -40,12 +40,16 @@ export function createSessionContractChatEngine(
   params: SessionContractChatEngineParams,
 ): Stream<StreamEvent, void> {
   return resource(function* (provide) {
-    // Key by threadId (stable across resume) so the fold session persists
-    // across HTTP requests. runId is per-request and would prevent restore.
-    const sessionId = params.agUiRun.threadId || params.agUiRun.runId;
+    // Identity law: fold log is keyed only by conversationId.
+    // agUiRun.threadId is a wire alias of conversationId; agUiRun.runId is
+    // ephemeral turn correlation and must never key durable fold state.
+    // The local name "sessionId" here is the fold session id (= conversationId),
+    // not the HTTP response-stream id (X-Session-Id).
+    const sessionId = params.conversationId;
 
-    // Read the shared buffer store from params (optional — falls back to
-    // an ephemeral store if not provided, preserving hermetic test behavior).
+    // Shared buffer store is optional only for hermetic unit tests. Product
+    // hosts install FoldSessionBufferStoreContext so multi-turn resume reopens
+    // the same log instead of inventing a fresh one.
     const bufferStore = params.foldSessionBufferStore;
     const session = yield* createInMemorySession({
       sessionId,
@@ -128,7 +132,7 @@ export function createSessionContractChatEngine(
             yield* abandonParkedTurnForFreeFormSend(session);
             const userMessage = latestUserMessage(params);
             yield* session.send(userMessage, {
-              idempotencyKey: `chat:${sessionId}:message:${params.messages.length}`,
+              idempotencyKey: messageIdempotencyKey(sessionId, userMessage),
             });
           }
 
@@ -171,7 +175,7 @@ export function createSessionContractChatEngine(
 
       const userMessage = latestUserMessage(params);
       yield* session.send(userMessage, {
-        idempotencyKey: `chat:${sessionId}:message:${params.messages.length}`,
+        idempotencyKey: messageIdempotencyKey(sessionId, userMessage),
       });
     }
 
@@ -1132,7 +1136,24 @@ function isHaltError(error: unknown): boolean {
 
 function latestUserMessage(params: SessionContractChatEngineParams) {
   const last = [...params.messages].reverse().find((message) => message.role === "user");
-  return { role: "user", content: last?.content ?? "" };
+  return {
+    role: "user" as const,
+    content: last?.content ?? "",
+    ...(typeof last?.id === "string" && last.id.length > 0 ? { id: last.id } : {}),
+  };
+}
+
+function messageIdempotencyKey(
+  sessionId: string,
+  message: { id?: string; content: string },
+): string {
+  // Prefer client message identity when present. Fall back to content hash so
+  // free-form turns that only send the latest user message still get a stable
+  // unique key across requests (messages.length is not durable identity).
+  if (typeof message.id === "string" && message.id.length > 0) {
+    return `chat:${sessionId}:message-id:${message.id}`;
+  }
+  return `chat:${sessionId}:message-content:${stableStringify(message.content)}`;
 }
 
 /**
