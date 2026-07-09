@@ -272,6 +272,88 @@ describe("Durable Chat Handler", () => {
       expect(runStarted[0]?.threadId).toBe(conversationId);
     });
 
+    it("enforces identity law: conversationId durable, threadId alias, runId ephemeral, stream id separate", function* () {
+      const provider = createMockProvider({ responses: "identity-law" });
+      const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+      const conversationId = `identity-law-${Date.now()}`;
+
+      // No client runId: server must mint one, never reuse X-Session-Id.
+      const first = yield* call(() =>
+        handler(
+          new Request("http://localhost/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId,
+              threadId: "should-not-win",
+              messages: [{ id: "user:id-1", role: "user", content: "first" }],
+            }),
+          }),
+        ),
+      );
+      const firstResult = yield* call(() => consumeDurableResponse(first));
+      const firstStreamId = first.headers.get("X-Session-Id");
+      const firstConversationHeader = first.headers.get("X-Conversation-Id");
+      const firstStarted = getEventsByType(firstResult, "RUN_STARTED") as Array<{
+        type: "RUN_STARTED";
+        threadId: string;
+        runId: string;
+      }>;
+
+      expect(firstConversationHeader).toBe(conversationId);
+      expect(firstStreamId).toBeTruthy();
+      expect(firstStarted[0]?.threadId).toBe(conversationId);
+      expect(firstStarted[0]?.runId).toBeTruthy();
+      expect(firstStarted[0]?.runId).not.toBe(firstStreamId);
+      expect(firstStarted[0]?.runId).not.toBe(conversationId);
+
+      // Explicit runId is honored; threadId still forced to conversationId.
+      const second = yield* call(() =>
+        handler(
+          new Request("http://localhost/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId,
+              threadId: "still-should-not-win",
+              runId: "client-run-42",
+              messages: [{ id: "user:id-2", role: "user", content: "second" }],
+            }),
+          }),
+        ),
+      );
+      const secondResult = yield* call(() => consumeDurableResponse(second));
+      const secondStarted = getEventsByType(secondResult, "RUN_STARTED") as Array<{
+        type: "RUN_STARTED";
+        threadId: string;
+        runId: string;
+      }>;
+      expect(second.headers.get("X-Conversation-Id")).toBe(conversationId);
+      expect(secondStarted[0]?.threadId).toBe(conversationId);
+      expect(secondStarted[0]?.runId).toBe("client-run-42");
+
+      // threadId alone still resolves as the durable conversation key.
+      const viaThread = yield* call(() =>
+        handler(
+          new Request("http://localhost/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              threadId: conversationId,
+              messages: [{ id: "user:id-3", role: "user", content: "via thread" }],
+            }),
+          }),
+        ),
+      );
+      const viaThreadResult = yield* call(() => consumeDurableResponse(viaThread));
+      const viaThreadStarted = getEventsByType(viaThreadResult, "RUN_STARTED") as Array<{
+        type: "RUN_STARTED";
+        threadId: string;
+      }>;
+      expect(viaThread.headers.get("X-Conversation-Id")).toBe(conversationId);
+      expect(viaThreadStarted[0]?.threadId).toBe(conversationId);
+    });
+
     it("should reuse the same durable session for repeated conversationId requests", function* () {
       const provider = createMockProvider({ responses: ["First response", "Second response"] });
       const handler = createDurableChatHandler({

@@ -41,15 +41,27 @@ export interface SessionContractChatEngineParams {
   maxIterations: number;
   signal: AbortSignal;
   sessionInfo?: StreamEvent & { type: "session_info" };
+  /**
+   * Durable conversation identity. This is the only key used for the fold
+   * session log.
+   *
+   * Identity law:
+   * - conversationId keys the fold log
+   * - agUiRun.threadId is always the wire alias of conversationId
+   * - agUiRun.runId is ephemeral turn correlation only
+   * - HTTP X-Session-Id (response stream) never appears here
+   */
+  conversationId: string;
   agUiRun: AgUiRunMetadata;
   pluginRegistry?: PluginRegistry;
   pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>;
   mcpToolRegistry?: McpToolRegistry;
   pluginSessionManager?: PluginSessionManager;
   /**
-   * Optional shared fold-session buffer store. When provided, the adapter
-   * reopens the existing fold session on resume instead of creating an
-   * ephemeral one, enabling the fold driver's restore/continuation path.
+   * Shared fold-session buffer store. When provided, the adapter reopens the
+   * existing fold session on resume instead of creating an ephemeral one.
+   * Product hosts (yo-chat) MUST install this via FoldSessionBufferStoreContext.
+   * Hermetic unit tests MAY omit it and get a private ephemeral store.
    */
   foldSessionBufferStore?: TokenBufferStore<LogRecord>;
   elicitResponses?: ElicitResponse[];
@@ -99,9 +111,21 @@ export interface ResumeEntry {
 }
 
 export interface ChatRequestBody {
-  /** AG-UI thread id for strict public requests. Falls back to conversation/session id. */
+  /**
+   * Durable conversation identity. Preferred over threadId.
+   * This is the only durable chat key (fold log, history, resume).
+   */
+  conversationId?: string;
+  /**
+   * AG-UI wire alias for conversationId. If conversationId is absent, threadId
+   * is accepted as the durable conversation key. Divergent threadId values are
+   * normalized to conversationId on the wire.
+   */
   threadId?: string;
-  /** AG-UI run id for strict public requests. Falls back to the durable session id. */
+  /**
+   * Ephemeral AG-UI run correlation for one request/turn. Never a durable chat
+   * key. If omitted, the server mints a fresh runId (never reuses stream id).
+   */
   runId?: string;
   /** Parent AG-UI run id for resumed runs. */
   parentRunId?: string;
@@ -123,7 +147,6 @@ export interface ChatRequestBody {
   model?: ModelSelection;
   elicitResponses?: ElicitResponse[];
   replayState?: ConversationReplayState;
-  conversationId?: string;
   pluginAbort?: PluginAbortRequest;
 }
 

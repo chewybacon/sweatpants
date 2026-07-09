@@ -1,12 +1,31 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 
+import { run } from 'effection'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 describe('yo-chat tool wiring', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
+  })
+
+  it('installs a shared fold-session buffer store in the durable host setup', async () => {
+    vi.doMock('@/lib/shared-redis', () => ({
+      getSharedRedisClient: async () => null,
+    }))
+
+    const { FoldSessionBufferStoreContext } = await import('@sweatpants/framework/server')
+    const { setupYoChatDurableStreams } = await import('../server/durable-streams')
+
+    await run(function* () {
+      yield* setupYoChatDurableStreams()
+      // Same context read path the durable handler uses for fold reopen.
+      const store = yield* FoldSessionBufferStoreContext.get()
+      expect(store).toBeDefined()
+      expect(typeof store?.get).toBe('function')
+      expect(typeof store?.create).toBe('function')
+    })
   })
 
   it('registers every plugin-backed tool in the server plugin registries', async () => {
