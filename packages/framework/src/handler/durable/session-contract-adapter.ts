@@ -102,6 +102,10 @@ export function createSessionContractChatEngine(
       // fold driver own the rest of the lifecycle. It reattaches the pending
       // call, records the tool result (or re-elicit), and continues the turn
       // through the real model.
+      //
+      // Cancel/decline resumes may also carry a free-form user message (the
+      // client supersedes an open interrupt with a new chat turn). Deliver that
+      // message after resolving the interrupt so chat is not blocked.
       yield* spawn(function* () {
         try {
           const handled = yield* answerPendingElicits(params, session);
@@ -113,6 +117,21 @@ export function createSessionContractChatEngine(
             });
             return;
           }
+
+          // Free-form send superseding open elicits: close parked call waits as
+          // cancelled instead of reattaching the tool (which would re-elicit).
+          // Also close the abandoned mid-turn with a transcript checkpoint +
+          // message wait so the fold driver does not re-run the previous user
+          // message (decideAction treats fully-matched message waits as runnable).
+          const freeFormAfterCancel = shouldDeliverUserMessageAfterResume(params);
+          if (freeFormAfterCancel) {
+            yield* abandonParkedTurnForFreeFormSend(session);
+            const userMessage = latestUserMessage(params);
+            yield* session.send(userMessage, {
+              idempotencyKey: `chat:${sessionId}:message:${params.messages.length}`,
+            });
+          }
+
           yield* spawnFoldDriver(session, config);
         } catch (error) {
           // On scope close (halt), do NOT terminal the session — the fold
@@ -1114,6 +1133,76 @@ function isHaltError(error: unknown): boolean {
 function latestUserMessage(params: SessionContractChatEngineParams) {
   const last = [...params.messages].reverse().find((message) => message.role === "user");
   return { role: "user", content: last?.content ?? "" };
+}
+
+/**
+ * When the client cancels/declines open elicits as part of a free-form send,
+ * the request still carries a new user message that must be delivered after
+ * the interrupt is closed. Pure accept resumes continue the parked tool turn
+ * and should not inject a new user message.
+ */
+function shouldDeliverUserMessageAfterResume(
+  params: SessionContractChatEngineParams,
+): boolean {
+  const responses = params.elicitResponses ?? [];
+  if (responses.length === 0) return false;
+  const allNonAccept = responses.every(
+    (response) => response.result.action === "cancel" || response.result.action === "decline",
+  );
+  if (!allNonAccept) return false;
+  const last = [...params.messages].reverse().find((message) => message.role === "user");
+  return typeof last?.content === "string" && last.content.trim().length > 0;
+}
+
+function* abandonParkedTurnForFreeFormSend(session: FoldSessionHost): Operation<void> {
+  const records = yield* session.records();
+  const state = deriveLogState(session.id, records);
+
+  for (const wait of state.pendingWaits) {
+    if (wait.kind === "call") {
+      yield* session.respondIfPending(
+        waitToken(session.id, wait.waitSeq),
+        {
+          ok: false,
+          code: "cancelled",
+          message: "Tool call cancelled by user sending a new message",
+        },
+        { wait: "call" },
+      );
+    } else if (wait.kind === "sample") {
+      yield* session.respondIfPending(
+        waitToken(session.id, wait.waitSeq),
+        {
+          ok: false,
+          code: "cancelled",
+          message: "Sample cancelled by user sending a new message",
+        },
+        { wait: "sample" },
+      );
+    }
+  }
+
+  // Prefer the latest suspended call-batch transcript so history remains intact.
+  const suspended = [...(yield* session.records())]
+    .reverse()
+    .find(
+      (record) =>
+        record.kind === "checkpoint" &&
+        record.state &&
+        typeof record.state === "object" &&
+        (record.state as { kind?: unknown }).kind === "call_batch" &&
+        Array.isArray((record.state as { transcript?: unknown }).transcript),
+    );
+  const transcript =
+    suspended && suspended.kind === "checkpoint"
+      ? ((suspended.state as { transcript: unknown[] }).transcript ?? [])
+      : [];
+
+  yield* session.checkpoint("fold", {
+    kind: "transcript",
+    transcript,
+  });
+  yield* session.emitWait("message", {});
 }
 
 function toRuntimeContext(

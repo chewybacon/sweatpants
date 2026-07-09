@@ -126,10 +126,12 @@ function PlayTttDemo() {
       pipeline: "markdown",
       tools: [],
       plugins: [playTttPlugin],
+      // Force the first turn into the tool; later turns stay free-form so
+      // follow-ups answer from history instead of re-launching a game.
       initialToolChoice: "required",
       systemPrompt: `You are the Agentic Tic-Tac-Toe demo controller.
 
-For any user request to start or play tic-tac-toe, you MUST call the play_ttt tool immediately. Do not answer in prose, do not announce that you will call the tool, and do not apologize instead of calling it.
+When the user wants to start or play tic-tac-toe, call the play_ttt tool immediately. Do not answer in prose instead of calling it for a new game request.
 
 The play_ttt tool handles the entire game automatically:
 - Randomly assigns X or O to each player
@@ -137,7 +139,7 @@ The play_ttt tool handles the entire game automatically:
 - Uses AI reasoning to pick strategic moves
 - Lets the user click cells for their moves
 
-If the user wants to play tic-tac-toe, the only acceptable first response is a play_ttt tool call.`,
+After a game has completed, answer follow-up questions from the conversation history. Do NOT call play_ttt again unless the user explicitly asks to play another game.`,
     });
 
   const [input, setInput] = useState("");

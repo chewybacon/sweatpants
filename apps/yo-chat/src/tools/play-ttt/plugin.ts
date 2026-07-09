@@ -61,17 +61,9 @@ export const playTttPlugin = makePlugin(playTttTool)
         ...(resultMessage !== undefined ? { resultMessage } : {}),
       }
 
-      // If game is over, render static view and auto-complete
-      if (gameOver) {
-        yield* ctx.render(GameChatView, props)
-        // Return a dummy response (won't be used since game is over)
-        return { action: 'accept' as const, content: { position: -1 } }
-      }
-
-      // Render the interactive view and wait for user selection
+      // Render GameChatView. For game-over, the component auto-acks with
+      // position -1 so the park resolves and follow-up chat is not blocked.
       const result = yield* ctx.render(GameChatView, props)
-
-      // Return the selection as an accept response
       return { action: 'accept' as const, content: result }
     },
   })

@@ -50,11 +50,13 @@ export function* streamChatOnce(
   const baseUrl = options.baseUrl ?? contextBaseUrl ?? '/api/chat'
 
   const response = yield* executeChatFetch(baseUrl, messages, options, signal)
+  const conversationId = response.headers.get('X-Conversation-Id')?.trim() || undefined
 
   // Create Effection stream for NDJSON parsing
   // Server returns { lsn, event } wrapper format (durable streaming)
   // We parse as unknown and extract the inner event
   const eventStream = parseNDJSON<unknown>(response.body!, { signal })
 
-  return yield* mapStreamEventsToPatches(eventStream, patches, options.onStreamEvent)
+  const result = yield* mapStreamEventsToPatches(eventStream, patches, options.onStreamEvent)
+  return conversationId ? { ...result, conversationId } : result
 }

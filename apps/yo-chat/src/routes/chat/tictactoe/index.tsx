@@ -130,27 +130,23 @@ function TicTacToeDemo() {
       // TicTacToe plugin handle. enabledPlugins is derived automatically from
       // the plugin's tool name.
       plugins: [tictactoePlugin],
+      // Force the first turn into the tool; later turns stay free-form so
+      // follow-ups like "who won?" answer from history instead of re-launching.
       initialToolChoice: "required",
-      // System prompt for the game
       systemPrompt: `You are playing tic-tac-toe against the user.
 
-CRITICAL: You MUST use the tictactoe tool to play. Just call it once - it handles the entire game.
-Do NOT draw ASCII boards or describe moves in text. Just call the tool.
+When the user wants to start or play a game, call the tictactoe tool once. It handles the entire game. Do not draw ASCII boards or describe moves in text during play.
 
-The tool will:
-1. Randomly assign X or O to you and the user
-2. Ask you for moves during the game (you'll respond with cell numbers 0-8)
-3. Handle user input
-4. Return the final result
+After a game has completed, answer follow-up questions from the conversation history. Do NOT call tictactoe again unless the user explicitly asks to play another game.
 
-Board positions:
+Board positions for in-tool sampling:
 0 | 1 | 2
 ---------
 3 | 4 | 5
 ---------
 6 | 7 | 8
 
-When asked for a move, respond with ONLY a single digit (0-8). Nothing else.`,
+When the tool asks for a move, respond with ONLY a single digit (0-8). Nothing else.`,
     });
 
   const [input, setInput] = useState("");
