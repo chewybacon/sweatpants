@@ -26,6 +26,7 @@ import type { ToolExecution } from "../../lib/chat/tool-runtime.ts";
 import type { ToolInventoryEntry } from "../../lib/chat/tool-inventory.ts";
 import type { PluginSessionEvent } from "./plugin-session-manager.ts";
 import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
+import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 
 /**
  * Session-contract-native chat engine adapter.
@@ -738,6 +739,21 @@ function* answerPendingElicits(
       { wait: "elicit" },
     );
     if (answered.type === "accepted") {
+      const metadata = (pending.payload as { metadata?: Record<string, unknown> }).metadata;
+      const toolName = response.toolName ??
+        (typeof metadata?.["sweatpants/toolName"] === "string"
+          ? metadata["sweatpants/toolName"]
+          : "tool");
+      const replayActivity = response.trace
+        ? buildPluginReplayActivity({
+            toolCallId: response.callId,
+            toolName,
+            trace: response.trace,
+          })
+        : null;
+      if (replayActivity) {
+        yield* session.emitEmission({ protocol: "ag-ui", event: replayActivity });
+      }
       handled = true;
     }
   }

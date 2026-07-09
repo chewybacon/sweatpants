@@ -11,11 +11,22 @@ import type { McpToolRegistry } from "@sweatpants/framework/server";
 import { env } from "@/env";
 import { toolList } from "../__generated__/tool-registry.gen";
 import { bookFlightPlugin, bookFlightTool } from "../tools/book-flight";
+import { askQuestion, askQuestionPlugin } from "../tools/general/ask_question";
+import { pickCard, pickCardPlugin } from "../tools/pick-card";
 import { playTttPlugin, playTttTool } from "../tools/play-ttt";
 import { tictactoePlugin, tictactoeTool } from "../tools/tictactoe";
 
 export const allTools = [...toolList];
-export const mcpPluginTools = [bookFlightTool, tictactoeTool, playTttTool];
+
+const pluginToolModules = [
+  { tool: askQuestion, plugin: askQuestionPlugin },
+  { tool: bookFlightTool, plugin: bookFlightPlugin },
+  { tool: pickCard, plugin: pickCardPlugin },
+  { tool: playTttTool, plugin: playTttPlugin },
+  { tool: tictactoeTool, plugin: tictactoePlugin },
+] as const;
+
+export const mcpPluginTools = pluginToolModules.map(({ tool }) => tool);
 
 type NamedTool = { name: string };
 
@@ -69,11 +80,7 @@ export function activeAgentCoreToolNames(): string[] {
   return configuredAgentCoreToolNames();
 }
 
-const pluginClients = [
-  bookFlightPlugin.client as any,
-  tictactoePlugin.client as any,
-  playTttPlugin.client as any,
-];
+const pluginClients = pluginToolModules.map(({ plugin }) => plugin.client as any);
 export const pluginRegistry = createPluginRegistryFrom(pluginClients);
 
 export const activePluginTools = activeMcpPluginTools();

@@ -25,6 +25,7 @@ import type { ConversationReplayState, StreamResult } from "./streaming.ts";
 import {
   syncConversationStateForElicit,
   syncConversationStateForComplete,
+  syncMessagesFromIndex,
 } from "./turn-manager.ts";
 import {
   appendAssistantFinalMessage,
@@ -161,6 +162,12 @@ export function* runChatSession(
   const sentElicitResponseIds = new Set<string>();
   let pendingToolCalls: Array<{ id: string; name: string }> = [];
   let replayState: ConversationReplayState | undefined;
+  let mirroredState = initialChatState;
+
+  function* sendPatch(patch: ChatPatch): Operation<void> {
+    mirroredState = chatReducer(mirroredState, patch);
+    yield* patches.send(patch);
+  }
 
   if (options.conversationId) {
     const contextBaseUrl = yield* BaseUrlContext.get();
@@ -184,7 +191,7 @@ export function* runChatSession(
     replayState = durableHistory.replayState;
 
     for (const patch of durableHistory.patches) {
-      yield* patches.send(patch);
+      yield* sendPatch(patch);
     }
   }
 
@@ -207,8 +214,16 @@ export function* runChatSession(
         streamingEndForwardedResolve = null;
       }
     });
+    const mirrorPatchState: PatchTransform = function* (input, output) {
+      for (const patch of yield* each(input)) {
+        mirroredState = chatReducer(mirroredState, patch);
+        yield* output.send(patch);
+        yield* each.next();
+      }
+    };
 
     const streamPatches = yield* useTransformPipeline(patches, [
+      mirrorPatchState,
       ...(options.transforms ?? []),
       streamingEndAcknowledger,
     ]);
@@ -227,16 +242,26 @@ export function* runChatSession(
       });
 
       if (result.type === "complete") {
+        const toolResultsMap = new Map(
+          (result.toolResults ?? []).map((toolResult) => [toolResult.id, toolResult.content]),
+        );
+        syncMessagesFromIndex(
+          history,
+          mirroredState.messages,
+          originalHistoryLength,
+          toolResultsMap,
+        );
         if (result.conversationState) {
           syncConversationStateForComplete(history, result.conversationState);
-          resetTranscriptState(transcriptState, history);
           replayState = result.conversationState.replay ?? replayState;
         }
+        resetTranscriptState(transcriptState, history);
         pendingToolCalls = [];
         break;
       }
 
       if (result.type === "elicit") {
+        syncMessagesFromIndex(history, mirroredState.messages, originalHistoryLength);
         pendingToolCalls = syncConversationStateForElicit(history, result.conversationState);
         resetTranscriptState(transcriptState, history);
         replayState = result.conversationState.replay ?? replayState;
@@ -246,7 +271,7 @@ export function* runChatSession(
           pendingToolCalls,
         );
         if (assistantToolCallHostMessage) {
-          yield* patches.send({
+          yield* sendPatch({
             type: "assistant_message",
             message: assistantToolCallHostMessage,
           });
@@ -272,7 +297,7 @@ export function* runChatSession(
       const finalContent = result.text || result.conversationState?.assistantContent || "";
       if (finalContent || originalHistoryLength === history.length) {
         const assistantMessage = finalAssistantMessage(history, transcriptState, finalContent);
-        yield* patches.send({
+        yield* sendPatch({
           type: "assistant_message",
           message: assistantMessage,
         });
@@ -285,7 +310,7 @@ export function* runChatSession(
     yield* streamPatches.close();
 
     if (!streamingEndSent) {
-      yield* patches.send({ type: "streaming_end" });
+      yield* sendPatch({ type: "streaming_end" });
     }
 
     return result!;
@@ -302,7 +327,7 @@ export function* runChatSession(
               transcriptState,
               cmd.partialContent!,
             );
-            yield* patches.send({
+            yield* sendPatch({
               type: "assistant_message",
               message: partialMessage,
             });
@@ -325,20 +350,20 @@ export function* runChatSession(
 
         const userMessage = appendUserMessage(history, transcriptState, cmd.content);
         const rendered = options.renderer?.(cmd.content);
-        yield* patches.send({
+        yield* sendPatch({
           type: "user_message",
           message: userMessage,
           ...(rendered !== undefined ? { rendered } : {}),
         });
-        yield* patches.send({ type: "streaming_start" });
+        yield* sendPatch({ type: "streaming_start" });
 
         currentRequestTask = yield* spawn(function* () {
           try {
             return yield* startRequest();
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
-            yield* patches.send({ type: "error", message });
-            yield* patches.send({ type: "streaming_end" });
+            yield* sendPatch({ type: "error", message });
+            yield* sendPatch({ type: "streaming_end" });
             throw error;
           } finally {
             currentRequestTask = null;
@@ -353,14 +378,14 @@ export function* runChatSession(
           currentRequestTask = null;
         }
 
-        yield* patches.send({ type: "streaming_start" });
+        yield* sendPatch({ type: "streaming_start" });
         currentRequestTask = yield* spawn(function* () {
           try {
             return yield* startRequest();
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
-            yield* patches.send({ type: "error", message });
-            yield* patches.send({ type: "streaming_end" });
+            yield* sendPatch({ type: "error", message });
+            yield* sendPatch({ type: "streaming_end" });
             throw error;
           } finally {
             currentRequestTask = null;
@@ -385,13 +410,13 @@ export function* runChatSession(
             partial: true,
           };
           history.push(partialMessage);
-          yield* patches.send({
+          yield* sendPatch({
             type: "abort_complete",
             message: partialMessage,
             ...(cmd.partialHtml !== undefined ? { rendered: cmd.partialHtml } : {}),
           });
         } else {
-          yield* patches.send({ type: "streaming_end" });
+          yield* sendPatch({ type: "streaming_end" });
         }
         break;
       }
@@ -406,7 +431,7 @@ export function* runChatSession(
         pendingToolCalls = [];
         sentElicitResponseIds.clear();
         resetTranscriptState(transcriptState, history);
-        yield* patches.send({ type: "reset" });
+        yield* sendPatch({ type: "reset" });
         break;
       }
 
@@ -426,7 +451,7 @@ export function* runChatSession(
           ...(cmd.trace ? { trace: cmd.trace } : {}),
         });
 
-        yield* patches.send({
+        yield* sendPatch({
           type: "elicit_response",
           callId: cmd.callId,
           elicitId: cmd.elicitId,

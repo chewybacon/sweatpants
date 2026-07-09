@@ -180,6 +180,10 @@ type SuspendedCallBatchState = {
   transcript: TranscriptEntry[]
   calls: ToolCallRequest[]
 }
+type TranscriptCheckpointState = {
+  kind: 'transcript'
+  transcript: TranscriptEntry[]
+}
 type SessionAwareModelProvider = ModelProvider & {
   sampleWithSession?: (
     request: Parameters<ModelProvider['sample']>[0],
@@ -196,7 +200,7 @@ function* runFoldTurn<C extends CapabilityMap>(
   config: AgentConfig<C>,
   input: MessageInput,
 ): Operation<void> {
-  const transcript: TranscriptEntry[] = [{ role: input.role ?? 'user', content: input.content }]
+  const transcript = yield* seedTranscriptForTurn(session, input)
   yield* continueFoldTurn(session, config, transcript, 0)
 }
 
@@ -288,7 +292,7 @@ function* continueFoldTurn<C extends CapabilityMap>(
     yield* session.emitEmission({ type: 'max_iterations_reached' })
   }
 
-  yield* finishTurn(session, config, turnResult)
+  yield* finishTurn(session, config, turnResult, transcript)
 }
 
 function* resolveCallBatch<C extends CapabilityMap>(
@@ -413,9 +417,13 @@ function* finishTurn<C extends CapabilityMap>(
   session: FoldSessionHost,
   config: AgentConfig<C>,
   turnResult: AnswerPayload,
+  transcript: TranscriptEntry[],
 ): Operation<void> {
   yield* session.emitEmission({ type: 'agent_turn_result', result: turnResult })
-  yield* session.checkpoint('fold')
+  yield* session.checkpoint('fold', cloneForLog<TranscriptCheckpointState>({
+    kind: 'transcript',
+    transcript,
+  }))
   yield* session.emitWait('message', config.system !== undefined ? { prompt: config.system } : {})
 }
 
@@ -605,6 +613,25 @@ function isToolCallModelValue(value: unknown): value is ToolCallModelValue {
   ))
 }
 
+function* seedTranscriptForTurn(
+  session: FoldSessionHost,
+  input: MessageInput,
+): Operation<TranscriptEntry[]> {
+  const records = yield* session.records()
+  const previous = [...records]
+    .reverse()
+    .find((record): record is LogRecord & { kind: 'checkpoint'; state: TranscriptCheckpointState } =>
+      record.kind === 'checkpoint' && isTranscriptCheckpointState(record.state),
+    )
+
+  const transcript = previous
+    ? cloneForLog(previous.state.transcript)
+    : []
+
+  transcript.push({ role: input.role ?? 'user', content: input.content })
+  return transcript
+}
+
 function isSuspendedCallBatchState(value: unknown): value is SuspendedCallBatchState {
   return Boolean(
     value &&
@@ -613,6 +640,15 @@ function isSuspendedCallBatchState(value: unknown): value is SuspendedCallBatchS
       typeof (value as { nextIteration?: unknown }).nextIteration === 'number' &&
       Array.isArray((value as { transcript?: unknown }).transcript) &&
       Array.isArray((value as { calls?: unknown }).calls),
+  )
+}
+
+function isTranscriptCheckpointState(value: unknown): value is TranscriptCheckpointState {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      (value as { kind?: unknown }).kind === 'transcript' &&
+      Array.isArray((value as { transcript?: unknown }).transcript),
   )
 }
 
