@@ -445,6 +445,12 @@ function createToolCtx(): Parameters<MockTool>[0] {
     sample: function* (): Operation<never> {
       throw new Error("Test tool did not install a sample provider");
     },
+    sampleTools: function* (): Operation<never> {
+      throw new Error("Test tool did not install a sample provider");
+    },
+    sampleSchema: function* (): Operation<never> {
+      throw new Error("Test tool did not install a sample provider");
+    },
   } as Parameters<MockTool>[0];
 }
 

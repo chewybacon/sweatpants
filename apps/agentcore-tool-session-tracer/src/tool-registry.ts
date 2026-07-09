@@ -1,28 +1,13 @@
-import type { ToolDefinition } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-runtime-tool.ts";
-import type { ElicitsMap } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
+import type { AnyToolDefinition } from "@sweatpants/core";
 import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
 
-type RuntimeMcpTool = ToolDefinition<
-  string,
-  unknown,
-  unknown,
-  unknown,
-  unknown,
-  ElicitsMap
->;
+type RuntimeMcpTool = AnyToolDefinition;
 
-type BridgeCompatibleTool = {
-  execute?: unknown;
-  parameters?: unknown;
-  capabilities?: unknown;
-  schemas?: unknown;
-};
-
-function isBridgeCompatibleTool(tool: unknown): tool is BridgeCompatibleTool {
-  if ((typeof tool !== "object" && typeof tool !== "function") || tool === null) return false;
-  return "execute" in tool || ("parameters" in tool && "capabilities" in tool && "schemas" in tool);
+function isBridgeCompatibleTool(tool: unknown): tool is RuntimeMcpTool {
+  if (typeof tool !== "function" || tool === null) return false;
+  return "parameters" in tool && "capabilities" in tool && "schemas" in tool;
 }
 
 function assertRuntimeMcpTool(name: string, tool: unknown): RuntimeMcpTool {

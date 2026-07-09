@@ -227,17 +227,17 @@ export interface ElicitExchange<TContext> {
  * Raw sampling: 2 messages; structured output: 3 messages (tool_use + tool_result).
  */
 export interface SampleExchange<TParsed = undefined> {
+  /** The request message sent to the model (user, text content). */
+  request: ToolMessage & { role: "user" };
+  /** The assistant's response (text, or tool_use for structured output). */
+  response: ToolMessage & { role: "assistant" };
+  /** All messages for history accumulation (2 raw / 3 structured). */
   messages: ToolMessage[];
-  /** Phantom for typed structured-output exchanges */
-  readonly _parsed?: TParsed;
-  /** Optional request/response bag used by some projectors */
-  request?: unknown;
-  response?: unknown;
-  kind?: "sample";
-  key?: string;
+  /** Parsed structured data — present only on structured-output exchanges. */
+  parsed?: TParsed;
 }
 
-/** @deprecated Prefer ElicitExchange | SampleExchange */
+/** Union of interaction exchanges accumulated for sampling history. */
 export type InteractionExchange = ElicitExchange<unknown> | SampleExchange;
 
 // -----------------------------------------------------------------------------
@@ -508,17 +508,24 @@ export interface ToolBranchCtx<TElicits extends ElicitsMap, TSamples> {
   ): Operation<T>;
 }
 
-type ElicitCtxIfDeclared<TElicits> = TElicits extends ElicitsMap
-  ? keyof TElicits extends never
-    ? {}
-    : ToolElicitCtx<TElicits>
-  : {};
+/** Detects the `any` type (used so AnyToolDefinition stays a universal sink). */
+type IsAny<T> = 0 extends 1 & T ? true : false;
 
-type SampleCtxIfDeclared<TSamples> = TSamples extends true
-  ? ToolGenericSampleCtx
-  : TSamples extends SamplesMap
-    ? ToolNamedSampleCtx<TSamples>
+type ElicitCtxIfDeclared<TElicits> = IsAny<TElicits> extends true
+  ? ToolElicitCtx<any>
+  : TElicits extends ElicitsMap
+    ? keyof TElicits extends never
+      ? {}
+      : ToolElicitCtx<TElicits>
     : {};
+
+type SampleCtxIfDeclared<TSamples> = IsAny<TSamples> extends true
+  ? ToolNamedSampleCtx<any>
+  : TSamples extends true
+    ? ToolGenericSampleCtx
+    : TSamples extends SamplesMap
+      ? ToolNamedSampleCtx<TSamples>
+      : {};
 
 export type ToolCtx<TElicits = undefined, TSamples = undefined> = BaseToolCtx &
   ElicitCtxIfDeclared<TElicits> &

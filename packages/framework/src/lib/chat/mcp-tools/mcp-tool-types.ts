@@ -47,6 +47,9 @@ import type {
   ExtractElicitContext,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
+  ElicitExchange,
+  SampleExchange,
+  ToolMessage,
 } from '@sweatpants/core'
 import type {
   McpMessage,
@@ -95,52 +98,6 @@ export type {
  * }
  * ```
  */
-export interface ElicitExchange<TContext> {
-  /**
-   * The captured context from the elicit call.
-   * This is everything passed to elicit() except the message.
-   */
-  context: TContext
-
-  /**
-   * The elicitation request as an assistant message with tool_use content.
-   * The tool_use input is empty by default for safety.
-   */
-  request: McpMessage & { role: 'assistant' }
-
-  /**
-   * The user's response as a user message with tool_result content.
-   * Content is the JSON-serialized response.
-   */
-  response: McpMessage & { role: 'user' }
-
-  /**
-   * Messages tuple [request, response] with empty arguments (safe default).
-   * Ready to spread into a conversation history.
-   */
-  messages: [McpMessage, McpMessage]
-
-  /**
-   * Build messages with custom arguments derived from captured context.
-   *
-   * The callback receives the fully typed context and returns the arguments
-   * to include in the tool_use input. This is opt-in context exposure.
-   *
-   * @param fn - Function that derives tool_use input from context
-   * @returns Messages tuple with populated arguments
-   *
-   * @example
-   * ```typescript
-   * result.exchange.withArguments((ctx) => ({
-   *   moveNumber: ctx.moveHistory.length,
-   *   boardState: formatBoard(ctx.board),
-   * }))
-   * ```
-   */
-  withArguments(
-    fn: (context: TContext) => Record<string, unknown>
-  ): [McpMessage, McpMessage]
-}
 
 /**
  * Result of an elicitation request.
@@ -229,36 +186,6 @@ export interface ElicitConfig<T> {
  * }
  * ```
  */
-export interface SampleExchange<TParsed = undefined> {
-  /**
-   * The request message we sent to the model.
-   * Always a user message with text content.
-   */
-  request: McpMessage & { role: 'user' }
-
-  /**
-   * The assistant's response message.
-   * - Raw sampling: text content
-   * - Structured output: tool_use content (calling __schema__)
-   */
-  response: McpMessage & { role: 'assistant' }
-
-  /**
-   * All messages for history accumulation.
-   * - Raw sampling: [request, response] = 2 messages
-   * - Structured output: [request, toolUse, toolResult] = 3 messages
-   *
-   * For structured output, we construct the toolResult as an acknowledgment
-   * to close the interaction properly for MCP compliance.
-   */
-  messages: McpMessage[]
-
-   /**
-    * Parsed structured data (only present when schema was used).
-    * Validated against the schema and stored on the exchange for consumers.
-    */
-   parsed: TParsed
- }
 
 /**
  * Reserved tool name for structured output.
@@ -276,11 +203,11 @@ export function createRawSampleExchange(
   promptText: string,
   responseText: string
 ): SampleExchange<undefined> {
-  const request: McpMessage & { role: 'user' } = {
+  const request: ToolMessage & { role: 'user' } = {
     role: 'user',
     content: [{ type: 'text', text: promptText }],
   }
-  const response: McpMessage & { role: 'assistant' } = {
+  const response: ToolMessage & { role: 'assistant' } = {
     role: 'assistant',
     content: [{ type: 'text', text: responseText }],
   }
@@ -305,14 +232,14 @@ export function createStructuredSampleExchange<T>(
   parsed: T,
   toolCallId: string
 ): SampleExchange<T> {
-  const request: McpMessage & { role: 'user' } = {
+  const request: ToolMessage & { role: 'user' } = {
     role: 'user',
     content: [{ type: 'text', text: promptText }],
   }
   
   // Assistant responds with __schema__ tool_use
   // Input is intentionally blank; parsed data is echoed in tool_result
-  const toolUse: McpMessage & { role: 'assistant' } = {
+  const toolUse: ToolMessage & { role: 'assistant' } = {
     role: 'assistant',
     content: [{
       type: 'tool_use',
@@ -325,7 +252,7 @@ export function createStructuredSampleExchange<T>(
   // Construct tool_result with the parsed data echoed back
   // This keeps MCP compliance while "virtually" moving input to the result
   // Parsed data also stays on the exchange for consumers
-  const toolResult: McpMessage & { role: 'user' } = {
+  const toolResult: ToolMessage & { role: 'user' } = {
     role: 'user',
     content: [{
       type: 'tool_result',
@@ -1573,3 +1500,5 @@ export class McpDisconnectError extends Error {
     this.name = 'McpDisconnectError'
   }
 }
+
+export type { ElicitExchange, SampleExchange } from '@sweatpants/core'

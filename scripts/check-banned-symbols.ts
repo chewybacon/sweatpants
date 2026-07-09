@@ -68,6 +68,22 @@ const gates: Gate[] = [
     exclude: ['dist/', 'node_modules/', 'docs/', 'unified-tool-types'],
   },
   {
+    name: 'inline-type-imports',
+    // Inline `import("@sweatpants/...")` type references hide dependencies and
+    // resolve outside the module graph — use top-level `import type` instead.
+    pattern: 'import\\("@sweatpants',
+    paths: [
+      'packages/core/src',
+      'packages/framework/src',
+      'packages/tool-runtime-local/src',
+      'packages/tool-runtime-agentcore/src',
+      'packages/elicit-context/src',
+      'apps/yo-chat/src',
+      'apps/yo-mcp/src',
+    ],
+    exclude: ['dist/', 'node_modules/', '__tests__', '.test.ts'],
+  },
+  {
     name: 'mcp-runtime-dual-dispatch',
     pattern: 'isCanonicalCoreRuntimeTool',
     paths: ['packages', 'apps'],

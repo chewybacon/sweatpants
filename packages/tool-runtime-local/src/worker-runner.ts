@@ -190,6 +190,11 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
  *
  * @param registry - Registry of available tools
  */
+/** Narrow an array to the non-empty tuple type expected by guaranteed-result APIs. */
+function isNonEmpty<T>(arr: T[] | undefined): arr is [T, ...T[]] {
+  return Array.isArray(arr) && arr.length > 0
+}
+
 export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
   await coreRunToolWorker(function* (initData: CoreWorkerInitData, coreCtx: CoreWorkerToolContext) {
     const { toolName, params, sessionId } = initData
@@ -254,7 +259,14 @@ function createMcpWorkerContext(
     return []
   }
 
-  // The unified sample implementation
+  // The unified sample implementation. `sampleTyped` overlays overload
+  // signatures so schema/tools configs infer their result arm without casts.
+  interface SampleTyped {
+    <T>(config: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
+    (config: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
+    (config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+  }
+  const sampleTyped = sampleImpl as SampleTyped
   function* sampleImpl(config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
     const messages = buildMessages(config)
     const promptText = extractPromptText(config)
@@ -299,7 +311,7 @@ function createMcpWorkerContext(
         ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
         parsed,
         ...(parseError !== undefined && { parseError }),
-        exchange: exchange as SampleResultWithParsed<unknown>['exchange'],
+        exchange,
       }
       return result
     }
@@ -365,7 +377,7 @@ function createMcpWorkerContext(
 
     *sampleTools(config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages): Operation<SampleToolsResult> {
       const retries = config.retries ?? 2
-      let lastResult: SampleResultBase | SampleResultWithToolCalls | undefined
+      let lastResult: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls | undefined
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with tools
@@ -388,15 +400,17 @@ function createMcpWorkerContext(
             }
 
         const result = yield* sampleImpl(sampleConfig)
-        lastResult = result as SampleResultBase | SampleResultWithToolCalls
+        lastResult = result
 
         // Check if we got tool calls
-        if ('toolCalls' in result && result.toolCalls && result.toolCalls.length > 0) {
+        if ('toolCalls' in result && isNonEmpty(result.toolCalls)) {
           return {
-            ...result,
-            toolCalls: result.toolCalls as [typeof result.toolCalls[0], ...typeof result.toolCalls],
+            text: result.text,
+            ...(result.model !== undefined && { model: result.model }),
             stopReason: 'toolUse',
-          } as SampleToolsResult
+            toolCalls: result.toolCalls,
+            exchange: result.exchange,
+          }
         }
 
         // If this wasn't the last attempt, we could add a retry hint
@@ -433,7 +447,7 @@ function createMcpWorkerContext(
               ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
             }
 
-        const result = (yield* sampleImpl(sampleConfig)) as SampleResultWithParsed<T>
+        const result = yield* sampleTyped(sampleConfig)
         lastResult = result
 
         // Check if we got valid parsed output
@@ -443,7 +457,8 @@ function createMcpWorkerContext(
             ...(result.model !== undefined && { model: result.model }),
             ...(result.stopReason !== undefined && { stopReason: result.stopReason }),
             parsed: result.parsed,
-            exchange: result.exchange as SampleSchemaResult<T>['exchange'],
+            // Rebuild with the narrowed parsed value (SampleExchange<T | null> → SampleExchange<T>)
+            exchange: { ...result.exchange, parsed: result.parsed },
           }
         }
 

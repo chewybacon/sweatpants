@@ -82,7 +82,7 @@ function toToolSchema(tool: LocalRuntimeTool): ToolRuntimeToolSchema {
 }
 
 function adaptEvent(event: McpToolSessionEvent): RuntimeToolSessionEvent {
-  return event as unknown as RuntimeToolSessionEvent;
+  return event;
 }
 
 function adaptSession(runtimeId: string, session: McpToolSession): RuntimeToolSession {
@@ -124,7 +124,7 @@ function eventStreamFromSession(session: RuntimeToolSession): Stream<ToolExecuti
     const subscription = yield* session.events();
     yield* provide({
       *next(): Operation<IteratorResult<ToolExecutionEvent, void>> {
-        return (yield* subscription.next()) as IteratorResult<ToolExecutionEvent, void>;
+        return yield* subscription.next();
       },
     });
   });
@@ -220,7 +220,7 @@ function* nextMcpExecution(
       continue;
     }
 
-    return mcpEventToExecution(runtimeId, call, runtimeSession, next.value as unknown as RuntimeToolSessionEvent);
+    return mcpEventToExecution(runtimeId, call, runtimeSession, next.value);
   }
 }
 

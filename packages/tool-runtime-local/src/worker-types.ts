@@ -290,7 +290,7 @@ export interface WorkerToolRegistry {
 /**
  * Minimal tool interface for workers.
  *
- * Workers don't need the full McpRuntimeTool type,
+ * Workers don't need the full ToolDefinition type,
  * just enough to execute the handler.
  */
 export interface WorkerTool {

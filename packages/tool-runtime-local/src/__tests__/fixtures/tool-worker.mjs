@@ -115,7 +115,8 @@ const tools = {
   },
 
   /**
-   * Elicit with SPREAD context - tests MCP-style spread context format
+   * Elicit with nested context (canonical dialect) exercising rich payloads.
+   * The legacy spread dialect was deleted — context always rides under `context`.
    */
   elicit_spread_context: function* (params, ctx) {
     const { flights } = params;
@@ -127,8 +128,10 @@ const tools = {
         properties: { flightId: { type: "string" } },
         required: ["flightId"],
       },
-      flights,
-      totalOptions: flights.length,
+      context: {
+        flights,
+        totalOptions: flights.length,
+      },
     });
 
     if (result.action !== "accept") {

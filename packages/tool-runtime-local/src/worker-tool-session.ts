@@ -179,9 +179,9 @@ export function createWorkerToolSession(
     // Create the worker using core's createWorkerPrincipal
     // Note: We use WorkerSessionStateContext.with() to ensure the context is available
     // in the spawned request handler scope inside createWorkerPrincipal
-    const { result: workerResult } = yield* createWorkerPrincipal<unknown>({
+    const { result: workerResult } = yield* createWorkerPrincipal<unknown, McpWorkerInitData>({
       workerUrl,
-      initData: initData as unknown as Parameters<typeof createWorkerPrincipal>[0]['initData'],
+      initData,
       ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
       requestHandler: function* (request: WorkerRequest): Operation<WorkerResponse> {
         // Re-establish context for this handler scope
