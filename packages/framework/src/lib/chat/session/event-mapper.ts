@@ -1,5 +1,6 @@
 import type { Operation, Channel, Stream } from "effection";
 import { each } from "effection";
+import type { ToolExecutionTrace } from "../browser-rendering/emissions.ts";
 import type { ChatPatch } from "../patches/index.ts";
 import type {
   StreamEvent,
@@ -56,7 +57,7 @@ export function* mapStreamEventsToPatches(
   function rememberReplayTrace(event: {
     toolCallId: string;
     toolCallName: string;
-    trace?: import("../browser-rendering/emissions.ts").ToolExecutionTrace;
+    trace?: ToolExecutionTrace;
   }) {
     if (!event.trace) return;
     const state = ensureAgUiConversationState();
@@ -129,7 +130,9 @@ export function* mapStreamEventsToPatches(
   const seenElicitKeys = new Set<string>();
 
   function ensureAssistantToolHostMessage() {
-    const pendingHostToolCalls = toolCalls.filter((toolCall) => !hostedToolCallIds.has(toolCall.id));
+    const pendingHostToolCalls = toolCalls.filter(
+      (toolCall) => !hostedToolCallIds.has(toolCall.id),
+    );
     if (pendingHostToolCalls.length === 0) return;
     const state = ensureAgUiConversationState();
     const toolCallIds = pendingHostToolCalls.map((toolCall) => toolCall.id);
@@ -226,18 +229,19 @@ export function* mapStreamEventsToPatches(
         const priorState = agUiConversationState as ConversationState | null;
         for (const message of event.messages) {
           const replayTrace = activityMessageToPluginReplayTrace(message);
-          if (replayTrace) rememberActivityReplayTrace({
-            type: "ACTIVITY_SNAPSHOT",
-            messageId: `sweatpants:plugin-replay:${replayTrace.callId}`,
-            activityType: "sweatpants:plugin-replay",
-            content: {
-              version: 1,
-              toolCallId: replayTrace.callId,
-              toolName: replayTrace.toolName,
-              trace: replayTrace.trace,
-            },
-            replace: true,
-          });
+          if (replayTrace)
+            rememberActivityReplayTrace({
+              type: "ACTIVITY_SNAPSHOT",
+              messageId: `sweatpants:plugin-replay:${replayTrace.callId}`,
+              activityType: "sweatpants:plugin-replay",
+              content: {
+                version: 1,
+                toolCallId: replayTrace.callId,
+                toolName: replayTrace.toolName,
+                trace: replayTrace.trace,
+              },
+              replace: true,
+            });
         }
         agUiConversationState = {
           messages: providerHistoryMessages(event.messages),

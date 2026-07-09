@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * E2E tests for the pick_card tool.
@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  */
 
 // Helper to connect to server
-async function connectToServer(page: import("@playwright/test").Page) {
+async function connectToServer(page: Page) {
   // Select Streamable HTTP transport
   const transportDropdown = page.locator("#transport-type-select");
   await transportDropdown.click();
@@ -33,7 +33,7 @@ async function connectToServer(page: import("@playwright/test").Page) {
 }
 
 // Helper to list tools (click List Tools button if needed)
-async function ensureToolsListed(page: import("@playwright/test").Page) {
+async function ensureToolsListed(page: Page) {
   const listToolsButton = page.getByRole("button", { name: "List Tools" });
   if (await listToolsButton.isEnabled()) {
     await listToolsButton.click();
@@ -42,7 +42,7 @@ async function ensureToolsListed(page: import("@playwright/test").Page) {
 }
 
 // Helper to click on a tool in the list
-async function selectTool(page: import("@playwright/test").Page, toolName: string) {
+async function selectTool(page: Page, toolName: string) {
   const toolItem = page.locator(".cursor-pointer").filter({ hasText: toolName }).first();
   await toolItem.click();
   await page.waitForTimeout(500);

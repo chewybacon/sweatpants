@@ -1,394 +1,409 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * E2E tests for the Math Assistant demo.
- * 
+ *
  * These tests validate:
  * 1. Math rendering with KaTeX (inline and block math)
  * 2. All message part types (text, reasoning, tool-call)
  * 3. Pipeline processing with the 'math' preset
  * 4. Tool call UI with expandable details
- * 
+ *
  * Requires Ollama running locally.
  */
 
 // LLM responses can be slow
-test.setTimeout(180000)
+test.setTimeout(180000);
 
-test.describe('Math Assistant', () => {
+test.describe("Math Assistant", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/chat/math/', { waitUntil: 'networkidle' })
-    await expect(page.getByRole('heading', { name: 'Math Assistant' })).toBeVisible()
-    await expect(page.getByText('Pipeline ready')).toBeVisible({ timeout: 15000 })
-    
+    await page.goto("/chat/math/", { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Math Assistant" })).toBeVisible();
+    await expect(page.getByText("Pipeline ready")).toBeVisible({ timeout: 15000 });
+
     // Click input to ensure React hydration is complete
-    await page.getByPlaceholder('Type a math problem...').click()
-  })
+    await page.getByPlaceholder("Type a math problem...").click();
+  });
 
   /**
    * Helper to wait for streaming to complete.
    */
-  async function waitForStreamingComplete(page: import('@playwright/test').Page) {
-    await expect(page.getByRole('button', { name: 'Stop' })).not.toBeVisible({ timeout: 180000 })
-    await expect(page.getByPlaceholder('Type a math problem...')).toBeEnabled({ timeout: 10000 })
+  async function waitForStreamingComplete(page: Page) {
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 180000 });
+    await expect(page.getByPlaceholder("Type a math problem...")).toBeEnabled({ timeout: 10000 });
   }
 
   /**
    * Helper to send a message and wait for completion.
    */
-  async function sendMessageAndWait(page: import('@playwright/test').Page, message: string) {
-    const input = page.getByPlaceholder('Type a math problem...')
-    const actualMessage = `/no_think ${message}`
-    
+  async function sendMessageAndWait(page: Page, message: string) {
+    const input = page.getByPlaceholder("Type a math problem...");
+    const actualMessage = `/no_think ${message}`;
+
     // Focus and type the input using pressSequentially for reliable React state updates
-    await input.click()
-    await input.pressSequentially(actualMessage, { delay: 5 })
-    
+    await input.click();
+    await input.pressSequentially(actualMessage, { delay: 5 });
+
     // Verify input has value
-    await expect(input).toHaveValue(actualMessage, { timeout: 2000 })
-    
+    await expect(input).toHaveValue(actualMessage, { timeout: 2000 });
+
     // Wait for button to be enabled (React state update)
     // Use exact: true to avoid matching quick action buttons like "Solve 2x + 5 = 15"
-    const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
-    await expect(solveButton).toBeEnabled({ timeout: 15000 })
-    
-    await solveButton.click()
-    
+    const solveButton = page.getByRole("button", { name: "Solve", exact: true });
+    await expect(solveButton).toBeEnabled({ timeout: 15000 });
+
+    await solveButton.click();
+
     // Wait for streaming to start
-    await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible({ timeout: 30000 })
-    
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
+
     // Wait for streaming to complete
-    await waitForStreamingComplete(page)
+    await waitForStreamingComplete(page);
   }
 
   /**
    * Get assistant message containers.
    */
-  function getAssistantMessages(page: import('@playwright/test').Page) {
-    return page.locator('.bg-slate-800\\/50')
+  function getAssistantMessages(page: Page) {
+    return page.locator(".bg-slate-800\\/50");
   }
 
-  async function expectAssistantResponse(page: import('@playwright/test').Page) {
-    const assistantMessage = getAssistantMessages(page).first()
-    await expect(assistantMessage).toBeVisible({ timeout: 10000 })
-    const text = await assistantMessage.textContent()
-    expect(text?.trim().length ?? 0).toBeGreaterThan(0)
+  async function expectAssistantResponse(page: Page) {
+    const assistantMessage = getAssistantMessages(page).first();
+    await expect(assistantMessage).toBeVisible({ timeout: 10000 });
+    const text = await assistantMessage.textContent();
+    expect(text?.trim().length ?? 0).toBeGreaterThan(0);
   }
 
   // ===========================================================================
   // BASIC FUNCTIONALITY
   // ===========================================================================
 
-  test('loads correctly with pipeline ready', async ({ page }) => {
-    await expect(page.getByText('Pipeline ready')).toBeVisible()
-    await expect(page.getByText('calculator')).toBeVisible()
-    await expect(page.getByText('reasoning')).toBeVisible()
-    await expect(page.getByText('Ask me a math question...')).toBeVisible()
-  })
+  test("loads correctly with pipeline ready", async ({ page }) => {
+    await expect(page.getByText("Pipeline ready")).toBeVisible();
+    await expect(page.getByText("calculator")).toBeVisible();
+    await expect(page.getByText("reasoning")).toBeVisible();
+    await expect(page.getByText("Ask me a math question...")).toBeVisible();
+  });
 
-  test('quick action buttons populate input', async ({ page }) => {
-    await page.getByRole('button', { name: '"sqrt(12345) * pi"' }).click()
-    const input = page.getByPlaceholder('Type a math problem...')
-    await expect(input).toHaveValue('Calculate sqrt(12345) * pi', { timeout: 5000 })
-  })
+  test("quick action buttons populate input", async ({ page }) => {
+    await page.getByRole("button", { name: '"sqrt(12345) * pi"' }).click();
+    const input = page.getByPlaceholder("Type a math problem...");
+    await expect(input).toHaveValue("Calculate sqrt(12345) * pi", { timeout: 5000 });
+  });
 
   // ===========================================================================
   // MATH RENDERING (KaTeX)
   // ===========================================================================
 
-  test('renders inline math with KaTeX', async ({ page }) => {
+  test("renders inline math with KaTeX", async ({ page }) => {
     // Ask a question that will produce inline math in the response
-    await sendMessageAndWait(page, 'What is the formula for the area of a circle? Use $A = \\pi r^2$ notation.')
-    
-    await expectAssistantResponse(page)
-    
+    await sendMessageAndWait(
+      page,
+      "What is the formula for the area of a circle? Use $A = \\pi r^2$ notation.",
+    );
+
+    await expectAssistantResponse(page);
+
     // Check for KaTeX rendered math (inline math has class math-inline or katex)
-    const assistantMessage = getAssistantMessages(page).first()
-    
+    const assistantMessage = getAssistantMessages(page).first();
+
     // KaTeX renders math inside .katex spans
-    const katexElements = assistantMessage.locator('.katex')
-    const katexCount = await katexElements.count()
-    
-    console.log(`Found ${katexCount} KaTeX rendered elements`)
-    
+    const katexElements = assistantMessage.locator(".katex");
+    const katexCount = await katexElements.count();
+
+    console.log(`Found ${katexCount} KaTeX rendered elements`);
+
     // If we have katex elements, the math was processed correctly
     if (katexCount > 0) {
-      console.log('KaTeX rendering confirmed - inline math processed')
+      console.log("KaTeX rendering confirmed - inline math processed");
     } else {
       // If LLM didn't output LaTeX, at least verify the message is rendered
-      const hasContent = await assistantMessage.locator('p').count() > 0
-      console.log(`No KaTeX found, but has paragraph content: ${hasContent}`)
-      expect(hasContent).toBe(true)
+      const hasContent = (await assistantMessage.locator("p").count()) > 0;
+      console.log(`No KaTeX found, but has paragraph content: ${hasContent}`);
+      expect(hasContent).toBe(true);
     }
-  })
+  });
 
-  test('renders block math with KaTeX', async ({ page }) => {
+  test("renders block math with KaTeX", async ({ page }) => {
     // Ask for a response with block math ($$...$$)
-    await sendMessageAndWait(page, 'Show the quadratic formula as a display equation using $$...$$')
-    
-    await expectAssistantResponse(page)
-    
-    const assistantMessage = getAssistantMessages(page).first()
-    
+    await sendMessageAndWait(
+      page,
+      "Show the quadratic formula as a display equation using $$...$$",
+    );
+
+    await expectAssistantResponse(page);
+
+    const assistantMessage = getAssistantMessages(page).first();
+
     // Block math is wrapped in .math-block or .katex-display
-    const blockMath = assistantMessage.locator('.math-block, .katex-display')
-    const blockMathCount = await blockMath.count()
-    
-    console.log(`Found ${blockMathCount} block math elements`)
-    
+    const blockMath = assistantMessage.locator(".math-block, .katex-display");
+    const blockMathCount = await blockMath.count();
+
+    console.log(`Found ${blockMathCount} block math elements`);
+
     // If we have block math elements, the math was processed correctly
     if (blockMathCount > 0) {
-      console.log('KaTeX block rendering confirmed')
+      console.log("KaTeX block rendering confirmed");
     } else {
       // If LLM didn't output LaTeX blocks, at least verify the message is rendered
-      const hasContent = await assistantMessage.locator('p').count() > 0
-      console.log(`No block math found, but has paragraph content: ${hasContent}`)
-      expect(hasContent).toBe(true)
+      const hasContent = (await assistantMessage.locator("p").count()) > 0;
+      console.log(`No block math found, but has paragraph content: ${hasContent}`);
+      expect(hasContent).toBe(true);
     }
-  })
+  });
 
-  test('calculator tool produces math in response', async ({ page }) => {
+  test("calculator tool produces math in response", async ({ page }) => {
     // This tests the full flow: question -> tool call -> math rendered result
-    await sendMessageAndWait(page, 'Use the calculator to calculate 2 + 2 and reply briefly')
-    
-    await expectAssistantResponse(page)
-    
-    const assistantMessage = getAssistantMessages(page).first()
-    
+    await sendMessageAndWait(page, "Use the calculator to calculate 2 + 2 and reply briefly");
+
+    await expectAssistantResponse(page);
+
+    const assistantMessage = getAssistantMessages(page).first();
+
     // Should have KaTeX rendered math (the sqrt and pi symbols)
-    const katexElements = assistantMessage.locator('.katex')
-    const katexCount = await katexElements.count()
-    
-    console.log(`Calculator response has ${katexCount} KaTeX elements`)
-    
+    const katexElements = assistantMessage.locator(".katex");
+    const katexCount = await katexElements.count();
+
+    console.log(`Calculator response has ${katexCount} KaTeX elements`);
+
     // The response should mention the result.
-    const text = await assistantMessage.textContent()
-    const hasResult = /\b4\b/.test(text ?? '')
-    
-    console.log(`Response text sample: ${(text ?? '').slice(0, 200)}`)
-    console.log(`Response contains expected result: ${hasResult}`)
-    
+    const text = await assistantMessage.textContent();
+    const hasResult = /\b4\b/.test(text ?? "");
+
+    console.log(`Response text sample: ${(text ?? "").slice(0, 200)}`);
+    console.log(`Response contains expected result: ${hasResult}`);
+
     // Should have some content rendered
-    const hasContent = await assistantMessage.locator('p').count() > 0
-    expect(hasContent || katexCount > 0).toBe(true)
-  })
+    const hasContent = (await assistantMessage.locator("p").count()) > 0;
+    expect(hasContent || katexCount > 0).toBe(true);
+  });
 
   // ===========================================================================
   // MESSAGE PART TYPES
   // ===========================================================================
 
-  test('renders text parts with markdown', async ({ page }) => {
-    await sendMessageAndWait(page, 'Explain what pi is in a few bullet points')
-    
-    await expectAssistantResponse(page)
-    
-    const assistantMessage = getAssistantMessages(page).first()
-    
-    // Should have rendered HTML (lists, paragraphs, etc.)
-    const hasList = await assistantMessage.locator('ul, ol').count() > 0
-    const hasParagraph = await assistantMessage.locator('p').count() > 0
-    
-    console.log(`Has list: ${hasList}, has paragraph: ${hasParagraph}`)
-    
-    // Should have some rendered markdown
-    expect(hasList || hasParagraph).toBe(true)
-  })
+  test("renders text parts with markdown", async ({ page }) => {
+    await sendMessageAndWait(page, "Explain what pi is in a few bullet points");
 
-  test('renders tool-call parts with expandable UI', async ({ page }) => {
+    await expectAssistantResponse(page);
+
+    const assistantMessage = getAssistantMessages(page).first();
+
+    // Should have rendered HTML (lists, paragraphs, etc.)
+    const hasList = (await assistantMessage.locator("ul, ol").count()) > 0;
+    const hasParagraph = (await assistantMessage.locator("p").count()) > 0;
+
+    console.log(`Has list: ${hasList}, has paragraph: ${hasParagraph}`);
+
+    // Should have some rendered markdown
+    expect(hasList || hasParagraph).toBe(true);
+  });
+
+  test("renders tool-call parts with expandable UI", async ({ page }) => {
     // Ask something that will trigger the calculator tool
-    await sendMessageAndWait(page, 'Use the calculator to compute 2 + 2')
-    
-    await expectAssistantResponse(page)
-    
-    const assistantMessage = getAssistantMessages(page).first()
-    
+    await sendMessageAndWait(page, "Use the calculator to compute 2 + 2");
+
+    await expectAssistantResponse(page);
+
+    const assistantMessage = getAssistantMessages(page).first();
+
     // Look for the tool call UI (has "calculator" text and expand button)
-    const toolCallUI = assistantMessage.locator('button:has-text("calculator")')
-    
+    const toolCallUI = assistantMessage.locator('button:has-text("calculator")');
+
     // Tool call should be visible (either inline or in a collapsible)
-    const toolCallCount = await toolCallUI.count()
-    console.log(`Found ${toolCallCount} tool call UI elements`)
-    
+    const toolCallCount = await toolCallUI.count();
+    console.log(`Found ${toolCallCount} tool call UI elements`);
+
     if (toolCallCount > 0) {
       // Click to expand. Different renderers may label expanded tool details
       // differently, so this test only requires that the tool-call UI exists and
       // remains renderable after expansion.
-      await toolCallUI.first().click()
-      const toolText = await assistantMessage.textContent()
-      expect(toolText).toMatch(/calculator|expression|result|2\s*\+\s*2|4/i)
+      await toolCallUI.first().click();
+      const toolText = await assistantMessage.textContent();
+      expect(toolText).toMatch(/calculator|expression|result|2\s*\+\s*2|4/i);
     }
-  })
+  });
 
-  test('renders reasoning parts as collapsible', async ({ page }) => {
+  test("renders reasoning parts as collapsible", async ({ page }) => {
     // Use a model/prompt that triggers reasoning (DeepSeek-R1 style)
     // Note: This depends on the model supporting thinking/reasoning
-    await sendMessageAndWait(page, 'Think step by step: what is 15% of 80?')
-    
-    await expectAssistantResponse(page)
-    
-    const assistantMessage = getAssistantMessages(page).first()
-    
+    await sendMessageAndWait(page, "Think step by step: what is 15% of 80?");
+
+    await expectAssistantResponse(page);
+
+    const assistantMessage = getAssistantMessages(page).first();
+
     // Check if there's a reasoning section (collapsible)
-    const reasoningToggle = assistantMessage.locator('button:has-text("Reasoning")')
-    const reasoningCount = await reasoningToggle.count()
-    
-    console.log(`Found ${reasoningCount} reasoning sections`)
-    
+    const reasoningToggle = assistantMessage.locator('button:has-text("Reasoning")');
+    const reasoningCount = await reasoningToggle.count();
+
+    console.log(`Found ${reasoningCount} reasoning sections`);
+
     // If reasoning is present, it should be expandable
     if (reasoningCount > 0) {
       // Click to expand
-      await reasoningToggle.first().click()
-      
+      await reasoningToggle.first().click();
+
       // Should show reasoning content (in purple-tinted container)
-      const reasoningContent = assistantMessage.locator('.bg-purple-950\\/20')
-      await expect(reasoningContent).toBeVisible({ timeout: 2000 })
-      
-      console.log('Reasoning part expanded successfully')
+      const reasoningContent = assistantMessage.locator(".bg-purple-950\\/20");
+      await expect(reasoningContent).toBeVisible({ timeout: 2000 });
+
+      console.log("Reasoning part expanded successfully");
     }
-  })
+  });
 
   // ===========================================================================
   // MULTI-TURN & PERSISTENCE
   // ===========================================================================
 
-  test('math rendering persists across multiple messages', async ({ page }) => {
+  test("math rendering persists across multiple messages", async ({ page }) => {
     // First message with math. This is a renderer persistence test, so ask
     // the live model to copy math instead of solving it with the calculator.
-    await sendMessageAndWait(page, 'Renderer test: do not use tools. Reply exactly: The identity is $e^{i\\pi}+1=0$.')
-    await expectAssistantResponse(page)
-    
+    await sendMessageAndWait(
+      page,
+      "Renderer test: do not use tools. Reply exactly: The identity is $e^{i\\pi}+1=0$.",
+    );
+    await expectAssistantResponse(page);
+
     // Verify first message has KaTeX
-    let assistantMessages = getAssistantMessages(page)
-    const firstMessage = assistantMessages.first()
-    const firstKatexCount = await firstMessage.locator('.katex').count()
-    console.log(`First message KaTeX count: ${firstKatexCount}`)
-    
+    let assistantMessages = getAssistantMessages(page);
+    const firstMessage = assistantMessages.first();
+    const firstKatexCount = await firstMessage.locator(".katex").count();
+    console.log(`First message KaTeX count: ${firstKatexCount}`);
+
     // Second message with different math. Keep this renderer-focused test away
     // from tool-calling prompts so a live model cannot overwrite the scenario
     // with a long calculator loop before persistence is asserted.
-    await sendMessageAndWait(page, 'Renderer test: do not use tools. Reply exactly: The symbol $\\sqrt{2}$ means the square root of two.')
-    
-    await expectAssistantResponse(page)
-    
+    await sendMessageAndWait(
+      page,
+      "Renderer test: do not use tools. Reply exactly: The symbol $\\sqrt{2}$ means the square root of two.",
+    );
+
+    await expectAssistantResponse(page);
+
     // Both messages should still have rendered math when the model completed both turns.
     // With real local models, a long sampled response may be stopped after visible
     // content, so tolerate a single finalized assistant card.
-    assistantMessages = getAssistantMessages(page)
-    expect(await assistantMessages.count()).toBeGreaterThanOrEqual(1)
-    
+    assistantMessages = getAssistantMessages(page);
+    expect(await assistantMessages.count()).toBeGreaterThanOrEqual(1);
+
     // First message should STILL have KaTeX (not reverted to raw)
-    const firstMessageAfter = assistantMessages.nth(0)
-    const firstKatexCountAfter = await firstMessageAfter.locator('.katex').count()
-    console.log(`First message KaTeX count after second message: ${firstKatexCountAfter}`)
-    
+    const firstMessageAfter = assistantMessages.nth(0);
+    const firstKatexCountAfter = await firstMessageAfter.locator(".katex").count();
+    console.log(`First message KaTeX count after second message: ${firstKatexCountAfter}`);
+
     // KaTeX should persist
-    expect(firstKatexCountAfter).toBeGreaterThanOrEqual(firstKatexCount)
-    
+    expect(firstKatexCountAfter).toBeGreaterThanOrEqual(firstKatexCount);
+
     // Second message may not be finalized if the real model was stopped after
     // visible content; log it when present.
-    if (await assistantMessages.count() > 1) {
-      const secondMessage = assistantMessages.nth(1)
-      const secondKatexCount = await secondMessage.locator('.katex').count()
-      console.log(`Second message KaTeX count: ${secondKatexCount}`)
+    if ((await assistantMessages.count()) > 1) {
+      const secondMessage = assistantMessages.nth(1);
+      const secondKatexCount = await secondMessage.locator(".katex").count();
+      console.log(`Second message KaTeX count: ${secondKatexCount}`);
     }
-  })
+  });
 
-  test('tool calls and text parts render together correctly', async ({ page }) => {
+  test("tool calls and text parts render together correctly", async ({ page }) => {
     // This should produce: text -> tool_call -> text (result explanation)
-    await sendMessageAndWait(page, 'Calculate 123 * 456 and explain what you did')
-    
-    await expectAssistantResponse(page)
-    
-    const assistantMessage = getAssistantMessages(page).first()
-    
+    await sendMessageAndWait(page, "Calculate 123 * 456 and explain what you did");
+
+    await expectAssistantResponse(page);
+
+    const assistantMessage = getAssistantMessages(page).first();
+
     // Should have text content
-    const hasText = await assistantMessage.locator('p').count() > 0
-    console.log(`Has text paragraphs: ${hasText}`)
-    
+    const hasText = (await assistantMessage.locator("p").count()) > 0;
+    console.log(`Has text paragraphs: ${hasText}`);
+
     // Real local models vary: some use the calculator tool, some compute the
     // product directly, and some explain the operation without stable formatting.
     // This renderer-focused e2e requires non-empty coherent assistant output and
     // accepts the exact result when present.
-    const text = await assistantMessage.textContent()
-    const hasResult = /56088|56,088/.test(text ?? '')
-    const hasCalculatorUI = await assistantMessage.locator('button:has-text("calculator")').count() > 0
-    console.log(`Contains expected result (56088): ${hasResult}`)
-    console.log(`Contains calculator UI: ${hasCalculatorUI}`)
-    
-    expect(text?.trim().length ?? 0).toBeGreaterThan(0)
-    expect(text).not.toContain('undefined')
+    const text = await assistantMessage.textContent();
+    const hasResult = /56088|56,088/.test(text ?? "");
+    const hasCalculatorUI =
+      (await assistantMessage.locator('button:has-text("calculator")').count()) > 0;
+    console.log(`Contains expected result (56088): ${hasResult}`);
+    console.log(`Contains calculator UI: ${hasCalculatorUI}`);
+
+    expect(text?.trim().length ?? 0).toBeGreaterThan(0);
+    expect(text).not.toContain("undefined");
     if (!hasResult && !hasCalculatorUI) {
-      test.skip(true, 'LLM did not reach calculator renderer/correct-result product boundary')
-      return
+      test.skip(true, "LLM did not reach calculator renderer/correct-result product boundary");
+      return;
     }
-    expect(hasResult || hasCalculatorUI).toBe(true)
-  })
+    expect(hasResult || hasCalculatorUI).toBe(true);
+  });
 
   // ===========================================================================
   // STREAMING BEHAVIOR
   // ===========================================================================
 
-  test('shows streaming indicator while processing', async ({ page }) => {
-    const input = page.getByPlaceholder('Type a math problem...')
-    await input.pressSequentially('What is the meaning of life in mathematical terms?', { delay: 5 })
-    
-    // Wait for button to be enabled (React state update)
-    const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
-    await expect(solveButton).toBeEnabled({ timeout: 15000 })
-    await solveButton.click()
-    
-    // Should show streaming indicator
-    await expect(page.getByText('thinking...', { exact: true })).toBeVisible({ timeout: 30000 })
-    
-    // Stop button should be visible
-    await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible()
-    
-    // Wait for completion
-    await waitForStreamingComplete(page)
-    
-    // Streaming indicator should be gone
-    await expect(page.getByText('thinking...', { exact: true })).not.toBeVisible()
-  })
+  test("shows streaming indicator while processing", async ({ page }) => {
+    const input = page.getByPlaceholder("Type a math problem...");
+    await input.pressSequentially("What is the meaning of life in mathematical terms?", {
+      delay: 5,
+    });
 
-  test('can abort streaming response', async ({ page }) => {
-    const input = page.getByPlaceholder('Type a math problem...')
-    await input.pressSequentially('Explain all the prime numbers up to 1000', { delay: 5 })
-    
     // Wait for button to be enabled (React state update)
-    const solveButton = page.getByRole('button', { name: 'Solve', exact: true })
-    await expect(solveButton).toBeEnabled({ timeout: 15000 })
-    await solveButton.click()
-    
+    const solveButton = page.getByRole("button", { name: "Solve", exact: true });
+    await expect(solveButton).toBeEnabled({ timeout: 15000 });
+    await solveButton.click();
+
+    // Should show streaming indicator
+    await expect(page.getByText("thinking...", { exact: true })).toBeVisible({ timeout: 30000 });
+
+    // Stop button should be visible
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+
+    // Wait for completion
+    await waitForStreamingComplete(page);
+
+    // Streaming indicator should be gone
+    await expect(page.getByText("thinking...", { exact: true })).not.toBeVisible();
+  });
+
+  test("can abort streaming response", async ({ page }) => {
+    const input = page.getByPlaceholder("Type a math problem...");
+    await input.pressSequentially("Explain all the prime numbers up to 1000", { delay: 5 });
+
+    // Wait for button to be enabled (React state update)
+    const solveButton = page.getByRole("button", { name: "Solve", exact: true });
+    await expect(solveButton).toBeEnabled({ timeout: 15000 });
+    await solveButton.click();
+
     // Wait for streaming to start
-    await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible({ timeout: 30000 })
-    
+    await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 30000 });
+
     // Wait a bit for some content
-    await page.waitForTimeout(2000)
-    
+    await page.waitForTimeout(2000);
+
     // Abort
-    await page.getByRole('button', { name: 'Stop' }).click()
-    
+    await page.getByRole("button", { name: "Stop" }).click();
+
     // Should stop streaming
-    await expect(page.getByRole('button', { name: 'Stop' })).not.toBeVisible({ timeout: 10000 })
-    
+    await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 10000 });
+
     // Input should be re-enabled
-    await expect(input).toBeEnabled()
-  })
+    await expect(input).toBeEnabled();
+  });
 
   // ===========================================================================
   // RESET FUNCTIONALITY
   // ===========================================================================
 
-  test('can clear chat history', async ({ page }) => {
+  test("can clear chat history", async ({ page }) => {
     // Send a message first
-    await sendMessageAndWait(page, 'Hello')
-    await expectAssistantResponse(page)
-    
+    await sendMessageAndWait(page, "Hello");
+    await expectAssistantResponse(page);
+
     // Clear history
-    await page.getByRole('button', { name: 'Clear History' }).click()
-    
+    await page.getByRole("button", { name: "Clear History" }).click();
+
     // Should show empty state
-    await expect(page.getByText('Ask me a math question...')).toBeVisible()
-    await expect(page.getByText('0 messages')).toBeVisible()
-  })
-})
+    await expect(page.getByText("Ask me a math question...")).toBeVisible();
+    await expect(page.getByText("0 messages")).toBeVisible();
+  });
+});

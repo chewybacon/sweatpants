@@ -50,10 +50,7 @@ export type Tool<TInput extends ZodSchema, TOutput extends ZodSchema> = (
 /**
  * Middleware function for decorating legacy/config-style tool invocations.
  */
-export type ToolMiddleware<
-  TInput extends ZodSchema,
-  TOutput extends ZodSchema,
-> = (
+export type ToolMiddleware<TInput extends ZodSchema, TOutput extends ZodSchema> = (
   args: z.infer<TInput>,
   next: (...args: [z.infer<TInput>]) => Operation<z.infer<TOutput>>,
 ) => Operation<z.infer<TOutput>>;
@@ -61,10 +58,7 @@ export type ToolMiddleware<
 /**
  * Tool factory returned when impl is provided in config.
  */
-export interface ToolFactoryWithImpl<
-  TInput extends ZodSchema,
-  TOutput extends ZodSchema,
-> {
+export interface ToolFactoryWithImpl<TInput extends ZodSchema, TOutput extends ZodSchema> {
   (): Operation<Tool<TInput, TOutput>>;
   decorate(middleware: ToolMiddleware<TInput, TOutput>): Operation<void>;
   withContext<T>(context: Context<T>, value: T): ToolFactoryWithImpl<TInput, TOutput>;
@@ -165,9 +159,8 @@ export type ElicitEntry<TResponseSchema = ZodSchema, TContextSchema = undefined>
 
 export type ElicitsMap = Record<string, ElicitEntry<any, any>>;
 
-export type ExtractElicitResponse<E> = E extends ElicitDefinition<infer R, any>
-  ? InferSchema<R>
-  : InferSchema<E>;
+export type ExtractElicitResponse<E> =
+  E extends ElicitDefinition<infer R, any> ? InferSchema<R> : InferSchema<E>;
 
 export type ExtractElicitContext<E> = E extends { readonly context: infer C }
   ? InferSchema<C>
@@ -236,9 +229,6 @@ export interface SampleExchange<TParsed = undefined> {
   /** Parsed structured data — present only on structured-output exchanges. */
   parsed?: TParsed;
 }
-
-/** Union of interaction exchanges accumulated for sampling history. */
-export type InteractionExchange = ElicitExchange<unknown> | SampleExchange;
 
 // -----------------------------------------------------------------------------
 // Result types
@@ -383,8 +373,10 @@ interface SampleConfigMessagesMode {
 
 export type SampleConfigPlainPrompt = SampleConfigPlain & SampleConfigPromptMode;
 export type SampleConfigPlainMessages = SampleConfigPlain & SampleConfigMessagesMode;
-export type SampleConfigSchemaPrompt<T = unknown> = SampleConfigWithSchema<T> & SampleConfigPromptMode;
-export type SampleConfigSchemaMessages<T = unknown> = SampleConfigWithSchema<T> & SampleConfigMessagesMode;
+export type SampleConfigSchemaPrompt<T = unknown> = SampleConfigWithSchema<T> &
+  SampleConfigPromptMode;
+export type SampleConfigSchemaMessages<T = unknown> = SampleConfigWithSchema<T> &
+  SampleConfigMessagesMode;
 export type SampleConfigToolsPrompt = SampleConfigWithTools & SampleConfigPromptMode;
 export type SampleConfigToolsMessages = SampleConfigWithTools & SampleConfigMessagesMode;
 
@@ -458,24 +450,35 @@ export interface BaseToolCtx {
   log(level: LogLevel, message: string): Operation<void>;
 }
 
-type ElicitRequestFor<E> = ExtractElicitContext<E> extends undefined
-  ? { message: string; interrupt?: PerCallInterruptOptions }
-  : { message: string; context: ExtractElicitContext<E>; interrupt?: PerCallInterruptOptions };
+type ElicitRequestFor<E> =
+  ExtractElicitContext<E> extends undefined
+    ? { message: string; interrupt?: PerCallInterruptOptions }
+    : { message: string; context: ExtractElicitContext<E>; interrupt?: PerCallInterruptOptions };
 
 export interface ToolElicitCtx<TElicits extends ElicitsMap> {
   elicit<K extends keyof TElicits & string>(
     key: K,
     request: ElicitRequestFor<TElicits[K]>,
-  ): Operation<ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>>;
+  ): Operation<
+    ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
+  >;
 }
 
 export interface ToolGenericSampleCtx {
   sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>;
-  sample<T>(config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>;
-  sample(config: SampleConfigToolsPrompt | SampleConfigToolsMessages): Operation<SampleResultWithToolCalls>;
-  sample(config: ToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
+  sample<T>(
+    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>,
+  ): Operation<SampleResultWithParsed<T>>;
+  sample(
+    config: SampleConfigToolsPrompt | SampleConfigToolsMessages,
+  ): Operation<SampleResultWithToolCalls>;
+  sample(
+    config: ToolSampleConfig,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
   sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
-  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>;
+  sampleSchema<T>(
+    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
+  ): Operation<SampleSchemaResult<T>>;
   /** Keyed sample request form used by some tools / tests */
   sample(request: SampleRequest): Operation<SampleResult>;
 }
@@ -489,16 +492,24 @@ type SampleParsed<TSamples extends SamplesMap, K extends keyof TSamples> =
 
 export interface ToolNamedSampleCtx<TSamples extends SamplesMap> {
   sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>;
-  sample<T>(config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>;
-  sample(config: SampleConfigToolsPrompt | SampleConfigToolsMessages): Operation<SampleResultWithToolCalls>;
-  sample(config: ToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
+  sample<T>(
+    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>,
+  ): Operation<SampleResultWithParsed<T>>;
+  sample(
+    config: SampleConfigToolsPrompt | SampleConfigToolsMessages,
+  ): Operation<SampleResultWithToolCalls>;
+  sample(
+    config: ToolSampleConfig,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
   sample(request: SampleRequest): Operation<SampleResult>;
   sample<K extends keyof TSamples & string>(
     key: K,
     request: SampleRequest,
   ): Operation<SampleResult<SampleParsed<TSamples, K>>>;
   sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
-  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>;
+  sampleSchema<T>(
+    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
+  ): Operation<SampleSchemaResult<T>>;
 }
 
 export interface ToolBranchCtx<TElicits extends ElicitsMap, TSamples> {
@@ -511,21 +522,23 @@ export interface ToolBranchCtx<TElicits extends ElicitsMap, TSamples> {
 /** Detects the `any` type (used so AnyToolDefinition stays a universal sink). */
 type IsAny<T> = 0 extends 1 & T ? true : false;
 
-type ElicitCtxIfDeclared<TElicits> = IsAny<TElicits> extends true
-  ? ToolElicitCtx<any>
-  : TElicits extends ElicitsMap
-    ? keyof TElicits extends never
-      ? {}
-      : ToolElicitCtx<TElicits>
-    : {};
-
-type SampleCtxIfDeclared<TSamples> = IsAny<TSamples> extends true
-  ? ToolNamedSampleCtx<any>
-  : TSamples extends true
-    ? ToolGenericSampleCtx
-    : TSamples extends SamplesMap
-      ? ToolNamedSampleCtx<TSamples>
+type ElicitCtxIfDeclared<TElicits> =
+  IsAny<TElicits> extends true
+    ? ToolElicitCtx<any>
+    : TElicits extends ElicitsMap
+      ? keyof TElicits extends never
+        ? {}
+        : ToolElicitCtx<TElicits>
       : {};
+
+type SampleCtxIfDeclared<TSamples> =
+  IsAny<TSamples> extends true
+    ? ToolNamedSampleCtx<any>
+    : TSamples extends true
+      ? ToolGenericSampleCtx
+      : TSamples extends SamplesMap
+        ? ToolNamedSampleCtx<TSamples>
+        : {};
 
 export type ToolCtx<TElicits = undefined, TSamples = undefined> = BaseToolCtx &
   ElicitCtxIfDeclared<TElicits> &
@@ -545,7 +558,10 @@ export interface ToolExtensionMetadata {
   readonly [key: string]: unknown;
 }
 
-export interface ToolExtension<TState = unknown, TMetadata extends ToolExtensionMetadata = ToolExtensionMetadata> {
+export interface ToolExtension<
+  TState = unknown,
+  TMetadata extends ToolExtensionMetadata = ToolExtensionMetadata,
+> {
   readonly namespace?: string;
   readonly metadata?: TMetadata;
   apply?(state: TState): TState | void;
@@ -604,7 +620,9 @@ export interface CreateToolBuilderWithParams<
     samples: TNextSamples,
   ): CreateToolBuilderWithParams<TName, TInput, TOutput, TElicits, TNextSamples>;
   use(
-    extension: ToolExtension<CreateToolBuilderWithParams<TName, TInput, TOutput, TElicits, TSamples>>,
+    extension: ToolExtension<
+      CreateToolBuilderWithParams<TName, TInput, TOutput, TElicits, TSamples>
+    >,
   ): CreateToolBuilderWithParams<TName, TInput, TOutput, TElicits, TSamples>;
   annotate(
     namespace: string,

@@ -10,6 +10,7 @@
  * browser outcome coverage while remaining headless and fail-fast.
  */
 import { afterAll, beforeAll, describe, it } from "vitest";
+import { playTttPlugin } from "@/tools/play-ttt";
 import {
   expectElicit,
   expectNoOpenInterruptError,
@@ -86,7 +87,6 @@ for (const tier of selectedTiers()) {
     });
 
     it("plays through the worker sampling loop to a terminal board", async () => {
-      const { playTttPlugin } = await import("@/tools/play-ttt");
       const transcript = await withFlakePolicy(() =>
         runChatFlow(binding, {
           plugins: [playTttPlugin],
@@ -115,7 +115,6 @@ for (const tier of selectedTiers()) {
     }, 150_000);
 
     it("answers a free-form follow-up after the game without re-launching play_ttt", async () => {
-      const { playTttPlugin } = await import("@/tools/play-ttt");
       const transcript = await withFlakePolicy(() =>
         runChatFlow(binding, {
           plugins: [playTttPlugin],

@@ -736,7 +736,7 @@ describe("resolveToolDiscoveryOptions", () => {
 // INTEGRATION TESTS (with real file system)
 // =============================================================================
 
-import { mkdtemp, writeFile, rm, mkdir } from "fs/promises";
+import { mkdtemp, writeFile, rm, mkdir, readFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { toolDiscoveryPlugin, generateWorkerContent } from "../src/index.ts";
@@ -779,12 +779,10 @@ describe("integration: toolDiscoveryPlugin", () => {
   }
 
   async function readRegistry(): Promise<string> {
-    const { readFile } = await import("fs/promises");
     return readFile(join(tempDir, "src/__generated__/tool-registry.gen.ts"), "utf-8");
   }
 
   async function readWorker(): Promise<string> {
-    const { readFile } = await import("fs/promises");
     return readFile(join(tempDir, "src/__generated__/tool-worker.gen.ts"), "utf-8");
   }
 
@@ -855,10 +853,7 @@ describe("integration: toolDiscoveryPlugin", () => {
         "calculator.ts",
         `export const calculator = createTool('calculator').build()`,
       );
-      await writeToolFile(
-        "search.ts",
-        `export const search = createTool('search_web').build()`,
-      );
+      await writeToolFile("search.ts", `export const search = createTool('search_web').build()`);
 
       await runPlugin();
       const registry = await readRegistry();
@@ -936,10 +931,7 @@ describe("integration: toolDiscoveryPlugin", () => {
     await setupTempProject();
 
     try {
-      await writeToolFile(
-        "my-tool.ts",
-        `export default createTool('my_default_tool').build()`,
-      );
+      await writeToolFile("my-tool.ts", `export default createTool('my_default_tool').build()`);
 
       await runPlugin();
       const registry = await readRegistry();
@@ -957,15 +949,9 @@ describe("integration: toolDiscoveryPlugin", () => {
 
     try {
       // Named export
-      await writeToolFile(
-        "named.ts",
-        `export const namedTool = createTool('named_tool').build()`,
-      );
+      await writeToolFile("named.ts", `export const namedTool = createTool('named_tool').build()`);
       // Default export
-      await writeToolFile(
-        "default.ts",
-        `export default createTool('default_tool').build()`,
-      );
+      await writeToolFile("default.ts", `export default createTool('default_tool').build()`);
       // Variable + export
       await writeToolFile(
         "variable.ts",
@@ -1087,10 +1073,7 @@ export { varTool }`,
 
     try {
       await writeToolFile("tictactoe.ts", `export const tictactoeTool = createTool().build()`);
-      await writeToolFile(
-        "calculator.ts",
-        `export const calculator = createTool().build()`,
-      );
+      await writeToolFile("calculator.ts", `export const calculator = createTool().build()`);
 
       await runPlugin();
       const registry = await readRegistry();

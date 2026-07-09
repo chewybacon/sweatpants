@@ -32,7 +32,6 @@ export type {
   ToolDefinition,
   AnyToolDefinition,
   ToolCtx,
-  InteractionExchange,
   ElicitExchange as CoreElicitExchange,
   SampleExchange as CoreSampleExchange,
   SampleRequest as CoreSampleRequest,
@@ -111,7 +110,7 @@ export type { MockMCPClient, MockMCPClientConfig, RunMCPToolOptions } from "./mo
 export {
   projectCoreElicitExchangeToMcpMessages,
   projectCoreSampleExchangeToMcpMessages,
-  projectCoreExchangeToMcpMessages,
+  projectCoreInteractionExchangeToMcpMessages,
   projectCoreExchangesToMcpMessages,
 } from "./core-exchange-projection.ts";
 
@@ -183,9 +182,7 @@ export {
   useOptionalToolSessionSamplingProvider,
 } from "./session/contexts.ts";
 
-export {
-  adaptToolSessionToSessionContract,
-} from './session/contract-adapter.ts'
+export { adaptToolSessionToSessionContract } from "./session/contract-adapter.ts";
 
 export type {
   // Session types

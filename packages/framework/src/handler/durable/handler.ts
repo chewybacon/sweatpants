@@ -18,7 +18,7 @@
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
-import { call, resource, type Operation, type Stream } from "effection";
+import { call, resource, type Operation, type Stream, type Subscription } from "effection";
 import type {
   SessionHandle,
   SessionRegistry,
@@ -674,7 +674,7 @@ function* createStoredConversationCheckpointResponse(params: {
   checkpointEvents: StreamEvent[];
   parsedOffset: ReturnType<typeof parseOffsetParam>;
 }): Operation<{
-  subscription: import("effection").Subscription<string, void>;
+  subscription: Subscription<string, void>;
   cleanup?: () => Operation<void>;
 }> {
   const { ctx, conversationId, checkpointEvents, parsedOffset } = params;
@@ -725,7 +725,7 @@ function* createConversationHydrateResponse(params: {
   conversationId: string;
   parsedOffset: ReturnType<typeof parseOffsetParam>;
 }): Operation<{
-  subscription: import("effection").Subscription<string, void>;
+  subscription: Subscription<string, void>;
   cleanup?: () => Operation<void>;
 }> {
   const { ctx, registry, session, sessionId, conversationId, parsedOffset } = params;

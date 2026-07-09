@@ -43,7 +43,6 @@ export type {
   WireSampleResultWithToolCalls,
   ElicitExchange,
   SampleExchange,
-  InteractionExchange,
   ToolMessage,
   ToolRole,
   ToolContentBlock,

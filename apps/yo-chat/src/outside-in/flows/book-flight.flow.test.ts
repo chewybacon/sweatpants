@@ -6,6 +6,7 @@
  * emitted, no RUN_ERROR, terminal success, and a `TKT-` confirmation token.
  */
 import { afterAll, beforeAll, describe, it } from "vitest";
+import { bookFlightPlugin } from "@/tools/book-flight";
 import {
   expectConfirmationToken,
   expectConfirmationTokenCount,
@@ -47,7 +48,6 @@ for (const tier of selectedTiers()) {
     });
 
     it("books a flight through pickFlight → pickSeat and returns a TKT- confirmation", async () => {
-      const { bookFlightPlugin } = await import("@/tools/book-flight");
       const transcript = await withFlakePolicy(() =>
         runChatFlow(binding, {
           plugins: [bookFlightPlugin],
@@ -73,7 +73,6 @@ for (const tier of selectedTiers()) {
     }, 120_000);
 
     it("infers the return route from outbound history without restating cities", async () => {
-      const { bookFlightPlugin } = await import("@/tools/book-flight");
       const transcript = await withFlakePolicy(() =>
         runChatFlow(binding, {
           plugins: [bookFlightPlugin],
