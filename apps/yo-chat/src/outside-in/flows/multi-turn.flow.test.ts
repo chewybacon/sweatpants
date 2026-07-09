@@ -12,6 +12,7 @@
  */
 import { afterAll, beforeAll, describe, it } from "vitest";
 import {
+  expectNoOpenInterruptError,
   expectNoRunError,
   expectOutcome,
   expectRunFinished,
@@ -55,6 +56,7 @@ for (const tier of selectedTiers()) {
 
       expectToolCalled(transcript, "calculator");
       expectNoRunError(transcript);
+      expectNoOpenInterruptError(transcript);
       expectOutcome(transcript, "success");
 
       // Both turns must have completed (one RUN_FINISHED each) — this is the

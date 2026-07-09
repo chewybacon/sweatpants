@@ -25,12 +25,24 @@ export {
   runChatFlow,
 } from "./driver.ts";
 export {
+  countToolCalls,
+  countElicits,
+  countConfirmationTokens,
   expectToolCalled,
+  expectToolCallCount,
+  expectToolCallCountAtMost,
   expectElicit,
+  expectElicitCount,
   expectOutcome,
   expectNoRunError,
+  expectNoOpenInterruptError,
+  expectNoToolRelaunchAfter,
   expectFinalTextMatches,
   expectConfirmationToken,
+  expectConfirmationTokenCount,
+  expectToolResultJson,
+  expectTerminalTicTacToeResult,
+  expectRunFinished,
 } from "./assertions.ts";
 export { type CopilotAuthStatus, getCopilotAuthStatus, requireCopilotAuth } from "./auth.ts";
 export {

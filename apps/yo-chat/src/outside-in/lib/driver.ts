@@ -202,7 +202,9 @@ export async function runChatFlow(
             });
             const reply = respond(pending);
             if (reply === null) {
-              // Caller chose to leave this interrupt unanswered; end the turn.
+              // Caller chose to leave this interrupt unanswered; end the turn
+              // immediately. The next free-form send is expected to cancel it
+              // (cancel-on-send). Do not wait for settle — the run is parked.
               break;
             }
             session.dispatch({

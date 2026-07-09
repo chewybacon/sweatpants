@@ -12,10 +12,13 @@
 import { afterAll, beforeAll, describe, it } from "vitest";
 import {
   expectElicit,
+  expectNoOpenInterruptError,
   expectNoRunError,
+  expectNoToolRelaunchAfter,
   expectOutcome,
   expectRunFinished,
   expectTerminalTicTacToeResult,
+  expectToolCallCount,
   expectToolCalled,
 } from "../lib/assertions.ts";
 import { requireCopilotAuth } from "../lib/auth.ts";
@@ -106,8 +109,43 @@ for (const tier of selectedTiers()) {
       expectElicit(transcript, "pickMove");
       expectTerminalTicTacToeResult(transcript, "play_ttt");
       expectNoRunError(transcript);
+      expectNoOpenInterruptError(transcript);
       expectRunFinished(transcript);
       expectOutcome(transcript, "success");
     }, 150_000);
+
+    it("answers a free-form follow-up after the game without re-launching play_ttt", async () => {
+      const { playTttPlugin } = await import("@/tools/play-ttt");
+      const transcript = await withFlakePolicy(() =>
+        runChatFlow(binding, {
+          plugins: [playTttPlugin],
+          initialToolChoice: "required",
+          systemPrompt: `You are the Agentic Tic-Tac-Toe demo controller.
+When the user wants to play, call play_ttt once.
+After a game completes, answer follow-up questions from conversation history.
+Do NOT call play_ttt again unless the user explicitly asks to play another game.`,
+          turns: [
+            {
+              message:
+                "Play exactly one game of tic-tac-toe with me using the play_ttt tool. Make your moves and let me make mine. Do not answer directly.",
+              respondToElicit: (elicit) =>
+                elicit.key === "pickMove" ? chooseDeterministicMove(elicit) : { action: "decline" },
+            },
+            {
+              message: "who won?",
+            },
+          ],
+        }),
+      );
+
+      expectToolCallCount(transcript, "play_ttt", 1);
+      expectTerminalTicTacToeResult(transcript, "play_ttt");
+      // Follow-up must not re-open a tool call / fresh interrupt board.
+      expectNoToolRelaunchAfter(transcript, "play_ttt", 1);
+      expectNoOpenInterruptError(transcript);
+      expectNoRunError(transcript);
+      expectRunFinished(transcript, 2);
+      expectOutcome(transcript, "success");
+    }, 180_000);
   });
 }
