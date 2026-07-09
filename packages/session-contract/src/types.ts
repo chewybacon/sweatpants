@@ -60,6 +60,8 @@ export interface SampleWaitPayload {
 export interface CallWaitPayload {
   target: string
   input: unknown
+  /** The callId passed by the resolver context, used for reattachment. */
+  callId?: string
 }
 
 export interface MessageWaitPayload {
