@@ -56,6 +56,18 @@ describe("framework package boundaries", () => {
     expect(chatIndex).not.toContain("ChatProvider");
   });
 
+  it("does not publicly export legacy session-style tool runtime helper types from framework chat root", () => {
+    const runtimeSource = readFileSync(
+      resolve(frameworkRoot, "src/lib/chat/tool-runtime.ts"),
+      "utf8",
+    );
+    expect(runtimeSource).not.toContain("export type ToolRuntimeToolSchema");
+    expect(runtimeSource).not.toContain("export interface ToolSessionRef");
+    expect(runtimeSource).not.toContain("export type ToolSessionEvent");
+    expect(runtimeSource).not.toContain("export interface ToolSession");
+    expect(runtimeSource).not.toContain("export interface StartToolCallRequest");
+  });
+
   it("does not publicly export tool authoring builders from framework", () => {
     const indexes = [
       resolve(frameworkRoot, "src/lib/chat/index.ts"),

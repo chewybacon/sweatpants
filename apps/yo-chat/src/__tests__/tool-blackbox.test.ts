@@ -147,10 +147,13 @@ describe("yo-chat tool blackbox", () => {
       });
 
       try {
-        yield* driver.startToolCall({
-          toolName: bookFlightTool.name,
-          callId: "call-missing-origin",
-          arguments: { destination: "NYC" },
+        yield* driver.execute({
+          entry: createToolInventoryEntry(bookFlightTool),
+          call: {
+            id: "call-missing-origin",
+            type: "function",
+            function: { name: bookFlightTool.name, arguments: { destination: "NYC" } },
+          },
         });
         throw new Error("expected validation failure");
       } catch (error) {

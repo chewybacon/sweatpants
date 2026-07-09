@@ -1,9 +1,6 @@
 import { createContext, type Operation, type Stream } from "effection";
 import type { ToolCall } from "./types.ts";
-import type {
-  ToolDefinition as InventoryToolDefinition,
-  ToolInventoryEntry,
-} from "./tool-inventory.ts";
+import type { ToolInventoryEntry } from "./tool-inventory.ts";
 
 export interface ToolExecutionRef {
   runtimeId: string;
@@ -309,22 +306,3 @@ export const ToolRuntimeApi = {
     yield* runtime.abort(ref, reason);
   },
 };
-
-// Session-style helper types used by concrete driver packages and acceptance
-// harnesses. These are not part of the canonical ToolRuntime API.
-export type ToolRuntimeToolSchema = InventoryToolDefinition;
-export interface ToolSessionRef {
-  id: string;
-  runtimeId: string;
-  toolName: string;
-}
-export type ToolSessionEvent = ToolExecutionEvent;
-export interface ToolSession extends ToolSessionRef {
-  events(afterLSN?: number): Stream<ToolSessionEvent, void>;
-}
-export interface StartToolCallRequest {
-  toolName: string;
-  callId: string;
-  arguments: Record<string, unknown>;
-  signal?: AbortSignal;
-}
