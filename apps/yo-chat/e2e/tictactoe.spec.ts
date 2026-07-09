@@ -508,4 +508,47 @@ test.describe("tictactoe Tool (MCP Standard Sampling)", () => {
       test.skip(true, "Could not test cancellation");
     }
   });
+
+  // =============================================================================
+  // FOLLOW-UP AFTER COMPLETED GAME
+  // =============================================================================
+
+  test("free-form chat while a game interrupt is open does not require resume[]", async ({ page }) => {
+    await page.getByRole("button", { name: "Start Game" }).click();
+
+    const thinkingLocator = page.getByText("thinking...", { exact: true });
+    const openInterruptError = page.locator("text=/Open interrupts require resume/i");
+    const gameOver = page.locator("text=/wins!|draw!|Good game!|Well played!/i");
+
+    // Wait for an interactive board (open interrupt). This is the state where
+    // free-form follow-ups previously failed with INVALID_RESUME.
+    const emptyCell = page
+      .locator("button:not([disabled])")
+      .filter({ hasText: /^[0-8]$/ })
+      .last();
+    await expect(emptyCell).toBeVisible({ timeout: 120000 });
+
+    // Optional: play one move so the interrupt is clearly mid-tool.
+    await emptyCell.click();
+    await expect(thinkingLocator).toBeVisible({ timeout: 10000 }).catch(() => {});
+    await expect(thinkingLocator).not.toBeVisible({ timeout: 90000 }).catch(() => {});
+
+    // Free-form send while a tool interrupt is still open must cancel the
+    // interrupt and accept the new turn, not reject with resume[].
+    const input = page.getByPlaceholder("Type a message...");
+    await expect(input).toBeEnabled({ timeout: 30000 });
+    await input.fill("");
+    await input.pressSequentially("why did you launch a game?", { delay: 5 });
+    await page.getByRole("button", { name: "Send" }).click();
+
+    await expect(openInterruptError).toHaveCount(0, { timeout: 20000 });
+    await expect(page.locator("text=/^Error:/")).toHaveCount(0, { timeout: 5000 });
+    await expect(page.getByText("why did you launch a game?")).toBeVisible({ timeout: 10000 });
+
+    // If the interrupted game later completes on its own, that is fine; the
+    // hard assertion is that free-form chat was not blocked by open interrupts.
+    if ((await gameOver.count()) > 0) {
+      await expect(openInterruptError).toHaveCount(0);
+    }
+  });
 });

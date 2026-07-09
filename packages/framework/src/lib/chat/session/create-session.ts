@@ -161,8 +161,20 @@ export function* runChatSession(
   const pendingElicitResponses: ElicitResponseData[] = [];
   const sentElicitResponseIds = new Set<string>();
   let pendingToolCalls: Array<{ id: string; name: string }> = [];
+  // Authoritative open elicits for this session. mirroredState can lag or be
+  // incomplete for cancel-on-send, so we track them explicitly when turns park.
+  let openElicits: Array<{
+    sessionId: string;
+    callId: string;
+    toolName?: string;
+    elicitId: string;
+  }> = [];
   let replayState: ConversationReplayState | undefined;
   let mirroredState = initialChatState;
+  // Capture/reuse the server-minted conversation identity so multi-turn
+  // requests stay on the same fold session even when the demo does not
+  // pre-provision a conversationId (flight/cards/etc).
+  let conversationId = options.conversationId;
 
   function* sendPatch(patch: ChatPatch): Operation<void> {
     mirroredState = chatReducer(mirroredState, patch);
@@ -237,9 +249,14 @@ export function* runChatSession(
       const elicitResponsesToSend = pendingElicitResponses.splice(0);
       result = yield* streamer([...history], streamPatches, {
         ...options,
+        ...(conversationId ? { conversationId } : {}),
         ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
         ...(replayState ? { replayState } : {}),
       });
+
+      if (result.conversationId) {
+        conversationId = result.conversationId;
+      }
 
       if (result.type === "complete") {
         const toolResultsMap = new Map(
@@ -257,6 +274,7 @@ export function* runChatSession(
         }
         resetTranscriptState(transcriptState, history);
         pendingToolCalls = [];
+        openElicits = [];
         break;
       }
 
@@ -265,6 +283,12 @@ export function* runChatSession(
         pendingToolCalls = syncConversationStateForElicit(history, result.conversationState);
         resetTranscriptState(transcriptState, history);
         replayState = result.conversationState.replay ?? replayState;
+        openElicits = result.pendingElicitations.map((elicit) => ({
+          sessionId: elicit.sessionId,
+          callId: elicit.callId,
+          ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
+          elicitId: elicit.elicitId,
+        }));
 
         const assistantToolCallHostMessage = findAssistantToolCallHostMessage(
           history,
@@ -348,6 +372,30 @@ export function* runChatSession(
           pendingToolCalls = [];
         }
 
+        // Free-form send supersedes any still-open plugin elicits. Cancel them
+        // so the server interrupt registry does not reject the request with
+        // "Open interrupts require resume[]".
+        if (openElicits.length > 0) {
+          for (const elicit of openElicits) {
+            if (sentElicitResponseIds.has(elicit.elicitId)) continue;
+            sentElicitResponseIds.add(elicit.elicitId);
+            pendingElicitResponses.push({
+              sessionId: elicit.sessionId,
+              callId: elicit.callId,
+              ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
+              elicitId: elicit.elicitId,
+              result: { action: "cancel" },
+            });
+            yield* sendPatch({
+              type: "elicit_response",
+              callId: elicit.callId,
+              elicitId: elicit.elicitId,
+              response: { action: "cancel" },
+            });
+          }
+          openElicits = [];
+        }
+
         const userMessage = appendUserMessage(history, transcriptState, cmd.content);
         const rendered = options.renderer?.(cmd.content);
         yield* sendPatch({
@@ -429,6 +477,7 @@ export function* runChatSession(
         history.length = 0;
         pendingElicitResponses.length = 0;
         pendingToolCalls = [];
+        openElicits = [];
         sentElicitResponseIds.clear();
         resetTranscriptState(transcriptState, history);
         yield* sendPatch({ type: "reset" });
@@ -440,6 +489,7 @@ export function* runChatSession(
           break;
         }
         sentElicitResponseIds.add(cmd.elicitId);
+        openElicits = openElicits.filter((elicit) => elicit.elicitId !== cmd.elicitId);
 
         pendingElicitResponses.push({
           sessionId: cmd.sessionId,

@@ -67,12 +67,16 @@ export interface StreamCompleteResult {
   toolCalls?: Array<{ id: string; name: string; arguments: unknown }>;
   toolResults?: Array<{ id: string; name: string; content: string }>;
   conversationState?: ConversationState;
+  /** Server-minted conversation identity, when returned by the chat endpoint. */
+  conversationId?: string;
 }
 
 export interface StreamElicitResult {
   type: "elicit";
   pendingElicitations: ElicitRequestStreamEvent[];
   conversationState: ConversationState;
+  /** Server-minted conversation identity, when returned by the chat endpoint. */
+  conversationId?: string;
 }
 
 export interface ConversationStateStreamEvent {

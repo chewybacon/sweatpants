@@ -144,6 +144,14 @@ export function GameChatView({
   disabled,
   response,
 }: GameChatViewProps) {
+  // Game-over is a fire-and-forget render: the tool parks on ctx.elicit only so
+  // the final board can paint. Auto-ack asynchronously so the interrupt resolves
+  // and follow-up chat messages are not blocked by "Open interrupts require resume[]".
+  // The elicit executor's respond() is idempotent, so re-renders are safe.
+  if (gameOver && !disabled && !response && onRespond) {
+    queueMicrotask(() => onRespond({ position: -1 }))
+  }
+
   // Determine game result for the last move card
   const getGameResult = (move: GameMove): 'win' | 'lose' | 'draw' | undefined => {
     if (!gameOver || move.moveNumber !== moveHistory.length) return undefined

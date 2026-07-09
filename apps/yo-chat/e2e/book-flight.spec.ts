@@ -483,27 +483,18 @@ test.describe("book_flight Plugin Tool", () => {
       confirmationCount,
     );
 
-    await sendChatMessage(
-      page,
-      "Great, now use the available flight booking tool again to book the return flight from New York to Los Angeles. Do not answer directly.",
-    );
+    // Do not restate cities. History must carry the outbound route so the model
+    // can infer the reverse return booking.
+    await sendChatMessage(page, "ok, book the return flight");
 
     // Regression assertion: after a completed first flow, the second flow must
-    // enter a fresh SeatPicker runtime. The bug we are capturing is that the
-    // second SeatPicker renders, but clicking a seat does not reveal the
-    // matching "Confirm Seat" button.
-    try {
-      confirmationCount = await completeBookingFlow(
-        page,
-        "Return booking",
-        "3C",
-        confirmationCount,
-      );
-    } catch (error) {
-      console.log("Return booking flow incomplete:", error);
-      test.skip(true, "LLM did not call book_flight tool for return booking");
-      return;
-    }
+    // enter a fresh SeatPicker runtime from thread history alone.
+    confirmationCount = await completeBookingFlow(
+      page,
+      "Return booking",
+      "3C",
+      confirmationCount,
+    );
 
     expect(confirmationCount).toBeGreaterThanOrEqual(2);
   });
