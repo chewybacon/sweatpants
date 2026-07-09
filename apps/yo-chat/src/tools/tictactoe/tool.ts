@@ -144,7 +144,7 @@ Reply with ONLY a single digit (0-8) for your move. Nothing else.`
           messages: [{ role: 'user', content: prompt }],
         })
 
-        const text = response.text ?? response.content ?? ''
+        const text = response.text ?? ''
         yield* ctx.log('info', `Model response: "${text}"`)
 
         const match = text.match(/\b([0-8])\b/)

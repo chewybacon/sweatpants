@@ -1,4 +1,4 @@
-import { createContext, type Operation } from 'effection'
+import { createContext, type Operation, type Stream } from 'effection'
 import { TransportContext, type CorrelatedTransport, type TransportRequest, type NotifyResponse } from '@sweatpants/core'
 import type { ChatPatch } from '../patches/index.ts'
 
@@ -27,7 +27,7 @@ function createFrameworkTransport(config: FrameworkBridgeConfig): CorrelatedTran
           }
           throw new Error(`Unsupported transport request kind: ${message.kind}`)
         },
-      } as unknown as import('effection').Stream<TProgress, TResponse>
+      } as unknown as Stream<TProgress, TResponse>
     },
   }
 }

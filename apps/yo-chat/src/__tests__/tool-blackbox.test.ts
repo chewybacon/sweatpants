@@ -138,7 +138,7 @@ describe("yo-chat tool blackbox", () => {
   it("book_flight rejects missing required route params before starting UI", async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [bookFlightTool as LocalSessionTool],
+        tools: [bookFlightTool],
         samplingProvider: {
           *sample() {
             return { text: "unused" };
@@ -228,7 +228,7 @@ describe("yo-chat tool blackbox", () => {
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
-        const localBookFlightTool = bookFlightTool as LocalSessionTool;
+        const localBookFlightTool = bookFlightTool;
         yield* ToolInventoryContext.set(
           createToolInventory([createToolInventoryEntry(localBookFlightTool)]),
         );
@@ -434,7 +434,7 @@ describe("yo-chat tool blackbox", () => {
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
-        const localBookFlightTool = bookFlightTool as LocalSessionTool;
+        const localBookFlightTool = bookFlightTool;
         yield* ToolInventoryContext.set(
           createToolInventory([createToolInventoryEntry(localBookFlightTool)]),
         );

@@ -5,15 +5,15 @@
  */
 
 import { createContext, type Channel, type Operation } from 'effection'
-import type { RawElicitResult } from '@sweatpants/framework/chat/mcp-tools'
-import type { ToolSessionEvent, ToolSessionStatus, RawSampleResult } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult } from '@sweatpants/framework/chat/mcp-tools'
+import type { ToolSessionEvent, ToolSessionStatus, WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
 
 export interface WorkerSessionState {
   /** Pending elicit channels, keyed by elicitId */
-  pendingElicitChannels: Map<string, Channel<RawElicitResult<unknown>, void>>
+  pendingElicitChannels: Map<string, Channel<WireElicitResult<unknown>, void>>
 
   /** Pending sample channels, keyed by sampleId */
-  pendingSampleChannels: Map<string, Channel<RawSampleResult, void>>
+  pendingSampleChannels: Map<string, Channel<WireSampleResult, void>>
 
   /** Emit a session event (adds LSN/timestamp internally) */
   emitEvent(event: { type: ToolSessionEvent['type'] } & Record<string, unknown>): Operation<void>

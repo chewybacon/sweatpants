@@ -1,5 +1,12 @@
 # Durable Conversations Spike Retirement
 
+> **⚠ ARCHIVED — STALE AS ACTIVE API**: The `@sweatpants/durable-conversations`
+> spike is retired. The product durable path is the framework durable handler
+> (`createChatHandler` / `createDurableChatHandler` from
+> `@sweatpants/framework/server`) with turn-scoped durable streams. See
+> [`docs/product-surface.md`](../product-surface.md) and
+> [`docs/adr-turn-scoped-durable-chat.md`](../adr-turn-scoped-durable-chat.md).
+
 ## Status
 
 Retired and removed from the active workspace.

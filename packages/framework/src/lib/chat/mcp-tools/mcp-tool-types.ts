@@ -47,7 +47,7 @@ import type {
   ExtractElicitContext,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
-} from '@sweatpants/elicit-context'
+} from '@sweatpants/core'
 import type {
   McpMessage,
 } from './protocol/types.js'
@@ -153,24 +153,22 @@ export interface ElicitExchange<TContext> {
  * @template TContext - The type of context passed to elicit()
  * @template TResponse - The type of the user's response
  */
-export type ElicitResult<TContext, TResponse> =
+export type ToolElicitResult<TContext, TResponse> =
   | { action: 'accept'; content: TResponse; exchange: ElicitExchange<TContext> }
-  | { action: 'decline' }
-  | { action: 'cancel' }
+  | { action: 'decline'; reason?: string }
+  | { action: 'cancel'; reason?: string }
+
+/** @deprecated Prefer ToolElicitResult */
+export type ElicitResult<TContext, TResponse> = ToolElicitResult<TContext, TResponse>
 
 /**
- * Raw elicit result without exchange.
- * 
- * Used by plugin handlers and transport layers that return just the
- * action and content. The exchange is constructed by the bridge-runtime
- * layer which has access to the original context.
- *
- * @template TResponse - The type of the user's response
+ * Wire elicit result without exchange.
+ * Used by plugin handlers and transport layers.
  */
-export type RawElicitResult<TResponse> =
+export type WireElicitResult<TResponse = unknown> =
   | { action: 'accept'; content: TResponse }
-  | { action: 'decline' }
-  | { action: 'cancel' }
+  | { action: 'decline'; reason?: string }
+  | { action: 'cancel'; reason?: string }
 
 /**
  * Configuration for an elicitation request (simple form).
@@ -867,7 +865,7 @@ export type SampleResult = SampleResultBase
  * prompt text needed to construct exchanges. The exchange is added by the
  * runtime layer (bridge-runtime, branch-runtime) which has the context.
  */
-export interface RawSampleResultBase {
+export interface WireSampleResultBase {
   /** The generated text */
   text: string
 
@@ -883,7 +881,7 @@ export interface RawSampleResultBase {
  * 
  * @template T - The type of the parsed output
  */
-export interface RawSampleResultWithParsed<T> extends RawSampleResultBase {
+export interface WireSampleResultWithParsed<T> extends WireSampleResultBase {
   /**
    * Parsed and validated output.
    * Null if parsing/validation failed (check parseError).
@@ -905,7 +903,7 @@ export interface RawSampleResultWithParsed<T> extends RawSampleResultBase {
 /**
  * Raw result with tool calls but no exchange.
  */
-export interface RawSampleResultWithToolCalls extends RawSampleResultBase {
+export interface WireSampleResultWithToolCalls extends WireSampleResultBase {
   /**
    * Tool calls made by the model.
    * Present when stopReason is 'toolUse'.
@@ -917,10 +915,11 @@ export interface RawSampleResultWithToolCalls extends RawSampleResultBase {
  * Union type for all raw sample results (without exchange).
  * Used by decoder and handler layers.
  */
-export type RawSampleResult = 
-  | RawSampleResultBase 
-  | RawSampleResultWithParsed<unknown> 
-  | RawSampleResultWithToolCalls
+export type WireSampleResult = 
+  | WireSampleResultBase 
+  | WireSampleResultWithParsed<unknown> 
+  | WireSampleResultWithToolCalls
+
 
 // =============================================================================
 // SAMPLE HELPER CONFIG TYPES

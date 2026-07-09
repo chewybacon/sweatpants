@@ -3,9 +3,9 @@ import type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionEvent,
-  RawSampleResult,
+  WireSampleResult,
 } from '@sweatpants/framework/chat/mcp-tools'
-import type { RawElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
 
 export const AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION = 'sweatpants.agentcore.tool-session.v1' as const
 
@@ -99,13 +99,13 @@ export interface StartToolSessionRequest extends AgentCoreToolRuntimeRequestBase
 export interface RespondToElicitRequest extends AgentCoreToolRuntimeRequestBase {
   op: 'respond_to_elicit'
   elicitId: string
-  response: RawElicitResult<unknown>
+  response: WireElicitResult<unknown>
 }
 
 export interface RespondToSampleRequest extends AgentCoreToolRuntimeRequestBase {
   op: 'respond_to_sample'
   sampleId: string
-  response: RawSampleResult
+  response: WireSampleResult
 }
 
 export interface CancelToolSessionRequest extends AgentCoreToolRuntimeRequestBase {

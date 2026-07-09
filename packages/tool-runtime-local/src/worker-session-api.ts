@@ -14,9 +14,9 @@ import type {
   WorkerSampleRequest,
   WorkerSampleResponse,
 } from '@sweatpants/core/transport/worker'
-import type { RawElicitResult, ExtendedMessage, ToolCallMessage } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult, ExtendedMessage, ToolCallMessage } from '@sweatpants/framework/chat/mcp-tools'
 import { MODEL_CONTEXT_SCHEMA_KEY } from '@sweatpants/framework/chat'
-import type { RawSampleResult } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
 import { WorkerSessionStateContext } from './worker-session-context.ts'
 
 /**
@@ -99,7 +99,7 @@ export const WorkerSessionApi = createApi('worker-session', {
       ...(request.context !== undefined && { context: request.context }),
     })
 
-    const channel = createChannel<RawElicitResult<unknown>, void>()
+    const channel = createChannel<WireElicitResult<unknown>, void>()
     state.pendingElicitChannels.set(elicitId, channel)
 
     const sub = yield* channel
@@ -108,21 +108,20 @@ export const WorkerSessionApi = createApi('worker-session', {
     state.pendingElicitChannels.delete(elicitId)
 
     if (result.done) {
-      return { id: elicitId, type: 'elicit', status: 'cancelled' }
+      return { id: elicitId, type: 'elicit', action: 'cancel' }
     }
 
     const rawResult = result.value
     state.setStatus('running')
 
-    const responseStatus = rawResult.action === 'accept' ? 'accepted'
-      : rawResult.action === 'decline' ? 'declined'
-      : 'cancelled'
-
     return {
       id: elicitId,
       type: 'elicit',
-      status: responseStatus,
+      action: rawResult.action,
       ...(rawResult.action === 'accept' && { content: rawResult.content }),
+      ...((rawResult.action === 'decline' || rawResult.action === 'cancel') &&
+        'reason' in rawResult &&
+        rawResult.reason !== undefined && { reason: rawResult.reason }),
     }
   },
 
@@ -144,7 +143,7 @@ export const WorkerSessionApi = createApi('worker-session', {
       ...(request.schema !== undefined && { schema: request.schema }),
     })
 
-    const channel = createChannel<RawSampleResult, void>()
+    const channel = createChannel<WireSampleResult, void>()
     state.pendingSampleChannels.set(sampleId, channel)
 
     const sub = yield* channel
@@ -183,7 +182,7 @@ export const WorkerSessionApi = createApi('worker-session', {
   // Response side (host → worker)
   // ==========================================
 
-  *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
+  *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
     const state = yield* WorkerSessionStateContext.expect()
     const channel = state.pendingElicitChannels.get(elicitId)
     if (channel) {
@@ -193,7 +192,7 @@ export const WorkerSessionApi = createApi('worker-session', {
     }
   },
 
-  *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
+  *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
     const state = yield* WorkerSessionStateContext.expect()
     const channel = state.pendingSampleChannels.get(sampleId)
     if (channel) {

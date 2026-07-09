@@ -2,10 +2,10 @@ import { run } from "effection";
 import type { Message } from "../../../packages/framework/src/lib/chat/types.ts";
 import type {
   ExtendedMessage,
-  RawSampleResult,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
+  WireSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
   SamplingToolCall,
   SamplingToolDefinition,
 } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
@@ -243,7 +243,7 @@ function rawResultFromAssistant(
   assistant: ModelAssistantMessage,
   model: ModelSelection,
   request: InternalSampleRequest,
-): RawSampleResult {
+): WireSampleResult {
   const text = assistantText(assistant);
   const toolCalls = assistantToolCalls(assistant);
   const modelName = modelSelectionKey(model);
@@ -257,7 +257,7 @@ function rawResultFromAssistant(
         model: modelName,
         stopReason: "endTurn",
         parsed,
-      } satisfies RawSampleResultWithParsed<unknown>;
+      } satisfies WireSampleResultWithParsed<unknown>;
     }
 
     try {
@@ -266,7 +266,7 @@ function rawResultFromAssistant(
         model: modelName,
         stopReason: "endTurn",
         parsed: parseStructuredSampleText(text),
-      } satisfies RawSampleResultWithParsed<unknown>;
+      } satisfies WireSampleResultWithParsed<unknown>;
     } catch (error) {
       return {
         text,
@@ -277,7 +277,7 @@ function rawResultFromAssistant(
           message: error instanceof Error ? error.message : "Failed to parse JSON",
           rawText: text,
         },
-      } satisfies RawSampleResultWithParsed<unknown>;
+      } satisfies WireSampleResultWithParsed<unknown>;
     }
   }
 
@@ -287,7 +287,7 @@ function rawResultFromAssistant(
       model: modelName,
       stopReason: "toolUse",
       toolCalls,
-    } satisfies RawSampleResultWithToolCalls;
+    } satisfies WireSampleResultWithToolCalls;
   }
 
   return {
@@ -297,7 +297,7 @@ function rawResultFromAssistant(
       assistant.stopReason === "maxTokens" || assistant.stopReason === "length"
         ? "maxTokens"
         : "endTurn",
-  } satisfies RawSampleResultBase;
+  } satisfies WireSampleResultBase;
 }
 
 function toModelMessages(messages: unknown[]): ModelMessage[] {
@@ -308,7 +308,7 @@ function toModelMessages(messages: unknown[]): ModelMessage[] {
 
 export async function sampleInsideAgentCore(
   request: InternalSampleRequest,
-): Promise<RawSampleResult> {
+): Promise<WireSampleResult> {
   const config = readAgentCoreToolSampleConfig();
   if (config.mode !== "internal") {
     throw new Error(

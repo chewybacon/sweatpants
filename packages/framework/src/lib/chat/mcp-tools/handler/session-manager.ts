@@ -15,8 +15,8 @@
  */
 import { createContext, type Operation } from 'effection'
 import type { ToolSessionRegistry } from '../session/types.ts'
-import type { McpRuntimeTool } from '../mcp-runtime-tool.ts'
-import type { ElicitsMap, ElicitResult, ElicitExchange, RawSampleResultBase } from '../mcp-tool-types.ts'
+import type { ToolDefinition } from '@sweatpants/core'
+import type { ElicitsMap, ElicitResult, ElicitExchange, WireSampleResultBase } from '../mcp-tool-types.ts'
 import type {
   McpSessionState,
   PendingElicitation,
@@ -91,7 +91,7 @@ export interface McpSessionManagerOptions {
   registry: ToolSessionRegistry
 
   /** Available tools by name */
-  tools: Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>>
+  tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>
 
   /** Session timeout in milliseconds */
   sessionTimeout?: number | undefined
@@ -103,7 +103,7 @@ export interface McpSessionManagerOptions {
 export class McpSessionManager {
   private readonly sessions = new Map<string, McpSessionState>()
   private readonly registry: ToolSessionRegistry
-  private readonly tools: Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>>
+  private readonly tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>
   private readonly sessionTimeout: number
 
   constructor(options: McpSessionManagerOptions) {
@@ -387,7 +387,7 @@ export class McpSessionManager {
       textContent = String(content)
     }
 
-    const sampleResult: RawSampleResultBase = {
+    const sampleResult: WireSampleResultBase = {
       text: textContent,
       model,
       ...(stopReason !== undefined ? { stopReason } : {}),

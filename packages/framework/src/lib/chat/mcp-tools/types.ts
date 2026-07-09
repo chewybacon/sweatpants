@@ -42,17 +42,17 @@ import type { z } from 'zod'
 import type {
   ElicitExchange,
   ElicitResult,
-  RawElicitResult,
+  WireElicitResult,
   ExtendedMessage,
   SampleExchange,
   McpMessage,
   McpContentBlock,
   McpToolUseContent,
   McpToolResultContent,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
-  RawSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
+  WireSampleResult,
 } from './mcp-tool-types.ts'
 
 // Re-export helper functions
@@ -63,13 +63,13 @@ export {
 } from './mcp-tool-types.ts'
 
 // Re-export for consumers
-export type { ElicitExchange, ElicitResult, RawElicitResult, ExtendedMessage, SampleExchange }
+export type { ElicitExchange, ElicitResult, WireElicitResult, ExtendedMessage, SampleExchange }
 
 // MCP content block types
 export type { McpMessage, McpContentBlock, McpToolUseContent, McpToolResultContent }
 
 // Raw sample result types (without exchange - for decoder/handler layers)
-export type { RawSampleResultBase, RawSampleResultWithParsed, RawSampleResultWithToolCalls, RawSampleResult }
+export type { WireSampleResultBase, WireSampleResultWithParsed, WireSampleResultWithToolCalls, WireSampleResult }
 
 /**
  * Configuration for an elicitation request.

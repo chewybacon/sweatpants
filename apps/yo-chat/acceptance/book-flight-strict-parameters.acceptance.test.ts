@@ -11,7 +11,7 @@ describe('yo-chat book_flight strict parameter acceptance', () => {
   it('rejects missing required route params before starting the booking UI flow', async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [bookFlightTool as LocalSessionTool],
+        tools: [bookFlightTool],
         samplingProvider: { *sample() { return { text: 'unused' } } },
       })
 
@@ -37,7 +37,7 @@ describe('yo-chat book_flight strict parameter acceptance', () => {
   it('starts the authored flight picker flow when route params are complete', async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
-        tools: [bookFlightTool as LocalSessionTool],
+        tools: [bookFlightTool],
         samplingProvider: { *sample() { return { text: 'unused' } } },
       })
 

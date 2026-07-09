@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "facadePaths": [
+    "@sweatpants/react-chat",
+    "@sweatpants/react-chat/pipeline",
+    "@sweatpants/framework/server",
+    "@sweatpants/framework/chat",
+    "@sweatpants/framework/chat/browser-rendering",
+    "@sweatpants/framework/chat/mcp-tools",
+    "@sweatpants/framework/chat/durable-streams",
+    "@sweatpants/core",
+    "@sweatpants/core/tool",
+    "@sweatpants/core/tools"
+  ],
+  "productApps": [
+    "apps/yo-chat"
+  ],
+  "experimentalPathPatterns": [
+    "@sweatpants/framework/chat/isomorphic-tools",
+    "@sweatpants/framework/src/",
+    "@sweatpants/agent",
+    "createIsomorphicTool",
+    "defineIsomorphicTool",
+    "defineServerOnlyTool",
+    "defineServerAuthorityTool",
+    "defineClientAuthorityTool"
+  ],
+  "knownExceptions": [],
+  "goldenPathSuites": [
+    "packages/framework/acceptance/golden-path.acceptance.test.ts"
+  ],
+  "notes": {
+    "advancedWiring": [
+      "@sweatpants/tool-runtime-local",
+      "@sweatpants/tool-runtime-agentcore",
+      "@sweatpants/durable-streams",
+      "@sweatpants/durable-streams/redis",
+      "@sweatpants/model-provider-pi-ai",
+      "@sweatpants/vite-plugin"
+    ],
+    "changelog": "docs/product-changelog.md"
+  }
+}

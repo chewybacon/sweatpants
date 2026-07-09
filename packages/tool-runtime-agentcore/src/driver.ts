@@ -1,3 +1,4 @@
+import type { AnyToolDefinition } from '@sweatpants/core'
 import { resource, type Operation, type Stream } from 'effection'
 import {
   ToolRuntimeContext,
@@ -24,8 +25,7 @@ import {
   type ToolSessionRef,
 } from '@sweatpants/framework/chat'
 import type {
-  ElicitsMap,
-  McpRuntimeTool,
+  WireElicitResult,
   ToolSession as McpToolSession,
   ToolSessionEvent as McpToolSessionEvent,
   ToolSessionRegistry,
@@ -33,7 +33,7 @@ import type {
 } from '@sweatpants/framework/chat/mcp-tools'
 import { createAgentCoreToolSessionRegistry, type AgentCoreToolSessionRegistryOptions } from './agentcore-session-registry.ts'
 
-type AgentCoreRuntimeTool = McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>
+type AgentCoreRuntimeTool = AnyToolDefinition
 
 type AgentCoreImplementation = { kind: 'agentcore'; tool: AgentCoreRuntimeTool }
 type AgentCoreContextModelSelection = { provider: string; id: string }
@@ -63,10 +63,12 @@ function toDefinition(tool: AgentCoreRuntimeTool): ToolDefinition {
   }
 }
 
-export function createAgentCoreToolInventoryEntry(tool: AgentCoreRuntimeTool, metadata?: Record<string, unknown>): ToolInventoryEntry<AgentCoreImplementation> {
+export function createAgentCoreToolInventoryEntry<
+  T extends AgentCoreRuntimeTool,
+>(tool: T, metadata?: Record<string, unknown>): ToolInventoryEntry<{ kind: "agentcore"; tool: T }> {
   return {
     definition: toDefinition(tool),
-    implementation: { kind: 'agentcore', tool },
+    implementation: { kind: 'agentcore', tool } as { kind: 'agentcore'; tool: T },
     capabilities: { remote: true, session: true, elicits: true, samples: true },
     ...(metadata ? { metadata } : {}),
   }
@@ -268,7 +270,7 @@ export function createAgentCoreToolExecutionStrategy(
       const pendingLsn = yield* findPendingRequestLsn(session, pendingId)
       if (input.type === 'elicit_response') {
         if (!input.elicitId) throw new ToolRuntimeError('ELICIT_ID_REQUIRED', 'Elicit continuation requires elicitId')
-        yield* session.respondToElicit(input.elicitId, input.result as never)
+        yield* session.respondToElicit(input.elicitId, input.result as WireElicitResult<unknown>)
       }
       return yield* nextAgentCoreExecution(
         ctx.runtimeId,
@@ -340,7 +342,7 @@ export function createAgentCoreToolRuntimeDriver(
     *respondToElicit(ref: ToolSessionRef, elicitId: string, response: unknown): Operation<void> {
       const session = yield* registry.get(ref.id)
       if (!session) throw new ToolRuntimeError('EXECUTION_NOT_FOUND', `AgentCore tool session not found: ${ref.id}`)
-      yield* session.respondToElicit(elicitId, response as never)
+      yield* session.respondToElicit(elicitId, response as WireElicitResult<unknown>)
     },
 
     *abortSession(ref: ToolSessionRef, reason?: string): Operation<void> {
@@ -377,7 +379,7 @@ export function createAgentCoreToolRuntimeDriver(
       const pendingLsn = yield* findPendingRequestLsn(session, pendingId)
       if (request.input.type === 'elicit_response') {
         if (!request.input.elicitId) throw new ToolRuntimeError('ELICIT_ID_REQUIRED', 'Elicit continuation requires elicitId')
-        yield* session.respondToElicit(request.input.elicitId, request.input.result as never)
+        yield* session.respondToElicit(request.input.elicitId, request.input.result as WireElicitResult<unknown>)
       }
 
       return yield* nextAgentCoreExecution(

@@ -19,12 +19,14 @@ export interface ElicitOptions<TSchema extends ZodSchema> {
 }
 
 /**
- * Result of an elicit operation.
+ * Result of a builtins elicit operation (action vocabulary, MCP-aligned).
+ * Distinct from tool-side ToolElicitResult — this is the Principal/Operative
+ * protocol result for SweatpantsApi.elicit.
  */
 export type ElicitResult<TSchema extends ZodSchema> =
-  | { status: "accepted"; value: z.infer<TSchema> }
-  | { status: "declined" }
-  | { status: "cancelled" };
+  | { action: "accept"; content: z.infer<TSchema> }
+  | { action: "decline"; reason?: string }
+  | { action: "cancel"; reason?: string };
 
 // ============================================================================
 // Notify Types

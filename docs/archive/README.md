@@ -4,13 +4,15 @@ This directory contains outdated or superseded documentation that is kept for hi
 
 ## Current Documentation
 
-For up-to-date documentation, see: `packages/framework/docs/`
+For up-to-date **product** documentation, see:
 
-- [README.md](../../packages/framework/docs/README.md) - Quick start and overview
-- [isomorphic-tools.md](../../packages/framework/docs/isomorphic-tools.md) - Tool builder API
-- [framework-design.md](../../packages/framework/docs/framework-design.md) - Architecture
-- [pipeline-guide.md](../../packages/framework/docs/pipeline-guide.md) - Streaming pipeline
-- [reference-apps.md](../../packages/framework/docs/reference-apps.md) - yo-chat and yo-agent
+- [Root README](../../README.md) — product happy path
+- [Product surface / lanes](../product-surface.md) — facade allowlist + import policy
+- [Product demos](../demos/) — reconnect, elicit pause/resume, MCP HITL
+
+Framework internals and historical design notes live under `packages/framework/docs/`
+(including archived isomorphic-tools material). Isomorphic tools are **not** the
+product tool authoring path — use `createTool` from `@sweatpants/core`.
 
 ---
 

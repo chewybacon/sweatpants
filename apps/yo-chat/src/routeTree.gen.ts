@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiHelloStreamRouteImport } from './routes/api.hello-stream'
 import { Route as ApiChatRouteImport } from './routes/api.chat'
+import { Route as LabDurabilityIndexRouteImport } from './routes/lab/durability/index'
 import { Route as ChatTictactoeIndexRouteImport } from './routes/chat/tictactoe/index'
 import { Route as ChatThreadedIndexRouteImport } from './routes/chat/threaded/index'
 import { Route as ChatPlayTttIndexRouteImport } from './routes/chat/play-ttt/index'
@@ -36,6 +37,11 @@ const ApiHelloStreamRoute = ApiHelloStreamRouteImport.update({
 const ApiChatRoute = ApiChatRouteImport.update({
   id: '/api/chat',
   path: '/api/chat',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LabDurabilityIndexRoute = LabDurabilityIndexRouteImport.update({
+  id: '/lab/durability/',
+  path: '/lab/durability/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChatTictactoeIndexRoute = ChatTictactoeIndexRouteImport.update({
@@ -102,6 +108,7 @@ export interface FileRoutesByFullPath {
   '/chat/play-ttt': typeof ChatPlayTttIndexRoute
   '/chat/threaded': typeof ChatThreadedIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
+  '/lab/durability': typeof LabDurabilityIndexRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
@@ -117,6 +124,7 @@ export interface FileRoutesByTo {
   '/chat/play-ttt': typeof ChatPlayTttIndexRoute
   '/chat/threaded': typeof ChatThreadedIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
+  '/lab/durability': typeof LabDurabilityIndexRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
@@ -133,6 +141,7 @@ export interface FileRoutesById {
   '/chat/play-ttt/': typeof ChatPlayTttIndexRoute
   '/chat/threaded/': typeof ChatThreadedIndexRoute
   '/chat/tictactoe/': typeof ChatTictactoeIndexRoute
+  '/lab/durability/': typeof LabDurabilityIndexRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads/': typeof ApiThreadedChatThreadsIndexRoute
@@ -150,6 +159,7 @@ export interface FileRouteTypes {
     | '/chat/play-ttt'
     | '/chat/threaded'
     | '/chat/tictactoe'
+    | '/lab/durability'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads'
@@ -165,6 +175,7 @@ export interface FileRouteTypes {
     | '/chat/play-ttt'
     | '/chat/threaded'
     | '/chat/tictactoe'
+    | '/lab/durability'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads'
@@ -180,6 +191,7 @@ export interface FileRouteTypes {
     | '/chat/play-ttt/'
     | '/chat/threaded/'
     | '/chat/tictactoe/'
+    | '/lab/durability/'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads/'
@@ -196,6 +208,7 @@ export interface RootRouteChildren {
   ChatPlayTttIndexRoute: typeof ChatPlayTttIndexRoute
   ChatThreadedIndexRoute: typeof ChatThreadedIndexRoute
   ChatTictactoeIndexRoute: typeof ChatTictactoeIndexRoute
+  LabDurabilityIndexRoute: typeof LabDurabilityIndexRoute
   ApiStreamsChatThreadIdRoute: typeof ApiStreamsChatThreadIdRoute
   ApiThreadedChatThreadsThreadIdRoute: typeof ApiThreadedChatThreadsThreadIdRoute
   ApiThreadedChatThreadsIndexRoute: typeof ApiThreadedChatThreadsIndexRoute
@@ -222,6 +235,13 @@ declare module '@tanstack/react-router' {
       path: '/api/chat'
       fullPath: '/api/chat'
       preLoaderRoute: typeof ApiChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lab/durability/': {
+      id: '/lab/durability/'
+      path: '/lab/durability'
+      fullPath: '/lab/durability'
+      preLoaderRoute: typeof LabDurabilityIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/chat/tictactoe/': {
@@ -308,6 +328,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatPlayTttIndexRoute: ChatPlayTttIndexRoute,
   ChatThreadedIndexRoute: ChatThreadedIndexRoute,
   ChatTictactoeIndexRoute: ChatTictactoeIndexRoute,
+  LabDurabilityIndexRoute: LabDurabilityIndexRoute,
   ApiStreamsChatThreadIdRoute: ApiStreamsChatThreadIdRoute,
   ApiThreadedChatThreadsThreadIdRoute: ApiThreadedChatThreadsThreadIdRoute,
   ApiThreadedChatThreadsIndexRoute: ApiThreadedChatThreadsIndexRoute,

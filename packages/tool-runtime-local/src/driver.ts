@@ -1,3 +1,4 @@
+import type { AnyToolDefinition } from '@sweatpants/core'
 import { resource, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
@@ -22,8 +23,7 @@ import {
   type ToolSessionRef,
 } from "@sweatpants/framework/chat";
 import type {
-  ElicitsMap,
-  McpRuntimeTool,
+  WireElicitResult,
   ToolSession as McpToolSession,
   ToolSessionEvent as McpToolSessionEvent,
   ToolSessionRegistry,
@@ -33,7 +33,7 @@ import type {
 import { createInMemoryToolSessionStore } from "./in-memory-store.ts";
 import { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
 
-type LocalRuntimeTool = McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>;
+type LocalRuntimeTool = AnyToolDefinition;
 type LocalImplementation = { kind: "mcp"; tool: LocalRuntimeTool };
 type InventoryToolDefinition = ToolInventoryEntry["definition"];
 
@@ -58,13 +58,15 @@ function sessionToolDefinition(tool: LocalRuntimeTool): InventoryToolDefinition 
   };
 }
 
-export function createToolInventoryEntry(
-  tool: LocalRuntimeTool,
+export function createToolInventoryEntry<
+  T extends LocalRuntimeTool,
+>(
+  tool: T,
   metadata?: Record<string, unknown>,
-): ToolInventoryEntry<LocalImplementation> {
+): ToolInventoryEntry<{ kind: "mcp"; tool: T }> {
   return {
     definition: sessionToolDefinition(tool),
-    implementation: { kind: "mcp", tool },
+    implementation: { kind: "mcp", tool } as { kind: "mcp"; tool: T },
     capabilities: {
       session: true,
       worker: true,
@@ -258,7 +260,7 @@ export function createLocalSessionToolExecutionStrategy(
       if (!session) throw new ToolRuntimeError("EXECUTION_NOT_FOUND", `Local tool session not found: ${sessionId}`);
       if (ref.toolName && session.toolName !== ref.toolName) throw new ToolRuntimeError("EXECUTION_NOT_FOUND", `Local tool session not found: ${sessionId}`);
       if (!input.elicitId) throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
-      yield* session.respondToElicit(input.elicitId, input.result as never);
+      yield* session.respondToElicit(input.elicitId, input.result as WireElicitResult<unknown>);
       return yield* nextMcpExecution(
         ctx.runtimeId,
         { id: ref.callId, type: "function", function: { name: ref.toolName || session.toolName, arguments: {} } },
@@ -327,7 +329,7 @@ export function* createLocalToolRuntimeDriver(options: LocalToolRuntimeDriverOpt
     *respondToElicit(ref: ToolSessionRef, elicitId: string, response: unknown): Operation<void> {
       const session = yield* registry.get(ref.id);
       if (!session) throw new ToolRuntimeError("EXECUTION_NOT_FOUND", `Local tool session not found: ${ref.id}`);
-      yield* session.respondToElicit(elicitId, response as never);
+      yield* session.respondToElicit(elicitId, response as WireElicitResult<unknown>);
     },
     *abortSession(ref: ToolSessionRef, reason?: string): Operation<void> {
       const session = yield* registry.get(ref.id);
@@ -355,7 +357,7 @@ export function* createLocalToolRuntimeDriver(options: LocalToolRuntimeDriverOpt
       if (!session) throw new ToolRuntimeError("EXECUTION_NOT_FOUND", `Local tool session not found: ${sessionId}`);
       if (request.ref.toolName && session.toolName !== request.ref.toolName) throw new ToolRuntimeError("EXECUTION_NOT_FOUND", `Local tool session not found: ${sessionId}`);
       if (!request.input.elicitId) throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
-      yield* session.respondToElicit(request.input.elicitId, request.input.result as never);
+      yield* session.respondToElicit(request.input.elicitId, request.input.result as WireElicitResult<unknown>);
       return yield* nextMcpExecution(
         runtimeId,
         { id: request.ref.callId, type: "function", function: { name: request.ref.toolName || session.toolName, arguments: {} } },

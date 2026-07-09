@@ -35,9 +35,9 @@ describe("Built-in API", () => {
         schema: z.boolean(),
       });
 
-      expect(result.status).toBe("accepted");
-      if (result.status === "accepted") {
-        expect(result.value).toBe(true);
+      expect(result.action).toBe("accept");
+      if (result.action === "accept") {
+        expect(result.content).toBe(true);
       }
     });
 
@@ -68,7 +68,7 @@ describe("Built-in API", () => {
         schema: z.boolean(),
       });
 
-      expect(result.status).toBe("declined");
+      expect(result.action).toBe("decline");
     });
 
     it("should handle cancelled elicit response", function* () {
@@ -98,7 +98,7 @@ describe("Built-in API", () => {
         schema: z.object({ name: z.string() }),
       });
 
-      expect(result.status).toBe("cancelled");
+      expect(result.action).toBe("cancel");
     });
 
     it("should pass payload correctly", function* () {

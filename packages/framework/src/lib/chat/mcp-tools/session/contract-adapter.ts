@@ -11,7 +11,7 @@ import {
   type WaitKind,
 } from '@sweatpants/session-contract'
 
-import type { RawElicitResult, RawSampleResult } from '../mcp-tool-types.ts'
+import type { WireElicitResult, WireSampleResult } from '../mcp-tool-types.ts'
 import type { ToolSession, ToolSessionEvent } from './types.ts'
 
 interface WaitCorrelation {
@@ -197,15 +197,15 @@ function* resolvePendingWait(overlay: InMemorySession, waitToken: string): Opera
   return { waitSeq: wait.waitSeq, kind: wait.kind }
 }
 
-function normalizeElicitResult(payload: unknown): RawElicitResult<unknown> {
-  if (isRawElicitResult(payload)) {
+function normalizeElicitResult(payload: unknown): WireElicitResult<unknown> {
+  if (isWireElicitResult(payload)) {
     return payload
   }
   return { action: 'accept', content: payload }
 }
 
-function normalizeSampleResult(payload: unknown): RawSampleResult {
-  if (isRawSampleResult(payload)) {
+function normalizeSampleResult(payload: unknown): WireSampleResult {
+  if (isWireSampleResult(payload)) {
     return payload
   }
   if (typeof payload === 'string') {
@@ -214,7 +214,7 @@ function normalizeSampleResult(payload: unknown): RawSampleResult {
   return { text: JSON.stringify(payload) }
 }
 
-function isRawElicitResult(payload: unknown): payload is RawElicitResult<unknown> {
+function isWireElicitResult(payload: unknown): payload is WireElicitResult<unknown> {
   return Boolean(
     payload &&
       typeof payload === 'object' &&
@@ -223,7 +223,7 @@ function isRawElicitResult(payload: unknown): payload is RawElicitResult<unknown
   )
 }
 
-function isRawSampleResult(payload: unknown): payload is RawSampleResult {
+function isWireSampleResult(payload: unknown): payload is WireSampleResult {
   return Boolean(
     payload &&
       typeof payload === 'object' &&

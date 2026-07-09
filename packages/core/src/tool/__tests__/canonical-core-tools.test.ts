@@ -4,9 +4,13 @@ import { createTool } from "../create.ts";
 import type { ToolCtx } from "../types.ts";
 
 const baseCtx: ToolCtx = {
+  messages: [],
   history: [],
   notify: function* () {},
   log: function* () {},
+  *branch(fn) {
+    return yield* fn(baseCtx);
+  },
 };
 
 describe("canonical core createTool builder", () => {
@@ -91,9 +95,13 @@ describe("canonical core createTool builder", () => {
         const choice = yield* ctx.elicit("confirm", { message: "Continue?", context: { id: "1" } });
         if (choice.action === "accept") {
           choice.content.ok.valueOf();
+          // exchange only present on accept (truthful ToolElicitResult)
+          const sample = yield* ctx.sample("classify", {
+            prompt: "classify",
+            exchanges: [choice.exchange],
+          });
+          sample.parsed?.label.toUpperCase();
         }
-        const sample = yield* ctx.sample("classify", { prompt: "classify", exchanges: [choice.exchange] });
-        sample.parsed?.label.toUpperCase();
         // @ts-expect-error undeclared elicit keys are rejected
         yield* ctx.elicit("missing", { message: "Nope" });
         // @ts-expect-error undeclared sample keys are rejected

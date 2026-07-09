@@ -14,10 +14,10 @@ const ElicitPayloadSchema = z.object({
 /**
  * Schema for elicit result.
  */
-const ElicitResultSchema = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("accepted"), value: z.unknown() }),
-  z.object({ status: z.literal("declined") }),
-  z.object({ status: z.literal("cancelled") }),
+const ElicitResultSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("accept"), content: z.unknown() }),
+  z.object({ action: z.literal("decline"), reason: z.string().optional() }),
+  z.object({ action: z.literal("cancel"), reason: z.string().optional() }),
 ]);
 
 /**

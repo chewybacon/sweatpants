@@ -1,27 +1,16 @@
 /**
  * @sweatpants/elicit-context
- * 
- * x-elicit-context specification and utilities for MCP elicitation.
- * 
- * This package defines how structured context data is transported alongside
- * MCP elicit requests, enabling rich UI rendering in MCP clients.
- * 
+ *
+ * x-elicit-context wire encoding for MCP elicitation.
+ * Canonical elicit ontology lives in @sweatpants/core.
+ *
  * @packageDocumentation
  */
 
 export { encodeElicitContext } from './encode.ts'
 export { decodeElicitContext, stripMessageContext } from './decode.ts'
 export type {
-  ElicitDefinition,
-  ElicitEntry,
-  ElicitsMap,
-  ElicitRequest,
-  ElicitOptions,
   JsonSchema,
   EncodedElicitContext,
   DecodedElicitContext,
-  ExtractElicitResponse,
-  ExtractElicitContext,
-  ExtractElicitResponseSchema,
-  ExtractElicitContextSchema,
 } from './types.ts'

@@ -38,12 +38,12 @@ import type {
   ErrorEvent,
   CancelledEvent,
 } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolDefinition } from "@sweatpants/core";
 import type {
-  RawElicitResult,
-  RawSampleResult,
+  WireElicitResult,
+  WireSampleResult,
   ElicitsMap,
   ElicitId,
-  McpRuntimeTool,
 } from "@sweatpants/framework/chat/mcp-tools";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createBridgeHost, type ElicitResponse } from "@sweatpants/framework/chat/mcp-tools";
@@ -65,7 +65,7 @@ interface PendingElicit {
  * Pending sample - stores the signal for responding.
  */
 interface LocalSampleResponse {
-  result: RawSampleResult;
+  result: WireSampleResult;
 }
 
 interface PendingSample {
@@ -108,12 +108,12 @@ interface SessionState<TResult> {
 export function createToolSession<
   TName extends string,
   TParams,
-  TInteraction,
-  TClient,
+  _TInteraction,
+  _TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(
-  tool: McpRuntimeTool<TName, TParams, TInteraction, TClient, TResult, TElicits>,
+  tool: ToolDefinition<TName, TParams, TResult, TElicits>,
   params: TParams,
   _samplingProvider: ToolSessionSamplingProvider,
   options: ToolSessionOptions = {},
@@ -328,7 +328,7 @@ export function createToolSession<
         });
       },
 
-      *respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void> {
+      *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
         const pending = state.pendingElicit;
         if (!pending) {
           return;
@@ -343,7 +343,7 @@ export function createToolSession<
         pending.signal.send({ id: pending.elicitRequestId, result: response });
       },
 
-      *respondToSample(sampleId: string, response: RawSampleResult): Operation<void> {
+      *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
         const pending = state.pendingSample;
         if (!pending) {
           return;

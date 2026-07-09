@@ -1,4 +1,15 @@
-Welcome to your new TanStack app!
+# yo-chat
+
+Reference product app and **production-candidate cutover** target for Sweatpants
+(Phases 0–5 product surface program).
+
+- Product surface / lanes: [`docs/product-surface.md`](../../docs/product-surface.md)
+- Ops: [`docs/ops.md`](./docs/ops.md)
+- Cutover report: [`docs/cutover-yo-chat.md`](../../docs/cutover-yo-chat.md)
+- Durability Lab: `/lab/durability` (reconnect, elicit pause/resume, MCP HITL demos)
+
+New features MUST target **product** and **canonical** lanes only — no new
+experimental-lane imports.
 
 # Getting Started
 

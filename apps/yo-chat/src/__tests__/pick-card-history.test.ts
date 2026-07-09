@@ -186,7 +186,7 @@ describe('pick_card session history', () => {
         yield* PluginRegistryContext.set(pluginRegistry)
         yield* McpToolRegistryContext.set(mcpToolRegistry)
         yield* PluginSessionManagerContext.set(pluginSessionManager)
-        const localPickCardTool = pickCard as LocalSessionTool
+        const localPickCardTool = pickCard
         yield* ToolInventoryContext.set(
           createToolInventory([createToolInventoryEntry(localPickCardTool)]),
         )

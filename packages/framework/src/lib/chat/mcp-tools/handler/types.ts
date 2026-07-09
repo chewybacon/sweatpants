@@ -17,7 +17,7 @@
  */
 import type { Operation } from 'effection'
 import type { ToolSessionRegistry, ToolSession } from '../session/types.ts'
-import type { McpRuntimeTool } from '../mcp-runtime-tool.ts'
+import type { ToolDefinition } from '@sweatpants/core'
 import type { ElicitsMap } from '../mcp-tool-types.ts'
 import type { JsonRpcId } from '../protocol/types.ts'
 
@@ -39,7 +39,7 @@ export interface McpHandlerConfig {
    * Map of available tools by name.
    * Used to resolve tools/call requests.
    */
-  tools: Map<string, McpRuntimeTool<string, unknown, unknown, unknown, unknown, ElicitsMap>>
+  tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>
 
   /**
    * Session timeout in milliseconds.

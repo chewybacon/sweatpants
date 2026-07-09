@@ -1,209 +1,183 @@
 # Sweatpants
 
-A framework for building AI chat applications with React and Effection.
+Production chat sessions that survive **reconnect**, **tool pause/resume**, and **human-in-the-loop** — correctly.
 
-## Features
+Sweatpants is a TypeScript agent/chat framework with a thin, versioned **product facade** over a durable session substrate. Start here; advanced substrate packages live under [Advanced / internal](#advanced--internal).
 
-- **Streaming Chat Sessions** - Real-time streaming responses with structured message handling
-- **Isomorphic Tools** - Define tools that run on server, client, or both with seamless handoff
-- **MCP Protocol Support** - Model Context Protocol tools with elicit/sample capabilities
-- **Durable Streams** - Reconnectable streams for reliable chat sessions
-- **React Integration** - Hooks and components for building chat UIs
-- **Type-Safe** - End-to-end TypeScript with Zod schema validation
+**Product surface (lanes + facade):** [`docs/product-surface.md`](./docs/product-surface.md)  
+**Changelog:** [`docs/product-changelog.md`](./docs/product-changelog.md)  
+**Demos:** [`docs/demos/`](./docs/demos/) · yo-chat Durability Lab `/lab/durability`
 
-## Packages
+## Install targets (normal users)
 
-| Package                              | Description                                                                                  |
-| ------------------------------------ | -------------------------------------------------------------------------------------------- |
-| `@sweatpants/framework`              | Server/chat framework primitives, durable handlers, isomorphic tools, and MCP plugin support |
-| `@sweatpants/react-chat`             | React hooks and message derivation for chat UIs                                              |
-| `@sweatpants/durable-streams`        | Reconnectable token buffers and durable stream transports                                    |
-| `@sweatpants/stream-bridge`          | Effection/Web stream bridge helpers                                                          |
-| `@sweatpants/tool-runtime-local`     | Local/worker-backed tool runtime                                                             |
-| `@sweatpants/tool-runtime-agentcore` | AgentCore-backed remote tool runtime                                                         |
-| `@sweatpants/model-provider-pi-ai`   | Model provider adapter for `@earendil-works/pi-ai`                                           |
-| `@sweatpants/cli`                    | CLI for generating TypeScript types from MCP manifests                                       |
-| `@sweatpants/elicit-context`         | Encode/decode elicit context for tool interactions                                           |
+At most four conceptual targets (concrete package names today):
 
-## Quick Start
+| Conceptual | Install / import today | Job |
+| --- | --- | --- |
+| `@sweatpants/react` | `@sweatpants/react-chat` | UI hooks / chat client |
+| `@sweatpants/server` | `@sweatpants/framework/server` | Durable handler + app wiring |
+| `@sweatpants/tools` | `@sweatpants/core` | `createTool` authoring |
+| `@sweatpants/chat` | `@sweatpants/framework/chat` | Plugins, session helpers, advanced chat |
 
 ```bash
-pnpm add @sweatpants/framework @sweatpants/react-chat
+pnpm add @sweatpants/react-chat @sweatpants/framework @sweatpants/core
 ```
 
-### Basic Chat Session
+## Quick start
+
+### React chat client
 
 ```tsx
-import { useChat } from "@sweatpants/react-chat";
+import { useChat, ChatProvider } from "@sweatpants/react-chat";
 
 function Chat() {
-    const { messages, send, isStreaming } = useChat({
-        baseUrl: "/api/chat",
-    });
+  const { messages, send, isStreaming } = useChat({
+    baseUrl: "/api/chat",
+  });
 
-    return (
-        <div>
-            {messages.map((msg) => (
-                <div key={msg.id}>{msg.content}</div>
-            ))}
-            <input
-                onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                        send(e.currentTarget.value);
-                    }
-                }}
-            />
-        </div>
-    );
+  return (
+    <div>
+      {messages.map((msg) => (
+        <div key={msg.id}>{/* render message parts */}</div>
+      ))}
+      <input
+        disabled={isStreaming}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") send(e.currentTarget.value);
+        }}
+      />
+    </div>
+  );
 }
 ```
 
-### Defining Tools
+`useChatSession` is available from the same package when you need buffers/reconnect controls.
+
+### Server wiring
 
 ```ts
-import { createIsomorphicTool } from "@sweatpants/framework/chat/isomorphic-tools";
-import { z } from "zod";
+import {
+  createChatApplication,
+  createChatHandler,
+} from "@sweatpants/framework/server";
+import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
 
-export const calculator = createIsomorphicTool("calculator")
-    .description("Perform mathematical calculations")
-    .parameters(
-        z.object({
-            expression: z.string().describe("Math expression to evaluate"),
-        }),
-    )
-    .server(function* ({ expression }) {
-        const result = Number(expression);
-        return { result };
-    });
+export function createApp() {
+  return createChatApplication({
+    setup: function* () {
+      // Local/in-memory default — no Redis required for happy path
+      yield* setupInMemoryDurableStreams<string>();
+      // wire model provider + tools in your app setup
+    },
+    handler: createChatHandler({
+      setup: function* (/* request ctx */) {
+        // set model provider for this request
+      },
+      maxToolIterations: 10,
+    }),
+  });
+}
 ```
 
-### MCP Tools with Elicit
+`createDurableChatHandler` is an alias of `createChatHandler`.
+
+### Tool authoring
 
 ```ts
 import { createTool } from "@sweatpants/core";
 import { z } from "zod";
 
 export const bookFlight = createTool("book_flight")
-    .description("Book a flight for the user")
-    .parameters(
-        z.object({
-            from: z.string(),
-            to: z.string(),
-            date: z.string(),
-        }),
-    )
-    .elicits({
-        confirm: {
-            response: z.object({ confirmed: z.boolean() }),
-        },
-    })
-    .execute(function* ({ from, to, date }, ctx) {
-        // Request user confirmation
-        const response = yield* ctx.elicit("confirm", {
-            message: `Book flight from ${from} to ${to} on ${date}?`,
-        });
-
-        if (response.action === "accept" && response.content.confirmed) {
-            return { status: "booked", confirmation: "ABC123" };
-        }
-        return { status: "cancelled" };
+  .description("Book a flight for the user")
+  .parameters(
+    z.object({
+      from: z.string(),
+      to: z.string(),
+      date: z.string(),
+    }),
+  )
+  .elicits({
+    confirm: {
+      response: z.object({ confirmed: z.boolean() }),
+    },
+  })
+  .execute(function* ({ from, to, date }, ctx) {
+    const response = yield* ctx.elicit("confirm", {
+      message: `Book flight from ${from} to ${to} on ${date}?`,
     });
+
+    if (response.action === "accept" && response.content.confirmed) {
+      return { status: "booked", confirmation: "ABC123" };
+    }
+    return { status: "cancelled" };
+  });
 ```
 
-## Apps
+### Plugin UI binding
 
-| App        | Description                                 |
-| ---------- | ------------------------------------------- |
-| `yo-chat`  | Reference web application with full chat UI |
-| `yo-agent` | CLI agent for terminal-based chat           |
-| `yo-mcp`   | MCP server demo                             |
-| `hydra`    | Effection tutorial and examples             |
+```ts
+import { makePlugin, getElicitContext } from "@sweatpants/framework/chat";
+import { bookFlight } from "./book-flight";
+
+export const bookFlightPlugin = makePlugin(bookFlight).onElicit({
+  confirm: function* (req, ctx) {
+    const context = getElicitContext(req);
+    // render confirm UI via ctx.render(...); return accept/decline
+    return { action: "accept" as const, content: { confirmed: true } };
+  },
+});
+```
+
+## Differentiator demos
+
+| Demo | Path | Docs |
+| --- | --- | --- |
+| Reconnect mid-stream | yo-chat `/chat/basic` | [docs/demos/reconnect-mid-stream.md](./docs/demos/reconnect-mid-stream.md) |
+| Elicit pause/resume | yo-chat `/chat/flight` | [docs/demos/elicit-pause-resume.md](./docs/demos/elicit-pause-resume.md) |
+| MCP → browser HITL | yo-chat `/chat/cards` | [docs/demos/mcp-browser-elicit.md](./docs/demos/mcp-browser-elicit.md) |
+
+Lab index: `/lab/durability` in yo-chat.
+
+## Reference app
+
+| App | Role |
+| --- | --- |
+| `apps/yo-chat` | Reference + production-candidate cutover app |
+
+Ops: [`apps/yo-chat/docs/ops.md`](./apps/yo-chat/docs/ops.md) · Cutover: [`docs/cutover-yo-chat.md`](./docs/cutover-yo-chat.md)
 
 ## Development
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Build all packages
 pnpm build
+pnpm validate:product-surface   # facade allowlist + product import policy
+pnpm validate:exports
 
-# Run tests
-cd packages/framework && pnpm test
+# Golden-path + differentiator acceptance
+pnpm -C packages/framework test:acceptance
 
-# Start yo-chat dev server
-cd apps/yo-chat && pnpm dev
+# Reference app
+pnpm dev:yo-chat:local
 ```
 
-## Development Workflow
+## Advanced / internal
 
-### TypeScript Incremental Builds
+Canonical substrate packages (not the default shopping list):
 
-This monorepo uses TypeScript project references for fast incremental builds:
+| Package | Role |
+| --- | --- |
+| `@sweatpants/session-contract` | Session kernel under the durable handler |
+| `@sweatpants/durable-streams` | Token buffers / reconnect protocol |
+| `@sweatpants/stream-bridge` | Effection ↔ Web stream bridge |
+| `@sweatpants/tool-runtime-local` | Local/worker tool runtime (app wiring) |
+| `@sweatpants/tool-runtime-agentcore` | AgentCore remote tool runtime (app wiring) |
+| `@sweatpants/model-provider-pi-ai` | Model provider adapter (app wiring) |
+| `@sweatpants/elicit-context` | Elicit context encode/decode |
+| `@sweatpants/vite-plugin` | App Vite plugin |
+| `@sweatpants/cli` | MCP/codegen CLI tooling |
 
-```bash
-# Build all tsc-buildable workspaces
-pnpm tsc -b
-
-# Clean and rebuild
-pnpm tsc -b --clean && pnpm tsc -b
-
-# Build specific workspace
-cd packages/framework
-pnpm tsc -b
-```
-
-### Development Exports
-
-Packages export TypeScript source files via the `development` condition:
-
-- VSCode automatically resolves to source files
-- No build required for IntelliSense
-- "Go to Definition" jumps to .ts files, not .d.ts
-
-### Workspace Structure
-
-- **tsc-buildable**: elicit-context, cli, framework, hydra
-    - Use `pnpm tsc -b` for builds
-    - Participate in incremental build chain
-
-- **Bundler-based**: yo-agent, yo-chat, yo-mcp
-    - Use tsup/vite for builds
-    - Type-check with `pnpm check`
-    - Not part of `tsc -b` chain
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     React App                            │
-│  ┌─────────────────────────────────────────────────┐    │
-│  │              useChat() Hook                      │    │
-│  │  - Message state management                      │    │
-│  │  - Streaming response handling                   │    │
-│  │  - Tool execution coordination                   │    │
-│  └─────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Chat Handler                           │
-│  ┌─────────────────┐  ┌─────────────────────────────┐   │
-│  │  LLM Provider   │  │      Tool Registry          │   │
-│  │  - OpenAI       │  │  - Isomorphic tools         │   │
-│  │  - Anthropic    │  │  - MCP tools                │   │
-│  │  - Ollama       │  │  - Tool discovery           │   │
-│  └─────────────────┘  └─────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────┐
-│                  Durable Streams                         │
-│  - Session persistence                                   │
-│  - Reconnection support                                  │
-│  - Multi-client coordination                             │
-└─────────────────────────────────────────────────────────┘
-```
+See [`docs/product-surface.md`](./docs/product-surface.md) for lane classification. Historical / superseded docs are tombstoned or under [`docs/archive/`](./docs/archive/).
 
 ## License
 

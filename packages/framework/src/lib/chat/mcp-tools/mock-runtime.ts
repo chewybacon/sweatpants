@@ -24,11 +24,11 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
-import type { ToolCtx, ToolDefinition } from '@sweatpants/core'
+import type { ToolCtx, ToolDefinition, ToolElicitResult } from '@sweatpants/core'
 import type {
   MCPClientContext,
   ElicitResult,
-  RawElicitResult,
+  WireElicitResult,
   ElicitConfig,
   SampleConfig,
   LogLevel,
@@ -38,7 +38,6 @@ import type {
 import {
   McpCapabilityError as MCPCapabilityError,
 } from './mcp-tool-types.ts'
-import type { McpRuntimeTool as MCPRuntimeTool } from './mcp-runtime-tool.ts'
 
 // =============================================================================
 // MOCK CLIENT CONFIGURATION
@@ -53,10 +52,10 @@ export interface MockMCPClientConfig {
    * Consumed in order as ctx.elicit() is called.
    * 
    * Can be either:
-   * - RawElicitResult (simple: { action, content }) - exchange will be constructed
+   * - WireElicitResult (simple: { action, content }) - exchange will be constructed
    * - ElicitResult (full: { action, content, exchange }) - used as-is
    */
-  elicitResponses?: (RawElicitResult<any> | ElicitResult<any, any>)[]
+  elicitResponses?: (WireElicitResult<any> | ElicitResult<any, any>)[]
 
   /**
    * Pre-programmed sampling responses.
@@ -168,12 +167,12 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
 
             // If response already has exchange, return as-is
             if ('exchange' in response) {
-              return response as ElicitResult<unknown, T>
+              return response as ToolElicitResult<unknown, T>
             }
 
             // For decline/cancel, no exchange needed
             if (response.action !== 'accept') {
-              return response as ElicitResult<unknown, T>
+              return response as ToolElicitResult<unknown, T>
             }
 
             // Construct a mock exchange for accept responses using MCP format
@@ -302,19 +301,16 @@ export interface RunMCPToolOptions {
 export function runMCPTool<
   TName extends string,
   TParams,
-  TInteraction,
-  TClient,
   TResult,
 >(
-  tool: MCPRuntimeTool<TName, TParams, TInteraction, TClient, TResult>,
+  tool: ToolDefinition<TName, TParams, TResult>,
   params: TParams,
   client: MockMCPClient,
   _options: RunMCPToolOptions = {}
 ): Operation<TResult> {
   return {
     *[Symbol.iterator]() {
-      const canonicalTool = isCanonicalCoreTool(tool) ? tool : undefined
-      const requires = canonicalTool?.capabilities ?? tool.requires
+      const requires = tool.capabilities
 
       // Check capabilities
       if (requires?.elicitation && !client.capabilities.elicitation) {
@@ -333,81 +329,90 @@ export function runMCPTool<
 
       const clientCtx = client.createContext()
 
-      let result: TResult
-
-      if (canonicalTool) {
-        const invoke = yield* canonicalTool(createCoreToolCtx(canonicalTool, clientCtx))
-        result = (yield* invoke(validatedParams as never)) as TResult
-      } else if (tool.execute) {
-        // Simple execute
-        result = yield* tool.execute(validatedParams, clientCtx as never)
-      } else {
-        throw new Error(`Tool "${tool.name}" has no execute function`)
+      const toolFactory = tool as unknown as (ctx: ToolCtx<any, any>) => Operation<(input: TParams) => Operation<TResult>>
+      if (typeof toolFactory !== 'function') {
+        throw new Error(`Tool "${String((tool as { name?: string }).name ?? '<unknown>')}" is not a callable ToolDefinition factory`)
       }
-
-      return result
+      const invoke = yield* toolFactory(createCoreToolCtx(tool as ToolDefinition, clientCtx))
+      return yield* invoke(validatedParams)
     }
   }
 }
 
-function isCanonicalCoreTool(value: unknown): value is ToolDefinition {
-  return typeof value === 'function' &&
-    value !== null &&
-    'parameters' in value &&
-    'capabilities' in value &&
-    'schemas' in value &&
-    'annotations' in value &&
-    'samples' in value
-}
-
 function createCoreToolCtx(tool: ToolDefinition, clientCtx: MCPClientContext): ToolCtx<any, any> {
-  return {
+  const ctx: ToolCtx<any, any> = {
+    messages: [],
     history: [],
     notify: (message, fraction) => clientCtx.notify(message, fraction),
     log: (level, message) => clientCtx.log(level, message),
-    elicit: function* (key: string, request: { message: string; context?: unknown }): Operation<unknown> {
+    *branch(fn) {
+      return yield* fn(ctx)
+    },
+    elicit: function* (key: string, request: { message: string; context?: unknown }): Operation<any> {
       const def = (tool.elicits as Record<string, { response?: unknown }>)[key]
       if (!def) {
         throw new Error(`Unknown elicit key "${key}" for tool "${tool.name}"`)
       }
-      const response = yield* clientCtx.elicit({ message: request.message, schema: def.response as never })
+      const response = yield* clientCtx.elicit({ message: request.message, schema: def.response as Parameters<typeof Object>[0] })
       if (response.action === 'accept') {
+        const toolUseId = `elicit_${key}`
+        const requestMsg = {
+          role: 'assistant' as const,
+          content: [{ type: 'tool_use' as const, id: toolUseId, name: key, input: {} }],
+        }
+        const responseMsg = {
+          role: 'user' as const,
+          content: [{
+            type: 'tool_result' as const,
+            toolUseId,
+            content: [{ type: 'text' as const, text: JSON.stringify(response.content) }],
+          }],
+        }
         return {
           action: 'accept',
           content: response.content,
           exchange: {
-            kind: 'elicit',
-            key,
-            request: { message: request.message, context: request.context },
-            response: { action: 'accept', content: response.content },
+            context: request.context,
+            request: requestMsg,
+            response: responseMsg,
+            messages: [requestMsg, responseMsg],
+            withArguments(fn: (c: unknown) => Record<string, unknown>) {
+              const args = fn(request.context)
+              return [{
+                role: 'assistant' as const,
+                content: [{ type: 'tool_use' as const, id: toolUseId, name: key, input: args }],
+              }, responseMsg]
+            },
           },
         }
       }
-      return {
-        action: response.action,
-        exchange: {
-          kind: 'elicit',
-          key,
-          request: { message: request.message, context: request.context },
-          response: { action: response.action },
-        },
-      }
+      return { action: response.action }
     },
-    sample: function* (...args: unknown[]): Operation<unknown> {
+    sample: function* (...args: unknown[]): Operation<any> {
       const key = typeof args[0] === 'string' ? args[0] : undefined
       const request = (key ? args[1] : args[0]) as Record<string, unknown>
-      const response = yield* clientCtx.sample(request as never)
+      const response = yield* clientCtx.sample(request as Parameters<typeof Object>[0])
+      const text = typeof response === 'string' ? response : String((response as { text?: string })?.text ?? '')
+      const userMsg = { role: 'user' as const, content: [{ type: 'text' as const, text: String(request['prompt'] ?? '') }] }
+      const asstMsg = { role: 'assistant' as const, content: [{ type: 'text' as const, text }] }
       return {
-        content: typeof response === 'string' ? response : undefined,
-        text: typeof response === 'string' ? response : undefined,
+        content: text,
+        text,
         raw: response,
         exchange: {
-          kind: 'sample',
+          messages: [userMsg, asstMsg],
           ...(key ? { key } : {}),
           request,
           response,
         },
       }
     },
+    sampleTools: function* (): Operation<any> {
+      throw new Error('sampleTools not implemented in mock-runtime core ctx')
+    },
+    sampleSchema: function* (): Operation<any> {
+      throw new Error('sampleSchema not implemented in mock-runtime core ctx')
+    },
   }
+  return ctx
 }

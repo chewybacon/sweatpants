@@ -27,10 +27,10 @@
  */
 import type { Operation, Stream } from 'effection'
 import type {
-  RawElicitResult,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
+  WireElicitResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
   SamplingToolDefinition,
   SamplingToolChoice,
   ModelPreferences,
@@ -38,7 +38,7 @@ import type {
   LogLevel,
   ElicitsMap,
 } from '../mcp-tool-types.ts'
-import type { McpRuntimeTool } from '../mcp-runtime-tool.ts'
+import type { ToolDefinition } from '@sweatpants/core'
 
 // Re-export result types for convenience
 export type { 
@@ -46,10 +46,10 @@ export type {
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
-  RawSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
+  WireSampleResult,
 } from '../mcp-tool-types.ts'
 
 // =============================================================================
@@ -234,7 +234,7 @@ export interface ToolSession<TResult = unknown> {
    * @param elicitId - The ID from the ElicitRequestEvent
    * @param response - The user's response
    */
-  respondToElicit(elicitId: string, response: RawElicitResult<unknown>): Operation<void>
+  respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void>
 
   /**
    * Respond to a sampling request.
@@ -242,7 +242,7 @@ export interface ToolSession<TResult = unknown> {
    * @param sampleId - The ID from the SampleRequestEvent
    * @param response - The LLM's response (raw result without exchange - exchange is constructed by runtime)
    */
-  respondToSample(sampleId: string, response: RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls): Operation<void>
+  respondToSample(sampleId: string, response: WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls): Operation<void>
 
   /**
    * Emit an internal event to wake up the SSE stream.
@@ -327,8 +327,8 @@ export interface ToolSessionRegistry {
    * @param options - Session options
    * @returns The created session
    */
-  create<TParams, TInteraction, TClient, TResult, TElicits extends ElicitsMap>(
-    tool: McpRuntimeTool<string, TParams, TInteraction, TClient, TResult, TElicits>,
+  create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
+    tool: ToolDefinition<string, TParams, TResult, TElicits>,
     params: TParams,
     options?: ToolSessionOptions
   ): Operation<ToolSession<TResult>>
@@ -427,7 +427,7 @@ export interface ToolSessionSamplingProvider {
   sample(
     messages: ExtendedMessage[],
     options?: ToolSessionSamplingOptions
-  ): Operation<RawSampleResultBase | RawSampleResultWithParsed<unknown> | RawSampleResultWithToolCalls>
+  ): Operation<WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls>
 }
 
 /**

@@ -28,7 +28,7 @@ describe("SweatpantsProtocol", () => {
                   // Simulate user accepting with a value
                   return {
                     done: true,
-                    value: { status: "accepted" as const, value: `confirmed: ${payload.message}` },
+                    value: { action: "accept" as const, content: `confirmed: ${payload.message}` } as const,
                   };
                 },
               });
@@ -76,9 +76,9 @@ describe("SweatpantsProtocol", () => {
         schema: z.string(),
       });
 
-      expect(elicitResult.status).toBe("accepted");
-      if (elicitResult.status === "accepted") {
-        expect(elicitResult.value).toBe("confirmed: Are you sure?");
+      expect(elicitResult.action).toBe("accept");
+      if (elicitResult.action === "accept") {
+        expect(elicitResult.content).toBe("confirmed: Are you sure?");
       }
     });
 
@@ -95,7 +95,7 @@ describe("SweatpantsProtocol", () => {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
-                  return { done: true, value: { status: "declined" as const } };
+                  return { done: true, value: { action: "decline" as const } };
                 },
               });
             });
@@ -149,7 +149,7 @@ describe("SweatpantsProtocol", () => {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
-                  return { done: true, value: { status: "declined" as const } };
+                  return { done: true, value: { action: "decline" as const } };
                 },
               });
             });
@@ -210,7 +210,7 @@ describe("SweatpantsProtocol", () => {
             return resource(function* (provide) {
               yield* provide({
                 *next() {
-                  return { done: true, value: { status: "declined" as const } };
+                  return { done: true, value: { action: "decline" as const } };
                 },
               });
             });
@@ -241,7 +241,7 @@ describe("SweatpantsProtocol", () => {
         schema: z.boolean(),
       });
 
-      expect(result.status).toBe("declined");
+      expect(result.action).toBe("decline");
     });
   });
 });

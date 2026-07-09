@@ -6,10 +6,10 @@ import type {
   SamplingToolDefinition,
 } from "@sweatpants/framework/chat";
 import type {
-  RawSampleResult,
-  RawSampleResultBase,
-  RawSampleResultWithParsed,
-  RawSampleResultWithToolCalls,
+  WireSampleResult,
+  WireSampleResultBase,
+  WireSampleResultWithParsed,
+  WireSampleResultWithToolCalls,
   ToolSessionSamplingProvider,
 } from "@sweatpants/framework/chat/mcp-tools";
 import { extendedMessageToProviderMessage } from "@sweatpants/framework/chat/mcp-tools";
@@ -202,7 +202,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
     *sample(
       messages: ExtendedMessage[],
       options: SamplingOptions | undefined,
-    ): Operation<RawSampleResult> {
+    ): Operation<WireSampleResult> {
       const modelMessages = messages
         .map(extendedMessageToProviderMessage)
         .map(providerMessageToModelMessage);
@@ -236,7 +236,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
             model: model.id,
             stopReason: "endTurn",
             parsed,
-          } satisfies RawSampleResultWithParsed<unknown>;
+          } satisfies WireSampleResultWithParsed<unknown>;
         }
 
         try {
@@ -245,7 +245,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
             model: model.id,
             stopReason: "endTurn",
             parsed: parseStructuredSampleText(text),
-          } satisfies RawSampleResultWithParsed<unknown>;
+          } satisfies WireSampleResultWithParsed<unknown>;
         } catch (error) {
           return {
             text,
@@ -256,7 +256,7 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
               message: error instanceof Error ? error.message : "Failed to parse JSON",
               rawText: text,
             },
-          } satisfies RawSampleResultWithParsed<unknown>;
+          } satisfies WireSampleResultWithParsed<unknown>;
         }
       }
 
@@ -266,14 +266,14 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
           model: model.id,
           stopReason: "toolUse",
           toolCalls,
-        } satisfies RawSampleResultWithToolCalls;
+        } satisfies WireSampleResultWithToolCalls;
       }
 
       return {
         text,
         model: model.id,
         stopReason: assistant.stopReason === "maxTokens" ? "maxTokens" : "endTurn",
-      } satisfies RawSampleResultBase;
+      } satisfies WireSampleResultBase;
     },
   };
 }
