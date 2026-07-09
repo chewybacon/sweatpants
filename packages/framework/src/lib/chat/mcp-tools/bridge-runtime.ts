@@ -40,7 +40,6 @@ import type {
   SamplingToolChoice,
   WireElicitResult,
   ElicitExchange,
-  McpMessage,
   LogLevel,
   SampleToolsConfig,
   SampleToolsConfigMessages,
@@ -56,7 +55,13 @@ import {
   createRawSampleExchange,
   createStructuredSampleExchange,
 } from './mcp-tool-types.ts'
-import type { ToolDefinition } from '@sweatpants/core'
+import type {
+  ToolDefinition,
+  ToolElicitResult,
+  ToolMessage,
+  ExtractElicitContext,
+  ExtractElicitResponse,
+} from '@sweatpants/core'
 
 // =============================================================================
 // BUFFERED CHANNEL (Queue-based, never drops messages)
@@ -191,6 +196,11 @@ function createBufferedChannel<T>(): Channel<T, void> {
  * only sends the action and content. The bridge-runtime constructs
  * the full ElicitResult with exchange internally.
  */
+/** Narrow an array to the non-empty tuple type expected by guaranteed-result APIs. */
+function isNonEmpty<T>(arr: T[] | undefined): arr is [T, ...T[]] {
+  return Array.isArray(arr) && arr.length > 0
+}
+
 export interface ElicitResponse<TResponse = unknown> {
   /** Matches the request id */
   id: ElicitId
@@ -500,9 +510,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             type: 'sample',
             messages,
             responseSignal,
-          }
-          if (Object.keys(sampleOptions).length > 0) {
-            (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
+            ...(Object.keys(sampleOptions).length > 0 ? { options: sampleOptions } : {}),
           }
           yield* state.eventChannel.send(event)
 
@@ -543,7 +551,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           // If schema was provided, parse the response and add parsed/parseError
           if ('schema' in config && config.schema) {
-            const schema = config.schema as z.ZodType
+            const schema = config.schema
             try {
               const jsonParsed = JSON.parse(result.text)
               const zodResult = schema.safeParse(jsonParsed)
@@ -558,7 +566,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   ...result,
                   parsed: zodResult.data,
                   exchange,
-                } as SampleResultWithParsed<unknown>
+                }
               } else {
                 // Create structured exchange even for parse errors
                 const exchange = createStructuredSampleExchange(
@@ -574,7 +582,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                     rawText: result.text,
                   },
                   exchange,
-                } as SampleResultWithParsed<unknown>
+                }
               }
             } catch (jsonError) {
               // Create structured exchange even for JSON parse errors
@@ -591,7 +599,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   rawText: result.text,
                 },
                 exchange,
-              } as SampleResultWithParsed<unknown>
+              }
             }
           }
 
@@ -678,9 +686,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               type: 'sample',
               messages,
               responseSignal,
-            }
-            if (Object.keys(sampleOptions).length > 0) {
-              (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
+              ...(Object.keys(sampleOptions).length > 0 ? { options: sampleOptions } : {}),
             }
             yield* state.eventChannel.send(event)
             
@@ -714,7 +720,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             addTokens(state.tokenTracker, estimatedTokens)
             
             // Validate: must have tool calls
-            if (result.stopReason === 'toolUse' && result.toolCalls && result.toolCalls.length > 0) {
+            if (result.stopReason === 'toolUse' && isNonEmpty(result.toolCalls)) {
               // Update branch messages if using prompt mode
               if ('prompt' in config && config.prompt) {
                 state.messages.push(
@@ -724,10 +730,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               }
               
               return {
-                ...resultWithExchange,
-                toolCalls: result.toolCalls as [{ id: string; name: string; arguments: Record<string, unknown> }, ...{ id: string; name: string; arguments: Record<string, unknown> }[]],
+                text: result.text,
+                ...(result.model !== undefined && { model: result.model }),
                 stopReason: 'toolUse' as const,
-              } as SampleToolsResult
+                toolCalls: result.toolCalls,
+                exchange: resultWithExchange.exchange,
+              }
             }
           }
           
@@ -803,9 +811,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               type: 'sample',
               messages,
               responseSignal,
-            }
-            if (Object.keys(sampleOptions).length > 0) {
-              (event as Extract<BridgeEvent, { type: 'sample' }>).options = sampleOptions
+              ...(Object.keys(sampleOptions).length > 0 ? { options: sampleOptions } : {}),
             }
             yield* state.eventChannel.send(event)
             
@@ -834,7 +840,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const promptTextStr = typeof promptText === 'string' ? promptText : JSON.stringify(promptText)
             
             // Parse schema
-            const schema = config.schema as z.ZodType
+            const schema = config.schema
             try {
               const jsonParsed = JSON.parse(result.text)
               const zodResult = schema.safeParse(jsonParsed)
@@ -855,10 +861,12 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 )
                 
                 return {
-                  ...result,
+                  text: result.text,
+                  ...(result.model !== undefined && { model: result.model }),
+                  ...(result.stopReason !== undefined && { stopReason: result.stopReason }),
                   parsed: zodResult.data,
                   exchange,
-                } as SampleSchemaResult<T>
+                }
               } else {
                 lastError = zodResult.error.message
                 const exchange = createStructuredSampleExchange(
@@ -874,7 +882,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                     rawText: result.text,
                   },
                   exchange,
-                } as SampleResultWithParsed<T>
+                }
               }
             } catch (jsonError) {
               lastError = jsonError instanceof Error ? jsonError.message : 'JSON parse error'
@@ -891,7 +899,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                   rawText: result.text,
                 },
                 exchange,
-              } as SampleResultWithParsed<T>
+              }
             }
           }
           
@@ -909,8 +917,8 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     // User backchannel - KEYED elicitation
     elicit<K extends keyof TElicits & string>(
       key: K,
-      options: any // Will be properly typed by McpToolContextWithElicits interface
-    ): Operation<any> {
+      options: { message: string; context?: ExtractElicitContext<TElicits[K]> }
+    ): Operation<ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>> {
       return {
         *[Symbol.iterator]() {
           // Phase 5: Disallow elicit in sub-branches
@@ -940,10 +948,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
           // Canonical dialect: { message, context? }
           const { message, context } = options
-          const contextData = context
+          const contextData = context as ExtractElicitContext<TElicits[K]>
 
           // Encode context into schema and message using x-elicit-context transport
-          const baseSchema = zodToJsonSchema(responseSchema as Parameters<typeof Object>[0])
+          const baseSchema = zodToJsonSchema(responseSchema as z.ZodType)
           const { message: encodedMessage, schema: encodedSchema } = encodeElicitContext(
             message,
             contextData,
@@ -1004,7 +1012,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             const parsedContent = parseResult.data
 
             // Build request message (assistant with tool_use content)
-            const requestMessage: McpMessage & { role: 'assistant' } = {
+            const requestMessage: ToolMessage & { role: 'assistant' } = {
               role: 'assistant',
               content: [
                 { type: 'text', text: message },
@@ -1018,7 +1026,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             }
 
             // Build response message (user with tool_result content)
-            const responseMessage: McpMessage & { role: 'user' } = {
+            const responseMessage: ToolMessage & { role: 'user' } = {
               role: 'user',
               content: [{
                 type: 'tool_result',
@@ -1028,14 +1036,14 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             }
 
             // Create the exchange object
-            const exchange: ElicitExchange<typeof contextData> = {
+            const exchange: ElicitExchange<ExtractElicitContext<TElicits[K]>> = {
               context: contextData,
               request: requestMessage,
               response: responseMessage,
               messages: [requestMessage, responseMessage],
               withArguments(fn) {
                 const args = fn(contextData)
-                const requestWithArgs: McpMessage & { role: 'assistant' } = {
+                const requestWithArgs: ToolMessage & { role: 'assistant' } = {
                   role: 'assistant',
                   content: [
                     { type: 'text', text: message },
@@ -1149,12 +1157,11 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     },
 
     notify(message: string, progress?: number): Operation<void> {
-      // Only include progress if defined
-      const event: BridgeEvent = { type: 'notify', message }
-      if (progress !== undefined) {
-        (event as Extract<BridgeEvent, { type: 'notify' }>).progress = progress
-      }
-      return state.eventChannel.send(event)
+      return state.eventChannel.send({
+        type: 'notify',
+        message,
+        ...(progress !== undefined ? { progress } : {}),
+      })
     },
   }
 }
@@ -1378,7 +1385,7 @@ export function runBridgeTool<
               if (!handler) {
                 throw new Error(`No handler for elicitation key "${event.request.key}"`)
               }
-              const result = yield* handler(event.request as Parameters<typeof Object>[0])
+              const result = yield* handler(event.request as ElicitRequest<keyof TElicits & string, z.ZodType>)
               event.responseSignal.send({ id: event.request.id, result })
               break
             }

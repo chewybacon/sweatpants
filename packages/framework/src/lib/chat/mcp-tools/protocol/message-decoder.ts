@@ -22,12 +22,10 @@ import type {
   McpCreateMessageResult,
   McpToolCallParams,
   McpContentBlock,
-  McpMessage,
 } from './types.ts'
 import { isJsonRpcError, isJsonRpcSuccess, isTextContent, isToolUseContent } from './types.ts'
 import type { 
-  ElicitResult,
-  ElicitExchange,
+  WireElicitResult,
   WireSampleResultBase,
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
@@ -50,7 +48,7 @@ export type DecodedSampleResult = WireSampleResultBase | WireSampleResultWithPar
  * Result of decoding an MCP message.
  */
 export type DecodedMessage =
-  | { type: 'elicitation_response'; elicitId: string; result: ElicitResult<unknown, unknown> }
+  | { type: 'elicitation_response'; elicitId: string; result: WireElicitResult<unknown> }
   | { type: 'sampling_response'; sampleId: string; result: DecodedSampleResult }
   | { type: 'tool_call'; name: string; args: Record<string, unknown>; requestId: string | number }
   | { type: 'error'; code: number; message: string; data?: unknown }
@@ -61,7 +59,10 @@ export type DecodedMessage =
 // =============================================================================
 
 /**
- * Decode an MCP elicitation response into an ElicitResult.
+ * Decode an MCP elicitation response into a WireElicitResult.
+ *
+ * The wire result carries no exchange: exchange construction happens only in
+ * the layer that holds the originating call's context (bridge / worker).
  */
 export function decodeElicitationResponse(
   response: JsonRpcResponse<McpElicitationResult>,
@@ -82,56 +83,17 @@ export function decodeElicitationResponse(
 
   const mcpResult = response.result
 
-  // Map MCP action to our ElicitResult format
-  let elicitResult: ElicitResult<unknown, unknown>
+  let elicitResult: WireElicitResult<unknown>
 
   switch (mcpResult.action) {
-    case 'accept': {
-      const content = mcpResult.content ?? {}
-      // Create placeholder exchange using MCP content blocks
-      // Actual context is captured at the bridge-runtime level
-      const placeholderToolUseId = `decoded_${elicitId}`
-      const request: McpMessage & { role: 'assistant' } = {
-        role: 'assistant' as const,
-        content: [{
-          type: 'tool_use' as const,
-          id: placeholderToolUseId,
-          name: 'elicit',
-          // Keep input empty; echo data in tool_result for history
-          input: {},
-        }],
-      }
-      const responseMsg: McpMessage & { role: 'user' } = {
-        role: 'user' as const,
-        content: [{
-          type: 'tool_result' as const,
-          toolUseId: placeholderToolUseId,
-          content: [{ type: 'text' as const, text: JSON.stringify(content) }],
-        }],
-      }
-      const exchange: ElicitExchange<unknown> = {
-        context: {},
-        request,
-        response: responseMsg,
-        messages: [request, responseMsg],
-        withArguments: () => [request, responseMsg],
-      }
-      elicitResult = {
-        action: 'accept',
-        content,
-        exchange,
-      }
+    case 'accept':
+      elicitResult = { action: 'accept', content: mcpResult.content ?? {} }
       break
-    }
     case 'decline':
-      elicitResult = {
-        action: 'decline',
-      }
+      elicitResult = { action: 'decline' }
       break
     case 'cancel':
-      elicitResult = {
-        action: 'cancel',
-      }
+      elicitResult = { action: 'cancel' }
       break
     default:
       return { type: 'unknown', raw: response }

@@ -24,7 +24,8 @@
  * @packageDocumentation
  */
 import type { Operation } from 'effection'
-import type { ToolCtx, ToolDefinition, ToolElicitResult } from '@sweatpants/core'
+import { z } from 'zod'
+import type { ToolCtx, ToolDefinition, AnyToolDefinition, ToolElicitResult, ElicitsMap, SampleResult, ToolMessage } from '@sweatpants/core'
 import type {
   MCPClientContext,
   ElicitResult,
@@ -33,7 +34,6 @@ import type {
   SampleConfig,
   LogLevel,
   ElicitExchange,
-  McpMessage,
 } from './types.ts'
 import {
   McpCapabilityError as MCPCapabilityError,
@@ -177,7 +177,7 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
 
             // Construct a mock exchange for accept responses using MCP format
             const toolCallId = `mock_elicit_${Date.now()}`
-            const request: McpMessage & { role: 'assistant' } = {
+            const request: ToolMessage & { role: 'assistant' } = {
               role: 'assistant',
               content: [{
                 type: 'tool_use',
@@ -187,7 +187,7 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
                 input: {},
               }],
             }
-            const toolResponse: McpMessage & { role: 'user' } = {
+            const toolResponse: ToolMessage & { role: 'user' } = {
               role: 'user',
               content: [{
                 type: 'tool_result',
@@ -302,8 +302,9 @@ export function runMCPTool<
   TName extends string,
   TParams,
   TResult,
+  TElicits extends ElicitsMap = {},
 >(
-  tool: ToolDefinition<TName, TParams, TResult>,
+  tool: ToolDefinition<TName, TParams, TResult, TElicits>,
   params: TParams,
   client: MockMCPClient,
   _options: RunMCPToolOptions = {}
@@ -329,31 +330,33 @@ export function runMCPTool<
 
       const clientCtx = client.createContext()
 
-      const toolFactory = tool as unknown as (ctx: ToolCtx<any, any>) => Operation<(input: TParams) => Operation<TResult>>
-      if (typeof toolFactory !== 'function') {
+      if (typeof tool !== 'function') {
         throw new Error(`Tool "${String((tool as { name?: string }).name ?? '<unknown>')}" is not a callable ToolDefinition factory`)
       }
-      const invoke = yield* toolFactory(createCoreToolCtx(tool as ToolDefinition, clientCtx))
+      const invoke = yield* (tool as ToolDefinition<TName, TParams, TResult, TElicits>)(
+        createCoreToolCtx(tool, clientCtx) as unknown as ToolCtx<TElicits, undefined>
+      )
       return yield* invoke(validatedParams)
     }
   }
 }
 
-function createCoreToolCtx(tool: ToolDefinition, clientCtx: MCPClientContext): ToolCtx<any, any> {
-  const ctx: ToolCtx<any, any> = {
+function createCoreToolCtx(tool: AnyToolDefinition, clientCtx: MCPClientContext): ToolCtx<any, any> {
+  // Mock context: single documented assertion; overload surface is exercised by real runtimes.
+  const ctx = {
     messages: [],
     history: [],
-    notify: (message, fraction) => clientCtx.notify(message, fraction),
-    log: (level, message) => clientCtx.log(level, message),
-    *branch(fn) {
-      return yield* fn(ctx)
+    notify: (message: string, fraction?: number) => clientCtx.notify(message, fraction),
+    log: (level: LogLevel, message: string) => clientCtx.log(level, message),
+    *branch(fn: (c: ToolCtx<any, any>) => Operation<unknown>) {
+      return yield* fn(ctx as unknown as ToolCtx<any, any>)
     },
-    elicit: function* (key: string, request: { message: string; context?: unknown }): Operation<any> {
+    elicit: function* (key: string, request: { message: string; context?: unknown }): Operation<ToolElicitResult<unknown, unknown>> {
       const def = (tool.elicits as Record<string, { response?: unknown }>)[key]
       if (!def) {
         throw new Error(`Unknown elicit key "${key}" for tool "${tool.name}"`)
       }
-      const response = yield* clientCtx.elicit({ message: request.message, schema: def.response as Parameters<typeof Object>[0] })
+      const response = yield* clientCtx.elicit({ message: request.message, schema: def.response as z.ZodType })
       if (response.action === 'accept') {
         const toolUseId = `elicit_${key}`
         const requestMsg = {
@@ -388,31 +391,25 @@ function createCoreToolCtx(tool: ToolDefinition, clientCtx: MCPClientContext): T
       }
       return { action: response.action }
     },
-    sample: function* (...args: unknown[]): Operation<any> {
+    sample: function* (...args: unknown[]): Operation<SampleResult> {
       const key = typeof args[0] === 'string' ? args[0] : undefined
       const request = (key ? args[1] : args[0]) as Record<string, unknown>
-      const response = yield* clientCtx.sample(request as Parameters<typeof Object>[0])
+      const response = yield* clientCtx.sample(request as unknown as SampleConfig<unknown>)
       const text = typeof response === 'string' ? response : String((response as { text?: string })?.text ?? '')
       const userMsg = { role: 'user' as const, content: [{ type: 'text' as const, text: String(request['prompt'] ?? '') }] }
       const asstMsg = { role: 'assistant' as const, content: [{ type: 'text' as const, text }] }
+      // SampleResult keeps `exchange` optional-by-alias; supply the message-pair for history consumers.
       return {
-        content: text,
         text,
-        raw: response,
-        exchange: {
-          messages: [userMsg, asstMsg],
-          ...(key ? { key } : {}),
-          request,
-          response,
-        },
-      }
+        exchange: { messages: [userMsg, asstMsg] },
+      } as SampleResult
     },
-    sampleTools: function* (): Operation<any> {
+    sampleTools: function* (): Operation<never> {
       throw new Error('sampleTools not implemented in mock-runtime core ctx')
     },
-    sampleSchema: function* (): Operation<any> {
+    sampleSchema: function* (): Operation<never> {
       throw new Error('sampleSchema not implemented in mock-runtime core ctx')
     },
   }
-  return ctx
+  return ctx as unknown as ToolCtx<any, any>
 }

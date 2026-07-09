@@ -139,9 +139,9 @@ export function createNativeWorkerToolSession(
     }
 
     // Create the worker using core's createWorkerPrincipal
-    const { result: workerResult } = yield* createWorkerPrincipal<unknown>({
+    const { result: workerResult } = yield* createWorkerPrincipal<unknown, McpWorkerInitData>({
       workerUrl,
-      initData: initData as unknown as Parameters<typeof createWorkerPrincipal>[0]['initData'],
+      initData,
       ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
       requestHandler: function* (request: WorkerRequest): Operation<WorkerResponse> {
         if (request.type === 'elicit') {

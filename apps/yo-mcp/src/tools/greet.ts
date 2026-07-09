@@ -31,6 +31,6 @@ export const greetTool = createTool('greet')
     return {
       name: params.name,
       style: params.style,
-      greeting: greeting.text ?? greeting.content ?? '',
+      greeting: greeting.text ?? '',
     }
   })

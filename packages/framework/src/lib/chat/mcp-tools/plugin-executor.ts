@@ -203,8 +203,12 @@ export function* executeElicitHandlerFromRequest<TElicits extends ElicitsMap>(
     )
   }
 
-  const handler = plugin.handlers[key]
-  return yield* handler(request as any, ctx as any)
+  // Heterogeneous handler map: narrow through the map's own value type.
+  const handler = plugin.handlers[key] as (
+    req: ElicitRequest<string, z.ZodType>,
+    hctx: PluginClientContext
+  ) => Operation<WireElicitResult<unknown>>
+  return yield* handler(request, ctx)
 }
 
 // =============================================================================

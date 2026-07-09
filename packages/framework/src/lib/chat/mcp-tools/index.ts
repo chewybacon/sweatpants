@@ -30,22 +30,13 @@
 
 export type {
   ToolDefinition,
+  AnyToolDefinition,
   ToolCtx,
   InteractionExchange,
   ElicitExchange as CoreElicitExchange,
   SampleExchange as CoreSampleExchange,
   SampleRequest as CoreSampleRequest,
 } from "@sweatpants/core";
-
-export type {
-  McpRuntimeTool,
-  InferMcpToolResult,
-  InferMcpToolParams,
-  InferMcpToolClient,
-  InferMcpToolElicits,
-  AnyMcpTool,
-  AnyBridgeableMcpTool,
-} from "./mcp-runtime-tool.ts";
 
 // Types from unified types file
 export type {

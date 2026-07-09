@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ElicitExchange, SampleExchange } from '@sweatpants/core'
+import type { ElicitExchange, SampleExchange, ToolMessage } from '@sweatpants/core'
 import {
   projectCoreElicitExchangeToMcpMessages,
   projectCoreExchangeToMcpMessages,
@@ -7,59 +7,72 @@ import {
   projectCoreSampleExchangeToMcpMessages,
 } from '../core-exchange-projection.ts'
 
-describe('core exchange to MCP projection', () => {
-  it('projects core elicit exchanges without mutating the core exchange', () => {
-    const exchange: ElicitExchange<{ flightId: string }, { ok: boolean }> = {
-      kind: 'elicit',
-      key: 'confirm',
-      request: { message: 'Confirm?', context: { flightId: 'FL001' } },
-      response: { action: 'accept', content: { ok: true } },
-    }
+function elicitExchange(context: { flightId: string }): ElicitExchange<{ flightId: string }> {
+  const request: ToolMessage & { role: 'assistant' } = {
+    role: 'assistant',
+    content: [{ type: 'tool_use', id: 'elicit:confirm', name: 'confirm', input: {} }],
+  }
+  const response: ToolMessage & { role: 'user' } = {
+    role: 'user',
+    content: [{
+      type: 'tool_result',
+      toolUseId: 'elicit:confirm',
+      content: [{ type: 'text', text: JSON.stringify({ ok: true }) }],
+    }],
+  }
+  return {
+    context,
+    request,
+    response,
+    messages: [request, response],
+    withArguments(fn) {
+      const args = fn(context)
+      return [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'elicit:confirm', name: 'confirm', input: args }] },
+        response,
+      ]
+    },
+  }
+}
 
+function sampleExchange(): SampleExchange {
+  return {
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'Summarize this' }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Summary' }] },
+    ],
+  }
+}
+
+describe('core exchange to MCP projection', () => {
+  it('projects elicit exchanges directly from the message pair', () => {
+    const exchange = elicitExchange({ flightId: 'FL001' })
     const messages = projectCoreElicitExchangeToMcpMessages(exchange)
 
     expect(messages).toHaveLength(2)
     expect(messages[0]).toMatchObject({
       role: 'assistant',
-      content: [{ type: 'tool_use', id: 'elicit:confirm', name: 'elicit:confirm' }],
+      content: [{ type: 'tool_use', id: 'elicit:confirm', name: 'confirm' }],
     })
     expect(messages[1]).toMatchObject({
       role: 'user',
       content: [{ type: 'tool_result', toolUseId: 'elicit:confirm' }],
     })
-    expect(exchange.kind).toBe('elicit')
-    expect(exchange.request.context).toEqual({ flightId: 'FL001' })
+    // projection must not mutate the exchange
+    expect(exchange.context).toEqual({ flightId: 'FL001' })
   })
 
-  it('projects core sample exchanges', () => {
-    const exchange: SampleExchange<{ prompt: string }, { text: string }> = {
-      kind: 'sample',
-      key: 'summarize',
-      request: { prompt: 'Summarize this' },
-      response: { text: 'Summary' },
-    }
-
-    const messages = projectCoreSampleExchangeToMcpMessages(exchange)
-
+  it('projects sample exchanges', () => {
+    const messages = projectCoreSampleExchangeToMcpMessages(sampleExchange())
     expect(messages).toEqual([
       { role: 'user', content: [{ type: 'text', text: 'Summarize this' }] },
       { role: 'assistant', content: [{ type: 'text', text: 'Summary' }] },
     ])
   })
 
-  it('projects mixed core exchange arrays', () => {
-    const elicit: ElicitExchange = {
-      kind: 'elicit',
-      key: 'confirm',
-      request: { message: 'Confirm?' },
-      response: { action: 'decline', reason: 'no' },
-    }
-    const sample: SampleExchange = {
-      kind: 'sample',
-      request: { prompt: 'Why?' },
-      response: { content: 'Because.' },
-    }
-
+  it('projects mixed exchange arrays via the interaction discriminator', () => {
+    const elicit = elicitExchange({ flightId: 'FL001' })
+    const sample = sampleExchange()
     expect(projectCoreExchangeToMcpMessages(elicit)).toHaveLength(2)
     expect(projectCoreExchangesToMcpMessages([elicit, sample])).toHaveLength(4)
   })

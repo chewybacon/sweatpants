@@ -35,7 +35,7 @@
 
 import { type Operation, type Subscription } from 'effection'
 import { TransportContext } from '@sweatpants/core'
-import type { CorrelatedTransport, ElicitResponse, NotifyResponse } from '@sweatpants/core'
+import type { CorrelatedTransport, ElicitResponse, NotifyResponse, ToolMessage } from '@sweatpants/core'
 import { z } from 'zod'
 import type {
   Message,
@@ -67,7 +67,6 @@ import type {
   ElicitsMap,
   ExtractElicitResponse,
   ExtractElicitContext,
-  McpMessage,
 } from '../mcp-tool-types.ts'
 import {
   createRawSampleExchange,
@@ -701,7 +700,7 @@ function createElicitExchange<TContext>(
   const toolUseId = `elicit_${elicitId}`
 
   // Request message (assistant with tool_use)
-  const request: McpMessage & { role: 'assistant' } = {
+  const request: ToolMessage & { role: 'assistant' } = {
     role: 'assistant',
     content: [{
       type: 'tool_use',
@@ -712,7 +711,7 @@ function createElicitExchange<TContext>(
   }
 
   // Response message (user with tool_result)
-  const response: McpMessage & { role: 'user' } = {
+  const response: ToolMessage & { role: 'user' } = {
     role: 'user',
     content: [{
       type: 'tool_result',
@@ -726,9 +725,9 @@ function createElicitExchange<TContext>(
     request,
     response,
     messages: [request, response],
-    withArguments(fn: (ctx: TContext) => Record<string, unknown>): [McpMessage, McpMessage] {
+    withArguments(fn: (ctx: TContext) => Record<string, unknown>): [ToolMessage, ToolMessage] {
       const args = fn(context)
-      const requestWithArgs: McpMessage & { role: 'assistant' } = {
+      const requestWithArgs: ToolMessage & { role: 'assistant' } = {
         role: 'assistant',
         content: [{
           type: 'tool_use',

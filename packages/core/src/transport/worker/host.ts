@@ -75,7 +75,7 @@ export type WorkerRequestHandler = (
 /**
  * Options for creating a worker principal transport.
  */
-export interface WorkerPrincipalOptions {
+export interface WorkerPrincipalOptions<TInitData = WorkerInitData> {
   /**
    * URL or path to the worker script.
    * Must be a module worker (type: "module").
@@ -84,8 +84,9 @@ export interface WorkerPrincipalOptions {
 
   /**
    * Initialization data passed to the worker.
+   * Generic so runtimes can carry richer init payloads (e.g. ExtendedMessage parents).
    */
-  initData: WorkerInitData;
+  initData: TInitData;
 
   /**
    * Additional exec arguments for the worker thread.
@@ -128,8 +129,8 @@ export interface WorkerPrincipalResult<T = unknown> {
  * @param options - Worker configuration including request handler
  * @returns WorkerPrincipalResult with result operation
  */
-export function* createWorkerPrincipal<T = unknown>(
-  options: WorkerPrincipalOptions
+export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
+  options: WorkerPrincipalOptions<TInitData>
 ): Operation<WorkerPrincipalResult<T>> {
   const { workerUrl, initData, requestHandler, execArgv } = options;
 
@@ -143,7 +144,7 @@ export function* createWorkerPrincipal<T = unknown>(
     // TReturn = WorkerResult<T> (final return value from worker)
     // TData = WorkerInitData (init data)
     const worker: WorkerResource<never, never, WorkerResult<T>> =
-      yield* useWorker<never, never, WorkerResult<T>, WorkerInitData>(
+      yield* useWorker<never, never, WorkerResult<T>, TInitData>(
         workerUrl,
         {
           type: "module",

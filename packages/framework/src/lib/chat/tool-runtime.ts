@@ -46,15 +46,24 @@ export interface ElicitToolRequest {
   context?: Record<string, unknown>
 }
 
+/**
+ * Wire-level tool execution event.
+ *
+ * Widened form of the canonical session event union
+ * (`mcp-tools/session/types.ts` ToolSessionEvent): `lsn`/`timestamp` are
+ * optional because transports may re-sequence. The strict session events are
+ * structurally assignable to this union — keep the field sets in sync so the
+ * runtime→session seam needs no casts.
+ */
 export type ToolExecutionEvent =
-  | { type: 'progress'; lsn?: number; message?: string; [key: string]: unknown }
-  | { type: 'log'; lsn?: number; level?: string; message: string; [key: string]: unknown }
-  | { type: 'elicit_request'; lsn?: number; elicitId: string; key: string; message: string; schema: Record<string, unknown>; [key: string]: unknown }
-  | { type: 'sample_request'; lsn?: number; sampleId: string; [key: string]: unknown }
-  | { type: 'sample_response_queued'; lsn?: number; [key: string]: unknown }
-  | { type: 'result'; lsn?: number; result: unknown; [key: string]: unknown }
-  | { type: 'error'; lsn?: number; message: string; code?: string; [key: string]: unknown }
-  | { type: 'cancelled'; lsn?: number; reason?: string; [key: string]: unknown }
+  | { type: 'progress'; lsn?: number; timestamp?: number; message?: string; progress?: number }
+  | { type: 'log'; lsn?: number; timestamp?: number; level?: string; message: string }
+  | { type: 'elicit_request'; lsn?: number; timestamp?: number; elicitId: string; key: string; message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
+  | { type: 'sample_request'; lsn?: number; timestamp?: number; sampleId: string; messages?: unknown[]; systemPrompt?: string; maxTokens?: number; modelPreferences?: unknown; tools?: unknown[]; toolChoice?: unknown; schema?: Record<string, unknown> }
+  | { type: 'sample_response_queued'; lsn?: number; timestamp?: number }
+  | { type: 'result'; lsn?: number; timestamp?: number; result: unknown }
+  | { type: 'error'; lsn?: number; timestamp?: number; message: string; code?: string; name?: string; stack?: string }
+  | { type: 'cancelled'; lsn?: number; timestamp?: number; reason?: string }
 
 export type ToolExecution =
   | { kind: 'completed'; ref: ToolExecutionRef; result: unknown }

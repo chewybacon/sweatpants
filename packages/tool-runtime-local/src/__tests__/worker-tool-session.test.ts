@@ -221,10 +221,11 @@ describe('WorkerToolSession', () => {
   })
 
   // ===========================================================================
-  // elicit with spread context - MCP-style format users write
+  // canonical nested-context dialect — rich payloads always ride under `context`
+  // (the legacy top-level spread dialect was deleted with the unified types)
   // ===========================================================================
-  describe('elicit with spread context (MCP style)', () => {
-    it('extracts spread fields as context', async () => {
+  describe('elicit with nested context payloads', () => {
+    it('threads rich context through the canonical `context` property', async () => {
       const result = await runScenario('elicit_spread_context')
 
       expect(result.status).toBe('completed')
