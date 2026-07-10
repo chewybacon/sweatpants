@@ -40,8 +40,6 @@ describe("createTool(name) unified builder", () => {
 
     const invoke = yield* Tool({
       messages: [],
-      history: [],
-      *branch(fn) { return yield* fn(this as never); },
       notify: function* () {},
       log: function* () {},
     });
@@ -60,25 +58,23 @@ describe("createTool(name) unified builder", () => {
   });
 
   it("activates as a unified callable against a ToolCtx", function* () {
+    const seen: unknown[] = [];
     const Tool = createTool("echo")
       .description("echo")
       .parameters(z.object({ text: z.string() }))
       .elicits({})
-      .execute(function* (input, ctx) {
-        ctx.history.push({ seen: input.text });
+      .execute(function* (input) {
+        seen.push({ seen: input.text });
         return { echoed: input.text };
       });
 
-    const history: unknown[] = [];
     const invoke = yield* Tool({
       messages: [],
-      history,
-      *branch(fn) { return yield* fn(this as never); },
       notify: function* () {},
       log: function* () {},
     });
 
     expect(yield* invoke({ text: "hi" })).toEqual({ echoed: "hi" });
-    expect(history).toEqual([{ seen: "hi" }]);
+    expect(seen).toEqual([{ seen: "hi" }]);
   });
 });

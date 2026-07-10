@@ -4,7 +4,7 @@ import { createTool } from '../src/index.ts'
 
 function testToolContext() {
   return {
-    history: [] as unknown[],
+    messages: [] as const,
     elicit: (() => { throw new Error('not used') }) as never,
     elicitDynamic: (() => { throw new Error('not used') }) as never,
     sample: (() => { throw new Error('not used') }) as never,

@@ -5,7 +5,7 @@
  * Provides a generator-based execution model with:
  * - LLM backchannel (sampling)
  * - User backchannel (elicitation)
- * - Sub-branching for structured concurrency
+ * - Tool-local conversation state for multi-step work
  *
  * ## MCP Primitives Mapping
  *
@@ -18,20 +18,19 @@
  *
  * ## Mental Model
  *
- * Tool calls are branches off the main LLM timeline. Each branch:
- * - Receives parent context (optionally uses it)
+ * Tool calls split execution away from the main LLM timeline. Each tool call:
+ * - Receives conversation context
  * - Runs a server-driven generator
- * - Can spawn sub-branches that reduce back
- * - Returns a single result to the parent
+ * - Can sample or elicit during that generator
+ * - Returns a single result to the caller
  *
  * ```
  * Main Timeline
  *     |
- *     +-- tool_call --> branch --> reduces back
- *     |                   |
- *     |                   +-- sample (LLM backchannel)
- *     |                   +-- elicit (user backchannel)
- *     |                   +-- branch (sub-branch) --> reduces back
+ *     +-- tool_call --> tool execution --> result
+ *     |                      |
+ *     |                      +-- sample (LLM backchannel)
+ *     |                      +-- elicit (user backchannel)
  *     |
  *     v continues
  * ```
@@ -631,10 +630,10 @@ interface SampleConfigWithTools extends SampleConfigBase {
 // -----------------------------------------------------------------------------
 
 /**
- * Sample with auto-tracked prompt (appends to branch context).
+ * Sample with auto-tracked prompt (appends to tool-local conversation state).
  */
 interface SampleConfigPromptMode {
-  /** The prompt to send (auto-tracked in branch context) */
+  /** The prompt to send (auto-tracked in tool-local conversation state) */
   prompt: string;
   messages?: never;
 }
@@ -685,7 +684,7 @@ export type SampleConfigMessages = SampleConfigPlainMessages;
 /**
  * Configuration for a sampling request.
  * Supports two modes for message input:
- * - `prompt`: Simple prompt string, auto-tracked in branch context
+ * - `prompt`: Simple prompt string, auto-tracked in tool-local conversation state
  * - `messages`: Explicit messages array, full control
  *
  * And three modes for output:
@@ -786,7 +785,7 @@ export type SampleResult = SampleResultBase;
  *
  * Used by decoder and handler layers that don't have access to the original
  * prompt text needed to construct exchanges. The exchange is added by the
- * runtime layer (bridge-runtime, branch-runtime) which has the context.
+ * runtime layer (for example bridge-runtime) which has the context.
  */
 export interface WireSampleResultBase {
   /** The generated text */
@@ -957,70 +956,14 @@ export class SampleValidationError extends Error {
 export type LogLevel = "debug" | "info" | "warning" | "error";
 
 // =============================================================================
-// BRANCH OPTIONS
+// EXECUTION LIMITS
 // =============================================================================
-
-/**
- * Options for creating a sub-branch.
- */
-export interface McpToolBranchOptions {
-  // ---------------------------------------------------------------------------
-  // Context inheritance
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Whether to inherit parent messages.
-   * @default true
-   */
-  inheritMessages?: boolean;
-
-  /**
-   * Whether to inherit parent system prompt.
-   * @default true
-   */
-  inheritSystemPrompt?: boolean;
-
-  /**
-   * Override/supplement messages for this branch.
-   * If inheritMessages is true, these are appended.
-   * If inheritMessages is false, these replace.
-   */
-  messages?: Message[];
-
-  /**
-   * Override system prompt for this branch.
-   */
-  systemPrompt?: string;
-
-  // ---------------------------------------------------------------------------
-  // Limits
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Maximum branch depth from this point.
-   * Prevents infinite recursion.
-   */
-  maxDepth?: number;
-
-  /**
-   * Maximum total tokens for this branch and its children.
-   */
-  maxTokens?: number;
-
-  /**
-   * Timeout in milliseconds for this branch.
-   */
-  timeout?: number;
-}
 
 /**
  * Limits configuration for tool execution.
  */
 export interface McpToolLimits {
-  /** Maximum branch depth */
-  maxDepth?: number;
-
-  /** Maximum total tokens across all branches */
+  /** Maximum total tokens across all tool-internal sampling work. */
   maxTokens?: number;
 
   /** Timeout in milliseconds */
@@ -1036,10 +979,9 @@ export interface McpToolLimits {
  *
  * Provides primitives for:
  * - Reading parent context
- * - Managing current branch conversation
+ * - Managing current conversation
  * - LLM backchannel (sample)
  * - User input backchannel (elicit)
- * - Spawning sub-branches
  *
  * @example
  * ```typescript
@@ -1064,7 +1006,7 @@ export interface McpToolContext {
 
   /**
    * Messages from the parent context.
-   * This is the conversation history up to when this branch was created.
+   * This is the conversation history available when this tool context was created.
    * Read-only - modifications don't affect parent.
    */
   readonly parentMessages: readonly ExtendedMessage[];
@@ -1076,19 +1018,19 @@ export interface McpToolContext {
   readonly parentSystemPrompt: string | undefined;
 
   // ---------------------------------------------------------------------------
-  // Current branch state
+  // Current tool-local state
   // ---------------------------------------------------------------------------
 
   /**
-   * Messages in this branch's conversation.
+   * Messages in this tool context's conversation.
    * Auto-updated when using `sample({ prompt })` form.
    * Read-only view - use sample/elicit to modify.
    */
   readonly messages: readonly Message[];
 
   /**
-   * Current depth in the branch tree.
-   * Root branch is depth 0.
+   * Current nesting depth for this tool context.
+   * Root tool execution is depth 0.
    */
   readonly depth: number;
 
@@ -1100,7 +1042,7 @@ export interface McpToolContext {
    * Request an LLM completion from the client.
    *
    * Two modes for message input:
-   * - `{ prompt }`: Auto-tracked in branch context
+   * - `{ prompt }`: Auto-tracked in tool-local conversation state
    * - `{ messages }`: Explicit control, not tracked
    *
    * Three modes for output:
@@ -1240,54 +1182,6 @@ export interface McpToolContext {
   elicit<T>(config: ClientElicitConfig<T>): Operation<ToolElicitResult<unknown, T>>;
 
   // ---------------------------------------------------------------------------
-  // Sub-branches
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Spawn a sub-branch for structured concurrency.
-   *
-   * Sub-branches:
-   * - Run server-side (not a separate MCP call)
-   * - Can sample/elicit/branch themselves
-   * - Reduce back to a single value
-   *
-   * For concurrent branches, use Effection's `all()`:
-   * ```typescript
-   * const [a, b] = yield* all([
-   *   ctx.branch(branchA),
-   *   ctx.branch(branchB),
-   * ])
-   * ```
-   *
-   * @example Sequential branches
-   * ```typescript
-   * const first = yield* ctx.branch(function* (subCtx) {
-   *   return yield* subCtx.sample({ prompt: 'First task...' })
-   * })
-   *
-   * const second = yield* ctx.branch(function* (subCtx) {
-   *   return yield* subCtx.sample({ prompt: `Based on ${first}...` })
-   * })
-   * ```
-   *
-   * @example With options
-   * ```typescript
-   * const isolated = yield* ctx.branch(function* (subCtx) {
-   *   // Fresh context, no parent messages
-   *   return yield* subCtx.sample({ prompt: 'Independent task...' })
-   * }, {
-   *   inheritMessages: false,
-   *   maxDepth: 2,
-   *   timeout: 5000
-   * })
-   * ```
-   */
-  branch<T>(
-    fn: (ctx: McpToolContext) => Operation<T>,
-    options?: McpToolBranchOptions,
-  ): Operation<T>;
-
-  // ---------------------------------------------------------------------------
   // Logging
   // ---------------------------------------------------------------------------
 
@@ -1343,7 +1237,7 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   readonly parentSystemPrompt: string | undefined;
 
   // ---------------------------------------------------------------------------
-  // Current branch state - same as McpToolContext
+  // Current tool-local state - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   readonly messages: readonly Message[];
@@ -1414,19 +1308,6 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   >;
 
   // ---------------------------------------------------------------------------
-  // Sub-branches - inherit keyed elicitation
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Spawn a sub-branch for structured concurrency.
-   * Sub-branches inherit the keyed elicitation context.
-   */
-  branch<T>(
-    fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
-    options?: McpToolBranchOptions,
-  ): Operation<T>;
-
-  // ---------------------------------------------------------------------------
   // Logging - same as McpToolContext
   // ---------------------------------------------------------------------------
 
@@ -1472,20 +1353,7 @@ export class ElicitationCancelledError extends Error {
 }
 
 /**
- * Error thrown when branch depth limit is exceeded.
- */
-export class McpToolDepthError extends Error {
-  constructor(
-    public readonly depth: number,
-    public readonly maxDepth: number,
-  ) {
-    super(`Branch depth ${depth} exceeds maximum ${maxDepth}`);
-    this.name = "McpToolDepthError";
-  }
-}
-
-/**
- * Error thrown when branch token budget is exceeded.
+ * Error thrown when the tool token budget is exceeded.
  */
 export class McpToolTokenError extends Error {
   constructor(
@@ -1498,7 +1366,7 @@ export class McpToolTokenError extends Error {
 }
 
 /**
- * Error thrown when branch times out.
+ * Error thrown when tool execution times out.
  */
 export class McpToolTimeoutError extends Error {
   constructor(public readonly timeoutMs: number) {

@@ -49,7 +49,6 @@ import type {
   LogLevel,
   McpToolContext,
   McpToolContextWithElicits,
-  McpToolBranchOptions,
   ClientElicitConfig,
   ElicitExchange,
   SampleResultBase,
@@ -132,7 +131,7 @@ export interface CoreContextOptions {
   parentMessages?: readonly ExtendedMessage[];
   /** Parent system prompt */
   parentSystemPrompt?: string;
-  /** Current branch depth */
+  /** Current nested depth for this transport-backed context */
   depth?: number;
 }
 
@@ -183,7 +182,7 @@ export function createContextFromTransport(
 ): McpToolContext {
   const { toolName, callId, parentMessages = [], parentSystemPrompt, depth = 0 } = options;
 
-  // Mutable message history for this branch
+  // Mutable message history for this context
   const messages: Message[] = [];
   let elicitSeq = 0;
   let sampleSeq = 0;
@@ -446,37 +445,6 @@ export function createContextFromTransport(
   }
 
   // ---------------------------------------------------------------------------
-  // Branch Implementation
-  // ---------------------------------------------------------------------------
-
-  function* branchImpl<T>(
-    fn: (ctx: McpToolContext) => Operation<T>,
-    branchOptions?: McpToolBranchOptions,
-  ): Operation<T> {
-    // Create child context
-    const inheritMessages = branchOptions?.inheritMessages ?? true;
-    const inheritSystemPrompt = branchOptions?.inheritSystemPrompt ?? true;
-
-    const childSystemPrompt = inheritSystemPrompt
-      ? parentSystemPrompt
-      : branchOptions?.systemPrompt;
-    const childOptions: CoreContextOptions = {
-      toolName,
-      callId: generateId(`${callId}:branch`),
-      parentMessages: inheritMessages
-        ? [...parentMessages, ...messages]
-        : (branchOptions?.messages ?? []),
-      depth: depth + 1,
-    };
-    if (childSystemPrompt !== undefined) {
-      childOptions.parentSystemPrompt = childSystemPrompt;
-    }
-
-    const childCtx = createContextFromTransport(transport, childOptions);
-    return yield* fn(childCtx);
-  }
-
-  // ---------------------------------------------------------------------------
   // Log/Notify Implementation
   // ---------------------------------------------------------------------------
 
@@ -540,7 +508,6 @@ export function createContextFromTransport(
     sampleTools: sampleToolsImpl,
     sampleSchema: sampleSchemaImpl,
     elicit: elicitImpl,
-    branch: branchImpl,
     log: logImpl,
     notify: notifyImpl,
   };
@@ -560,14 +527,13 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
   options: CoreContextOptions,
   elicitsMap: TElicits,
 ): McpToolContextWithElicits<TElicits> {
-  const { toolName, callId, parentMessages = [], parentSystemPrompt, depth = 0 } = options;
+  const { toolName, callId } = options;
 
   // Get the base context (without keyed elicit)
   const baseCtx = createContextFromTransport(transport, options);
 
   // Mutable state for keyed elicitation
   let elicitSeq = 0;
-  const messages: Message[] = [];
 
   // Keyed elicit implementation
   function* keyedElicitImpl<K extends keyof TElicits & string>(
@@ -646,37 +612,6 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
     return { action: "cancel" };
   }
 
-  // Keyed branch implementation
-  function* keyedBranchImpl<T>(
-    fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
-    branchOptions?: McpToolBranchOptions,
-  ): Operation<T> {
-    const inheritMessages = branchOptions?.inheritMessages ?? true;
-    const inheritSystemPrompt = branchOptions?.inheritSystemPrompt ?? true;
-
-    const childSystemPrompt = inheritSystemPrompt
-      ? parentSystemPrompt
-      : branchOptions?.systemPrompt;
-    const childOptions: CoreContextOptions = {
-      toolName,
-      callId: generateId(`${callId}:branch`),
-      parentMessages: inheritMessages
-        ? [...parentMessages, ...messages]
-        : (branchOptions?.messages ?? []),
-      depth: depth + 1,
-    };
-    if (childSystemPrompt !== undefined) {
-      childOptions.parentSystemPrompt = childSystemPrompt;
-    }
-
-    const childCtx = createContextWithElicitsFromTransport<TElicits>(
-      transport,
-      childOptions,
-      elicitsMap,
-    );
-    return yield* fn(childCtx);
-  }
-
   // Build the keyed context
   const keyedCtx: McpToolContextWithElicits<TElicits> = {
     get parentMessages() {
@@ -696,7 +631,6 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
     sampleTools: baseCtx.sampleTools,
     sampleSchema: baseCtx.sampleSchema,
     elicit: keyedElicitImpl as McpToolContextWithElicits<TElicits>["elicit"],
-    branch: keyedBranchImpl,
     log: baseCtx.log,
     notify: baseCtx.notify,
   };

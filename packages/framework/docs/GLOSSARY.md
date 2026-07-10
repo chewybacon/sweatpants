@@ -571,23 +571,6 @@ const strategy = yield* ctx.sampleTools({
 
 ---
 
-### ctx.branch(fn, options)
-
-Create a sub-branch with isolated conversation context.
-
-```typescript
-const result = yield* ctx.branch(function* (subCtx) {
-  // subCtx has its own message history
-  const response = yield* subCtx.sample({ prompt: '...' })
-  return response
-})
-```
-
-> [!WARNING]
-> `ctx.elicit()` is not allowed inside branches (throws `BranchElicitNotAllowedError`)
-
----
-
 ### ctx.render(Component, props)
 
 Render a React component and wait for user interaction. Used in plugin handlers.

@@ -24,7 +24,6 @@ export {
   createTool,
   type LogLevel,
   type ToolCtx,
-  type CoreToolCtx,
   type BaseToolCtx,
   type ToolElicitResult,
   type WireElicitResult,

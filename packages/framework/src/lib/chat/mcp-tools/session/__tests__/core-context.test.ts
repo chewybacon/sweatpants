@@ -3,9 +3,8 @@
  *
  * Tests the context that routes MCP operations through core's transport.
  */
-import { describe, it, expect, vi } from 'vitest'
-import { run, spawn, sleep, createChannel, type Channel } from 'effection'
-import { TransportContext } from '@sweatpants/core'
+import { describe, it, expect } from 'vitest'
+import { run, sleep, createChannel, type Channel } from 'effection'
 import type { CorrelatedTransport, ElicitResponse, NotifyResponse } from '@sweatpants/core'
 import { z } from 'zod'
 import {
@@ -246,76 +245,6 @@ describe('Core-Based MCP Tool Context', () => {
       await promise
     })
 
-    it('should create branch context with inherited messages', async () => {
-      const { transport, requests } = createMockCorrelatedTransport()
-
-      const ctx = createContextFromTransport(transport, {
-        toolName: 'test_tool',
-        callId: 'call_123',
-        parentMessages: [{ role: 'user', content: 'Parent message' }],
-        parentSystemPrompt: 'System prompt',
-        depth: 0,
-      })
-
-      let branchCtx: typeof ctx | undefined
-
-      const promise = run(function* () {
-        yield* ctx.branch(function* (childCtx) {
-          branchCtx = childCtx
-          // Make a sample request to verify the child context works
-          return yield* childCtx.sample({ prompt: 'From branch' })
-        })
-      })
-
-      await sleep(10)
-      expect(requests.length).toBe(1)
-
-      // Respond
-      requests[0].respond({
-        status: 'accepted',
-        content: { text: 'Response', model: 'test' },
-      })
-
-      await promise
-
-      expect(branchCtx).toBeDefined()
-      expect(branchCtx!.depth).toBe(1)
-      expect(branchCtx!.parentMessages).toEqual([{ role: 'user', content: 'Parent message' }])
-      expect(branchCtx!.parentSystemPrompt).toBe('System prompt')
-    })
-
-    it('should create branch context without inherited messages when inheritMessages is false', async () => {
-      const { transport, requests } = createMockCorrelatedTransport()
-
-      const ctx = createContextFromTransport(transport, {
-        toolName: 'test_tool',
-        callId: 'call_123',
-        parentMessages: [{ role: 'user', content: 'Parent message' }],
-        depth: 0,
-      })
-
-      let branchCtx: typeof ctx | undefined
-
-      const promise = run(function* () {
-        yield* ctx.branch(
-          function* (childCtx) {
-            branchCtx = childCtx
-            return yield* childCtx.sample({ prompt: 'From isolated branch' })
-          },
-          { inheritMessages: false, messages: [{ role: 'assistant', content: 'Fresh start' }] }
-        )
-      })
-
-      await sleep(10)
-      requests[0].respond({
-        status: 'accepted',
-        content: { text: 'Response', model: 'test' },
-      })
-
-      await promise
-
-      expect(branchCtx!.parentMessages).toEqual([{ role: 'assistant', content: 'Fresh start' }])
-    })
   })
 
   describe('createContextWithElicitsFromTransport', () => {
@@ -394,37 +323,6 @@ describe('Core-Based MCP Tool Context', () => {
         expect(result.exchange.context).toEqual({
           details: 'This is important context',
         })
-      }
-    })
-
-    it('should preserve keyed elicitation in branch', async () => {
-      const { transport, requests } = createMockCorrelatedTransport()
-
-      const ctx = createContextWithElicitsFromTransport(transport, {
-        toolName: 'test_tool',
-        callId: 'call_123',
-      }, elicitsMap)
-
-      const resultPromise = run(function* () {
-        return yield* ctx.branch(function* (childCtx) {
-          return yield* childCtx.elicit('pickOption', { message: 'Pick in branch' })
-        })
-      })
-
-      await sleep(10)
-      expect(requests.length).toBe(1)
-      expect((requests[0].payload as { key: string }).key).toBe('pickOption')
-
-      requests[0].respond({
-        status: 'accepted',
-        content: { option: 'c' },
-      })
-
-      const result = await resultPromise
-
-      expect(result.action).toBe('accept')
-      if (result.action === 'accept') {
-        expect(result.content).toEqual({ option: 'c' })
       }
     })
 

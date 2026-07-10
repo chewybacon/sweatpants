@@ -35,7 +35,6 @@ import { validateToolParameters } from "../tool-parameters.ts";
 import type {
   McpToolContextWithElicits,
   McpToolLimits,
-  McpToolBranchOptions,
   McpToolSampleConfig,
   ElicitId,
   ElicitRequest,
@@ -58,7 +57,6 @@ import type {
   SampleSchemaResult,
 } from "./mcp-tool-types.ts";
 import {
-  McpToolDepthError,
   McpToolTokenError,
   SampleValidationError,
   createRawSampleExchange,
@@ -392,7 +390,7 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
 }
 
 // =============================================================================
-// BRANCH STATE
+// TOOL EXECUTION STATE
 // =============================================================================
 
 interface BranchState<TElicits extends ElicitsMap> {
@@ -413,23 +411,6 @@ interface BranchState<TElicits extends ElicitsMap> {
   // Note: samplingProvider removed - sampling now uses responseSignal pattern
   // The event handler (tool-session or runBridgeTool) is responsible for
   // calling the sampling provider and sending the response via the signal
-}
-
-// =============================================================================
-// ERROR TYPES
-// =============================================================================
-
-/**
- * Error thrown when elicit() is called inside a sub-branch.
- * Elicitation is only allowed at depth 0 (root branch).
- */
-export class BranchElicitNotAllowedError extends Error {
-  constructor(public readonly depth: number) {
-    super(
-      `elicit() is not allowed inside sub-branches (depth=${depth}). Elicitation must happen at the root branch.`,
-    );
-    this.name = "BranchElicitNotAllowedError";
-  }
 }
 
 // =============================================================================
@@ -460,7 +441,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
       return state.parentSystemPrompt;
     },
 
-    // Current branch state
+    // Current tool execution state
     get messages() {
       return state.messages as readonly Message[];
     },
@@ -545,7 +526,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
           }
           const result = next.value.result;
 
-          // If using auto-tracked mode, update branch messages
+          // If using auto-tracked mode, update tool-local messages
           if ("prompt" in config && config.prompt) {
             state.messages.push(
               { role: "user", content: config.prompt },
@@ -757,7 +738,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
 
             // Validate: must have tool calls
             if (result.stopReason === "toolUse" && isNonEmpty(result.toolCalls)) {
-              // Update branch messages if using prompt mode
+              // Update tool-local messages if using prompt mode
               if ("prompt" in config && config.prompt) {
                 state.messages.push(
                   { role: "user", content: config.prompt },
@@ -894,7 +875,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
               const jsonParsed = JSON.parse(result.text);
               const zodResult = schema.safeParse(jsonParsed);
               if (zodResult.success) {
-                // Update branch messages if using prompt mode
+                // Update tool-local messages if using prompt mode
                 if ("prompt" in config && config.prompt) {
                   state.messages.push(
                     { role: "user", content: config.prompt },
@@ -972,11 +953,6 @@ function createBridgeContext<TElicits extends ElicitsMap>(
     > {
       return {
         *[Symbol.iterator]() {
-          // Phase 5: Disallow elicit in sub-branches
-          if (state.depth > 0) {
-            throw new BranchElicitNotAllowedError(state.depth);
-          }
-
           // Get the elicit definition for this key
           const definition = state.elicits[key];
           if (!definition) {
@@ -1120,91 +1096,6 @@ function createBridgeContext<TElicits extends ElicitsMap>(
       };
     },
 
-    // Sub-branches - inherit keyed elicitation
-    branch<T>(
-      fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
-      options: McpToolBranchOptions = {},
-    ): Operation<T> {
-      return {
-        *[Symbol.iterator]() {
-          const newDepth = state.depth + 1;
-          const maxDepth = options.maxDepth ?? state.limits.maxDepth;
-
-          if (maxDepth !== undefined && newDepth > maxDepth) {
-            throw new McpToolDepthError(newDepth, maxDepth);
-          }
-
-          const inheritMessages = options.inheritMessages ?? true;
-          const inheritSystemPrompt = options.inheritSystemPrompt ?? true;
-
-          let newMessages: Message[] = [];
-          if (inheritMessages) {
-            newMessages = [...state.messages];
-          }
-          if (options.messages) {
-            newMessages = [...newMessages, ...options.messages];
-          }
-
-          const newLimits: McpToolLimits = {};
-          if (options.maxDepth !== undefined) {
-            newLimits.maxDepth = options.maxDepth;
-          } else if (state.limits.maxDepth !== undefined) {
-            newLimits.maxDepth = state.limits.maxDepth;
-          }
-          if (options.maxTokens !== undefined) {
-            newLimits.maxTokens = options.maxTokens;
-          } else if (state.limits.maxTokens !== undefined) {
-            newLimits.maxTokens = state.limits.maxTokens;
-          }
-          if (options.timeout !== undefined) {
-            newLimits.timeout = options.timeout;
-          } else if (state.limits.timeout !== undefined) {
-            newLimits.timeout = state.limits.timeout;
-          }
-
-          const subTokenTracker: TokenTracker = {
-            used: 0,
-            parent: state.tokenTracker,
-          };
-          if (newLimits.maxTokens !== undefined) {
-            subTokenTracker.budget = newLimits.maxTokens;
-          }
-
-          const newState: BranchState<TElicits> = {
-            messages: newMessages,
-            parentMessages: state.messages as readonly ExtendedMessage[],
-            depth: newDepth,
-            limits: newLimits,
-            tokenTracker: subTokenTracker,
-            // Bridge state is shared (same tool call)
-            toolName: state.toolName,
-            callId: state.callId,
-            elicitSeq: state.elicitSeq, // Note: sub-branches share seq with parent
-            elicits: state.elicits,
-            eventChannel: state.eventChannel,
-          };
-
-          const newSystemPrompt =
-            options.systemPrompt ?? (inheritSystemPrompt ? state.systemPrompt : undefined);
-          if (newSystemPrompt !== undefined) {
-            newState.systemPrompt = newSystemPrompt;
-          }
-          if (state.systemPrompt !== undefined) {
-            newState.parentSystemPrompt = state.systemPrompt;
-          }
-
-          const subContext = createBridgeContext(newState);
-          const result = yield* fn(subContext);
-
-          // Update parent's elicitSeq from sub-branch (in case sub-branch advanced it)
-          // Note: This is a no-op since elicit throws in sub-branches, but defensive
-          state.elicitSeq = newState.elicitSeq;
-
-          return result;
-        },
-      };
-    },
-
     // Logging
     log(level: LogLevel, message: string): Operation<void> {
       return state.eventChannel.send({ type: "log", level, message });
@@ -1292,7 +1183,7 @@ export function createBridgeHost<
             rootTokenTracker.budget = limits.maxTokens;
           }
 
-          // Create initial branch state
+          // Create initial tool execution state
           const initialState: BranchState<TElicits> = {
             messages: [],
             parentMessages: parentMessages ?? [],

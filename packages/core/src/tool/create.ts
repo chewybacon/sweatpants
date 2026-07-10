@@ -2,7 +2,7 @@ import type { Operation } from "effection";
 import type { ZodSchema } from "zod";
 import type {
   CreateToolBuilderBase,
-  CoreToolCtx,
+  ToolCtx,
   ElicitDefinition,
   ElicitsMap,
   SamplesMap,
@@ -80,7 +80,7 @@ function createUnifiedToolBuilder(state: UnifiedBuilderState): unknown {
         annotations: { ...state.annotations, [namespace]: value },
       });
     },
-    execute(fn: (input: unknown, ctx: CoreToolCtx) => Operation<unknown>) {
+    execute(fn: (input: unknown, ctx: ToolCtx) => Operation<unknown>) {
       assertUnifiedReady(state, ".execute()");
       return finalizeCoreUnifiedTool({
         name: state.name,
@@ -119,12 +119,12 @@ function finalizeCoreUnifiedTool(options: {
   samples?: SamplesMap | true | undefined;
   annotations: Record<string, unknown>;
   extensions: ToolExtensionMetadata[];
-  impl: (input: unknown, ctx: CoreToolCtx) => Operation<unknown>;
+  impl: (input: unknown, ctx: ToolCtx) => Operation<unknown>;
 }): ToolDefinition {
   const normalizedElicits = normalizeCoreElicits(options.elicits);
   const normalizedSamples = options.samples === true ? {} : normalizeCoreSamples(options.samples ?? {});
   const factory = function unifiedToolFactory(
-    ctx: CoreToolCtx,
+    ctx: ToolCtx,
   ): Operation<(input: unknown) => Operation<unknown>> {
     return {
       *[Symbol.iterator]() {
