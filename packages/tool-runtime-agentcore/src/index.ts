@@ -1,6 +1,5 @@
 export {
   createAgentCoreToolExecutionStrategy,
-  createAgentCoreToolInventoryEntry,
   createAgentCoreToolRuntimeDriver,
   installAgentCoreToolRuntime,
   type AgentCoreToolExecutionStrategyOptions,

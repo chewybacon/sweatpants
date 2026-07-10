@@ -5,10 +5,13 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
-import { ToolRuntimeApi, createToolInventory } from "@sweatpants/framework/chat";
+import {
+  ToolRuntimeApi,
+  createToolInventory,
+  createToolInventoryEntry,
+} from "@sweatpants/framework/chat";
 import {
   createLocalToolRuntimeDriver,
-  createToolInventoryEntry,
   installLocalToolRuntime,
 } from "../index.ts";
 
@@ -57,6 +60,22 @@ describe("local ToolRuntimeDriver", () => {
     ).rejects.toMatchObject({ code: "WORKER_BACKED_LOCAL_RUNTIME_REQUIRED" });
   });
 
+  it("rejects duplicate configured tool names deterministically", async () => {
+    await expect(
+      run(function* () {
+        yield* createLocalToolRuntimeDriver({
+          tools: [echoTool, echoTool],
+          samplingProvider: {
+            *sample() {
+              return { text: "unused" };
+            },
+          },
+          registryOptions: { worker: localRuntimeWorkerConfig },
+        });
+      }),
+    ).rejects.toMatchObject({ code: "DUPLICATE_TOOL_STRATEGY" });
+  });
+
   it("executes a local tool via the canonical runtime surface", async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
@@ -84,6 +103,36 @@ describe("local ToolRuntimeDriver", () => {
         callId: "call-echo",
         toolName: "echo",
       });
+    });
+  });
+
+  it("refuses mismatched inventory entries and call targets", async () => {
+    await run(function* () {
+      const driver = yield* createLocalToolRuntimeDriver({
+        tools: [echoTool],
+        samplingProvider: {
+          *sample() {
+            return { text: "unused" };
+          },
+        },
+        registryOptions: { worker: localRuntimeWorkerConfig },
+      });
+
+      try {
+        yield* driver.execute({
+          entry: {
+            definition: { name: "other", description: "Other tool", parameters: { type: "object" } },
+          },
+          call: {
+            id: "call-mismatch",
+            type: "function",
+            function: { name: "echo", arguments: { message: "hello" } },
+          },
+        });
+        throw new Error("expected strategy mismatch");
+      } catch (error) {
+        expect(error).toMatchObject({ code: "NO_MATCHING_TOOL_STRATEGY" });
+      }
     });
   });
 
@@ -129,16 +178,12 @@ describe("local ToolRuntimeDriver", () => {
     });
   });
 
-  it("creates inventory entries with model-safe definitions and hidden implementation payloads", () => {
+  it("creates runtime-neutral inventory entries with model-safe definitions", () => {
     const entry = createToolInventoryEntry(echoTool, { runtime: "local" });
     expect(entry.definition).toMatchObject({ name: "echo", description: "Echo input" });
     expect(entry.definition.parameters).toMatchObject({ required: ["message"] });
     expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined();
-    expect("implementation" in entry.definition).toBe(false);
-    expect(entry.implementation).toBeDefined();
     expect(entry.capabilities).toMatchObject({
-      session: true,
-      worker: true,
       elicits: false,
       samples: false,
     });

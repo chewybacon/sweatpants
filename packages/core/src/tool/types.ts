@@ -1,94 +1,5 @@
-import type { Context, Operation } from "effection";
+import type { Operation } from "effection";
 import type { z, ZodSchema } from "zod";
-
-/**
- * A binding of a context to a value, used for Tool.withContext().
- */
-export interface ContextBinding<T = unknown> {
-  context: Context<T>;
-  value: T;
-}
-
-/**
- * Configuration for creating a legacy/config-style tool.
- */
-export interface ToolConfig<
-  TInput extends ZodSchema,
-  TProgress extends ZodSchema | undefined,
-  TOutput extends ZodSchema,
-> {
-  /** Unique name for the tool */
-  name: string;
-  /** Description for LLM tool calling */
-  description: string;
-  /** Zod schema for input validation */
-  input: TInput;
-  /** Zod schema for output validation */
-  output: TOutput;
-  /** Optional Zod schema for progress updates */
-  progress?: TProgress;
-  /** Optional implementation - if not provided, routes to transport */
-  impl?: ToolImplFn<TInput, TProgress, TOutput>;
-}
-
-/**
- * Config-style tool implementation function.
- */
-export type ToolImplFn<
-  TInput extends ZodSchema,
-  _TProgress extends ZodSchema | undefined,
-  TOutput extends ZodSchema,
-> = (args: z.infer<TInput>) => Operation<z.infer<TOutput>>;
-
-/**
- * An activated legacy/config-style tool that can be invoked with input.
- */
-export type Tool<TInput extends ZodSchema, TOutput extends ZodSchema> = (
-  args: z.infer<TInput>,
-) => Operation<z.infer<TOutput>>;
-
-/**
- * Middleware function for decorating legacy/config-style tool invocations.
- */
-export type ToolMiddleware<TInput extends ZodSchema, TOutput extends ZodSchema> = (
-  args: z.infer<TInput>,
-  next: (...args: [z.infer<TInput>]) => Operation<z.infer<TOutput>>,
-) => Operation<z.infer<TOutput>>;
-
-/**
- * Tool factory returned when impl is provided in config.
- */
-export interface ToolFactoryWithImpl<TInput extends ZodSchema, TOutput extends ZodSchema> {
-  (): Operation<Tool<TInput, TOutput>>;
-  decorate(middleware: ToolMiddleware<TInput, TOutput>): Operation<void>;
-  withContext<T>(context: Context<T>, value: T): ToolFactoryWithImpl<TInput, TOutput>;
-  readonly name: string;
-  readonly description: string;
-  readonly schemas: {
-    readonly input: TInput;
-    readonly output: TOutput;
-  };
-}
-
-/**
- * Tool factory returned when impl is NOT provided in config.
- */
-export interface ToolFactoryWithoutImpl<
-  TInput extends ZodSchema,
-  TProgress extends ZodSchema | undefined,
-  TOutput extends ZodSchema,
-> {
-  (impl?: ToolImplFn<TInput, TProgress, TOutput>): Operation<Tool<TInput, TOutput>>;
-  decorate(middleware: ToolMiddleware<TInput, TOutput>): Operation<void>;
-  withContext<T>(context: Context<T>, value: T): ToolFactoryWithoutImpl<TInput, TProgress, TOutput>;
-  readonly name: string;
-  readonly description: string;
-  readonly schemas: {
-    readonly input: TInput;
-    readonly output: TOutput;
-    readonly progress: TProgress;
-  };
-}
 
 // =============================================================================
 // Canonical core tool substrate
@@ -519,7 +430,7 @@ export interface ToolBranchCtx<TElicits extends ElicitsMap, TSamples> {
   ): Operation<T>;
 }
 
-/** Detects the `any` type (used so AnyToolDefinition stays a universal sink). */
+/** Detects the `any` type (used so RuntimeTool stays a universal sink). */
 type IsAny<T> = 0 extends 1 & T ? true : false;
 
 type ElicitCtxIfDeclared<TElicits> =
@@ -590,7 +501,7 @@ export interface ToolDefinition<
 }
 
 /** Wire-boundary erased tool type — deliberately `any`-parameterized. */
-export type AnyToolDefinition = ToolDefinition<string, any, any, any, any>;
+export type RuntimeTool = ToolDefinition<string, any, any, any, any>;
 
 export interface CreateToolBuilderBase<TName extends string> {
   description(desc: string): CreateToolBuilderWithDescription<TName>;

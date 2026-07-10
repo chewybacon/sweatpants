@@ -22,6 +22,7 @@
  */
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+import type { RuntimeTool } from "@sweatpants/core";
 import type { Operation } from "effection";
 import {
   createChatApplication,
@@ -33,13 +34,13 @@ import {
   PluginSessionRegistryContext,
   ToolInventoryContext,
   createToolInventory,
+  createToolInventoryEntry,
   setupLogger,
 } from "@sweatpants/framework/chat";
 import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import {
   ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
-  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
@@ -56,7 +57,7 @@ import {
 
 import { handlerToChatFetch, type ChatBinding } from "./chat-fetch.ts";
 
-type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
+type LocalSessionTool = RuntimeTool;
 
 function localOnlyTools(): LocalSessionTool[] {
   const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { run } from 'effection'
+import { z } from 'zod'
+import { createTool } from '@sweatpants/core'
 import {
   ToolExposureApi,
   ToolExposureError,
@@ -13,6 +15,7 @@ import {
   createStrategyToolRuntime,
   createToolExecutionRef,
   createToolInventory,
+  createToolInventoryEntry,
   defaultToolExposurePolicy,
   type ToolExecutionStrategy,
   type ToolInventoryEntry,
@@ -25,7 +28,6 @@ const echoEntry: ToolInventoryEntry = {
     description: 'Echo input',
     parameters: { type: 'object', properties: { input: { type: 'string' } }, required: ['input'] },
   },
-  implementation: { kind: 'test' },
   capabilities: { inline: true },
 }
 
@@ -82,7 +84,7 @@ describe('tool inventory runtime completion contracts', () => {
     })
   })
 
-  it('default exposure strips implementations and supports sample-local tools', async () => {
+  it('default exposure returns model-safe definitions and supports sample-local tools', async () => {
     await run(function* () {
       const outer = yield* defaultToolExposurePolicy.filter({
         phase: 'outer-chat',
@@ -90,7 +92,6 @@ describe('tool inventory runtime completion contracts', () => {
         enabledTools: true,
       })
       expect(outer).toEqual([echoEntry.definition])
-      expect('implementation' in outer[0]!).toBe(false)
 
       const sample = yield* defaultToolExposurePolicy.filter({
         phase: 'sample',
@@ -98,6 +99,24 @@ describe('tool inventory runtime completion contracts', () => {
       })
       expect(sample).toEqual([{ name: 'choose_move', description: 'Choose move', parameters: { type: 'object' } }])
     })
+  })
+
+  it('projects runtime-neutral capabilities from runtime tools', () => {
+    const interactiveTool = createTool('interactive')
+      .description('Interactive tool')
+      .parameters(z.object({ prompt: z.string() }))
+      .elicits({ confirm: { response: z.object({ ok: z.boolean() }) } })
+      .samples({ classify: { output: z.object({ label: z.string() }) } })
+      .execute(function* () {
+        return { ok: true }
+      })
+
+    const entry = createToolInventoryEntry(interactiveTool, { scope: 'test' })
+    expect(entry.definition).toMatchObject({ name: 'interactive', description: 'Interactive tool' })
+    expect(entry.capabilities).toEqual({ elicits: true, samples: true })
+    expect(entry.capabilities).not.toHaveProperty('remote')
+    expect(entry.capabilities).not.toHaveProperty('session')
+    expect(entry.capabilities).not.toHaveProperty('worker')
   })
 
   it('custom sample exposure policy can fail closed', async () => {
@@ -146,6 +165,30 @@ describe('tool inventory runtime completion contracts', () => {
         expect(error).toMatchObject({ code: 'NO_MATCHING_TOOL_STRATEGY' })
       }
     })
+  })
+
+  it('rejects overlapping declared tool ownership across strategies', () => {
+    const makeStrategy = (id: string, toolNames: string[]): ToolExecutionStrategy => ({
+      id,
+      toolNames,
+      canExecute: () => false,
+      *execute() {
+        throw new Error('unreachable')
+      },
+    })
+
+    expect(() =>
+      createStrategyToolRuntime({
+        id: 'test',
+        strategies: [makeStrategy('local', ['echo']), makeStrategy('agentcore', ['echo'])],
+      }),
+    ).toThrow(ToolRuntimeError)
+    expect(() =>
+      createStrategyToolRuntime({
+        id: 'test',
+        strategies: [makeStrategy('local', ['echo']), makeStrategy('agentcore', ['echo'])],
+      }),
+    ).toThrow(/multiple execution strategies/)
   })
 
   it('ToolRuntimeApi delegates and rejects missing/wrong runtimes', async () => {

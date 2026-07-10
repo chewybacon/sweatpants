@@ -9,6 +9,7 @@ import {
   suspend,
   type Operation,
 } from "effection";
+import type { RuntimeTool } from "@sweatpants/core";
 import { describe, expect, it } from "vitest";
 
 import { createChatHandler } from "@sweatpants/framework/server";
@@ -25,6 +26,7 @@ import {
   PluginSessionManagerContext,
   ToolInventoryContext,
   createToolInventory,
+  createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
 import { createChatSession } from "../../../../packages/framework/src/lib/chat/session/create-session.ts";
 import type { Message } from "../../../../packages/framework/src/lib/chat/types.ts";
@@ -36,7 +38,6 @@ import {
 } from "@sweatpants/framework/chat/mcp-tools";
 import {
   createInMemoryToolSessionStore,
-  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
@@ -47,7 +48,7 @@ import {
 } from "../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts";
 import { pickCard, pickCardPlugin } from "../tools/pick-card";
 
-type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
+type LocalSessionTool = RuntimeTool;
 type PendingElicit = ChatState["pendingElicits"][string]["elicitations"][number];
 
 function createSingleToolMcpRegistry(tool: { name: string }) {

@@ -9,6 +9,7 @@ export default defineConfig({
     "transport/websocket": "src/transport/websocket/index.ts",
     "transport/worker": "src/transport/worker/index.ts",
   },
+  tsconfig: "../ts-config/tsconfig.tsup.json",
   format: ["esm"],
   dts: true,
   clean: true,

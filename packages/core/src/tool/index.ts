@@ -1,12 +1,5 @@
 export { createTool } from "./create.ts";
 export type {
-  ToolConfig,
-  ToolImplFn,
-  Tool,
-  ToolMiddleware,
-  ToolFactoryWithImpl,
-  ToolFactoryWithoutImpl,
-  ContextBinding,
   LogLevel,
   AnySchema,
   InferSchema,
@@ -52,7 +45,7 @@ export type {
   ToolExtension,
   ToolExtensionMetadata,
   ToolDefinition,
-  AnyToolDefinition,
+  RuntimeTool,
   CreateToolBuilderBase,
   CreateToolBuilderWithDescription,
   CreateToolBuilderWithParams,

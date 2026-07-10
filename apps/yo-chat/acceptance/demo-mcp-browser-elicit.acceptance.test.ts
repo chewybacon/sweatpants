@@ -13,10 +13,8 @@ import { describe, expect, it } from "vitest";
 import { run } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
-import {
-  createLocalToolRuntimeDriver,
-  createToolInventoryEntry,
-} from "@sweatpants/tool-runtime-local";
+import { createToolInventoryEntry } from "@sweatpants/framework/chat";
+import { createLocalToolRuntimeDriver } from "@sweatpants/tool-runtime-local";
 import { yoChatTestToolSessionWorkerConfig } from "../src/server/tool-worker-config.ts";
 
 /**

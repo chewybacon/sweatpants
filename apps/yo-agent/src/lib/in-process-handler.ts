@@ -3,6 +3,7 @@ import {
   MaxIterationsContext,
   ToolInventoryContext,
   createToolInventory,
+  createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
 import type { ToolDefinition } from "@sweatpants/core";
 import {
@@ -11,7 +12,7 @@ import {
   type ModelSelection,
 } from "@sweatpants/model-provider-pi-ai";
 import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
-import { createToolInventoryEntry, installLocalToolRuntime } from "@sweatpants/tool-runtime-local";
+import { installLocalToolRuntime } from "@sweatpants/tool-runtime-local";
 import type { Operation } from "effection";
 
 export type AgentTool = ToolDefinition<string, unknown, unknown, any, any>;

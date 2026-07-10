@@ -4,7 +4,8 @@ import { describe, expect, it } from "vitest";
 import { createSessionContractInMemoryStore } from "@sweatpants/session-contract";
 
 import { createSessionContractChatEngine } from "../session-contract-adapter.ts";
-import type { SessionContractChatEngineParams } from "../types.ts";
+import type { PluginSession, PluginSessionManager } from "../plugin-session-manager.ts";
+import type { McpToolRegistry, SessionContractChatEngineParams } from "../types.ts";
 import type {
   AssistantMessage,
   Model,
@@ -676,6 +677,265 @@ describe("session-contract chat engine adapter", () => {
         type: "TEXT_MESSAGE_CONTENT",
         messageId: "assistant:final:run-2",
         delta: "previously 4",
+      });
+    });
+  });
+
+  it("uses the plugin session manager when the MCP registry resolves the tool", async () => {
+    await run(function* () {
+      let sampleCount = 0;
+      let runtimeExecuteCalls = 0;
+      let pluginCreateCalls = 0;
+
+      const runtime: Runtime = {
+        stream() {
+          sampleCount += 1;
+          if (sampleCount === 1) {
+            const toolCall = {
+              type: "toolCall" as const,
+              id: "plugin-call",
+              name: "pick_card",
+              arguments: { deck: "hearts" },
+            };
+            return streamRuntimeTurn(
+              [
+                {
+                  type: "toolcall_end",
+                  contentIndex: 0,
+                  toolCall,
+                  partial: { role: "assistant", content: [toolCall] },
+                },
+              ],
+              { role: "assistant", content: [toolCall], stopReason: "toolUse" },
+            );
+          }
+          return streamRuntimeTurn(
+            [
+              {
+                type: "text_delta",
+                contentIndex: 0,
+                delta: "plugin done",
+                partial: {
+                  role: "assistant",
+                  content: [{ type: "text", text: "plugin done" }],
+                },
+              },
+            ],
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "plugin done" }],
+              stopReason: "stop",
+            },
+          );
+        },
+        *generateImages() {
+          return { output: [] };
+        },
+      };
+
+      const pluginSession: PluginSession = {
+        id: "plugin-call",
+        toolName: "pick_card",
+        callId: "plugin-call",
+        *status() {
+          return "completed" as const;
+        },
+        *nextEvent() {
+          return { type: "result", result: { card: "queen-hearts" } };
+        },
+        *respondToElicit() {},
+        *abort() {},
+      };
+
+      const pluginSessionManager: PluginSessionManager = {
+        *create(config) {
+          pluginCreateCalls += 1;
+          expect(config.callId).toBe("plugin-call");
+          expect((config.tool as { name?: unknown }).name).toBe("pick_card");
+          return pluginSession;
+        },
+        *get() {
+          return null;
+        },
+        *abort() {},
+        *listActive() {
+          return [];
+        },
+      };
+
+      const mcpToolRegistry: McpToolRegistry = {
+        get(name) {
+          return name === "pick_card" ? { name } : undefined;
+        },
+        has(name) {
+          return name === "pick_card";
+        },
+        names() {
+          return ["pick_card"];
+        },
+      };
+
+      const toolRuntime: ToolRuntime = {
+        id: "test-runtime",
+        *execute(request) {
+          runtimeExecuteCalls += 1;
+          return {
+            kind: "completed",
+            ref: {
+              runtimeId: "test-runtime",
+              executionId: request.call.id,
+              callId: request.call.id,
+              toolName: request.call.function.name,
+            },
+            result: "runtime-fallback",
+          };
+        },
+        *resume(request) {
+          return { kind: "failed", ref: request.ref, error: { code: "missing", message: "missing" } };
+        },
+        *abort() {},
+      };
+
+      const engine = createSessionContractChatEngine(baseParams({
+        runtime,
+        toolSchemas: [{ name: "pick_card", description: "pick a card", parameters: { type: "object" } }],
+        toolInventoryEntries: [{ definition: { name: "pick_card", description: "pick a card", parameters: { type: "object" } } }],
+        toolRuntime,
+        toolRuntimeId: toolRuntime.id,
+        mcpToolRegistry,
+        pluginSessionManager,
+      }));
+      const events = yield* collect(engine);
+
+      expect(pluginCreateCalls).toBe(1);
+      expect(runtimeExecuteCalls).toBe(0);
+      expect(events).toContainEqual({
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:plugin-call",
+        toolCallId: "plugin-call",
+        toolCallName: "pick_card",
+        content: JSON.stringify({ card: "queen-hearts" }),
+        role: "tool",
+      });
+      expect(events).toContainEqual({
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final:run-1",
+        delta: "plugin done",
+      });
+    });
+  });
+
+  it("falls back to ToolRuntime when no MCP registry match exists", async () => {
+    await run(function* () {
+      let sampleCount = 0;
+      let runtimeExecuteCalls = 0;
+      let pluginCreateCalls = 0;
+
+      const runtime: Runtime = {
+        stream() {
+          sampleCount += 1;
+          if (sampleCount === 1) {
+            const toolCall = {
+              type: "toolCall" as const,
+              id: "runtime-call",
+              name: "pick_card",
+              arguments: { deck: "spades" },
+            };
+            return streamRuntimeTurn(
+              [
+                {
+                  type: "toolcall_end",
+                  contentIndex: 0,
+                  toolCall,
+                  partial: { role: "assistant", content: [toolCall] },
+                },
+              ],
+              { role: "assistant", content: [toolCall], stopReason: "toolUse" },
+            );
+          }
+          return streamRuntimeTurn(
+            [
+              {
+                type: "text_delta",
+                contentIndex: 0,
+                delta: "runtime done",
+                partial: {
+                  role: "assistant",
+                  content: [{ type: "text", text: "runtime done" }],
+                },
+              },
+            ],
+            {
+              role: "assistant",
+              content: [{ type: "text", text: "runtime done" }],
+              stopReason: "stop",
+            },
+          );
+        },
+        *generateImages() {
+          return { output: [] };
+        },
+      };
+
+      const pluginSessionManager: PluginSessionManager = {
+        *create() {
+          pluginCreateCalls += 1;
+          throw new Error("plugin session manager should not be used without a registry match");
+        },
+        *get() {
+          return null;
+        },
+        *abort() {},
+        *listActive() {
+          return [];
+        },
+      };
+
+      const toolRuntime: ToolRuntime = {
+        id: "test-runtime",
+        *execute(request) {
+          runtimeExecuteCalls += 1;
+          return {
+            kind: "completed",
+            ref: {
+              runtimeId: "test-runtime",
+              executionId: request.call.id,
+              callId: request.call.id,
+              toolName: request.call.function.name,
+            },
+            result: "runtime-result",
+          };
+        },
+        *resume(request) {
+          return { kind: "failed", ref: request.ref, error: { code: "missing", message: "missing" } };
+        },
+        *abort() {},
+      };
+
+      const engine = createSessionContractChatEngine(baseParams({
+        runtime,
+        toolSchemas: [{ name: "pick_card", description: "pick a card", parameters: { type: "object" } }],
+        toolInventoryEntries: [{ definition: { name: "pick_card", description: "pick a card", parameters: { type: "object" } } }],
+        toolRuntime,
+        toolRuntimeId: toolRuntime.id,
+        pluginSessionManager,
+      }));
+      const events = yield* collect(engine);
+
+      expect(pluginCreateCalls).toBe(0);
+      expect(runtimeExecuteCalls).toBe(1);
+      expect(events).toContainEqual({
+        type: "TOOL_CALL_RESULT",
+        messageId: "tool:runtime-call",
+        toolCallId: "runtime-call",
+        toolCallName: "pick_card",
+        content: "runtime-result",
+        role: "tool",
+      });
+      expect(events).toContainEqual({
+        type: "TEXT_MESSAGE_CONTENT",
+        messageId: "assistant:final:run-1",
+        delta: "runtime done",
       });
     });
   });

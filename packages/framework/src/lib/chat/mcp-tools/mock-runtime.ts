@@ -28,7 +28,7 @@ import { z } from "zod";
 import type {
   ToolCtx,
   ToolDefinition,
-  AnyToolDefinition,
+  RuntimeTool,
   ToolElicitResult,
   ElicitsMap,
   SampleResultBase,
@@ -373,7 +373,7 @@ export function runMCPTool<
 }
 
 function createCoreToolCtx(
-  tool: AnyToolDefinition,
+  tool: RuntimeTool,
   clientCtx: MockMCPClientContext,
 ): ToolCtx<any, any> {
   // Mock context: single documented assertion; overload surface is exercised by real runtimes.

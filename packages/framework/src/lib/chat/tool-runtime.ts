@@ -136,6 +136,8 @@ export interface ToolExecutionContext {
 
 export interface ToolExecutionStrategy {
   readonly id: string;
+  /** Optional declared ownership set used for duplicate-route detection. */
+  readonly toolNames?: readonly string[];
   canExecute(
     entry: ToolInventoryEntry,
     call: ToolCall,
@@ -177,6 +179,32 @@ function isOperation<T>(value: boolean | Operation<T>): value is Operation<T> {
   return typeof value !== "boolean";
 }
 
+function assertDisjointStrategyToolNames(strategies: ToolExecutionStrategy[]): void {
+  const owners = new Map<string, string>();
+
+  for (const strategy of strategies) {
+    const seenInStrategy = new Set<string>();
+    for (const name of strategy.toolNames ?? []) {
+      if (seenInStrategy.has(name)) {
+        throw new ToolRuntimeError(
+          "DUPLICATE_TOOL_STRATEGY",
+          `Strategy "${strategy.id}" declares duplicate tool name: ${name}`,
+        );
+      }
+      seenInStrategy.add(name);
+
+      const owner = owners.get(name);
+      if (owner) {
+        throw new ToolRuntimeError(
+          "DUPLICATE_TOOL_STRATEGY",
+          `Tool "${name}" is claimed by multiple execution strategies: ${owner}, ${strategy.id}`,
+        );
+      }
+      owners.set(name, strategy.id);
+    }
+  }
+}
+
 export function createToolExecutionRef(input: {
   runtimeId: string;
   callId: string;
@@ -196,6 +224,8 @@ export function createToolExecutionRef(input: {
 export function createStrategyToolRuntime(options: StrategyToolRuntimeOptions): ToolRuntime {
   const runtimeId = options.id ?? "tool-runtime";
   const strategies = [...options.strategies];
+
+  assertDisjointStrategyToolNames(strategies);
 
   return {
     id: runtimeId,

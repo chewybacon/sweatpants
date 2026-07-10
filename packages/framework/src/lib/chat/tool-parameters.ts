@@ -1,3 +1,4 @@
+import type { RuntimeTool } from '@sweatpants/core'
 import { z } from 'zod'
 
 export const TOOL_PARAMETER_VALIDATION_FAILED = 'TOOL_PARAMETER_VALIDATION_FAILED' as const
@@ -204,6 +205,19 @@ export function validateToolParameters<T = unknown>(input: {
   }
 
   return params as T
+}
+
+export function validateRuntimeToolParameters<T = unknown>(
+  tool: RuntimeTool,
+  params: unknown,
+  callId: string,
+): T {
+  return validateToolParameters<T>({
+    schema: tool.parameters,
+    params,
+    toolName: tool.name,
+    callId,
+  })
 }
 
 export function toToolParameterJsonSchema(schema: unknown): Record<string, unknown> {
