@@ -5,7 +5,7 @@ import type {
   ToolSessionEvent,
   WireSampleResult,
 } from '@sweatpants/framework/chat/mcp-tools'
-import type { WireElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
+import type { WireElicitResult } from '@sweatpants/framework/chat/mcp-tools'
 
 export const AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION = 'sweatpants.agentcore.tool-session.v1' as const
 
@@ -90,7 +90,6 @@ export interface StartToolSessionRequest extends AgentCoreToolRuntimeRequestBase
   context?: {
     conversationId?: string
     callId?: string
-    parentMessages?: ExtendedMessage[]
     systemPrompt?: string
     model?: AgentCoreModelSelection
   }

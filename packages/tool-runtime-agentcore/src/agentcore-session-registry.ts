@@ -213,7 +213,6 @@ export function createAgentCoreToolSessionRegistry(options: AgentCoreToolSession
         params: validatedParams,
         context: {
           ...(sessionOptions?.sessionId !== undefined && { callId: sessionOptions.sessionId }),
-          ...(sessionOptions?.parentMessages !== undefined && { parentMessages: sessionOptions.parentMessages }),
           ...(sessionOptions?.systemPrompt !== undefined && { systemPrompt: sessionOptions.systemPrompt }),
           ...(sessionOptions?.model !== undefined && { model: sessionOptions.model }),
         },

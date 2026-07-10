@@ -277,9 +277,6 @@ export interface ToolSessionOptions {
   /** Timeout for the entire session in milliseconds */
   timeout?: number
 
-  /** Initial messages (parent context) */
-  parentMessages?: ExtendedMessage[]
-
   /** System prompt */
   systemPrompt?: string
 

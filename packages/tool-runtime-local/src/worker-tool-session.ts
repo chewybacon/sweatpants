@@ -50,7 +50,7 @@ import type {
   ToolSessionEvent,
   WireSampleResult,
 } from "@sweatpants/framework/chat/mcp-tools";
-import type { WireElicitResult, ExtendedMessage } from "@sweatpants/framework/chat/mcp-tools";
+import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
 import type { McpWorkerInitData } from "./worker-types.ts";
 import { WorkerSessionStateContext, type WorkerSessionState } from "./worker-session-context.ts";
 import { WorkerSessionApi } from "./worker-session-api.ts";
@@ -71,10 +71,6 @@ export interface WorkerToolSessionOptions {
   params: unknown;
   /** URL to the worker script */
   workerUrl: string | URL;
-  /** Optional system prompt */
-  systemPrompt?: string;
-  /** Optional parent messages */
-  parentMessages?: ExtendedMessage[];
   /** Extra execArgv for the worker thread (e.g., ['--import', 'tsx'] for TypeScript support) */
   execArgv?: string[];
 }
@@ -92,8 +88,7 @@ export interface WorkerToolSessionOptions {
  */
 export function createWorkerToolSession(options: WorkerToolSessionOptions): Operation<ToolSession> {
   return resource<ToolSession>(function* (provide) {
-    const { sessionId, toolName, params, workerUrl, systemPrompt, parentMessages, execArgv } =
-      options;
+    const { sessionId, toolName, params, workerUrl, execArgv } = options;
 
     // State
     let status: ToolSessionStatus = "initializing";
@@ -171,8 +166,6 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
       toolName,
       params,
       sessionId,
-      ...(systemPrompt !== undefined && { systemPrompt }),
-      ...(parentMessages !== undefined && { parentMessages }),
     };
 
     // Create the worker using core's createWorkerPrincipal

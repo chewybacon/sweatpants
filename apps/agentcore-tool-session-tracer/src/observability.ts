@@ -129,7 +129,6 @@ export function summarizeRequest(request: RuntimeRequest): LogFields {
   if ('context' in request && request.context) {
     base['conversationId'] = request.context.conversationId
     base['callId'] = request.context.callId
-    base['parentMessageCount'] = request.context.parentMessages?.length ?? 0
     base['hasSystemPrompt'] = request.context.systemPrompt !== undefined
   }
   if ('params' in request) {

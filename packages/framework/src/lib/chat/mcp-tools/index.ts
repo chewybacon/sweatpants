@@ -89,7 +89,6 @@ export {
   ElicitationDeclinedError,
   ElicitationCancelledError,
   McpToolTokenError,
-  McpToolTimeoutError,
   McpDisconnectError,
   SampleValidationError,
   // Sample exchange helpers

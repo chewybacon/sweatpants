@@ -55,10 +55,6 @@ export interface NativeWorkerToolSessionOptions {
   params: unknown
   /** URL to the worker script */
   workerUrl: string | URL
-  /** Optional system prompt */
-  systemPrompt?: string
-  /** Optional parent messages */
-  parentMessages?: ExtendedMessage[]
   /** Extra execArgv for the worker thread */
   execArgv?: string[]
   /** Optional buffer store (defaults to in-memory) */
@@ -89,8 +85,6 @@ export function createNativeWorkerToolSession(
       toolName,
       params,
       workerUrl,
-      systemPrompt,
-      parentMessages,
       execArgv,
       bufferStore,
     } = options
@@ -134,8 +128,6 @@ export function createNativeWorkerToolSession(
       toolName,
       params,
       sessionId,
-      ...(systemPrompt !== undefined && { systemPrompt }),
-      ...(parentMessages !== undefined && { parentMessages }),
     }
 
     // Create the worker using core's createWorkerPrincipal

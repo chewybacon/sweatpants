@@ -300,9 +300,6 @@ export interface BridgeHostConfig<
   /** Tool call ID (generated if not provided) */
   callId?: string;
 
-  /** Initial messages (parent context) */
-  parentMessages?: ExtendedMessage[];
-
   /** Initial system prompt */
   systemPrompt?: string;
 }
@@ -393,12 +390,9 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
 // TOOL EXECUTION STATE
 // =============================================================================
 
-interface BranchState<TElicits extends ElicitsMap> {
+interface BridgeExecutionState<TElicits extends ElicitsMap> {
   messages: Message[];
   systemPrompt?: string;
-  parentMessages: readonly ExtendedMessage[];
-  parentSystemPrompt?: string;
-  depth: number;
   limits: McpToolLimits;
   tokenTracker: TokenTracker;
 
@@ -430,23 +424,12 @@ function zodToJsonSchema(schema: z.ZodType): Record<string, unknown> {
 // =============================================================================
 
 function createBridgeContext<TElicits extends ElicitsMap>(
-  state: BranchState<TElicits>,
+  state: BridgeExecutionState<TElicits>,
 ): McpToolContextWithElicits<TElicits> {
   return {
-    // Read-only parent context
-    get parentMessages() {
-      return state.parentMessages;
-    },
-    get parentSystemPrompt() {
-      return state.parentSystemPrompt;
-    },
-
     // Current tool execution state
     get messages() {
       return state.messages as readonly Message[];
-    },
-    get depth() {
-      return state.depth;
     },
 
     // LLM backchannel
@@ -1164,7 +1147,7 @@ export function createBridgeHost<
     run(): Operation<TResult> {
       return {
         *[Symbol.iterator]() {
-          const { tool, params, limits: overrideLimits, parentMessages, systemPrompt } = config;
+          const { tool, params, limits: overrideLimits, systemPrompt } = config;
           const validatedParams = validateToolParameters<TParams>({
             schema: tool.parameters,
             params,
@@ -1184,10 +1167,8 @@ export function createBridgeHost<
           }
 
           // Create initial tool execution state
-          const initialState: BranchState<TElicits> = {
+          const initialState: BridgeExecutionState<TElicits> = {
             messages: [],
-            parentMessages: parentMessages ?? [],
-            depth: 0,
             limits,
             tokenTracker: rootTokenTracker,
             // Bridge state
@@ -1200,22 +1181,21 @@ export function createBridgeHost<
 
           if (systemPrompt !== undefined) {
             initialState.systemPrompt = systemPrompt;
-            initialState.parentSystemPrompt = systemPrompt;
           }
 
           let result: TResult;
 
-          const branchCtx = createBridgeContext(initialState);
+          const toolCtx = createBridgeContext(initialState);
           // Factory-only path (ToolDefinition callable)
           const toolFactory = tool as unknown as (
-            ctx: typeof branchCtx,
+            ctx: typeof toolCtx,
           ) => Operation<(input: unknown) => Operation<TResult>>;
           if (typeof toolFactory !== "function") {
             throw new Error(
               `Tool "${String((tool as { name?: string }).name ?? "<unknown>")}" is not a callable ToolDefinition factory`,
             );
           }
-          const invoke = yield* toolFactory(branchCtx);
+          const invoke = yield* toolFactory(toolCtx);
           result = yield* invoke(validatedParams);
 
           // Close channel when done
@@ -1282,7 +1262,6 @@ export function runBridgeTool<
   signal?: AbortSignal;
   callId?: string;
   limits?: McpToolLimits;
-  parentMessages?: ExtendedMessage[];
   systemPrompt?: string;
   onLog?: (level: LogLevel, message: string) => void;
   onNotify?: (message: string, progress?: number) => void;
@@ -1315,9 +1294,6 @@ export function runBridgeTool<
       hostConfig.callId = callId;
       if (config.limits !== undefined) {
         hostConfig.limits = config.limits;
-      }
-      if (config.parentMessages !== undefined) {
-        hostConfig.parentMessages = config.parentMessages;
       }
       if (config.systemPrompt !== undefined) {
         hostConfig.systemPrompt = config.systemPrompt;
