@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { createTool } from '@sweatpants/core'
 import { type ToolSession, type ToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+import { createToolInventoryEntry } from '@sweatpants/framework/chat'
 import {
-  createAgentCoreToolInventoryEntry,
   createAgentCoreToolRuntimeDriver,
 } from '../src/index.ts'
 
@@ -67,7 +67,7 @@ describe('@sweatpants/tool-runtime-agentcore strict parameter acceptance', () =>
 
       try {
         yield* driver.execute({
-          entry: createAgentCoreToolInventoryEntry(remoteTool),
+          entry: createToolInventoryEntry(remoteTool),
           call: { id: 'call-invalid-agentcore', type: 'function', function: { name: 'remote_echo', arguments: {} } },
         })
         throw new Error('expected validation failure')
@@ -80,7 +80,7 @@ describe('@sweatpants/tool-runtime-agentcore strict parameter acceptance', () =>
       expect(createArgs).toEqual([])
 
       const result = yield* driver.execute({
-        entry: createAgentCoreToolInventoryEntry(remoteTool),
+        entry: createToolInventoryEntry(remoteTool),
         call: { id: 'call-valid-agentcore', type: 'function', function: { name: 'remote_echo', arguments: { message: 'hello' } } },
       })
       expect(result).toMatchObject({ kind: 'completed', result: { echoed: 'hello' } })
@@ -89,7 +89,7 @@ describe('@sweatpants/tool-runtime-agentcore strict parameter acceptance', () =>
   })
 
   it('projects AgentCore inventory schemas without leaking runtime schema objects', () => {
-    const entry = createAgentCoreToolInventoryEntry(remoteTool)
+    const entry = createToolInventoryEntry(remoteTool)
     expect(entry.definition.parameters).toMatchObject({ required: ['message'] })
     expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined()
     expect(() => structuredClone(entry.definition)).not.toThrow()

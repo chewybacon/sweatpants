@@ -1,151 +1,41 @@
-import { describe, it, expect } from "@effectionx/vitest";
-import { createContext } from "effection";
+import { describe, expect, it } from "@effectionx/vitest";
 import { z } from "zod";
 import { createTool } from "../create.ts";
+import type { ToolCtx } from "../types.ts";
 
-describe("Tool.withContext()", () => {
-  describe("single context binding", () => {
-    it("should provide context value during tool invocation", function* () {
-      const TestContext = createContext<string>("test-context");
-      let capturedValue: string | undefined;
+describe("ToolCtx integration", () => {
+  it("lets tools use notify, log, and branch from the provided context", function* () {
+    const notifications: Array<{ message: string; progress?: number }> = [];
+    const logs: Array<{ level: string; message: string }> = [];
 
-      const Tool = createTool({
-        name: "context-reader",
-        description: "Reads from context",
-        input: z.object({}),
-        output: z.object({ value: z.string() }),
-        progress: z.object({}),
-        impl: function* () {
-          capturedValue = yield* TestContext.expect();
-          return { value: capturedValue };
-        },
+    const ctx: ToolCtx = {
+      messages: [],
+      history: [],
+      notify: function* (message, progress) {
+        notifications.push({ message, progress });
+      },
+      log: function* (level, message) {
+        logs.push({ level, message });
+      },
+      *branch(fn) {
+        return yield* fn(ctx);
+      },
+    };
+
+    const Tool = createTool("branchy")
+      .description("Uses ToolCtx services")
+      .parameters(z.object({ value: z.string() }))
+      .execute(function* ({ value }, innerCtx) {
+        yield* innerCtx.notify(`working ${value}`, 0.5);
+        yield* innerCtx.log("info", `logged ${value}`);
+        return yield* innerCtx.branch(function* () {
+          return { result: value.toUpperCase() };
+        });
       });
 
-      // Apply context binding
-      const BoundTool = Tool.withContext(TestContext, "hello-from-context");
-
-      // Activate and invoke
-      const tool = yield* BoundTool();
-      const result = yield* tool({});
-
-      expect(result.value).toBe("hello-from-context");
-      expect(capturedValue).toBe("hello-from-context");
-    });
-
-    it("should not leak context outside of invocation", function* () {
-      const TestContext = createContext<string>("leak-test");
-
-      const Tool = createTool({
-        name: "context-tool",
-        description: "Tool with context",
-        input: z.object({}),
-        output: z.object({}),
-        progress: z.object({}),
-        impl: function* () {
-          return {};
-        },
-      });
-
-      const BoundTool = Tool.withContext(TestContext, "scoped-value");
-      const tool = yield* BoundTool();
-      yield* tool({});
-
-      // Context should not be set outside the tool invocation
-      const outsideValue = yield* TestContext.get();
-      expect(outsideValue).toBeUndefined();
-    });
-  });
-
-  describe("chained context bindings", () => {
-    it("should apply multiple contexts with first as outermost", function* () {
-      const OuterContext = createContext<string>("outer");
-      const InnerContext = createContext<string>("inner");
-      let capturedOuter: string | undefined;
-      let capturedInner: string | undefined;
-
-      const Tool = createTool({
-        name: "multi-context",
-        description: "Reads multiple contexts",
-        input: z.object({}),
-        output: z.object({}),
-        progress: z.object({}),
-        impl: function* () {
-          capturedOuter = yield* OuterContext.expect();
-          capturedInner = yield* InnerContext.expect();
-          return {};
-        },
-      });
-
-      // Chain: OuterContext wraps InnerContext
-      const BoundTool = Tool
-        .withContext(OuterContext, "outer-value")
-        .withContext(InnerContext, "inner-value");
-
-      const tool = yield* BoundTool();
-      yield* tool({});
-
-      expect(capturedOuter).toBe("outer-value");
-      expect(capturedInner).toBe("inner-value");
-    });
-
-    it("should allow same context to be bound twice (inner wins)", function* () {
-      const TestContext = createContext<string>("double-bind");
-      let capturedValue: string | undefined;
-
-      const Tool = createTool({
-        name: "double-context",
-        description: "Reads context",
-        input: z.object({}),
-        output: z.object({ value: z.string() }),
-        progress: z.object({}),
-        impl: function* () {
-          capturedValue = yield* TestContext.expect();
-          return { value: capturedValue };
-        },
-      });
-
-      // Same context bound twice - inner should win
-      const BoundTool = Tool
-        .withContext(TestContext, "outer-value")
-        .withContext(TestContext, "inner-value");
-
-      const tool = yield* BoundTool();
-      const result = yield* tool({});
-
-      // Inner binding wins because it's closer to the invocation
-      expect(result.value).toBe("inner-value");
-    });
-  });
-
-  describe("with transport context", () => {
-    it("should work with TransportContext for routing", function* () {
-      // This is the primary use case - routing tools to different transports
-      const TransportContext = createContext<{ name: string }>("transport");
-      let capturedTransport: { name: string } | undefined;
-
-      const Tool = createTool({
-        name: "routed-tool",
-        description: "Tool that checks transport",
-        input: z.object({}),
-        output: z.object({ transport: z.string() }),
-        progress: z.object({}),
-        impl: function* () {
-          capturedTransport = yield* TransportContext.expect();
-          return { transport: capturedTransport.name };
-        },
-      });
-
-      const StdioTool = Tool.withContext(TransportContext, { name: "stdio" });
-      const SseTool = Tool.withContext(TransportContext, { name: "sse" });
-
-      const stdioInstance = yield* StdioTool();
-      const sseInstance = yield* SseTool();
-
-      const stdioResult = yield* stdioInstance({});
-      const sseResult = yield* sseInstance({});
-
-      expect(stdioResult.transport).toBe("stdio");
-      expect(sseResult.transport).toBe("sse");
-    });
+    const invoke = yield* Tool(ctx);
+    expect(yield* invoke({ value: "hello" })).toEqual({ result: "HELLO" });
+    expect(notifications).toEqual([{ message: "working hello", progress: 0.5 }]);
+    expect(logs).toEqual([{ level: "info", message: "logged hello" }]);
   });
 });

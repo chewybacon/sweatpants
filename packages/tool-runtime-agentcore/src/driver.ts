@@ -1,20 +1,17 @@
-import type { AnyToolDefinition } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/core";
 import { resource, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
   ToolRuntimeError,
   createStrategyToolRuntime,
   createToolExecutionRef,
-  toToolParameterJsonSchema,
-  validateToolParameters,
+  validateRuntimeToolParameters,
   type ElicitToolRequest,
   type ToolCall,
-  type ToolDefinition,
   type ToolExecution,
   type ToolExecutionContext,
   type ToolExecutionEvent,
   type ToolExecutionStrategy,
-  type ToolInventoryEntry,
   type ToolRuntime,
 } from "@sweatpants/framework/chat";
 import type {
@@ -29,14 +26,13 @@ import {
   type AgentCoreToolSessionRegistryOptions,
 } from "./agentcore-session-registry.ts";
 
-type AgentCoreImplementation = { kind: "agentcore"; tool: AnyToolDefinition };
 type AgentCoreContextModelSelection = { provider: string; id: string };
 
 export interface AgentCoreToolRuntimeDriverOptions {
   /** Stable runtime identifier stored on all execution refs. */
   id?: string;
   /** Executable tool contracts allowed through this runtime. */
-  tools: AnyToolDefinition[];
+  tools: RuntimeTool[];
   /** Existing AgentCore registry. If omitted, registryOptions are used to create one. */
   registry?: ToolSessionRegistry;
   /** Sampling provider used when remote tools emit sample_request events. */
@@ -45,37 +41,18 @@ export interface AgentCoreToolRuntimeDriverOptions {
   registryOptions?: AgentCoreToolSessionRegistryOptions;
 }
 
-function parametersToSchema(parameters: unknown): Record<string, unknown> {
-  return toToolParameterJsonSchema(parameters);
-}
-
-function toDefinition(tool: AnyToolDefinition): ToolDefinition {
-  return {
-    name: tool.name,
-    description: tool.description,
-    parameters: parametersToSchema(tool.parameters),
-  };
-}
-
-export function createAgentCoreToolInventoryEntry<T extends AnyToolDefinition>(
-  tool: T,
-  metadata?: Record<string, unknown>,
-): ToolInventoryEntry<{ kind: "agentcore"; tool: T }> {
-  return {
-    definition: toDefinition(tool),
-    implementation: { kind: "agentcore", tool } as { kind: "agentcore"; tool: T },
-    capabilities: { remote: true, session: true, elicits: true, samples: true },
-    ...(metadata ? { metadata } : {}),
-  };
-}
-
-function validateParams(tool: AnyToolDefinition, params: unknown, callId: string): unknown {
-  return validateToolParameters({
-    schema: tool.parameters,
-    params,
-    toolName: tool.name,
-    callId,
-  });
+function toolsByCanonicalName(tools: RuntimeTool[], owner: string): Map<string, RuntimeTool> {
+  const byName = new Map<string, RuntimeTool>();
+  for (const tool of tools) {
+    if (byName.has(tool.name)) {
+      throw new ToolRuntimeError(
+        "DUPLICATE_TOOL_STRATEGY",
+        `Tool "${tool.name}" is declared multiple times for ${owner}`,
+      );
+    }
+    byName.set(tool.name, tool);
+  }
+  return byName;
 }
 
 function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
@@ -151,10 +128,6 @@ function sessionEventToExecution(
     default:
       return { kind: "running", ref, events: eventStreamFromSession(session) };
   }
-}
-
-function isAgentCoreImplementation(value: unknown): value is AgentCoreImplementation {
-  return !!value && typeof value === "object" && (value as { kind?: unknown }).kind === "agentcore";
 }
 
 function modelSelectionFromMetadata(
@@ -241,30 +214,35 @@ export interface AgentCoreToolExecutionStrategyOptions {
   id?: string;
   registry: ToolSessionRegistry;
   samplingProvider: ToolSessionSamplingProvider;
-  tools: AnyToolDefinition[];
+  tools: RuntimeTool[];
 }
 
 export function createAgentCoreToolExecutionStrategy(
   options: AgentCoreToolExecutionStrategyOptions,
 ): ToolExecutionStrategy {
-  const toolsByName = new Map(options.tools.map((tool) => [tool.name, tool] as const));
+  const strategyId = options.id ?? "agentcore-session";
+  const toolsByName = toolsByCanonicalName(options.tools, strategyId);
   return {
-    id: options.id ?? "agentcore-session",
+    id: strategyId,
+    toolNames: Object.freeze([...toolsByName.keys()]),
     canExecute(entry, call) {
-      if (isAgentCoreImplementation(entry.implementation)) return true;
-      return toolsByName.has(call.function.name);
+      return entry.definition.name === call.function.name && toolsByName.has(entry.definition.name);
     },
     *execute(entry, call, ctx: ToolExecutionContext): Operation<ToolExecution> {
-      const tool = isAgentCoreImplementation(entry.implementation)
-        ? entry.implementation.tool
-        : toolsByName.get(call.function.name);
+      if (entry.definition.name !== call.function.name) {
+        throw new ToolRuntimeError(
+          "TOOL_CALL_ENTRY_MISMATCH",
+          `Tool inventory entry "${entry.definition.name}" does not match call target "${call.function.name}"`,
+        );
+      }
+      const tool = toolsByName.get(entry.definition.name);
       if (!tool)
         throw new ToolRuntimeError(
           "NO_MATCHING_TOOL_STRATEGY",
-          `AgentCore strategy cannot execute tool: ${call.function.name}`,
+          `AgentCore strategy cannot execute tool: ${entry.definition.name}`,
         );
       const selectedModel = modelSelectionFromMetadata(ctx.metadata);
-      const params = validateParams(tool, call.function.arguments, call.id);
+      const params = validateRuntimeToolParameters(tool, call.function.arguments, call.id);
       const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),

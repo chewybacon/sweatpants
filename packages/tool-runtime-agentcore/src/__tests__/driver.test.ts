@@ -2,12 +2,11 @@ import { describe, expect, it } from "vitest";
 import { run, resource, type Operation } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
-import { ToolRuntimeApi, createToolInventory } from "@sweatpants/framework/chat";
+import { ToolRuntimeApi, createToolInventory, createToolInventoryEntry } from "@sweatpants/framework/chat";
 import { type ToolSessionRegistry, type ToolSession } from "@sweatpants/framework/chat/mcp-tools";
 import {
   FakeAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolExecutionStrategy,
-  createAgentCoreToolInventoryEntry,
   createAgentCoreToolRuntimeDriver,
   createAgentCoreToolSessionRegistry,
   createInMemoryAgentCoreToolSessionEventStore,
@@ -120,6 +119,19 @@ function createFakeRegistry(): ToolSessionRegistry {
 }
 
 describe("AgentCore ToolRuntimeDriver", () => {
+  it("rejects duplicate configured tool names deterministically", () => {
+    try {
+      createAgentCoreToolRuntimeDriver({
+        tools: [remoteTool, remoteTool],
+        registry: createFakeRegistry(),
+        samplingProvider,
+      });
+      throw new Error("expected duplicate tool rejection");
+    } catch (error) {
+      expect(error).toMatchObject({ code: "DUPLICATE_TOOL_STRATEGY" });
+    }
+  });
+
   it("executes AgentCore registry sessions via the canonical runtime surface", async () => {
     await run(function* () {
       const driver = createAgentCoreToolRuntimeDriver({
@@ -129,7 +141,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
       });
 
       const result = yield* driver.execute({
-        entry: createAgentCoreToolInventoryEntry(remoteTool),
+        entry: createToolInventoryEntry(remoteTool),
         call: {
           id: "call-remote",
           type: "function",
@@ -143,6 +155,32 @@ describe("AgentCore ToolRuntimeDriver", () => {
         callId: "call-remote",
         toolName: "remote_echo",
       });
+    });
+  });
+
+  it("refuses mismatched inventory entries and call targets", async () => {
+    await run(function* () {
+      const driver = createAgentCoreToolRuntimeDriver({
+        tools: [remoteTool],
+        registry: createFakeRegistry(),
+        samplingProvider,
+      });
+
+      try {
+        yield* driver.execute({
+          entry: {
+            definition: { name: "other", description: "Other tool", parameters: { type: "object" } },
+          },
+          call: {
+            id: "call-mismatch",
+            type: "function",
+            function: { name: "remote_echo", arguments: { message: "hello" } },
+          },
+        });
+        throw new Error("expected strategy mismatch");
+      } catch (error) {
+        expect(error).toMatchObject({ code: "NO_MATCHING_TOOL_STRATEGY" });
+      }
     });
   });
 
@@ -170,7 +208,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
 
       try {
         yield* driver.execute({
-          entry: createAgentCoreToolInventoryEntry(remoteTool),
+          entry: createToolInventoryEntry(remoteTool),
           call: {
             id: "call-invalid-agentcore",
             type: "function",
@@ -208,7 +246,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
         registry,
         samplingProvider,
       });
-      const entry = createAgentCoreToolInventoryEntry(remoteElicitTool);
+      const entry = createToolInventoryEntry(remoteElicitTool);
 
       const initial = yield* driver.execute({
         entry,
@@ -250,7 +288,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
         registry,
         samplingProvider,
       });
-      const entry = createAgentCoreToolInventoryEntry(remoteTool);
+      const entry = createToolInventoryEntry(remoteTool);
       yield* driver.execute({
         entry,
         call: {
@@ -291,7 +329,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
         registry,
         samplingProvider,
       });
-      const entry = createAgentCoreToolInventoryEntry(remoteSampleTool, { profile: "test" });
+      const entry = createToolInventoryEntry(remoteSampleTool, { profile: "test" });
 
       const result = yield* driver.execute({
         entry,
@@ -310,16 +348,14 @@ describe("AgentCore ToolRuntimeDriver", () => {
   });
 
   it("creates AgentCore inventory entries and normalized executions", async () => {
-    const entry = createAgentCoreToolInventoryEntry(remoteTool, { profile: "test" });
+    const entry = createToolInventoryEntry(remoteTool, { profile: "test" });
     expect(entry.definition).toMatchObject({ name: "remote_echo", description: "Remote echo" });
     expect(entry.definition.parameters).toMatchObject({ required: ["message"] });
     expect((entry.definition.parameters as { safeParse?: unknown }).safeParse).toBeUndefined();
     expect("implementation" in entry.definition).toBe(false);
     expect(entry.capabilities).toMatchObject({
-      remote: true,
-      session: true,
-      elicits: true,
-      samples: true,
+      elicits: false,
+      samples: false,
     });
     expect(() => createToolInventory([entry, entry])).toThrow("Duplicate tool name");
 
@@ -384,7 +420,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
         samplingProvider,
         tools: [remoteTool],
       });
-      const entry = createAgentCoreToolInventoryEntry(remoteTool);
+      const entry = createToolInventoryEntry(remoteTool);
       expect(
         strategy.canExecute(
           entry,
@@ -413,7 +449,7 @@ describe("AgentCore ToolRuntimeDriver", () => {
         samplingProvider,
       });
       const result = yield* ToolRuntimeApi.execute({
-        entry: createAgentCoreToolInventoryEntry(remoteTool),
+        entry: createToolInventoryEntry(remoteTool),
         call: {
           id: "call-installed-agentcore",
           type: "function",

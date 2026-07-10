@@ -10,6 +10,7 @@ import {
   suspend,
   type Operation,
 } from "effection";
+import type { RuntimeTool } from "@sweatpants/core";
 import { describe, expect, it } from "vitest";
 
 import { createChatHandler } from "@sweatpants/framework/server";
@@ -26,6 +27,7 @@ import {
   PluginSessionManagerContext,
   ToolInventoryContext,
   createToolInventory,
+  createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
 
 import {
@@ -50,13 +52,12 @@ import {
 import {
   createInMemoryToolSessionStore,
   createLocalToolRuntimeDriver,
-  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import { yoChatTestToolSessionWorkerConfig } from "../server/tool-worker-config.ts";
 
-type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
+type LocalSessionTool = RuntimeTool;
 
 import {
   createMockProvider,

@@ -1,4 +1,6 @@
+import type { RuntimeTool } from '@sweatpants/core'
 import { createContext, type Operation } from 'effection'
+import { toToolParameterJsonSchema } from './tool-parameters.ts'
 
 export interface ToolDefinition {
   name: string
@@ -10,16 +12,14 @@ export interface ToolDefinition {
 export interface ToolCapabilities {
   inline?: boolean
   client?: boolean
-  worker?: boolean
-  session?: boolean
-  remote?: boolean
+  /** Runtime-neutral contract signal derived from the tool definition. */
   elicits?: boolean
+  /** Runtime-neutral contract signal derived from the tool definition. */
   samples?: boolean
 }
 
-export interface ToolInventoryEntry<TImplementation = unknown> {
+export interface ToolInventoryEntry {
   definition: ToolDefinition
-  implementation?: TImplementation
   capabilities?: ToolCapabilities
   metadata?: Record<string, unknown>
 }
@@ -27,6 +27,30 @@ export interface ToolInventoryEntry<TImplementation = unknown> {
 export interface ToolInventory {
   list(): Operation<ToolInventoryEntry[]>
   resolve(name: string): Operation<ToolInventoryEntry | null>
+}
+
+/**
+ * Project a runtime tool into a model-safe inventory entry.
+ *
+ * This intentionally omits backend-specific execution details. Runtime routing
+ * belongs to the installed ToolRuntime strategies, not the exposed inventory.
+ */
+export function createToolInventoryEntry(
+  tool: RuntimeTool,
+  metadata?: Record<string, unknown>,
+): ToolInventoryEntry {
+  return {
+    definition: {
+      name: tool.name,
+      description: tool.description,
+      parameters: toToolParameterJsonSchema(tool.parameters),
+    },
+    capabilities: {
+      elicits: Boolean(tool.capabilities?.elicitation),
+      samples: Boolean(tool.capabilities?.sampling),
+    },
+    ...(metadata ? { metadata } : {}),
+  }
 }
 
 export type ToolExposurePhase = 'outer-chat' | 'sample'

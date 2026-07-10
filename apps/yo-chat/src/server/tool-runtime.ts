@@ -1,3 +1,4 @@
+import type { RuntimeTool } from "@sweatpants/core";
 import { call, type Operation } from "effection";
 import {
   PluginSessionManagerContext,
@@ -6,6 +7,7 @@ import {
   ToolRuntimeContext,
   createStrategyToolRuntime,
   createToolInventory,
+  createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
 import {
   createPluginSessionManager,
@@ -16,14 +18,12 @@ import {
   ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
   createLocalSessionToolExecutionStrategy,
-  createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import {
   createAgentCoreRemoteToolRuntimeClient,
   createAgentCoreToolExecutionStrategy,
-  createAgentCoreToolInventoryEntry,
   createAgentCoreToolSessionRegistry,
   createAwsSdkAgentCoreInvoker,
   createInMemoryAgentCoreToolSessionEventStore,
@@ -45,8 +45,7 @@ import { pluginSamplingProvider } from "./plugin-sampling-provider";
 // the same serialization boundary the AgentCore runtime enforces remotely.
 import toolWorkerUrl from "../__generated__/tool-worker.gen.ts?modulePath";
 
-type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
-type AgentCoreMcpTool = Parameters<typeof createAgentCoreToolInventoryEntry>[0];
+type LocalSessionTool = RuntimeTool;
 
 let sharedPluginSessionRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;
@@ -174,9 +173,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   yield* ToolInventoryContext.set(
     createToolInventory([
       ...localRuntimeTools.map((tool) => createToolInventoryEntry(tool)),
-      ...(env.MCP_TOOL_RUNTIME === "agentcore"
-        ? pluginTools.map((tool) => createAgentCoreToolInventoryEntry(tool))
-        : pluginTools.map((tool) => createToolInventoryEntry(tool))),
+      ...pluginTools.map((tool) => createToolInventoryEntry(tool)),
     ]),
   );
 

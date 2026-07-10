@@ -22,13 +22,6 @@ export {
 // Re-export tool utilities and types
 export {
   createTool,
-  type ToolConfig,
-  type ToolImplFn,
-  type Tool,
-  type ToolMiddleware,
-  type ToolFactoryWithImpl,
-  type ToolFactoryWithoutImpl,
-  type ContextBinding,
   type LogLevel,
   type ToolCtx,
   type CoreToolCtx,
@@ -57,7 +50,7 @@ export {
   type ToolExtension,
   type ToolExtensionMetadata,
   type ToolDefinition,
-  type AnyToolDefinition,
+  type RuntimeTool,
   type CreateToolBuilderBase,
   type CreateToolBuilderWithDescription,
   type CreateToolBuilderWithParams,

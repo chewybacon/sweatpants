@@ -1,18 +1,16 @@
-import type { AnyToolDefinition } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/core";
 import { resource, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
   ToolRuntimeError,
   createStrategyToolRuntime,
   createToolExecutionRef,
-  toToolParameterJsonSchema,
-  validateToolParameters,
+  validateRuntimeToolParameters,
   type ToolCall,
   type ToolExecution,
   type ToolExecutionContext,
   type ToolExecutionEvent,
   type ToolExecutionStrategy,
-  type ToolInventoryEntry,
   type ToolRuntime,
 } from "@sweatpants/framework/chat";
 import type {
@@ -30,12 +28,9 @@ import {
   type ToolSessionRegistryOptions,
 } from "./session-registry.ts";
 
-type LocalImplementation = { kind: "mcp"; tool: AnyToolDefinition };
-type InventoryToolDefinition = ToolInventoryEntry["definition"];
-
 export interface LocalToolRuntimeDriverOptions {
   id?: string;
-  tools?: AnyToolDefinition[];
+  tools: RuntimeTool[];
   registry?: ToolSessionRegistry;
   store?: ToolSessionStore;
   samplingProvider?: ToolSessionSamplingProvider;
@@ -50,46 +45,18 @@ function localRuntimeWorkerRequirementError(): ToolRuntimeError {
   );
 }
 
-function parametersToSchema(parameters: unknown): Record<string, unknown> {
-  return toToolParameterJsonSchema(parameters);
-}
-
-function sessionToolDefinition(tool: AnyToolDefinition): InventoryToolDefinition {
-  return {
-    name: tool.name,
-    description: tool.description,
-    parameters: parametersToSchema(tool.parameters),
-  };
-}
-
-export function createToolInventoryEntry<T extends AnyToolDefinition>(
-  tool: T,
-  metadata?: Record<string, unknown>,
-): ToolInventoryEntry<{ kind: "mcp"; tool: T }> {
-  return {
-    definition: sessionToolDefinition(tool),
-    implementation: { kind: "mcp", tool } as { kind: "mcp"; tool: T },
-    capabilities: {
-      session: true,
-      worker: true,
-      elicits: Boolean(tool.capabilities?.elicitation),
-      samples: Boolean(tool.capabilities?.sampling),
-    },
-    ...(metadata ? { metadata } : {}),
-  };
-}
-
-function validateParams(tool: AnyToolDefinition, params: unknown, callId: string): unknown {
-  return validateToolParameters({
-    schema: tool.parameters,
-    params,
-    toolName: tool.name,
-    callId,
-  });
-}
-
-function isLocalImplementation(value: unknown): value is LocalImplementation {
-  return !!value && typeof value === "object" && "kind" in value;
+function toolsByCanonicalName(tools: RuntimeTool[], owner: string): Map<string, RuntimeTool> {
+  const byName = new Map<string, RuntimeTool>();
+  for (const tool of tools) {
+    if (byName.has(tool.name)) {
+      throw new ToolRuntimeError(
+        "DUPLICATE_TOOL_STRATEGY",
+        `Tool "${tool.name}" is declared multiple times for ${owner}`,
+      );
+    }
+    byName.set(tool.name, tool);
+  }
+  return byName;
 }
 
 function eventStreamFromSession(session: McpToolSession): Stream<ToolExecutionEvent, void> {
@@ -215,31 +182,34 @@ export interface LocalSessionToolExecutionStrategyOptions {
   id?: string;
   registry: ToolSessionRegistry;
   samplingProvider: ToolSessionSamplingProvider;
-  tools?: AnyToolDefinition[];
+  tools: RuntimeTool[];
 }
 
 export function createLocalSessionToolExecutionStrategy(
   options: LocalSessionToolExecutionStrategyOptions,
 ): ToolExecutionStrategy {
-  const toolsByName = new Map((options.tools ?? []).map((tool) => [tool.name, tool] as const));
+  const strategyId = options.id ?? "local-session";
+  const toolsByName = toolsByCanonicalName(options.tools, strategyId);
   return {
-    id: options.id ?? "local-session",
+    id: strategyId,
+    toolNames: Object.freeze([...toolsByName.keys()]),
     canExecute(entry, call) {
-      if (isLocalImplementation(entry.implementation) && entry.implementation.kind === "mcp")
-        return true;
-      return toolsByName.has(call.function.name);
+      return entry.definition.name === call.function.name && toolsByName.has(entry.definition.name);
     },
     *execute(entry, call, ctx: ToolExecutionContext): Operation<ToolExecution> {
-      const tool =
-        isLocalImplementation(entry.implementation) && entry.implementation.kind === "mcp"
-          ? entry.implementation.tool
-          : toolsByName.get(call.function.name);
+      if (entry.definition.name !== call.function.name) {
+        throw new ToolRuntimeError(
+          "TOOL_CALL_ENTRY_MISMATCH",
+          `Tool inventory entry "${entry.definition.name}" does not match call target "${call.function.name}"`,
+        );
+      }
+      const tool = toolsByName.get(entry.definition.name);
       if (!tool)
         throw new ToolRuntimeError(
           "NO_MATCHING_TOOL_STRATEGY",
-          `Local session strategy cannot execute tool: ${call.function.name}`,
+          `Local session strategy cannot execute tool: ${entry.definition.name}`,
         );
-      const params = validateParams(tool, call.function.arguments, call.id);
+      const params = validateRuntimeToolParameters(tool, call.function.arguments, call.id);
       const session = yield* options.registry.create(tool, params, {
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
@@ -319,7 +289,7 @@ export function* createLocalToolRuntimeDriver(
         id: runtimeId,
         registry,
         samplingProvider,
-        ...(options.tools ? { tools: options.tools } : {}),
+        tools: options.tools,
       }),
     ],
   });

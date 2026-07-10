@@ -1,9 +1,9 @@
-import type { AnyToolDefinition } from "@sweatpants/core";
+import type { RuntimeTool } from "@sweatpants/core";
 import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
 
-type RuntimeMcpTool = AnyToolDefinition;
+type RuntimeMcpTool = RuntimeTool;
 
 function isBridgeCompatibleTool(tool: unknown): tool is RuntimeMcpTool {
   if (typeof tool !== "function" || tool === null) return false;

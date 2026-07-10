@@ -4,7 +4,7 @@
  */
 import { createTool } from "../create.ts";
 import type {
-  AnyToolDefinition,
+  RuntimeTool,
   ElicitDefinition,
   ExtractElicitContext,
   ExtractElicitResponse,
@@ -38,7 +38,7 @@ type WireAccept = Extract<WireElicitResult<{ ok: boolean }>, { action: "accept" 
 type _wireNoExchange = Expect<Equal<"exchange" extends keyof WireAccept ? true : false, false>>;
 void 0 as unknown as _wireNoExchange;
 
-// Builder inference + AnyToolDefinition assignability
+// Builder inference + RuntimeTool assignability
 const tool = createTool("probe")
   .description("probe")
   .parameters(z.object({ trip: z.string() }))
@@ -67,10 +67,10 @@ const tool = createTool("probe")
     return { ok: true as const };
   });
 
-const _any: AnyToolDefinition = tool;
-// ToolDefinition default generics are empty elicits; use AnyToolDefinition for sinks
-void _any;
+const _runtime: RuntimeTool = tool;
+// ToolDefinition default generics are empty elicits; use RuntimeTool for sinks
+void _runtime;
 void tool;
 // Concrete tools are assignable to the erased wire sink
-type _assignableToAny = Expect<typeof tool extends AnyToolDefinition ? true : false>;
-void 0 as unknown as _assignableToAny;
+type _assignableToRuntime = Expect<typeof tool extends RuntimeTool ? true : false>;
+void 0 as unknown as _assignableToRuntime;

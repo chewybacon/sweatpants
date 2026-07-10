@@ -1,7 +1,6 @@
 export {
   createLocalSessionToolExecutionStrategy,
   createLocalToolRuntimeDriver,
-  createToolInventoryEntry,
   installLocalToolRuntime,
   type LocalSessionToolExecutionStrategyOptions,
   type LocalToolRuntimeDriverOptions,

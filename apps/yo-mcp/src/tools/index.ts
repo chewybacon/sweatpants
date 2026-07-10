@@ -4,7 +4,7 @@
  * Export all available tools for the MCP server.
  * All tools use the new createTool API with .elicits() pattern.
  */
-import type { AnyToolDefinition } from '@sweatpants/core'
+import type { RuntimeTool } from '@sweatpants/core'
 
 // Import all tools
 import { echoTool } from './echo'
@@ -21,7 +21,7 @@ export { confirmTool } from './confirm'
 /**
  * All available tools
  */
-export const allTools: AnyToolDefinition[] = [
+export const allTools: RuntimeTool[] = [
   echoTool,
   pickCardTool,
   greetTool,
@@ -31,8 +31,8 @@ export const allTools: AnyToolDefinition[] = [
 /**
  * Tools map (for handler)
  */
-export function createToolsMap(): Map<string, AnyToolDefinition> {
-  const map = new Map<string, AnyToolDefinition>()
+export function createToolsMap(): Map<string, RuntimeTool> {
+  const map = new Map<string, RuntimeTool>()
   for (const tool of allTools) {
     map.set(tool.name, tool)
   }

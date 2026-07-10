@@ -420,15 +420,13 @@ export function createMockTool(name: string, description: string = "A mock tool"
 // INITIALIZER HOOKS
 // =============================================================================
 
-function toolEntry(tool: MockTool): ToolInventoryEntry<MockTool> {
+function toolEntry(tool: MockTool): ToolInventoryEntry {
   return {
     definition: {
       name: tool.name,
       description: tool.description,
       parameters: z.toJSONSchema(tool.parameters),
     },
-    implementation: tool,
-    capabilities: { session: true },
   };
 }
 

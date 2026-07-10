@@ -264,8 +264,6 @@ describe("product facade golden path", () => {
                 description: echo.description,
                 parameters: z.toJSONSchema(echo.parameters),
               },
-              implementation: echo,
-              capabilities: { session: true },
             },
           ]),
         );

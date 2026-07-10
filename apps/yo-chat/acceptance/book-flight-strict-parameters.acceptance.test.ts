@@ -1,9 +1,7 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import {
-  createLocalToolRuntimeDriver,
-  createToolInventoryEntry,
-} from "@sweatpants/tool-runtime-local";
+import { createToolInventoryEntry } from "@sweatpants/framework/chat";
+import { createLocalToolRuntimeDriver } from "@sweatpants/tool-runtime-local";
 import { yoChatTestToolSessionWorkerConfig } from "../src/server/tool-worker-config.ts";
 import { bookFlightTool } from "../src/tools/book-flight/tool.ts";
 

@@ -437,7 +437,7 @@ function* executeToolCall(
       value: { callId, toolName: target, result: `Error: Tool not found: ${target}` },
     };
   }
-  const pluginTool = pluginToolImplementation(entry.implementation);
+  const pluginTool = params.mcpToolRegistry?.get(entry.definition.name);
   if (pluginTool && params.pluginSessionManager) {
     return yield* executePluginToolCall(
       params,
@@ -545,15 +545,6 @@ function* answerFromPluginSessionEvent(
         message: event.reason ?? "Plugin session cancelled",
       };
   }
-}
-
-function pluginToolImplementation(implementation: unknown): unknown | null {
-  return implementation &&
-    typeof implementation === "object" &&
-    (implementation as { kind?: unknown }).kind === "mcp" &&
-    "tool" in implementation
-    ? (implementation as { tool: unknown }).tool
-    : null;
 }
 
 function resolveToolEntry(

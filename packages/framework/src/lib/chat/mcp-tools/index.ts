@@ -30,7 +30,7 @@
 
 export type {
   ToolDefinition,
-  AnyToolDefinition,
+  RuntimeTool,
   ToolCtx,
   ElicitExchange as CoreElicitExchange,
   SampleExchange as CoreSampleExchange,
