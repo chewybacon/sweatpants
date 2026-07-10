@@ -40,7 +40,7 @@ import type {
  * Unified sample result type for decoded messages.
  * Uses raw result types (without exchange) since the decoder doesn't have
  * access to the original prompt text needed to construct exchanges.
- * The exchange is added by the runtime layer (bridge-runtime, branch-runtime).
+ * The exchange is added by the runtime layer (for example bridge-runtime).
  */
 export type DecodedSampleResult = WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls
 

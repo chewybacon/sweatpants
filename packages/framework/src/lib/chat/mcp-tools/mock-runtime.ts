@@ -379,12 +379,8 @@ function createCoreToolCtx(
   // Mock context: single documented assertion; overload surface is exercised by real runtimes.
   const ctx = {
     messages: [],
-    history: [],
     notify: (message: string, fraction?: number) => clientCtx.notify(message, fraction),
     log: (level: LogLevel, message: string) => clientCtx.log(level, message),
-    *branch(fn: (c: ToolCtx<any, any>) => Operation<unknown>) {
-      return yield* fn(ctx as unknown as ToolCtx<any, any>);
-    },
     elicit: function* (
       key: string,
       request: { message: string; context?: unknown },

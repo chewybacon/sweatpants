@@ -174,7 +174,7 @@ function createLocalToolRuntime(
         callId: request.call.id,
       });
       const toolCtx = {
-        history: [],
+        messages: [],
         notify: function* () {},
         log: function* () {},
         elicit: function* (): Operation<never> {

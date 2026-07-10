@@ -125,7 +125,6 @@ export {
 export type {
   ToolDefinition as CoreToolDefinition,
   ToolCtx,
-  CoreToolCtx,
   ElicitExchange as CoreElicitExchange,
   SampleExchange as CoreSampleExchange,
   SampleRequest as CoreSampleRequest,

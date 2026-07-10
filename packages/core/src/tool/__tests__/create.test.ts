@@ -5,12 +5,8 @@ import type { ToolCtx } from "../types.ts";
 
 const baseCtx: ToolCtx = {
   messages: [],
-  history: [],
   notify: function* () {},
   log: function* () {},
-  *branch(fn) {
-    return yield* fn(baseCtx);
-  },
 };
 
 describe("createTool builder", () => {

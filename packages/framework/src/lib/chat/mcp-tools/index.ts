@@ -39,8 +39,7 @@ export type {
 
 // Types from unified types file
 export type {
-  // Branch options and limits
-  McpToolBranchOptions,
+  // Execution limits
   McpToolLimits,
   // Sample types
   McpToolSampleConfig,
@@ -89,7 +88,6 @@ export {
   McpCapabilityError,
   ElicitationDeclinedError,
   ElicitationCancelledError,
-  McpToolDepthError,
   McpToolTokenError,
   McpToolTimeoutError,
   McpDisconnectError,
@@ -150,7 +148,7 @@ export type { PluginRegistry } from "./plugin-registry.ts";
 // BRIDGE RUNTIME (in-app tool execution with UI elicitation)
 // =============================================================================
 
-export { createBridgeHost, runBridgeTool, BranchElicitNotAllowedError } from "./bridge-runtime.ts";
+export { createBridgeHost, runBridgeTool } from "./bridge-runtime.ts";
 export type {
   BridgeHost,
   BridgeHostConfig,

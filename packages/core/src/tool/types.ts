@@ -333,30 +333,12 @@ export interface SampleSchemaResult<T> {
 }
 
 // -----------------------------------------------------------------------------
-// Branch options
-// -----------------------------------------------------------------------------
-
-export interface ToolBranchOptions {
-  maxDepth?: number;
-  maxTokens?: number;
-  timeout?: number;
-  inheritMessages?: boolean;
-  inheritSystemPrompt?: boolean;
-  messages?: readonly ToolMessage[];
-}
-
-// -----------------------------------------------------------------------------
 // ToolCtx — complete tool-facing contract (no index signature)
 // -----------------------------------------------------------------------------
 
 export interface BaseToolCtx {
-  /** Conversation / branch messages (canonical). */
+  /** Conversation messages visible to the current tool invocation. */
   readonly messages: readonly ToolMessage[];
-  /**
-   * Alias for messages used by some tools/tests.
-   * Implementations SHOULD keep this identical to `messages`.
-   */
-  readonly history: unknown[];
   notify(message: string, progress?: number, level?: LogLevel): Operation<void>;
   log(level: LogLevel, message: string): Operation<void>;
 }
@@ -423,13 +405,6 @@ export interface ToolNamedSampleCtx<TSamples extends SamplesMap> {
   ): Operation<SampleSchemaResult<T>>;
 }
 
-export interface ToolBranchCtx<TElicits extends ElicitsMap, TSamples> {
-  branch<T>(
-    fn: (ctx: ToolCtx<TElicits, TSamples>) => Operation<T>,
-    options?: ToolBranchOptions,
-  ): Operation<T>;
-}
-
 /** Detects the `any` type (used so RuntimeTool stays a universal sink). */
 type IsAny<T> = 0 extends 1 & T ? true : false;
 
@@ -453,11 +428,7 @@ type SampleCtxIfDeclared<TSamples> =
 
 export type ToolCtx<TElicits = undefined, TSamples = undefined> = BaseToolCtx &
   ElicitCtxIfDeclared<TElicits> &
-  SampleCtxIfDeclared<TSamples> &
-  ToolBranchCtx<TElicits extends ElicitsMap ? TElicits : {}, TSamples>;
-
-/** @deprecated Use ToolCtx */
-export type CoreToolCtx<TElicits = undefined, TSamples = undefined> = ToolCtx<TElicits, TSamples>;
+  SampleCtxIfDeclared<TSamples>;
 
 // -----------------------------------------------------------------------------
 // Tool definition

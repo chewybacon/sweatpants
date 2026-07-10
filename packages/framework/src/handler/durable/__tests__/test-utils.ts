@@ -433,8 +433,6 @@ function toolEntry(tool: MockTool): ToolInventoryEntry {
 function createToolCtx(): Parameters<MockTool>[0] {
   return {
     messages: [],
-    history: [],
-    *branch(fn) { return yield* fn(this as never) },
     notify: function* () {},
     log: function* () {},
     elicit: function* (): Operation<never> {
