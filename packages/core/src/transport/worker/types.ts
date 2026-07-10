@@ -7,9 +7,11 @@
  *
  * ## Communication Model
  *
- * Uses @effectionx/worker's bidirectional communication with progress streaming:
- * - Worker sends requests via send.stream() and receives progress + response
- * - Host receives requests via worker.forEach() and sends progress via ctx.progress()
+ * Uses @effectionx/worker's bidirectional communication:
+ * - Worker sends sample/elicit requests via send.stream(request)
+ * - Host receives requests via worker.forEach()
+ * - Host sends an initial ready progress ACK before publishing the request event
+ * - Host returns exactly one final response for each request
  *
  * ## Message Flow
  *
@@ -22,8 +24,8 @@
  *   │ ◄──── send.stream(request) ──────── │ (worker initiates)
  *   │                                      │
  *   │ worker.forEach((req, ctx) => ...)   │
- *   │ ───── ctx.progress(update) ───────► │ (in-band, with backpressure)
- *   │ ───── return response ────────────► │ (final value)
+ *   │ ───── ready progress ACK ─────────► │
+ *   │ ───── return response ────────────► │
  *   │                                      │
  *   │ ◄──── yield* worker (Result) ────── │ return finalResult
  * ```
@@ -268,10 +270,7 @@ export interface WorkerToolResultContent {
 /**
  * Content block in a message.
  */
-export type WorkerContentBlock =
-  | WorkerTextContent
-  | WorkerToolUseContent
-  | WorkerToolResultContent;
+export type WorkerContentBlock = WorkerTextContent | WorkerToolUseContent | WorkerToolResultContent;
 
 /**
  * A message in the conversation.
@@ -343,7 +342,11 @@ export interface WorkerToolContext {
    */
   elicit<T = unknown>(
     key: string,
-    options: { message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
+    options: {
+      message: string;
+      schema: Record<string, unknown>;
+      context?: Record<string, unknown>;
+    },
   ): Operation<WorkerElicitResponse & { content?: T }>;
 
   /**

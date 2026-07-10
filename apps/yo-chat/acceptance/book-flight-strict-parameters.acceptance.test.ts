@@ -4,6 +4,7 @@ import {
   createLocalToolRuntimeDriver,
   createToolInventoryEntry,
 } from "@sweatpants/tool-runtime-local";
+import { yoChatTestToolSessionWorkerConfig } from "../src/server/tool-worker-config.ts";
 import { bookFlightTool } from "../src/tools/book-flight/tool.ts";
 
 describe("yo-chat book_flight strict parameter acceptance", () => {
@@ -16,6 +17,7 @@ describe("yo-chat book_flight strict parameter acceptance", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: yoChatTestToolSessionWorkerConfig },
       });
 
       try {
@@ -49,6 +51,7 @@ describe("yo-chat book_flight strict parameter acceptance", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: yoChatTestToolSessionWorkerConfig },
       });
 
       const result = yield* driver.execute({

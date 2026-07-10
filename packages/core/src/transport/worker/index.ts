@@ -7,11 +7,11 @@
  *
  * ## Architecture
  *
- * Uses @effectionx/worker's bidirectional communication with progress streaming:
- * - Worker sends requests via send.stream() (sample/elicit)
+ * Uses @effectionx/worker's bidirectional communication:
+ * - Worker sends sample/elicit requests via send.stream(request)
  * - Host receives requests via worker.forEach()
- * - Host sends progress via ctx.progress() (with backpressure)
- * - Worker consumes progress updates and receives final response
+ * - Host sends an initial ready progress ACK before publishing the request event
+ * - Host returns exactly one final response for each request
  *
  * ## Usage (Host Side)
  *
@@ -21,10 +21,7 @@
  * const { result } = yield* createWorkerPrincipal({
  *   workerUrl: "./tool-worker.js",
  *   initData: { toolName: "greet", params: { name: "Alice" }, sessionId: "123" },
- *   requestHandler: function* (request, ctx) {
- *     // Send progress updates (with backpressure)
- *     yield* ctx.progress({ type: "progress", message: "Processing..." });
- *     
+ *   requestHandler: function* (request) {
  *     // Handle request and return response
  *     if (request.type === "sample") {
  *       return yield* callLLM(request);
@@ -43,7 +40,7 @@
  * import { runToolWorker } from "@sweatpants/core/transport/worker";
  *
  * await runToolWorker(function* (initData, ctx) {
- *   // Sample the LLM (progress comes from host via the stream)
+ *   // Sample the LLM through the host backchannel
  *   const response = yield* ctx.sample({
  *     messages: [{ role: "user", content: "Hello" }]
  *   });
@@ -91,11 +88,7 @@ export type {
 } from "./types.ts";
 
 // Type guards
-export {
-  isProgressMessage,
-  isLogMessage,
-  isOutOfBandMessage,
-} from "./types.ts";
+export { isProgressMessage, isLogMessage, isOutOfBandMessage } from "./types.ts";
 
 // Host-side transport
 export {
@@ -109,11 +102,7 @@ export {
 } from "./host.ts";
 
 // Worker-side runner
-export {
-  runToolWorker,
-  runRequestHandler,
-  type ToolWorkerHandler,
-} from "./runner.ts";
+export { runToolWorker, runRequestHandler, type ToolWorkerHandler } from "./runner.ts";
 
 // Re-export ForEachContext from host.ts (we define it locally to avoid
 // TypeScript resolution issues with the PR-based package)

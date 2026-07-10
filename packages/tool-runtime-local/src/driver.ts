@@ -24,7 +24,11 @@ import type {
   ToolSessionStore,
 } from "@sweatpants/framework/chat/mcp-tools";
 import { createInMemoryToolSessionStore } from "./in-memory-store.ts";
-import { createToolSessionRegistry, type ToolSessionRegistryOptions } from "./session-registry.ts";
+import {
+  createToolSessionRegistry,
+  isWorkerBackedToolSessionRegistry,
+  type ToolSessionRegistryOptions,
+} from "./session-registry.ts";
 
 type LocalImplementation = { kind: "mcp"; tool: AnyToolDefinition };
 type InventoryToolDefinition = ToolInventoryEntry["definition"];
@@ -36,6 +40,14 @@ export interface LocalToolRuntimeDriverOptions {
   store?: ToolSessionStore;
   samplingProvider?: ToolSessionSamplingProvider;
   registryOptions?: Omit<ToolSessionRegistryOptions, "samplingProvider">;
+}
+
+function localRuntimeWorkerRequirementError(): ToolRuntimeError {
+  return new ToolRuntimeError(
+    "WORKER_BACKED_LOCAL_RUNTIME_REQUIRED",
+    "Local tool runtime requires a worker-backed ToolSessionRegistry. " +
+      "Pass registryOptions.worker when creating the runtime or supply a registry created with worker mode enabled.",
+  );
 }
 
 function parametersToSchema(parameters: unknown): Record<string, unknown> {
@@ -284,6 +296,15 @@ export function* createLocalToolRuntimeDriver(
       throw new Error("Local tool runtime sampling provider not configured");
     },
   };
+
+  if (options.registry) {
+    if (!isWorkerBackedToolSessionRegistry(options.registry)) {
+      throw localRuntimeWorkerRequirementError();
+    }
+  } else if (!options.registryOptions?.worker) {
+    throw localRuntimeWorkerRequirementError();
+  }
+
   const registry =
     options.registry ??
     (yield* createToolSessionRegistry(options.store ?? createInMemoryToolSessionStore(), {

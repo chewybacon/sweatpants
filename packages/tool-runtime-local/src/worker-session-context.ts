@@ -4,27 +4,29 @@
  * Provides context access to worker session state for API operations.
  */
 
-import { createContext, type Channel, type Operation } from 'effection'
-import type { WireElicitResult } from '@sweatpants/framework/chat/mcp-tools'
-import type { ToolSessionEvent, ToolSessionStatus, WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
+import { createContext, type Operation, type Queue } from "effection";
+import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
+import type {
+  ToolSessionEvent,
+  ToolSessionStatus,
+  WireSampleResult,
+} from "@sweatpants/framework/chat/mcp-tools";
 
 export interface WorkerSessionState {
   /** Pending elicit channels, keyed by elicitId */
-  pendingElicitChannels: Map<string, Channel<WireElicitResult<unknown>, void>>
+  pendingElicitChannels: Map<string, Queue<WireElicitResult<unknown>, void>>;
 
   /** Pending sample channels, keyed by sampleId */
-  pendingSampleChannels: Map<string, Channel<WireSampleResult, void>>
+  pendingSampleChannels: Map<string, Queue<WireSampleResult, void>>;
 
   /** Emit a session event (adds LSN/timestamp internally) */
-  emitEvent(event: { type: ToolSessionEvent['type'] } & Record<string, unknown>): Operation<void>
+  emitEvent(event: { type: ToolSessionEvent["type"] } & Record<string, unknown>): Operation<void>;
 
   /** Generate the next LSN */
-  nextLsn(): number
+  nextLsn(): number;
 
   /** Update session status */
-  setStatus(status: ToolSessionStatus): void
+  setStatus(status: ToolSessionStatus): void;
 }
 
-export const WorkerSessionStateContext = createContext<WorkerSessionState>(
-  'worker-session.state'
-)
+export const WorkerSessionStateContext = createContext<WorkerSessionState>("worker-session.state");

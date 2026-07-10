@@ -17,6 +17,7 @@ import {
   createLocalToolRuntimeDriver,
   createToolInventoryEntry,
 } from "@sweatpants/tool-runtime-local";
+import { yoChatTestToolSessionWorkerConfig } from "../src/server/tool-worker-config.ts";
 
 /**
  * Minimal tool that always elicits once, then returns based on the answer.
@@ -54,6 +55,7 @@ describe("demo: MCP tool → browser elicit → MCP result", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: yoChatTestToolSessionWorkerConfig },
       });
 
       const initial = yield* driver.execute({
@@ -97,6 +99,7 @@ describe("demo: MCP tool → browser elicit → MCP result", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: yoChatTestToolSessionWorkerConfig },
       });
 
       const initial = yield* driver.execute({

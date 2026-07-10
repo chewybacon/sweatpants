@@ -8,61 +8,65 @@ import {
   spawn,
   suspend,
   type Operation,
-} from 'effection'
-import { describe, expect, it } from 'vitest'
+} from "effection";
+import { describe, expect, it } from "vitest";
 
-import { createChatHandler } from '@sweatpants/framework/server'
+import { createChatHandler } from "@sweatpants/framework/server";
 import {
   FoldSessionBufferStoreContext,
   createPluginSessionManager,
   createSessionContractInMemoryStore,
   type PluginSessionManager,
-} from '@sweatpants/framework/server'
-import { setupInMemoryDurableStreams } from '@sweatpants/framework/chat/durable-streams'
+} from "@sweatpants/framework/server";
+import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
 import {
   McpToolRegistryContext,
   PluginRegistryContext,
   PluginSessionManagerContext,
   ToolInventoryContext,
   createToolInventory,
-} from '@sweatpants/framework/chat'
-import { createChatSession } from '../../../../packages/framework/src/lib/chat/session/create-session.ts'
-import type { ChatState } from '../../../../packages/framework/src/lib/chat/state/chat-state.ts'
-import { initialChatState } from '../../../../packages/framework/src/lib/chat/state/index.ts'
-import { createPluginRegistryFrom, type ToolSessionRegistry } from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat";
+import { createChatSession } from "../../../../packages/framework/src/lib/chat/session/create-session.ts";
+import type { ChatState } from "../../../../packages/framework/src/lib/chat/state/chat-state.ts";
+import { initialChatState } from "../../../../packages/framework/src/lib/chat/state/index.ts";
+import {
+  createPluginRegistryFrom,
+  type ToolSessionRegistry,
+} from "@sweatpants/framework/chat/mcp-tools";
 import {
   createInMemoryToolSessionStore,
   createToolInventoryEntry,
   createToolSessionRegistry,
   installLocalToolRuntime,
-} from '@sweatpants/tool-runtime-local'
+} from "@sweatpants/tool-runtime-local";
+import { yoChatTestToolSessionWorkerConfig } from "../server/tool-worker-config.ts";
 import {
   createMockProvider,
   setupMockModelProvider,
-} from '../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts'
-import { pickCard, pickCardPlugin } from '../tools/pick-card'
+} from "../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts";
+import { pickCard, pickCardPlugin } from "../tools/pick-card";
 
-type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0]
-type PendingElicit = ChatState['pendingElicits'][string]['elicitations'][number]
+type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
+type PendingElicit = ChatState["pendingElicits"][string]["elicitations"][number];
 
 function createSingleToolMcpRegistry(tool: { name: string }) {
-  const map = new Map<string, unknown>([[tool.name, tool]])
+  const map = new Map<string, unknown>([[tool.name, tool]]);
   return {
     get: (name: string) => map.get(name),
     has: (name: string) => map.has(name),
     names: () => Array.from(map.keys()),
-  }
+  };
 }
 
 function findPendingElicit(state: ChatState, key: string): PendingElicit | null {
   for (const tracking of Object.values(state.pendingElicits)) {
     for (const elicit of tracking.elicitations) {
-      if (elicit.key === key && elicit.status === 'pending') {
-        return elicit
+      if (elicit.key === key && elicit.status === "pending") {
+        return elicit;
       }
     }
   }
-  return null
+  return null;
 }
 
 function* waitForState(
@@ -71,155 +75,159 @@ function* waitForState(
   predicate: (state: ChatState) => boolean,
   timeoutMs = 20_000,
 ): Operation<ChatState> {
-  const startedAt = Date.now()
+  const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const state = getState()
-    if (predicate(state)) return state
-    yield* sleep(25)
+    const state = getState();
+    if (predicate(state)) return state;
+    yield* sleep(25);
   }
-  throw new Error(`Timeout waiting for state: ${label}`)
+  throw new Error(`Timeout waiting for state: ${label}`);
 }
 
-describe('cancel open elicits on free-form send', () => {
-  it('lets a free-form follow-up proceed while a plugin interrupt is still open', async () => {
+describe("cancel open elicits on free-form send", () => {
+  it("lets a free-form follow-up proceed while a plugin interrupt is still open", async () => {
     await run(function* () {
-      const pluginRegistry = createPluginRegistryFrom([pickCardPlugin.client as any])
-      const mcpToolRegistry = createSingleToolMcpRegistry(pickCard)
+      const pluginRegistry = createPluginRegistryFrom([pickCardPlugin.client as any]);
+      const mcpToolRegistry = createSingleToolMcpRegistry(pickCard);
 
-      const [serverScope, destroyServerScope] = createScope()
+      const [serverScope, destroyServerScope] = createScope();
       const ready = createChannel<
         { registry: ToolSessionRegistry; manager: PluginSessionManager; samplingProvider: any },
         void
-      >()
+      >();
 
       serverScope.run(function* () {
-        const store = createInMemoryToolSessionStore()
+        const store = createInMemoryToolSessionStore();
         const samplingProvider = {
           *sample() {
-            return { text: 'unused', model: 'mock', stopReason: 'endTurn' as const }
+            return { text: "unused", model: "mock", stopReason: "endTurn" as const };
           },
-        }
-        const registry = yield* createToolSessionRegistry(store, { samplingProvider })
-        const manager = yield* createPluginSessionManager({ registry })
-        yield* ready.send({ registry, manager, samplingProvider })
-        yield* suspend()
-      })
+        };
+        const registry = yield* createToolSessionRegistry(store, {
+          samplingProvider,
+          worker: yoChatTestToolSessionWorkerConfig,
+        });
+        const manager = yield* createPluginSessionManager({ registry });
+        yield* ready.send({ registry, manager, samplingProvider });
+        yield* suspend();
+      });
 
-      const readySub = yield* ready
-      const readyResult = yield* readySub.next()
-      if (readyResult.done) throw new Error('setup channel closed')
+      const readySub = yield* ready;
+      const readyResult = yield* readySub.next();
+      if (readyResult.done) throw new Error("setup channel closed");
       const {
         registry: toolSessionRegistry,
         manager: pluginSessionManager,
         samplingProvider,
-      } = readyResult.value
+      } = readyResult.value;
 
-      const providerMessages: string[][] = []
-      const foldSessionBufferStore = createSessionContractInMemoryStore()
+      const providerMessages: string[][] = [];
+      const foldSessionBufferStore = createSessionContractInMemoryStore();
       const provider = createMockProvider({
         customStream: (messages, options) => {
-          providerMessages.push(messages.map((message) => `${message.role}:${message.content}`))
-          const last = messages[messages.length - 1]
-          if (last?.role === 'user' && /draw a card/i.test(last.content)) {
+          providerMessages.push(messages.map((message) => `${message.role}:${message.content}`));
+          const last = messages[messages.length - 1];
+          if (last?.role === "user" && /draw a card/i.test(last.content)) {
             return createMockProvider({
-              responses: 'Calling pick_card',
+              responses: "Calling pick_card",
               toolCalls: [
                 {
-                  id: 'pick-card-call-1',
+                  id: "pick-card-call-1",
                   name: pickCard.name,
                   arguments: { count: 3 },
                 },
               ],
-            }).stream(messages, options)
+            }).stream(messages, options);
           }
-          if (last?.role === 'user' && /why did you launch/i.test(last.content)) {
+          if (last?.role === "user" && /why did you launch/i.test(last.content)) {
             return createMockProvider({
-              responses: 'I launched a card picker earlier; ask if you still want to pick.',
-            }).stream(messages, options)
+              responses: "I launched a card picker earlier; ask if you still want to pick.",
+            }).stream(messages, options);
           }
-          return createMockProvider({ responses: 'ok' }).stream(messages, options)
+          return createMockProvider({ responses: "ok" }).stream(messages, options);
         },
-      })
+      });
 
       const setup = function* setup() {
-        yield* setupInMemoryDurableStreams<string>()
-        yield* FoldSessionBufferStoreContext.set(foldSessionBufferStore)
-        yield* setupMockModelProvider(provider)
-        yield* PluginRegistryContext.set(pluginRegistry)
-        yield* McpToolRegistryContext.set(mcpToolRegistry)
-        yield* PluginSessionManagerContext.set(pluginSessionManager)
-        const localPickCardTool = pickCard
+        yield* setupInMemoryDurableStreams<string>();
+        yield* FoldSessionBufferStoreContext.set(foldSessionBufferStore);
+        yield* setupMockModelProvider(provider);
+        yield* PluginRegistryContext.set(pluginRegistry);
+        yield* McpToolRegistryContext.set(mcpToolRegistry);
+        yield* PluginSessionManagerContext.set(pluginSessionManager);
+        const localPickCardTool = pickCard;
         yield* ToolInventoryContext.set(
           createToolInventory([createToolInventoryEntry(localPickCardTool)]),
-        )
+        );
         yield* installLocalToolRuntime({
           tools: [localPickCardTool],
           registry: toolSessionRegistry,
           samplingProvider,
-        })
-      }
+        });
+      };
 
-      const handler = createChatHandler({ setup, maxToolIterations: 5 })
-      const originalFetch = globalThis.fetch
+      const handler = createChatHandler({ setup, maxToolIterations: 5 });
+      const originalFetch = globalThis.fetch;
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const { signal, ...restInit } = init ?? {}
+        const { signal, ...restInit } = init ?? {};
         const rawUrl =
-          typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+          typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const url =
-          rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+          rawUrl.startsWith("http://") || rawUrl.startsWith("https://")
             ? rawUrl
-            : `http://localhost${rawUrl}`
-        return handler(new Request(url, restInit))
-      }
+            : `http://localhost${rawUrl}`;
+        return handler(new Request(url, restInit));
+      };
 
       try {
         const { state, dispatch } = yield* createChatSession({
-          baseUrl: 'http://localhost/chat',
+          baseUrl: "http://localhost/chat",
           plugins: [pickCardPlugin],
-        })
-        let currentState = initialChatState
+        });
+        let currentState = initialChatState;
         yield* spawn(function* () {
           for (const nextState of yield* each(state)) {
-            currentState = nextState
-            yield* each.next()
+            currentState = nextState;
+            yield* each.next();
           }
-        })
-        yield* sleep(0)
+        });
+        yield* sleep(0);
 
-        dispatch({ type: 'send', content: 'draw a card from 3 cards' })
+        dispatch({ type: "send", content: "draw a card from 3 cards" });
         yield* waitForState(
-          'pickCard interrupt open',
+          "pickCard interrupt open",
           () => currentState,
-          (candidate) => !candidate.isStreaming && findPendingElicit(candidate, 'pickCard') !== null,
-        )
+          (candidate) =>
+            !candidate.isStreaming && findPendingElicit(candidate, "pickCard") !== null,
+        );
 
         // Free-form send while the interrupt is still open. This used to hit
         // "Open interrupts require resume[]" because cancel was not sent.
-        dispatch({ type: 'send', content: 'why did you launch a game?' })
+        dispatch({ type: "send", content: "why did you launch a game?" });
 
         yield* waitForState(
-          'follow-up answered without open-interrupt error',
+          "follow-up answered without open-interrupt error",
           () => currentState,
           (candidate) =>
             !candidate.isStreaming &&
             candidate.messages.some(
               (message) =>
-                message.role === 'assistant' &&
+                message.role === "assistant" &&
                 /launched a card picker|ask if you still want/i.test(message.content),
             ) &&
             !candidate.error,
-        )
+        );
 
-        expect(currentState.error).toBeNull()
+        expect(currentState.error).toBeNull();
         expect(
           currentState.messages.some((message) =>
-            /Open interrupts require resume/i.test(message.content ?? ''),
+            /Open interrupts require resume/i.test(message.content ?? ""),
           ),
-        ).toBe(false)
+        ).toBe(false);
       } finally {
-        globalThis.fetch = originalFetch
-        yield* call(() => destroyServerScope())
+        globalThis.fetch = originalFetch;
+        yield* call(() => destroyServerScope());
       }
-    })
-  }, 60_000)
-})
+    });
+  }, 60_000);
+});

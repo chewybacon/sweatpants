@@ -20,8 +20,8 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
-import { call } from 'effection'
+import type { Operation } from "effection";
+import { call } from "effection";
 import type {
   McpParsedRequest,
   McpRequestHeaders,
@@ -36,9 +36,9 @@ import type {
   McpToolsListRequest,
   McpPingRequest,
   McpNotification,
-} from './types.ts'
-import { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'
-import { parseEventId } from '../protocol/sse-formatter.ts'
+} from "./types.ts";
+import { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";
+import { parseEventId } from "../protocol/sse-formatter.ts";
 import type {
   JsonRpcId,
   JsonRpcRequest,
@@ -46,7 +46,7 @@ import type {
   McpToolCallParams,
   McpElicitationResult,
   McpCreateMessageResult,
-} from '../protocol/types.ts'
+} from "../protocol/types.ts";
 
 // =============================================================================
 // HEADER PARSING
@@ -56,29 +56,29 @@ import type {
  * Parse MCP-relevant headers from a request.
  */
 export function parseHeaders(request: Request): McpRequestHeaders {
-  const sessionId = request.headers.get('Mcp-Session-Id')
-  const lastEventId = request.headers.get('Last-Event-ID')
-  const accept = request.headers.get('Accept')
-  const contentType = request.headers.get('Content-Type')
+  const sessionId = request.headers.get("Mcp-Session-Id");
+  const lastEventId = request.headers.get("Last-Event-ID");
+  const accept = request.headers.get("Accept");
+  const contentType = request.headers.get("Content-Type");
 
   return {
     ...(sessionId != null && { sessionId }),
     ...(lastEventId != null && { lastEventId }),
     ...(accept != null && { accept }),
     ...(contentType != null && { contentType }),
-  }
+  };
 }
 
 /**
  * Validate headers for a POST request.
  */
 export function validatePostHeaders(headers: McpRequestHeaders): void {
-  if (headers.contentType && !headers.contentType.includes('application/json')) {
+  if (headers.contentType && !headers.contentType.includes("application/json")) {
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.INVALID_REQUEST,
-      'POST requests must have Content-Type: application/json',
-      415 // Unsupported Media Type
-    )
+      "POST requests must have Content-Type: application/json",
+      415, // Unsupported Media Type
+    );
   }
 }
 
@@ -86,12 +86,12 @@ export function validatePostHeaders(headers: McpRequestHeaders): void {
  * Validate headers for a GET request.
  */
 export function validateGetHeaders(headers: McpRequestHeaders): void {
-  if (!headers.accept?.includes('text/event-stream')) {
+  if (!headers.accept?.includes("text/event-stream")) {
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.NOT_ACCEPTABLE,
-      'GET requests must Accept: text/event-stream',
-      406 // Not Acceptable
-    )
+      "GET requests must Accept: text/event-stream",
+      406, // Not Acceptable
+    );
   }
 }
 
@@ -103,37 +103,37 @@ export function validateGetHeaders(headers: McpRequestHeaders): void {
  * Parse an incoming HTTP request.
  */
 export function* parseRequest(request: Request): Operation<McpParsedRequest> {
-  const method = request.method.toUpperCase() as McpHttpMethod
+  const method = request.method.toUpperCase() as McpHttpMethod;
 
   // Validate method
-  if (!['GET', 'POST', 'DELETE'].includes(method)) {
+  if (!["GET", "POST", "DELETE"].includes(method)) {
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.METHOD_NOT_ALLOWED,
       `Method ${method} not allowed`,
-      405
-    )
+      405,
+    );
   }
 
-  const headers = parseHeaders(request)
+  const headers = parseHeaders(request);
 
   // Parse body for POST
-  let body: unknown
-  if (method === 'POST') {
-    validatePostHeaders(headers)
+  let body: unknown;
+  if (method === "POST") {
+    validatePostHeaders(headers);
     try {
-      body = yield* call(() => request.json())
+      body = yield* call(() => request.json());
     } catch {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.INVALID_REQUEST,
-        'Invalid JSON in request body',
-        400
-      )
+        "Invalid JSON in request body",
+        400,
+      );
     }
   }
 
   // Validate GET headers
-  if (method === 'GET') {
-    validateGetHeaders(headers)
+  if (method === "GET") {
+    validateGetHeaders(headers);
   }
 
   return {
@@ -141,7 +141,7 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
     headers,
     body,
     originalRequest: request,
-  }
+  };
 }
 
 // =============================================================================
@@ -152,39 +152,29 @@ export function* parseRequest(request: Request): Operation<McpParsedRequest> {
  * Check if a value is a valid JSON-RPC request.
  */
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
-  if (typeof value !== 'object' || value === null) return false
-  const obj = value as Record<string, unknown>
-  return (
-    obj['jsonrpc'] === '2.0' &&
-    obj['id'] !== undefined &&
-    typeof obj['method'] === 'string'
-  )
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return obj["jsonrpc"] === "2.0" && obj["id"] !== undefined && typeof obj["method"] === "string";
 }
 
 /**
  * Check if a value is a valid JSON-RPC notification (request without id).
  */
-function isJsonRpcNotification(value: unknown): value is { jsonrpc: '2.0'; method: string; params?: unknown } {
-  if (typeof value !== 'object' || value === null) return false
-  const obj = value as Record<string, unknown>
-  return (
-    obj['jsonrpc'] === '2.0' &&
-    obj['id'] === undefined &&
-    typeof obj['method'] === 'string'
-  )
+function isJsonRpcNotification(
+  value: unknown,
+): value is { jsonrpc: "2.0"; method: string; params?: unknown } {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return obj["jsonrpc"] === "2.0" && obj["id"] === undefined && typeof obj["method"] === "string";
 }
 
 /**
  * Check if a value is a valid JSON-RPC response.
  */
 function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
-  if (typeof value !== 'object' || value === null) return false
-  const obj = value as Record<string, unknown>
-  return (
-    obj['jsonrpc'] === '2.0' &&
-    obj['id'] !== undefined &&
-    ('result' in obj || 'error' in obj)
-  )
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return obj["jsonrpc"] === "2.0" && obj["id"] !== undefined && ("result" in obj || "error" in obj);
 }
 
 // =============================================================================
@@ -196,192 +186,196 @@ function isJsonRpcResponse(value: unknown): value is JsonRpcResponse {
  */
 function classifyPostBody(
   body: unknown,
-  sessionId: string | undefined
-): McpToolsCallRequest | McpElicitResponse | McpSampleResponse | McpInitializeRequest | McpToolsListRequest | McpPingRequest | McpNotification {
+  sessionId: string | undefined,
+):
+  | McpToolsCallRequest
+  | McpElicitResponse
+  | McpSampleResponse
+  | McpInitializeRequest
+  | McpToolsListRequest
+  | McpPingRequest
+  | McpNotification {
   // Check for JSON-RPC notification (no id - fire and forget)
   if (isJsonRpcNotification(body)) {
-    const notif = body as { method: string; params?: unknown }
+    const notif = body as { method: string; params?: unknown };
     return {
-      type: 'notification',
+      type: "notification",
       method: notif.method,
       params: notif.params,
-    }
+    };
   }
 
   // Check for JSON-RPC request (tools/call, initialize, tools/list)
   if (isJsonRpcRequest(body)) {
-    const req = body as JsonRpcRequest
+    const req = body as JsonRpcRequest;
 
-    if (req.method === 'ping') {
+    if (req.method === "ping") {
       return {
-        type: 'ping',
+        type: "ping",
         requestId: req.id,
-      }
+      };
     }
 
-    if (req.method === 'initialize') {
-      const params = req.params as {
-        protocolVersion?: string
-        capabilities?: Record<string, unknown>
-        clientInfo?: { name: string; version: string }
-      } | undefined
+    if (req.method === "initialize") {
+      const params = req.params as
+        | {
+            protocolVersion?: string;
+            capabilities?: Record<string, unknown>;
+            clientInfo?: { name: string; version: string };
+          }
+        | undefined;
 
       return {
-        type: 'initialize',
+        type: "initialize",
         requestId: req.id,
-        protocolVersion: params?.protocolVersion ?? '2024-11-05',
+        protocolVersion: params?.protocolVersion ?? "2024-11-05",
         capabilities: params?.capabilities ?? {},
-        clientInfo: params?.clientInfo ?? { name: 'unknown', version: '0.0.0' },
-      }
+        clientInfo: params?.clientInfo ?? { name: "unknown", version: "0.0.0" },
+      };
     }
 
-    if (req.method === 'tools/list') {
+    if (req.method === "tools/list") {
       return {
-        type: 'tools_list',
+        type: "tools_list",
         requestId: req.id,
-      }
+      };
     }
 
-    if (req.method === 'tools/call') {
-      const params = req.params as McpToolCallParams | undefined
-      if (!params || typeof params.name !== 'string') {
+    if (req.method === "tools/call") {
+      const params = req.params as McpToolCallParams | undefined;
+      if (!params || typeof params.name !== "string") {
         throw new McpHandlerError(
           MCP_HANDLER_ERRORS.INVALID_REQUEST,
-          'tools/call requires params.name',
-          400
-        )
+          "tools/call requires params.name",
+          400,
+        );
       }
 
       const result: McpToolsCallRequest = {
-        type: 'tools_call',
+        type: "tools_call",
         requestId: req.id,
         toolName: params.name,
         arguments: params.arguments ?? {},
-      }
+      };
       if (sessionId !== undefined) {
-        result.sessionId = sessionId
+        result.sessionId = sessionId;
       }
-      return result
+      return result;
     }
 
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.INVALID_REQUEST,
       `Unsupported request method: ${req.method}`,
-      400
-    )
+      400,
+    );
   }
 
   // Check for JSON-RPC response (elicit or sample response)
   if (isJsonRpcResponse(body)) {
-    const resp = body as JsonRpcResponse
+    const resp = body as JsonRpcResponse;
 
     // Must have a session for responses
     if (!sessionId) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.SESSION_REQUIRED,
-        'Session ID required for responses',
-        400
-      )
+        "Session ID required for responses",
+        400,
+      );
     }
 
     // Check for error response - convert to elicit cancel/decline
     // MCP clients may send error responses when user rejects elicitation/sampling
     // Error code -1 = USER_REJECTED per MCP spec
-    if ('error' in resp) {
-      const errorResp = resp as { id: JsonRpcId | null; error: { code: number; message: string } }
-      
+    if ("error" in resp) {
+      const errorResp = resp as { id: JsonRpcId | null; error: { code: number; message: string } };
+
       // Error responses may have null id - we can't correlate them without an id
       if (errorResp.id === null) {
         throw new McpHandlerError(
           MCP_HANDLER_ERRORS.INVALID_REQUEST,
-          'Error response with null id cannot be correlated',
-          400
-        )
+          "Error response with null id cannot be correlated",
+          400,
+        );
       }
-      
+
       // Treat as elicitation decline/cancel
       // The request ID tells us which elicitation/sampling this responds to
       return {
-        type: 'elicit_response',
+        type: "elicit_response",
         requestId: errorResp.id,
         elicitId: String(errorResp.id),
-        action: errorResp.error.code === -1 ? 'decline' : 'cancel',
+        action: errorResp.error.code === -1 ? "decline" : "cancel",
         sessionId,
-      }
+      };
     }
 
-    const result = (resp as { result: unknown }).result
+    const result = (resp as { result: unknown }).result;
 
     // Try to classify as elicitation response
     if (isElicitationResult(result)) {
       const elicitResult: McpElicitResponse = {
-        type: 'elicit_response',
+        type: "elicit_response",
         requestId: resp.id,
         elicitId: String(resp.id), // Correlate by request ID
         action: result.action,
         sessionId,
-      }
+      };
       if (result.content !== undefined) {
-        elicitResult.content = result.content
+        elicitResult.content = result.content;
       }
-      return elicitResult
+      return elicitResult;
     }
 
     // Try to classify as sampling response
     if (isSamplingResult(result)) {
       const sampleResult: McpSampleResponse = {
-        type: 'sample_response',
+        type: "sample_response",
         requestId: resp.id,
         sampleId: String(resp.id), // Correlate by request ID
         role: result.role,
         content: result.content,
         model: result.model,
         sessionId,
-      }
+      };
       if (result.stopReason !== undefined) {
-        sampleResult.stopReason = result.stopReason
+        sampleResult.stopReason = result.stopReason;
       }
-      return sampleResult
+      return sampleResult;
     }
 
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.INVALID_REQUEST,
-      'Unrecognized response format',
-      400
-    )
+      "Unrecognized response format",
+      400,
+    );
   }
 
   throw new McpHandlerError(
     MCP_HANDLER_ERRORS.INVALID_REQUEST,
-    'Request body must be a JSON-RPC request or response',
-    400
-  )
+    "Request body must be a JSON-RPC request or response",
+    400,
+  );
 }
 
 /**
  * Check if a result looks like an elicitation result.
  */
 function isElicitationResult(result: unknown): result is McpElicitationResult {
-  if (typeof result !== 'object' || result === null) return false
-  const obj = result as Record<string, unknown>
-  const action = obj['action']
-  return (
-    typeof action === 'string' &&
-    ['accept', 'decline', 'cancel'].includes(action)
-  )
+  if (typeof result !== "object" || result === null) return false;
+  const obj = result as Record<string, unknown>;
+  const action = obj["action"];
+  return typeof action === "string" && ["accept", "decline", "cancel"].includes(action);
 }
 
 /**
  * Check if a result looks like a sampling result.
  */
 function isSamplingResult(result: unknown): result is McpCreateMessageResult {
-  if (typeof result !== 'object' || result === null) return false
-  const obj = result as Record<string, unknown>
+  if (typeof result !== "object" || result === null) return false;
+  const obj = result as Record<string, unknown>;
   return (
-    obj['role'] === 'assistant' &&
-    obj['content'] !== undefined &&
-    typeof obj['model'] === 'string'
-  )
+    obj["role"] === "assistant" && obj["content"] !== undefined && typeof obj["model"] === "string"
+  );
 }
 
 /**
@@ -393,28 +387,28 @@ function classifyGetRequest(headers: McpRequestHeaders): McpSseStreamRequest {
   if (!headers.sessionId) {
     // Return a special "no session" request that will create an idle stream
     return {
-      type: 'sse_stream',
-      sessionId: '', // Empty = idle stream
-    }
+      type: "sse_stream",
+      sessionId: "", // Empty = idle stream
+    };
   }
 
   // Parse Last-Event-ID for resumability
-  let afterLSN: number | undefined
+  let afterLSN: number | undefined;
   if (headers.lastEventId) {
-    const parsed = parseEventId(headers.lastEventId)
+    const parsed = parseEventId(headers.lastEventId);
     if (parsed && parsed.sessionId === headers.sessionId) {
-      afterLSN = parsed.lsn
+      afterLSN = parsed.lsn;
     }
   }
 
   const result: McpSseStreamRequest = {
-    type: 'sse_stream',
+    type: "sse_stream",
     sessionId: headers.sessionId,
-  }
+  };
   if (afterLSN !== undefined) {
-    result.afterLSN = afterLSN
+    result.afterLSN = afterLSN;
   }
-  return result
+  return result;
 }
 
 /**
@@ -424,15 +418,15 @@ function classifyDeleteRequest(headers: McpRequestHeaders): McpTerminateRequest 
   if (!headers.sessionId) {
     throw new McpHandlerError(
       MCP_HANDLER_ERRORS.SESSION_REQUIRED,
-      'Mcp-Session-Id header required for session termination',
-      400
-    )
+      "Mcp-Session-Id header required for session termination",
+      400,
+    );
   }
 
   return {
-    type: 'terminate',
+    type: "terminate",
     sessionId: headers.sessionId,
-  }
+  };
 }
 
 // =============================================================================
@@ -444,14 +438,14 @@ function classifyDeleteRequest(headers: McpRequestHeaders): McpTerminateRequest 
  */
 export function classifyRequest(parsed: McpParsedRequest): McpClassifiedRequest {
   switch (parsed.method) {
-    case 'POST':
-      return classifyPostBody(parsed.body, parsed.headers.sessionId)
+    case "POST":
+      return classifyPostBody(parsed.body, parsed.headers.sessionId);
 
-    case 'GET':
-      return classifyGetRequest(parsed.headers)
+    case "GET":
+      return classifyGetRequest(parsed.headers);
 
-    case 'DELETE':
-      return classifyDeleteRequest(parsed.headers)
+    case "DELETE":
+      return classifyDeleteRequest(parsed.headers);
   }
 }
 
@@ -459,6 +453,6 @@ export function classifyRequest(parsed: McpParsedRequest): McpClassifiedRequest 
  * Parse and classify an incoming request in one step.
  */
 export function* parseAndClassify(request: Request): Operation<McpClassifiedRequest> {
-  const parsed = yield* parseRequest(request)
-  return classifyRequest(parsed)
+  const parsed = yield* parseRequest(request);
+  return classifyRequest(parsed);
 }

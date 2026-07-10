@@ -9,14 +9,14 @@
  * 1. Worker starts via @effectionx/worker's workerMain()
  * 2. Receives init data with tool name, params, sessionId
  * 3. Looks up tool in registry, creates MCP context
- * 4. Executes tool handler, sending requests (sample/elicit/progress) to host
+ * 4. Executes tool handler, sending sample/elicit requests to host
  * 5. Returns final result to host
  *
  * ## Architecture
  *
  * Uses @sweatpants/core's worker transport:
- * - Worker sends requests via send.stream() (sample, elicit)
- * - Host processes requests and returns responses
+ * - Worker sends requests via send.stream(request) (sample, elicit)
+ * - Host sends a ready ACK, then processes requests and returns responses
  * - Progress/log are fire-and-forget (logged locally)
  *
  * @packageDocumentation
@@ -29,10 +29,12 @@ import {
   type WorkerMessage,
   type WorkerSampleResponse,
   type WorkerElicitResponse,
-} from '@sweatpants/core/transport/worker'
-import type { Operation } from 'effection'
-import { z } from 'zod'
+} from "@sweatpants/core/transport/worker";
+import type { ElicitDefinition, ToolElicitResult } from "@sweatpants/core";
+import type { Operation } from "effection";
+import { z } from "zod";
 import type {
+  WorkerTool,
   WorkerToolRegistry,
   WorkerToolContext,
   WorkerSampleConfig,
@@ -44,7 +46,7 @@ import type {
   WorkerSampleToolsConfigMessages,
   WorkerSampleSchemaConfig,
   WorkerSampleSchemaConfigMessages,
-} from './worker-types.js'
+} from "./worker-types.js";
 import type {
   ExtendedMessage,
   ToolCallMessage,
@@ -55,14 +57,13 @@ import type {
   SampleResultWithToolCalls,
   SampleToolsResult,
   SampleSchemaResult,
-  ElicitResult,
   SamplingToolDefinition,
-} from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat/mcp-tools";
 import {
   createRawSampleExchange,
   createStructuredSampleExchange,
   SampleValidationError,
-} from '@sweatpants/framework/chat/mcp-tools'
+} from "@sweatpants/framework/chat/mcp-tools";
 
 // =============================================================================
 // TYPE CONVERSION HELPERS
@@ -72,14 +73,14 @@ import {
  * Type guard for ToolCallMessage (assistant message with tool_calls).
  */
 function isToolCallMessage(msg: ExtendedMessage): msg is ToolCallMessage {
-  return 'tool_calls' in msg && Array.isArray((msg as ToolCallMessage).tool_calls)
+  return "tool_calls" in msg && Array.isArray((msg as ToolCallMessage).tool_calls);
 }
 
 /**
  * Type guard for ToolResultMessage (tool result with tool_call_id).
  */
 function isToolResultMessage(msg: ExtendedMessage): msg is ToolResultMessage {
-  return 'tool_call_id' in msg && (msg as ToolResultMessage).role === 'tool'
+  return "tool_call_id" in msg && (msg as ToolResultMessage).role === "tool";
 }
 
 /**
@@ -94,50 +95,52 @@ function isToolResultMessage(msg: ExtendedMessage): msg is ToolResultMessage {
 function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
   // ToolCallMessage → assistant message with tool_use content blocks
   if (isToolCallMessage(msg)) {
-    const contentBlocks: WorkerMessage['content'] = []
-    
+    const contentBlocks: WorkerMessage["content"] = [];
+
     // Preserve any text content alongside the tool calls
     if (msg.content) {
-      contentBlocks.push({ type: 'text' as const, text: msg.content })
+      contentBlocks.push({ type: "text" as const, text: msg.content });
     }
-    
+
     // Convert each tool call to a tool_use content block
     for (const tc of msg.tool_calls) {
       contentBlocks.push({
-        type: 'tool_use' as const,
+        type: "tool_use" as const,
         id: tc.id,
         name: tc.function.name,
         input: tc.function.arguments,
-      })
+      });
     }
-    
-    return { role: 'assistant', content: contentBlocks }
+
+    return { role: "assistant", content: contentBlocks };
   }
-  
+
   // ToolResultMessage → user message with tool_result content block
   // MCP convention: tool results are sent as role 'user' with tool_result content blocks
   if (isToolResultMessage(msg)) {
     return {
-      role: 'user',
-      content: [{
-        type: 'tool_result' as const,
-        toolUseId: msg.tool_call_id,
-        content: [{ type: 'text' as const, text: msg.content }],
-      }],
-    }
+      role: "user",
+      content: [
+        {
+          type: "tool_result" as const,
+          toolUseId: msg.tool_call_id,
+          content: [{ type: "text" as const, text: msg.content }],
+        },
+      ],
+    };
   }
-  
+
   // Basic Message with string content
-  if (typeof msg.content === 'string') {
+  if (typeof msg.content === "string") {
     return {
-      role: msg.role as 'user' | 'assistant',
+      role: msg.role as "user" | "assistant",
       content: msg.content,
-    }
+    };
   }
-  
+
   // McpMessage with content blocks - pass through
   // The core transport supports the same content block structure
-  return msg as WorkerMessage
+  return msg as WorkerMessage;
 }
 
 /**
@@ -148,15 +151,15 @@ function toWorkerMessage(msg: ExtendedMessage): WorkerMessage {
  * parameter is erased to `unknown` by the time it reaches the worker runner.
  */
 function toJsonSchemaRecord(schema: unknown): Record<string, unknown> {
-  if (schema && typeof (schema as { safeParse?: unknown }).safeParse === 'function') {
+  if (schema && typeof (schema as { safeParse?: unknown }).safeParse === "function") {
     // Zod schema — convert to JSON Schema using Zod v4's built-in converter.
     // Functions can't be cloned for postMessage, so we must serialize to plain JSON.
     // Strip $schema meta-field — it's unnecessary for wire protocol and some providers reject it.
-    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema as z.ZodType)
-    return jsonSchema as Record<string, unknown>
+    const { $schema: _, ...jsonSchema } = z.toJSONSchema(schema as z.ZodType);
+    return jsonSchema as Record<string, unknown>;
   }
   // Already a JSON Schema object
-  return schema as Record<string, unknown>
+  return schema as Record<string, unknown>;
 }
 
 /**
@@ -166,15 +169,15 @@ function toJsonSchemaRecord(schema: unknown): Record<string, unknown> {
  * that can't be cloned for postMessage to the host thread.
  */
 function toWorkerToolDefinition(tool: SamplingToolDefinition): {
-  name: string
-  description?: string
-  inputSchema: Record<string, unknown>
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
 } {
   return {
     name: tool.name,
     ...(tool.description !== undefined && { description: tool.description }),
     inputSchema: toJsonSchemaRecord(tool.inputSchema),
-  }
+  };
 }
 
 // =============================================================================
@@ -192,25 +195,25 @@ function toWorkerToolDefinition(tool: SamplingToolDefinition): {
  */
 /** Narrow an array to the non-empty tuple type expected by guaranteed-result APIs. */
 function isNonEmpty<T>(arr: T[] | undefined): arr is [T, ...T[]] {
-  return Array.isArray(arr) && arr.length > 0
+  return Array.isArray(arr) && arr.length > 0;
 }
 
 export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
   await coreRunToolWorker(function* (initData: CoreWorkerInitData, coreCtx: CoreWorkerToolContext) {
-    const { toolName, params, sessionId } = initData
+    const { toolName, params, sessionId } = initData;
 
     // Look up tool
-    const tool = registry.get(toolName)
+    const tool = registry.get(toolName);
     if (!tool) {
-      throw new Error(`Tool not found: ${toolName}`)
+      throw new Error(`Tool not found: ${toolName}`);
     }
 
     // Create MCP tool context that wraps core context
-    const ctx = createMcpWorkerContext(coreCtx, sessionId)
+    const ctx = createMcpWorkerContext(coreCtx, sessionId, tool);
 
     // Execute the tool
-    return yield* tool.handler(params, ctx) as Operation<unknown>
-  })
+    return yield* tool.handler(params, ctx) as Operation<unknown>;
+  });
 }
 
 // =============================================================================
@@ -227,49 +230,70 @@ export async function runWorker(registry: WorkerToolRegistry): Promise<void> {
  */
 function createMcpWorkerContext(
   coreCtx: CoreWorkerToolContext,
-  sessionId: string
+  sessionId: string,
+  tool: WorkerTool,
 ): WorkerToolContext {
-  let toolCallIdCounter = 0
-  const generateToolCallId = () => `${sessionId}:tc:${++toolCallIdCounter}`
+  let toolCallIdCounter = 0;
+  const generateToolCallId = () => `${sessionId}:tc:${++toolCallIdCounter}`;
+  const elicitationSchemas = tool.elicits ?? {};
+
+  function schemaForElicitKey(key: string): Record<string, unknown> | undefined {
+    const entry = (elicitationSchemas as Record<string, unknown>)[key];
+    if (!entry) return undefined;
+    const responseSchema =
+      entry &&
+      typeof entry === "object" &&
+      "response" in entry &&
+      (entry as ElicitDefinition).response
+        ? (entry as ElicitDefinition).response
+        : entry;
+    return toJsonSchemaRecord(responseSchema);
+  }
 
   // Helper to extract prompt text for exchange construction
   function extractPromptText(config: WorkerSampleConfig): string {
-    if ('prompt' in config && config.prompt) {
-      return config.prompt
+    if ("prompt" in config && config.prompt) {
+      return config.prompt;
     }
-    if ('messages' in config && config.messages) {
-      const lastUserMsg = [...config.messages].reverse().find(m => m.role === 'user')
+    if ("messages" in config && config.messages) {
+      const lastUserMsg = [...config.messages].reverse().find((m) => m.role === "user");
       if (lastUserMsg) {
-        return typeof lastUserMsg.content === 'string' 
-          ? lastUserMsg.content 
-          : '[complex content]'
+        return typeof lastUserMsg.content === "string" ? lastUserMsg.content : "[complex content]";
       }
     }
-    return ''
+    return "";
   }
 
   // Helper to build messages for core sample
   function buildMessages(config: WorkerSampleConfig): WorkerMessage[] {
-    if ('prompt' in config && config.prompt) {
-      return [{ role: 'user', content: config.prompt }]
+    if ("prompt" in config && config.prompt) {
+      return [{ role: "user", content: config.prompt }];
     }
-    if ('messages' in config && config.messages) {
-      return config.messages.map(toWorkerMessage)
+    if ("messages" in config && config.messages) {
+      return config.messages.map(toWorkerMessage);
     }
-    return []
+    return [];
   }
 
   // The unified sample implementation. `sampleTyped` overlays overload
   // signatures so schema/tools configs infer their result arm without casts.
   interface SampleTyped {
-    <T>(config: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
-    (config: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
-    (config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+    <T>(
+      config: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T>,
+    ): Operation<SampleResultWithParsed<T>>;
+    (
+      config: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages,
+    ): Operation<SampleResultWithToolCalls>;
+    (
+      config: WorkerSampleConfig,
+    ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
   }
-  const sampleTyped = sampleImpl as SampleTyped
-  function* sampleImpl(config: WorkerSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
-    const messages = buildMessages(config)
-    const promptText = extractPromptText(config)
+  const sampleTyped = sampleImpl as SampleTyped;
+  function* sampleImpl(
+    config: WorkerSampleConfig,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
+    const messages = buildMessages(config);
+    const promptText = extractPromptText(config);
 
     // Build core sample options
     const coreOptions: Parameters<typeof coreCtx.sample>[0] = {
@@ -277,33 +301,34 @@ function createMcpWorkerContext(
       ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
       ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
       ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
-    }
+    };
 
     // Handle schema (convert Zod to JSON schema marker)
-    if ('schema' in config && config.schema) {
-      coreOptions.schema = toJsonSchemaRecord(config.schema)
+    if ("schema" in config && config.schema) {
+      coreOptions.schema = toJsonSchemaRecord(config.schema);
     }
 
     // Handle tools
-    if ('tools' in config && config.tools) {
-      coreOptions.tools = config.tools.map(toWorkerToolDefinition)
+    if ("tools" in config && config.tools) {
+      coreOptions.tools = config.tools.map(toWorkerToolDefinition);
       if (config.toolChoice !== undefined) {
-        coreOptions.toolChoice = config.toolChoice
+        coreOptions.toolChoice = config.toolChoice;
       }
     }
 
     // Call core sample
-    const response: WorkerSampleResponse = yield* coreCtx.sample(coreOptions)
+    const response: WorkerSampleResponse = yield* coreCtx.sample(coreOptions);
 
     // Build result based on what was requested
-    if ('schema' in config && config.schema) {
+    if ("schema" in config && config.schema) {
       // Schema sample - parse and build structured exchange
-      const parsed = response.parsed ?? null
-      const parseError = response.parseError
+      const parsed = response.parsed ?? null;
+      const parseError = response.parseError;
 
-      const exchange = parsed !== null
-        ? createStructuredSampleExchange(promptText, parsed, generateToolCallId())
-        : createRawSampleExchange(promptText, response.text)
+      const exchange =
+        parsed !== null
+          ? createStructuredSampleExchange(promptText, parsed, generateToolCallId())
+          : createRawSampleExchange(promptText, response.text);
 
       const result: SampleResultWithParsed<unknown> = {
         text: response.text,
@@ -312,105 +337,116 @@ function createMcpWorkerContext(
         parsed,
         ...(parseError !== undefined && { parseError }),
         exchange,
-      }
-      return result
+      };
+      return result;
     }
 
-    if ('tools' in config && config.tools && response.toolCalls) {
+    if ("tools" in config && config.tools && response.toolCalls) {
       // Tools sample
-      const exchange = createRawSampleExchange(promptText, response.text)
+      const exchange = createRawSampleExchange(promptText, response.text);
       const result: SampleResultWithToolCalls = {
         text: response.text,
         ...(response.model !== undefined && { model: response.model }),
         ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
         exchange,
-        toolCalls: response.toolCalls.map(tc => ({
+        toolCalls: response.toolCalls.map((tc) => ({
           id: tc.id,
           name: tc.name,
           arguments: tc.arguments,
         })),
-      }
-      return result
+      };
+      return result;
     }
 
     // Plain sample
-    const exchange = createRawSampleExchange(promptText, response.text)
+    const exchange = createRawSampleExchange(promptText, response.text);
     const result: SampleResultBase = {
       text: response.text,
       ...(response.model !== undefined && { model: response.model }),
       ...(response.stopReason !== undefined && { stopReason: response.stopReason }),
       exchange,
-    }
-    return result
+    };
+    return result;
   }
 
   // The context object
   const ctx: WorkerToolContext = {
     log(level: LogLevel, message: string): Operation<void> {
-      coreCtx.log(level, message)
+      coreCtx.log(level, message);
       // Return a no-op operation so callers can yield* ctx.log(...)
       return {
         *[Symbol.iterator]() {
           // No-op - logging is fire-and-forget
         },
-      }
+      };
     },
 
     progress(message: string, progressValue?: number): Operation<void> {
       // Core context has fire-and-forget progress
-      coreCtx.progress(message, progressValue)
+      coreCtx.progress(message, progressValue);
       // Return a no-op operation for backpressure compatibility
       return {
         *[Symbol.iterator]() {
           // No-op - progress is fire-and-forget in the new model
         },
-      }
+      };
     },
 
     // Alias for progress() - MCP tools call ctx.notify() instead of ctx.progress()
     notify(message: string, progressValue?: number): Operation<void> {
-      return ctx.progress(message, progressValue)
+      return ctx.progress(message, progressValue);
     },
 
     // Sample - delegates to sampleImpl (overloads are defined in the interface)
-    sample: ((config: WorkerSampleConfig) => sampleImpl(config)) as WorkerToolContext['sample'],
+    sample: ((config: WorkerSampleConfig) => sampleImpl(config)) as WorkerToolContext["sample"],
 
-    *sampleTools(config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages): Operation<SampleToolsResult> {
-      const retries = config.retries ?? 2
-      let lastResult: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls | undefined
+    *sampleTools(
+      config: WorkerSampleToolsConfig | WorkerSampleToolsConfigMessages,
+    ): Operation<SampleToolsResult> {
+      const retries = config.retries ?? 2;
+      let lastResult:
+        | SampleResultBase
+        | SampleResultWithParsed<unknown>
+        | SampleResultWithToolCalls
+        | undefined;
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with tools
-        const sampleConfig: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages = 'prompt' in config
-          ? {
-              prompt: config.prompt,
-              tools: config.tools,
-              toolChoice: config.toolChoice ?? 'required',
-              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
-            }
-          : {
-              messages: config.messages,
-              tools: config.tools,
-              toolChoice: config.toolChoice ?? 'required',
-              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
-            }
+        const sampleConfig: WorkerSampleConfigToolsPrompt | WorkerSampleConfigToolsMessages =
+          "prompt" in config
+            ? {
+                prompt: config.prompt,
+                tools: config.tools,
+                toolChoice: config.toolChoice ?? "required",
+                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+                ...(config.modelPreferences !== undefined && {
+                  modelPreferences: config.modelPreferences,
+                }),
+              }
+            : {
+                messages: config.messages,
+                tools: config.tools,
+                toolChoice: config.toolChoice ?? "required",
+                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+                ...(config.modelPreferences !== undefined && {
+                  modelPreferences: config.modelPreferences,
+                }),
+              };
 
-        const result = yield* sampleImpl(sampleConfig)
-        lastResult = result
+        const result = yield* sampleImpl(sampleConfig);
+        lastResult = result;
 
         // Check if we got tool calls
-        if ('toolCalls' in result && isNonEmpty(result.toolCalls)) {
+        if ("toolCalls" in result && isNonEmpty(result.toolCalls)) {
           return {
             text: result.text,
             ...(result.model !== undefined && { model: result.model }),
-            stopReason: 'toolUse',
+            stopReason: "toolUse",
             toolCalls: result.toolCalls,
             exchange: result.exchange,
-          }
+          };
         }
 
         // If this wasn't the last attempt, we could add a retry hint
@@ -418,37 +454,46 @@ function createMcpWorkerContext(
       }
 
       throw new SampleValidationError(
-        'sampleTools',
+        "sampleTools",
         retries + 1,
         lastResult!,
-        `Model did not return tool calls after ${retries + 1} attempts`
-      )
+        `Model did not return tool calls after ${retries + 1} attempts`,
+      );
     },
 
-    *sampleSchema<T>(config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
-      const retries = config.retries ?? 2
-      let lastResult: SampleResultWithParsed<T> | undefined
+    *sampleSchema<T>(
+      config: WorkerSampleSchemaConfig<T> | WorkerSampleSchemaConfigMessages<T>,
+    ): Operation<SampleSchemaResult<T>> {
+      const retries = config.retries ?? 2;
+      let lastResult: SampleResultWithParsed<T> | undefined;
 
       for (let attempt = 0; attempt <= retries; attempt++) {
         // Build sample config with schema
-        const sampleConfig: WorkerSampleConfigSchemaPrompt<T> | WorkerSampleConfigSchemaMessages<T> = 'prompt' in config
-          ? {
-              prompt: config.prompt,
-              schema: config.schema,
-              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
-            }
-          : {
-              messages: config.messages,
-              schema: config.schema,
-              ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
-              ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
-              ...(config.modelPreferences !== undefined && { modelPreferences: config.modelPreferences }),
-            }
+        const sampleConfig:
+          | WorkerSampleConfigSchemaPrompt<T>
+          | WorkerSampleConfigSchemaMessages<T> =
+          "prompt" in config
+            ? {
+                prompt: config.prompt,
+                schema: config.schema,
+                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+                ...(config.modelPreferences !== undefined && {
+                  modelPreferences: config.modelPreferences,
+                }),
+              }
+            : {
+                messages: config.messages,
+                schema: config.schema,
+                ...(config.systemPrompt !== undefined && { systemPrompt: config.systemPrompt }),
+                ...(config.maxTokens !== undefined && { maxTokens: config.maxTokens }),
+                ...(config.modelPreferences !== undefined && {
+                  modelPreferences: config.modelPreferences,
+                }),
+              };
 
-        const result = yield* sampleTyped(sampleConfig)
-        lastResult = result
+        const result = yield* sampleTyped(sampleConfig);
+        lastResult = result;
 
         // Check if we got valid parsed output
         if (result.parsed !== null) {
@@ -459,61 +504,66 @@ function createMcpWorkerContext(
             parsed: result.parsed,
             // Rebuild with the narrowed parsed value (SampleExchange<T | null> → SampleExchange<T>)
             exchange: { ...result.exchange, parsed: result.parsed },
-          }
+          };
         }
 
         // If this wasn't the last attempt, we could add a retry hint
       }
 
       throw new SampleValidationError(
-        'sampleSchema',
+        "sampleSchema",
         retries + 1,
         lastResult!,
-        `Schema parsing failed after ${retries + 1} attempts: ${lastResult?.parseError?.message ?? 'unknown error'}`
-      )
+        `Schema parsing failed after ${retries + 1} attempts: ${lastResult?.parseError?.message ?? "unknown error"}`,
+      );
     },
 
     *elicit<T>(
       key: string,
       options: {
-        message: string
-        schema?: Record<string, unknown>
-        context?: Record<string, unknown>
-      }
-    ): Operation<ElicitResult<unknown, T>> {
-      const { message, schema, context } = options
+        message: string;
+        schema?: Record<string, unknown>;
+        context?: Record<string, unknown>;
+      },
+    ): Operation<ToolElicitResult<unknown, T>> {
+      const { message, schema, context } = options;
+      const responseSchema = schema ?? schemaForElicitKey(key) ?? { type: "object" };
 
       const response: WorkerElicitResponse = yield* coreCtx.elicit(key, {
         message,
-        schema: schema ?? { type: 'object' },
+        schema: responseSchema,
         ...(context !== undefined && { context }),
-      })
+      });
 
       // Construct exchange on accept only (truthful ToolElicitResult arms)
-      if (response.action === 'accept') {
-        const content = response.content as T
-        const toolUseId = `elicit_${sessionId}_${key}_${Date.now()}`
+      if (response.action === "accept") {
+        const content = response.content as T;
+        const toolUseId = `elicit_${sessionId}_${key}_${Date.now()}`;
 
         const request = {
-          role: 'assistant' as const,
-          content: [{
-            type: 'tool_use' as const,
-            id: toolUseId,
-            name: key,
-            input: {},
-          }],
-        }
+          role: "assistant" as const,
+          content: [
+            {
+              type: "tool_use" as const,
+              id: toolUseId,
+              name: key,
+              input: {},
+            },
+          ],
+        };
         const responseMsg = {
-          role: 'user' as const,
-          content: [{
-            type: 'tool_result' as const,
-            toolUseId,
-            content: [{ type: 'text' as const, text: JSON.stringify(content) }],
-          }],
-        }
+          role: "user" as const,
+          content: [
+            {
+              type: "tool_result" as const,
+              toolUseId,
+              content: [{ type: "text" as const, text: JSON.stringify(content) }],
+            },
+          ],
+        };
 
         return {
-          action: 'accept',
+          action: "accept",
           content,
           exchange: {
             context: (context ?? {}) as unknown,
@@ -521,31 +571,39 @@ function createMcpWorkerContext(
             response: responseMsg,
             messages: [request, responseMsg] as [typeof request, typeof responseMsg],
             withArguments(fn: (ctx: unknown) => Record<string, unknown>) {
-              const args = fn(context ?? {})
+              const args = fn(context ?? {});
               const requestWithArgs = {
-                role: 'assistant' as const,
-                content: [{
-                  type: 'tool_use' as const,
-                  id: toolUseId,
-                  name: key,
-                  input: args,
-                }],
-              }
-              return [requestWithArgs, responseMsg] as [typeof requestWithArgs, typeof responseMsg]
+                role: "assistant" as const,
+                content: [
+                  {
+                    type: "tool_use" as const,
+                    id: toolUseId,
+                    name: key,
+                    input: args,
+                  },
+                ],
+              };
+              return [requestWithArgs, responseMsg] as [typeof requestWithArgs, typeof responseMsg];
             },
           },
-        }
+        };
       }
 
-      if (response.action === 'decline') {
-        return { action: 'decline', ...(response.reason !== undefined && { reason: response.reason }) }
+      if (response.action === "decline") {
+        return {
+          action: "decline",
+          ...(response.reason !== undefined && { reason: response.reason }),
+        };
       }
 
-      return { action: 'cancel', ...(response.reason !== undefined && { reason: response.reason }) }
+      return {
+        action: "cancel",
+        ...(response.reason !== undefined && { reason: response.reason }),
+      };
     },
-  }
+  };
 
-  return ctx
+  return ctx;
 }
 
 // =============================================================================
@@ -558,20 +616,18 @@ function createMcpWorkerContext(
  * @param tools - Array of tools to register
  * @returns The registry
  */
-export function createWorkerToolRegistry(
-  tools: Array<{ name: string; handler: (params: unknown, ctx: WorkerToolContext) => Generator<unknown, unknown, unknown> }>
-): WorkerToolRegistry {
-  const map = new Map<string, { name: string; handler: (params: unknown, ctx: WorkerToolContext) => Generator<unknown, unknown, unknown> }>()
+export function createWorkerToolRegistry(tools: WorkerTool[]): WorkerToolRegistry {
+  const map = new Map<string, WorkerTool>();
   for (const tool of tools) {
-    map.set(tool.name, tool)
+    map.set(tool.name, tool);
   }
 
   return {
     get(name: string) {
-      return map.get(name) ?? null
+      return map.get(name) ?? null;
     },
     list() {
-      return Array.from(map.keys())
+      return Array.from(map.keys());
     },
-  }
+  };
 }

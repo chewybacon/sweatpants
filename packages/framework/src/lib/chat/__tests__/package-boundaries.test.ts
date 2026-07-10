@@ -68,6 +68,17 @@ describe("framework package boundaries", () => {
     expect(runtimeSource).not.toContain("export interface StartToolCallRequest");
   });
 
+  it("does not publicly export legacy MCP tool context/result/config alias names", () => {
+    const mcpToolsIndex = readFileSync(
+      resolve(frameworkRoot, "src/lib/chat/mcp-tools/index.ts"),
+      "utf8",
+    );
+    expect(mcpToolsIndex).not.toContain("\n  McpToolContext,");
+    expect(mcpToolsIndex).not.toContain("\n  McpToolContextWithElicits,");
+    expect(mcpToolsIndex).not.toContain("\n  ElicitResult,");
+    expect(mcpToolsIndex).not.toContain("\n  ElicitConfig,");
+  });
+
   it("does not publicly export tool authoring builders from framework", () => {
     const indexes = [
       resolve(frameworkRoot, "src/lib/chat/index.ts"),

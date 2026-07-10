@@ -54,6 +54,7 @@ import {
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
+import { yoChatTestToolSessionWorkerConfig } from "../server/tool-worker-config.ts";
 
 type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
 
@@ -144,6 +145,7 @@ describe("yo-chat tool blackbox", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: yoChatTestToolSessionWorkerConfig },
       });
 
       try {
@@ -187,7 +189,10 @@ describe("yo-chat tool blackbox", () => {
           },
         };
 
-        const registry = yield* createToolSessionRegistry(store, { samplingProvider });
+        const registry = yield* createToolSessionRegistry(store, {
+          samplingProvider,
+          worker: yoChatTestToolSessionWorkerConfig,
+        });
         const manager = yield* createPluginSessionManager({ registry });
 
         yield* ready.send({ registry, manager, samplingProvider });
@@ -357,7 +362,10 @@ describe("yo-chat tool blackbox", () => {
           },
         };
 
-        const registry = yield* createToolSessionRegistry(store, { samplingProvider });
+        const registry = yield* createToolSessionRegistry(store, {
+          samplingProvider,
+          worker: yoChatTestToolSessionWorkerConfig,
+        });
         const manager = yield* createPluginSessionManager({ registry });
 
         yield* ready.send({ registry, manager, samplingProvider });

@@ -18,21 +18,23 @@
  * })
  * ```
  */
-import { resource, call, spawn, each, createSignal } from 'effection'
-import type { Operation, Stream } from 'effection'
-import { useVite, type ViteHandle, type HmrEvent } from './vite-resource.ts'
-import type { ModelSelection } from '@sweatpants/model-provider-pi-ai'
+import { resource, call, spawn, each, createSignal } from "effection";
+import type { Operation, Stream } from "effection";
+import { pathToFileURL } from "node:url";
+import { resolve } from "node:path";
+import { useVite, type ViteHandle, type HmrEvent } from "./vite-resource.ts";
+import type { ModelSelection } from "@sweatpants/model-provider-pi-ai";
 
 /**
  * Options for the dev server
  */
 export interface DevServerOptions {
   /** Root directory */
-  root?: string
+  root?: string;
   /** Path to tools directory (relative to root) */
-  toolsPath?: string
+  toolsPath?: string;
   /** Primary chat model. */
-  model?: ModelSelection
+  model?: ModelSelection;
 }
 
 /**
@@ -43,22 +45,22 @@ export interface DevServerHandle {
    * Fetch-like function that calls the handler.
    * Handler uses latest tool definitions (hot-reloaded).
    */
-  fetch: (request: Request) => Promise<Response>
+  fetch: (request: Request) => Promise<Response>;
 
   /**
    * Stream of reload events
    */
-  reloadEvents: Stream<{ type: 'tools' | 'config'; file: string }, void>
+  reloadEvents: Stream<{ type: "tools" | "config"; file: string }, void>;
 
   /**
    * Force reload all tools
    */
-  reloadTools: () => Operation<void>
+  reloadTools: () => Operation<void>;
 
   /**
    * The underlying Vite handle (for advanced use)
    */
-  vite: ViteHandle
+  vite: ViteHandle;
 }
 
 /**
@@ -71,87 +73,86 @@ export function useDevServer(options: DevServerOptions = {}): Operation<DevServe
   return resource(function* (provide) {
     const {
       root = process.cwd(),
-      toolsPath = './src/tools',
-      model = { provider: 'ollama', id: 'gemma4:12b-mlx' },
-    } = options
+      toolsPath = "./src/tools",
+      model = { provider: "ollama", id: "gemma4:12b-mlx" },
+    } = options;
 
     // Start Vite in middleware mode for HMR
-    const vite = yield* useVite({ root, logLevel: 'warn' })
+    const vite = yield* useVite({ root, logLevel: "warn" });
 
     // Signal for reload events
-    const reloadSignal = createSignal<{ type: 'tools' | 'config'; file: string }, void>()
+    const reloadSignal = createSignal<{ type: "tools" | "config"; file: string }, void>();
 
     // Current handler (will be replaced on reload)
-    let currentHandler: ((req: Request) => Promise<Response>) | null = null
+    let currentHandler: ((req: Request) => Promise<Response>) | null = null;
 
     // Load/reload the handler with current tools
     function* loadHandler(): Operation<void> {
       // Import tools through Vite (gets HMR support)
       const toolsModule = yield* vite.import<{ tools?: unknown[]; toolList?: unknown[] }>(
-        `${toolsPath}/index.ts`
-      )
+        `${toolsPath}/index.ts`,
+      );
 
-      const tools = toolsModule.tools ?? toolsModule.toolList ?? []
+      const tools = toolsModule.tools ?? toolsModule.toolList ?? [];
 
       // Import the handler factory
       // This would come from the framework
-      const { createInProcessHandler } = yield* call(() =>
-        import('./in-process-handler.ts')
-      )
+      const { createInProcessHandler } = yield* call(() => import("./in-process-handler.ts"));
 
       // Create new handler with loaded tools
       currentHandler = createInProcessHandler({
         model,
         tools: tools as any[],
-      })
+        toolsModuleUrl: pathToFileURL(resolve(root, toolsPath, "index.ts")).toString(),
+      });
     }
 
     // Initial load
-    yield* loadHandler()
+    yield* loadHandler();
 
     // Watch for changes and reload
     yield* spawn(function* () {
       for (const event of yield* each(vite.hmrEvents)) {
         // Check if this affects our tools
-        const isToolChange = event.file.includes(toolsPath.replace('./', ''))
-        
+        const isToolChange = event.file.includes(toolsPath.replace("./", ""));
+
         if (isToolChange) {
-          console.log(`[HMR] Tool changed: ${event.file}`)
-          
+          console.log(`[HMR] Tool changed: ${event.file}`);
+
           // Invalidate and reload
-          vite.invalidate(`${toolsPath}/index.ts`)
-          yield* loadHandler()
-          
-          reloadSignal.send({ type: 'tools', file: event.file })
+          vite.invalidate(`${toolsPath}/index.ts`);
+          yield* loadHandler();
+
+          reloadSignal.send({ type: "tools", file: event.file });
         }
-        
-        yield* each.next()
+
+        yield* each.next();
       }
-    })
+    });
 
     // Create the handle
     const handle: DevServerHandle = {
       async fetch(request: Request): Promise<Response> {
         if (!currentHandler) {
-          return new Response('Handler not ready', { status: 503 })
+          return new Response("Handler not ready", { status: 503 });
         }
-        return currentHandler(request)
+        return currentHandler(request);
       },
 
       reloadEvents: reloadSignal,
 
       *reloadTools(): Operation<void> {
-        vite.invalidate(`${toolsPath}/index.ts`)
-        yield* loadHandler()
+        vite.invalidate(`${toolsPath}/index.ts`);
+        yield* loadHandler();
       },
 
       vite,
-    }
+    };
 
     try {
-      yield* provide(handle)
+      yield* provide(handle);
     } finally {
-      reloadSignal.close()
+      reloadSignal.close();
     }
-  })
+  });
 }
