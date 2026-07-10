@@ -1,17 +1,18 @@
 {
-  "extends": "@sweatpants/ts-config/tsconfig.app.json",
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "ink": ["./node_modules/ink"]
+    "extends": "@sweatpants/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["./src/*"],
+            "ink": ["./node_modules/ink"]
+        },
+        "customConditions": ["development"]
     },
-    "customConditions": ["development"]
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
-  "references": [
-    { "path": "../../packages/framework/tsconfig.lib.json" },
-    { "path": "../../packages/tool-runtime-local/tsconfig.json" }
-  ]
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "dist"],
+    "references": [
+        { "path": "../../packages/core/tsconfig.json" },
+        { "path": "../../packages/framework/tsconfig.lib.json" },
+        { "path": "../../packages/tool-runtime-local/tsconfig.json" }
+    ]
 }
