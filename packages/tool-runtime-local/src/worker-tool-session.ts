@@ -33,27 +33,27 @@ import {
   type Operation,
   type Stream,
   type Subscription,
-  type Channel,
+  type Queue,
   resource,
   createChannel,
   spawn,
-} from 'effection'
+} from "effection";
 import {
   createWorkerPrincipal,
   type WorkerRequest,
   type WorkerResponse,
   type WorkerResult,
-} from '@sweatpants/core/transport/worker'
+} from "@sweatpants/core/transport/worker";
 import type {
   ToolSession,
   ToolSessionStatus,
   ToolSessionEvent,
   WireSampleResult,
-} from '@sweatpants/framework/chat/mcp-tools'
-import type { WireElicitResult, ExtendedMessage } from '@sweatpants/framework/chat/mcp-tools'
-import type { McpWorkerInitData } from './worker-types.ts'
-import { WorkerSessionStateContext, type WorkerSessionState } from './worker-session-context.ts'
-import { WorkerSessionApi } from './worker-session-api.ts'
+} from "@sweatpants/framework/chat/mcp-tools";
+import type { WireElicitResult, ExtendedMessage } from "@sweatpants/framework/chat/mcp-tools";
+import type { McpWorkerInitData } from "./worker-types.ts";
+import { WorkerSessionStateContext, type WorkerSessionState } from "./worker-session-context.ts";
+import { WorkerSessionApi } from "./worker-session-api.ts";
 
 // =============================================================================
 // WORKER TOOL SESSION
@@ -64,19 +64,19 @@ import { WorkerSessionApi } from './worker-session-api.ts'
  */
 export interface WorkerToolSessionOptions {
   /** Session ID */
-  sessionId: string
+  sessionId: string;
   /** Tool name */
-  toolName: string
+  toolName: string;
   /** Tool parameters */
-  params: unknown
+  params: unknown;
   /** URL to the worker script */
-  workerUrl: string | URL
+  workerUrl: string | URL;
   /** Optional system prompt */
-  systemPrompt?: string
+  systemPrompt?: string;
   /** Optional parent messages */
-  parentMessages?: ExtendedMessage[]
+  parentMessages?: ExtendedMessage[];
   /** Extra execArgv for the worker thread (e.g., ['--import', 'tsx'] for TypeScript support) */
-  execArgv?: string[]
+  execArgv?: string[];
 }
 
 /**
@@ -90,69 +90,68 @@ export interface WorkerToolSessionOptions {
  * @param options - Session configuration
  * @returns A ToolSession resource
  */
-export function createWorkerToolSession(
-  options: WorkerToolSessionOptions
-): Operation<ToolSession> {
+export function createWorkerToolSession(options: WorkerToolSessionOptions): Operation<ToolSession> {
   return resource<ToolSession>(function* (provide) {
-    const { sessionId, toolName, params, workerUrl, systemPrompt, parentMessages, execArgv } = options
+    const { sessionId, toolName, params, workerUrl, systemPrompt, parentMessages, execArgv } =
+      options;
 
     // State
-    let status: ToolSessionStatus = 'initializing'
-    let lsn = 0
-    const eventBuffer: ToolSessionEvent[] = []
+    let status: ToolSessionStatus = "initializing";
+    let lsn = 0;
+    const eventBuffer: ToolSessionEvent[] = [];
 
     // Channel for streaming events to subscribers
-    const eventChannel = createChannel<ToolSessionEvent, void>()
+    const eventChannel = createChannel<ToolSessionEvent, void>();
 
-    const pendingSamples = new Map<string, Channel<WireSampleResult, void>>()
-    const pendingElicits = new Map<string, Channel<WireElicitResult<unknown>, void>>()
+    const pendingSamples = new Map<string, Queue<WireSampleResult, void>>();
+    const pendingElicits = new Map<string, Queue<WireElicitResult<unknown>, void>>();
 
     function nextLsn(): number {
-      lsn += 1
-      return lsn
+      lsn += 1;
+      return lsn;
     }
 
     // Helper to emit events
     // Using a more permissive input type to avoid TypeScript's excess property checking issues
     // with discriminated unions - the 'type' field discriminates at runtime
     function* emitEvent(
-      event: { type: ToolSessionEvent['type'] } & Record<string, unknown>
+      event: { type: ToolSessionEvent["type"] } & Record<string, unknown>,
     ): Operation<void> {
       const fullEvent: ToolSessionEvent = {
         ...event,
         lsn: nextLsn(),
         timestamp: Date.now(),
-      } as ToolSessionEvent
+      } as ToolSessionEvent;
 
-      eventBuffer.push(fullEvent)
+      eventBuffer.push(fullEvent);
 
       // Update status based on event type
       switch (fullEvent.type) {
-        case 'sample_request':
-          status = 'awaiting_sample'
-          break
-        case 'elicit_request':
-          status = 'awaiting_elicit'
-          break
-        case 'result':
-          status = 'completed'
-          break
-        case 'error':
-          status = 'failed'
-          break
-        case 'cancelled':
-          status = 'cancelled'
-          break
-        case 'progress':
-        case 'log':
-          if (status === 'initializing') {
-            status = 'running'
+        case "sample_request":
+          status = "awaiting_sample";
+          break;
+        case "elicit_request":
+          status = "awaiting_elicit";
+          break;
+        case "result":
+          status = "completed";
+          break;
+        case "error":
+          status = "failed";
+          break;
+        case "cancelled":
+          status = "cancelled";
+          break;
+        case "progress":
+        case "log":
+          if (status === "initializing") {
+            status = "running";
           }
-          break
+          break;
       }
 
       // Send to channel (for subscribers)
-      yield* eventChannel.send(fullEvent)
+      yield* eventChannel.send(fullEvent);
     }
 
     const sessionState: WorkerSessionState = {
@@ -161,11 +160,11 @@ export function createWorkerToolSession(
       emitEvent,
       nextLsn,
       setStatus: (nextStatus: ToolSessionStatus) => {
-        status = nextStatus
+        status = nextStatus;
       },
-    }
+    };
 
-    yield* WorkerSessionStateContext.set(sessionState)
+    yield* WorkerSessionStateContext.set(sessionState);
 
     // Build init data for the worker
     const initData: McpWorkerInitData = {
@@ -174,7 +173,7 @@ export function createWorkerToolSession(
       sessionId,
       ...(systemPrompt !== undefined && { systemPrompt }),
       ...(parentMessages !== undefined && { parentMessages }),
-    }
+    };
 
     // Create the worker using core's createWorkerPrincipal
     // Note: We use WorkerSessionStateContext.with() to ensure the context is available
@@ -186,57 +185,57 @@ export function createWorkerToolSession(
       requestHandler: function* (request: WorkerRequest): Operation<WorkerResponse> {
         // Re-establish context for this handler scope
         return yield* WorkerSessionStateContext.with(sessionState, function* () {
-          if (request.type === 'sample') {
-            return yield* WorkerSessionApi.operations.handleSampleRequest(request)
+          if (request.type === "sample") {
+            return yield* WorkerSessionApi.operations.handleSampleRequest(request);
           }
 
-          if (request.type === 'elicit') {
-            return yield* WorkerSessionApi.operations.handleElicitRequest(request)
+          if (request.type === "elicit") {
+            return yield* WorkerSessionApi.operations.handleElicitRequest(request);
           }
 
-          throw new Error(`Unknown request type: ${(request as WorkerRequest).type}`)
-        })
+          throw new Error(`Unknown request type: ${(request as WorkerRequest).type}`);
+        });
       },
-    })
+    });
 
     // Mark as running
-    status = 'running'
+    status = "running";
 
     // Spawn a task to wait for the worker result
     yield* spawn(function* () {
       try {
-        const result: WorkerResult<unknown> = yield* workerResult
+        const result: WorkerResult<unknown> = yield* workerResult;
 
-        if (result.type === 'success') {
+        if (result.type === "success") {
           yield* emitEvent({
-            type: 'result',
+            type: "result",
             result: result.value,
-          })
-        } else if (result.type === 'error') {
+          });
+        } else if (result.type === "error") {
           yield* emitEvent({
-            type: 'error',
+            type: "error",
             name: result.error.name,
             message: result.error.message,
             ...(result.error.stack !== undefined && { stack: result.error.stack }),
-          })
-        } else if (result.type === 'cancelled') {
+          });
+        } else if (result.type === "cancelled") {
           yield* emitEvent({
-            type: 'cancelled',
+            type: "cancelled",
             ...(result.reason !== undefined && { reason: result.reason }),
-          })
+          });
         }
       } catch (error) {
-        const err = error as Error
+        const err = error as Error;
         yield* emitEvent({
-          type: 'error',
+          type: "error",
           name: err.name,
           message: err.message,
           ...(err.stack !== undefined && { stack: err.stack }),
-        })
+        });
       } finally {
-        yield* eventChannel.close()
+        yield* eventChannel.close();
       }
-    })
+    });
 
     // Create the session interface
     const session: ToolSession = {
@@ -244,7 +243,7 @@ export function createWorkerToolSession(
       toolName,
 
       *status(): Operation<ToolSessionStatus> {
-        return status
+        return status;
       },
 
       events(afterLSN?: number): Stream<ToolSessionEvent, void> {
@@ -252,50 +251,50 @@ export function createWorkerToolSession(
         return resource<Subscription<ToolSessionEvent, void>>(function* (provideStream) {
           // Snapshot the buffer length at subscription time
           // Events added after this point will come from the channel
-          const bufferSnapshotLength = eventBuffer.length
+          const bufferSnapshotLength = eventBuffer.length;
 
           // Subscribe to the channel for new events AFTER snapshotting
-          const channelSub = yield* eventChannel
+          const channelSub = yield* eventChannel;
 
           // Combine buffered events with live stream
-          let bufferedIndex = afterLSN ?? 0
+          let bufferedIndex = afterLSN ?? 0;
 
           yield* provideStream({
             *next() {
               // First drain buffered events up to the snapshot point
               if (bufferedIndex < bufferSnapshotLength) {
-                const event = eventBuffer[bufferedIndex]!
-                bufferedIndex++
-                return { done: false, value: event }
+                const event = eventBuffer[bufferedIndex]!;
+                bufferedIndex++;
+                return { done: false, value: event };
               }
 
               // Then read from live channel (no deduplication needed since we
               // snapshotted the buffer before subscribing to the channel)
-              return yield* channelSub.next()
+              return yield* channelSub.next();
             },
-          })
-        })
+          });
+        });
       },
 
       *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
         yield* WorkerSessionStateContext.with(sessionState, function* () {
-          yield* WorkerSessionApi.operations.respondToElicit(elicitId, response)
-        })
+          yield* WorkerSessionApi.operations.respondToElicit(elicitId, response);
+        });
       },
 
       *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
         yield* WorkerSessionStateContext.with(sessionState, function* () {
-          yield* WorkerSessionApi.operations.respondToSample(sampleId, response)
-        })
+          yield* WorkerSessionApi.operations.respondToSample(sampleId, response);
+        });
       },
 
       *cancel(reason?: string): Operation<void> {
         // Closing the resource will trigger worker shutdown
         yield* emitEvent({
-          type: 'cancelled',
+          type: "cancelled",
           ...(reason !== undefined && { reason }),
-        })
-        status = 'cancelled'
+        });
+        status = "cancelled";
       },
 
       *emitWakeUp(): Operation<void> {
@@ -303,20 +302,20 @@ export function createWorkerToolSession(
         // between the host and worker thread, which has its own scheduling.
         // This is a no-op for worker sessions.
       },
-    }
+    };
 
     try {
-      yield* provide(session)
+      yield* provide(session);
     } finally {
-      for (const channel of pendingElicits.values()) {
-        yield* channel.close()
+      for (const queue of pendingElicits.values()) {
+        queue.close(undefined);
       }
-      for (const channel of pendingSamples.values()) {
-        yield* channel.close()
+      for (const queue of pendingSamples.values()) {
+        queue.close(undefined);
       }
-      pendingElicits.clear()
-      pendingSamples.clear()
-      yield* eventChannel.close()
+      pendingElicits.clear();
+      pendingSamples.clear();
+      yield* eventChannel.close();
     }
-  })
+  });
 }

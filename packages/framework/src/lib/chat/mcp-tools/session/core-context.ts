@@ -33,10 +33,16 @@
  * @packageDocumentation
  */
 
-import { type Operation, type Subscription } from 'effection'
-import { TransportContext } from '@sweatpants/core'
-import type { CorrelatedTransport, ElicitResponse, NotifyResponse, ToolMessage } from '@sweatpants/core'
-import { z } from 'zod'
+import { type Operation, type Subscription } from "effection";
+import { TransportContext } from "@sweatpants/core";
+import type {
+  CorrelatedTransport,
+  ElicitResponse,
+  NotifyResponse,
+  ToolElicitResult,
+  ToolMessage,
+} from "@sweatpants/core";
+import { z } from "zod";
 import type {
   Message,
   ExtendedMessage,
@@ -44,8 +50,7 @@ import type {
   McpToolContext,
   McpToolContextWithElicits,
   McpToolBranchOptions,
-  ElicitConfig,
-  ElicitResult,
+  ClientElicitConfig,
   ElicitExchange,
   SampleResultBase,
   SampleResultWithParsed,
@@ -67,12 +72,12 @@ import type {
   ElicitsMap,
   ExtractElicitResponse,
   ExtractElicitContext,
-} from '../mcp-tool-types.ts'
+} from "../mcp-tool-types.ts";
 import {
   createRawSampleExchange,
   createStructuredSampleExchange,
   SampleValidationError,
-} from '../mcp-tool-types.ts'
+} from "../mcp-tool-types.ts";
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -82,19 +87,19 @@ import {
  * Map elicit response status to action.
  */
 function mapStatusToElicitAction(
-  status: 'accepted' | 'declined' | 'cancelled' | 'denied' | 'other'
-): 'accept' | 'decline' | 'cancel' | 'other' {
+  status: "accepted" | "declined" | "cancelled" | "denied" | "other",
+): "accept" | "decline" | "cancel" | "other" {
   switch (status) {
-    case 'accepted':
-      return 'accept'
-    case 'declined':
-      return 'decline'
-    case 'cancelled':
-      return 'cancel'
-    case 'denied':
-      return 'other'
+    case "accepted":
+      return "accept";
+    case "declined":
+      return "decline";
+    case "cancelled":
+      return "cancel";
+    case "denied":
+      return "other";
     default:
-      return 'other'
+      return "other";
   }
 }
 
@@ -102,13 +107,13 @@ function mapStatusToElicitAction(
 // ID GENERATION
 // =============================================================================
 
-let idCounter = 0
+let idCounter = 0;
 
 /**
  * Generate a unique request ID.
  */
 function generateId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${++idCounter}-${Math.random().toString(36).slice(2, 7)}`
+  return `${prefix}-${Date.now()}-${++idCounter}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 // =============================================================================
@@ -120,15 +125,15 @@ function generateId(prefix: string): string {
  */
 export interface CoreContextOptions {
   /** Tool name (for correlation IDs) */
-  toolName: string
+  toolName: string;
   /** Tool call ID */
-  callId: string
+  callId: string;
   /** Parent messages (readonly) */
-  parentMessages?: readonly ExtendedMessage[]
+  parentMessages?: readonly ExtendedMessage[];
   /** Parent system prompt */
-  parentSystemPrompt?: string
+  parentSystemPrompt?: string;
   /** Current branch depth */
-  depth?: number
+  depth?: number;
 }
 
 /**
@@ -140,12 +145,10 @@ export interface CoreContextOptions {
  * @param options - Context configuration
  * @returns Operation that yields the context
  */
-export function* createCoreContext(
-  options: CoreContextOptions
-): Operation<McpToolContext> {
-  const transport = yield* TransportContext.expect()
-  
-  return createContextFromTransport(transport, options)
+export function* createCoreContext(options: CoreContextOptions): Operation<McpToolContext> {
+  const transport = yield* TransportContext.expect();
+
+  return createContextFromTransport(transport, options);
 }
 
 /**
@@ -157,11 +160,11 @@ export function* createCoreContext(
  */
 export function* createCoreContextWithElicits<TElicits extends ElicitsMap>(
   options: CoreContextOptions,
-  _elicitsMap: TElicits
+  _elicitsMap: TElicits,
 ): Operation<McpToolContextWithElicits<TElicits>> {
-  const transport = yield* TransportContext.expect()
-  
-  return createContextWithElicitsFromTransport<TElicits>(transport, options, _elicitsMap)
+  const transport = yield* TransportContext.expect();
+
+  return createContextWithElicitsFromTransport<TElicits>(transport, options, _elicitsMap);
 }
 
 // =============================================================================
@@ -170,40 +173,36 @@ export function* createCoreContextWithElicits<TElicits extends ElicitsMap>(
 
 /**
  * Create a McpToolContext from a CorrelatedTransport directly.
- * 
+ *
  * This is the lower-level factory used by createCoreContext.
  * Useful when you already have a CorrelatedTransport reference.
  */
 export function createContextFromTransport(
   transport: CorrelatedTransport,
-  options: CoreContextOptions
+  options: CoreContextOptions,
 ): McpToolContext {
-  const {
-    toolName,
-    callId,
-    parentMessages = [],
-    parentSystemPrompt,
-    depth = 0,
-  } = options
+  const { toolName, callId, parentMessages = [], parentSystemPrompt, depth = 0 } = options;
 
   // Mutable message history for this branch
-  const messages: Message[] = []
-  let elicitSeq = 0
-  let sampleSeq = 0
+  const messages: Message[] = [];
+  let elicitSeq = 0;
+  let sampleSeq = 0;
 
   // ---------------------------------------------------------------------------
   // Sample Implementation
   // ---------------------------------------------------------------------------
 
-  function* sampleImpl(config: McpToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
-    const sampleId = generateId(`${callId}:sample:${++sampleSeq}`)
-    
+  function* sampleImpl(
+    config: McpToolSampleConfig,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls> {
+    const sampleId = generateId(`${callId}:sample:${++sampleSeq}`);
+
     // Determine if using prompt or messages mode
-    const usePrompt = 'prompt' in config && config.prompt !== undefined
-    const promptText = usePrompt ? (config as SampleConfigPlainPrompt).prompt : ''
-    const messagesToSend = usePrompt 
-      ? [...messages, { role: 'user' as const, content: promptText }]
-      : (config as SampleConfigPlainMessages).messages
+    const usePrompt = "prompt" in config && config.prompt !== undefined;
+    const promptText = usePrompt ? (config as SampleConfigPlainPrompt).prompt : "";
+    const messagesToSend = usePrompt
+      ? [...messages, { role: "user" as const, content: promptText }]
+      : (config as SampleConfigPlainMessages).messages;
 
     // Build request payload
     const payload: Record<string, unknown> = {
@@ -211,71 +210,75 @@ export function createContextFromTransport(
       maxTokens: config.maxTokens,
       systemPrompt: config.systemPrompt,
       modelPreferences: config.modelPreferences,
-    }
+    };
 
     // Add schema if present (structured output)
-    if ('schema' in config && config.schema) {
-      payload['schema'] = z.toJSONSchema(config.schema as z.ZodType)
+    if ("schema" in config && config.schema) {
+      payload["schema"] = z.toJSONSchema(config.schema as z.ZodType);
     }
 
     // Add tools if present
-    if ('tools' in config && config.tools) {
-      payload['tools'] = config.tools.map((tool: { name: string; description?: string; inputSchema: unknown }) => ({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema instanceof Object && 'parse' in tool.inputSchema
-          ? z.toJSONSchema(tool.inputSchema as z.ZodType)
-          : tool.inputSchema,
-      }))
-      payload['toolChoice'] = ('toolChoice' in config ? config.toolChoice : undefined) ?? 'auto'
+    if ("tools" in config && config.tools) {
+      payload["tools"] = config.tools.map(
+        (tool: { name: string; description?: string; inputSchema: unknown }) => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema:
+            tool.inputSchema instanceof Object && "parse" in tool.inputSchema
+              ? z.toJSONSchema(tool.inputSchema as z.ZodType)
+              : tool.inputSchema,
+        }),
+      );
+      payload["toolChoice"] = ("toolChoice" in config ? config.toolChoice : undefined) ?? "auto";
     }
 
     // Send request through transport
     const stream = transport.request<unknown, ElicitResponse>({
       id: sampleId,
-      kind: 'elicit',
-      type: 'sample',
+      kind: "elicit",
+      type: "sample",
       payload,
-    })
+    });
 
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream
+    const subscription: Subscription<unknown, ElicitResponse> = yield* stream;
 
     // Consume progress updates (if any)
-    let result = yield* subscription.next()
+    let result = yield* subscription.next();
     while (!result.done) {
-      result = yield* subscription.next()
+      result = yield* subscription.next();
     }
 
-    const response = result.value
+    const response = result.value;
 
-    if (response.status !== 'accepted') {
-      throw new Error(`Sample request failed: ${response.status}`)
+    if (response.status !== "accepted") {
+      throw new Error(`Sample request failed: ${response.status}`);
     }
 
     // Parse response content
     const rawResult = response.content as {
-      text: string
-      model?: string
-      stopReason?: string
-      parsed?: unknown
-      parseError?: { message: string; rawText: string }
-      toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
-    }
+      text: string;
+      model?: string;
+      stopReason?: string;
+      parsed?: unknown;
+      parseError?: { message: string; rawText: string };
+      toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+    };
 
     // Update messages if using prompt mode
     if (usePrompt) {
-      messages.push({ role: 'user', content: promptText })
-      messages.push({ role: 'assistant', content: rawResult.text })
+      messages.push({ role: "user", content: promptText });
+      messages.push({ role: "assistant", content: rawResult.text });
     }
 
     // Build result based on what was requested
-    if ('schema' in config && config.schema) {
+    if ("schema" in config && config.schema) {
       // Structured output result
-      const toolCallId = generateId(`${callId}:schema`)
-      const parsed = rawResult.parsed ?? null
-      const exchange = parsed !== null
-        ? createStructuredSampleExchange(promptText, parsed, toolCallId)
-        : { ...createRawSampleExchange(promptText, rawResult.text), parsed: null as null }
+      const toolCallId = generateId(`${callId}:schema`);
+      const parsed = rawResult.parsed ?? null;
+      const exchange =
+        parsed !== null
+          ? createStructuredSampleExchange(promptText, parsed, toolCallId)
+          : { ...createRawSampleExchange(promptText, rawResult.text), parsed: null as null };
 
       return {
         text: rawResult.text,
@@ -287,10 +290,10 @@ export function createContextFromTransport(
           ...exchange,
           parsed,
         },
-      } as SampleResultWithParsed<unknown>
+      } as SampleResultWithParsed<unknown>;
     }
 
-    if ('tools' in config && config['tools']) {
+    if ("tools" in config && config["tools"]) {
       // Tool calling result
       return {
         text: rawResult.text,
@@ -298,7 +301,7 @@ export function createContextFromTransport(
         stopReason: rawResult.stopReason,
         toolCalls: rawResult.toolCalls ?? [],
         exchange: createRawSampleExchange(promptText, rawResult.text),
-      } as SampleResultWithToolCalls
+      } as SampleResultWithToolCalls;
     }
 
     // Plain result
@@ -307,54 +310,62 @@ export function createContextFromTransport(
       model: rawResult.model,
       stopReason: rawResult.stopReason,
       exchange: createRawSampleExchange(promptText, rawResult.text),
-    } as SampleResultBase
+    } as SampleResultBase;
   }
 
   // ---------------------------------------------------------------------------
   // Sample Helpers (sampleTools, sampleSchema)
   // ---------------------------------------------------------------------------
 
-  function* sampleToolsImpl(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult> {
-    const maxAttempts = (config.retries ?? 2) + 1
-    let lastResult: SampleResultWithToolCalls | undefined
+  function* sampleToolsImpl(
+    config: SampleToolsConfig | SampleToolsConfigMessages,
+  ): Operation<SampleToolsResult> {
+    const maxAttempts = (config.retries ?? 2) + 1;
+    let lastResult: SampleResultWithToolCalls | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const result = yield* sampleImpl({
         ...config,
-        toolChoice: config.toolChoice ?? 'required',
-      } as SampleConfigToolsPrompt | SampleConfigToolsMessages) as Operation<SampleResultWithToolCalls>
+        toolChoice: config.toolChoice ?? "required",
+      } as
+        | SampleConfigToolsPrompt
+        | SampleConfigToolsMessages) as Operation<SampleResultWithToolCalls>;
 
-      lastResult = result
+      lastResult = result;
 
-      if (result.stopReason === 'toolUse' && result.toolCalls.length > 0) {
-        return result as SampleToolsResult
+      if (result.stopReason === "toolUse" && result.toolCalls.length > 0) {
+        return result as SampleToolsResult;
       }
 
       // Add retry hint for next attempt
-      if (attempt < maxAttempts && 'prompt' in config) {
+      if (attempt < maxAttempts && "prompt" in config) {
         config = {
           ...config,
           prompt: `${config.prompt}\n\nPlease call one of the available tools.`,
-        }
+        };
       }
     }
 
     throw new SampleValidationError(
-      'sampleTools',
+      "sampleTools",
       maxAttempts,
       lastResult!,
-      `Model did not call any tools after ${maxAttempts} attempts`
-    )
+      `Model did not call any tools after ${maxAttempts} attempts`,
+    );
   }
 
-  function* sampleSchemaImpl<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>> {
-    const maxAttempts = (config.retries ?? 2) + 1
-    let lastResult: SampleResultWithParsed<T> | undefined
+  function* sampleSchemaImpl<T>(
+    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
+  ): Operation<SampleSchemaResult<T>> {
+    const maxAttempts = (config.retries ?? 2) + 1;
+    let lastResult: SampleResultWithParsed<T> | undefined;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      const result = yield* sampleImpl(config as SampleConfigSchemaPrompt | SampleConfigSchemaMessages) as Operation<SampleResultWithParsed<T>>
+      const result = yield* sampleImpl(
+        config as SampleConfigSchemaPrompt | SampleConfigSchemaMessages,
+      ) as Operation<SampleResultWithParsed<T>>;
 
-      lastResult = result
+      lastResult = result;
 
       if (result.parsed !== null) {
         return {
@@ -363,75 +374,75 @@ export function createContextFromTransport(
           stopReason: result.stopReason,
           parsed: result.parsed,
           exchange: result.exchange as SampleExchange<T>,
-        } as SampleSchemaResult<T>
+        } as SampleSchemaResult<T>;
       }
 
       // Add retry hint for next attempt
-      if (attempt < maxAttempts && 'prompt' in config) {
-        const errorHint = result.parseError?.message ?? 'Invalid response format'
+      if (attempt < maxAttempts && "prompt" in config) {
+        const errorHint = result.parseError?.message ?? "Invalid response format";
         config = {
           ...config,
           prompt: `${config.prompt}\n\nPrevious attempt failed: ${errorHint}. Please provide a valid response.`,
-        }
+        };
       }
     }
 
     throw new SampleValidationError(
-      'sampleSchema',
+      "sampleSchema",
       maxAttempts,
       lastResult!,
-      `Model did not return valid parsed output after ${maxAttempts} attempts`
-    )
+      `Model did not return valid parsed output after ${maxAttempts} attempts`,
+    );
   }
 
   // ---------------------------------------------------------------------------
   // Elicit Implementation (simple/unkeyed)
   // ---------------------------------------------------------------------------
 
-  function* elicitImpl<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>> {
-    const elicitId = generateId(`${callId}:elicit:${++elicitSeq}`)
+  function* elicitImpl<T>(config: ClientElicitConfig<T>): Operation<ToolElicitResult<unknown, T>> {
+    const elicitId = generateId(`${callId}:elicit:${++elicitSeq}`);
 
     // Convert Zod schema to JSON Schema
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const jsonSchema = z.toJSONSchema(config.schema as any)
+    const jsonSchema = z.toJSONSchema(config.schema as any);
 
     // Send request through transport
     const stream = transport.request<unknown, ElicitResponse>({
       id: elicitId,
-      kind: 'elicit',
-      type: 'elicit',
+      kind: "elicit",
+      type: "elicit",
       payload: {
-        key: 'default',
+        key: "default",
         toolName,
         callId,
         seq: elicitSeq,
         message: config.message,
         schema: jsonSchema,
       },
-    })
+    });
 
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream
+    const subscription: Subscription<unknown, ElicitResponse> = yield* stream;
 
     // Consume progress updates
-    let result = yield* subscription.next()
+    let result = yield* subscription.next();
     while (!result.done) {
-      result = yield* subscription.next()
+      result = yield* subscription.next();
     }
 
-    const response = result.value
-    const action = mapStatusToElicitAction(response.status)
+    const response = result.value;
+    const action = mapStatusToElicitAction(response.status);
 
-    if (action === 'accept' && response.status === 'accepted') {
-      const content = response.content as T
-      const exchange = createElicitExchange(elicitId, 'default', config.message, {}, content)
-      return { action: 'accept', content, exchange }
+    if (action === "accept" && response.status === "accepted") {
+      const content = response.content as T;
+      const exchange = createElicitExchange(elicitId, "default", config.message, {}, content);
+      return { action: "accept", content, exchange };
     }
 
-    if (action === 'decline') {
-      return { action: 'decline' }
+    if (action === "decline") {
+      return { action: "decline" };
     }
 
-    return { action: 'cancel' }
+    return { action: "cancel" };
   }
 
   // ---------------------------------------------------------------------------
@@ -440,25 +451,29 @@ export function createContextFromTransport(
 
   function* branchImpl<T>(
     fn: (ctx: McpToolContext) => Operation<T>,
-    branchOptions?: McpToolBranchOptions
+    branchOptions?: McpToolBranchOptions,
   ): Operation<T> {
     // Create child context
-    const inheritMessages = branchOptions?.inheritMessages ?? true
-    const inheritSystemPrompt = branchOptions?.inheritSystemPrompt ?? true
+    const inheritMessages = branchOptions?.inheritMessages ?? true;
+    const inheritSystemPrompt = branchOptions?.inheritSystemPrompt ?? true;
 
-    const childSystemPrompt = inheritSystemPrompt ? parentSystemPrompt : branchOptions?.systemPrompt
+    const childSystemPrompt = inheritSystemPrompt
+      ? parentSystemPrompt
+      : branchOptions?.systemPrompt;
     const childOptions: CoreContextOptions = {
       toolName,
       callId: generateId(`${callId}:branch`),
-      parentMessages: inheritMessages ? [...parentMessages, ...messages] : (branchOptions?.messages ?? []),
+      parentMessages: inheritMessages
+        ? [...parentMessages, ...messages]
+        : (branchOptions?.messages ?? []),
       depth: depth + 1,
-    }
+    };
     if (childSystemPrompt !== undefined) {
-      childOptions.parentSystemPrompt = childSystemPrompt
+      childOptions.parentSystemPrompt = childSystemPrompt;
     }
 
-    const childCtx = createContextFromTransport(transport, childOptions)
-    return yield* fn(childCtx)
+    const childCtx = createContextFromTransport(transport, childOptions);
+    return yield* fn(childCtx);
   }
 
   // ---------------------------------------------------------------------------
@@ -466,40 +481,40 @@ export function createContextFromTransport(
   // ---------------------------------------------------------------------------
 
   function* logImpl(level: LogLevel, message: string): Operation<void> {
-    const notifyId = generateId(`${callId}:log`)
+    const notifyId = generateId(`${callId}:log`);
 
     const stream = transport.request<unknown, NotifyResponse>({
       id: notifyId,
-      kind: 'notify',
-      type: 'log',
+      kind: "notify",
+      type: "log",
       payload: { level, message },
-    })
+    });
 
-    const subscription: Subscription<unknown, NotifyResponse> = yield* stream
-    
+    const subscription: Subscription<unknown, NotifyResponse> = yield* stream;
+
     // Consume until done
-    let result = yield* subscription.next()
+    let result = yield* subscription.next();
     while (!result.done) {
-      result = yield* subscription.next()
+      result = yield* subscription.next();
     }
   }
 
   function* notifyImpl(message: string, progress?: number): Operation<void> {
-    const notifyId = generateId(`${callId}:notify`)
+    const notifyId = generateId(`${callId}:notify`);
 
     const stream = transport.request<unknown, NotifyResponse>({
       id: notifyId,
-      kind: 'notify',
-      type: 'progress',
+      kind: "notify",
+      type: "progress",
       payload: { message, progress },
-    })
+    });
 
-    const subscription: Subscription<unknown, NotifyResponse> = yield* stream
-    
+    const subscription: Subscription<unknown, NotifyResponse> = yield* stream;
+
     // Consume until done
-    let result = yield* subscription.next()
+    let result = yield* subscription.next();
     while (!result.done) {
-      result = yield* subscription.next()
+      result = yield* subscription.next();
     }
   }
 
@@ -509,28 +524,28 @@ export function createContextFromTransport(
 
   const ctx: McpToolContext = {
     get parentMessages() {
-      return parentMessages
+      return parentMessages;
     },
     get parentSystemPrompt() {
-      return parentSystemPrompt
+      return parentSystemPrompt;
     },
     get messages() {
-      return messages as readonly Message[]
+      return messages as readonly Message[];
     },
     get depth() {
-      return depth
+      return depth;
     },
 
-    sample: sampleImpl as McpToolContext['sample'],
+    sample: sampleImpl as McpToolContext["sample"],
     sampleTools: sampleToolsImpl,
     sampleSchema: sampleSchemaImpl,
     elicit: elicitImpl,
     branch: branchImpl,
     log: logImpl,
     notify: notifyImpl,
-  }
+  };
 
-  return ctx
+  return ctx;
 }
 
 // =============================================================================
@@ -543,51 +558,49 @@ export function createContextFromTransport(
 export function createContextWithElicitsFromTransport<TElicits extends ElicitsMap>(
   transport: CorrelatedTransport,
   options: CoreContextOptions,
-  elicitsMap: TElicits
+  elicitsMap: TElicits,
 ): McpToolContextWithElicits<TElicits> {
-  const {
-    toolName,
-    callId,
-    parentMessages = [],
-    parentSystemPrompt,
-    depth = 0,
-  } = options
+  const { toolName, callId, parentMessages = [], parentSystemPrompt, depth = 0 } = options;
 
   // Get the base context (without keyed elicit)
-  const baseCtx = createContextFromTransport(transport, options)
+  const baseCtx = createContextFromTransport(transport, options);
 
   // Mutable state for keyed elicitation
-  let elicitSeq = 0
-  const messages: Message[] = []
+  let elicitSeq = 0;
+  const messages: Message[] = [];
 
   // Keyed elicit implementation
   function* keyedElicitImpl<K extends keyof TElicits & string>(
     key: K,
-    opts: { message: string } & ExtractElicitContext<TElicits[K]>
-  ): Operation<ElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>> {
-    const elicitDef = elicitsMap[key]
+    opts: { message: string } & ExtractElicitContext<TElicits[K]>,
+  ): Operation<
+    ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
+  > {
+    const elicitDef = elicitsMap[key];
     if (!elicitDef) {
-      throw new Error(`Unknown elicit key: ${key}`)
+      throw new Error(`Unknown elicit key: ${key}`);
     }
 
-    const elicitId = generateId(`${callId}:elicit:${++elicitSeq}`)
+    const elicitId = generateId(`${callId}:elicit:${++elicitSeq}`);
 
     // Extract message from options, rest is context
-    const { message, ...context } = opts
+    const { message, ...context } = opts;
 
     // Get the response schema from the definition
-    const responseSchema = elicitDef.response
-    const jsonSchema = z.toJSONSchema(responseSchema as z.ZodType)
+    const responseSchema = elicitDef.response;
+    const jsonSchema = z.toJSONSchema(responseSchema as z.ZodType);
 
     // If there's a context schema, include context in the payload
-    const contextSchema = 'context' in elicitDef ? elicitDef.context : undefined
-    const contextJsonSchema = contextSchema ? z.toJSONSchema(contextSchema as z.ZodType) : undefined
+    const contextSchema = "context" in elicitDef ? elicitDef.context : undefined;
+    const contextJsonSchema = contextSchema
+      ? z.toJSONSchema(contextSchema as z.ZodType)
+      : undefined;
 
     // Send request through transport
     const stream = transport.request<unknown, ElicitResponse>({
       id: elicitId,
-      kind: 'elicit',
-      type: 'elicit',
+      kind: "elicit",
+      type: "elicit",
       payload: {
         key,
         toolName,
@@ -598,89 +611,97 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
         contextSchema: contextJsonSchema,
         context,
       },
-    })
+    });
 
-    const subscription: Subscription<unknown, ElicitResponse> = yield* stream
+    const subscription: Subscription<unknown, ElicitResponse> = yield* stream;
 
     // Consume progress updates
-    let result = yield* subscription.next()
+    let result = yield* subscription.next();
     while (!result.done) {
-      result = yield* subscription.next()
+      result = yield* subscription.next();
     }
 
-    const response = result.value
-    const action = mapStatusToElicitAction(response.status)
+    const response = result.value;
+    const action = mapStatusToElicitAction(response.status);
 
-    type TContext = ExtractElicitContext<TElicits[K]>
-    type TResponse = ExtractElicitResponse<TElicits[K]>
+    type TContext = ExtractElicitContext<TElicits[K]>;
+    type TResponse = ExtractElicitResponse<TElicits[K]>;
 
-    if (action === 'accept' && response.status === 'accepted') {
-      const content = response.content as TResponse
+    if (action === "accept" && response.status === "accepted") {
+      const content = response.content as TResponse;
       const exchange = createElicitExchange<TContext>(
         elicitId,
         key,
         message,
         context as TContext,
-        content
-      )
-      return { action: 'accept', content, exchange }
+        content,
+      );
+      return { action: "accept", content, exchange };
     }
 
-    if (action === 'decline') {
-      return { action: 'decline' }
+    if (action === "decline") {
+      return { action: "decline" };
     }
 
-    return { action: 'cancel' }
+    return { action: "cancel" };
   }
 
   // Keyed branch implementation
   function* keyedBranchImpl<T>(
     fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
-    branchOptions?: McpToolBranchOptions
+    branchOptions?: McpToolBranchOptions,
   ): Operation<T> {
-    const inheritMessages = branchOptions?.inheritMessages ?? true
-    const inheritSystemPrompt = branchOptions?.inheritSystemPrompt ?? true
+    const inheritMessages = branchOptions?.inheritMessages ?? true;
+    const inheritSystemPrompt = branchOptions?.inheritSystemPrompt ?? true;
 
-    const childSystemPrompt = inheritSystemPrompt ? parentSystemPrompt : branchOptions?.systemPrompt
+    const childSystemPrompt = inheritSystemPrompt
+      ? parentSystemPrompt
+      : branchOptions?.systemPrompt;
     const childOptions: CoreContextOptions = {
       toolName,
       callId: generateId(`${callId}:branch`),
-      parentMessages: inheritMessages ? [...parentMessages, ...messages] : (branchOptions?.messages ?? []),
+      parentMessages: inheritMessages
+        ? [...parentMessages, ...messages]
+        : (branchOptions?.messages ?? []),
       depth: depth + 1,
-    }
+    };
     if (childSystemPrompt !== undefined) {
-      childOptions.parentSystemPrompt = childSystemPrompt
+      childOptions.parentSystemPrompt = childSystemPrompt;
     }
 
-    const childCtx = createContextWithElicitsFromTransport<TElicits>(transport, childOptions, elicitsMap)
-    return yield* fn(childCtx)
+    const childCtx = createContextWithElicitsFromTransport<TElicits>(
+      transport,
+      childOptions,
+      elicitsMap,
+    );
+    return yield* fn(childCtx);
   }
 
   // Build the keyed context
   const keyedCtx: McpToolContextWithElicits<TElicits> = {
     get parentMessages() {
-      return baseCtx.parentMessages
+      return baseCtx.parentMessages;
     },
     get parentSystemPrompt() {
-      return baseCtx.parentSystemPrompt
+      return baseCtx.parentSystemPrompt;
     },
     get messages() {
-      return baseCtx.messages
+      return baseCtx.messages;
     },
     get depth() {
-      return baseCtx.depth
+      return baseCtx.depth;
     },
 
     sample: baseCtx.sample,
     sampleTools: baseCtx.sampleTools,
     sampleSchema: baseCtx.sampleSchema,
-    elicit: keyedElicitImpl as McpToolContextWithElicits<TElicits>['elicit'],
+    elicit: keyedElicitImpl as McpToolContextWithElicits<TElicits>["elicit"],
     branch: keyedBranchImpl,
     log: baseCtx.log,
     notify: baseCtx.notify,
-  }
+  };
 
-  return keyedCtx
+  return keyedCtx;
 }
 
 // =============================================================================
@@ -693,32 +714,36 @@ export function createContextWithElicitsFromTransport<TElicits extends ElicitsMa
 function createElicitExchange<TContext>(
   elicitId: string,
   key: string,
-  _message: string,  // Reserved for future use in exchange metadata
+  _message: string, // Reserved for future use in exchange metadata
   context: TContext,
-  content: unknown
+  content: unknown,
 ): ElicitExchange<TContext> {
-  const toolUseId = `elicit_${elicitId}`
+  const toolUseId = `elicit_${elicitId}`;
 
   // Request message (assistant with tool_use)
-  const request: ToolMessage & { role: 'assistant' } = {
-    role: 'assistant',
-    content: [{
-      type: 'tool_use',
-      id: toolUseId,
-      name: key,
-      input: {}, // Safe default - no context exposed
-    }],
-  }
+  const request: ToolMessage & { role: "assistant" } = {
+    role: "assistant",
+    content: [
+      {
+        type: "tool_use",
+        id: toolUseId,
+        name: key,
+        input: {}, // Safe default - no context exposed
+      },
+    ],
+  };
 
   // Response message (user with tool_result)
-  const response: ToolMessage & { role: 'user' } = {
-    role: 'user',
-    content: [{
-      type: 'tool_result',
-      toolUseId,
-      content: [{ type: 'text', text: JSON.stringify(content) }],
-    }],
-  }
+  const response: ToolMessage & { role: "user" } = {
+    role: "user",
+    content: [
+      {
+        type: "tool_result",
+        toolUseId,
+        content: [{ type: "text", text: JSON.stringify(content) }],
+      },
+    ],
+  };
 
   return {
     context,
@@ -726,17 +751,19 @@ function createElicitExchange<TContext>(
     response,
     messages: [request, response],
     withArguments(fn: (ctx: TContext) => Record<string, unknown>): [ToolMessage, ToolMessage] {
-      const args = fn(context)
-      const requestWithArgs: ToolMessage & { role: 'assistant' } = {
-        role: 'assistant',
-        content: [{
-          type: 'tool_use',
-          id: toolUseId,
-          name: key,
-          input: args,
-        }],
-      }
-      return [requestWithArgs, response]
+      const args = fn(context);
+      const requestWithArgs: ToolMessage & { role: "assistant" } = {
+        role: "assistant",
+        content: [
+          {
+            type: "tool_use",
+            id: toolUseId,
+            name: key,
+            input: args,
+          },
+        ],
+      };
+      return [requestWithArgs, response];
     },
-  }
+  };
 }

@@ -13,10 +13,10 @@
  *
  * @packageDocumentation
  */
-import { createContext, type Operation } from 'effection'
-import type { ToolSessionRegistry } from '../session/types.ts'
-import type { ToolDefinition } from '@sweatpants/core'
-import type { ElicitsMap, ElicitResult, ElicitExchange, WireSampleResultBase } from '../mcp-tool-types.ts'
+import { createContext, type Operation } from "effection";
+import type { ToolSessionRegistry } from "../session/types.ts";
+import type { ToolDefinition } from "@sweatpants/core";
+import type { ElicitsMap, WireElicitResult, WireSampleResultBase } from "../mcp-tool-types.ts";
 import type {
   McpSessionState,
   PendingElicitation,
@@ -24,51 +24,9 @@ import type {
   McpToolsCallRequest,
   McpElicitResponse,
   McpSampleResponse,
-} from './types.ts'
-import { McpHandlerError, MCP_HANDLER_ERRORS } from './types.ts'
-import type { JsonRpcId } from '../protocol/types.ts'
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-/**
- * Create a placeholder exchange for pass-through layers.
- * 
- * The session-manager doesn't have access to the original elicit context,
- * so we create a minimal placeholder. The actual context is captured in
- * the bridge-runtime where the elicit originates.
- * 
- * Uses MCP content block format.
- */
-function createPlaceholderExchange(content: unknown): ElicitExchange<unknown> {
-  const placeholderToolCallId = 'placeholder'
-  const request = {
-    role: 'assistant' as const,
-    content: [{
-      type: 'tool_use' as const,
-      id: placeholderToolCallId,
-      name: 'elicit',
-      // Keep input empty; echo data in tool_result for history
-      input: {},
-    }],
-  }
-  const response = {
-    role: 'user' as const,
-    content: [{
-      type: 'tool_result' as const,
-      toolUseId: placeholderToolCallId,
-      content: [{ type: 'text' as const, text: JSON.stringify(content) }],
-    }],
-  }
-  return {
-    context: {},
-    request,
-    response,
-    messages: [request, response],
-    withArguments: () => [request, response],
-  }
-}
+} from "./types.ts";
+import { McpHandlerError, MCP_HANDLER_ERRORS } from "./types.ts";
+import type { JsonRpcId } from "../protocol/types.ts";
 
 // =============================================================================
 // SESSION MANAGER CONTEXT
@@ -77,7 +35,7 @@ function createPlaceholderExchange(content: unknown): ElicitExchange<unknown> {
 /**
  * Context for accessing the session manager from within Operations.
  */
-export const McpSessionManagerContext = createContext<McpSessionManager>('mcp-session-manager')
+export const McpSessionManagerContext = createContext<McpSessionManager>("mcp-session-manager");
 
 // =============================================================================
 // SESSION MANAGER
@@ -88,28 +46,28 @@ export const McpSessionManagerContext = createContext<McpSessionManager>('mcp-se
  */
 export interface McpSessionManagerOptions {
   /** Tool session registry */
-  registry: ToolSessionRegistry
+  registry: ToolSessionRegistry;
 
   /** Available tools by name */
-  tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>
+  tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>;
 
   /** Session timeout in milliseconds */
-  sessionTimeout?: number | undefined
+  sessionTimeout?: number | undefined;
 }
 
 /**
  * Manages MCP session state and lifecycle.
  */
 export class McpSessionManager {
-  private readonly sessions = new Map<string, McpSessionState>()
-  private readonly registry: ToolSessionRegistry
-  private readonly tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>
-  private readonly sessionTimeout: number
+  private readonly sessions = new Map<string, McpSessionState>();
+  private readonly registry: ToolSessionRegistry;
+  private readonly tools: Map<string, ToolDefinition<string, unknown, unknown, ElicitsMap>>;
+  private readonly sessionTimeout: number;
 
   constructor(options: McpSessionManagerOptions) {
-    this.registry = options.registry
-    this.tools = options.tools
-    this.sessionTimeout = options.sessionTimeout ?? 300000 // 5 minutes
+    this.registry = options.registry;
+    this.tools = options.tools;
+    this.sessionTimeout = options.sessionTimeout ?? 300000; // 5 minutes
   }
 
   // ===========================================================================
@@ -120,22 +78,22 @@ export class McpSessionManager {
    * Create a new session for a tools/call request.
    */
   *createSession(request: McpToolsCallRequest): Operation<McpSessionState> {
-    const { toolName, arguments: args, requestId } = request
+    const { toolName, arguments: args, requestId } = request;
 
     // Lookup tool
-    const tool = this.tools.get(toolName)
+    const tool = this.tools.get(toolName);
     if (!tool) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.TOOL_NOT_FOUND,
         `Tool not found: ${toolName}`,
-        404
-      )
+        404,
+      );
     }
 
     // Create tool session
     const session = yield* this.registry.create(tool, args, {
       timeout: this.sessionTimeout,
-    })
+    });
 
     // Create session state
     const state: McpSessionState = {
@@ -146,61 +104,61 @@ export class McpSessionManager {
       pendingSamples: new Map(),
       lastLSN: 0,
       requestCounter: 0,
-    }
+    };
 
-    this.sessions.set(session.id, state)
-    return state
+    this.sessions.set(session.id, state);
+    return state;
   }
 
   /**
    * Get an existing session by ID.
    */
   *getSession(sessionId: string): Operation<McpSessionState | null> {
-    return this.sessions.get(sessionId) ?? null
+    return this.sessions.get(sessionId) ?? null;
   }
 
   /**
    * Acquire an existing session (increments refcount in registry).
    */
   *acquireSession(sessionId: string): Operation<McpSessionState> {
-    const state = this.sessions.get(sessionId)
+    const state = this.sessions.get(sessionId);
     if (!state) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.SESSION_NOT_FOUND,
         `Session not found: ${sessionId}`,
-        404
-      )
+        404,
+      );
     }
 
     // Acquire in registry
-    yield* this.registry.acquire(sessionId)
-    return state
+    yield* this.registry.acquire(sessionId);
+    return state;
   }
 
   /**
    * Release a session (decrements refcount in registry).
    */
   *releaseSession(sessionId: string): Operation<void> {
-    yield* this.registry.release(sessionId)
+    yield* this.registry.release(sessionId);
   }
 
   /**
    * Terminate a session completely.
    */
   *terminateSession(sessionId: string): Operation<void> {
-    const state = this.sessions.get(sessionId)
+    const state = this.sessions.get(sessionId);
     if (!state) {
-      return // Already terminated
+      return; // Already terminated
     }
 
     // Cancel the tool execution
-    yield* state.session.cancel('Session terminated by client')
+    yield* state.session.cancel("Session terminated by client");
 
     // Release from registry
-    yield* this.registry.release(sessionId)
+    yield* this.registry.release(sessionId);
 
     // Remove from local state
-    this.sessions.delete(sessionId)
+    this.sessions.delete(sessionId);
   }
 
   // ===========================================================================
@@ -214,73 +172,69 @@ export class McpSessionManager {
     sessionId: string,
     elicitId: string,
     requestId: JsonRpcId,
-    key: string
+    key: string,
   ): void {
-    const state = this.sessions.get(sessionId)
-    if (!state) return
+    const state = this.sessions.get(sessionId);
+    if (!state) return;
 
     state.pendingElicits.set(String(requestId), {
       elicitId,
       requestId,
       key,
-    })
+    });
   }
 
   /**
    * Register a pending sampling request.
    */
-  registerPendingSample(
-    sessionId: string,
-    sampleId: string,
-    requestId: JsonRpcId
-  ): void {
-    const state = this.sessions.get(sessionId)
-    if (!state) return
+  registerPendingSample(sessionId: string, sampleId: string, requestId: JsonRpcId): void {
+    const state = this.sessions.get(sessionId);
+    if (!state) return;
 
     state.pendingSamples.set(String(requestId), {
       sampleId,
       requestId,
-    })
+    });
   }
 
   /**
    * Get a pending elicitation by request ID.
    */
   getPendingElicit(sessionId: string, requestId: JsonRpcId): PendingElicitation | null {
-    const state = this.sessions.get(sessionId)
-    if (!state) return null
+    const state = this.sessions.get(sessionId);
+    if (!state) return null;
 
-    return state.pendingElicits.get(String(requestId)) ?? null
+    return state.pendingElicits.get(String(requestId)) ?? null;
   }
 
   /**
    * Get a pending sample by request ID.
    */
   getPendingSample(sessionId: string, requestId: JsonRpcId): PendingSample | null {
-    const state = this.sessions.get(sessionId)
-    if (!state) return null
+    const state = this.sessions.get(sessionId);
+    if (!state) return null;
 
-    return state.pendingSamples.get(String(requestId)) ?? null
+    return state.pendingSamples.get(String(requestId)) ?? null;
   }
 
   /**
    * Clear a pending elicitation.
    */
   clearPendingElicit(sessionId: string, requestId: JsonRpcId): void {
-    const state = this.sessions.get(sessionId)
-    if (!state) return
+    const state = this.sessions.get(sessionId);
+    if (!state) return;
 
-    state.pendingElicits.delete(String(requestId))
+    state.pendingElicits.delete(String(requestId));
   }
 
   /**
    * Clear a pending sample.
    */
   clearPendingSample(sessionId: string, requestId: JsonRpcId): void {
-    const state = this.sessions.get(sessionId)
-    if (!state) return
+    const state = this.sessions.get(sessionId);
+    if (!state) return;
 
-    state.pendingSamples.delete(String(requestId))
+    state.pendingSamples.delete(String(requestId));
   }
 
   // ===========================================================================
@@ -291,113 +245,109 @@ export class McpSessionManager {
    * Handle an elicitation response from the client.
    */
   *handleElicitResponse(response: McpElicitResponse): Operation<void> {
-    const { sessionId, requestId, action, content } = response
+    const { sessionId, requestId, action, content } = response;
 
     // Find pending elicitation
-    const pending = this.getPendingElicit(sessionId, requestId)
+    const pending = this.getPendingElicit(sessionId, requestId);
     if (!pending) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.REQUEST_NOT_FOUND,
         `No pending elicitation for request ${requestId}`,
-        400
-      )
+        400,
+      );
     }
 
-    const state = this.sessions.get(sessionId)
+    const state = this.sessions.get(sessionId);
     if (!state) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.SESSION_NOT_FOUND,
         `Session not found: ${sessionId}`,
-        404
-      )
+        404,
+      );
     }
 
-    // Build elicit result
-    // Note: This is a pass-through layer. The context and exchange are
-    // constructed in the bridge-runtime when it receives this result.
-    // We use a minimal type here since the full exchange isn't available yet.
-    let elicitResult: ElicitResult<unknown, unknown>
+    // Build the wire result. This pass-through layer does not own the
+    // originating elicit context, so exchange construction happens where the
+    // elicit originated (bridge/worker runtime), not here.
+    let elicitResult: WireElicitResult<unknown>;
     switch (action) {
-      case 'accept':
-        // The bridge-runtime will wrap this with the exchange
-        elicitResult = { 
-          action: 'accept', 
+      case "accept":
+        elicitResult = {
+          action: "accept",
           content: content ?? {},
-          // Placeholder exchange - the bridge-runtime reconstructs this
-          exchange: createPlaceholderExchange(content ?? {})
-        }
-        break
-      case 'decline':
-        elicitResult = { action: 'decline' }
-        break
-      case 'cancel':
-        elicitResult = { action: 'cancel' }
-        break
+        };
+        break;
+      case "decline":
+        elicitResult = { action: "decline" };
+        break;
+      case "cancel":
+        elicitResult = { action: "cancel" };
+        break;
     }
 
-    // Send response to tool session
-    yield* state.session.respondToElicit(pending.elicitId, elicitResult)
+    yield* state.session.respondToElicit(pending.elicitId, elicitResult);
 
     // Clear pending
-    this.clearPendingElicit(sessionId, requestId)
+    this.clearPendingElicit(sessionId, requestId);
   }
 
   /**
    * Handle a sampling response from the client.
    */
   *handleSampleResponse(response: McpSampleResponse): Operation<void> {
-    const { sessionId, requestId, content, model, stopReason } = response
+    const { sessionId, requestId, content, model, stopReason } = response;
 
     // Find pending sample
-    const pending = this.getPendingSample(sessionId, requestId)
+    const pending = this.getPendingSample(sessionId, requestId);
     if (!pending) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.REQUEST_NOT_FOUND,
         `No pending sample request for request ${requestId}`,
-        400
-      )
+        400,
+      );
     }
 
-    const state = this.sessions.get(sessionId)
+    const state = this.sessions.get(sessionId);
     if (!state) {
       throw new McpHandlerError(
         MCP_HANDLER_ERRORS.SESSION_NOT_FOUND,
         `Session not found: ${sessionId}`,
-        404
-      )
+        404,
+      );
     }
 
     // Extract text content from MCP content blocks
-    let textContent: string
-    if (typeof content === 'string') {
-      textContent = content
+    let textContent: string;
+    if (typeof content === "string") {
+      textContent = content;
     } else if (Array.isArray(content)) {
       textContent = content
-        .filter((block): block is { type: 'text'; text: string } =>
-          typeof block === 'object' && block !== null && block.type === 'text'
+        .filter(
+          (block): block is { type: "text"; text: string } =>
+            typeof block === "object" && block !== null && block.type === "text",
         )
-        .map(block => block.text)
-        .join('')
-    } else if (typeof content === 'object' && content !== null) {
-      const block = content as { type?: string; text?: string }
-      textContent = block.type === 'text' && typeof block.text === 'string'
-        ? block.text
-        : JSON.stringify(content)
+        .map((block) => block.text)
+        .join("");
+    } else if (typeof content === "object" && content !== null) {
+      const block = content as { type?: string; text?: string };
+      textContent =
+        block.type === "text" && typeof block.text === "string"
+          ? block.text
+          : JSON.stringify(content);
     } else {
-      textContent = String(content)
+      textContent = String(content);
     }
 
     const sampleResult: WireSampleResultBase = {
       text: textContent,
       model,
       ...(stopReason !== undefined ? { stopReason } : {}),
-    }
+    };
 
     // Clear pending tracking first
-    this.clearPendingSample(sessionId, requestId)
+    this.clearPendingSample(sessionId, requestId);
 
-    // Respond directly - the Promise-based pattern works across scopes
-    yield* state.session.respondToSample(pending.sampleId, sampleResult)
+    yield* state.session.respondToSample(pending.sampleId, sampleResult);
   }
 
   // ===========================================================================
@@ -408,22 +358,22 @@ export class McpSessionManager {
    * Generate a new request ID for outgoing requests.
    */
   nextRequestId(sessionId: string): JsonRpcId {
-    const state = this.sessions.get(sessionId)
+    const state = this.sessions.get(sessionId);
     if (!state) {
-      return `req_${crypto.randomUUID()}`
+      return `req_${crypto.randomUUID()}`;
     }
 
-    state.requestCounter++
-    return `req_${state.requestCounter}`
+    state.requestCounter++;
+    return `req_${state.requestCounter}`;
   }
 
   /**
    * Update the last LSN for a session.
    */
   updateLastLSN(sessionId: string, lsn: number): void {
-    const state = this.sessions.get(sessionId)
+    const state = this.sessions.get(sessionId);
     if (state) {
-      state.lastLSN = lsn
+      state.lastLSN = lsn;
     }
   }
 
@@ -436,7 +386,7 @@ export class McpSessionManager {
    */
   *cleanup(): Operation<void> {
     for (const sessionId of this.sessions.keys()) {
-      yield* this.terminateSession(sessionId)
+      yield* this.terminateSession(sessionId);
     }
   }
 }
@@ -449,5 +399,5 @@ export class McpSessionManager {
  * Create a new session manager.
  */
 export function createSessionManager(options: McpSessionManagerOptions): McpSessionManager {
-  return new McpSessionManager(options)
+  return new McpSessionManager(options);
 }

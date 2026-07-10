@@ -1,7 +1,5 @@
 /// <reference types="vite/client" />
 
-import type { Worker, WorkerOptions } from "node:worker_threads";
-
 // Declaration for vite-plugin-node-worker imports
 // ?modulePath returns a URL to the bundled worker script
 declare module "*?modulePath" {
@@ -11,7 +9,9 @@ declare module "*?modulePath" {
 
 // ?nodeWorker returns a factory function that creates a Worker
 declare module "*?nodeWorker" {
-  export default function createWorker(options?: WorkerOptions): Worker;
+  export default function createWorker(
+    options?: import("node:worker_threads").WorkerOptions,
+  ): import("node:worker_threads").Worker;
 }
 
 // Declaration for vite-imagetools imports with query parameters

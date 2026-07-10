@@ -1,24 +1,44 @@
 import { run } from "effection";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
 import { createLocalToolRuntimeDriver, createToolInventoryEntry } from "../src/index.ts";
 
-let mcpExecuteCalls = 0;
+const workerFixtureCandidates = [
+  resolve(process.cwd(), "src/__tests__/fixtures/tool-worker-bootstrap.mjs"),
+  resolve(
+    process.cwd(),
+    "packages/tool-runtime-local/src/__tests__/fixtures/tool-worker-bootstrap.mjs",
+  ),
+];
+
+const workerFixturePath = (() => {
+  const candidate = workerFixtureCandidates.find((path) => existsSync(path));
+  if (!candidate) {
+    throw new Error("Failed to resolve tool-worker-bootstrap.mjs fixture path");
+  }
+  return candidate;
+})();
+
+const localRuntimeWorkerConfig = {
+  workerUrl: pathToFileURL(workerFixturePath),
+  isDev: false,
+} as const;
 
 const strictTool = createTool("strict_echo")
   .description("Strict echo")
   .parameters(z.object({ message: z.string() }))
 
   .execute(function* (params) {
-    mcpExecuteCalls += 1;
     return { echoed: params.message };
   });
 
 describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
   it("rejects invalid session params before local session or tool execution and executes valid params", async () => {
     await run(function* () {
-      mcpExecuteCalls = 0;
       const driver = yield* createLocalToolRuntimeDriver({
         tools: [strictTool],
         samplingProvider: {
@@ -26,6 +46,7 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       try {
@@ -44,8 +65,6 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
           payload: { toolName: "strict_echo", callId: "call-invalid-mcp" },
         });
       }
-      expect(mcpExecuteCalls).toBe(0);
-
       const result = yield* driver.execute({
         entry: createToolInventoryEntry(strictTool),
         call: {
@@ -55,7 +74,6 @@ describe("@sweatpants/tool-runtime-local strict parameter acceptance", () => {
         },
       });
       expect(result).toMatchObject({ kind: "completed", result: { echoed: "hello" } });
-      expect(mcpExecuteCalls).toBe(1);
     });
   });
 

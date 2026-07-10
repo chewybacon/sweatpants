@@ -64,10 +64,7 @@ import type {
   ElicitsMap,
   ExtractElicitResponse,
 } from "@sweatpants/core";
-import type {
-  ElicitRequest,
-  WireElicitResult,
-} from "./mcp-tool-types.ts";
+import type { ElicitRequest, WireElicitResult } from "./mcp-tool-types.ts";
 
 // Re-export renderable types for plugin authors
 export type {
@@ -142,7 +139,7 @@ export interface PluginClientContext<TElicitRequest = ElicitRequest<string, z.Zo
  * Handler function for a single elicitation key.
  *
  * The handler is a generator that receives the elicitation request
- * and client context, and returns an ElicitResult.
+ * and client context, and returns a WireElicitResult.
  *
  * @template TKey - The elicitation key name
  * @template TDef - ElicitDefinition for this elicitation key
@@ -216,7 +213,15 @@ export interface McpPlugin<
   TSamples extends SamplesMap | true | undefined = undefined,
 > {
   /** Server-side registration */
-  server: PluginServerRegistration<TName, TParams, _TInteraction, _TClient, TResult, TElicits, TSamples>;
+  server: PluginServerRegistration<
+    TName,
+    TParams,
+    _TInteraction,
+    _TClient,
+    TResult,
+    TElicits,
+    TSamples
+  >;
 
   /** Client-side registration */
   client: PluginClientRegistration<TElicits>;
@@ -248,7 +253,7 @@ export interface PluginBuilder<
    * - `req`: The elicitation request (message, schema, context data, etc.)
    * - `ctx`: Client context (step, waitFor, reportProgress, etc.)
    *
-   * And returns an `ElicitResult<T>`:
+   * And returns a `WireElicitResult<T>`:
    * - `{ action: 'accept', content: T }` - User submitted data
    * - `{ action: 'decline' }` - User declined
    * - `{ action: 'cancel' }` - User cancelled
@@ -272,7 +277,15 @@ export interface PluginBuilder<
    */
   onElicit(
     handlers: ElicitHandlers<TElicits>,
-  ): PluginBuilderWithHandlers<TName, TParams, _TInteraction, _TClient, TResult, TElicits, TSamples>;
+  ): PluginBuilderWithHandlers<
+    TName,
+    TParams,
+    _TInteraction,
+    _TClient,
+    TResult,
+    TElicits,
+    TSamples
+  >;
 }
 
 /**
@@ -390,7 +403,8 @@ export function makePlugin<
 /**
  * Extract the elicits map from a plugin.
  */
-export type InferElicits<T> = T extends McpPlugin<any, any, any, any, any, infer E, any> ? E : never;
+export type InferElicits<T> =
+  T extends McpPlugin<any, any, any, any, any, infer E, any> ? E : never;
 
 /**
  * Extract the tool type from a plugin.

@@ -11,9 +11,9 @@ Implements `.pi/specs/outside-in-http-testing-design.md`.
 One shared test body runs against **two bindings** of the same seam:
 
 - **Tier A** (`lib/tier-a.ts`) — the durable chat handler in-process, wired to a
-  **real worker-backed** tool runtime (a genuine worker thread that runs the
-  generated `tool-worker.gen.ts` via tsx). Fast dev loop; covers
-  handler → adapter → worker → resume.
+  **real worker-backed** tool runtime (a genuine worker thread that loads the
+  generated `tool-registry.gen.ts` tool list through the yo-chat bootstrap).
+  Fast dev loop; covers handler → adapter → worker → resume.
 - **Tier B** (`lib/tier-b.ts`) — the **real booted app server** (`vite dev`) over
   real HTTP, adding the vite `nodeWorkerPlugin` / `?modulePath` worker bundling
   and SSR wiring that Tier A skips.

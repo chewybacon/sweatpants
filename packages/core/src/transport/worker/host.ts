@@ -8,10 +8,9 @@
  * ## Architecture
  *
  * Uses @effectionx/worker's bidirectional communication:
- * - Worker sends requests via send.stream() (sample/elicit)
- * - Host receives requests via worker.forEach() 
- * - Host sends progress via ctx.progress()
- * - Host returns response from the forEach handler
+ * - Worker sends sample/elicit requests via send.stream(request)
+ * - Host receives requests via worker.forEach()
+ * - Host sends an initial ready progress ACK, then returns the final response
  *
  * ## Usage
  *
@@ -19,10 +18,8 @@
  * const { transport, result } = yield* createWorkerPrincipal({
  *   workerUrl: "./tool-worker.js",
  *   initData: { toolName: "greet", params: { name: "Alice" }, sessionId: "123" },
- *   requestHandler: function* (request, ctx) {
- *     // Send progress updates
- *     yield* ctx.progress({ type: "progress", message: "Processing..." });
- *     
+ *   requestHandler: function* (request) {
+ *     // The worker stream has already received the ready ACK.
  *     // Handle the request and return response
  *     if (request.type === "sample") {
  *       const response = yield* callLLM(request);
@@ -39,11 +36,7 @@
  * @packageDocumentation
  */
 
-import {
-  resource,
-  spawn,
-  type Operation,
-} from "effection";
+import { resource, spawn, type Operation } from "effection";
 import { useWorker, type WorkerResource } from "@effectionx/worker";
 import type {
   WorkerRequest,
@@ -69,7 +62,7 @@ export interface ForEachContext<TProgress> {
  */
 export type WorkerRequestHandler = (
   request: WorkerRequest,
-  ctx: ForEachContext<WorkerProgressMessage>
+  ctx: ForEachContext<WorkerProgressMessage>,
 ) => Operation<WorkerResponse>;
 
 /**
@@ -130,7 +123,7 @@ export interface WorkerPrincipalResult<T = unknown> {
  * @returns WorkerPrincipalResult with result operation
  */
 export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
-  options: WorkerPrincipalOptions<TInitData>
+  options: WorkerPrincipalOptions<TInitData>,
 ): Operation<WorkerPrincipalResult<T>> {
   const { workerUrl, initData, requestHandler, execArgv } = options;
 
@@ -143,17 +136,18 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
     // TRecv = never (host doesn't receive responses to its sends)
     // TReturn = WorkerResult<T> (final return value from worker)
     // TData = WorkerInitData (init data)
-    const worker: WorkerResource<never, never, WorkerResult<T>> =
-      yield* useWorker<never, never, WorkerResult<T>, TInitData>(
-        workerUrl,
-        {
-          type: "module",
-          data: initData,
-          // Pass execArgv to enable TypeScript loaders in worker threads.
-          // This flows through: useWorker -> web-worker -> node:worker_threads
-          ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
-        } as any
-      );
+    const worker: WorkerResource<never, never, WorkerResult<T>> = yield* useWorker<
+      never,
+      never,
+      WorkerResult<T>,
+      TInitData
+    >(workerUrl, {
+      type: "module",
+      data: initData,
+      // Pass execArgv to enable TypeScript loaders in worker threads.
+      // This flows through: useWorker -> web-worker -> node:worker_threads
+      ...(execArgv && execArgv.length > 0 ? { execArgv } : {}),
+    } as any);
 
     // Spawn the forEach handler to process worker requests
     // This runs in the background and handles all requests from the worker
@@ -165,9 +159,12 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
         // WProgress = WorkerProgressMessage (progress updates)
         yield* worker.forEach<WorkerRequest, WorkerResponse, WorkerProgressMessage>(
           function* (request, ctx) {
-            // Call the user-provided request handler
+            // Handshake: arm the worker-side progress/response subscription before
+            // the request handler publishes events that callers may answer
+            // immediately. This avoids scheduler sleeps in elicit/sample resume.
+            yield* ctx.progress({ type: "progress", message: "worker-request-ready" });
             return yield* requestHandler(request, ctx);
-          }
+          },
         );
       } catch (error) {
         if (!resultSettled) {
@@ -254,7 +251,7 @@ export function createSampleResponse(
     parsed?: unknown;
     parseError?: { message: string; rawText: string };
     toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
-  }
+  },
 ): WorkerResponse {
   const response: WorkerResponse = {
     id,
@@ -262,7 +259,7 @@ export function createSampleResponse(
     status: "accepted",
     text: options.text,
   };
-  
+
   // Only add optional properties if they are defined (for exactOptionalPropertyTypes)
   if (options.model !== undefined) {
     (response as { model?: string }).model = options.model;
@@ -274,12 +271,17 @@ export function createSampleResponse(
     (response as { parsed?: unknown }).parsed = options.parsed;
   }
   if (options.parseError !== undefined) {
-    (response as { parseError?: { message: string; rawText: string } }).parseError = options.parseError;
+    (response as { parseError?: { message: string; rawText: string } }).parseError =
+      options.parseError;
   }
   if (options.toolCalls !== undefined) {
-    (response as { toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }).toolCalls = options.toolCalls;
+    (
+      response as {
+        toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
+      }
+    ).toolCalls = options.toolCalls;
   }
-  
+
   return response;
 }
 
@@ -292,7 +294,7 @@ export function createElicitResponse(
     action: "accept" | "decline" | "cancel";
     content?: unknown;
     reason?: string;
-  }
+  },
 ): WorkerResponse {
   if (options.action === "accept") {
     return {

@@ -7,13 +7,14 @@
  * ## Architecture
  *
  * Uses @effectionx/worker's bidirectional communication:
- * - Worker SENDS requests via send.stream() and receives progress + response
- * - Host RECEIVES requests via worker.forEach() and sends progress via ctx.progress()
+ * - Worker sends sample/elicit requests to the host via send.stream(request)
+ * - Host receives requests via worker.forEach()
+ * - Host first sends a ready progress ACK, then later returns the single response
  *
  * This enables the tool session pattern where:
  * - Tool (in worker) sends sample/elicit requests to host
- * - Host processes requests and streams progress back
- * - Worker receives progress updates and final response
+ * - Host publishes a session event only after the worker-side stream is armed
+ * - Worker resumes once the host returns the response
  *
  * @packageDocumentation
  */
@@ -43,7 +44,7 @@ import type {
  */
 export type ToolWorkerHandler<T = unknown> = (
   initData: WorkerInitData,
-  ctx: WorkerToolContext
+  ctx: WorkerToolContext,
 ) => Operation<T>;
 
 // =============================================================================
@@ -54,9 +55,10 @@ export type ToolWorkerHandler<T = unknown> = (
  * Run a tool handler inside a web worker.
  *
  * This function sets up bidirectional communication using @effectionx/worker:
- * - Tool sends requests (sample/elicit) via send.stream()
- * - Host sends progress via ctx.progress() (received as subscription values)
- * - Host returns response (received as subscription return value)
+ * - Tool sends requests (sample/elicit) via send.stream(request)
+ * - Host sends an initial ready progress ACK to arm the response stream
+ * - Host returns exactly one final response for each request
+ * - Tool progress/logging remains local to the worker context
  *
  * The handler receives:
  * - initData: The initialization data passed from the host
@@ -64,9 +66,7 @@ export type ToolWorkerHandler<T = unknown> = (
  *
  * @param handler - Function that executes the tool and returns its result
  */
-export async function runToolWorker<T = unknown>(
-  handler: ToolWorkerHandler<T>
-): Promise<void> {
+export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>): Promise<void> {
   // Type parameters for workerMain:
   // TSend = never (host doesn't send requests to worker in our model)
   // TRecv = never (worker doesn't respond to host requests)
@@ -87,28 +87,25 @@ export async function runToolWorker<T = unknown>(
       }
 
       /**
-       * Send a request to the host and wait for response.
-       * Consumes any progress updates while waiting.
+       * Send a request to the host and wait for the final response.
+       *
+       * The host sends one initial progress ACK before publishing the corresponding
+       * session event. Consuming that progress item proves this worker-side stream
+       * is armed, so immediate host responses cannot race the response listener.
        */
       function* sendRequestToHost<TReq extends WorkerRequest, TRes extends WorkerResponse>(
         request: TReq,
-        onProgress?: (progress: WorkerProgressMessage) => void
+        onProgress?: (progress: WorkerProgressMessage) => void,
       ): Operation<TRes> {
-        // Use send.stream to get a subscription that yields progress and returns response
-        const subscription: Subscription<WorkerProgressMessage, WorkerResponse> = 
+        const subscription: Subscription<WorkerProgressMessage, WorkerResponse> =
           yield* send.stream<WorkerProgressMessage>(request);
 
-        // Consume progress updates until we get the final response
         let next = yield* subscription.next();
         while (!next.done) {
-          // Call progress callback if provided
-          if (onProgress) {
-            onProgress(next.value);
-          }
+          onProgress?.(next.value);
           next = yield* subscription.next();
         }
 
-        // Return the final response
         return next.value as TRes;
       }
 
@@ -124,7 +121,9 @@ export async function runToolWorker<T = unknown>(
             messages: options.messages,
             ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
             ...(options.maxTokens !== undefined && { maxTokens: options.maxTokens }),
-            ...(options.modelPreferences !== undefined && { modelPreferences: options.modelPreferences }),
+            ...(options.modelPreferences !== undefined && {
+              modelPreferences: options.modelPreferences,
+            }),
             ...(options.tools !== undefined && { tools: options.tools }),
             ...(options.toolChoice !== undefined && { toolChoice: options.toolChoice }),
             ...(options.schema !== undefined && { schema: options.schema }),
@@ -135,7 +134,11 @@ export async function runToolWorker<T = unknown>(
 
         *elicit<TContent>(
           key: string,
-          options: { message: string; schema: Record<string, unknown>; context?: Record<string, unknown> }
+          options: {
+            message: string;
+            schema: Record<string, unknown>;
+            context?: Record<string, unknown>;
+          },
         ): Operation<WorkerElicitResponse & { content?: TContent }> {
           const id = generateRequestId();
           const request: WorkerElicitRequest = {
@@ -147,9 +150,9 @@ export async function runToolWorker<T = unknown>(
             ...(options.context !== undefined && { context: options.context }),
           };
 
-          return yield* sendRequestToHost<WorkerElicitRequest, WorkerElicitResponse>(request) as Operation<
-            WorkerElicitResponse & { content?: TContent }
-          >;
+          return yield* sendRequestToHost<WorkerElicitRequest, WorkerElicitResponse>(
+            request,
+          ) as Operation<WorkerElicitResponse & { content?: TContent }>;
         },
 
         // Progress is now sent FROM host TO worker, so this becomes a no-op log
@@ -157,15 +160,21 @@ export async function runToolWorker<T = unknown>(
         // affect the host's progress tracking
         progress(message: string, progressValue?: number): void {
           // Log progress locally for debugging
-          console.log(`[Worker Progress] ${message}${progressValue !== undefined ? ` (${progressValue * 100}%)` : ''}`);
+          console.log(
+            `[Worker Progress] ${message}${progressValue !== undefined ? ` (${progressValue * 100}%)` : ""}`,
+          );
         },
 
         log(level: WorkerLogMessage["level"], message: string): void {
           // Log locally - in future could be sent via a dedicated log channel
-          const logFn = level === "error" ? console.error 
-            : level === "warning" ? console.warn 
-            : level === "debug" ? console.debug 
-            : console.log;
+          const logFn =
+            level === "error"
+              ? console.error
+              : level === "warning"
+                ? console.warn
+                : level === "debug"
+                  ? console.debug
+                  : console.log;
           logFn(`[Worker ${level.toUpperCase()}] ${message}`);
         },
       };
@@ -189,7 +198,7 @@ export async function runToolWorker<T = unknown>(
           },
         };
       }
-    }
+    },
   );
 }
 
@@ -209,27 +218,27 @@ export async function runToolWorker<T = unknown>(
  * @param requestHandler - Function that handles incoming requests
  */
 export async function runRequestHandler(
-  requestHandler: (request: WorkerRequest) => Operation<WorkerResponse>
+  requestHandler: (request: WorkerRequest) => Operation<WorkerResponse>,
 ): Promise<void> {
-  await workerMain<WorkerRequest, WorkerResponse, WorkerResult<void>, WorkerInitData>(
-    function* ({ messages }) {
-      try {
-        yield* messages.forEach(function* (request: WorkerRequest): Operation<WorkerResponse> {
-          return yield* requestHandler(request);
-        });
+  await workerMain<WorkerRequest, WorkerResponse, WorkerResult<void>, WorkerInitData>(function* ({
+    messages,
+  }) {
+    try {
+      yield* messages.forEach(function* (request: WorkerRequest): Operation<WorkerResponse> {
+        return yield* requestHandler(request);
+      });
 
-        return { type: "success", value: undefined };
-      } catch (error) {
-        const err = error as Error;
-        return {
-          type: "error",
-          error: {
-            name: err.name,
-            message: err.message,
-            stack: err.stack,
-          },
-        };
-      }
+      return { type: "success", value: undefined };
+    } catch (error) {
+      const err = error as Error;
+      return {
+        type: "error",
+        error: {
+          name: err.name,
+          message: err.message,
+          stack: err.stack,
+        },
+      };
     }
-  );
+  });
 }

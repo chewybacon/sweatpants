@@ -29,6 +29,8 @@ import { createToolsMap, allTools } from "./tools/index.js";
 const SERVER_NAME = "yo-mcp";
 const SERVER_VERSION = "0.1.0";
 const PORT = parseInt(process.env["PORT"] || "3001", 10);
+const TOOL_WORKER_URL = new URL("../src/tool-worker.mjs", import.meta.url);
+const TOOL_WORKER_EXEC_ARGV = ["--conditions=development", "--import", "tsx"];
 
 /**
  * Create a mock sampling provider.
@@ -61,7 +63,10 @@ async function main() {
   const { handler, cleanup } = await run(function* () {
     const store = createInMemoryToolSessionStore();
     const samplingProvider = createMockSamplingProvider();
-    const registry = yield* createToolSessionRegistry(store, { samplingProvider });
+    const registry = yield* createToolSessionRegistry(store, {
+      samplingProvider,
+      worker: { workerUrl: TOOL_WORKER_URL, isDev: false, execArgv: TOOL_WORKER_EXEC_ARGV },
+    });
     const tools = createToolsMap();
 
     const { handler, manager } = createMcpHandler({

@@ -39,9 +39,6 @@ export type {
 
 // Types from unified types file
 export type {
-  // Context types
-  McpToolContext,
-  McpToolContextWithElicits,
   // Branch options and limits
   McpToolBranchOptions,
   McpToolLimits,
@@ -76,10 +73,9 @@ export type {
   ToolCallMessage,
   ToolResultMessage,
   // Elicitation types
-  ElicitResult,
   ToolElicitResult,
   WireElicitResult,
-  ElicitConfig,
+  ClientElicitConfig,
   ElicitsMap,
   ElicitId,
   ElicitRequest,

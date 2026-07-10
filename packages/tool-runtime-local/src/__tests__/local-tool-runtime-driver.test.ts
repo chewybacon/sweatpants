@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { run } from "effection";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
 import { ToolRuntimeApi, createToolInventory } from "@sweatpants/framework/chat";
@@ -8,6 +11,27 @@ import {
   createToolInventoryEntry,
   installLocalToolRuntime,
 } from "../index.ts";
+
+const workerFixtureCandidates = [
+  resolve(process.cwd(), "src/__tests__/fixtures/tool-worker-bootstrap.mjs"),
+  resolve(
+    process.cwd(),
+    "packages/tool-runtime-local/src/__tests__/fixtures/tool-worker-bootstrap.mjs",
+  ),
+];
+
+const workerFixturePath = (() => {
+  const candidate = workerFixtureCandidates.find((path) => existsSync(path));
+  if (!candidate) {
+    throw new Error("Failed to resolve tool-worker-bootstrap.mjs fixture path");
+  }
+  return candidate;
+})();
+
+const localRuntimeWorkerConfig = {
+  workerUrl: pathToFileURL(workerFixturePath),
+  isDev: false,
+} as const;
 
 const echoTool = createTool("echo")
   .description("Echo input")
@@ -18,6 +42,21 @@ const echoTool = createTool("echo")
   });
 
 describe("local ToolRuntimeDriver", () => {
+  it("requires worker-backed execution", async () => {
+    await expect(
+      run(function* () {
+        yield* createLocalToolRuntimeDriver({
+          tools: [echoTool],
+          samplingProvider: {
+            *sample() {
+              return { text: "unused" };
+            },
+          },
+        });
+      }),
+    ).rejects.toMatchObject({ code: "WORKER_BACKED_LOCAL_RUNTIME_REQUIRED" });
+  });
+
   it("executes a local tool via the canonical runtime surface", async () => {
     await run(function* () {
       const driver = yield* createLocalToolRuntimeDriver({
@@ -27,6 +66,7 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       const result = yield* driver.execute({
@@ -49,13 +89,11 @@ describe("local ToolRuntimeDriver", () => {
 
   it("rejects invalid session params before creating a local session", async () => {
     await run(function* () {
-      let executeCalls = 0;
       const strictTool = createTool("strict_echo")
         .description("Strict echo input")
         .parameters(z.object({ message: z.string() }))
 
         .execute(function* (params) {
-          executeCalls++;
           return { echoed: params.message };
         });
 
@@ -66,6 +104,7 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       try {
@@ -87,8 +126,6 @@ describe("local ToolRuntimeDriver", () => {
           },
         });
       }
-
-      expect(executeCalls).toBe(0);
     });
   });
 
@@ -118,6 +155,7 @@ describe("local ToolRuntimeDriver", () => {
             return { text: "unused" };
           },
         },
+        registryOptions: { worker: localRuntimeWorkerConfig },
       });
 
       const result = yield* ToolRuntimeApi.execute({

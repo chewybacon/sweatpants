@@ -35,9 +35,8 @@ import type {
   ToolMessage,
 } from "@sweatpants/core";
 import type {
-  ElicitResult,
   WireElicitResult,
-  ElicitConfig,
+  ClientElicitConfig,
   LogLevel,
   ElicitExchange,
 } from "./mcp-tool-types.ts";
@@ -53,7 +52,7 @@ interface MockSampleConfig<T = unknown> {
 }
 
 interface MockMCPClientContext {
-  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>>;
+  elicit<T>(config: ClientElicitConfig<T>): Operation<ToolElicitResult<unknown, T>>;
   sample<T = string>(config: MockSampleConfig<T>): Operation<T>;
   log(level: LogLevel, message: string): Operation<void>;
   notify(message: string, progress?: number): Operation<void>;
@@ -73,9 +72,9 @@ export interface MockMCPClientConfig {
    *
    * Can be either:
    * - WireElicitResult (simple: { action, content }) - exchange will be constructed
-   * - ElicitResult (full: { action, content, exchange }) - used as-is
+   * - ToolElicitResult (full: { action, content, exchange }) - used as-is
    */
-  elicitResponses?: (WireElicitResult<any> | ElicitResult<any, any>)[];
+  elicitResponses?: (WireElicitResult<any> | ToolElicitResult<any, any>)[];
 
   /**
    * Pre-programmed sampling responses.
@@ -95,7 +94,7 @@ export interface MockMCPClientConfig {
   /**
    * Callback for each elicit call (for assertions).
    */
-  onElicit?: (config: ElicitConfig<any>) => void;
+  onElicit?: (config: ClientElicitConfig<any>) => void;
 
   /**
    * Callback for each sample call (for assertions).
@@ -124,7 +123,7 @@ export interface MockMCPClient {
   createContext(): MockMCPClientContext;
 
   /** Get all elicit calls made */
-  elicitCalls: ElicitConfig<any>[];
+  elicitCalls: ClientElicitConfig<any>[];
 
   /** Get all sample calls made */
   sampleCalls: MockSampleConfig<any>[];
@@ -163,14 +162,14 @@ export function createMockMCPClient(config: MockMCPClientConfig = {}): MockMCPCl
     sampling: config.capabilities?.sampling ?? true,
   };
 
-  const elicitCalls: ElicitConfig<any>[] = [];
+  const elicitCalls: ClientElicitConfig<any>[] = [];
   const sampleCalls: MockSampleConfig<any>[] = [];
   const logCalls: Array<{ level: LogLevel; message: string }> = [];
   const notifyCalls: Array<{ message: string; progress?: number }> = [];
 
   function createContext(): MockMCPClientContext {
     return {
-      elicit: <T>(elicitConfig: ElicitConfig<T>): Operation<ElicitResult<unknown, T>> => {
+      elicit: <T>(elicitConfig: ClientElicitConfig<T>): Operation<ToolElicitResult<unknown, T>> => {
         return {
           *[Symbol.iterator]() {
             if (!capabilities.elicitation) {

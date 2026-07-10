@@ -3,9 +3,9 @@
  *
  * Builds the durable chat handler IN-PROCESS with:
  *   - the real local **worker-backed** tool session registry, spawning a genuine
- *     worker thread that loads the generated `tool-worker.gen.ts` entry (tsx is
- *     registered in-thread by a plain-JS bootstrap, since the web-worker shim
- *     does not forward `execArgv`) — the same serialization boundary proven by
+ *     worker thread through the plain-JS yo-chat bootstrap. The bootstrap loads
+ *     the generated `tool-registry.gen.ts` tool list and runs it with the local
+ *     worker runner, preserving the same serialization boundary proven by
  *     `worker-tool-session.test.ts`;
  *   - the real Copilot-authed model provider (via the app's own
  *     `setupYoChatModelProvider`);
@@ -49,16 +49,14 @@ import { setupYoChatBaseContexts, activePluginTools, allTools } from "@/server/t
 import { setupYoChatModelProvider } from "@/server/model-provider";
 import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
 import { pluginSamplingProvider } from "@/server/plugin-sampling-provider";
+import {
+  YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL,
+  yoChatToolSessionWorkerConfig,
+} from "@/server/tool-worker-config";
 
 import { handlerToChatFetch, type ChatBinding } from "./chat-fetch.ts";
 
 type LocalSessionTool = Parameters<typeof createToolInventoryEntry>[0];
-
-/** Absolute file: URL of the tsx worker bootstrap (loads the generated entry). */
-const TOOL_WORKER_BOOTSTRAP_URL = new URL("./tool-worker-bootstrap.mjs", import.meta.url);
-
-/** Absolute path of the generated worker entry, for a fast existence precheck. */
-const TOOL_WORKER_GEN_URL = new URL("../../__generated__/tool-worker.gen.ts", import.meta.url);
 
 function localOnlyTools(): LocalSessionTool[] {
   const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));
@@ -66,7 +64,7 @@ function localOnlyTools(): LocalSessionTool[] {
 }
 
 function* setupTierAWorkerRuntime(): Operation<void> {
-  const workerGenPath = fileURLToPath(TOOL_WORKER_GEN_URL);
+  const workerGenPath = fileURLToPath(YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL);
   if (!existsSync(workerGenPath)) {
     throw new Error(
       `[outside-in:tier-a] generated worker entry not found at ${workerGenPath}. Run \`pnpm -C apps/yo-chat generate:tools\`.`,
@@ -78,10 +76,7 @@ function* setupTierAWorkerRuntime(): Operation<void> {
   const store = createInMemoryToolSessionStore();
   const registry: ToolSessionRegistry = yield* createToolSessionRegistry(store, {
     samplingProvider: pluginSamplingProvider,
-    worker: {
-      workerUrl: TOOL_WORKER_BOOTSTRAP_URL,
-      isDev: false,
-    },
+    worker: yoChatToolSessionWorkerConfig,
   });
   const manager = yield* createPluginSessionManager({
     registry,

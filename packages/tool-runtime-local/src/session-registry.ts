@@ -13,7 +13,15 @@
  *
  * @packageDocumentation
  */
-import { type Operation, spawn, resource, sleep, createQueue, createScope, suspend } from 'effection'
+import {
+  type Operation,
+  spawn,
+  resource,
+  sleep,
+  createQueue,
+  createScope,
+  suspend,
+} from "effection";
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -22,35 +30,52 @@ import type {
   ToolSessionOptions,
   ToolSessionSamplingProvider,
   ToolSessionStatus,
-} from '@sweatpants/framework/chat/mcp-tools'
-import type { ElicitsMap } from '@sweatpants/framework/chat/mcp-tools'
-import type { ToolDefinition } from '@sweatpants/core'
-import { validateToolParameters } from '@sweatpants/framework/chat'
-import { createToolSession } from './tool-session.ts'
-import { createWorkerToolSession } from './worker-tool-session.ts'
+} from "@sweatpants/framework/chat/mcp-tools";
+import type { ElicitsMap } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolDefinition } from "@sweatpants/core";
+import { validateToolParameters } from "@sweatpants/framework/chat";
+import { createToolSession } from "./tool-session.ts";
+import { createWorkerToolSession } from "./worker-tool-session.ts";
+
+const TOOL_SESSION_REGISTRY_EXECUTION_MODE = Symbol.for(
+  "@sweatpants/tool-runtime-local/tool-session-registry-execution-mode",
+);
+
+type ToolSessionRegistryExecutionMode = "inline" | "worker";
+type ToolSessionRegistryWithExecutionMode = ToolSessionRegistry & {
+  [TOOL_SESSION_REGISTRY_EXECUTION_MODE]: ToolSessionRegistryExecutionMode;
+};
+
+export function isWorkerBackedToolSessionRegistry(registry: ToolSessionRegistry): boolean {
+  return (
+    (registry as Partial<ToolSessionRegistryWithExecutionMode>)[
+      TOOL_SESSION_REGISTRY_EXECUTION_MODE
+    ] === "worker"
+  );
+}
 
 function startBackgroundTask(operation: () => Operation<void>): void {
-  const [scope] = createScope()
-  scope.run(operation)
+  const [scope] = createScope();
+  scope.run(operation);
 }
 
 function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | URL {
-  if (!isDev) return workerUrl
+  if (!isDev) return workerUrl;
 
   if (workerUrl instanceof URL) {
-    if (workerUrl.protocol === 'file:') return workerUrl
-    const cacheBusted = new URL(workerUrl.toString())
-    cacheBusted.searchParams.set('t', Date.now().toString())
-    return cacheBusted
+    if (workerUrl.protocol === "file:") return workerUrl;
+    const cacheBusted = new URL(workerUrl.toString());
+    cacheBusted.searchParams.set("t", Date.now().toString());
+    return cacheBusted;
   }
 
   if (/^https?:\/\//.test(workerUrl)) {
-    const cacheBusted = new URL(workerUrl)
-    cacheBusted.searchParams.set('t', Date.now().toString())
-    return cacheBusted
+    const cacheBusted = new URL(workerUrl);
+    cacheBusted.searchParams.set("t", Date.now().toString());
+    return cacheBusted;
   }
 
-  return workerUrl
+  return workerUrl;
 }
 
 // =============================================================================
@@ -64,24 +89,24 @@ export interface ToolSessionRegistryOptions {
   /**
    * Provider for LLM sampling when tools use ctx.sample().
    */
-  samplingProvider: ToolSessionSamplingProvider
+  samplingProvider: ToolSessionSamplingProvider;
 
   /**
    * Default timeout for sessions in milliseconds.
    * @default undefined (no timeout)
    */
-  defaultTimeout?: number
+  defaultTimeout?: number;
 
   /**
    * Worker mode configuration (optional).
    * When set, tool sessions run in worker threads via createWorkerToolSession.
    */
   worker?: {
-    workerUrl: string | URL
-    isDev?: boolean
+    workerUrl: string | URL;
+    isDev?: boolean;
     /** Extra execArgv for worker threads (e.g., ['--import', 'tsx'] for TypeScript support in dev) */
-    execArgv?: string[]
-  }
+    execArgv?: string[];
+  };
 }
 
 /**
@@ -101,45 +126,46 @@ export interface ToolSessionRegistryOptions {
  */
 export function createToolSessionRegistry(
   store: ToolSessionStore,
-  options: ToolSessionRegistryOptions
+  options: ToolSessionRegistryOptions,
 ): Operation<ToolSessionRegistry> {
   return resource<ToolSessionRegistry>(function* (provide) {
-    const { samplingProvider, defaultTimeout, worker } = options
+    const { samplingProvider, defaultTimeout, worker } = options;
 
     // Track active session resources
-    const activeSessions = new Map<string, ToolSession>()
+    const activeSessions = new Map<string, ToolSession>();
 
     /**
      * Internal cleanup helper - removes session from store and active map.
      */
     function* cleanup(sessionId: string): Operation<void> {
-      yield* store.delete(sessionId)
-      activeSessions.delete(sessionId)
+      yield* store.delete(sessionId);
+      activeSessions.delete(sessionId);
     }
 
-    const registry: ToolSessionRegistry = {
+    const registry: ToolSessionRegistryWithExecutionMode = {
+      [TOOL_SESSION_REGISTRY_EXECUTION_MODE]: worker ? "worker" : "inline",
       *create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
         tool: ToolDefinition<string, TParams, TResult, TElicits>,
         params: TParams,
-        sessionOptions?: ToolSessionOptions
+        sessionOptions?: ToolSessionOptions,
       ): Operation<ToolSession<TResult>> {
         const mergedOptions: ToolSessionOptions = {
           ...sessionOptions,
           ...(defaultTimeout !== undefined && { timeout: defaultTimeout }),
-        }
+        };
 
         const validatedParams = validateToolParameters<TParams>({
           schema: tool.parameters,
           params,
           toolName: tool.name,
           callId: mergedOptions.sessionId ?? tool.name,
-        })
+        });
 
         // Use a queue to receive the session from the spawned background task.
         // This handoff crosses detached scopes, so it must be buffered: an
         // unbuffered Channel can deadlock if the background task sends before
         // the caller has subscribed.
-        const sessionQueue = createQueue<ToolSession<TResult>, void>()
+        const sessionQueue = createQueue<ToolSession<TResult>, void>();
 
         // CRITICAL: Run tool sessions in an independent background scope.
         //
@@ -150,159 +176,160 @@ export function createToolSessionRegistry(
         startBackgroundTask(function* () {
           const resolvedWorkerUrl = worker
             ? resolveWorkerUrl(worker.workerUrl, worker.isDev)
-            : undefined
-          const session = (worker
-            ? yield* createWorkerToolSession({
-                sessionId: mergedOptions.sessionId ?? tool.name,
-                toolName: tool.name,
-                params: validatedParams,
-                workerUrl: resolvedWorkerUrl ?? worker.workerUrl,
-                ...(mergedOptions.systemPrompt !== undefined && { systemPrompt: mergedOptions.systemPrompt }),
-                ...(mergedOptions.parentMessages !== undefined && { parentMessages: mergedOptions.parentMessages }),
-                ...(worker.execArgv && worker.execArgv.length > 0 ? { execArgv: worker.execArgv } : {}),
-              })
-            : yield* createToolSession(
-                tool,
-                validatedParams,
-                samplingProvider,
-                mergedOptions
-              )) as ToolSession<TResult>
+            : undefined;
+          const session = (
+            worker
+              ? yield* createWorkerToolSession({
+                  sessionId: mergedOptions.sessionId ?? tool.name,
+                  toolName: tool.name,
+                  params: validatedParams,
+                  workerUrl: resolvedWorkerUrl ?? worker.workerUrl,
+                  ...(mergedOptions.systemPrompt !== undefined && {
+                    systemPrompt: mergedOptions.systemPrompt,
+                  }),
+                  ...(mergedOptions.parentMessages !== undefined && {
+                    parentMessages: mergedOptions.parentMessages,
+                  }),
+                  ...(worker.execArgv && worker.execArgv.length > 0
+                    ? { execArgv: worker.execArgv }
+                    : {}),
+                })
+              : yield* createToolSession(tool, validatedParams, samplingProvider, mergedOptions)
+          ) as ToolSession<TResult>;
 
-        // Send session back to caller
-        sessionQueue.add(session)
+          // Send session back to caller
+          sessionQueue.add(session);
 
           // Keep this task alive until the session completes
           // This ensures the session's spawned tasks continue running
           while (true) {
-            const status = yield* session.status()
-            if (status === 'completed' || status === 'failed' || status === 'cancelled') {
-              break
+            const status = yield* session.status();
+            if (status === "completed" || status === "failed" || status === "cancelled") {
+              break;
             }
-            yield* sleep(100)
+            yield* sleep(100);
           }
-        })
+        });
 
         // Receive the session from the spawned task
-        const result = yield* sessionQueue.next()
+        const result = yield* sessionQueue.next();
         if (result.done) {
-          throw new Error('Session channel closed unexpectedly')
+          throw new Error("Session channel closed unexpectedly");
         }
-        const session = result.value
+        const session = result.value;
 
         // Store in active sessions map
-        activeSessions.set(session.id, session as ToolSession)
+        activeSessions.set(session.id, session as ToolSession);
 
         // Create entry with initial refCount of 1
         const entry: ToolSessionEntry<TResult> = {
           session: session as ToolSession<TResult>,
           refCount: 1,
           createdAt: Date.now(),
-          status: 'initializing',
-        }
-        yield* store.set(session.id, entry as ToolSessionEntry)
+          status: "initializing",
+        };
+        yield* store.set(session.id, entry as ToolSessionEntry);
 
         // Spawn status monitor
         yield* spawn(function* () {
-          let currentStatus: ToolSessionStatus = yield* session.status()
+          let currentStatus: ToolSessionStatus = yield* session.status();
 
           while (
-            currentStatus !== 'completed' &&
-            currentStatus !== 'failed' &&
-            currentStatus !== 'cancelled'
+            currentStatus !== "completed" &&
+            currentStatus !== "failed" &&
+            currentStatus !== "cancelled"
           ) {
-            yield* store.updateStatus(session.id, currentStatus)
-            yield* sleep(100)
-            currentStatus = yield* session.status()
+            yield* store.updateStatus(session.id, currentStatus);
+            yield* sleep(100);
+            currentStatus = yield* session.status();
           }
 
           // Final status update
-          yield* store.updateStatus(session.id, currentStatus)
-        })
+          yield* store.updateStatus(session.id, currentStatus);
+        });
 
-        return session
+        return session;
       },
 
       *get(sessionId: string): Operation<ToolSession | null> {
-        const entry = yield* store.get(sessionId)
-        if (!entry) return null
+        const entry = yield* store.get(sessionId);
+        if (!entry) return null;
 
         // Return from active sessions if available
-        const active = activeSessions.get(sessionId)
-        if (active) return active
+        const active = activeSessions.get(sessionId);
+        if (active) return active;
 
         // Entry exists but session not in active map - session may have been
         // orphaned (e.g., server restart). Return the entry's session reference.
-        return entry.session
+        return entry.session;
       },
 
       *acquire(sessionId: string): Operation<ToolSession> {
-        const entry = yield* store.get(sessionId)
+        const entry = yield* store.get(sessionId);
         if (!entry) {
-          throw new Error(`Session not found: ${sessionId}`)
+          throw new Error(`Session not found: ${sessionId}`);
         }
 
         // Increment refCount
-        yield* store.updateRefCount(sessionId, 1)
+        yield* store.updateRefCount(sessionId, 1);
 
         // Return from active sessions if available
-        const active = activeSessions.get(sessionId)
-        if (active) return active
+        const active = activeSessions.get(sessionId);
+        if (active) return active;
 
         // Return the entry's session reference
-        return entry.session
+        return entry.session;
       },
 
       *release(sessionId: string): Operation<void> {
-        const entry = yield* store.get(sessionId)
+        const entry = yield* store.get(sessionId);
         if (!entry) {
           // Session already cleaned up, nothing to do
-          return
+          return;
         }
 
         // Decrement refCount
-        const newRefCount = yield* store.updateRefCount(sessionId, -1)
+        const newRefCount = yield* store.updateRefCount(sessionId, -1);
 
         if (newRefCount === 0) {
           // Check if session is complete
-          const session = activeSessions.get(sessionId) ?? entry.session
-          const status = yield* session.status()
+          const session = activeSessions.get(sessionId) ?? entry.session;
+          const status = yield* session.status();
 
           const isComplete =
-            status === 'completed' ||
-            status === 'failed' ||
-            status === 'cancelled'
+            status === "completed" || status === "failed" || status === "cancelled";
 
           if (isComplete) {
             // Session complete and no clients - cleanup immediately
-            yield* cleanup(sessionId)
+            yield* cleanup(sessionId);
           } else {
             // Session still running - spawn cleanup waiter
             yield* spawn(function* () {
-              let currentStatus = yield* session.status()
+              let currentStatus = yield* session.status();
 
               while (
-                currentStatus !== 'completed' &&
-                currentStatus !== 'failed' &&
-                currentStatus !== 'cancelled'
+                currentStatus !== "completed" &&
+                currentStatus !== "failed" &&
+                currentStatus !== "cancelled"
               ) {
-                yield* sleep(100)
-                currentStatus = yield* session.status()
+                yield* sleep(100);
+                currentStatus = yield* session.status();
               }
 
               // Re-check refCount (client might have reconnected)
-              const currentEntry = yield* store.get(sessionId)
+              const currentEntry = yield* store.get(sessionId);
               if (currentEntry && currentEntry.refCount === 0) {
-                yield* cleanup(sessionId)
+                yield* cleanup(sessionId);
               }
-            })
+            });
           }
         }
       },
-    }
+    };
 
-    yield* provide(registry)
-    
+    yield* provide(registry);
+
     // Keep the registry alive - it should only be torn down when the parent scope ends
-    yield* suspend()
-  })
+    yield* suspend();
+  });
 }

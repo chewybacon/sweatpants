@@ -38,8 +38,8 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from 'effection'
-import type { z } from 'zod'
+import type { Operation } from "effection";
+import type { z } from "zod";
 import type {
   ElicitDefinition,
   ElicitsMap as BaseElicitsMap,
@@ -47,13 +47,12 @@ import type {
   ExtractElicitContext,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
-  ElicitExchange,
   SampleExchange,
+  ToolElicitResult as CoreToolElicitResult,
+  WireElicitResult as CoreWireElicitResult,
   ToolMessage,
-} from '@sweatpants/core'
-import type {
-  McpMessage,
-} from './protocol/types.js'
+} from "@sweatpants/core";
+import type { McpMessage } from "./protocol/types.js";
 
 // Re-export MCP types for convenience
 export type {
@@ -62,7 +61,7 @@ export type {
   McpTextContent,
   McpToolUseContent,
   McpToolResultContent,
-} from './protocol/types.js'
+} from "./protocol/types.js";
 
 // =============================================================================
 // ELICITATION TYPES (shared)
@@ -110,29 +109,20 @@ export type {
  * @template TContext - The type of context passed to elicit()
  * @template TResponse - The type of the user's response
  */
-export type ToolElicitResult<TContext, TResponse> =
-  | { action: 'accept'; content: TResponse; exchange: ElicitExchange<TContext> }
-  | { action: 'decline'; reason?: string }
-  | { action: 'cancel'; reason?: string }
-
-/** @deprecated Prefer ToolElicitResult */
-export type ElicitResult<TContext, TResponse> = ToolElicitResult<TContext, TResponse>
+export type ToolElicitResult<TContext, TResponse> = CoreToolElicitResult<TContext, TResponse>;
 
 /**
  * Wire elicit result without exchange.
  * Used by plugin handlers and transport layers.
  */
-export type WireElicitResult<TResponse = unknown> =
-  | { action: 'accept'; content: TResponse }
-  | { action: 'decline'; reason?: string }
-  | { action: 'cancel'; reason?: string }
+export type WireElicitResult<TResponse = unknown> = CoreWireElicitResult<TResponse>;
 
 /**
- * Configuration for an elicitation request (simple form).
+ * Handler-layer configuration for an unkeyed elicitation request.
  */
-export interface ElicitConfig<T> {
+export interface ClientElicitConfig<T> {
   /** Message to display to the user */
-  message: string
+  message: string;
 
   /**
    * Zod schema for the expected response.
@@ -145,7 +135,7 @@ export interface ElicitConfig<T> {
    *
    * Nested objects and arrays are NOT supported.
    */
-  schema: z.ZodType<T>
+  schema: z.ZodType<T>;
 }
 
 // =============================================================================
@@ -191,38 +181,38 @@ export interface ElicitConfig<T> {
  * Reserved tool name for structured output.
  * Clients can intercept this and use native provider implementations.
  */
-export const SCHEMA_TOOL_NAME = '__schema__'
+export const SCHEMA_TOOL_NAME = "__schema__";
 
 /**
  * Create a SampleExchange for raw sampling (no schema).
- * 
+ *
  * @param promptText - The user's prompt text
  * @param responseText - The assistant's response text
  */
 export function createRawSampleExchange(
   promptText: string,
-  responseText: string
+  responseText: string,
 ): SampleExchange<undefined> {
-  const request: ToolMessage & { role: 'user' } = {
-    role: 'user',
-    content: [{ type: 'text', text: promptText }],
-  }
-  const response: ToolMessage & { role: 'assistant' } = {
-    role: 'assistant',
-    content: [{ type: 'text', text: responseText }],
-  }
+  const request: ToolMessage & { role: "user" } = {
+    role: "user",
+    content: [{ type: "text", text: promptText }],
+  };
+  const response: ToolMessage & { role: "assistant" } = {
+    role: "assistant",
+    content: [{ type: "text", text: responseText }],
+  };
   return {
     request,
     response,
     messages: [request, response],
     parsed: undefined,
-  }
+  };
 }
 
 /**
  * Create a SampleExchange for structured output (with schema).
  * Uses the __schema__ meta-tool pattern with 3 messages.
- * 
+ *
  * @param promptText - The user's prompt text
  * @param parsed - The parsed/validated data
  * @param toolCallId - Unique ID for the tool call
@@ -230,43 +220,47 @@ export function createRawSampleExchange(
 export function createStructuredSampleExchange<T>(
   promptText: string,
   parsed: T,
-  toolCallId: string
+  toolCallId: string,
 ): SampleExchange<T> {
-  const request: ToolMessage & { role: 'user' } = {
-    role: 'user',
-    content: [{ type: 'text', text: promptText }],
-  }
-  
+  const request: ToolMessage & { role: "user" } = {
+    role: "user",
+    content: [{ type: "text", text: promptText }],
+  };
+
   // Assistant responds with __schema__ tool_use
   // Input is intentionally blank; parsed data is echoed in tool_result
-  const toolUse: ToolMessage & { role: 'assistant' } = {
-    role: 'assistant',
-    content: [{
-      type: 'tool_use',
-      id: toolCallId,
-      name: SCHEMA_TOOL_NAME,
-      input: {},
-    }],
-  }
-  
+  const toolUse: ToolMessage & { role: "assistant" } = {
+    role: "assistant",
+    content: [
+      {
+        type: "tool_use",
+        id: toolCallId,
+        name: SCHEMA_TOOL_NAME,
+        input: {},
+      },
+    ],
+  };
+
   // Construct tool_result with the parsed data echoed back
   // This keeps MCP compliance while "virtually" moving input to the result
   // Parsed data also stays on the exchange for consumers
-  const toolResult: ToolMessage & { role: 'user' } = {
-    role: 'user',
-    content: [{
-      type: 'tool_result',
-      toolUseId: toolCallId,
-      content: [{ type: 'text', text: JSON.stringify(parsed) }],
-    }],
-  }
-  
+  const toolResult: ToolMessage & { role: "user" } = {
+    role: "user",
+    content: [
+      {
+        type: "tool_result",
+        toolUseId: toolCallId,
+        content: [{ type: "text", text: JSON.stringify(parsed) }],
+      },
+    ],
+  };
+
   return {
     request,
     response: toolUse,
     messages: [request, toolUse, toolResult],
     parsed,
-  }
+  };
 }
 
 // =============================================================================
@@ -276,7 +270,7 @@ export function createStructuredSampleExchange<T>(
 /**
  * Re-export ElicitDefinition from elicit-context package.
  */
-export type { ElicitDefinition }
+export type { ElicitDefinition };
 
 /**
  * A map of elicitation keys to their definitions (response + optional context schemas).
@@ -293,7 +287,7 @@ export type { ElicitDefinition }
  *     },
  *   })
  * ```
- * 
+ *
  * @example Without context
  * ```typescript
  * const tool = createTool('confirm')
@@ -304,7 +298,7 @@ export type { ElicitDefinition }
  *   })
  * ```
  */
-export type ElicitsMap = BaseElicitsMap
+export type ElicitsMap = BaseElicitsMap;
 
 // Re-export type helpers from elicit-context package
 export type {
@@ -312,17 +306,17 @@ export type {
   ExtractElicitContext,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,
-}
+};
 
 /**
  * Structured elicitation ID for correlation and logging.
  * Simple key in API, structured id under the hood.
  */
 export interface ElicitId {
-  toolName: string
-  key: string
-  callId: string
-  seq: number
+  toolName: string;
+  key: string;
+  callId: string;
+  seq: number;
 }
 
 /**
@@ -339,19 +333,19 @@ export interface ElicitRequest<
   TSchema extends z.ZodType = z.ZodType,
 > {
   /** Structured id for correlation/logging */
-  id: ElicitId
+  id: ElicitId;
 
   /** The elicitation key (matches `.elicits()` declaration) */
-  key: TKey
+  key: TKey;
 
   /** Tool name */
-  toolName: string
+  toolName: string;
 
   /** Tool call id */
-  callId: string
+  callId: string;
 
   /** Sequence number for this elicitation within the call */
-  seq: number
+  seq: number;
 
   /**
    * Message to display to the user.
@@ -359,7 +353,7 @@ export interface ElicitRequest<
    * May contain a boundary-encoded context section at the end.
    * Use `getElicitContext(req)` to extract context and get clean message.
    */
-  message: string
+  message: string;
 
   /**
    * Schema in both forms.
@@ -368,15 +362,15 @@ export interface ElicitRequest<
    * Use `getElicitContext(req)` to extract it.
    */
   schema: {
-    zod: TSchema
-    json: Record<string, unknown>
-  }
+    zod: TSchema;
+    json: Record<string, unknown>;
+  };
 
   /** Original tool params (for context) */
-  params?: unknown
+  params?: unknown;
 
   /** Optional context data for richer UI */
-  context?: unknown
+  context?: unknown;
 }
 
 // =============================================================================
@@ -386,14 +380,14 @@ export interface ElicitRequest<
 /**
  * Role in a conversation.
  */
-export type MessageRole = 'user' | 'assistant' | 'system'
+export type MessageRole = "user" | "assistant" | "system";
 
 /**
  * A message in a conversation.
  */
 export interface Message {
-  role: MessageRole
-  content: string
+  role: MessageRole;
+  content: string;
 }
 
 // =============================================================================
@@ -402,7 +396,7 @@ export interface Message {
 
 /**
  * Extended message type supporting both basic messages and MCP content blocks.
- * 
+ *
  * This type supports:
  * - Basic text messages (user/assistant/system with string content)
  * - MCP messages with content blocks (tool_use, tool_result, etc.)
@@ -437,9 +431,9 @@ export interface Message {
  * Vendor-neutral representation of a function-calling tool invocation.
  */
 export interface ToolCallMessageToolCall {
-  id: string
-  type: 'function'
-  function: { name: string; arguments: Record<string, unknown> }
+  id: string;
+  type: "function";
+  function: { name: string; arguments: Record<string, unknown> };
 }
 
 /**
@@ -459,9 +453,9 @@ export interface ToolCallMessageToolCall {
  * ```
  */
 export interface ToolCallMessage {
-  role: 'assistant'
-  content: string
-  tool_calls: [ToolCallMessageToolCall, ...ToolCallMessageToolCall[]]
+  role: "assistant";
+  content: string;
+  tool_calls: [ToolCallMessageToolCall, ...ToolCallMessageToolCall[]];
 }
 
 /**
@@ -481,12 +475,12 @@ export interface ToolCallMessage {
  * ```
  */
 export interface ToolResultMessage {
-  role: 'tool'
-  content: string
-  tool_call_id: string
+  role: "tool";
+  content: string;
+  tool_call_id: string;
 }
 
-export type ExtendedMessage = Message | McpMessage | ToolCallMessage | ToolResultMessage
+export type ExtendedMessage = Message | McpMessage | ToolCallMessage | ToolResultMessage;
 
 // =============================================================================
 // SAMPLING TYPES
@@ -511,16 +505,16 @@ export interface ModelPreferences {
    * ]
    * ```
    */
-  hints?: Array<{ name: string }>
+  hints?: Array<{ name: string }>;
 
   /** How important is minimizing cost? (0-1, higher = prefer cheaper) */
-  costPriority?: number
+  costPriority?: number;
 
   /** How important is low latency? (0-1, higher = prefer faster) */
-  speedPriority?: number
+  speedPriority?: number;
 
   /** How important are advanced capabilities? (0-1, higher = prefer smarter) */
-  intelligencePriority?: number
+  intelligencePriority?: number;
 }
 
 // -----------------------------------------------------------------------------
@@ -535,16 +529,16 @@ export interface ModelPreferences {
  */
 export interface SamplingToolDefinition {
   /** Tool name */
-  name: string
+  name: string;
 
   /** Description for the LLM */
-  description?: string
+  description?: string;
 
   /**
    * Input schema as Zod type or raw JSON Schema.
    * Zod schemas will be converted to JSON Schema internally.
    */
-  inputSchema: z.ZodType | Record<string, unknown>
+  inputSchema: z.ZodType | Record<string, unknown>;
 }
 
 /**
@@ -552,19 +546,19 @@ export interface SamplingToolDefinition {
  */
 export interface SamplingToolCall {
   /** Unique ID for this tool call (for correlation with results) */
-  id: string
+  id: string;
 
   /** Name of the tool being called */
-  name: string
+  name: string;
 
   /** Arguments to the tool (parsed from model output) */
-  arguments: Record<string, unknown>
+  arguments: Record<string, unknown>;
 }
 
 /**
  * Tool choice configuration for sampling.
  */
-export type SamplingToolChoice = 'auto' | 'required' | 'none'
+export type SamplingToolChoice = "auto" | "required" | "none";
 
 // -----------------------------------------------------------------------------
 // SAMPLE CONFIG BASE
@@ -575,13 +569,13 @@ export type SamplingToolChoice = 'auto' | 'required' | 'none'
  */
 interface SampleConfigBase {
   /** Optional system prompt override */
-  systemPrompt?: string
+  systemPrompt?: string;
 
   /** Maximum tokens to generate */
-  maxTokens?: number
+  maxTokens?: number;
 
   /** Model preferences for the client */
-  modelPreferences?: ModelPreferences
+  modelPreferences?: ModelPreferences;
 }
 
 // -----------------------------------------------------------------------------
@@ -592,9 +586,9 @@ interface SampleConfigBase {
  * Plain sample config - no schema or tools.
  */
 interface SampleConfigPlain extends SampleConfigBase {
-  schema?: never
-  tools?: never
-  toolChoice?: never
+  schema?: never;
+  tools?: never;
+  toolChoice?: never;
 }
 
 /**
@@ -609,9 +603,9 @@ interface SampleConfigWithSchema<T = unknown> extends SampleConfigBase {
    * The model's response will be parsed and validated against this schema.
    * Uses provider's native structured output when available.
    */
-  schema: z.ZodType<T>
-  tools?: never
-  toolChoice?: never
+  schema: z.ZodType<T>;
+  tools?: never;
+  toolChoice?: never;
 }
 
 /**
@@ -620,7 +614,7 @@ interface SampleConfigWithSchema<T = unknown> extends SampleConfigBase {
  */
 interface SampleConfigWithTools extends SampleConfigBase {
   /** Tools available for the model to call */
-  tools: SamplingToolDefinition[]
+  tools: SamplingToolDefinition[];
 
   /**
    * How the model should choose tools:
@@ -628,8 +622,8 @@ interface SampleConfigWithTools extends SampleConfigBase {
    * - 'required': Model must call at least one tool
    * - 'none': Tools are provided for context but model cannot call them
    */
-  toolChoice?: SamplingToolChoice
-  schema?: never
+  toolChoice?: SamplingToolChoice;
+  schema?: never;
 }
 
 // -----------------------------------------------------------------------------
@@ -641,20 +635,20 @@ interface SampleConfigWithTools extends SampleConfigBase {
  */
 interface SampleConfigPromptMode {
   /** The prompt to send (auto-tracked in branch context) */
-  prompt: string
-  messages?: never
+  prompt: string;
+  messages?: never;
 }
 
 /**
  * Sample with explicit messages (full control).
- * 
+ *
  * Supports ExtendedMessage to allow passing tool-call messages
  * (e.g., from elicit exchanges) as conversation history.
  */
 interface SampleConfigMessagesMode {
   /** Explicit messages array (not auto-tracked). Supports extended messages with tool_calls. */
-  messages: ExtendedMessage[]
-  prompt?: never
+  messages: ExtendedMessage[];
+  prompt?: never;
 }
 
 // -----------------------------------------------------------------------------
@@ -662,29 +656,31 @@ interface SampleConfigMessagesMode {
 // -----------------------------------------------------------------------------
 
 /** Plain sample with prompt */
-export type SampleConfigPlainPrompt = SampleConfigPlain & SampleConfigPromptMode
+export type SampleConfigPlainPrompt = SampleConfigPlain & SampleConfigPromptMode;
 
 /** Plain sample with messages */
-export type SampleConfigPlainMessages = SampleConfigPlain & SampleConfigMessagesMode
+export type SampleConfigPlainMessages = SampleConfigPlain & SampleConfigMessagesMode;
 
 /** Schema sample with prompt */
-export type SampleConfigSchemaPrompt<T = unknown> = SampleConfigWithSchema<T> & SampleConfigPromptMode
+export type SampleConfigSchemaPrompt<T = unknown> = SampleConfigWithSchema<T> &
+  SampleConfigPromptMode;
 
 /** Schema sample with messages */
-export type SampleConfigSchemaMessages<T = unknown> = SampleConfigWithSchema<T> & SampleConfigMessagesMode
+export type SampleConfigSchemaMessages<T = unknown> = SampleConfigWithSchema<T> &
+  SampleConfigMessagesMode;
 
 /** Tools sample with prompt */
-export type SampleConfigToolsPrompt = SampleConfigWithTools & SampleConfigPromptMode
+export type SampleConfigToolsPrompt = SampleConfigWithTools & SampleConfigPromptMode;
 
 /** Tools sample with messages */
-export type SampleConfigToolsMessages = SampleConfigWithTools & SampleConfigMessagesMode
+export type SampleConfigToolsMessages = SampleConfigWithTools & SampleConfigMessagesMode;
 
 /**
  * Legacy type for backwards compatibility.
  * @deprecated Use specific sample config types for type safety
  */
-export type SampleConfigPrompt = SampleConfigPlainPrompt
-export type SampleConfigMessages = SampleConfigPlainMessages
+export type SampleConfigPrompt = SampleConfigPlainPrompt;
+export type SampleConfigMessages = SampleConfigPlainMessages;
 
 /**
  * Configuration for a sampling request.
@@ -705,7 +701,7 @@ export type McpToolSampleConfig =
   | SampleConfigSchemaPrompt
   | SampleConfigSchemaMessages
   | SampleConfigToolsPrompt
-  | SampleConfigToolsMessages
+  | SampleConfigToolsMessages;
 
 // -----------------------------------------------------------------------------
 // SAMPLE RESULT TYPES
@@ -716,22 +712,22 @@ export type McpToolSampleConfig =
  */
 export interface SampleResultBase {
   /** The generated text */
-  text: string
+  text: string;
 
   /** Model that generated the response */
-  model?: string
+  model?: string;
 
   /** Why generation stopped */
-  stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
+  stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
 
   /**
    * Exchange for history accumulation.
    * Contains the request/response messages in MCP format.
-   * 
+   *
    * - Raw sampling: 2 messages [user, assistant]
    * - With tool calls: messages depend on response
    */
-  exchange: SampleExchange<undefined>
+  exchange: SampleExchange<undefined>;
 }
 
 /**
@@ -739,12 +735,12 @@ export interface SampleResultBase {
  *
  * @template T - The type of the parsed output
  */
-export interface SampleResultWithParsed<T> extends Omit<SampleResultBase, 'exchange'> {
+export interface SampleResultWithParsed<T> extends Omit<SampleResultBase, "exchange"> {
   /**
    * Parsed and validated output.
    * Null if parsing/validation failed (check parseError).
    */
-  parsed: T | null
+  parsed: T | null;
 
   /**
    * Error from parsing or validation.
@@ -752,16 +748,16 @@ export interface SampleResultWithParsed<T> extends Omit<SampleResultBase, 'excha
    */
   parseError?: {
     /** Error message */
-    message: string
+    message: string;
     /** Raw text that failed to parse */
-    rawText: string
-  }
+    rawText: string;
+  };
 
   /**
    * Exchange for history accumulation.
    * Contains 3 messages for structured output: [request, toolUse, toolResult]
    */
-  exchange: SampleExchange<T | null>
+  exchange: SampleExchange<T | null>;
 }
 
 /**
@@ -772,14 +768,14 @@ export interface SampleResultWithToolCalls extends SampleResultBase {
    * Tool calls made by the model.
    * Present when stopReason is 'toolUse'.
    */
-  toolCalls: SamplingToolCall[]
+  toolCalls: SamplingToolCall[];
 }
 
 /**
  * Legacy type alias for backwards compatibility.
  * @deprecated Use SampleResultBase for plain results
  */
-export type SampleResult = SampleResultBase
+export type SampleResult = SampleResultBase;
 
 // -----------------------------------------------------------------------------
 // RAW SAMPLE RESULT TYPES (for decoder/handler layers without exchange)
@@ -787,25 +783,25 @@ export type SampleResult = SampleResultBase
 
 /**
  * Raw sample result without exchange.
- * 
+ *
  * Used by decoder and handler layers that don't have access to the original
  * prompt text needed to construct exchanges. The exchange is added by the
  * runtime layer (bridge-runtime, branch-runtime) which has the context.
  */
 export interface WireSampleResultBase {
   /** The generated text */
-  text: string
+  text: string;
 
   /** Model that generated the response */
-  model?: string
+  model?: string;
 
   /** Why generation stopped */
-  stopReason?: 'endTurn' | 'maxTokens' | 'toolUse' | string
+  stopReason?: "endTurn" | "maxTokens" | "toolUse" | string;
 }
 
 /**
  * Raw result with parsed data but no exchange.
- * 
+ *
  * @template T - The type of the parsed output
  */
 export interface WireSampleResultWithParsed<T> extends WireSampleResultBase {
@@ -813,7 +809,7 @@ export interface WireSampleResultWithParsed<T> extends WireSampleResultBase {
    * Parsed and validated output.
    * Null if parsing/validation failed (check parseError).
    */
-  parsed: T | null
+  parsed: T | null;
 
   /**
    * Error from parsing or validation.
@@ -821,10 +817,10 @@ export interface WireSampleResultWithParsed<T> extends WireSampleResultBase {
    */
   parseError?: {
     /** Error message */
-    message: string
+    message: string;
     /** Raw text that failed to parse */
-    rawText: string
-  }
+    rawText: string;
+  };
 }
 
 /**
@@ -835,18 +831,17 @@ export interface WireSampleResultWithToolCalls extends WireSampleResultBase {
    * Tool calls made by the model.
    * Present when stopReason is 'toolUse'.
    */
-  toolCalls: SamplingToolCall[]
+  toolCalls: SamplingToolCall[];
 }
 
 /**
  * Union type for all raw sample results (without exchange).
  * Used by decoder and handler layers.
  */
-export type WireSampleResult = 
-  | WireSampleResultBase 
-  | WireSampleResultWithParsed<unknown> 
-  | WireSampleResultWithToolCalls
-
+export type WireSampleResult =
+  | WireSampleResultBase
+  | WireSampleResultWithParsed<unknown>
+  | WireSampleResultWithToolCalls;
 
 // =============================================================================
 // SAMPLE HELPER CONFIG TYPES
@@ -860,7 +855,7 @@ interface SampleHelperConfigBase extends SampleConfigBase {
    * Number of retry attempts if validation fails.
    * @default 2
    */
-  retries?: number
+  retries?: number;
 }
 
 /**
@@ -869,14 +864,14 @@ interface SampleHelperConfigBase extends SampleConfigBase {
  */
 export interface SampleToolsConfig extends SampleHelperConfigBase {
   /** The prompt to send */
-  prompt: string
+  prompt: string;
   /** Tools available for the model to call */
-  tools: SamplingToolDefinition[]
+  tools: SamplingToolDefinition[];
   /**
    * How the model should choose tools.
    * @default 'required'
    */
-  toolChoice?: SamplingToolChoice
+  toolChoice?: SamplingToolChoice;
 }
 
 /**
@@ -884,14 +879,14 @@ export interface SampleToolsConfig extends SampleHelperConfigBase {
  */
 export interface SampleToolsConfigMessages extends SampleHelperConfigBase {
   /** Explicit messages array (supports tool call/result messages) */
-  messages: ExtendedMessage[]
+  messages: ExtendedMessage[];
   /** Tools available for the model to call */
-  tools: SamplingToolDefinition[]
+  tools: SamplingToolDefinition[];
   /**
    * How the model should choose tools.
    * @default 'required'
    */
-  toolChoice?: SamplingToolChoice
+  toolChoice?: SamplingToolChoice;
 }
 
 /**
@@ -900,9 +895,9 @@ export interface SampleToolsConfigMessages extends SampleHelperConfigBase {
  */
 export interface SampleSchemaConfig<T> extends SampleHelperConfigBase {
   /** The prompt to send */
-  prompt: string
+  prompt: string;
   /** Zod schema for structured output */
-  schema: z.ZodType<T>
+  schema: z.ZodType<T>;
 }
 
 /**
@@ -910,9 +905,9 @@ export interface SampleSchemaConfig<T> extends SampleHelperConfigBase {
  */
 export interface SampleSchemaConfigMessages<T> extends SampleHelperConfigBase {
   /** Explicit messages array (supports tool call/result messages) */
-  messages: ExtendedMessage[]
+  messages: ExtendedMessage[];
   /** Zod schema for structured output */
-  schema: z.ZodType<T>
+  schema: z.ZodType<T>;
 }
 
 /**
@@ -920,18 +915,18 @@ export interface SampleSchemaConfigMessages<T> extends SampleHelperConfigBase {
  */
 export interface SampleToolsResult extends SampleResultBase {
   /** Guaranteed non-empty tool calls */
-  toolCalls: [SamplingToolCall, ...SamplingToolCall[]]
-  stopReason: 'toolUse'
+  toolCalls: [SamplingToolCall, ...SamplingToolCall[]];
+  stopReason: "toolUse";
 }
 
 /**
  * Guaranteed result from sampleSchema - parsed is always present and non-null.
  */
-export interface SampleSchemaResult<T> extends Omit<SampleResultBase, 'exchange'> {
+export interface SampleSchemaResult<T> extends Omit<SampleResultBase, "exchange"> {
   /** Guaranteed parsed value */
-  parsed: T
+  parsed: T;
   /** Exchange with typed parsed data */
-  exchange: SampleExchange<T>
+  exchange: SampleExchange<T>;
 }
 
 /**
@@ -939,13 +934,16 @@ export interface SampleSchemaResult<T> extends Omit<SampleResultBase, 'exchange'
  */
 export class SampleValidationError extends Error {
   constructor(
-    public readonly helperName: 'sampleTools' | 'sampleSchema',
+    public readonly helperName: "sampleTools" | "sampleSchema",
     public readonly attempts: number,
-    public readonly lastResult: SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls,
-    message: string
+    public readonly lastResult:
+      | SampleResultBase
+      | SampleResultWithParsed<unknown>
+      | SampleResultWithToolCalls,
+    message: string,
   ) {
-    super(message)
-    this.name = 'SampleValidationError'
+    super(message);
+    this.name = "SampleValidationError";
   }
 }
 
@@ -956,7 +954,7 @@ export class SampleValidationError extends Error {
 /**
  * Log levels for MCP logging.
  */
-export type LogLevel = 'debug' | 'info' | 'warning' | 'error'
+export type LogLevel = "debug" | "info" | "warning" | "error";
 
 // =============================================================================
 // BRANCH OPTIONS
@@ -974,25 +972,25 @@ export interface McpToolBranchOptions {
    * Whether to inherit parent messages.
    * @default true
    */
-  inheritMessages?: boolean
+  inheritMessages?: boolean;
 
   /**
    * Whether to inherit parent system prompt.
    * @default true
    */
-  inheritSystemPrompt?: boolean
+  inheritSystemPrompt?: boolean;
 
   /**
    * Override/supplement messages for this branch.
    * If inheritMessages is true, these are appended.
    * If inheritMessages is false, these replace.
    */
-  messages?: Message[]
+  messages?: Message[];
 
   /**
    * Override system prompt for this branch.
    */
-  systemPrompt?: string
+  systemPrompt?: string;
 
   // ---------------------------------------------------------------------------
   // Limits
@@ -1002,17 +1000,17 @@ export interface McpToolBranchOptions {
    * Maximum branch depth from this point.
    * Prevents infinite recursion.
    */
-  maxDepth?: number
+  maxDepth?: number;
 
   /**
    * Maximum total tokens for this branch and its children.
    */
-  maxTokens?: number
+  maxTokens?: number;
 
   /**
    * Timeout in milliseconds for this branch.
    */
-  timeout?: number
+  timeout?: number;
 }
 
 /**
@@ -1020,13 +1018,13 @@ export interface McpToolBranchOptions {
  */
 export interface McpToolLimits {
   /** Maximum branch depth */
-  maxDepth?: number
+  maxDepth?: number;
 
   /** Maximum total tokens across all branches */
-  maxTokens?: number
+  maxTokens?: number;
 
   /** Timeout in milliseconds */
-  timeout?: number
+  timeout?: number;
 }
 
 // =============================================================================
@@ -1066,16 +1064,16 @@ export interface McpToolContext {
 
   /**
    * Messages from the parent context.
-    * This is the conversation history up to when this branch was created.
-    * Read-only - modifications don't affect parent.
-    */
-   readonly parentMessages: readonly ExtendedMessage[]
+   * This is the conversation history up to when this branch was created.
+   * Read-only - modifications don't affect parent.
+   */
+  readonly parentMessages: readonly ExtendedMessage[];
 
   /**
-    * System prompt from the parent context.
-    * Undefined if no system prompt was set.
-    */
-   readonly parentSystemPrompt: string | undefined
+   * System prompt from the parent context.
+   * Undefined if no system prompt was set.
+   */
+  readonly parentSystemPrompt: string | undefined;
 
   // ---------------------------------------------------------------------------
   // Current branch state
@@ -1086,13 +1084,13 @@ export interface McpToolContext {
    * Auto-updated when using `sample({ prompt })` form.
    * Read-only view - use sample/elicit to modify.
    */
-  readonly messages: readonly Message[]
+  readonly messages: readonly Message[];
 
   /**
    * Current depth in the branch tree.
    * Root branch is depth 0.
    */
-  readonly depth: number
+  readonly depth: number;
 
   // ---------------------------------------------------------------------------
   // LLM backchannel
@@ -1146,26 +1144,32 @@ export interface McpToolContext {
    * ```
    */
   // Plain sample (no schema, no tools) - returns base result
-  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>
+  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>;
   // Schema sample - returns result with parsed field
-  sample<T>(config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
+  sample<T>(
+    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>,
+  ): Operation<SampleResultWithParsed<T>>;
   // Tools sample - returns result with toolCalls field
-  sample(config: SampleConfigToolsPrompt | SampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
+  sample(
+    config: SampleConfigToolsPrompt | SampleConfigToolsMessages,
+  ): Operation<SampleResultWithToolCalls>;
   // Catch-all for the implementation
-  sample(config: McpToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+  sample(
+    config: McpToolSampleConfig,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
 
   /**
    * Sample with guaranteed tool calls.
-   * 
+   *
    * Unlike raw `sample()`, this helper:
    * - Validates that the model returned tool calls
    * - Retries with a hint if validation fails
    * - Throws `SampleValidationError` after retries exhausted
-   * 
+   *
    * @param config - Sample configuration with tools
    * @returns Guaranteed result with non-empty toolCalls
    * @throws SampleValidationError if no tool calls after retries
-   * 
+   *
    * @example
    * ```typescript
    * const result = yield* ctx.sampleTools({
@@ -1180,20 +1184,20 @@ export interface McpToolContext {
    * const call = result.toolCalls[0]
    * ```
    */
-  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>
+  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
 
   /**
    * Sample with guaranteed parsed schema.
-   * 
+   *
    * Unlike raw `sample()`, this helper:
    * - Validates that the model returned valid parsed output
    * - Retries with a hint if parsing fails
    * - Throws `SampleValidationError` after retries exhausted
-   * 
+   *
    * @param config - Sample configuration with schema
    * @returns Guaranteed result with parsed value (never null)
    * @throws SampleValidationError if parsing fails after retries
-   * 
+   *
    * @example
    * ```typescript
    * const MoveSchema = z.object({ cell: z.number().min(0).max(8) })
@@ -1206,7 +1210,9 @@ export interface McpToolContext {
    * console.log('Cell:', result.parsed.cell)
    * ```
    */
-  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>
+  sampleSchema<T>(
+    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
+  ): Operation<SampleSchemaResult<T>>;
 
   // ---------------------------------------------------------------------------
   // User backchannel
@@ -1231,7 +1237,7 @@ export interface McpToolContext {
    * }
    * ```
    */
-  elicit<T>(config: ElicitConfig<T>): Operation<ElicitResult<unknown, T>>
+  elicit<T>(config: ClientElicitConfig<T>): Operation<ToolElicitResult<unknown, T>>;
 
   // ---------------------------------------------------------------------------
   // Sub-branches
@@ -1278,8 +1284,8 @@ export interface McpToolContext {
    */
   branch<T>(
     fn: (ctx: McpToolContext) => Operation<T>,
-    options?: McpToolBranchOptions
-  ): Operation<T>
+    options?: McpToolBranchOptions,
+  ): Operation<T>;
 
   // ---------------------------------------------------------------------------
   // Logging
@@ -1290,14 +1296,14 @@ export interface McpToolContext {
    *
    * Maps to MCP: `notifications/message`
    */
-  log(level: LogLevel, message: string): Operation<void>
+  log(level: LogLevel, message: string): Operation<void>;
 
   /**
    * Send a progress notification to the client.
    *
    * Maps to MCP: `notifications/progress`
    */
-  notify(message: string, progress?: number): Operation<void>
+  notify(message: string, progress?: number): Operation<void>;
 }
 
 // =============================================================================
@@ -1333,34 +1339,42 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   // Parent context (read-only) - same as McpToolContext
   // ---------------------------------------------------------------------------
 
-  readonly parentMessages: readonly ExtendedMessage[]
-  readonly parentSystemPrompt: string | undefined
+  readonly parentMessages: readonly ExtendedMessage[];
+  readonly parentSystemPrompt: string | undefined;
 
   // ---------------------------------------------------------------------------
   // Current branch state - same as McpToolContext
   // ---------------------------------------------------------------------------
 
-  readonly messages: readonly Message[]
-  readonly depth: number
+  readonly messages: readonly Message[];
+  readonly depth: number;
 
   // ---------------------------------------------------------------------------
   // LLM backchannel - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   // Plain sample (no schema, no tools) - returns base result
-  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>
+  sample(config: SampleConfigPlainPrompt | SampleConfigPlainMessages): Operation<SampleResultBase>;
   // Schema sample - returns result with parsed field
-  sample<T>(config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>): Operation<SampleResultWithParsed<T>>
+  sample<T>(
+    config: SampleConfigSchemaPrompt<T> | SampleConfigSchemaMessages<T>,
+  ): Operation<SampleResultWithParsed<T>>;
   // Tools sample - returns result with toolCalls field
-  sample(config: SampleConfigToolsPrompt | SampleConfigToolsMessages): Operation<SampleResultWithToolCalls>
+  sample(
+    config: SampleConfigToolsPrompt | SampleConfigToolsMessages,
+  ): Operation<SampleResultWithToolCalls>;
   // Catch-all for the implementation
-  sample(config: McpToolSampleConfig): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>
+  sample(
+    config: McpToolSampleConfig,
+  ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
 
   /** Sample with guaranteed tool calls. See McpToolContext.sampleTools for details. */
-  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>
+  sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
 
   /** Sample with guaranteed parsed schema. See McpToolContext.sampleSchema for details. */
-  sampleSchema<T>(config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>): Operation<SampleSchemaResult<T>>
+  sampleSchema<T>(
+    config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
+  ): Operation<SampleSchemaResult<T>>;
 
   // ---------------------------------------------------------------------------
   // User backchannel - KEYED elicitation
@@ -1394,8 +1408,10 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
    */
   elicit<K extends keyof TElicits & string>(
     key: K,
-    options: { message: string } & ExtractElicitContext<TElicits[K]>
-  ): Operation<ElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>>
+    options: { message: string } & ExtractElicitContext<TElicits[K]>,
+  ): Operation<
+    ToolElicitResult<ExtractElicitContext<TElicits[K]>, ExtractElicitResponse<TElicits[K]>>
+  >;
 
   // ---------------------------------------------------------------------------
   // Sub-branches - inherit keyed elicitation
@@ -1407,15 +1423,15 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
    */
   branch<T>(
     fn: (ctx: McpToolContextWithElicits<TElicits>) => Operation<T>,
-    options?: McpToolBranchOptions
-  ): Operation<T>
+    options?: McpToolBranchOptions,
+  ): Operation<T>;
 
   // ---------------------------------------------------------------------------
   // Logging - same as McpToolContext
   // ---------------------------------------------------------------------------
 
-  log(level: LogLevel, message: string): Operation<void>
-  notify(message: string, progress?: number): Operation<void>
+  log(level: LogLevel, message: string): Operation<void>;
+  notify(message: string, progress?: number): Operation<void>;
 }
 
 // =============================================================================
@@ -1427,11 +1443,11 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
  */
 export class McpCapabilityError extends Error {
   constructor(
-    public readonly capability: 'elicitation' | 'sampling',
-    message: string
+    public readonly capability: "elicitation" | "sampling",
+    message: string,
   ) {
-    super(message)
-    this.name = 'McpCapabilityError'
+    super(message);
+    this.name = "McpCapabilityError";
   }
 }
 
@@ -1439,9 +1455,9 @@ export class McpCapabilityError extends Error {
  * Error thrown when user declines an elicitation.
  */
 export class ElicitationDeclinedError extends Error {
-  constructor(message = 'User declined the elicitation request') {
-    super(message)
-    this.name = 'ElicitationDeclinedError'
+  constructor(message = "User declined the elicitation request") {
+    super(message);
+    this.name = "ElicitationDeclinedError";
   }
 }
 
@@ -1449,9 +1465,9 @@ export class ElicitationDeclinedError extends Error {
  * Error thrown when user cancels an elicitation.
  */
 export class ElicitationCancelledError extends Error {
-  constructor(message = 'User cancelled the elicitation request') {
-    super(message)
-    this.name = 'ElicitationCancelledError'
+  constructor(message = "User cancelled the elicitation request") {
+    super(message);
+    this.name = "ElicitationCancelledError";
   }
 }
 
@@ -1461,10 +1477,10 @@ export class ElicitationCancelledError extends Error {
 export class McpToolDepthError extends Error {
   constructor(
     public readonly depth: number,
-    public readonly maxDepth: number
+    public readonly maxDepth: number,
   ) {
-    super(`Branch depth ${depth} exceeds maximum ${maxDepth}`)
-    this.name = 'McpToolDepthError'
+    super(`Branch depth ${depth} exceeds maximum ${maxDepth}`);
+    this.name = "McpToolDepthError";
   }
 }
 
@@ -1474,10 +1490,10 @@ export class McpToolDepthError extends Error {
 export class McpToolTokenError extends Error {
   constructor(
     public readonly used: number,
-    public readonly budget: number
+    public readonly budget: number,
   ) {
-    super(`Branch used ${used} tokens, exceeding budget of ${budget}`)
-    this.name = 'McpToolTokenError'
+    super(`Branch used ${used} tokens, exceeding budget of ${budget}`);
+    this.name = "McpToolTokenError";
   }
 }
 
@@ -1486,8 +1502,8 @@ export class McpToolTokenError extends Error {
  */
 export class McpToolTimeoutError extends Error {
   constructor(public readonly timeoutMs: number) {
-    super(`Branch timed out after ${timeoutMs}ms`)
-    this.name = 'McpToolTimeoutError'
+    super(`Branch timed out after ${timeoutMs}ms`);
+    this.name = "McpToolTimeoutError";
   }
 }
 
@@ -1495,10 +1511,10 @@ export class McpToolTimeoutError extends Error {
  * Error thrown on MCP disconnect.
  */
 export class McpDisconnectError extends Error {
-  constructor(message = 'MCP client disconnected') {
-    super(message)
-    this.name = 'McpDisconnectError'
+  constructor(message = "MCP client disconnected") {
+    super(message);
+    this.name = "McpDisconnectError";
   }
 }
 
-export type { ElicitExchange, SampleExchange } from '@sweatpants/core'
+export type { ElicitExchange, SampleExchange } from "@sweatpants/core";

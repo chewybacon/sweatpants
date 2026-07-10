@@ -146,12 +146,6 @@ function localTools(): LocalSessionTool[] {
   return allTools.filter((tool) => !pluginNames.has(tool.name));
 }
 
-function parametersToSchema(parameters: unknown): Record<string, unknown> {
-  return parameters && typeof parameters === "object"
-    ? (parameters as Record<string, unknown>)
-    : { type: "object", properties: {}, required: [] };
-}
-
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   yield* ToolSessionSamplingProviderContext.set(pluginSamplingProvider);
 
@@ -172,9 +166,10 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
   if (env.MCP_TOOL_RUNTIME === "agentcore" && !sharedLocalSessionRegistry) {
     sharedLocalSessionRegistry = yield* createLocalPluginToolSessionRegistry();
   }
-  const localExecutionRegistry = env.MCP_TOOL_RUNTIME === "agentcore"
-    ? sharedLocalSessionRegistry!
-    : sharedPluginSessionRegistry;
+  const localExecutionRegistry =
+    env.MCP_TOOL_RUNTIME === "agentcore"
+      ? sharedLocalSessionRegistry!
+      : sharedPluginSessionRegistry;
 
   yield* ToolInventoryContext.set(
     createToolInventory([
@@ -202,17 +197,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
       ],
     });
 
-    const runtimeWithListTools = {
-      ...runtime,
-      *listTools() {
-        return [...pluginTools, ...localRuntimeTools].map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          parameters: parametersToSchema(tool.parameters),
-        }));
-      },
-    };
-    yield* ToolRuntimeContext.set(runtimeWithListTools);
+    yield* ToolRuntimeContext.set(runtime);
     return;
   }
 

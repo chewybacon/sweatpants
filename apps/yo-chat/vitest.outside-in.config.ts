@@ -31,8 +31,8 @@ const config: UserConfig = {
     include: ["src/outside-in/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**"],
     globalSetup: ["./src/outside-in/global-setup.ts"],
-    // Fork pool: tool workers are real worker threads; a plain-JS bootstrap
-    // registers tsx in-thread, so no special execArgv is required here.
+    // Fork pool: tool workers are real worker threads; the worker config also
+    // passes explicit dev/tsx execArgv for workspace source imports.
     pool: "forks",
     // Live-model flows share one provider/server; keep them serial to avoid
     // provider throttling (mirrors playwright workers: 1 / design C7).
