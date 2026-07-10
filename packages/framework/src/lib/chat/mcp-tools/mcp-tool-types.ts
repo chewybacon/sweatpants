@@ -965,9 +965,6 @@ export type LogLevel = "debug" | "info" | "warning" | "error";
 export interface McpToolLimits {
   /** Maximum total tokens across all tool-internal sampling work. */
   maxTokens?: number;
-
-  /** Timeout in milliseconds */
-  timeout?: number;
 }
 
 // =============================================================================
@@ -978,7 +975,6 @@ export interface McpToolLimits {
  * Context available in MCP tool execution.
  *
  * Provides primitives for:
- * - Reading parent context
  * - Managing current conversation
  * - LLM backchannel (sample)
  * - User input backchannel (elicit)
@@ -1001,23 +997,6 @@ export interface McpToolLimits {
  */
 export interface McpToolContext {
   // ---------------------------------------------------------------------------
-  // Parent context (read-only)
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Messages from the parent context.
-   * This is the conversation history available when this tool context was created.
-   * Read-only - modifications don't affect parent.
-   */
-  readonly parentMessages: readonly ExtendedMessage[];
-
-  /**
-   * System prompt from the parent context.
-   * Undefined if no system prompt was set.
-   */
-  readonly parentSystemPrompt: string | undefined;
-
-  // ---------------------------------------------------------------------------
   // Current tool-local state
   // ---------------------------------------------------------------------------
 
@@ -1027,12 +1006,6 @@ export interface McpToolContext {
    * Read-only view - use sample/elicit to modify.
    */
   readonly messages: readonly Message[];
-
-  /**
-   * Current nesting depth for this tool context.
-   * Root tool execution is depth 0.
-   */
-  readonly depth: number;
 
   // ---------------------------------------------------------------------------
   // LLM backchannel
@@ -1230,18 +1203,10 @@ export interface McpToolContext {
  */
 export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   // ---------------------------------------------------------------------------
-  // Parent context (read-only) - same as McpToolContext
-  // ---------------------------------------------------------------------------
-
-  readonly parentMessages: readonly ExtendedMessage[];
-  readonly parentSystemPrompt: string | undefined;
-
-  // ---------------------------------------------------------------------------
   // Current tool-local state - same as McpToolContext
   // ---------------------------------------------------------------------------
 
   readonly messages: readonly Message[];
-  readonly depth: number;
 
   // ---------------------------------------------------------------------------
   // LLM backchannel - same as McpToolContext
@@ -1360,18 +1325,8 @@ export class McpToolTokenError extends Error {
     public readonly used: number,
     public readonly budget: number,
   ) {
-    super(`Branch used ${used} tokens, exceeding budget of ${budget}`);
+    super(`Tool execution used ${used} tokens, exceeding budget of ${budget}`);
     this.name = "McpToolTokenError";
-  }
-}
-
-/**
- * Error thrown when tool execution times out.
- */
-export class McpToolTimeoutError extends Error {
-  constructor(public readonly timeoutMs: number) {
-    super(`Branch timed out after ${timeoutMs}ms`);
-    this.name = "McpToolTimeoutError";
   }
 }
 

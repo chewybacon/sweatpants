@@ -31,13 +31,5 @@ export {
 } from './contexts.ts'
 
 export {
-  createCoreContext,
-  createCoreContextWithElicits,
-  createContextFromTransport,
-  createContextWithElicitsFromTransport,
-  type CoreContextOptions,
-} from './core-context.ts'
-
-export {
   adaptToolSessionToSessionContract,
 } from './contract-adapter.ts'

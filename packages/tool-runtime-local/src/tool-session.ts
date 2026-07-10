@@ -150,7 +150,6 @@ export function createToolSession<
       params: validatedParams,
       callId: sessionId,
       ...(options.signal !== undefined && { signal: options.signal }),
-      ...(options.parentMessages !== undefined && { parentMessages: options.parentMessages }),
       ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
     };
     const host = createBridgeHost(hostConfig);

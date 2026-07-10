@@ -21,7 +21,6 @@ export const RuntimeRequestSchema = z.discriminatedUnion('op', [
     context: z.object({
       conversationId: z.string().optional(),
       callId: z.string().optional(),
-      parentMessages: z.array(z.unknown()).optional(),
       systemPrompt: z.string().optional(),
       model: ModelSelectionSchema.optional(),
     }).optional(),

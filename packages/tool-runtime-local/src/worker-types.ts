@@ -70,10 +70,6 @@ export interface McpWorkerInitData {
   params: unknown;
   /** Session ID for correlation */
   sessionId: string;
-  /** Optional system prompt */
-  systemPrompt?: string;
-  /** Optional parent messages */
-  parentMessages?: ExtendedMessage[];
 }
 
 // =============================================================================

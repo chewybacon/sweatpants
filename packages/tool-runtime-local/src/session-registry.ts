@@ -184,12 +184,6 @@ export function createToolSessionRegistry(
                   toolName: tool.name,
                   params: validatedParams,
                   workerUrl: resolvedWorkerUrl ?? worker.workerUrl,
-                  ...(mergedOptions.systemPrompt !== undefined && {
-                    systemPrompt: mergedOptions.systemPrompt,
-                  }),
-                  ...(mergedOptions.parentMessages !== undefined && {
-                    parentMessages: mergedOptions.parentMessages,
-                  }),
                   ...(worker.execArgv && worker.execArgv.length > 0
                     ? { execArgv: worker.execArgv }
                     : {}),

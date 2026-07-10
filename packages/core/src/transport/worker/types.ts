@@ -181,10 +181,6 @@ export interface WorkerInitData {
   params: unknown;
   /** Session ID for correlation */
   sessionId: string;
-  /** Optional system prompt */
-  systemPrompt?: string;
-  /** Optional parent messages for context */
-  parentMessages?: WorkerMessage[];
 }
 
 // =============================================================================

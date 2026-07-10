@@ -757,9 +757,6 @@ export class RuntimeSessionRegistry {
           params: request.params,
           callId: request.context?.callId ?? request.toolSessionId,
           signal: abortController.signal,
-          ...(request.context?.parentMessages !== undefined
-            ? { parentMessages: request.context.parentMessages as never }
-            : {}),
           ...(request.context?.systemPrompt !== undefined
             ? { systemPrompt: request.context.systemPrompt }
             : {}),
