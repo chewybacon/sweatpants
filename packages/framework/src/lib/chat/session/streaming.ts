@@ -20,7 +20,7 @@ export interface ConversationReplayState {
  *
  * Identity law:
  * - threadId MUST equal the durable conversationId
- * - runId is request/turn scoped and MUST NOT key durable fold state
+ * - runId is request/turn scoped and MUST NOT key durable crank state
  * - X-Session-Id / stream buffer ids are transport-only and MUST NOT appear here
  */
 export interface AgUiRunMetadata {

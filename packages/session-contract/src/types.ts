@@ -1,242 +1,283 @@
-import type { Operation, Stream } from 'effection'
+import type { Operation, Stream } from "effection";
 
-export type WaitKind = 'message' | 'elicit' | 'sample' | 'call'
-export type WaitFate = 'answered' | 'expired' | 'orphaned' | 'cancelled'
-export type TerminalOutcome = 'result' | 'error' | 'cancelled'
-export type AuthoringMode = 'body' | 'fold'
-export type SessionLifecycle = 'running' | 'parked' | 'completed' | 'failed' | 'cancelled'
+export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 
-export interface TypedFailure {
-  ok: false
-  code: SessionErrorCode | (string & {})
-  message?: string
-  details?: unknown
+export type EffectPull = { kind: "effect"; effectId: string; input: Json };
+export type ElicitPull = {
+  kind: "elicit";
+  effectId: string;
+  input: { key: string; message: string; responseSchema: Json; context?: Json };
+};
+export type RecordPull = { kind: "record"; effectId: string; input: Json };
+export type InvokePull = { kind: "invoke"; programId: string; input: Json };
+export type AllPull = { kind: "all"; children: ReadonlyArray<{ programId: string; input: Json }> };
+export type EmitPull = { kind: "emit"; eventType: string; payload: Json };
+export type PullDescriptor = EffectPull | ElicitPull | RecordPull | InvokePull | AllPull | EmitPull;
+
+export type Program<T extends Json = Json> = Generator<PullDescriptor, T, unknown>;
+export type ProgramFactory<I extends Json = Json, O extends Json = Json> = (input: I) => Program<O>;
+
+export type SerializedApplicationError = { code: string; message: string; details?: Json };
+export type Result =
+  | { status: "ok"; value: Json }
+  | { status: "error"; error: SerializedApplicationError }
+  | { status: "cancelled" };
+export type TaskResult =
+  | Result
+  | {
+      status: "diverged" | "version_mismatch";
+      error: SerializedApplicationError;
+    };
+
+export type SessionCommand =
+  | { type: "send"; sessionId: string; commandId: string; message: Json }
+  | { type: "respond"; sessionId: string; commandId: string; pullId: string; value: Json }
+  | { type: "cancel_turn"; sessionId: string; commandId: string; turnId: string; reason?: string }
+  | { type: "close_session"; sessionId: string; commandId: string; reason?: string };
+
+export type CommandAck =
+  | { status: "accepted" | "duplicate"; commandId: string; offset: number }
+  | {
+      status: "not_pending";
+      commandId: string;
+      reason: "unknown" | "wrong_kind" | "reserved" | "resolved" | "cancelled";
+    }
+  | {
+      status: "rejected";
+      commandId: string;
+      code: "session_closed" | "idempotency_conflict" | "invalid_command" | "payload_too_large";
+    };
+
+export type JournalPayload =
+  | { type: "command"; command: SessionCommand }
+  | {
+      type: "turn_opened";
+      turnId: string;
+      turnSeq: number;
+      taskId: string;
+      commandId: string;
+      programVersion: string;
+      input: Json;
+      inputSha: string;
+    }
+  | {
+      type: "task_opened";
+      turnId: string;
+      taskId: string;
+      parentTaskId: string;
+      parentPullId: string;
+      programId: string;
+      input: Json;
+      inputSha: string;
+    }
+  | {
+      type: "pull_requested";
+      turnId: string;
+      taskId: string;
+      pullIndex: number;
+      pullId: string;
+      descriptor: PullDescriptor;
+      inputSha: string;
+    }
+  | {
+      type: "pull_resolved";
+      turnId: string;
+      taskId: string;
+      pullId: string;
+      commandId?: string;
+      result: Result;
+    }
+  | {
+      type: "attempt_started";
+      turnId: string;
+      taskId: string;
+      pullId: string;
+      attemptIndex: number;
+      attemptId: string;
+    }
+  | {
+      type: "attempt_abandoned";
+      turnId: string;
+      taskId: string;
+      pullId: string;
+      attemptId: string;
+      reason: "host_lost" | "lease_lost" | "retry" | "cancelled";
+    }
+  | {
+      type: "durable_emission";
+      turnId: string;
+      taskId: string;
+      pullId: string;
+      attemptId: string;
+      sequence: number;
+      emission: Json;
+    }
+  | { type: "task_closed"; turnId: string; taskId: string; commandId?: string; result: TaskResult }
+  | { type: "session_closed"; commandId: string; reason?: string };
+
+export type JournalRecord = {
+  offset: number;
+  eventId: string;
+  sessionId: string;
+  ownerEpoch?: number;
+  payload: JournalPayload;
+};
+
+export type CoordinationRecord = {
+  sessionId: string;
+  epoch: number;
+  ownerId?: string;
+  leaseExpiresAt?: string;
+  phase: "idle" | "runnable" | "running" | "parked" | "closed";
+  journalHead: number;
+  runnable: boolean;
+};
+
+export type Lease = {
+  sessionId: string;
+  ownerId: string;
+  epoch: number;
+  leaseExpiresAt: string;
+};
+
+export type ClaimResult = Lease | { status: "busy" | "closed" };
+export type AppendExecutionResult =
+  | { status: "appended"; offset: number }
+  | { status: "fenced" | "head_changed" };
+export type ReleaseResult = "parked" | "closed" | "head_changed" | "fenced";
+
+export type PublicEvent =
+  | { type: "turn_started" }
+  | { type: "text_started"; messageId: string; attemptId: string }
+  | { type: "text_delta"; messageId: string; attemptId: string; delta: string }
+  | { type: "attempt_abandoned"; attemptId: string }
+  | { type: "message_committed"; message: Json }
+  | { type: "tool_started"; toolCallId: string; name: string; input?: Json }
+  | { type: "tool_completed"; toolCallId: string; result?: Json }
+  | {
+      type: "input_requested";
+      pullId: string;
+      key: string;
+      message: string;
+      responseSchema: Json;
+      context?: Json;
+    }
+  | { type: "input_resolved"; pullId: string }
+  | {
+      type: "turn_finished";
+      outcome: "completed" | "cancelled" | "error";
+      code?: string;
+      message?: string;
+    }
+  | { type: "session_closed"; reason?: string };
+
+export type PublicEnvelope = {
+  cursor: number;
+  eventId: string;
+  sessionId: string;
+  turnId?: string;
+  event: PublicEvent;
+};
+
+export type EffectContext = {
+  sessionId: string;
+  turnId: string;
+  taskId: string;
+  pullId: string;
+  attemptId: string;
+  attemptIndex: number;
+  emit(emission: Json): Operation<void>;
+};
+
+export type EffectHandler = (input: Json, context: EffectContext) => Operation<Json> | Json;
+export type EffectRegistry =
+  | ReadonlyMap<string, EffectHandler>
+  | Readonly<Record<string, EffectHandler>>;
+export type ProgramRegistry =
+  | ReadonlyMap<string, ProgramFactory>
+  | Readonly<Record<string, ProgramFactory>>;
+
+export interface CrankStore {
+  ensureSession(sessionId: string): Operation<void>;
+  readJournal(sessionId: string): Operation<JournalRecord[]>;
+  coordination(sessionId: string): Operation<CoordinationRecord>;
+  claim(sessionId: string, ownerId: string, leaseMs?: number): Operation<ClaimResult>;
+  appendCommand(command: SessionCommand): Operation<CommandAck>;
+  appendExecution(
+    lease: Lease,
+    expectedHead: number,
+    payload: JournalPayload,
+  ): Operation<AppendExecutionResult>;
+  parkAndRelease(lease: Lease, expectedHead: number): Operation<ReleaseResult>;
+  closeAndRelease(lease: Lease, expectedHead: number): Operation<ReleaseResult>;
+  runnableSessions(): Operation<string[]>;
+  events(sessionId: string, afterOffset?: number): Stream<JournalRecord, void>;
 }
 
-export interface Success<T = unknown> {
-  ok: true
-  value: T
+export type ActivationOutcome =
+  | { state: "closed"; turnId?: string }
+  | { state: "parked"; turnId?: string; pullId?: string }
+  | { state: "fenced" }
+  | { state: "idle" };
+
+export type CrankRuntimeOptions = {
+  store: CrankStore;
+  rootProgram: ProgramFactory;
+  programVersion: string;
+  effects?: EffectRegistry;
+  programs?: ProgramRegistry;
+  ownerId?: () => string;
+  leaseMs?: number;
+  restartAfterResolution?: boolean;
+};
+
+export interface CrankRuntime {
+  activate(sessionId: string): Operation<ActivationOutcome>;
 }
 
-export type AnswerPayload<T = unknown> = Success<T> | TypedFailure
+export interface CrankSession {
+  readonly id: string;
+  send(message: Json, options: { commandId: string }): Operation<CommandAck>;
+  respond(pullId: string, value: Json, options: { commandId: string }): Operation<CommandAck>;
+  cancelTurn(
+    turnId: string,
+    options: { commandId: string; reason?: string },
+  ): Operation<CommandAck>;
+  close(options: { commandId: string; reason?: string }): Operation<CommandAck>;
+  events(afterCursor?: number): Stream<PublicEnvelope, void>;
+}
 
-export type SessionErrorCode =
-  | 'resume_unavailable'
-  | 'session_lost'
-  | 'idempotency_conflict'
-  | 'unknown_wait'
-  | 'wait_kind_mismatch'
-  | 'unknown_target'
-  | 'unsupported_operation'
-  | 'terminal_session'
-  | 'invalid_log_record'
+export type RuntimeErrorCode =
+  | "invalid_command"
+  | "idempotency_conflict"
+  | "session_closed"
+  | "unknown_pull"
+  | "wrong_pull_kind"
+  | "pull_not_pending"
+  | "unknown_target"
+  | "invalid_journal"
+  | "nondeterminism_detected"
+  | "version_mismatch"
+  | "ownership_fenced"
+  | "payload_too_large"
+  | "effect_error"
+  | "runtime_error"
+  | "invalid_pull";
 
-export class SessionContractError extends Error {
-  readonly code: SessionErrorCode | (string & {})
-  readonly details?: unknown
-
-  constructor(code: SessionErrorCode | (string & {}), message?: string, details?: unknown) {
-    super(message ?? code)
-    this.name = 'SessionContractError'
-    this.code = code
-    this.details = details
+export class CrankError extends Error {
+  constructor(
+    readonly code: RuntimeErrorCode | (string & {}),
+    message = code,
+    readonly details?: Json,
+  ) {
+    super(message);
+    this.name = "CrankError";
   }
 }
 
-export interface ElicitWaitPayload {
-  key: string
-  message: string
-  responseSchema: unknown
-  context?: unknown
-  contextSchema?: unknown
-  metadata?: Record<string, unknown>
-}
-
-export interface SampleWaitPayload {
-  messages: unknown[]
-  options?: Record<string, unknown>
-}
-
-export interface CallWaitPayload {
-  target: string
-  input: unknown
-  /** The callId passed by the resolver context, used for reattachment. */
-  callId?: string
-}
-
-export interface MessageWaitPayload {
-  prompt?: string
-  metadata?: Record<string, unknown>
-}
-
-export type WaitPayloadByKind = {
-  message: MessageWaitPayload
-  elicit: ElicitWaitPayload
-  sample: SampleWaitPayload
-  call: CallWaitPayload
-}
-
-export type WaitPayload = WaitPayloadByKind[WaitKind]
-
-export interface LogRecordBase {
-  lsn: number
-  meta?: Record<string, unknown>
-}
-
-export interface WaitRecord<K extends WaitKind = WaitKind> extends LogRecordBase {
-  kind: 'wait'
-  waitSeq: number
-  wait: K
-  payload: WaitPayloadByKind[K]
-  expiresAt?: string
-}
-
-export interface AnswerRecord extends LogRecordBase {
-  kind: 'answer'
-  waitSeq?: number
-  wait?: WaitKind
-  payload: AnswerPayload
-  idempotencyKey: string
-  resolution?: ResolutionMeta
-}
-
-export interface EmissionRecord extends LogRecordBase {
-  kind: 'emission'
-  payload: unknown
-}
-
-export interface CheckpointRecord extends LogRecordBase {
-  kind: 'checkpoint'
-  mode: AuthoringMode
-  waitSeqWatermark: number
-  state?: unknown
-}
-
-export interface TerminalRecord extends LogRecordBase {
-  kind: 'terminal'
-  outcome: TerminalOutcome
-  payload?: unknown
-}
-
-/**
- * Observable form of non-answered wait fates. The normative grammar counts this
- * as answer-family bookkeeping; it is an explicit TypeScript variant so
- * validators and conformance tests can inspect it directly.
- */
-export interface FateRecord extends LogRecordBase {
-  kind: 'fate'
-  waitSeq: number
-  fate: Exclude<WaitFate, 'answered'>
-  reason?: string
-  payload?: unknown
-}
-
-export type LogRecord =
-  | WaitRecord
-  | AnswerRecord
-  | EmissionRecord
-  | CheckpointRecord
-  | TerminalRecord
-  | FateRecord
-
-export interface PendingWait {
-  waitSeq: number
-  token: string
-  kind: WaitKind
-  expiresAt?: string
-  payload: WaitPayload
-}
-
-export interface SessionStatus {
-  state: SessionLifecycle
-  pendingWaits: PendingWait[]
-  terminal?: { outcome: TerminalOutcome; payload?: unknown }
-}
-
-export interface SendAck {
-  lsn: number
-  idempotencyKey: string
-}
-
-export interface RespondAck {
-  lsn: number
-  waitSeq: number
-  idempotencyKey: string
-}
-
-export type RespondIfPendingResult =
-  | { type: 'accepted'; ack: RespondAck }
-  | { type: 'not_pending'; waitSeq: number; reason: 'unknown' | 'answered' | 'fated' | 'expired' }
-  | { type: 'terminal'; waitSeq: number; outcome: TerminalOutcome; payload?: unknown }
-
-export interface ResolutionMeta {
-  provider?: string
-  childSessionId?: string
-  durationMs?: number
-  [key: string]: unknown
-}
-
-export interface MessageInput {
-  role?: string
-  content: unknown
-  id?: string
-  [key: string]: unknown
-}
-
-export interface Session {
-  readonly id: string
-  events(afterLSN?: number): Stream<LogRecord, void>
-  send(message: MessageInput, opts?: { idempotencyKey?: string }): Operation<SendAck>
-  respond(waitToken: string, payload: unknown, opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta }): Operation<RespondAck>
-  cancel(reason?: string): Operation<void>
-  status(): Operation<SessionStatus>
-}
-
-export interface FoldSessionHost extends Session {
-  records(): Operation<LogRecord[]>
-  emitWait<K extends WaitKind>(wait: K, payload: WaitPayloadByKind[K], options?: { expiresAt?: string }): Operation<WaitRecord<K>>
-  emitEmission(payload: unknown): Operation<EmissionRecord>
-  checkpoint(mode: AuthoringMode, state?: unknown): Operation<CheckpointRecord>
-  terminal(outcome: TerminalOutcome, payload?: unknown): Operation<TerminalRecord>
-  expire(waitSeq: number, reason?: string): Operation<FateRecord>
-  orphan(waitSeq: number, reason?: string): Operation<FateRecord>
-  respondIfPending(
-    waitToken: string,
-    payload: unknown,
-    opts?: { idempotencyKey?: string; wait?: WaitKind; resolution?: ResolutionMeta },
-  ): Operation<RespondIfPendingResult>
-}
-
-export interface CapabilityDeclaration<I = unknown, O = unknown> {
-  input?: unknown
-  output?: unknown
-  description?: string
-  _input?: I
-  _output?: O
-}
-
-export type CapabilityMap = Record<string, CapabilityDeclaration>
-
-export interface CapabilityListingEntry {
-  name: string
-  input?: unknown
-  output?: unknown
-  description?: string
-}
-
-export interface CapabilityResolver {
-  call(target: string, input: unknown): Operation<AnswerPayload>
-}
-
-export interface ModelProvider {
-  sample(request: SampleWaitPayload): Operation<AnswerPayload>
-}
-
-export type PostOrphanPolicy = 'park' | 'auto-retry'
-
-export interface ConformanceAdapter {
-  name: string
-  profile: 'base' | 'full'
-  createSession(options?: { sessionId?: string; mode?: AuthoringMode }): Operation<Session>
-  simulateDeath?(sessionId: string): Operation<Session>
+export class PullApplicationError extends Error {
+  constructor(readonly applicationError: SerializedApplicationError) {
+    super(applicationError.message);
+    this.name = "PullApplicationError";
+  }
 }

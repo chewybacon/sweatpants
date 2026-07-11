@@ -1,68 +1,66 @@
 {
-  "name": "@sweatpants/tool-runtime-local",
-  "version": "0.1.0",
-  "description": "Local and worker-backed tool runtime for Sweatpants chat",
-  "type": "module",
-  "exports": {
-    ".": {
-      "development": {
-        "import": "./src/index.ts",
-        "types": "./src/index.ts"
-      },
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.cjs"
-      }
+    "name": "@sweatpants/tool-runtime-local",
+    "version": "0.1.0",
+    "description": "Local and worker-backed tool runtime for Sweatpants chat",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.cjs"
+            }
+        },
+        "./worker": {
+            "development": {
+                "import": "./src/worker.ts",
+                "types": "./src/worker.ts"
+            },
+            "import": {
+                "types": "./dist/worker.d.ts",
+                "default": "./dist/worker.js"
+            },
+            "require": {
+                "types": "./dist/worker.d.ts",
+                "default": "./dist/worker.cjs"
+            }
+        }
     },
-    "./worker": {
-      "development": {
-        "import": "./src/worker.ts",
-        "types": "./src/worker.ts"
-      },
-      "import": {
-        "types": "./dist/worker.d.ts",
-        "default": "./dist/worker.js"
-      },
-      "require": {
-        "types": "./dist/worker.d.ts",
-        "default": "./dist/worker.cjs"
-      }
+    "scripts": {
+        "build": "tsup && pnpm build:types",
+        "dev": "tsup --watch",
+        "check": "tsc -b",
+        "test": "vitest run src --passWithNoTests && vitest run acceptance --passWithNoTests",
+        "test:acceptance": "vitest run acceptance --passWithNoTests",
+        "build:types": "tsc -b tsconfig.json --force"
+    },
+    "dependencies": {
+        "@sweatpants/core": "workspace:*"
+    },
+    "devDependencies": {
+        "@sweatpants/framework": "workspace:*",
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "effection": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+        "zod": "catalog:"
+    },
+    "peerDependencies": {
+        "@sweatpants/framework": "workspace:*",
+        "effection": ">=4.1.0-alpha.9 <5.0.0"
     }
-  },
-  "files": [
-    "dist",
-    "src"
-  ],
-  "scripts": {
-    "build": "tsup && pnpm build:types",
-    "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest run src acceptance --passWithNoTests",
-    "test:acceptance": "vitest run acceptance",
-    "build:types": "tsc -b tsconfig.json --force"
-  },
-  "peerDependencies": {
-    "@sweatpants/framework": "workspace:*",
-    "@sweatpants/session-contract": "workspace:*",
-    "effection": ">=4.1.0-alpha.9 <5.0.0"
-  },
-  "devDependencies": {
-    "@sweatpants/framework": "workspace:*",
-    "@sweatpants/ts-config": "workspace:*",
-    "@types/node": "catalog:",
-    "effection": "catalog:",
-    "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:"
-  },
-  "license": "MIT",
-  "dependencies": {
-    "@sweatpants/core": "workspace:*",
-    "@sweatpants/session-contract": "workspace:*"
-  }
 }

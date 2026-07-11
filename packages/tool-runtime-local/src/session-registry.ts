@@ -13,15 +13,7 @@
  *
  * @packageDocumentation
  */
-import {
-  type Operation,
-  spawn,
-  resource,
-  sleep,
-  createQueue,
-  createScope,
-  suspend,
-} from "effection";
+import { type Operation, spawn, resource, createQueue, createScope } from "effection";
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -54,9 +46,14 @@ export function isWorkerBackedToolSessionRegistry(registry: ToolSessionRegistry)
   );
 }
 
-function startBackgroundTask(operation: () => Operation<void>): void {
-  const [scope] = createScope();
-  scope.run(operation);
+function startBackgroundTask(operation: () => Operation<void>): () => Operation<void> {
+  const [scope, destroy] = createScope();
+  const task = scope.run(operation);
+  void task.then(
+    () => destroy(),
+    () => destroy(),
+  );
+  return destroy;
 }
 
 function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | URL {
@@ -124,6 +121,13 @@ export interface ToolSessionRegistryOptions {
  * @param options - Registry configuration options
  * @returns ToolSessionRegistry resource
  */
+function* waitForSettlement(session: ToolSession): Operation<ToolSessionStatus> {
+  const current = yield* session.status();
+  if (current === "completed" || current === "failed" || current === "cancelled") return current;
+  if (!session.settled) throw new Error("ToolSession must provide event-driven settled()");
+  return yield* session.settled();
+}
+
 export function createToolSessionRegistry(
   store: ToolSessionStore,
   options: ToolSessionRegistryOptions,
@@ -131,8 +135,9 @@ export function createToolSessionRegistry(
   return resource<ToolSessionRegistry>(function* (provide) {
     const { samplingProvider, defaultTimeout, worker } = options;
 
-    // Track active session resources
+    // Track active session resources and detached scopes for host teardown.
     const activeSessions = new Map<string, ToolSession>();
+    const backgroundScopes = new Set<() => Operation<void>>();
 
     /**
      * Internal cleanup helper - removes session from store and active map.
@@ -173,7 +178,7 @@ export function createToolSessionRegistry(
         // after emitting a plugin elicitation event. If the tool session lived in
         // that request scope, it would be cancelled and could not be resumed on
         // the next HTTP request.
-        startBackgroundTask(function* () {
+        const destroyBackground = startBackgroundTask(function* () {
           const resolvedWorkerUrl = worker
             ? resolveWorkerUrl(worker.workerUrl, worker.isDev)
             : undefined;
@@ -194,16 +199,10 @@ export function createToolSessionRegistry(
           // Send session back to caller
           sessionQueue.add(session);
 
-          // Keep this task alive until the session completes
-          // This ensures the session's spawned tasks continue running
-          while (true) {
-            const status = yield* session.status();
-            if (status === "completed" || status === "failed" || status === "cancelled") {
-              break;
-            }
-            yield* sleep(100);
-          }
+          // Keep this scope alive without timer polling until terminal state.
+          yield* waitForSettlement(session);
         });
+        backgroundScopes.add(destroyBackground);
 
         // Receive the session from the spawned task
         const result = yield* sessionQueue.next();
@@ -224,22 +223,10 @@ export function createToolSessionRegistry(
         };
         yield* store.set(session.id, entry as ToolSessionEntry);
 
-        // Spawn status monitor
+        // Event-driven terminal status monitor; no per-session timer.
         yield* spawn(function* () {
-          let currentStatus: ToolSessionStatus = yield* session.status();
-
-          while (
-            currentStatus !== "completed" &&
-            currentStatus !== "failed" &&
-            currentStatus !== "cancelled"
-          ) {
-            yield* store.updateStatus(session.id, currentStatus);
-            yield* sleep(100);
-            currentStatus = yield* session.status();
-          }
-
-          // Final status update
-          yield* store.updateStatus(session.id, currentStatus);
+          yield* store.updateStatus(session.id, yield* session.status());
+          yield* store.updateStatus(session.id, yield* waitForSettlement(session));
         });
 
         return session;
@@ -297,18 +284,9 @@ export function createToolSessionRegistry(
             // Session complete and no clients - cleanup immediately
             yield* cleanup(sessionId);
           } else {
-            // Session still running - spawn cleanup waiter
+            // Session still running - event-driven cleanup waiter.
             yield* spawn(function* () {
-              let currentStatus = yield* session.status();
-
-              while (
-                currentStatus !== "completed" &&
-                currentStatus !== "failed" &&
-                currentStatus !== "cancelled"
-              ) {
-                yield* sleep(100);
-                currentStatus = yield* session.status();
-              }
+              yield* waitForSettlement(session);
 
               // Re-check refCount (client might have reconnected)
               const currentEntry = yield* store.get(sessionId);
@@ -321,9 +299,11 @@ export function createToolSessionRegistry(
       },
     };
 
-    yield* provide(registry);
-
-    // Keep the registry alive - it should only be torn down when the parent scope ends
-    yield* suspend();
+    try {
+      yield* provide(registry);
+    } finally {
+      for (const destroy of backgroundScopes) yield* destroy();
+      backgroundScopes.clear();
+    }
   });
 }

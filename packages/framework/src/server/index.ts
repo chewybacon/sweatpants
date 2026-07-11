@@ -120,8 +120,8 @@ export {
   createChatHandler,
   createDurableChatHandler,
   createPluginSessionManager,
-  FoldSessionBufferStoreContext,
-  createSessionContractInMemoryStore,
+  CrankStoreContext,
+  createInMemoryCrankStore,
 } from "../handler/durable/index.ts";
 
 export { createStreamingHandler, useHandlerContext, HandlerContext } from "../handler/streaming.ts";

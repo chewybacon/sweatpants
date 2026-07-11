@@ -254,14 +254,17 @@ describe("Durable Chat Handler", () => {
 
       const response = yield* call(() =>
         handler(
-          new Request(`http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              threadId: "divergent-client-thread-id",
-              messages: [{ id: "user:normalize", role: "user", content: "normalize" }],
-            }),
-          }),
+          new Request(
+            `http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                threadId: "divergent-client-thread-id",
+                messages: [{ id: "user:normalize", role: "user", content: "normalize" }],
+              }),
+            },
+          ),
         ),
       );
       const result = yield* call(() => consumeDurableResponse(response));
@@ -447,11 +450,12 @@ describe("Durable Chat Handler", () => {
       });
 
       const conversationId = `thread-active-${Date.now()}`;
-      const { request: initialRequest } = createChatRequest([
-        { id: "user:active", role: "user", content: "Stream slowly" },
-      ], {
-        conversationId,
-      });
+      const { request: initialRequest } = createChatRequest(
+        [{ id: "user:active", role: "user", content: "Stream slowly" }],
+        {
+          conversationId,
+        },
+      );
       const initialResponse = yield* call(() => handler(initialRequest));
       expect(initialResponse.headers.get("X-Session-Id")).toBeTruthy();
 
@@ -907,163 +911,6 @@ describe("Durable Chat Handler", () => {
       // Should have error event
       expect(result.error).not.toBeNull();
       expect(result.error?.message).toContain("Provider error");
-    });
-
-    it("should restore persisted public resume state onto the active tool runtime", function* () {
-      const provider = createMockProvider({ responses: "Resumed successfully" });
-      const bufferStore = createInMemoryBufferStore<string>();
-      const handler = createDurableChatHandler({
-        setup: function* () {
-          const registryStore = createInMemoryRegistryStore();
-          yield* setupDurableStreams({ bufferStore, registryStore });
-          yield* setupMockModelProvider(provider);
-          yield* ToolInventoryContext.set(createToolInventory([]));
-          yield* ToolRuntimeContext.set({
-            id: "test",
-            *execute() {
-              throw new Error("execute should not be called in resume test");
-            },
-            *resume(request) {
-              return {
-                kind: "completed",
-                ref: request.ref,
-                result: "Resume result",
-              } as any;
-            },
-            *abort() {},
-          } as any);
-        },
-      });
-
-      const threadId = `thread-resume-${Date.now()}`;
-      registerInterruptsFromRunFinished({
-        type: "RUN_FINISHED",
-        threadId,
-        runId: "run-paused",
-        outcome: {
-          type: "interrupt",
-          interrupts: [
-            {
-              id: "interrupt-resume-1",
-              reason: "input_required",
-              toolCallId: "call-resume-1",
-              responseSchema: { type: "object" },
-              metadata: {
-                "sweatpants/toolName": "echo",
-                "sweatpants/sessionId": "call-resume-1",
-              },
-            },
-          ],
-        },
-      });
-      yield* recordThreadInterruptState(bufferStore, threadId, interruptRecordsForThread(threadId));
-      resetInterruptRegistry();
-
-      const request = new Request("http://localhost/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: threadId,
-          threadId,
-          parentRunId: "run-paused",
-          messages: [
-            { id: "user:1", role: "user", content: "resume" },
-            {
-              id: "assistant:tools:call-resume-1",
-              role: "assistant",
-              content: "",
-              tool_calls: [
-                {
-                  id: "call-resume-1",
-                  type: "function",
-                  function: { name: "echo", arguments: {} },
-                },
-              ],
-            },
-          ],
-          resume: [
-            {
-              interruptId: "interrupt-resume-1",
-              status: "resolved",
-              payload: { action: "accept", content: { ok: true } },
-            },
-          ],
-        }),
-      });
-
-      const response = yield* call(() => handler(request));
-      const result = yield* call(() => consumeDurableResponse(response));
-      expect(result.toolResults?.some((tool) => tool.content === "Resume result")).toBe(true);
-      expect(
-        result.events
-          .map((entry) => entry.event)
-          .filter((event): event is { type: "RUN_ERROR"; code?: string } =>
-            (event as { type?: string }).type === "RUN_ERROR",
-          )
-          .some((event) => event.code === "TOOL_RESUME_FAILED"),
-      ).toBe(false);
-    });
-
-    it("should reject mismatched continuation refs before runtime resume", function* () {
-      const echoTool = createMockTool("echo", "Echoes input");
-      const provider = createMockProvider({ responses: "after mismatch" });
-      const handler = createDurableChatHandler({
-        setup: createTestHooks(provider, [echoTool]),
-      });
-
-      const request = new Request("http://localhost/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { id: "user:1", role: "user", content: "run echo" },
-            {
-              id: "assistant:1",
-              role: "assistant",
-              content: "",
-              tool_calls: [
-                {
-                  id: "call-1",
-                  type: "function",
-                  function: { name: "echo", arguments: { input: "hello" } },
-                },
-              ],
-            },
-          ],
-          elicitResponses: [
-            {
-              sessionId: "call-1",
-              callId: "call-1",
-              toolName: "echo",
-              elicitId: "elicit-1",
-              ref: {
-                runtimeId: "wrong",
-                executionId: "call-1",
-                sessionId: "call-1",
-                callId: "call-1",
-                toolName: "echo",
-              },
-              result: { action: "accept", content: { ok: true } },
-            },
-          ],
-        }),
-      });
-
-      const response = yield* call(() => handler(request));
-      const result = yield* call(() => consumeDurableResponse(response));
-      const runErrors = result.events
-        .map((entry) => entry.event)
-        .filter(
-          (event): event is { type: "RUN_ERROR"; message: string; code?: string } =>
-            (event as { type?: string }).type === "RUN_ERROR",
-        );
-      expect(
-        runErrors.some(
-          (event) =>
-            event.code === "TOOL_RESUME_FAILED" &&
-            event.message.includes("Continuation ref mismatch: runtimeId"),
-        ),
-      ).toBe(true);
     });
 
     it("should emit error when provider is not configured", function* () {

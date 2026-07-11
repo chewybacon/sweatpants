@@ -936,9 +936,6 @@ importers:
 
   packages/session-contract:
     dependencies:
-      '@sweatpants/durable-streams':
-        specifier: workspace:*
-        version: link:../durable-streams
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -946,6 +943,9 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
@@ -996,9 +996,6 @@ importers:
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../framework
-      '@sweatpants/session-contract':
-        specifier: workspace:*
-        version: link:../session-contract
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -1026,9 +1023,6 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
-      '@sweatpants/session-contract':
-        specifier: workspace:*
-        version: link:../session-contract
     devDependencies:
       '@sweatpants/framework':
         specifier: workspace:*

@@ -3,7 +3,7 @@ import type { Model, Runtime, StreamOptions } from "../../lib/chat/runtime/index
 import type { ToolSessionSamplingProvider } from "../../lib/chat/mcp-tools/session/types.ts";
 import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
 import type { StreamEvent, ChatMessage } from "../types.ts";
-import type { TokenBufferStore, LogRecord } from "@sweatpants/session-contract";
+import type { CrankStore } from "@sweatpants/session-contract";
 import type { PluginRegistry } from "../../lib/chat/mcp-tools/plugin-registry.ts";
 import type {
   ComponentEmissionPayload,
@@ -46,7 +46,7 @@ export interface SessionContractChatEngineParams {
    * session log.
    *
    * Identity law:
-   * - conversationId keys the fold log
+   * - conversationId keys the crank journal
    * - agUiRun.threadId is always the wire alias of conversationId
    * - agUiRun.runId is ephemeral turn correlation only
    * - HTTP X-Session-Id (response stream) never appears here
@@ -57,13 +57,8 @@ export interface SessionContractChatEngineParams {
   pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>;
   mcpToolRegistry?: McpToolRegistry;
   pluginSessionManager?: PluginSessionManager;
-  /**
-   * Shared fold-session buffer store. When provided, the adapter reopens the
-   * existing fold session on resume instead of creating an ephemeral one.
-   * Product hosts (yo-chat) MUST install this via FoldSessionBufferStoreContext.
-   * Hermetic unit tests MAY omit it and get a private ephemeral store.
-   */
-  foldSessionBufferStore?: TokenBufferStore<LogRecord>;
+  /** Shared fenced crank store. Product hosts install it once per process. */
+  crankStore?: CrankStore;
   elicitResponses?: ElicitResponse[];
   pluginAbort?: PluginAbortRequest;
 }
@@ -113,7 +108,7 @@ export interface ResumeEntry {
 export interface ChatRequestBody {
   /**
    * Durable conversation identity. Preferred over threadId.
-   * This is the only durable chat key (fold log, history, resume).
+   * This is the only durable chat key (crank journal, history, resume).
    */
   conversationId?: string;
   /**
