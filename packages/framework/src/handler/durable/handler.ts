@@ -11,9 +11,9 @@
  * - Response: NDJSON with LSN in each event, X-Session-Id + X-Conversation-Id headers
  *
  * Identity law (kernel vs wire vs transport):
- * - conversationId: only durable chat key (fold log / history / resume)
+ * - conversationId: only durable chat key (crank journal / history / resume)
  * - threadId: AG-UI wire alias of conversationId (always equal on the wire)
- * - runId: ephemeral AG-UI turn correlator (never keys fold state)
+ * - runId: ephemeral AG-UI turn correlator (never keys crank state)
  * - sessionId (X-Session-Id): response-stream / reconnect buffer id only
  *
  * @see ../docs/durable-chat-handler-plan.md for architecture details
@@ -52,7 +52,7 @@ import { bindModel, createBindingSource, stringParam } from "../model-binder.ts"
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createSessionContractChatEngine } from "./session-contract-adapter.ts";
-import { useOptionalFoldSessionBufferStore } from "@sweatpants/session-contract";
+import { useOptionalCrankStore } from "@sweatpants/session-contract";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
 import {
   activitySnapshotsForMessages,
@@ -1211,8 +1211,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         };
         void sessionInfo;
 
-        // Read the shared fold-session buffer store from context (optional).
-        const foldSessionBufferStore = yield* useOptionalFoldSessionBufferStore();
+        // Read the shared fenced crank store from context (optional).
+        const crankStore = yield* useOptionalCrankStore();
 
         const resumePreflightError =
           resumeValidation && !resumeValidation.ok ? resumeValidation : null;
@@ -1236,7 +1236,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               toolRuntimeId: activeToolRuntime.id,
               maxIterations,
               signal: engineAbortController.signal,
-              // Fold session identity is the durable conversation id only.
+              // Crank session identity is the durable conversation id only.
               conversationId: requestedConversationId,
               agUiRun,
               // Plugin support for MCP tools
@@ -1248,9 +1248,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               ...(effectiveElicitResponses.length > 0 && {
                 elicitResponses: effectiveElicitResponses,
               }),
-              // Pass the shared fold-session buffer store so the adapter can
-              // reopen existing fold sessions across HTTP requests.
-              ...(foldSessionBufferStore ? { foldSessionBufferStore } : {}),
+              // Reopen the same durable journal across HTTP requests.
+              ...(crankStore ? { crankStore } : {}),
               ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
             });
         log.debug({ sessionId }, "new session path: chat engine created");

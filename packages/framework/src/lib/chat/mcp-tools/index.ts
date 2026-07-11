@@ -175,8 +175,6 @@ export {
   useOptionalToolSessionSamplingProvider,
 } from "./session/contexts.ts";
 
-export { adaptToolSessionToSessionContract } from "./session/contract-adapter.ts";
-
 export type {
   // Session types
   ToolSession,

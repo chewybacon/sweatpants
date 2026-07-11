@@ -23,6 +23,7 @@ import {
   resource,
   each,
   createQueue,
+  action,
 } from "effection";
 import type {
   ToolSession,
@@ -136,6 +137,11 @@ export function createToolSession<
     // Queue for events - producer (tool execution) pushes, consumer pulls
     // createQueue returns a synchronous queue with add/close/next methods
     const eventQueue = createQueue<ToolSessionEvent<TResult>, void>();
+    const settledWaiters = new Set<(status: ToolSessionStatus) => void>();
+    const notifySettled = (status: ToolSessionStatus): void => {
+      for (const resolve of settledWaiters) resolve(status);
+      settledWaiters.clear();
+    };
 
     const validatedParams = validateToolParameters<TParams>({
       schema: tool.parameters,
@@ -244,6 +250,7 @@ export function createToolSession<
       try {
         const result = yield* host.run();
         state.status = "completed";
+        notifySettled(state.status);
         state.result = result;
         state.toolCompleted = true;
 
@@ -258,6 +265,7 @@ export function createToolSession<
         eventQueue.close();
       } catch (error) {
         state.status = "failed";
+        notifySettled(state.status);
         state.error = error as Error;
         state.toolCompleted = true;
 
@@ -284,6 +292,14 @@ export function createToolSession<
 
       *status(): Operation<ToolSessionStatus> {
         return state.status;
+      },
+
+      *settled(): Operation<ToolSessionStatus> {
+        return yield* action<ToolSessionStatus>((resolve) => {
+          if (isTerminalStatus(state.status)) resolve(state.status);
+          else settledWaiters.add(resolve);
+          return () => settledWaiters.delete(resolve);
+        });
       },
 
       // events() returns a Stream that pulls from the queue.
@@ -371,6 +387,7 @@ export function createToolSession<
         }
 
         state.status = "cancelled";
+        notifySettled(state.status);
         state.toolCompleted = true;
 
         eventQueue.add(
@@ -395,6 +412,10 @@ export function createToolSession<
 /**
  * Generate a unique session ID.
  */
+function isTerminalStatus(status: ToolSessionStatus): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
 function generateSessionId(): string {
   return `session_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 }

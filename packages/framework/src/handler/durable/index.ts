@@ -18,13 +18,13 @@ export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 // Session-contract chat execution adapter
 export { createSessionContractChatEngine } from "./session-contract-adapter.ts";
 
-// Fold session buffer store context + factory (for wiring shared persistence)
+// Replay-crank store context + in-memory development implementation.
 export {
-  FoldSessionBufferStoreContext,
-  useFoldSessionBufferStore,
-  useOptionalFoldSessionBufferStore,
+  CrankStoreContext,
+  useCrankStore,
+  useOptionalCrankStore,
+  createInMemoryCrankStore,
 } from "@sweatpants/session-contract";
-export { createSessionContractInMemoryStore } from "@sweatpants/session-contract";
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";

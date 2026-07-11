@@ -16,7 +16,7 @@ export type {
   ToolSessionSamplingProvider,
   InferToolSessionResult,
   AnyToolSession,
-} from './types.ts'
+} from "./types.ts";
 
 export {
   ToolSessionStoreContext,
@@ -28,8 +28,4 @@ export {
   useOptionalToolSessionStore,
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
-} from './contexts.ts'
-
-export {
-  adaptToolSessionToSessionContract,
-} from './contract-adapter.ts'
+} from "./contexts.ts";

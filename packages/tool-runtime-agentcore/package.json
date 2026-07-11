@@ -1,73 +1,71 @@
 {
-  "name": "@sweatpants/tool-runtime-agentcore",
-  "version": "0.1.0",
-  "description": "AgentCore tool runtime adapter for Sweatpants chat",
-  "type": "module",
-  "exports": {
-    ".": {
-      "development": {
-        "import": "./src/index.ts",
-        "types": "./src/index.ts"
-      },
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.cjs"
-      }
+    "name": "@sweatpants/tool-runtime-agentcore",
+    "version": "0.1.0",
+    "description": "AgentCore tool runtime adapter for Sweatpants chat",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.cjs"
+            }
+        },
+        "./host": {
+            "development": {
+                "import": "./src/host.ts",
+                "types": "./src/host.ts"
+            },
+            "import": {
+                "types": "./dist/host.d.ts",
+                "default": "./dist/host.js"
+            },
+            "require": {
+                "types": "./dist/host.d.ts",
+                "default": "./dist/host.cjs"
+            }
+        }
     },
-    "./host": {
-      "development": {
-        "import": "./src/host.ts",
-        "types": "./src/host.ts"
-      },
-      "import": {
-        "types": "./dist/host.d.ts",
-        "default": "./dist/host.js"
-      },
-      "require": {
-        "types": "./dist/host.d.ts",
-        "default": "./dist/host.cjs"
-      }
+    "scripts": {
+        "build": "pnpm build:deps && tsup && pnpm build:types",
+        "build:deps": "pnpm --filter @sweatpants/framework build:types",
+        "dev": "tsup --watch",
+        "check": "pnpm build:deps && tsc -b",
+        "test": "vitest run src acceptance --passWithNoTests",
+        "test:acceptance": "vitest run acceptance",
+        "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",
+        "build:types": "tsc -b tsconfig.json --force"
+    },
+    "dependencies": {
+        "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
+        "@sweatpants/durable-streams": "workspace:*",
+        "redis": "^4.7.0"
+    },
+    "devDependencies": {
+        "@sweatpants/core": "workspace:*",
+        "@sweatpants/framework": "workspace:*",
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "effection": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:",
+        "zod": "catalog:"
+    },
+    "peerDependencies": {
+        "@sweatpants/framework": "workspace:*",
+        "effection": ">=4.1.0-alpha.9 <5.0.0"
     }
-  },
-  "files": [
-    "dist",
-    "src"
-  ],
-  "scripts": {
-    "build": "pnpm build:deps && tsup && pnpm build:types",
-    "build:deps": "pnpm --filter @sweatpants/framework build:types",
-    "dev": "tsup --watch",
-    "check": "pnpm build:deps && tsc -b",
-    "test": "vitest run src acceptance --passWithNoTests",
-    "test:acceptance": "vitest run acceptance",
-    "test:e2e:agentcore": "vitest run --config vitest.agentcore-e2e.config.ts",
-    "build:types": "tsc -b tsconfig.json --force"
-  },
-  "peerDependencies": {
-    "@sweatpants/framework": "workspace:*",
-    "@sweatpants/session-contract": "workspace:*",
-    "effection": ">=4.1.0-alpha.9 <5.0.0"
-  },
-  "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
-    "@sweatpants/durable-streams": "workspace:*",
-    "redis": "^4.7.0"
-  },
-  "devDependencies": {
-    "@sweatpants/framework": "workspace:*",
-    "@sweatpants/session-contract": "workspace:*",
-    "@sweatpants/ts-config": "workspace:*",
-    "@types/node": "catalog:",
-    "effection": "catalog:",
-    "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:",
-    "@sweatpants/core": "workspace:*"
-  },
-  "license": "MIT"
 }

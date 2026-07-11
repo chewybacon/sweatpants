@@ -1,79 +1,63 @@
 export type {
-  AnswerPayload,
-  AnswerRecord,
-  AuthoringMode,
-  CallWaitPayload,
-  CapabilityDeclaration,
-  CapabilityListingEntry,
-  CapabilityMap,
-  CapabilityResolver,
-  CheckpointRecord,
-  ConformanceAdapter,
-  ElicitWaitPayload,
-  EmissionRecord,
-  FateRecord,
-  FoldSessionHost,
-  LogRecord,
-  MessageInput,
-  MessageWaitPayload,
-  ModelProvider,
-  PendingWait,
-  PostOrphanPolicy,
-  ResolutionMeta,
-  RespondAck,
-  RespondIfPendingResult,
-  SampleWaitPayload,
-  SendAck,
-  Session,
-  SessionErrorCode,
-  SessionLifecycle,
-  SessionStatus,
-  Success,
-  TerminalOutcome,
-  TerminalRecord,
-  TypedFailure,
-  WaitFate,
-  WaitKind,
-  WaitPayload,
-  WaitPayloadByKind,
-  WaitRecord,
+  ActivationOutcome,
+  AllPull,
+  AppendExecutionResult,
+  ClaimResult,
+  CommandAck,
+  CoordinationRecord,
+  CrankRuntime,
+  CrankRuntimeOptions,
+  CrankSession,
+  CrankStore,
+  EffectContext,
+  EffectHandler,
+  EffectPull,
+  EffectRegistry,
+  ElicitPull,
+  EmitPull,
+  InvokePull,
+  JournalPayload,
+  JournalRecord,
+  Json,
+  Lease,
+  Program,
+  ProgramFactory,
+  ProgramRegistry,
+  PublicEnvelope,
+  PublicEvent,
+  PullDescriptor,
+  RecordPull,
+  ReleaseResult,
+  Result,
+  RuntimeErrorCode,
+  SerializedApplicationError,
+  SessionCommand,
+  TaskResult,
 } from "./types.ts";
+export { CrankError, PullApplicationError } from "./types.ts";
 
-export { SessionContractError } from "./types.ts";
-export { deriveLogState, deriveStatus, nextWaitSeq, type DerivedLogState } from "./derive.ts";
-export { parseWaitToken, waitToken } from "./token.ts";
-export { validateLog, type ValidationResult } from "./validator.ts";
-export { assertDeclaredCapability, listCapabilities } from "./capabilities.ts";
 export {
-  createInMemorySession,
-  createSessionContractInMemoryStore,
-  restoreInMemorySession,
-  type CreateInMemorySessionOptions,
-  type InMemorySession,
-  type TokenBuffer,
-  type TokenBufferStore,
-} from "./in-memory-session.ts";
-export { createAgent, runOneFoldTurn, type Agent, type AgentConfig } from "./create-agent.ts";
-export { spawnFoldDriver } from "./fold-driver.ts";
+  assertJson,
+  canonicalJson,
+  canonicalSnapshot,
+  sha256,
+  stableOpaqueId,
+} from "./canonical.ts";
+export { effect, sample, elicit, record, invoke, call, all, emit } from "./pulls.ts";
 export {
-  createLoopbackResolver,
-  type LoopbackResolverOptions,
-  type ResolverCallContext,
-  type SessionAwareCapabilityResolver,
-} from "./loopback.ts";
+  validateJournal,
+  buildReplayIndex,
+  descriptorFingerprint,
+  descriptorIdentity,
+  type ReplayIndex,
+  type IndexedPull,
+} from "./journal.ts";
 export {
-  CapabilityResolverContext,
-  FoldSessionBufferStoreContext,
-  ModelProviderContext,
-  PostOrphanPolicyContext,
-  useCapabilityResolver,
-  useFoldSessionBufferStore,
-  useModelProvider,
-  useOptionalFoldSessionBufferStore,
-  usePostOrphanPolicy,
-} from "./contexts.ts";
-
-// Projection helpers (AG-UI, task-oriented) have been moved to the
-// `@sweatpants/session-contract/projections` subpath export to preserve
-// vocabulary discipline: the root contract package exports only the kernel
-// grammar and session surface, not protocol-specific projection vocabulary.
+  InMemoryCrankStore,
+  createInMemoryCrankStore,
+  type InMemoryCrankStoreOptions,
+} from "./store.ts";
+export { createCrankRuntime } from "./crank.ts";
+export { createCrankSession } from "./session.ts";
+export { CrankStoreContext, useCrankStore, useOptionalCrankStore } from "./contexts.ts";
+export { projectRecord, publicEvents } from "./projections.ts";

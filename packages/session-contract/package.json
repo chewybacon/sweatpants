@@ -1,60 +1,60 @@
 {
-  "name": "@sweatpants/session-contract",
-  "version": "0.1.0",
-  "description": "Wait-based session kernel contract, log grammar, and conformance kit",
-  "type": "module",
-  "exports": {
-    ".": {
-      "development": {
-        "import": "./src/index.ts",
-        "types": "./src/index.ts"
-      },
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+    "name": "@sweatpants/session-contract",
+    "version": "0.1.0",
+    "description": "Replay-crank durable pull-program runtime, journal, and conformance kit",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src",
+        "docs"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        },
+        "./testing": {
+            "development": {
+                "import": "./src/testing/index.ts",
+                "types": "./src/testing/index.ts"
+            },
+            "import": {
+                "types": "./dist/testing.d.ts",
+                "default": "./dist/testing.js"
+            }
+        },
+        "./projections": {
+            "development": {
+                "import": "./src/projections.ts",
+                "types": "./src/projections.ts"
+            },
+            "import": {
+                "types": "./dist/projections.d.ts",
+                "default": "./dist/projections.js"
+            }
+        }
     },
-    "./testing": {
-      "development": {
-        "import": "./src/testing/index.ts",
-        "types": "./src/testing/index.ts"
-      },
-      "import": {
-        "types": "./dist/testing.d.ts",
-        "default": "./dist/testing.js"
-      }
+    "scripts": {
+        "build": "tsup",
+        "dev": "tsup --watch",
+        "check": "tsc -b",
+        "test": "vitest"
     },
-    "./projections": {
-      "development": {
-        "import": "./src/projections.ts",
-        "types": "./src/projections.ts"
-      },
-      "import": {
-        "types": "./dist/projections.d.ts",
-        "default": "./dist/projections.js"
-      }
+    "dependencies": {
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
     }
-  },
-  "files": [
-    "dist",
-    "src",
-    "docs"
-  ],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest"
-  },
-  "dependencies": {
-    "effection": "catalog:",
-    "@sweatpants/durable-streams": "workspace:*"
-  },
-  "devDependencies": {
-    "@sweatpants/ts-config": "workspace:*",
-    "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vitest": "catalog:"
-  },
-  "license": "MIT"
 }

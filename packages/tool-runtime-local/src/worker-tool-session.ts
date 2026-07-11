@@ -36,6 +36,7 @@ import {
   type Queue,
   resource,
   createChannel,
+  action,
   spawn,
 } from "effection";
 import {
@@ -86,6 +87,10 @@ export interface WorkerToolSessionOptions {
  * @param options - Session configuration
  * @returns A ToolSession resource
  */
+function isTerminalStatus(status: ToolSessionStatus): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
+}
+
 export function createWorkerToolSession(options: WorkerToolSessionOptions): Operation<ToolSession> {
   return resource<ToolSession>(function* (provide) {
     const { sessionId, toolName, params, workerUrl, execArgv } = options;
@@ -94,6 +99,11 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
     let status: ToolSessionStatus = "initializing";
     let lsn = 0;
     const eventBuffer: ToolSessionEvent[] = [];
+    const settledWaiters = new Set<(status: ToolSessionStatus) => void>();
+    const notifySettled = (terminalStatus: ToolSessionStatus): void => {
+      for (const resolve of settledWaiters) resolve(terminalStatus);
+      settledWaiters.clear();
+    };
 
     // Channel for streaming events to subscribers
     const eventChannel = createChannel<ToolSessionEvent, void>();
@@ -130,12 +140,15 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
           break;
         case "result":
           status = "completed";
+          notifySettled(status);
           break;
         case "error":
           status = "failed";
+          notifySettled(status);
           break;
         case "cancelled":
           status = "cancelled";
+          notifySettled(status);
           break;
         case "progress":
         case "log":
@@ -156,6 +169,7 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
       nextLsn,
       setStatus: (nextStatus: ToolSessionStatus) => {
         status = nextStatus;
+        if (isTerminalStatus(status)) notifySettled(status);
       },
     };
 
@@ -237,6 +251,14 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
 
       *status(): Operation<ToolSessionStatus> {
         return status;
+      },
+
+      *settled(): Operation<ToolSessionStatus> {
+        return yield* action<ToolSessionStatus>((resolve) => {
+          if (isTerminalStatus(status)) resolve(status);
+          else settledWaiters.add(resolve);
+          return () => settledWaiters.delete(resolve);
+        });
       },
 
       events(afterLSN?: number): Stream<ToolSessionEvent, void> {

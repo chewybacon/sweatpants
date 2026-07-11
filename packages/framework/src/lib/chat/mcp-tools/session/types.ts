@@ -25,7 +25,7 @@
  *
  * @packageDocumentation
  */
-import type { Operation, Stream } from 'effection'
+import type { Operation, Stream } from "effection";
 import type {
   WireElicitResult,
   WireSampleResultBase,
@@ -37,11 +37,11 @@ import type {
   ExtendedMessage,
   LogLevel,
   ElicitsMap,
-} from '../mcp-tool-types.ts'
-import type { ToolDefinition } from '@sweatpants/core'
+} from "../mcp-tool-types.ts";
+import type { ToolDefinition } from "@sweatpants/core";
 
 // Re-export result types for convenience
-export type { 
+export type {
   SampleResult,
   SampleResultBase,
   SampleResultWithParsed,
@@ -50,7 +50,7 @@ export type {
   WireSampleResultWithParsed,
   WireSampleResultWithToolCalls,
   WireSampleResult,
-} from '../mcp-tool-types.ts'
+} from "../mcp-tool-types.ts";
 
 // =============================================================================
 // SESSION STATUS
@@ -60,14 +60,14 @@ export type {
  * Status of a tool session.
  */
 export type ToolSessionStatus =
-  | 'initializing' // Session created, tool not yet started
-  | 'running' // Tool is executing
-  | 'awaiting_elicit' // Tool is waiting for user input
-  | 'awaiting_sample' // Tool is waiting for LLM response
-  | 'completed' // Tool finished successfully
-  | 'failed' // Tool threw an error
-  | 'cancelled' // Tool was cancelled by client
-  | 'orphaned' // Remote session state was lost and cannot be resumed
+  | "initializing" // Session created, tool not yet started
+  | "running" // Tool is executing
+  | "awaiting_elicit" // Tool is waiting for user input
+  | "awaiting_sample" // Tool is waiting for LLM response
+  | "completed" // Tool finished successfully
+  | "failed" // Tool threw an error
+  | "cancelled" // Tool was cancelled by client
+  | "orphaned"; // Remote session state was lost and cannot be resumed
 
 // =============================================================================
 // SESSION EVENTS
@@ -78,27 +78,27 @@ export type ToolSessionStatus =
  */
 interface ToolSessionEventBase {
   /** Logical sequence number for resumability */
-  lsn: number
+  lsn: number;
   /** Timestamp when event was created */
-  timestamp: number
+  timestamp: number;
 }
 
 /**
  * Progress notification event.
  */
 export interface ProgressEvent extends ToolSessionEventBase {
-  type: 'progress'
-  message: string
-  progress?: number // 0-1
+  type: "progress";
+  message: string;
+  progress?: number; // 0-1
 }
 
 /**
  * Log message event.
  */
 export interface LogEvent extends ToolSessionEventBase {
-  type: 'log'
-  level: LogLevel
-  message: string
+  type: "log";
+  level: LogLevel;
+  message: string;
 }
 
 /**
@@ -106,17 +106,17 @@ export interface LogEvent extends ToolSessionEventBase {
  * The session is now awaiting a response via respondToElicit().
  */
 export interface ElicitRequestEvent extends ToolSessionEventBase {
-  type: 'elicit_request'
+  type: "elicit_request";
   /** Unique ID for this elicitation (for correlation) */
-  elicitId: string
+  elicitId: string;
   /** Elicitation key (matches tool's .elicits() declaration) */
-  key: string
+  key: string;
   /** Message to display to user */
-  message: string
+  message: string;
   /** JSON Schema for the expected response */
-  schema: Record<string, unknown>
+  schema: Record<string, unknown>;
   /** Context data for the UI to render (e.g., flight options, seat map) */
-  context?: Record<string, unknown>
+  context?: Record<string, unknown>;
 }
 
 /**
@@ -124,63 +124,63 @@ export interface ElicitRequestEvent extends ToolSessionEventBase {
  * The session is now awaiting a response via respondToSample().
  */
 export interface SampleRequestEvent extends ToolSessionEventBase {
-  type: 'sample_request'
+  type: "sample_request";
   /** Unique ID for this sample request (for correlation) */
-  sampleId: string
+  sampleId: string;
   /** Messages to send to LLM (supports tool call/result messages) */
-  messages: ExtendedMessage[]
+  messages: ExtendedMessage[];
   /** Optional system prompt */
-  systemPrompt?: string
+  systemPrompt?: string;
   /** Maximum tokens to generate */
-  maxTokens?: number
+  maxTokens?: number;
   /** Model preferences for the client */
-  modelPreferences?: ModelPreferences
+  modelPreferences?: ModelPreferences;
   /** Tool definitions for tool calling */
-  tools?: SamplingToolDefinition[]
+  tools?: SamplingToolDefinition[];
   /** How the model should choose tools */
-  toolChoice?: SamplingToolChoice
+  toolChoice?: SamplingToolChoice;
   /** JSON Schema for structured output (converted from Zod) */
-  schema?: Record<string, unknown>
+  schema?: Record<string, unknown>;
 }
 
 /**
  * Tool completed successfully.
  */
 export interface ResultEvent<TResult = unknown> extends ToolSessionEventBase {
-  type: 'result'
+  type: "result";
   /** The tool's return value */
-  result: TResult
+  result: TResult;
 }
 
 /**
  * Tool failed with an error.
  */
 export interface ErrorEvent extends ToolSessionEventBase {
-  type: 'error'
+  type: "error";
   /** Error name */
-  name: string
+  name: string;
   /** Error message */
-  message: string
+  message: string;
   /** Optional stack trace (dev only) */
-  stack?: string
+  stack?: string;
 }
 
 /**
  * Tool was cancelled.
  */
 export interface CancelledEvent extends ToolSessionEventBase {
-  type: 'cancelled'
+  type: "cancelled";
   /** Optional cancellation reason */
-  reason?: string
+  reason?: string;
 }
 
 /**
  * Internal event to wake up the SSE stream when a sample response is queued.
  */
 export interface SampleResponseQueuedEvent {
-  type: 'sample_response_queued'
-  lsn: number
-  timestamp: number
+  type: "sample_response_queued";
+  lsn: number;
+  timestamp: number;
 }
 
 /**
@@ -194,7 +194,7 @@ export type ToolSessionEvent<TResult = unknown> =
   | SampleResponseQueuedEvent
   | ResultEvent<TResult>
   | ErrorEvent
-  | CancelledEvent
+  | CancelledEvent;
 
 // =============================================================================
 // TOOL SESSION
@@ -210,15 +210,18 @@ export type ToolSessionEvent<TResult = unknown> =
  */
 export interface ToolSession<TResult = unknown> {
   /** Unique session ID */
-  readonly id: string
+  readonly id: string;
 
   /** Name of the tool being executed */
-  readonly toolName: string
+  readonly toolName: string;
 
   /**
    * Get current session status.
    */
-  status(): Operation<ToolSessionStatus>
+  status(): Operation<ToolSessionStatus>;
+
+  /** Resolves when the session reaches a terminal status; no timer polling. */
+  settled?(): Operation<ToolSessionStatus>;
 
   /**
    * Get session events as a stream.
@@ -226,7 +229,7 @@ export interface ToolSession<TResult = unknown> {
    * @param afterLSN - Only return events after this LSN (for resumability)
    * @returns Stream of events, completes when session ends
    */
-  events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>
+  events(afterLSN?: number): Stream<ToolSessionEvent<TResult>, void>;
 
   /**
    * Respond to an elicitation request.
@@ -234,7 +237,7 @@ export interface ToolSession<TResult = unknown> {
    * @param elicitId - The ID from the ElicitRequestEvent
    * @param response - The user's response
    */
-  respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void>
+  respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void>;
 
   /**
    * Respond to a sampling request.
@@ -242,20 +245,26 @@ export interface ToolSession<TResult = unknown> {
    * @param sampleId - The ID from the SampleRequestEvent
    * @param response - The LLM's response (raw result without exchange - exchange is constructed by runtime)
    */
-  respondToSample(sampleId: string, response: WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls): Operation<void>
+  respondToSample(
+    sampleId: string,
+    response:
+      | WireSampleResultBase
+      | WireSampleResultWithParsed<unknown>
+      | WireSampleResultWithToolCalls,
+  ): Operation<void>;
 
   /**
    * Emit an internal event to wake up the SSE stream.
    * Used when a sample response is queued from a different HTTP request scope.
    */
-  emitWakeUp(): Operation<void>
+  emitWakeUp(): Operation<void>;
 
   /**
    * Cancel the session.
    *
    * @param reason - Optional cancellation reason
    */
-  cancel(reason?: string): Operation<void>
+  cancel(reason?: string): Operation<void>;
 }
 
 // =============================================================================
@@ -266,41 +275,41 @@ export interface ToolSession<TResult = unknown> {
  * Options for creating a tool session.
  */
 export interface ToolSessionModelSelection {
-  provider: string
-  id: string
+  provider: string;
+  id: string;
 }
 
 export interface ToolSessionOptions {
   /** Custom session ID (auto-generated if not provided) */
-  sessionId?: string
+  sessionId?: string;
 
   /** Timeout for the entire session in milliseconds */
-  timeout?: number
+  timeout?: number;
 
   /** System prompt */
-  systemPrompt?: string
+  systemPrompt?: string;
 
   /** Selected chat model identity for runtimes that support inherited sampling. */
-  model?: ToolSessionModelSelection
+  model?: ToolSessionModelSelection;
 
   /** Abort signal for external cancellation */
-  signal?: AbortSignal
+  signal?: AbortSignal;
 
   /**
    * Start tool execution immediately when the session is created.
-   * 
+   *
    * When true, tool execution begins in the scope where the session is created
    * (typically the registry's long-lived scope), not when events() is first
    * subscribed. This is required for multi-step elicitation across HTTP
    * request boundaries.
-   * 
+   *
    * When false (default), execution is deferred until events() is subscribed,
    * which is appropriate for SSE streaming where the subscriber's scope
    * stays alive for the duration of the stream.
-   * 
+   *
    * @default false
    */
-  startImmediately?: boolean
+  startImmediately?: boolean;
 }
 
 // =============================================================================
@@ -327,26 +336,26 @@ export interface ToolSessionRegistry {
   create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
     tool: ToolDefinition<string, TParams, TResult, TElicits>,
     params: TParams,
-    options?: ToolSessionOptions
-  ): Operation<ToolSession<TResult>>
+    options?: ToolSessionOptions,
+  ): Operation<ToolSession<TResult>>;
 
   /**
    * Get a session by ID without acquiring it.
    * Returns null if session doesn't exist.
    */
-  get(sessionId: string): Operation<ToolSession | null>
+  get(sessionId: string): Operation<ToolSession | null>;
 
   /**
    * Acquire a session by ID (increments refcount).
    * Throws if session doesn't exist.
    */
-  acquire(sessionId: string): Operation<ToolSession>
+  acquire(sessionId: string): Operation<ToolSession>;
 
   /**
    * Release a session (decrements refcount).
    * Session is cleaned up when refcount reaches 0.
    */
-  release(sessionId: string): Operation<void>
+  release(sessionId: string): Operation<void>;
 }
 
 // =============================================================================
@@ -358,16 +367,16 @@ export interface ToolSessionRegistry {
  */
 export interface ToolSessionEntry<TResult = unknown> {
   /** The session instance */
-  session: ToolSession<TResult>
+  session: ToolSession<TResult>;
 
   /** Reference count (number of active clients) */
-  refCount: number
+  refCount: number;
 
   /** When the session was created */
-  createdAt: number
+  createdAt: number;
 
   /** Current status (cached for quick access) */
-  status: ToolSessionStatus
+  status: ToolSessionStatus;
 }
 
 /**
@@ -379,28 +388,28 @@ export interface ToolSessionStore {
   /**
    * Get a session entry by ID.
    */
-  get(sessionId: string): Operation<ToolSessionEntry | null>
+  get(sessionId: string): Operation<ToolSessionEntry | null>;
 
   /**
    * Set a session entry.
    */
-  set(sessionId: string, entry: ToolSessionEntry): Operation<void>
+  set(sessionId: string, entry: ToolSessionEntry): Operation<void>;
 
   /**
    * Delete a session entry.
    */
-  delete(sessionId: string): Operation<void>
+  delete(sessionId: string): Operation<void>;
 
   /**
    * Update the reference count.
    * @returns The new refcount
    */
-  updateRefCount(sessionId: string, delta: number): Operation<number>
+  updateRefCount(sessionId: string, delta: number): Operation<number>;
 
   /**
    * Update the status.
    */
-  updateStatus(sessionId: string, status: ToolSessionStatus): Operation<void>
+  updateStatus(sessionId: string, status: ToolSessionStatus): Operation<void>;
 }
 
 // =============================================================================
@@ -416,15 +425,17 @@ export interface ToolSessionStore {
 export interface ToolSessionSamplingProvider {
   /**
    * Request an LLM completion.
-   * 
+   *
    * @param messages - Messages to send to the LLM
    * @param options - Sampling options including tools and schema
    * @returns The LLM response (raw result without exchange)
    */
   sample(
     messages: ExtendedMessage[],
-    options?: ToolSessionSamplingOptions
-  ): Operation<WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls>
+    options?: ToolSessionSamplingOptions,
+  ): Operation<
+    WireSampleResultBase | WireSampleResultWithParsed<unknown> | WireSampleResultWithToolCalls
+  >;
 }
 
 /**
@@ -432,15 +443,15 @@ export interface ToolSessionSamplingProvider {
  */
 export interface ToolSessionSamplingOptions {
   /** System prompt */
-  systemPrompt?: string
+  systemPrompt?: string;
   /** Maximum tokens to generate */
-  maxTokens?: number
+  maxTokens?: number;
   /** Tool definitions for tool calling */
-  tools?: SamplingToolDefinition[]
+  tools?: SamplingToolDefinition[];
   /** How the model should choose tools */
-  toolChoice?: SamplingToolChoice
+  toolChoice?: SamplingToolChoice;
   /** JSON Schema for structured output */
-  schema?: Record<string, unknown>
+  schema?: Record<string, unknown>;
 }
 
 // =============================================================================
@@ -450,9 +461,9 @@ export interface ToolSessionSamplingOptions {
 /**
  * Extract the result type from a tool.
  */
-export type InferToolSessionResult<T> = T extends ToolSession<infer R> ? R : never
+export type InferToolSessionResult<T> = T extends ToolSession<infer R> ? R : never;
 
 /**
  * Any tool session (for arrays/registries).
  */
-export type AnyToolSession = ToolSession<unknown>
+export type AnyToolSession = ToolSession<unknown>;
