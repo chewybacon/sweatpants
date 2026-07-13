@@ -25,6 +25,7 @@ export {
   useOptionalCrankStore,
   createInMemoryCrankStore,
 } from "@sweatpants/session-contract";
+export type { CrankStore } from "@sweatpants/session-contract";
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";

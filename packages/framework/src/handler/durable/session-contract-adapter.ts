@@ -1,4 +1,4 @@
-import { resource, spawn, type Operation, type Stream } from "effection";
+import { createScope, resource, type Operation, type Stream } from "effection";
 import {
   all,
   createCrankRuntime,
@@ -7,7 +7,9 @@ import {
   effect,
   elicit,
   emit,
+  projectRecord,
   type EffectContext,
+  type JournalRecord,
   type Json,
   type ProgramFactory,
   type PublicEvent,
@@ -20,12 +22,27 @@ import type {
   ToolCallBlock,
 } from "../../lib/chat/runtime/index.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
+import { internalMessageToAgUiMessage } from "../../lib/chat/session/ag-ui-compat.ts";
 import type { SessionContractChatEngineParams } from "./types.ts";
 import type { PluginSessionEvent } from "./plugin-session-manager.ts";
 import type { ToolExecution } from "../../lib/chat/tool-runtime.ts";
 import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
 
 const defaultCrankStore = createInMemoryCrankStore();
+
+function startDetachedActivation(
+  runtime: ReturnType<typeof createCrankRuntime>,
+  sessionId: string,
+): void {
+  const [scope, destroy] = createScope();
+  const task = scope.run(function* () {
+    yield* runtime.activate(sessionId);
+  });
+  void task.then(
+    () => destroy(),
+    () => destroy(),
+  );
+}
 
 /**
  * Compatibility transport over the replay-crank public event stream. Private
@@ -40,8 +57,19 @@ export function createSessionContractChatEngine(
     const session = createCrankSession(store, sessionId);
     const before = yield* store.readJournal(sessionId);
     const cursor = before.length - 1;
+    const pendingPublicInputs = before
+      .flatMap((record) => projectRecord(record, before))
+      .map((envelope) => envelope.event)
+      .filter(
+        (event): event is Extract<PublicEvent, { type: "input_requested" }> =>
+          event.type === "input_requested" &&
+          !before.some(
+            (record) =>
+              record.payload.type === "pull_resolved" && record.payload.pullId === event.pullId,
+          ),
+      );
     const programs = toolPrograms(params);
-    const rootProgram = createChatProgram(params);
+    const rootProgram = createChatProgram();
     const runtime = createCrankRuntime({
       store,
       rootProgram,
@@ -49,13 +77,29 @@ export function createSessionContractChatEngine(
       programs,
       effects: {
         "model.sample": (input, context) => sampleModel(params, input, context),
-        "tool.execute": (input) => executeTool(params, input),
-        "tool.resume": (input) => resumeTool(params, input),
+        "tool.execute": (input, context) => executeTool(params, input, context),
+        "tool.resume": (input, context) => resumeTool(params, input, context),
       },
     });
 
     const responses = params.elicitResponses ?? [];
-    if (responses.length > 0) {
+    let boundedOutcome: "pending_input" | "duplicate_resume" | "resume_unavailable" | undefined;
+    if (params.pluginAbort) {
+      const activeTurn = [...before].reverse().find((record) => {
+        if (record.payload.type !== "turn_opened") return false;
+        const taskId = record.payload.taskId;
+        return !before.some(
+          (candidate) =>
+            candidate.payload.type === "task_closed" && candidate.payload.taskId === taskId,
+        );
+      });
+      if (activeTurn?.payload.type === "turn_opened") {
+        yield* session.cancelTurn(activeTurn.payload.turnId, {
+          commandId: `cancel:${params.pluginAbort.sessionId}:${params.agUiRun.runId}`,
+          ...(params.pluginAbort.reason ? { reason: params.pluginAbort.reason } : {}),
+        });
+      }
+    } else if (responses.length > 0) {
       const records = yield* store.readJournal(sessionId);
       let acceptedResponses = 0;
       for (const response of responses) {
@@ -89,31 +133,36 @@ export function createSessionContractChatEngine(
             acceptedResponses += 1;
         }
       }
-      // A resume that cannot target a durable pull is bounded rather than
-      // retaining a transport task forever. If it carries a user message it
-      // becomes a new ordered turn.
-      if (acceptedResponses === 0) {
-        const message = latestUserMessage(params);
-        yield* session.send({ messages: params.messages as unknown as Json, message } as Json, {
-          commandId: message.id
-            ? `send:${message.id}`
-            : `send:${params.agUiRun.runId}:resume-fallback`,
-        });
+      if (acceptedResponses === responses.length && acceptedResponses > 0) {
+        if (params.onResumeAccepted) yield* params.onResumeAccepted();
+      } else if (acceptedResponses === 0) {
+        boundedOutcome = params.resumeAlreadyApplied ? "duplicate_resume" : "resume_unavailable";
       }
     } else {
       const message = latestUserMessage(params);
-      yield* session.send({ messages: params.messages as unknown as Json, message } as Json, {
+      yield* session.send(turnInput(params, message, before), {
         commandId: message.id ? `send:${message.id}` : `send:${params.agUiRun.runId}`,
       });
+      if (pendingPublicInputs.length > 0) boundedOutcome = "pending_input";
     }
 
-    yield* spawn(function* () {
-      yield* runtime.activate(sessionId);
-    });
+    startDetachedActivation(runtime, sessionId);
 
     const events = yield* session.events(cursor);
     const queue: StreamEvent[] = [];
-    let done = false;
+    if (boundedOutcome === "pending_input") {
+      for (const event of pendingPublicInputs)
+        queue.push(...projectCrankEventToAgUi(event, params, false, new Map()));
+    } else if (boundedOutcome === "duplicate_resume") {
+      queue.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+    } else if (boundedOutcome === "resume_unavailable") {
+      queue.push({
+        type: "RUN_ERROR",
+        message: "The requested input is no longer pending",
+        code: "RESUME_UNAVAILABLE",
+      });
+    }
+    let done = boundedOutcome !== undefined;
     let textOpen = false;
     const publicToolNames = new Map<string, string>();
     yield* provide({
@@ -124,7 +173,12 @@ export function createSessionContractChatEngine(
             done = true;
             break;
           }
-          const projected = toAgUi(next.value.event, params, textOpen, publicToolNames);
+          const projected = projectCrankEventToAgUi(
+            next.value.event,
+            params,
+            textOpen,
+            publicToolNames,
+          );
           for (const event of projected) {
             if (event.type === "TEXT_MESSAGE_START") textOpen = true;
             if (event.type === "TEXT_MESSAGE_END") textOpen = false;
@@ -144,16 +198,32 @@ export function createSessionContractChatEngine(
   });
 }
 
-function createChatProgram(params: SessionContractChatEngineParams): ProgramFactory {
+function createChatProgram(): ProgramFactory {
   return function* (rawInput) {
     const input = asObject(rawInput);
     const messages = Array.isArray(input["messages"]) ? ([...input["messages"]] as Json[]) : [];
+    const systemPrompt =
+      typeof input["systemPrompt"] === "string" ? input["systemPrompt"] : undefined;
+    const initialToolChoice =
+      input["initialToolChoice"] === "auto" ||
+      input["initialToolChoice"] === "none" ||
+      input["initialToolChoice"] === "required"
+        ? input["initialToolChoice"]
+        : undefined;
+    const maxIterations = typeof input["maxIterations"] === "number" ? input["maxIterations"] : 10;
+    const hasPriorAssistantOrTool = messages.some((message) => {
+      const role = asObject(message)["role"];
+      return role === "assistant" || role === "tool" || role === "toolResult";
+    });
     const completedCallIds = new Set<string>();
-    for (let iteration = 0; iteration < params.maxIterations; iteration += 1) {
+    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       const sampled = asObject(
         yield* effect<Json>("model.sample", {
           messages,
-          ...(params.systemPrompt ? { systemPrompt: params.systemPrompt } : {}),
+          ...(systemPrompt ? { systemPrompt } : {}),
+          ...(iteration === 0 && !hasPriorAssistantOrTool && initialToolChoice
+            ? { toolChoice: initialToolChoice }
+            : {}),
         }),
       );
       const calls = Array.isArray(sampled["calls"]) ? sampled["calls"].map(asObject) : [];
@@ -177,13 +247,18 @@ function createChatProgram(params: SessionContractChatEngineParams): ProgramFact
           },
         })),
       );
-      calls.forEach((call, index) =>
+      calls.forEach((call, index) => {
+        const execution = asObject(results[index]);
         messages.push({
           role: "tool",
           tool_call_id: String(call["id"] ?? `call-${iteration}`),
-          content: results[index] ?? null,
-        } as Json),
-      );
+          tool_name: String(call["target"] ?? "tool"),
+          content:
+            execution["kind"] === "completed"
+              ? (execution["result"] ?? null)
+              : (results[index] ?? null),
+        } as Json);
+      });
     }
     throw new Error("Maximum tool iterations reached");
   };
@@ -203,6 +278,7 @@ const toolProgram: ProgramFactory = function* (rawInput) {
       message: String(request["message"] ?? "Input required"),
       responseSchema: (request["schema"] ?? {}) as Json,
       context: {
+        ...asObject(request["context"]),
         callId: String(input["callId"] ?? ""),
         elicitId: String(request["elicitId"] ?? request["key"] ?? "input"),
         toolName: String(input["target"] ?? ""),
@@ -239,6 +315,14 @@ function* sampleModel(
   const stream = params.runtime.stream(params.model, runtimeContext, {
     ...params.streamOptions,
     signal: params.signal,
+    // Stable across at-least-once re-dispatch; providers may use this as a
+    // request/session idempotency key.
+    sessionId: context.pullId,
+    ...(input["toolChoice"] === "auto" ||
+    input["toolChoice"] === "none" ||
+    input["toolChoice"] === "required"
+      ? { toolChoice: input["toolChoice"] }
+      : {}),
   });
   const subscription = yield* stream;
   let text = "";
@@ -258,7 +342,7 @@ function* sampleModel(
       text += next.value.delta;
       yield* context.emit({
         type: "text_delta",
-        messageId: assistantMessageId(params),
+        messageId: context.pullId,
         delta: next.value.delta,
       });
     }
@@ -271,7 +355,11 @@ function* sampleModel(
   }
 }
 
-function* executeTool(params: SessionContractChatEngineParams, rawInput: Json): Operation<Json> {
+function* executeTool(
+  params: SessionContractChatEngineParams,
+  rawInput: Json,
+  context: EffectContext,
+): Operation<Json> {
   const input = asObject(rawInput);
   const target = String(input["target"] ?? "");
   const callId = String(input["callId"] ?? `call:${target}`);
@@ -304,7 +392,12 @@ function* executeTool(params: SessionContractChatEngineParams, rawInput: Json): 
         function: { name: target, arguments: asRecord(input["input"]) },
       },
       signal: params.signal,
-      metadata: { threadId: params.agUiRun.threadId, runId: params.agUiRun.runId },
+      metadata: {
+        threadId: params.agUiRun.threadId,
+        runId: params.agUiRun.runId,
+        pullId: context.pullId,
+        attemptId: context.attemptId,
+      },
     });
     return yield* normalizeExecution(execution, target);
   } catch (error) {
@@ -319,7 +412,11 @@ function* executeTool(params: SessionContractChatEngineParams, rawInput: Json): 
   }
 }
 
-function* resumeTool(params: SessionContractChatEngineParams, rawInput: Json): Operation<Json> {
+function* resumeTool(
+  params: SessionContractChatEngineParams,
+  rawInput: Json,
+  context: EffectContext,
+): Operation<Json> {
   const input = asObject(rawInput);
   const answer = asObject(input["answer"]);
   const request = asObject(input["ref"]);
@@ -344,7 +441,12 @@ function* resumeTool(params: SessionContractChatEngineParams, rawInput: Json): O
       result: answer as never,
     },
     signal: params.signal,
-    metadata: { threadId: params.agUiRun.threadId, runId: params.agUiRun.runId },
+    metadata: {
+      threadId: params.agUiRun.threadId,
+      runId: params.agUiRun.runId,
+      pullId: context.pullId,
+      attemptId: context.attemptId,
+    },
   });
   return yield* normalizeExecution(execution, String(input["target"] ?? "tool"));
 }
@@ -366,6 +468,7 @@ function* normalizePluginEvent(
         key: event.key,
         message: event.message,
         schema: event.schema as Json,
+        ...(event.context ? { context: event.context as Json } : {}),
       },
     };
   if (event.type === "error")
@@ -423,7 +526,7 @@ function* normalizeExecution(execution: ToolExecution, target: string): Operatio
   }
 }
 
-function toAgUi(
+export function projectCrankEventToAgUi(
   event: PublicEvent,
   params: SessionContractChatEngineParams,
   textOpen: boolean,
@@ -457,10 +560,14 @@ function toAgUi(
       ];
     case "attempt_abandoned":
       return [
+        ...(textOpen
+          ? [{ type: "TEXT_MESSAGE_END" as const, messageId: assistantMessageId(params) }]
+          : []),
         {
-          type: "RUN_ERROR",
-          message: `Streaming attempt ${event.attemptId} was superseded`,
-          code: "ATTEMPT_ABANDONED",
+          type: "MESSAGES_SNAPSHOT",
+          messages: params.messages.map((message, index) =>
+            internalMessageToAgUiMessage(message as never, `history:${index}`),
+          ),
         },
       ];
     case "tool_started":
@@ -593,18 +700,36 @@ function canonicalCall(
   return { id, target, input: call.arguments as Json };
 }
 
-function toRuntimeMessage(value: Json): RuntimeMessage {
+export function toRuntimeMessage(value: Json): RuntimeMessage {
   const message = asObject(value);
   const role = message["role"];
   const content =
     typeof message["content"] === "string" ? message["content"] : stringify(message["content"]);
-  if (role === "assistant")
-    return { role: "assistant", content: content ? [{ type: "text", text: content }] : [] };
+  if (role === "assistant") {
+    const toolCalls = Array.isArray(message["tool_calls"])
+      ? message["tool_calls"].map(asObject)
+      : [];
+    return {
+      role: "assistant",
+      content: [
+        ...(content ? [{ type: "text" as const, text: content }] : []),
+        ...toolCalls.map((call) => {
+          const fn = asObject(call["function"]);
+          return {
+            type: "toolCall" as const,
+            id: String(call["id"] ?? "tool"),
+            name: String(call["target"] ?? call["name"] ?? fn["name"] ?? "tool"),
+            arguments: toolCallArguments(call["input"] ?? call["arguments"] ?? fn["arguments"]),
+          };
+        }),
+      ],
+    };
+  }
   if (role === "tool")
     return {
       role: "toolResult",
       toolCallId: String(message["tool_call_id"] ?? "tool"),
-      toolName: "tool",
+      toolName: String(message["tool_name"] ?? "tool"),
       content: [{ type: "text", text: content }],
       isError: false,
     };
@@ -620,6 +745,58 @@ function textFromAssistant(message: AssistantMessage): string {
     )
     .map((block) => block.text)
     .join("");
+}
+
+function turnInput(
+  params: SessionContractChatEngineParams,
+  message: { id?: string; role: "user"; content: string },
+  journal: readonly JournalRecord[],
+): Json {
+  const messages = repairToolHistory(params.messages as unknown as Json[], journal);
+  return {
+    messages,
+    message,
+    maxIterations: params.maxIterations,
+    ...(params.systemPrompt ? { systemPrompt: params.systemPrompt } : {}),
+    ...(params.initialToolChoice ? { initialToolChoice: params.initialToolChoice } : {}),
+  };
+}
+
+export function repairToolHistory(messages: Json[], journal: readonly JournalRecord[]): Json[] {
+  const calls = new Map<string, { target: string; input: Json }>();
+  for (const record of journal) {
+    if (record.payload.type !== "task_opened") continue;
+    const input = asObject(record.payload.input);
+    const callId = typeof input["callId"] === "string" ? input["callId"] : undefined;
+    const target = typeof input["target"] === "string" ? input["target"] : undefined;
+    if (callId && target) calls.set(callId, { target, input: (input["input"] ?? {}) as Json });
+  }
+
+  const output: Json[] = [];
+  const declared = new Set<string>();
+  for (const raw of messages) {
+    const current = { ...asObject(raw) };
+    if (current["role"] === "assistant" && Array.isArray(current["tool_calls"])) {
+      for (const call of current["tool_calls"].map(asObject)) {
+        if (typeof call["id"] === "string") declared.add(call["id"]);
+      }
+    }
+    if (current["role"] === "tool") {
+      const callId = String(current["tool_call_id"] ?? "");
+      const durable = calls.get(callId);
+      if (callId && durable && !declared.has(callId)) {
+        output.push({
+          role: "assistant",
+          content: "",
+          tool_calls: [{ id: callId, target: durable.target, input: durable.input }],
+        });
+        declared.add(callId);
+        current["tool_name"] = durable.target;
+      }
+    }
+    output.push(current as Json);
+  }
+  return output;
 }
 
 function latestUserMessage(params: SessionContractChatEngineParams): {
@@ -647,6 +824,14 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+function toolCallArguments(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") return asRecord(value);
+  try {
+    return asRecord(JSON.parse(value));
+  } catch {
+    return {};
+  }
 }
 function stringify(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? null);

@@ -126,6 +126,8 @@ export {
 
 export { createStreamingHandler, useHandlerContext, HandlerContext } from "../handler/streaming.ts";
 
+export type { CrankStore } from "../handler/durable/index.ts";
+
 export type {
   DurableChatHandlerConfig as ChatHandlerConfig,
   ChatHandlerSetupContext,

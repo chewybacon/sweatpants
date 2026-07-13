@@ -112,7 +112,7 @@ for (const tier of selectedTiers()) {
       expectNoOpenInterruptError(transcript);
       expectRunFinished(transcript);
       expectOutcome(transcript, "success");
-    }, 150_000);
+    });
 
     it("answers a free-form follow-up after the game without re-launching play_ttt", async () => {
       const transcript = await withFlakePolicy(() =>
@@ -145,6 +145,6 @@ Do NOT call play_ttt again unless the user explicitly asks to play another game.
       expectNoRunError(transcript);
       expectRunFinished(transcript, 2);
       expectOutcome(transcript, "success");
-    }, 180_000);
+    });
   });
 }

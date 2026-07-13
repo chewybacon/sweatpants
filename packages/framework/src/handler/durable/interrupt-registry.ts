@@ -217,7 +217,7 @@ export function resetInterruptRegistry(): void {
 }
 
 export function openInterruptsForThread(threadId: string): OpenInterruptRecord[] {
-  return interruptRecordsForThread(threadId).filter((record) => record.status === "open")
+  return interruptRecordsForThread(threadId).filter((record) => record.status === "open");
 }
 
 export function deriveResumeScopeId(
@@ -312,7 +312,6 @@ export function validateResumeEntries(params: {
 
   for (const record of openRecords) {
     if (record.expiresAt && Date.parse(record.expiresAt) < now.getTime()) {
-      record.status = "expired";
       return {
         ok: false,
         code: "RESUME_EXPIRED",
@@ -322,9 +321,13 @@ export function validateResumeEntries(params: {
     const entry = resume.find((candidate) => candidate.interruptId === record.interruptId)!;
     if (entry.status === "resolved" && record.responseSchema !== undefined) {
       const payloadRecord = asRecord(entry.payload);
+      const action = payloadRecord?.["action"];
+      // Decline/cancel carries no business content and is valid independently
+      // of the accept-content schema.
+      if (action === "decline" || action === "cancel") continue;
       const businessPayload =
-        payloadRecord?.["action"] === "accept" && "content" in payloadRecord
-          ? payloadRecord["content"]
+        action === "accept" && "content" in payloadRecord!
+          ? payloadRecord!["content"]
           : entry.payload;
       if (!validateJsonSchemaSubset(record.responseSchema, businessPayload)) {
         return {
@@ -336,12 +339,15 @@ export function validateResumeEntries(params: {
     }
   }
 
-  for (const record of openRecords) {
+  const resolvedRecords = openRecords.map((record) => {
     const entry = resume.find((candidate) => candidate.interruptId === record.interruptId)!;
-    record.status = entry.status === "cancelled" ? "cancelled" : "resolved";
-    record.resolvedByRunId = runId;
-    record.resolutionHash = resumeResolutionHash(entry);
-  }
+    return {
+      ...record,
+      status: entry.status === "cancelled" ? ("cancelled" as const) : ("resolved" as const),
+      resolvedByRunId: runId,
+      resolutionHash: resumeResolutionHash(entry),
+    };
+  });
 
-  return { ok: true, scopeId, records: openRecords, entries: resume, idempotent: false };
+  return { ok: true, scopeId, records: resolvedRecords, entries: resume, idempotent: false };
 }

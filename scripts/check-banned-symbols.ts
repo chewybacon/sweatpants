@@ -99,7 +99,11 @@ const gates: Gate[] = [
   {
     name: "timer-polled-idle-runtime",
     pattern: "sleep\\(|setInterval\\(|setTimeout\\(",
-    paths: ["packages/session-contract/src", "packages/tool-runtime-local/src/session-registry.ts"],
+    paths: [
+      "packages/session-contract/src",
+      "packages/tool-runtime-local/src",
+      "packages/framework/src/handler/durable",
+    ],
     exclude: ["dist/", "node_modules/", "__tests__"],
   },
 ];

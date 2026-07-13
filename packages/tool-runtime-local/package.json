@@ -42,7 +42,7 @@
         "build": "tsup && pnpm build:types",
         "dev": "tsup --watch",
         "check": "tsc -b",
-        "test": "vitest run src --passWithNoTests && vitest run acceptance --passWithNoTests",
+        "test": "vitest run src && vitest run acceptance",
         "test:acceptance": "vitest run acceptance --passWithNoTests",
         "build:types": "tsc -b tsconfig.json --force"
     },

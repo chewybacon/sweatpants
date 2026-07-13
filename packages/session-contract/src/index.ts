@@ -14,6 +14,7 @@ export type {
   EffectPull,
   EffectRegistry,
   ElicitPull,
+  ExecutionJournalPayload,
   EmitPull,
   InvokePull,
   JournalPayload,
@@ -49,6 +50,8 @@ export {
   buildReplayIndex,
   descriptorFingerprint,
   descriptorIdentity,
+  stablePullId,
+  validateSessionCommand,
   type ReplayIndex,
   type IndexedPull,
 } from "./journal.ts";
@@ -58,6 +61,7 @@ export {
   type InMemoryCrankStoreOptions,
 } from "./store.ts";
 export { createCrankRuntime } from "./crank.ts";
+export { drainRunnableCrankSessions, type CrankRuntimeResolver } from "./recovery.ts";
 export { createCrankSession } from "./session.ts";
 export { CrankStoreContext, useCrankStore, useOptionalCrankStore } from "./contexts.ts";
 export { projectRecord, publicEvents } from "./projections.ts";

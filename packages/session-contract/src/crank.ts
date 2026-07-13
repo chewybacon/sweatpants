@@ -6,6 +6,7 @@ import {
   descriptorFingerprint,
   descriptorIdentity,
   resultEquals,
+  stablePullId,
   validateJournal,
   type ReplayIndex,
 } from "./journal.ts";
@@ -18,6 +19,7 @@ import {
   type CrankRuntimeOptions,
   type EffectContext,
   type EffectHandler,
+  type ExecutionJournalPayload,
   type JournalPayload,
   type JournalRecord,
   type Json,
@@ -71,8 +73,8 @@ export function createCrankRuntime(options: CrankRuntimeOptions): CrankRuntime {
         return claim.status === "closed" ? { state: "closed" } : { state: "fenced" };
       const lease = claim;
 
-      try {
-        while (true) {
+      while (true) {
+        try {
           let records = yield* options.store.readJournal(sessionId);
           validateJournal(records);
           if (records.some((record) => record.payload.type === "session_closed")) {
@@ -191,10 +193,11 @@ export function createCrankRuntime(options: CrankRuntimeOptions): CrankRuntime {
             }
             throw error;
           }
+        } catch (error) {
+          if (error instanceof RestartActivation) continue;
+          if (error instanceof FencedActivation) return { state: "fenced" };
+          throw error;
         }
-      } catch (error) {
-        if (error instanceof FencedActivation) return { state: "fenced" };
-        throw error;
       }
     },
   };
@@ -207,8 +210,9 @@ function* runTask(
   factory: ProgramFactory,
   forceCancel: boolean,
 ): Operation<TaskRun> {
-  const recordedPulls = state.index.pulls.get(taskId) ?? [];
-  const recordedClose = state.index.closes.get(taskId);
+  const currentIndex = buildReplayIndex(state.records, state.turn.turnId);
+  const recordedPulls = currentIndex.pulls.get(taskId) ?? [];
+  const recordedClose = currentIndex.closes.get(taskId);
   let generator: ReturnType<ProgramFactory>;
   try {
     generator = factory(input);
@@ -230,6 +234,14 @@ function* runTask(
     const descriptor = snapshotDescriptor(liveDescriptor);
     const pullId = stablePullId(state.lease.sessionId, state.turn.turnId, taskId, pullIndex);
     const expected = recordedPulls[pullIndex];
+    if (recordedClose && !expected) {
+      throw new Divergence({
+        taskId,
+        pullIndex,
+        actualIdentity: descriptorIdentity(descriptor),
+        actualSha: descriptorFingerprint(descriptor),
+      });
+    }
     if (expected)
       assertReplayMatch(
         taskId,
@@ -259,11 +271,21 @@ function* runTask(
         if (descriptor.kind === "invoke" || descriptor.kind === "all") {
           yield* cancelDescriptorChildren(state, taskId, pullId, descriptor, childOrdinal);
         }
+        if (
+          descriptor.kind === "effect" ||
+          descriptor.kind === "record" ||
+          descriptor.kind === "emit"
+        ) {
+          yield* abandonCurrentAttempt(state, taskId, pullId, "cancelled");
+        }
+        const reservedResponse =
+          descriptor.kind === "elicit" ? responseFor(state.records, pullId) : undefined;
         state.records = yield* append(state, {
           type: "pull_resolved",
           turnId: state.turn.turnId,
           taskId,
           pullId,
+          ...(reservedResponse ? { commandId: reservedResponse.commandId } : {}),
           result: { status: "cancelled" },
         });
         pullIndex += 1;
@@ -424,8 +446,9 @@ function* resolvePull(
         { index: number; run: TaskRun } | { index: number; error: unknown },
         void
       >();
+      const tasks = [];
       for (const [index, child] of children.entries()) {
-        yield* spawn(function* () {
+        tasks[index] = yield* spawn(function* () {
           try {
             completions.add({
               index,
@@ -443,33 +466,52 @@ function* resolvePull(
         if (next.done) throw new CrankError("runtime_error", "all completion queue closed");
         if ("error" in next.value) throw next.value.error;
         outcomes[next.value.index] = next.value.run;
-      }
 
-      const failedIndex = outcomes.findIndex(
-        (outcome) => outcome && "result" in outcome && outcome.result.status !== "ok",
-      );
-      if (failedIndex >= 0) {
-        const failure = outcomes[failedIndex]!;
-        if (!("result" in failure)) throw new CrankError("runtime_error");
-        for (let index = children.length - 1; index >= 0; index -= 1) {
-          const sibling = children[index]!;
-          if (
-            !state.records.some(
-              (record) =>
-                record.payload.type === "task_closed" && record.payload.taskId === sibling.taskId,
-            )
-          ) {
-            yield* runTask(state, sibling.taskId, sibling.input, sibling.factory!, true);
+        if ("result" in next.value.run && next.value.run.result.status !== "ok") {
+          // Stop unfinished live siblings immediately, then reconstruct each in
+          // reverse order under force-cancel so cleanup and durable closes run.
+          for (let index = children.length - 1; index >= 0; index -= 1) {
+            if (outcomes[index] === undefined) yield* tasks[index]!.halt();
           }
+          for (let index = children.length - 1; index >= 0; index -= 1) {
+            const sibling = children[index]!;
+            if (
+              !state.records.some(
+                (record) =>
+                  record.payload.type === "task_closed" && record.payload.taskId === sibling.taskId,
+              )
+            ) {
+              outcomes[index] = yield* runTask(
+                state,
+                sibling.taskId,
+                sibling.input,
+                sibling.factory!,
+                true,
+              );
+            }
+          }
+          const failures = children.flatMap((child, index) => {
+            const close = [...state.records]
+              .reverse()
+              .find(
+                (record) =>
+                  record.payload.type === "task_closed" && record.payload.taskId === child.taskId,
+              );
+            return close?.payload.type === "task_closed" && close.payload.result.status === "error"
+              ? [{ index, result: close.payload.result as Result }]
+              : [];
+          });
+          const failure = failures.sort((left, right) => left.index - right.index)[0];
+          if (!failure) throw new CrankError("runtime_error", "all failure was not durable");
+          state.records = yield* append(state, {
+            type: "pull_resolved",
+            turnId: state.turn.turnId,
+            taskId,
+            pullId,
+            result: failure.result,
+          });
+          return { result: failure.result };
         }
-        state.records = yield* append(state, {
-          type: "pull_resolved",
-          turnId: state.turn.turnId,
-          taskId,
-          pullId,
-          result: failure.result,
-        });
-        return { result: failure.result };
       }
 
       const parked = outcomes.find((outcome): outcome is { parked: true; pullId: string } =>
@@ -498,6 +540,39 @@ function* resolvePull(
     case "emit":
       return yield* executeAutomatic(state, taskId, pullIndex, pullId, descriptor, liveDescriptor);
   }
+}
+
+function* abandonCurrentAttempt(
+  state: RunState,
+  taskId: string,
+  pullId: string,
+  reason: Extract<JournalPayload, { type: "attempt_abandoned" }>["reason"],
+): Operation<void> {
+  const attempts = state.records
+    .filter(
+      (record) => record.payload.type === "attempt_started" && record.payload.pullId === pullId,
+    )
+    .map((record) => record.payload as Extract<JournalPayload, { type: "attempt_started" }>);
+  const abandoned = new Set(
+    state.records
+      .filter(
+        (record) => record.payload.type === "attempt_abandoned" && record.payload.pullId === pullId,
+      )
+      .map(
+        (record) =>
+          (record.payload as Extract<JournalPayload, { type: "attempt_abandoned" }>).attemptId,
+      ),
+  );
+  const current = attempts.at(-1);
+  if (!current || abandoned.has(current.attemptId)) return;
+  state.records = yield* append(state, {
+    type: "attempt_abandoned",
+    turnId: state.turn.turnId,
+    taskId,
+    pullId,
+    attemptId: current.attemptId,
+    reason,
+  });
 }
 
 function* executeAutomatic(
@@ -582,12 +657,13 @@ function* executeAutomatic(
           error: { code: "unknown_target", message: `Unknown effect ${descriptor.effectId}` },
         };
       } else {
-        const value = yield* runHandler(handler, descriptor.input, context);
+        const value = yield* runHandlerUntilCommand(state, handler, descriptor.input, context);
         result = { status: "ok", value: canonicalSnapshot(value).value };
       }
     }
   } catch (error) {
     if (
+      error instanceof RestartActivation ||
       error instanceof FencedActivation ||
       (error instanceof CrankError && error.code === "ownership_fenced")
     )
@@ -679,10 +755,11 @@ function* closeErroredTask(state: RunState, taskId: string, error: unknown): Ope
     error instanceof PullApplicationError
       ? { status: "error", error: error.applicationError }
       : { status: "error", error: serializeError(error) };
-  const close = state.index.closes.get(taskId);
+  const currentIndex = buildReplayIndex(state.records, state.turn.turnId);
+  const close = currentIndex.closes.get(taskId);
   if (close) {
     if (!taskResultEquals(close.result, result))
-      throw new Divergence({ taskId, pullIndex: state.index.pulls.get(taskId)?.length ?? 0 });
+      throw new Divergence({ taskId, pullIndex: currentIndex.pulls.get(taskId)?.length ?? 0 });
     return { result: close.result as Result };
   }
   state.records = yield* append(state, {
@@ -716,6 +793,54 @@ function* runHandler(handler: EffectHandler, input: Json, context: EffectContext
   const result = handler(input, context);
   if (isOperation(result)) return yield* result;
   return result;
+}
+
+function* runHandlerUntilCommand(
+  state: RunState,
+  handler: EffectHandler,
+  input: Json,
+  context: EffectContext,
+): Operation<Json> {
+  const completions = createQueue<
+    | { type: "handler"; value: Json }
+    | { type: "handler_error"; error: unknown }
+    | { type: "cancel" },
+    void
+  >();
+  const afterOffset = state.records.length - 1;
+  const handlerTask = yield* spawn(function* () {
+    try {
+      completions.add({ type: "handler", value: yield* runHandler(handler, input, context) });
+    } catch (error) {
+      completions.add({ type: "handler_error", error });
+    }
+  });
+  const watcherTask = yield* spawn(function* () {
+    const events = yield* state.options.store.events(state.lease.sessionId, afterOffset);
+    while (true) {
+      const next = yield* events.next();
+      if (next.done) return;
+      if (next.value.payload.type !== "command") continue;
+      const command = next.value.payload.command;
+      if (
+        command.type === "close_session" ||
+        (command.type === "cancel_turn" && command.turnId === state.turn.turnId)
+      ) {
+        completions.add({ type: "cancel" });
+        return;
+      }
+    }
+  });
+  const next = yield* completions.next();
+  if (next.done) throw new CrankError("runtime_error", "handler completion queue closed");
+  if (next.value.type === "cancel") {
+    yield* handlerTask.halt();
+    yield* watcherTask.halt();
+    throw new RestartActivation();
+  }
+  yield* watcherTask.halt();
+  if (next.value.type === "handler_error") throw next.value.error;
+  return next.value.value;
 }
 
 function resumeGenerator(
@@ -810,7 +935,7 @@ function snapshotDescriptor(descriptor: PullDescriptor): PullDescriptor {
   }
 }
 
-function* append(state: RunState, payload: JournalPayload): Operation<JournalRecord[]> {
+function* append(state: RunState, payload: ExecutionJournalPayload): Operation<JournalRecord[]> {
   state.records = yield* appendRaw(state.options, state.lease, state.records, payload);
   return state.records;
 }
@@ -819,26 +944,20 @@ function* appendRaw(
   options: CrankRuntimeOptions,
   lease: Lease,
   records: JournalRecord[],
-  payload: JournalPayload,
+  payload: ExecutionJournalPayload,
 ): Operation<JournalRecord[]> {
-  while (true) {
-    const result = yield* options.store.appendExecution(lease, records.length, payload);
-    if (result.status === "fenced") throw new FencedActivation();
-    if (result.status === "head_changed") {
-      records = yield* options.store.readJournal(lease.sessionId);
-      validateJournal(records);
-      continue;
-    }
-    if (result.status !== "appended") throw new FencedActivation();
-    records.push({
-      offset: result.offset,
-      eventId: `journal:${lease.sessionId}:${result.offset}`,
-      sessionId: lease.sessionId,
-      ownerEpoch: lease.epoch,
-      payload: structuredClone(payload),
-    });
-    return records;
-  }
+  const result = yield* options.store.appendExecution(lease, records.length, payload);
+  if (result.status === "fenced") throw new FencedActivation();
+  if (result.status === "head_changed") throw new RestartActivation();
+  if (result.status !== "appended") throw new FencedActivation();
+  records.push({
+    offset: result.offset,
+    eventId: `journal:${lease.sessionId}:${result.offset}`,
+    sessionId: lease.sessionId,
+    ownerEpoch: lease.epoch,
+    payload: structuredClone(payload),
+  });
+  return records;
 }
 
 function* releaseClosed(options: CrankRuntimeOptions, lease: Lease, head: number): Operation<void> {
@@ -963,15 +1082,6 @@ function openedUnclosedTasks(records: JournalRecord[], turnId: string): string[]
       .map((record) => (record.payload as Extract<JournalPayload, { type: "task_closed" }>).taskId),
   );
   return opened.filter((taskId) => !closed.has(taskId));
-}
-
-function stablePullId(
-  sessionId: string,
-  turnId: string,
-  taskId: string,
-  pullIndex: number,
-): string {
-  return stableOpaqueId("pull", [sessionId, turnId, taskId, pullIndex]);
 }
 
 function childCount(descriptor: PullDescriptor): number {

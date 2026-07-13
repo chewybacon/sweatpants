@@ -14,6 +14,9 @@
         "test:acceptance": "vitest run acceptance",
         "test:e2e": "playwright test",
         "test:e2e:ui": "playwright test --ui",
+        "test:outside-in": "RUN_LIVE=1 OUTSIDE_IN_TIER_B=1 OUTSIDE_IN_ATTEMPTS=1 OUTSIDE_IN_TIMEOUT_MS=80000 OUTSIDE_IN_TEST_TIMEOUT_MS=85000 vitest run --config vitest.outside-in.config.ts --bail=1",
+        "test:outside-in:tier-a": "RUN_LIVE=1 OUTSIDE_IN_ATTEMPTS=1 OUTSIDE_IN_TIMEOUT_MS=80000 OUTSIDE_IN_TEST_TIMEOUT_MS=85000 vitest run --config vitest.outside-in.config.ts --bail=1",
+        "test:outside-in:hermetic": "RUN_LIVE=0 vitest run --config vitest.outside-in.config.ts src/outside-in/worker-boundary.test.ts --bail=1",
         "deploy": "vite build",
         "server": "node dist/express-server.js",
         "server:dev": "tsx express-server.ts"
@@ -25,6 +28,7 @@
         "@radix-ui/react-scroll-area": "^1.2.10",
         "@radix-ui/react-slot": "^1.2.4",
         "@sweatpants/core": "workspace:*",
+        "@sweatpants/crank-store-redis": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",

@@ -1,59 +1,106 @@
-import { createHash } from 'node:crypto'
+import { sha256 as hashSha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
-import { CrankError, type Json } from './types.ts'
+import { CrankError, type Json } from "./types.ts";
 
-/** RFC 8785 uses ECMAScript JSON number/string serialization and UTF-16 key order. */
+/** RFC 8785 uses ECMAScript JSON number serialization and UTF-16 key order. */
 export function canonicalJson(value: Json): string {
-  return encode(assertJson(value))
+  return encode(assertJson(value));
 }
 
 export function canonicalSnapshot(value: unknown): { value: Json; canonical: string; sha: string } {
-  const canonical = encode(assertJson(value))
-  const snapshot = JSON.parse(canonical) as Json
-  return { value: snapshot, canonical, sha: sha256(canonical) }
+  const canonical = encode(assertJson(value));
+  const snapshot = JSON.parse(canonical) as Json;
+  return { value: snapshot, canonical, sha: sha256(canonical) };
 }
 
 export function sha256(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex')
+  return bytesToHex(hashSha256(new TextEncoder().encode(value)));
 }
 
 export function stableOpaqueId(prefix: string, value: Json): string {
-  return `${prefix}_${sha256(canonicalJson(value)).slice(0, 32)}`
+  return `${prefix}_${sha256(canonicalJson(value)).slice(0, 32)}`;
 }
 
-export function assertJson(value: unknown, path = '$', seen = new Set<object>()): Json {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) throw invalid(path, 'non-finite number')
-    return Object.is(value, -0) ? 0 : value
+export function assertJson(value: unknown, path = "$", seen = new Set<object>()): Json {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    assertValidUnicode(value, path);
+    return value;
   }
-  if (typeof value !== 'object') throw invalid(path, typeof value)
-  if (seen.has(value)) throw invalid(path, 'cycle')
-  seen.add(value)
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw invalid(path, "non-finite number");
+    return Object.is(value, -0) ? 0 : value;
+  }
+  if (typeof value !== "object") throw invalid(path, typeof value);
+  if (seen.has(value)) throw invalid(path, "cycle");
+  seen.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.map((item, index) => assertJson(item, `${path}[${index}]`, seen))
+      const output: Json[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          throw invalid(`${path}[${index}]`, "sparse array slot");
+        }
+        output.push(assertJson(value[index], `${path}[${index}]`, seen));
+      }
+      const extraKeys = Reflect.ownKeys(value).filter(
+        (key) =>
+          key !== "length" &&
+          !(typeof key === "string" && /^(0|[1-9]\d*)$/.test(key) && Number(key) < value.length),
+      );
+      if (extraKeys.length > 0) throw invalid(path, "non-index array property");
+      return output;
     }
-    const prototype = Object.getPrototypeOf(value)
-    if (prototype !== Object.prototype && prototype !== null) throw invalid(path, 'non-plain object')
-    const output: Record<string, Json> = {}
-    for (const key of Object.keys(value as Record<string, unknown>)) {
-      output[key] = assertJson((value as Record<string, unknown>)[key], `${path}.${key}`, seen)
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null)
+      throw invalid(path, "non-plain object");
+    const output: Record<string, Json> = {};
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== "string") throw invalid(path, "symbol-keyed property");
+      assertValidUnicode(key, `${path}.<key>`);
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor?.enumerable || !("value" in descriptor)) {
+        throw invalid(`${path}.${key}`, "non-enumerable or accessor property");
+      }
+      output[key] = assertJson(descriptor.value, `${path}.${key}`, seen);
     }
-    return output
+    return output;
   } finally {
-    seen.delete(value)
+    seen.delete(value);
   }
 }
 
 function encode(value: Json): string {
-  if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
-    return JSON.stringify(value)
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value);
   }
-  if (Array.isArray(value)) return `[${value.map(encode).join(',')}]`
-  return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${encode(value[key]!)}`).join(',')}}`
+  if (Array.isArray(value)) return `[${value.map(encode).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${encode(value[key]!)}`)
+    .join(",")}}`;
+}
+
+function assertValidUnicode(value: string, path: string): void {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (!(next >= 0xdc00 && next <= 0xdfff)) throw invalid(path, "lone high surrogate");
+      index += 1;
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      throw invalid(path, "lone low surrogate");
+    }
+  }
 }
 
 function invalid(path: string, kind: string): CrankError {
-  return new CrankError('invalid_pull', `Value at ${path} is not canonical JSON (${kind})`)
+  return new CrankError("invalid_pull", `Value at ${path} is not canonical JSON (${kind})`);
 }

@@ -62,6 +62,6 @@ for (const tier of selectedTiers()) {
       // Both turns must have completed (one RUN_FINISHED each) — this is the
       // robust multi-turn signal, independent of exact per-turn tool counts.
       expectRunFinished(transcript, 2);
-    }, 120_000);
+    });
   });
 }

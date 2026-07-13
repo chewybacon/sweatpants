@@ -93,6 +93,7 @@ export type PluginSessionEvent =
       key: string;
       message: string;
       schema: Record<string, unknown>;
+      context?: Record<string, unknown>;
     }
   | {
       type: "result";
@@ -333,6 +334,7 @@ export function createPluginSessionManager(
                   key: event.key,
                   message: event.message,
                   schema: event.schema,
+                  ...(event.context ? { context: event.context } : {}),
                 };
 
               case "sample_request": {

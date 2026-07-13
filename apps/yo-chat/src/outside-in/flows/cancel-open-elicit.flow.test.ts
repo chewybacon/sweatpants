@@ -69,6 +69,6 @@ If the user asks a free-form question while a picker is open or after cancelling
       expectElicit(transcript, "pickCard");
       expectNoOpenInterruptError(transcript);
       expectNoRunError(transcript);
-    }, 150_000);
+    });
   });
 }

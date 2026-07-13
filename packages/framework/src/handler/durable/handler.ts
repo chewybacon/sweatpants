@@ -1007,14 +1007,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               resume: [],
             })
           : null;
-      if (resumeValidation) {
-        yield* recordThreadInterruptState(
-          bufferStore,
-          agUiThreadId,
-          interruptRecordsForThread(agUiThreadId),
-        );
-      }
-
+      // Resume validation is pure. Interrupt state is committed only after the
+      // crank respond commands are durably accepted by the adapter.
       const legacyElicitResponses = body.elicitResponses ?? [];
       log.debug(
         { provider: model.provider, model: model.id, api: model.api },
@@ -1248,6 +1242,21 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               ...(effectiveElicitResponses.length > 0 && {
                 elicitResponses: effectiveElicitResponses,
               }),
+              ...(resumeValidation?.ok && resumeValidation.idempotent
+                ? { resumeAlreadyApplied: true }
+                : {}),
+              ...(resumeValidation?.ok && !resumeValidation.idempotent
+                ? {
+                    onResumeAccepted: function* (): Operation<void> {
+                      upsertInterruptRecords(resumeValidation.records);
+                      yield* recordThreadInterruptState(
+                        bufferStore,
+                        agUiThreadId,
+                        interruptRecordsForThread(agUiThreadId),
+                      );
+                    },
+                  }
+                : {}),
               // Reopen the same durable journal across HTTP requests.
               ...(crankStore ? { crankStore } : {}),
               ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
