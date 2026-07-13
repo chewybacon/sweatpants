@@ -91,10 +91,12 @@ describe("yo-chat chat application composition", () => {
 
     expect(serverFiles).toEqual(
       expect.arrayContaining([
+        "src/server/chat-handler.ts",
         "src/server/default-system-prompt.ts",
         "src/server/durable-streams.ts",
         "src/server/model-provider.ts",
         "src/server/plugin-sampling-provider.ts",
+        "src/server/tool-runtime-installation.ts",
         "src/server/tool-runtime.ts",
         "src/server/tools.ts",
       ]),
@@ -103,7 +105,8 @@ describe("yo-chat chat application composition", () => {
     const composition = read("src/server/chat-application.ts");
     expect(composition).toContain("createYoChatApplication");
     expect(composition).toContain("createChatApplication");
-    expect(composition).toContain("createChatHandler");
+    expect(composition).toContain("createYoChatHandler");
+    expect(read("src/server/chat-handler.ts")).toContain("createChatHandler");
     expect(composition.split("\n").length).toBeLessThanOrEqual(60);
 
     const serverSources = serverFiles.map((file) => read(file)).join("\n");

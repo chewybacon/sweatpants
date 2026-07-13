@@ -19,7 +19,6 @@ export {
 export type { ExtendedMessage } from "../../../packages/framework/src/lib/chat/mcp-tools/mcp-tool-types.ts";
 export type { ModelProviderDriver } from "../../../packages/framework/src/lib/chat/model-provider.ts";
 export type {
-  ClientToolRequest,
   ElicitToolRequest,
   ToolExecuteRequest,
   ToolExecution,

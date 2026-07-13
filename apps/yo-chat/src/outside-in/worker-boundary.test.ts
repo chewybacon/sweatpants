@@ -11,7 +11,15 @@
  */
 import { describe, expect, it } from "vitest";
 import { each, run, sleep, spawn, type Operation } from "effection";
-import { createWorkerToolSession } from "@sweatpants/tool-runtime-local";
+import {
+  createInMemoryToolSessionStore,
+  createToolSessionForeignEffectRegistrations,
+  createToolSessionRegistry,
+  createWorkerToolSession,
+} from "@sweatpants/tool-runtime-local";
+import { calculator } from "@/tools/calculator";
+import { pluginSamplingProvider } from "@/server/plugin-sampling-provider";
+import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
 import type { ToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
 
 const PROBE_WORKER_URL = new URL("./lib/worker-probe-bootstrap.mjs", import.meta.url);
@@ -54,6 +62,39 @@ function* waitForProbeResult(
 }
 
 describe("outside-in worker boundary (Tier A)", () => {
+  it("executes the generated calculator tool in the real worker", async () => {
+    await run(function* () {
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+        samplingProvider: pluginSamplingProvider,
+        worker: yoChatToolSessionWorkerConfig,
+      });
+      const [start] = createToolSessionForeignEffectRegistrations({
+        registry,
+        tools: new Map([[calculator.name, calculator]]),
+      });
+      const disposition = yield* start.handler(
+        {
+          driver: "tool-session",
+          tool: calculator.name,
+          input: { expression: "2+2" },
+          durability: "ephemeral_handle",
+        },
+        {
+          sessionId: "calculator-foreign-smoke",
+          taskId: "turn-0/root.0",
+          pullId: "pull-calculator",
+          attemptId: "attempt-calculator",
+          cancellation: new AbortController().signal,
+          resolver: { audience: "foreign:tool-session" },
+        },
+      );
+      expect(disposition).toMatchObject({
+        type: "completed",
+        result: { result: 4, error: null },
+      });
+    });
+  }, 30_000);
+
   it("runs tool execute generators off the main thread in a genuine worker", async () => {
     await run(function* () {
       const session = yield* createWorkerToolSession({

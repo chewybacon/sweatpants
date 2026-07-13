@@ -13,11 +13,13 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
+  defineDurableEffect,
   defineDurableProgramManifest,
   foreignToolAdapter,
   type AttachProgramRequest,
   type DurableSemanticRecord,
   type ForeignToolRequest,
+  type Json,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
 
@@ -31,6 +33,14 @@ import {
 type Result = { answers: string[] };
 type Choice = { answer: string; continue: boolean };
 
+const afterChildEffect = defineDurableEffect<Result, Result>({
+  name: "fixture.after-child",
+  version: "1",
+  inputSchema: true,
+  outputSchema: true,
+  retrySafety: { mode: "idempotent", mechanism: "inherent" },
+});
+
 const parentManifest = defineDurableProgramManifest<null, Result>({
   programId: "fixture.automatic-foreign-parent",
   version: "1.0.0",
@@ -43,9 +53,9 @@ const parentManifest = defineDurableProgramManifest<null, Result>({
     additionalProperties: false,
   },
   elicits: {},
-  effects: {},
+  effects: { [afterChildEffect.name]: afterChildEffect },
   capabilities: {
-    durableEmissions: false,
+    durableEmissions: true,
     structuredChildren: true,
     replay: "strict",
   },
@@ -203,6 +213,102 @@ describe("automatic foreign adapter child orchestration", () => {
     expect(toolExecutions).toBe(1);
     expect(durableSamples).toBe(2);
   });
+
+  it("returns a defined outcome when a foreign child completes immediately", async () => {
+    const tool = createTool("echo")
+      .description("Completes without backchannels")
+      .parameters(z.object({ message: z.string() }))
+      .execute(function* ({ message }) {
+        return { echoed: message };
+      });
+    const request: ForeignToolRequest = {
+      driver: "tool-session",
+      tool: tool.name,
+      input: { message: "done" },
+      durability: "ephemeral_handle",
+    };
+    const parent = createDurableTool(parentManifest, function* (_input, context) {
+      yield* context.emit("tool_started", { tool: tool.name });
+      const foreignResult = yield* context.foreignTool<Json>(request);
+      const value =
+        foreignResult !== null &&
+        typeof foreignResult === "object" &&
+        !Array.isArray(foreignResult) &&
+        typeof foreignResult["echoed"] === "string"
+          ? foreignResult["echoed"]
+          : "missing";
+      const result = { answers: [value] };
+      yield* context.emit("tool_completed", { tool: tool.name, result });
+      return yield* context.effect(afterChildEffect, result, { audience: "test" });
+    });
+    const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
+    const drivers = createProgramDriverRegistry([
+      ["generator", createLocalDurableProgramDriver(tools)],
+    ]);
+    const keyring = createCapabilityKeyring("immediate-child", [
+      { keyId: "active", secret: "immediate-child-secret-is-32bytes" },
+    ]);
+    const authority = createInMemoryDurableJournalAuthority({
+      journalId: "immediate-child",
+      journalIncarnation: "1",
+      keyring,
+    });
+    const sessionId = "immediate-child-session";
+    const taskId = "turn-0/root";
+    const attach: AttachProgramRequest = {
+      sessionId,
+      taskId,
+      program: {
+        id: parentManifest.programId,
+        version: parentManifest.version,
+        digest: parentManifest.digest,
+      },
+      input: null,
+      route: { driverKind: "generator" },
+      executionEpoch: 1,
+    };
+
+    const outcome = await run(function* () {
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+        samplingProvider: {
+          *sample(): Operation<never> {
+            throw new Error("Immediate tool must not sample");
+          },
+        },
+        worker: {
+          workerUrl: new URL("./fixtures/tool-worker-bootstrap.mjs", import.meta.url),
+          isDev: false,
+          execArgv: ["--conditions=development"],
+        },
+      });
+      const effects = createDurableEffectRegistry([
+        ...createToolSessionForeignEffectRegistrations({
+          registry,
+          tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
+        }),
+        {
+          definition: afterChildEffect,
+          satisfies: { mode: "idempotent", mechanism: "inherent" },
+          *handler(input) {
+            return input;
+          },
+        },
+      ]);
+      yield* authority.openTask({
+        sessionId,
+        turnId: "turn-0",
+        taskId,
+        manifest: parentManifest,
+        input: null,
+        executionEpoch: 1,
+        attachmentId: "unattached-parent",
+        audience: "program-runtime",
+      });
+      return yield* runProgram(attach, authority, drivers, effects);
+    });
+
+    expect(outcome).toEqual({ state: "completed", value: { answers: ["done"] } });
+  }, 20_000);
 });
 
 function runProgram(

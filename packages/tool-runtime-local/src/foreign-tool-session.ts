@@ -68,12 +68,42 @@ export function createToolSessionForeignEffectRegistrations(
       const toolInput = isDurableToolSessionFacade(tool)
         ? { invocationId: context.taskId, input: request.input }
         : request.input;
-      const session = yield* options.registry.create(tool, toolInput, {
-        sessionId: foreignSessionId(context.sessionId, context.taskId),
-      });
-      const disposition = yield* nextDisposition(session, 0, request.durability);
+      let session: ToolSession;
+      try {
+        session = yield* options.registry.create(tool, toolInput, {
+          sessionId: foreignSessionId(context.sessionId, context.taskId),
+        });
+      } catch {
+        return failure(
+          request.durability,
+          "foreign_session_create_failed",
+          "Foreign ToolSession creation failed",
+        );
+      }
+      let disposition: ForeignToolDisposition;
+      try {
+        // Registry creation must publish a fully initialized session before the
+        // durable adapter begins consuming events. Reading status is the
+        // readiness barrier shared by worker and remote registries.
+        yield* session.status();
+        disposition = yield* nextDisposition(session, 0, request.durability);
+      } catch {
+        return failure(
+          request.durability,
+          "foreign_session_read_failed",
+          "Foreign ToolSession event read failed",
+        );
+      }
       if (disposition.type !== "input_required") {
-        yield* options.registry.release(session.id);
+        try {
+          yield* options.registry.release(session.id);
+        } catch {
+          return failure(
+            request.durability,
+            "foreign_session_release_failed",
+            "Foreign ToolSession release failed",
+          );
+        }
       }
       return disposition;
     },

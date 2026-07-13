@@ -123,7 +123,7 @@ AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 
 Unsupported names in `AGENTCORE_TOOL_NAMES` are rejected with a configuration error that lists the supported canonical names. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
 
-The `program-driver` engine uses the concrete local ToolSession registry to journal tool sampling and elicitation. The AgentCore ToolRuntime fallback currently rejects sampling-capable tools rather than silently bypassing the journal; AgentCore sampling-aware cutover remains a separate integration step.
+The `program-driver` engine uses concrete ToolSession registries to journal tool sampling and elicitation. In local mode, authored tools run through the local ToolSession registry. In AgentCore mode, a routed registry sends configured plugin tools to AgentCore and keeps local-only tools local; both routes expose sampling and elicitation to the same journal-aware foreign adapter.
 
 # Building For Production
 
