@@ -115,6 +115,8 @@ export type JournalPayload =
   | { type: "task_closed"; turnId: string; taskId: string; commandId?: string; result: TaskResult }
   | { type: "session_closed"; commandId: string; reason?: string };
 
+export type ExecutionJournalPayload = Exclude<JournalPayload, { type: "command" }>;
+
 export type JournalRecord = {
   offset: number;
   eventId: string;
@@ -150,7 +152,7 @@ export type PublicEvent =
   | { type: "turn_started" }
   | { type: "text_started"; messageId: string; attemptId: string }
   | { type: "text_delta"; messageId: string; attemptId: string; delta: string }
-  | { type: "attempt_abandoned"; attemptId: string }
+  | { type: "attempt_abandoned"; attemptId: string; messageId: string }
   | { type: "message_committed"; message: Json }
   | { type: "tool_started"; toolCallId: string; name: string; input?: Json }
   | { type: "tool_completed"; toolCallId: string; result?: Json }
@@ -202,11 +204,12 @@ export interface CrankStore {
   readJournal(sessionId: string): Operation<JournalRecord[]>;
   coordination(sessionId: string): Operation<CoordinationRecord>;
   claim(sessionId: string, ownerId: string, leaseMs?: number): Operation<ClaimResult>;
+  renewLease(lease: Lease, leaseMs?: number): Operation<Lease | { status: "fenced" }>;
   appendCommand(command: SessionCommand): Operation<CommandAck>;
   appendExecution(
     lease: Lease,
     expectedHead: number,
-    payload: JournalPayload,
+    payload: ExecutionJournalPayload,
   ): Operation<AppendExecutionResult>;
   parkAndRelease(lease: Lease, expectedHead: number): Operation<ReleaseResult>;
   closeAndRelease(lease: Lease, expectedHead: number): Operation<ReleaseResult>;

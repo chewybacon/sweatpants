@@ -71,18 +71,19 @@ is present, and `pnpm test:outside-in:hermetic` never touches the network.
 
 ### Environment knobs
 
-| Var                          | Default                  | Meaning                                                                               |
-| ---------------------------- | ------------------------ | ------------------------------------------------------------------------------------- |
-| `RUN_LIVE`                   | set by `test:outside-in` | `1` enables live-model flows; missing auth fails fast                                 |
-| `OUTSIDE_IN_TIER_B`          | set by `test:outside-in` | `1` also runs Tier B (boots the real server)                                          |
-| `OUTSIDE_IN_SERVER_PORT`     | `8123`                   | Tier B server port                                                                    |
-| `OUTSIDE_IN_REUSE_SERVER`    | unset                    | `1` reuse an already-running server (never killed)                                    |
-| `OUTSIDE_IN_SERVER_URL`      | unset                    | point Tier B at an existing server URL                                                |
-| `OUTSIDE_IN_SERVER_LOGS`     | unset                    | `1` streams Tier B server logs; otherwise logs are captured and shown only on failure |
-| `OUTSIDE_IN_FLOW_TIMEOUT_MS` | `90000`                  | hard cap for a whole headless flow before failing                                     |
-| `OUTSIDE_IN_TIMEOUT_MS`      | `100000`                 | hard cap for one live-model flake-policy attempt                                      |
-| `OUTSIDE_IN_TEST_TIMEOUT_MS` | `180000`                 | Vitest per-test cap for this tier                                                     |
-| `OUTSIDE_IN_HOOK_TIMEOUT_MS` | `60000`                  | Vitest hook/global setup cap                                                          |
+| Var                          | Default                    | Meaning                                                                               |
+| ---------------------------- | -------------------------- | ------------------------------------------------------------------------------------- |
+| `RUN_LIVE`                   | set by `test:outside-in`   | `1` enables live-model flows; missing auth fails fast                                 |
+| `OUTSIDE_IN_TIER_B`          | set by `test:outside-in`   | `1` also runs Tier B (boots the real server)                                          |
+| `OUTSIDE_IN_SERVER_PORT`     | `8123`                     | Tier B server port                                                                    |
+| `OUTSIDE_IN_REUSE_SERVER`    | unset                      | `1` reuse an already-running server (never killed)                                    |
+| `OUTSIDE_IN_SERVER_URL`      | unset                      | point Tier B at an existing server URL                                                |
+| `OUTSIDE_IN_SERVER_LOGS`     | unset                      | `1` streams Tier B server logs; otherwise logs are captured and shown only on failure |
+| `OUTSIDE_IN_FLOW_TIMEOUT_MS` | `90000`                    | hard cap for a whole headless flow before failing                                     |
+| `OUTSIDE_IN_ATTEMPTS`        | `1` in package scripts     | fail-fast main gate; opt into extra transient retries only for manual diagnosis       |
+| `OUTSIDE_IN_TIMEOUT_MS`      | `80000` in package scripts | live-model attempt cap, leaving cleanup headroom under the 90-second suite contract   |
+| `OUTSIDE_IN_TEST_TIMEOUT_MS` | `85000`                    | per-flow ceiling; `bail: 1` stops the matrix after the first failure                  |
+| `OUTSIDE_IN_HOOK_TIMEOUT_MS` | `60000`                    | Vitest hook/global setup cap                                                          |
 
 ## Copilot auth
 

@@ -1,4 +1,4 @@
-import { action, run, type Operation } from "effection";
+import { action, createQueue, run, spawn, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,10 +7,13 @@ import {
   createCrankRuntime,
   createCrankSession,
   createInMemoryCrankStore,
+  drainRunnableCrankSessions,
   effect,
   elicit,
   invoke,
+  stablePullId,
   validateJournal,
+  type JournalRecord,
   type Json,
   type ProgramFactory,
 } from "../index.ts";
@@ -398,6 +401,295 @@ describe("replay crank", () => {
           inputSha: canonicalSnapshot(null).sha,
         }),
       ).toEqual({ status: "fenced" });
+    });
+  });
+
+  it("rejects non-canonical sparse, symbol-keyed, and invalid Unicode inputs", () => {
+    expect(() => canonicalSnapshot(new Array(1))).toThrow(/sparse array/);
+    expect(() => canonicalSnapshot({ [Symbol("secret")]: 1 })).toThrow(/symbol-keyed/);
+    expect(() => canonicalSnapshot("\ud800")).toThrow(/lone high surrogate/);
+  });
+
+  it("rejects legacy fold logs instead of entering compatibility mode", () => {
+    const legacy = [
+      {
+        offset: 0,
+        eventId: "journal:legacy:0",
+        sessionId: "legacy",
+        ownerEpoch: 1,
+        payload: { type: "checkpoint", state: { kind: "call_batch" } },
+      },
+    ] as unknown as JournalRecord[];
+    expect(() => validateJournal(legacy)).toThrow(/unknown event family/);
+  });
+
+  it("rejects cross-task resolutions and attempts after resolution", () => {
+    const sessionId = "journal-validation";
+    const turnId = "turn-0";
+    const taskId = `${turnId}/root`;
+    const pullId = stablePullId(sessionId, turnId, taskId, 0);
+    const inputSha = canonicalSnapshot(null).sha;
+    const base: JournalRecord[] = [
+      {
+        offset: 0,
+        eventId: `journal:${sessionId}:0`,
+        sessionId,
+        payload: {
+          type: "command",
+          command: { type: "send", sessionId, commandId: "send", message: null },
+        },
+      },
+      {
+        offset: 1,
+        eventId: `journal:${sessionId}:1`,
+        sessionId,
+        ownerEpoch: 1,
+        payload: {
+          type: "turn_opened",
+          turnId,
+          turnSeq: 0,
+          taskId,
+          commandId: "send",
+          programVersion: "v1",
+          input: null,
+          inputSha,
+        },
+      },
+      {
+        offset: 2,
+        eventId: `journal:${sessionId}:2`,
+        sessionId,
+        ownerEpoch: 1,
+        payload: {
+          type: "pull_requested",
+          turnId,
+          taskId,
+          pullIndex: 0,
+          pullId,
+          descriptor: { kind: "effect", effectId: "x", input: null },
+          inputSha,
+        },
+      },
+    ];
+    expect(() =>
+      validateJournal([
+        ...base,
+        {
+          offset: 3,
+          eventId: `journal:${sessionId}:3`,
+          sessionId,
+          ownerEpoch: 1,
+          payload: {
+            type: "pull_resolved",
+            turnId: "wrong",
+            taskId: "wrong",
+            pullId,
+            result: { status: "ok", value: null },
+          },
+        },
+      ]),
+    ).toThrow(/pull resolution/);
+    expect(() =>
+      validateJournal([
+        ...base,
+        {
+          offset: 3,
+          eventId: `journal:${sessionId}:3`,
+          sessionId,
+          ownerEpoch: 1,
+          payload: {
+            type: "pull_resolved",
+            turnId,
+            taskId,
+            pullId,
+            result: { status: "ok", value: null },
+          },
+        },
+        {
+          offset: 4,
+          eventId: `journal:${sessionId}:4`,
+          sessionId,
+          ownerEpoch: 1,
+          payload: {
+            type: "attempt_started",
+            turnId,
+            taskId,
+            pullId,
+            attemptIndex: 0,
+            attemptId: `${pullId}:attempt-0`,
+          },
+        },
+      ]),
+    ).toThrow(/attempt start/);
+  });
+
+  it("drains the durable runnable index through a host recovery worker", async () => {
+    const store = createInMemoryCrankStore();
+    const runtime = createCrankRuntime({
+      store,
+      rootProgram: function* (input) {
+        return input;
+      },
+      programVersion: "v1",
+      ownerId: () => "recovery-owner",
+    });
+    const session = createCrankSession(store, "recovery-worker");
+    await run(function* () {
+      yield* session.send("work", { commandId: "send" });
+      expect(yield* drainRunnableCrankSessions(store, () => runtime)).toEqual([
+        { sessionId: "recovery-worker", outcome: { state: "idle" } },
+      ]);
+      expect(yield* store.runnableSessions()).toEqual([]);
+    });
+  });
+
+  it("rediscovers expired running work without a new command", async () => {
+    let now = 0;
+    const store = createInMemoryCrankStore({ now: () => now });
+    await run(function* () {
+      yield* store.appendCommand({
+        type: "send",
+        sessionId: "recover",
+        commandId: "send",
+        message: null,
+      });
+      const lease = yield* store.claim("recover", "dead", 10);
+      expect("status" in lease).toBe(false);
+      now = 11;
+      expect(yield* store.runnableSessions()).toContain("recover");
+    });
+  });
+
+  it("cancels an active effect and discards its late result", async () => {
+    const store = createInMemoryCrankStore();
+    const started = createQueue<void, void>();
+    const root: ProgramFactory = function* () {
+      yield* effect("slow", null);
+      return "late";
+    };
+    const runtime = createCrankRuntime({
+      store,
+      rootProgram: root,
+      programVersion: "v1",
+      effects: {
+        slow: () =>
+          (function* () {
+            started.add(undefined);
+            return yield* action<Json>(() => () => {});
+          })(),
+      },
+      ownerId: () => "owner",
+    });
+    const session = createCrankSession(store, "active-cancel");
+    await run(function* () {
+      yield* session.send(null, { commandId: "send" });
+      const activation = yield* spawn(function* () {
+        return yield* runtime.activate("active-cancel");
+      });
+      yield* started.next();
+      expect(yield* session.cancelTurn("turn-0", { commandId: "cancel" })).toMatchObject({
+        status: "accepted",
+      });
+      expect(yield* activation).toMatchObject({ state: "idle" });
+      const records = yield* store.readJournal("active-cancel");
+      expect(
+        records.some(
+          (record) =>
+            record.payload.type === "pull_resolved" && record.payload.result.status === "ok",
+        ),
+      ).toBe(false);
+      expect(records.at(-1)?.payload).toMatchObject({
+        type: "task_closed",
+        result: { status: "cancelled" },
+      });
+    });
+  });
+
+  it("consumes a reserved response when cancellation wins and rejects duplicate cancels", async () => {
+    const store = createInMemoryCrankStore();
+    const root: ProgramFactory = function* () {
+      return yield* elicit("approval", { key: "approve", message: "Approve?", responseSchema: {} });
+    };
+    const runtime = createCrankRuntime({
+      store,
+      rootProgram: root,
+      programVersion: "v1",
+      ownerId: () => "owner",
+    });
+    const session = createCrankSession(store, "response-cancel");
+    await run(function* () {
+      yield* session.send(null, { commandId: "send" });
+      yield* runtime.activate("response-cancel");
+      const parked = yield* store.readJournal("response-cancel");
+      const request = parked.find((record) => record.payload.type === "pull_requested");
+      if (request?.payload.type !== "pull_requested") throw new Error("missing request");
+      expect(
+        yield* session.respond(request.payload.pullId, true, { commandId: "respond" }),
+      ).toMatchObject({ status: "accepted" });
+      expect(yield* session.cancelTurn("turn-0", { commandId: "cancel" })).toMatchObject({
+        status: "accepted",
+      });
+      expect(yield* session.cancelTurn("turn-0", { commandId: "cancel-2" })).toMatchObject({
+        status: "not_pending",
+        reason: "reserved",
+      });
+      expect(yield* runtime.activate("response-cancel")).toMatchObject({ state: "idle" });
+      const records = yield* store.readJournal("response-cancel");
+      validateJournal(records);
+      expect(
+        records.find((record) => record.payload.type === "pull_resolved")?.payload,
+      ).toMatchObject({ commandId: "respond", result: { status: "cancelled" } });
+      expect(
+        records.find((record) => record.payload.type === "task_closed")?.payload,
+      ).toMatchObject({ commandId: "cancel", result: { status: "cancelled" } });
+      expect((yield* store.coordination("response-cancel")).runnable).toBe(false);
+    });
+  });
+
+  it("cancels a hung all sibling immediately after another child fails", async () => {
+    const store = createInMemoryCrankStore();
+    const child: ProgramFactory = function* (input) {
+      return yield* effect<Json>(String(input), null);
+    };
+    const root: ProgramFactory = function* () {
+      return yield* all([
+        { programId: "child", input: "fail" },
+        { programId: "child", input: "hang" },
+      ]);
+    };
+    const runtime = createCrankRuntime({
+      store,
+      rootProgram: root,
+      programVersion: "v1",
+      programs: { child },
+      effects: {
+        fail: () => {
+          throw new Error("boom");
+        },
+        hang: () => action<Json>(() => () => {}),
+      },
+      ownerId: () => "owner",
+    });
+    const session = createCrankSession(store, "all-failure");
+    await run(function* () {
+      yield* session.send(null, { commandId: "send" });
+      expect(yield* runtime.activate("all-failure")).toMatchObject({ state: "idle" });
+      const records = yield* store.readJournal("all-failure");
+      validateJournal(records);
+      const closes = records.filter((record) => record.payload.type === "task_closed");
+      expect(
+        closes.map(
+          (record) =>
+            record.payload.type === "task_closed" && [
+              record.payload.taskId,
+              record.payload.result.status,
+            ],
+        ),
+      ).toEqual([
+        ["turn-0/root.0", "error"],
+        ["turn-0/root.1", "cancelled"],
+        ["turn-0/root", "error"],
+      ]);
     });
   });
 });

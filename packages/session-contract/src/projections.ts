@@ -105,7 +105,9 @@ function projectEvent(record: JournalRecord, journal: readonly JournalRecord[]):
       return [];
     }
     case "attempt_abandoned":
-      return [{ type: "attempt_abandoned", attemptId: payload.attemptId }];
+      return [
+        { type: "attempt_abandoned", attemptId: payload.attemptId, messageId: payload.pullId },
+      ];
     case "durable_emission":
       return publicEmission(payload.emission, payload.pullId, payload.attemptId);
     case "task_closed": {
@@ -167,21 +169,40 @@ function publicEmission(emission: unknown, pullId: string, attemptId: string): P
     return [
       {
         type: "text_delta",
-        messageId: typeof nested["messageId"] === "string" ? nested["messageId"] : pullId,
+        messageId: pullId,
         attemptId,
         delta: typeof nested["delta"] === "string" ? nested["delta"] : "",
       },
     ];
   }
-  if (type === "message_committed") {
+  if (type === "message_committed" && nested["message"] !== undefined) {
     return [{ type: "message_committed", message: nested["message"] as never }];
   }
-  // AG-UI adapters may explicitly place a public event in an emission.
   if (
-    typeof type === "string" &&
-    ["text_started", "tool_started", "tool_completed"].includes(type)
+    type === "tool_started" &&
+    typeof nested["toolCallId"] === "string" &&
+    typeof nested["name"] === "string"
   ) {
-    return [emission as PublicEvent];
+    return [
+      {
+        type: "tool_started",
+        toolCallId: nested["toolCallId"],
+        name: nested["name"],
+        ...(nested["input"] !== undefined ? { input: nested["input"] as never } : {}),
+      },
+    ];
+  }
+  if (type === "tool_completed" && typeof nested["toolCallId"] === "string") {
+    return [
+      {
+        type: "tool_completed",
+        toolCallId: nested["toolCallId"],
+        ...(nested["result"] !== undefined ? { result: nested["result"] as never } : {}),
+      },
+    ];
+  }
+  if (type === "text_started" && typeof nested["attemptId"] === "string") {
+    return [{ type: "text_started", messageId: pullId, attemptId: nested["attemptId"] }];
   }
   return [];
 }

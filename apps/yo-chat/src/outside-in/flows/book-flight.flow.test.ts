@@ -70,7 +70,7 @@ for (const tier of selectedTiers()) {
       expectRunFinished(transcript);
       expectOutcome(transcript, "success");
       expectConfirmationToken(transcript);
-    }, 120_000);
+    });
 
     it("infers the return route from outbound history without restating cities", async () => {
       const transcript = await withFlakePolicy(() =>
@@ -105,6 +105,6 @@ If the user says "book the return flight" without restating cities, reverse the 
       expectNoOpenInterruptError(transcript);
       expectRunFinished(transcript, 2);
       expectOutcome(transcript, "success");
-    }, 180_000);
+    });
   });
 }

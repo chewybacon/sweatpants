@@ -37,7 +37,10 @@ const config: UserConfig = {
     // Live-model flows share one provider/server; keep them serial to avoid
     // provider throttling (mirrors playwright workers: 1 / design C7).
     fileParallelism: false,
-    testTimeout: Number.parseInt(process.env["OUTSIDE_IN_TEST_TIMEOUT_MS"] ?? "180000", 10),
+    // One failing flow must stop the matrix immediately; otherwise Tier A/B
+    // permutations can serialize the same failure for several minutes.
+    bail: 1,
+    testTimeout: Number.parseInt(process.env["OUTSIDE_IN_TEST_TIMEOUT_MS"] ?? "85000", 10),
     hookTimeout: Number.parseInt(process.env["OUTSIDE_IN_HOOK_TIMEOUT_MS"] ?? "60000", 10),
   },
 };

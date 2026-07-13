@@ -60,6 +60,10 @@ export interface SessionContractChatEngineParams {
   /** Shared fenced crank store. Product hosts install it once per process. */
   crankStore?: CrankStore;
   elicitResponses?: ElicitResponse[];
+  /** Resume was already durably consumed by an earlier request. */
+  resumeAlreadyApplied?: boolean;
+  /** Called only after all resume commands are durably accepted. */
+  onResumeAccepted?: () => Operation<void>;
   pluginAbort?: PluginAbortRequest;
 }
 
