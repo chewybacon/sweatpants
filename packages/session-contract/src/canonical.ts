@@ -4,21 +4,26 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 import { CrankError, type Json } from "./types.ts";
 
 /** RFC 8785 uses ECMAScript JSON number serialization and UTF-16 key order. */
-export function canonicalJson(value: Json): string {
+export function canonicalJson(value: unknown): string {
   return encode(assertJson(value));
 }
 
-export function canonicalSnapshot(value: unknown): { value: Json; canonical: string; sha: string } {
+/**
+ * Validate, canonicalize, and JSON-clone a value while preserving its static
+ * type. Validation rejects every value whose runtime shape would not survive
+ * the clone, so callers do not need repetitive descriptor/outcome casts.
+ */
+export function canonicalSnapshot<T>(value: T): { value: T; canonical: string; sha: string } {
   const canonical = encode(assertJson(value));
-  const snapshot = JSON.parse(canonical) as Json;
-  return { value: snapshot, canonical, sha: sha256(canonical) };
+  const snapshot: unknown = JSON.parse(canonical);
+  return { value: snapshot as T, canonical, sha: sha256(canonical) };
 }
 
 export function sha256(value: string): string {
   return bytesToHex(hashSha256(new TextEncoder().encode(value)));
 }
 
-export function stableOpaqueId(prefix: string, value: Json): string {
+export function stableOpaqueId(prefix: string, value: unknown): string {
   return `${prefix}_${sha256(canonicalJson(value)).slice(0, 32)}`;
 }
 
@@ -82,9 +87,9 @@ function encode(value: Json): string {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) return `[${value.map(encode).join(",")}]`;
-  return `{${Object.keys(value)
-    .sort()
-    .map((key) => `${JSON.stringify(key)}:${encode(value[key]!)}`)
+  return `{${Object.entries(value)
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([key, child]) => `${JSON.stringify(key)}:${encode(child)}`)
     .join(",")}}`;
 }
 

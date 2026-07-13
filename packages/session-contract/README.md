@@ -1,8 +1,67 @@
 # @sweatpants/session-contract
 
-Durable replay-crank runtime for lazy pull-generator programs.
+Durable replay-crank runtime for lazy pull-generator programs. The package now
+contains two explicitly classified surfaces:
 
-## Authoring
+- `createDurableTool` and the crank-native driver/authority APIs implement the
+  strict durable contract.
+- The original `ProgramFactory` helpers remain a compatibility surface while
+  existing callers migrate; they must not be advertised as crank-native.
+
+## Crank-native authoring
+
+```ts
+const echo = defineDurableEffect({
+    name: "echo",
+    version: "1",
+    inputSchema: { type: "string" },
+    outputSchema: { type: "string" },
+    retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+});
+
+const tool = createDurableTool(
+    {
+        programId: "example.echo",
+        version: "1.0.0",
+        digest: "<lowercase sha256 bundle digest>",
+        inputSchema: { type: "string" },
+        outputSchema: { type: "string" },
+        elicits: {},
+        effects: { echo },
+        capabilities: {
+            durableEmissions: true,
+            structuredChildren: false,
+            replay: "strict",
+        },
+    },
+    function* (input, context) {
+        yield* context.emit("progress", { stage: "starting" });
+        return yield* context.effect("echo", "1", input, {
+            audience: "host-effects",
+        });
+    },
+);
+```
+
+The durable program context also exposes journaled elicitation, durable waits,
+`invoke`, `all`, `race`, and structured `spawn`/`join`. Construction is lazy;
+program code receives no concrete effect handler or ambient credential.
+
+`ProgramPeer`, `JournalAuthority`, `DurableEffects`, and `ProgramRuntime` are
+native `effection/experimental` `createApi` values. Install driver, authority,
+and effect registries through their scope-local contexts. The in-memory
+journal authority provides reserve-before-dispatch, HMAC pull capabilities,
+audience checks, duplicate receipts, conflict detection, detached/revoked
+attempt state, unsafe indeterminacy, timer-free durable waits, emissions, and
+completion validation.
+
+MCP helpers expose `works.earendil/durable-effects-v1`, honest
+`opaque`/`server_task`/`crank_native` classification, MRTR authorize/commit
+shapes, and bounded caller-bound encrypted `requestState` storage. Source graph
+scanning is exported as a **guardrail only**; runtime evaluator isolation remains
+the security boundary.
+
+## Compatibility authoring
 
 ```ts
 import { effect, elicit, call, all, emit, record } from "@sweatpants/session-contract";

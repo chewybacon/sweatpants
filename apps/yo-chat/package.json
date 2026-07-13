@@ -33,6 +33,7 @@
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
         "@sweatpants/react-chat": "workspace:*",
+        "@sweatpants/session-contract": "workspace:*",
         "@sweatpants/stream-bridge": "workspace:*",
         "@sweatpants/tool-runtime-agentcore": "workspace:*",
         "@sweatpants/tool-runtime-local": "workspace:*",

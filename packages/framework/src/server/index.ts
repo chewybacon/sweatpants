@@ -122,11 +122,34 @@ export {
   createPluginSessionManager,
   CrankStoreContext,
   createInMemoryCrankStore,
+  createDurableTool,
+  defineDurableEffect,
+  defineDurableProgramManifest,
+  createDurableEffectRegistration,
+  createDurableEffectRegistry,
+  createDurableToolRegistry,
+  createInMemoryDurableJournalAuthority,
+  ProgramRuntime,
+  ProgramPeer,
+  JournalAuthority,
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  FOREIGN_TOOL_ADAPTER_PROGRAM,
+  foreignToolAdapter,
 } from "../handler/durable/index.ts";
 
 export { createStreamingHandler, useHandlerContext, HandlerContext } from "../handler/streaming.ts";
 
-export type { CrankStore } from "../handler/durable/index.ts";
+export type {
+  CrankStore,
+  DurableProgramContext,
+  DurableProgramManifest,
+  DurableTool,
+  EffectDefinition,
+  ForeignDurability,
+  ForeignToolDisposition,
+  ForeignToolRequest,
+  ProgramDriver,
+} from "../handler/durable/index.ts";
 
 export type {
   DurableChatHandlerConfig as ChatHandlerConfig,

@@ -27,6 +27,41 @@ export {
 } from "@sweatpants/session-contract";
 export type { CrankStore } from "@sweatpants/session-contract";
 
+// Crank-native authoring/runtime surface. Legacy ToolSession execution remains
+// available only as an explicitly opaque compatibility path.
+export {
+  DurableEffectRegistryContext,
+  JournalAuthority,
+  JournalAuthorityContext,
+  ProgramDriverRegistryContext,
+  ProgramPeer,
+  ProgramRuntime,
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  FOREIGN_TOOL_ADAPTER_PROGRAM,
+  FOREIGN_TOOL_CONTINUE_EFFECT,
+  FOREIGN_TOOL_START_EFFECT,
+  foreignToolAdapter,
+  createCapabilityKeyring,
+  createDurableEffectRegistration,
+  createDurableEffectRegistry,
+  createDurableTool,
+  createDurableToolRegistry,
+  createInMemoryDurableJournalAuthority,
+  defineDurableEffect,
+  defineDurableProgramManifest,
+} from "@sweatpants/session-contract";
+export type {
+  DurableEffectRegistration,
+  DurableProgramContext,
+  DurableProgramManifest,
+  DurableTool,
+  EffectDefinition,
+  ForeignDurability,
+  ForeignToolDisposition,
+  ForeignToolRequest,
+  ProgramDriver,
+} from "@sweatpants/session-contract";
+
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
 export type {

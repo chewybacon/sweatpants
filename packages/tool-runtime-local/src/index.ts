@@ -30,3 +30,21 @@ export {
 } from "./setup.ts";
 
 export * from "./worker.ts";
+
+export {
+  createLocalDurableProgramDriver,
+  createWorkerDurableProgramDriver,
+  type DurableWorkerProgramTransport,
+} from "./durable-driver.ts";
+export {
+  createToolSessionForeignEffectRegistrations,
+  type ToolSessionForeignDriverOptions,
+} from "./foreign-tool-session.ts";
+export {
+  DURABLE_TOOL_FACADE_ANNOTATION,
+  createDurableToolSessionFacade,
+  createInMemoryDurableToolFacadeStateStore,
+  isDurableToolSessionFacade,
+  type DurableToolFacadeStateStore,
+  type DurableToolSessionFacadeOptions,
+} from "./durable-tool-session-facade.ts";

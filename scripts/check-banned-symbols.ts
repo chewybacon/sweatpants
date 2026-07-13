@@ -104,7 +104,15 @@ const gates: Gate[] = [
       "packages/tool-runtime-local/src",
       "packages/framework/src/handler/durable",
     ],
-    exclude: ["dist/", "node_modules/", "__tests__"],
+    // Durable clock.sleep is an authoring operation that reserves a wait pull;
+    // it does not call an Effection or platform timer in the crank.
+    exclude: [
+      "dist/",
+      "node_modules/",
+      "__tests__",
+      "packages/session-contract/src/durable-types.ts",
+      "packages/session-contract/src/authoring.ts",
+    ],
   },
 ];
 

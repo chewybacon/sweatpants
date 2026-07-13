@@ -20,4 +20,19 @@ after hard process loss. Duplicate delivery remains safe because journal appends
 validate the owner epoch. Pub/sub notifications are only a latency optimization;
 the Redis runnable set is the durable recovery source.
 
-The in-memory store remains the local/test reference implementation.
+The package also exports `createRedisDurableJournalAuthority()` for the
+crank-native reserve/resolve protocol. It stores a versioned authority snapshot
+behind a Lua compare-and-set loop, so unrelated concurrent appends retry rather
+than invalidating pull-scoped capabilities. Task opening, pull reservation,
+attempt authorization, detached resolution, durable emissions, completion, and
+the runnable index survive independent authority instances.
+
+```ts
+const authority = createRedisDurableJournalAuthority(redisClient, {
+    journalId: "production",
+    journalIncarnation: deploymentIncarnation,
+    keyring,
+});
+```
+
+The in-memory stores remain the local/test reference implementations.

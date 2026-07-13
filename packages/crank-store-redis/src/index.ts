@@ -1,3 +1,9 @@
+export {
+  createRedisDurableJournalAuthority,
+  type RedisDurableJournalAuthority,
+  type RedisDurableJournalAuthorityOptions,
+} from "./durable-authority.ts";
+
 import { call, createSignal, resource, type Operation, type Stream } from "effection";
 import type { RedisClientType } from "redis";
 export type { CrankStore } from "@sweatpants/session-contract";
