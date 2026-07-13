@@ -32,15 +32,18 @@ import type {
   TaskCloseReceipt,
 } from "./durable-types.ts";
 
+/** Scope-owned journal authority capability; absent outside an installed runtime. */
 export const JournalAuthorityContext = createContext<DurableJournalAuthorityService | undefined>(
   "session-contract:journal-authority",
   undefined,
 );
+/** Scope-owned durable effect registry; handlers inherit caller cancellation. */
 export const DurableEffectRegistryContext = createContext<DurableEffectRegistry | undefined>(
   "session-contract:durable-effect-registry",
   undefined,
 );
 
+/** Binds a typed effect definition to a schema-parsing Effection handler. */
 export function createDurableEffectRegistration<I extends Json, O extends Json>(
   definition: EffectDefinition<I, O>,
   satisfies: DurableEffectRegistration["satisfies"],
@@ -50,14 +53,13 @@ export function createDurableEffectRegistration<I extends Json, O extends Json>(
     definition,
     satisfies,
     handler(input, context) {
-      // JSON Schema is the runtime witness that narrows the erased registry
-      // value back to the definition's compile-time input type.
-      const validated = assertSchemaValue(definition.inputSchema, input) as I;
+      const validated = assertSchemaValue<I>(definition.inputSchema, input);
       return handler(validated, context);
     },
   };
 }
 
+/** Creates an immutable registry and rejects duplicate symbolic effect names. */
 export function createDurableEffectRegistry(
   registrations: Iterable<DurableEffectRegistration>,
 ): DurableEffectRegistry {
@@ -92,6 +94,7 @@ export function createDurableEffectRegistry(
   return registry;
 }
 
+/** Resolves the current scoped authority or fails fast when not installed. */
 export function* useJournalAuthority(): Operation<DurableJournalAuthorityService> {
   const authority = yield* JournalAuthorityContext.get();
   if (!authority) {
@@ -100,6 +103,7 @@ export function* useJournalAuthority(): Operation<DurableJournalAuthorityService
   return authority;
 }
 
+/** Resolves the current scoped effect registry or fails fast when not installed. */
 export function* useDurableEffectRegistry(): Operation<DurableEffectRegistry> {
   const registry = yield* DurableEffectRegistryContext.get();
   if (!registry) {
@@ -108,6 +112,7 @@ export function* useDurableEffectRegistry(): Operation<DurableEffectRegistry> {
   return registry;
 }
 
+/** Native program-peer API for attaching, stepping, and shutting down a pinned driver. */
 export const ProgramPeer = createApi("crank-program-peer", {
   *attach(request: Parameters<ProgramDriver["attach"]>[0]): Operation<ProgramAttachment> {
     const registry = yield* ProgramDriverRegistryContext.get();
@@ -141,6 +146,7 @@ export const ProgramPeer = createApi("crank-program-peer", {
   },
 });
 
+/** Native authority API mediating reserve, resolve, emit, and complete transitions. */
 export const JournalAuthority = createApi("crank-journal-authority", {
   *reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
     const authority = yield* useJournalAuthority();
@@ -160,6 +166,7 @@ export const JournalAuthority = createApi("crank-journal-authority", {
   },
 });
 
+/** Native host-effect API that journals authorization and resolution receipts. */
 export const DurableEffects = createApi("crank-durable-effects", {
   *execute(authorization: DurableEffectAuthorization): Operation<ResolveOperationResult> {
     const registry = yield* useDurableEffectRegistry();
@@ -214,6 +221,7 @@ export const DurableEffects = createApi("crank-durable-effects", {
   },
 });
 
+/** Structured runtime API that drives programs and their child topology to a durable boundary. */
 export const ProgramRuntime = createApi("crank-program-runtime", {
   *run(request: ProgramRunRequest): Operation<ProgramRunResult> {
     let attachment: ProgramAttachment | undefined;
@@ -404,19 +412,23 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
   },
 });
 
+/** Bound ProgramPeer operations for composition without API-object lookup. */
 export const {
   attach: attachProgram,
   step: stepProgram,
   shutdown: shutdownProgram,
   manifest: resolveProgramManifest,
 } = ProgramPeer.operations;
+/** Bound JournalAuthority operations for composition without API-object lookup. */
 export const {
   reserve: reserveOperation,
   resolve: resolveOperation,
   emit: appendDurableEmission,
   complete: completeDurableTask,
 } = JournalAuthority.operations;
+/** Bound durable host-effect execution operation. */
 export const { execute: executeDurableEffect } = DurableEffects.operations;
+/** Bound durable program orchestration operation. */
 export const { run: runDurableProgram } = ProgramRuntime.operations;
 
 function* driverFor(kind: string): Operation<ProgramDriver> {

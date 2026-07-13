@@ -21,8 +21,10 @@ import type {
   ProgramStepProposal,
 } from "./durable-types.ts";
 
+/** Default canonical payload limit enforced at journal boundaries. */
 export const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
 
+/** Defines and freezes a schema-witnessed durable effect contract. */
 export function defineDurableEffect<I extends Json = Json, O extends Json = Json>(
   definition: EffectDefinition<I, O>,
 ): EffectDefinition<I, O> {
@@ -30,6 +32,7 @@ export function defineDurableEffect<I extends Json = Json, O extends Json = Json
   return deepFreeze(structuredClone(definition));
 }
 
+/** Parses and freezes a pinned durable program manifest. */
 export function defineDurableProgramManifest<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
 ): DurableProgramManifest<I, O> {
@@ -37,6 +40,7 @@ export function defineDurableProgramManifest<I extends Json = Json, O extends Js
   return deepFreeze(structuredClone(manifest));
 }
 
+/** Creates a synchronous crank-native tool after validating its manifest and factory. */
 export function createDurableTool<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
   program: DurableProgramFactory<I, O>,
@@ -65,6 +69,7 @@ export function createDurableTool<I extends Json = Json, O extends Json = Json>(
   return Object.freeze(tool);
 }
 
+/** Rejects malformed manifests, schemas, retry policies, and noncanonical values. */
 export function validateDurableManifest(manifest: DurableProgramManifest): void {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
     invalidManifest("manifest");
@@ -109,6 +114,7 @@ export function validateDurableManifest(manifest: DurableProgramManifest): void 
   canonicalSnapshot(manifest);
 }
 
+/** Rejects malformed effect identity, schemas, or retry-safety policy. */
 export function validateEffectDefinition(definition: EffectDefinition): void {
   if (!definition || typeof definition !== "object") {
     invalidManifest("effect definition");
@@ -183,6 +189,7 @@ function* durableEffect(
   return unwrapOutcome(outcome);
 }
 
+/** Creates the immutable authoring context that yields only durable operation proposals. */
 export function createDurableProgramContext(): DurableProgramContext {
   return Object.freeze({
     effect: durableEffect,
@@ -317,19 +324,23 @@ export function createDurableProgramContext(): DurableProgramContext {
   });
 }
 
-export function assertSchemaValue(
+/** Parses canonical JSON through a schema supplied as the runtime witness for `T`. */
+export function assertSchemaValue<T extends Json = Json>(
   schema: JsonSchema,
   value: unknown,
   errorCode = "schema_validation_failed",
-): Json {
+): T {
   const snapshot = canonicalSnapshot(assertJson(value));
   const error = schemaError(schema, snapshot.value, "$", new Set());
   if (error) {
     throw new CrankError(errorCode, error);
   }
-  return snapshot.value;
+  // SAFETY: callers requesting T must supply T's exact runtime schema; this
+  // function canonicalizes and validates before restoring that type witness.
+  return snapshot.value as T;
 }
 
+/** Enforces a canonical UTF-8 payload limit before persistence or transport. */
 export function assertInlineSize(value: Json, maxBytes = DEFAULT_MAX_INLINE_BYTES): void {
   const bytes = new TextEncoder().encode(canonicalSnapshot(value).canonical).byteLength;
   if (bytes > maxBytes) {
@@ -341,8 +352,8 @@ function unwrapOutcome<T = Json>(input: unknown): T {
   if (!isOperationOutcome(input)) {
     throw new CrankError("invalid_descriptor", "Program resumed without a durable outcome");
   }
-  // T is the author-declared result type; runtime schema validation occurs at
-  // the authority boundary before this recorded value reaches the program.
+  // SAFETY: T is the author-declared result type; the authority validates the
+  // recorded value against the exact pinned result schema before resumption.
   if (input.status === "ok") {
     return input.value as T;
   }
@@ -371,6 +382,7 @@ function isOperationOutcome(value: unknown): value is OperationOutcome {
   );
 }
 
+/** Structured cancellation signal raised inside a resumed durable generator. */
 export class DurableProgramCancellation extends Error {
   constructor() {
     super("Durable program cancelled");
@@ -610,6 +622,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+/** Projects thrown unknown values into a safe, serializable application error. */
 export function serializeDurableError(error: unknown): SerializedApplicationError {
   if (error instanceof PullApplicationError) {
     return error.applicationError;

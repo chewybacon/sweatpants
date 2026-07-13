@@ -22,6 +22,7 @@ export interface DurableWorkerProgramTransport {
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
 }
 
+/** Creates a worker-backed driver over a caller-owned serializable transport. */
 export function createWorkerDurableProgramDriver(
   transport: DurableWorkerProgramTransport,
 ): ProgramDriver {

@@ -11,18 +11,27 @@ import type {
 
 const encoder = new TextEncoder();
 
+/** Signing-key material supplied at composition; secrets are copied on ingress. */
 export type CapabilityKey = {
   keyId: string;
   secret: Uint8Array | string;
   status?: "active" | "verify_only" | "retired";
 };
 
+/** Immutable capability verification policy with one active signing key. */
 export interface CapabilityKeyring {
-  issuer: string;
-  activeKeyId: string;
-  keys: ReadonlyMap<string, { secret: Uint8Array; status: "active" | "verify_only" | "retired" }>;
+  readonly issuer: string;
+  readonly activeKeyId: string;
 }
 
+type KeyringState = ReadonlyMap<
+  string,
+  { readonly secret: Uint8Array; readonly status: "active" | "verify_only" | "retired" }
+>;
+
+const keyringStates = new WeakMap<CapabilityKeyring, KeyringState>();
+
+/** Parses key configuration, enforces unique IDs and 256-bit minimum secrets. */
 export function createCapabilityKeyring(
   issuer: string,
   keys: readonly CapabilityKey[],
@@ -56,7 +65,9 @@ export function createCapabilityKeyring(
   if (!selected || normalized.get(selected)?.status !== "active") {
     throw new CrankError("invalid_manifest", "An active signing key is required");
   }
-  return Object.freeze({ issuer, activeKeyId: selected, keys: normalized });
+  const keyring: CapabilityKeyring = Object.freeze({ issuer, activeKeyId: selected });
+  keyringStates.set(keyring, normalized);
+  return keyring;
 }
 
 type UnsignedProgramCapabilityClaims = Omit<
@@ -71,12 +82,13 @@ type UnsignedCapabilityClaims =
   | UnsignedProgramCapabilityClaims
   | UnsignedResolutionCapabilityClaims;
 
+/** Signs exact, canonical capability claims; rejects extra runtime fields. */
 export function signCapability(
   claims: UnsignedCapabilityClaims,
   keyring: CapabilityKeyring,
 ): string {
   const keyId = keyring.activeKeyId;
-  const key = keyring.keys.get(keyId);
+  const key = keyringState(keyring).get(keyId);
   if (!key || key.status !== "active") {
     throw new CrankError("invalid_resolution_capability", "Signing key is not active");
   }
@@ -86,15 +98,16 @@ export function signCapability(
     issuer: keyring.issuer,
     keyId,
   };
-  validateClaims(complete);
+  const parsed = parseClaims(complete);
   const first = "v1";
   const second = base64url(encoder.encode(keyId));
-  const third = base64url(encoder.encode(canonicalJson(complete)));
+  const third = base64url(encoder.encode(canonicalJson(parsed)));
   const signingInput = `${first}.${second}.${third}`;
   const signature = hmac(sha256, key.secret, encoder.encode(signingInput));
   return `${signingInput}.${base64url(signature)}`;
 }
 
+/** Authenticates and parses an exact canonical capability DTO. */
 export function verifyCapability(token: string, keyring: CapabilityKeyring): CapabilityClaims {
   try {
     const [version, keyPart, claimsPart, signaturePart, ...extraParts] = token.split(".");
@@ -108,7 +121,7 @@ export function verifyCapability(token: string, keyring: CapabilityKeyring): Cap
       throw invalid();
     }
     const keyId = new TextDecoder().decode(fromBase64url(keyPart));
-    const key = keyring.keys.get(keyId);
+    const key = keyringState(keyring).get(keyId);
     if (!key || key.status === "retired") {
       throw invalid();
     }
@@ -122,8 +135,7 @@ export function verifyCapability(token: string, keyring: CapabilityKeyring): Cap
       throw invalid();
     }
     const decoded = new TextDecoder("utf-8", { fatal: true }).decode(fromBase64url(claimsPart));
-    const claims: unknown = JSON.parse(decoded);
-    validateClaims(claims);
+    const claims = parseClaims(JSON.parse(decoded));
     if (canonicalJson(claims) !== decoded) {
       throw invalid();
     }
@@ -139,6 +151,7 @@ export function verifyCapability(token: string, keyring: CapabilityKeyring): Cap
   }
 }
 
+/** Verifies program authority and fences mismatched journal, task, epoch, or audience claims. */
 export function verifyProgramCapability(
   token: string,
   keyring: CapabilityKeyring,
@@ -172,6 +185,7 @@ export function verifyProgramCapability(
   return claims;
 }
 
+/** Verifies a pull-resolution capability for the required audience. */
 export function verifyResolutionCapability(
   token: string,
   keyring: CapabilityKeyring,
@@ -187,6 +201,7 @@ export function verifyResolutionCapability(
   return claims;
 }
 
+/** Narrows authenticated claims to program execution authority. */
 export function isProgramClaims(
   claims: CapabilityClaims,
 ): claims is ProgramExecutionCapabilityClaims {
@@ -198,6 +213,7 @@ export function isProgramClaims(
   );
 }
 
+/** Narrows authenticated claims to pull-resolution authority. */
 export function isResolutionClaims(claims: CapabilityClaims): claims is ResolutionCapabilityClaims {
   return (
     Array.isArray(claims.permissions) &&
@@ -206,62 +222,105 @@ export function isResolutionClaims(claims: CapabilityClaims): claims is Resoluti
   );
 }
 
-function validateClaims(claims: unknown): asserts claims is CapabilityClaims {
-  if (!isUnknownRecord(claims) || claims["version"] !== 1) {
+function parseClaims(input: unknown): CapabilityClaims {
+  if (!isUnknownRecord(input) || input["version"] !== 1) {
     throw invalid();
   }
-  requireStringFields(claims, [
-    "issuer",
-    "keyId",
-    "journalId",
-    "journalIncarnation",
-    "sessionId",
-    "taskId",
-    "audience",
-    "nonce",
-  ]);
-  const permissions = claims["permissions"];
+  const common = {
+    version: 1 as const,
+    issuer: requiredString(input, "issuer"),
+    keyId: requiredString(input, "keyId"),
+    journalId: requiredString(input, "journalId"),
+    journalIncarnation: requiredString(input, "journalIncarnation"),
+    sessionId: requiredString(input, "sessionId"),
+    taskId: requiredString(input, "taskId"),
+    audience: requiredString(input, "audience"),
+    nonce: requiredString(input, "nonce"),
+  };
+  const permissions = input["permissions"];
   if (
     Array.isArray(permissions) &&
     permissions.length === 2 &&
     permissions[0] === "propose" &&
     permissions[1] === "complete"
   ) {
-    requireStringFields(claims, ["programId", "programVersion", "programDigest", "attachmentId"]);
-    const executionEpoch = claims["executionEpoch"];
-    if (
-      typeof executionEpoch !== "number" ||
-      !Number.isSafeInteger(executionEpoch) ||
-      executionEpoch < 0
-    ) {
-      throw invalid();
-    }
-    return;
+    requireExactKeys(input, [
+      ...Object.keys(common),
+      "programId",
+      "programVersion",
+      "programDigest",
+      "attachmentId",
+      "executionEpoch",
+      "permissions",
+    ]);
+    return {
+      ...common,
+      programId: requiredString(input, "programId"),
+      programVersion: requiredString(input, "programVersion"),
+      programDigest: requiredString(input, "programDigest"),
+      attachmentId: requiredString(input, "attachmentId"),
+      executionEpoch: requiredNonNegativeInteger(input, "executionEpoch"),
+      permissions: ["propose", "complete"],
+    };
   }
   if (Array.isArray(permissions) && permissions.length === 1 && permissions[0] === "resolve") {
-    requireStringFields(claims, ["pullId", "descriptorDigest", "resultSchemaDigest", "attemptId"]);
-    const maxOutcomeBytes = claims["maxOutcomeBytes"];
-    if (
-      typeof maxOutcomeBytes !== "number" ||
-      !Number.isSafeInteger(maxOutcomeBytes) ||
-      maxOutcomeBytes < 0
-    ) {
-      throw invalid();
-    }
-    return;
+    requireExactKeys(input, [
+      ...Object.keys(common),
+      "pullId",
+      "descriptorDigest",
+      "resultSchemaDigest",
+      "attemptId",
+      "maxOutcomeBytes",
+      "permissions",
+    ]);
+    return {
+      ...common,
+      pullId: requiredString(input, "pullId"),
+      descriptorDigest: requiredString(input, "descriptorDigest"),
+      resultSchemaDigest: requiredString(input, "resultSchemaDigest"),
+      attemptId: requiredString(input, "attemptId"),
+      maxOutcomeBytes: requiredNonNegativeInteger(input, "maxOutcomeBytes"),
+      permissions: ["resolve"],
+    };
   }
   throw invalid();
+}
+
+function keyringState(keyring: CapabilityKeyring): KeyringState {
+  const state = keyringStates.get(keyring);
+  if (!state) {
+    throw new CrankError("invalid_manifest", "Capability keyring was not created by this module");
+  }
+  return state;
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function requireStringFields(value: Record<string, unknown>, fields: readonly string[]): void {
-  for (const field of fields) {
-    if (typeof value[field] !== "string" || value[field].length === 0) {
-      throw invalid();
-    }
+function requiredString(value: Record<string, unknown>, field: string): string {
+  const candidate = value[field];
+  if (typeof candidate !== "string" || candidate.length === 0) {
+    throw invalid();
+  }
+  return candidate;
+}
+
+function requiredNonNegativeInteger(value: Record<string, unknown>, field: string): number {
+  const candidate = value[field];
+  if (typeof candidate !== "number" || !Number.isSafeInteger(candidate) || candidate < 0) {
+    throw invalid();
+  }
+  return candidate;
+}
+
+function requireExactKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
+  const expected = new Set(allowed);
+  if (
+    Object.keys(value).some((key) => !expected.has(key)) ||
+    Object.keys(value).length !== expected.size
+  ) {
+    throw invalid();
   }
 }
 

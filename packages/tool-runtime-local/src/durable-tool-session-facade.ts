@@ -7,6 +7,7 @@ import {
   ProgramDriverRegistryContext,
   ProgramRuntime,
   assertJson,
+  assertSchemaValue,
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
@@ -24,8 +25,27 @@ import {
 
 import { createLocalDurableProgramDriver } from "./durable-driver.ts";
 
+/** Runtime annotation identifying an ordinary tool backed by an inner durable journal. */
 export const DURABLE_TOOL_FACADE_ANNOTATION = "sweatpants/durable-tool-facade";
 
+/** Expected facade failure translated through the ordinary ToolSession exception boundary. */
+export class DurableToolFacadeError extends Error {
+  readonly _tag = "DurableToolFacadeError";
+
+  constructor(
+    readonly code:
+      | "program_failed"
+      | "unsupported_park"
+      | "resolution_rejected"
+      | "effect_handler_missing",
+    message: string,
+  ) {
+    super(message);
+    this.name = "DurableToolFacadeError";
+  }
+}
+
+/** Invocation-keyed state port; implementations must copy snapshots and make saves retry-safe. */
 export interface DurableToolFacadeStateStore {
   load(invocationId: string): Operation<DurableAuthoritySnapshot | undefined>;
   save(invocationId: string, snapshot: DurableAuthoritySnapshot): Operation<void>;
@@ -48,6 +68,7 @@ type FacadeOuterContext = {
   >;
 };
 
+/** Dependencies and hooks for exposing one crank-native tool through ToolSession. */
 export interface DurableToolSessionFacadeOptions<I extends Json, O extends Json> {
   tool: DurableTool<I, O>;
   stateStore: DurableToolFacadeStateStore;
@@ -62,6 +83,7 @@ export interface DurableToolSessionFacadeOptions<I extends Json, O extends Json>
   }) => Operation<void>;
 }
 
+/** Creates a process-local snapshot store suitable only for tests and non-durable hosts. */
 export function createInMemoryDurableToolFacadeStateStore(): DurableToolFacadeStateStore {
   const snapshots = new Map<string, DurableAuthoritySnapshot>();
   return {
@@ -78,6 +100,11 @@ export function createInMemoryDurableToolFacadeStateStore(): DurableToolFacadeSt
   };
 }
 
+/**
+ * Wraps a durable tool in the ordinary ToolSession protocol while retaining an
+ * invocation-scoped inner journal. Expected execution failures cross the
+ * ToolSession-required exception boundary as {@link DurableToolFacadeError}.
+ */
 export function createDurableToolSessionFacade<I extends Json, O extends Json>(
   options: DurableToolSessionFacadeOptions<I, O>,
 ): RuntimeTool {
@@ -101,11 +128,12 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
     .samples()
     .annotate(DURABLE_TOOL_FACADE_ANNOTATION, { version: 1 })
     .execute(function* ({ invocationId, input }, context) {
-      const validatedInput = assertManifestInput<I>(input);
+      const validatedInput = assertManifestInput<I>(options.tool.manifest.inputSchema, input);
       return yield* runFacadeProgram(options, invocationId, validatedInput, context);
     });
 }
 
+/** Returns whether a runtime tool carries the durable-facade annotation. */
 export function isDurableToolSessionFacade(tool: RuntimeTool): boolean {
   const annotation = tool.annotations[DURABLE_TOOL_FACADE_ANNOTATION];
   return Boolean(annotation && typeof annotation === "object");
@@ -153,8 +181,8 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       });
     }
 
-    // Registry lookup erases each program's input/output type after registration;
-    // exact manifest schemas restore those types at attachment boundaries.
+    // SAFETY: registry lookup erases program type witnesses; the exact pinned
+    // manifest schemas restore input/output types at attachment boundaries.
     const tools = createDurableToolRegistry([options.tool as unknown as DurableTool]);
     const drivers = createProgramDriverRegistry([
       ["generator", createLocalDurableProgramDriver(tools)],
@@ -182,17 +210,18 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     }
 
     if (outcome.state === "completed") {
-      return outcome.value as O;
+      return assertSchemaValue<O>(options.tool.manifest.outputSchema, outcome.value);
     }
     if (outcome.state === "failed") {
-      const error = new Error(outcome.error.message);
-      error.name = outcome.error.code;
-      throw error;
+      throw new DurableToolFacadeError("program_failed", outcome.error.message);
     }
 
     const request = pendingElicit(authority.readJournal(invocationId), outcome.pullId);
     if (!request) {
-      throw new Error(`Unsupported durable facade park reason: ${outcome.reason}`);
+      throw new DurableToolFacadeError(
+        "unsupported_park",
+        `Unsupported durable facade park reason: ${outcome.reason}`,
+      );
     }
     const response = yield* outerContext.elicit("foreign_input", {
       message: request.descriptor.message,
@@ -213,7 +242,10 @@ function* runFacadeProgram<I extends Json, O extends Json>(
           : { status: "cancelled" },
     });
     if (resolution.status === "rejected") {
-      throw new Error(`Unable to resolve durable facade elicitation: ${resolution.code}`);
+      throw new DurableToolFacadeError(
+        "resolution_rejected",
+        `Unable to resolve durable facade elicitation: ${resolution.code}`,
+      );
     }
     snapshot = authority.exportSnapshot();
     yield* options.stateStore.save(invocationId, snapshot);
@@ -238,7 +270,10 @@ function effectRegistrations(
       }
       if (definition.name !== "model.sample") {
         return (function* () {
-          throw new Error(`No facade effect handler for ${definition.name}`);
+          throw new DurableToolFacadeError(
+            "effect_handler_missing",
+            `No facade effect handler for ${definition.name}`,
+          );
         })();
       }
       return bridgeModelSample(input, outerContext);
@@ -261,11 +296,8 @@ function* bridgeModelSample(input: Json, context: FacadeOuterContext): Operation
   };
 }
 
-function assertManifestInput<I extends Json>(input: unknown): I {
-  const json = assertJson(input);
-  // The inner journal authority performs full JSON Schema validation before
-  // opening the task. This cast restores the manifest's compile-time witness.
-  return json as I;
+function assertManifestInput<I extends Json>(schema: Json, input: unknown): I {
+  return assertSchemaValue<I>(schema, input);
 }
 
 function pendingElicit(records: DurableSemanticRecord[], pullId: string) {

@@ -1,11 +1,13 @@
 import { CrankError } from "./types.ts";
 
+/** Named source module supplied to the static durable-purity scanner. */
 export interface DurableSourceModule {
   id: string;
   source: string;
   firstParty?: boolean;
 }
 
+/** Scanner policy including source modules and explicitly permitted imports. */
 export interface DurablePurityScanOptions {
   entry: string;
   modules: ReadonlyMap<string, DurableSourceModule> | Readonly<Record<string, DurableSourceModule>>;
@@ -14,6 +16,7 @@ export interface DurablePurityScanOptions {
   effectHandlerModules?: ReadonlySet<string> | readonly string[];
 }
 
+/** Stable source-location finding for one prohibited durable-program construct. */
 export interface DurablePurityViolation {
   moduleId: string;
   code:
@@ -26,6 +29,7 @@ export interface DurablePurityViolation {
   index?: number;
 }
 
+/** Complete deterministic purity-scan result. */
 export interface DurablePurityScanResult {
   ok: boolean;
   scanned: string[];
@@ -44,6 +48,7 @@ const BANNED: Array<readonly [RegExp, string]> = [
   [/\b(?:readFile|writeFile|open|createReadStream|createWriteStream)\s*\(/g, "filesystem"],
 ];
 
+/** Scans authored source without executing or importing it. */
 export function scanDurableProgramSources(
   options: DurablePurityScanOptions,
 ): DurablePurityScanResult {
@@ -143,6 +148,7 @@ export function scanDurableProgramSources(
   };
 }
 
+/** Fails fast when static scanning finds a prohibited nondurable construct. */
 export function assertDurableProgramSources(options: DurablePurityScanOptions): void {
   const result = scanDurableProgramSources(options);
   if (!result.ok) {

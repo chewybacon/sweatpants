@@ -7,7 +7,7 @@ import {
   verifyResolutionCapability,
   type CapabilityKeyring,
 } from "./capabilities.ts";
-import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
+import { assertJson, canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import type {
   AppendEmissionRequest,
@@ -28,8 +28,10 @@ import type {
   TaskCloseReceipt,
 } from "./durable-types.ts";
 
+/** Closed attempt-state algebra persisted by the authority. */
 export type DurableAttemptState = "started" | "detached" | "completed" | "revoked" | "superseded";
 
+/** Append-only semantic journal record; payload variants are replay-stable. */
 export type DurableSemanticRecord = {
   offset: string;
   eventId: string;
@@ -170,6 +172,7 @@ type TaskSnapshot = Omit<Task, "pullsByAction" | "emissionsByAction"> & {
   emissionsByAction: Array<[number, { digest: string; receipt: EmissionReceipt }]>;
 };
 
+/** Versioned canonical snapshot DTO used only after boundary parsing. */
 export interface DurableAuthoritySnapshot {
   version: 1;
   tasks: TaskSnapshot[];
@@ -178,6 +181,7 @@ export interface DurableAuthoritySnapshot {
   nonce: number;
 }
 
+/** Composition options for a process-local authority and optional parsed snapshot. */
 export interface InMemoryDurableJournalOptions {
   journalId: string;
   journalIncarnation?: string;
@@ -187,6 +191,7 @@ export interface InMemoryDurableJournalOptions {
   snapshot?: DurableAuthoritySnapshot;
 }
 
+/** Complete root/child task identity and pinned program input required to open a task. */
 export interface OpenDurableTaskRequest {
   sessionId: string;
   turnId: string;
@@ -200,6 +205,10 @@ export interface OpenDurableTaskRequest {
   parentPullId?: string;
 }
 
+/**
+ * Canonical authority implementation used as the semantic baseline. Mutations
+ * are synchronous within an Effection scope and snapshots are deep copies.
+ */
 export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityService {
   readonly #tasks = new Map<string, Task>();
   readonly #records = new Map<string, DurableSemanticRecord[]>();
@@ -209,6 +218,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   };
   #nonce = 0;
 
+  /** Creates an empty authority or restores a previously parsed snapshot. */
   constructor(options: InMemoryDurableJournalOptions) {
     if (!options.journalId) {
       throw new CrankError("invalid_manifest", "journalId is required");
@@ -224,6 +234,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
   }
 
+  /** Opens one pinned task exactly once and returns attachment-bound authority. */
   *openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }> {
     const key = taskKey(request.sessionId, request.taskId);
     if (this.#tasks.has(key)) {
@@ -261,6 +272,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { programCapability: this.#programCapability(task) };
   }
 
+  /** Rebinds an existing task only at its current fenced execution epoch. */
   *bindProgramAttachment(
     sessionId: string,
     taskId: string,
@@ -281,6 +293,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { programCapability: this.#programCapability(task) };
   }
 
+  /** Idempotently allocates a deterministic child for an authorized invoke pull. */
   *ensureChildTask(request: EnsureChildTaskRequest): Operation<EnsureChildTaskResult> {
     const parent = this.#task(request.sessionId, request.parentTaskId);
     this.#assertActive(parent);
@@ -336,6 +349,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { taskId };
   }
 
+  /** Fences an old attachment and advances the task execution epoch. */
   *replaceAttachment(
     sessionId: string,
     taskId: string,
@@ -358,6 +372,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
+  /** Reserves or replays one action-indexed pull before host dispatch. */
   *reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult> {
     const task = this.#task(request.sessionId, request.taskId);
     this.#assertProgram(request.programCapability, task);
@@ -456,6 +471,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
+  /** Commits one schema-valid outcome under an audience-bound capability. */
   *resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult> {
     let claims: ResolutionCapabilityClaims;
     try {
@@ -576,6 +592,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { status: "accepted", receipt };
   }
 
+  /** Appends an action-indexed durable emission idempotently. */
   *emit(request: AppendEmissionRequest): Operation<EmissionReceipt> {
     const task = this.#task(request.sessionId, request.taskId);
     this.#assertProgram(request.programCapability, task);
@@ -610,6 +627,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return receipt;
   }
 
+  /** Closes a task exactly once after validating its manifest output schema. */
   *complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
     const task = this.#task(request.sessionId, request.taskId);
     this.#assertProgram(request.programCapability, task);
@@ -642,6 +660,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return receipt;
   }
 
+  /** Marks a live attempt detached without revoking its resolution capability. */
   *detachAttempt(
     sessionId: string,
     taskId: string,
@@ -653,6 +672,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     this.#detachAttempts(task, pull, reason);
   }
 
+  /** Explicitly revokes an attempt that can no longer produce a valid result. */
   *abandonAttempt(
     sessionId: string,
     taskId: string,
@@ -682,6 +702,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     });
   }
 
+  /** Retries an unsafe indeterminate effect only with explicit duplicate-risk acknowledgement. */
   *retryIndeterminateEffect(
     sessionId: string,
     taskId: string,
@@ -700,6 +721,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return this.#startAttempt(task, pull);
   }
 
+  /** Orphans a task whose pinned program cannot be recovered safely. */
   *forceOrphan(
     sessionId: string,
     taskId: string,
@@ -722,6 +744,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     task.status = "orphaned";
   }
 
+  /** Returns the current pull capability for an external resolver. */
   resolutionCapability(sessionId: string, taskId: string, pullId: string): string {
     const task = this.#task(sessionId, taskId);
     const pull = this.#pull(task, pullId);
@@ -731,10 +754,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return pull.capability;
   }
 
+  /** Returns a defensive copy of one session's semantic journal. */
   readJournal(sessionId: string): DurableSemanticRecord[] {
     return structuredClone(this.#records.get(sessionId) ?? []);
   }
 
+  /** Exports a defensive, versioned snapshot for persistence. */
   exportSnapshot(): DurableAuthoritySnapshot {
     const tasks: TaskSnapshot[] = [...this.#tasks.values()].map((task) => ({
       sessionId: task.sessionId,
@@ -764,10 +789,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
+  /** Returns runnable session IDs in deterministic lexical order. */
   runnableSessions(): string[] {
     return sortedStrings(this.#runnable);
   }
 
+  /** Clears a session's runnable marker after an activation owner claims it. */
   markActivated(sessionId: string): void {
     this.#runnable.delete(sessionId);
   }
@@ -985,37 +1012,551 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 }
 
+/** Creates a process-local authority; callers own its lifetime and persistence. */
 export function createInMemoryDurableJournalAuthority(
   options: InMemoryDurableJournalOptions,
 ): InMemoryDurableJournalAuthority {
   return new InMemoryDurableJournalAuthority(options);
 }
 
+/**
+ * Parses a serialized authority snapshot into canonical JSON and rejects malformed
+ * nested collections before they can enter authority state.
+ */
 export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthoritySnapshot {
-  const value: unknown = JSON.parse(serialized);
-  if (!isDurableAuthoritySnapshot(value)) {
-    throw new CrankError("invalid_journal", "Invalid durable authority snapshot");
+  try {
+    const value = assertJson(JSON.parse(serialized));
+    if (!isDurableAuthoritySnapshot(value)) {
+      throw invalidSnapshot();
+    }
+    return value;
+  } catch (error) {
+    if (error instanceof CrankError && error.code === "invalid_journal") {
+      throw error;
+    }
+    throw invalidSnapshot(error);
   }
-  return value;
 }
 
 function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySnapshot {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (
+    !isJsonRecord(value) ||
+    !hasExactKeys(value, ["version", "tasks", "records", "runnable", "nonce"])
+  ) {
     return false;
   }
-  if (!("version" in value) || value.version !== 1) {
+  return (
+    value["version"] === 1 &&
+    isNonNegativeInteger(value["nonce"]) &&
+    Array.isArray(value["tasks"]) &&
+    value["tasks"].every(isTaskSnapshot) &&
+    Array.isArray(value["records"]) &&
+    value["records"].every(isRecordCollection) &&
+    Array.isArray(value["runnable"]) &&
+    value["runnable"].every((entry) => typeof entry === "string")
+  );
+}
+
+function isTaskSnapshot(value: Json): boolean {
+  if (!isJsonRecord(value)) {
     return false;
   }
-  if (!("tasks" in value) || !Array.isArray(value.tasks)) {
+  const required = [
+    "sessionId",
+    "turnId",
+    "taskId",
+    "manifest",
+    "input",
+    "executionEpoch",
+    "attachmentId",
+    "audience",
+    "nextActionIndex",
+    "nextPullIndex",
+    "nextEmissionIndex",
+    "pullsByAction",
+    "emissionsByAction",
+    "status",
+  ];
+  const optional = ["close", "parentTaskId", "parentPullId"];
+  if (!hasOnlyKeys(value, required, optional)) {
     return false;
   }
-  if (!("records" in value) || !Array.isArray(value.records)) {
+  return (
+    required.slice(0, 3).every((key) => typeof value[key] === "string") &&
+    isManifestSnapshot(value["manifest"]) &&
+    typeof value["attachmentId"] === "string" &&
+    typeof value["audience"] === "string" &&
+    ["executionEpoch", "nextActionIndex", "nextPullIndex", "nextEmissionIndex"].every((key) =>
+      isNonNegativeInteger(value[key]),
+    ) &&
+    Array.isArray(value["pullsByAction"]) &&
+    value["pullsByAction"].every(isIndexedPullTuple) &&
+    Array.isArray(value["emissionsByAction"]) &&
+    value["emissionsByAction"].every(isIndexedEmissionTuple) &&
+    ["active", "closed", "cancelled", "orphaned"].includes(String(value["status"])) &&
+    (value["status"] === "closed") === isTaskCloseSnapshot(value["close"]) &&
+    (value["parentTaskId"] === undefined) === (value["parentPullId"] === undefined) &&
+    optional.every(
+      (key) =>
+        value[key] === undefined || typeof value[key] === "string" || isJsonRecord(value[key]),
+    )
+  );
+}
+
+function isManifestSnapshot(value: unknown): boolean {
+  if (!isJsonRecord(value)) {
     return false;
   }
-  if (!("runnable" in value) || !Array.isArray(value.runnable)) {
+  const capabilities = value["capabilities"];
+  const effects = value["effects"];
+  if (
+    !hasExactKeys(value, [
+      "programId",
+      "version",
+      "digest",
+      "inputSchema",
+      "outputSchema",
+      "elicits",
+      "effects",
+      "capabilities",
+    ])
+  ) {
     return false;
   }
-  return "nonce" in value && typeof value.nonce === "number";
+  return (
+    typeof value["programId"] === "string" &&
+    typeof value["version"] === "string" &&
+    typeof value["digest"] === "string" &&
+    /^[0-9a-f]{64}$/.test(value["digest"]) &&
+    isJsonRecord(value["elicits"]) &&
+    Object.values(value["elicits"]).every(
+      (declaration) =>
+        isJsonRecord(declaration) &&
+        hasOnlyKeys(declaration, ["responseSchema"], ["contextSchema"]),
+    ) &&
+    isJsonRecord(effects) &&
+    Object.entries(effects).every(
+      ([name, effect]) =>
+        isJsonRecord(effect) &&
+        hasExactKeys(effect, ["name", "version", "inputSchema", "outputSchema", "retrySafety"]) &&
+        effect["name"] === name &&
+        typeof effect["version"] === "string" &&
+        isRetrySafetySnapshot(effect["retrySafety"]),
+    ) &&
+    isJsonRecord(capabilities) &&
+    hasExactKeys(capabilities, ["durableEmissions", "structuredChildren", "replay"]) &&
+    typeof capabilities["durableEmissions"] === "boolean" &&
+    typeof capabilities["structuredChildren"] === "boolean" &&
+    capabilities["replay"] === "strict"
+  );
+}
+
+function isRetrySafetySnapshot(value: unknown): boolean {
+  if (!isJsonRecord(value) || typeof value["mode"] !== "string") {
+    return false;
+  }
+  if (value["mode"] === "unsafe") {
+    return (
+      hasExactKeys(value, ["mode", "onIndeterminate"]) &&
+      (value["onIndeterminate"] === "await_decision" || value["onIndeterminate"] === "fail")
+    );
+  }
+  return (
+    value["mode"] === "idempotent" &&
+    hasExactKeys(value, ["mode", "mechanism"]) &&
+    (value["mechanism"] === "pull_id_key" || value["mechanism"] === "inherent")
+  );
+}
+
+function isTaskCloseSnapshot(value: unknown): boolean {
+  return (
+    isJsonRecord(value) &&
+    hasExactKeys(value, ["digest", "receipt"]) &&
+    typeof value["digest"] === "string" &&
+    isJsonRecord(value["receipt"]) &&
+    hasExactKeys(value["receipt"], ["offset", "duplicate"]) &&
+    typeof value["receipt"]["offset"] === "string" &&
+    typeof value["receipt"]["duplicate"] === "boolean"
+  );
+}
+
+function isIndexedPullTuple(value: Json): boolean {
+  if (!Array.isArray(value) || value.length !== 2 || !isNonNegativeInteger(value[0])) {
+    return false;
+  }
+  const pull = value[1];
+  if (
+    !isJsonRecord(pull) ||
+    !hasOnlyKeys(
+      pull,
+      [
+        "pullId",
+        "actionIndex",
+        "pullIndex",
+        "descriptor",
+        "descriptorDigest",
+        "effectiveDescriptor",
+        "resultSchema",
+        "resultSchemaDigest",
+        "audience",
+        "maxOutcomeBytes",
+        "attempts",
+        "indeterminate",
+      ],
+      ["capability", "outcome", "outcomeDigest", "receipt"],
+    )
+  ) {
+    return false;
+  }
+  return (
+    typeof pull["pullId"] === "string" &&
+    isNonNegativeInteger(pull["actionIndex"]) &&
+    isNonNegativeInteger(pull["pullIndex"]) &&
+    isDescriptorSnapshot(pull["descriptor"]) &&
+    typeof pull["descriptorDigest"] === "string" &&
+    pull["descriptorDigest"] === canonicalSnapshot(pull["descriptor"]).sha &&
+    isDescriptorSnapshot(pull["effectiveDescriptor"]) &&
+    typeof pull["resultSchemaDigest"] === "string" &&
+    pull["resultSchemaDigest"] === canonicalSnapshot(pull["resultSchema"]).sha &&
+    typeof pull["audience"] === "string" &&
+    isNonNegativeInteger(pull["maxOutcomeBytes"]) &&
+    Array.isArray(pull["attempts"]) &&
+    pull["attempts"].every(isAttemptSnapshot) &&
+    typeof pull["indeterminate"] === "boolean" &&
+    (pull["capability"] === undefined || typeof pull["capability"] === "string") &&
+    (pull["outcome"] === undefined || isOperationOutcomeJson(pull["outcome"])) &&
+    (pull["outcome"] === undefined) === (pull["outcomeDigest"] === undefined) &&
+    (pull["outcome"] === undefined ||
+      pull["outcomeDigest"] === canonicalSnapshot(pull["outcome"]).sha) &&
+    (pull["outcome"] === undefined) === (pull["receipt"] === undefined) &&
+    (pull["receipt"] === undefined || isResolutionReceiptJson(pull["receipt"]))
+  );
+}
+
+function isResolutionReceiptJson(value: unknown): boolean {
+  return (
+    isJsonRecord(value) &&
+    hasExactKeys(value, [
+      "sessionId",
+      "taskId",
+      "pullId",
+      "resolutionOffset",
+      "outcomeDigest",
+      "status",
+    ]) &&
+    ["sessionId", "taskId", "pullId", "resolutionOffset", "outcomeDigest"].every(
+      (key) => typeof value[key] === "string",
+    ) &&
+    (value["status"] === "accepted" || value["status"] === "duplicate")
+  );
+}
+
+function isDescriptorSnapshot(value: unknown): boolean {
+  if (!isJsonRecord(value) || typeof value["kind"] !== "string") {
+    return false;
+  }
+  switch (value["kind"]) {
+    case "effect":
+      return (
+        hasExactKeys(value, ["kind", "name", "version", "input", "resolver"]) &&
+        typeof value["name"] === "string" &&
+        typeof value["version"] === "string" &&
+        isJsonRecord(value["resolver"]) &&
+        hasOnlyKeys(value["resolver"], ["audience"], ["route"]) &&
+        typeof value["resolver"]["audience"] === "string" &&
+        (value["resolver"]["route"] === undefined || typeof value["resolver"]["route"] === "string")
+      );
+    case "elicit":
+      return (
+        hasOnlyKeys(value, ["kind", "key", "message", "responseSchema"], ["context"]) &&
+        typeof value["key"] === "string" &&
+        typeof value["message"] === "string"
+      );
+    case "wait": {
+      const hasAbsolute =
+        typeof value["notBefore"] === "string" && Number.isFinite(Date.parse(value["notBefore"]));
+      const hasRelative = isNonNegativeInteger(value["durationMs"]);
+      return (
+        hasOnlyKeys(value, ["kind", "key"], ["notBefore", "durationMs"]) &&
+        typeof value["key"] === "string" &&
+        (hasAbsolute || hasRelative)
+      );
+    }
+    case "invoke":
+    case "spawn":
+      return hasExactKeys(value, ["kind", "child"]) && isChildSnapshot(value["child"]);
+    case "all":
+    case "race":
+      return (
+        hasExactKeys(value, ["kind", "children"]) &&
+        Array.isArray(value["children"]) &&
+        value["children"].every(isChildSnapshot)
+      );
+    case "join":
+      return (
+        hasExactKeys(value, ["kind", "handle"]) &&
+        isJsonRecord(value["handle"]) &&
+        hasExactKeys(value["handle"], ["__durableTask", "owner"]) &&
+        typeof value["handle"]["__durableTask"] === "string" &&
+        typeof value["handle"]["owner"] === "string"
+      );
+    default:
+      return false;
+  }
+}
+
+function isChildSnapshot(value: unknown): boolean {
+  return (
+    isJsonRecord(value) &&
+    hasExactKeys(value, ["id", "version", "digest", "input"]) &&
+    typeof value["id"] === "string" &&
+    typeof value["version"] === "string" &&
+    typeof value["digest"] === "string" &&
+    /^[0-9a-f]{64}$/.test(value["digest"])
+  );
+}
+
+function isAttemptSnapshot(value: Json): boolean {
+  return (
+    isJsonRecord(value) &&
+    hasExactKeys(value, ["attemptId", "attemptIndex", "state", "capability"]) &&
+    typeof value["attemptId"] === "string" &&
+    isNonNegativeInteger(value["attemptIndex"]) &&
+    ["started", "detached", "completed", "revoked", "superseded"].includes(
+      String(value["state"]),
+    ) &&
+    typeof value["capability"] === "string"
+  );
+}
+
+function isIndexedEmissionTuple(value: Json): boolean {
+  if (!Array.isArray(value) || value.length !== 2 || !isNonNegativeInteger(value[0])) {
+    return false;
+  }
+  const emission = value[1];
+  return (
+    isJsonRecord(emission) &&
+    hasExactKeys(emission, ["digest", "receipt"]) &&
+    typeof emission["digest"] === "string" &&
+    isJsonRecord(emission["receipt"]) &&
+    hasExactKeys(emission["receipt"], ["offset", "eventId", "duplicate"]) &&
+    typeof emission["receipt"]["offset"] === "string" &&
+    typeof emission["receipt"]["eventId"] === "string" &&
+    typeof emission["receipt"]["duplicate"] === "boolean"
+  );
+}
+
+function isRecordCollection(value: Json): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === "string" &&
+    Array.isArray(value[1]) &&
+    value[1].every(
+      (record) =>
+        isJsonRecord(record) &&
+        hasOnlyKeys(record, ["offset", "eventId", "sessionId", "payload"], ["ownerEpoch"]) &&
+        (record["ownerEpoch"] === undefined || isNonNegativeInteger(record["ownerEpoch"])) &&
+        typeof record["offset"] === "string" &&
+        typeof record["eventId"] === "string" &&
+        typeof record["sessionId"] === "string" &&
+        isSemanticPayload(record["payload"]),
+    )
+  );
+}
+
+function isSemanticPayload(value: unknown): boolean {
+  if (
+    !isJsonRecord(value) ||
+    typeof value["type"] !== "string" ||
+    typeof value["taskId"] !== "string"
+  ) {
+    return false;
+  }
+  switch (value["type"]) {
+    case "TaskOpened":
+      return (
+        hasOnlyKeys(
+          value,
+          [
+            "type",
+            "taskId",
+            "turnId",
+            "programId",
+            "programVersion",
+            "programDigest",
+            "input",
+            "inputDigest",
+          ],
+          ["parentTaskId", "parentPullId"],
+        ) &&
+        ["turnId", "programId", "programVersion", "programDigest", "inputDigest"].every(
+          (key) => typeof value[key] === "string",
+        )
+      );
+    case "PullRequested":
+      return (
+        hasExactKeys(value, [
+          "type",
+          "taskId",
+          "turnId",
+          "actionIndex",
+          "pullIndex",
+          "pullId",
+          "descriptor",
+          "descriptorDigest",
+        ]) &&
+        typeof value["turnId"] === "string" &&
+        isNonNegativeInteger(value["actionIndex"]) &&
+        isNonNegativeInteger(value["pullIndex"]) &&
+        typeof value["pullId"] === "string" &&
+        isJsonRecord(value["descriptor"]) &&
+        typeof value["descriptorDigest"] === "string"
+      );
+    case "AttemptStarted":
+      return (
+        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId", "attemptIndex"]) &&
+        typeof value["pullId"] === "string" &&
+        typeof value["attemptId"] === "string" &&
+        isNonNegativeInteger(value["attemptIndex"])
+      );
+    case "AttemptDetached":
+    case "AttemptAbandoned":
+      return (
+        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId", "reason"]) &&
+        typeof value["pullId"] === "string" &&
+        typeof value["attemptId"] === "string" &&
+        typeof value["reason"] === "string"
+      );
+    case "AttemptSuperseded":
+      return (
+        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId", "winnerAttemptId"]) &&
+        typeof value["pullId"] === "string" &&
+        typeof value["attemptId"] === "string" &&
+        typeof value["winnerAttemptId"] === "string"
+      );
+    case "PullIndeterminate":
+      return (
+        hasExactKeys(value, ["type", "taskId", "pullId", "attemptId"]) &&
+        typeof value["pullId"] === "string" &&
+        typeof value["attemptId"] === "string"
+      );
+    case "PullResolved":
+      return (
+        hasOnlyKeys(
+          value,
+          ["type", "taskId", "pullId", "outcome", "outcomeDigest"],
+          ["attemptId"],
+        ) &&
+        typeof value["pullId"] === "string" &&
+        (value["attemptId"] === undefined || typeof value["attemptId"] === "string") &&
+        isOperationOutcomeJson(value["outcome"]) &&
+        typeof value["outcomeDigest"] === "string"
+      );
+    case "DurableEmission":
+      return (
+        hasExactKeys(value, [
+          "type",
+          "taskId",
+          "actionIndex",
+          "emissionIndex",
+          "descriptor",
+          "descriptorDigest",
+        ]) &&
+        isNonNegativeInteger(value["actionIndex"]) &&
+        isNonNegativeInteger(value["emissionIndex"]) &&
+        isJsonRecord(value["descriptor"]) &&
+        hasExactKeys(value["descriptor"], ["eventType", "payload"]) &&
+        typeof value["descriptor"]["eventType"] === "string" &&
+        typeof value["descriptorDigest"] === "string"
+      );
+    case "RaceWinnerSelected":
+      return (
+        hasExactKeys(value, [
+          "type",
+          "taskId",
+          "pullId",
+          "winnerTaskId",
+          "closeOffset",
+          "outcomeDigest",
+        ]) &&
+        typeof value["pullId"] === "string" &&
+        typeof value["winnerTaskId"] === "string" &&
+        typeof value["closeOffset"] === "string" &&
+        typeof value["outcomeDigest"] === "string"
+      );
+    case "CancellationRequested":
+      return (
+        hasOnlyKeys(value, ["type", "taskId"], ["reason"]) &&
+        (value["reason"] === undefined || typeof value["reason"] === "string")
+      );
+    case "CleanupSkipped":
+    case "TaskOrphaned":
+      return (
+        hasExactKeys(value, ["type", "taskId", "reason"]) &&
+        (value["reason"] === "program_version_unavailable" || value["reason"] === "program_corrupt")
+      );
+    case "TaskClosed":
+      return (
+        hasExactKeys(value, ["type", "taskId", "outcome"]) &&
+        isOperationOutcomeJson(value["outcome"])
+      );
+    default:
+      return false;
+  }
+}
+
+function isOperationOutcomeJson(value: unknown): boolean {
+  if (!isJsonRecord(value)) {
+    return false;
+  }
+  switch (value["status"]) {
+    case "ok":
+      return hasExactKeys(value, ["status", "value"]);
+    case "error":
+      return (
+        hasExactKeys(value, ["status", "error"]) &&
+        isJsonRecord(value["error"]) &&
+        hasOnlyKeys(value["error"], ["code", "message"], ["details"]) &&
+        typeof value["error"]["code"] === "string" &&
+        typeof value["error"]["message"] === "string"
+      );
+    case "cancelled":
+      return hasExactKeys(value, ["status"]);
+    default:
+      return false;
+  }
+}
+
+function isJsonRecord(value: unknown): value is Record<string, Json> {
+  return (
+    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+  );
+}
+
+function isNonNegativeInteger(value: Json | undefined): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function hasExactKeys(value: Record<string, Json>, keys: readonly string[]): boolean {
+  return Object.keys(value).length === keys.length && keys.every((key) => key in value);
+}
+
+function hasOnlyKeys(
+  value: Record<string, Json>,
+  required: readonly string[],
+  optional: readonly string[],
+): boolean {
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
+  );
+}
+
+function invalidSnapshot(cause?: unknown): CrankError {
+  return new CrankError("invalid_journal", "Invalid durable authority snapshot", undefined, {
+    cause,
+  });
 }
 
 function operationPolicy(

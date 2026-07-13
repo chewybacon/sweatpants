@@ -19,6 +19,7 @@ export interface AgentCoreDurableProgramTransport {
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
 }
 
+/** Creates an AgentCore transport driver; the caller owns the scoped client and cancellation. */
 export function createAgentCoreDurableProgramDriver(
   transport: AgentCoreDurableProgramTransport,
 ): ProgramDriver {

@@ -42,6 +42,7 @@ export {
 } from "./foreign-tool-session.ts";
 export {
   DURABLE_TOOL_FACADE_ANNOTATION,
+  DurableToolFacadeError,
   createDurableToolSessionFacade,
   createInMemoryDurableToolFacadeStateStore,
   isDurableToolSessionFacade,

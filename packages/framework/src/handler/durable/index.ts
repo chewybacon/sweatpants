@@ -25,6 +25,7 @@ export {
   useOptionalCrankStore,
   createInMemoryCrankStore,
 } from "@sweatpants/session-contract";
+/** Re-exported durable persistence port for framework composition. */
 export type { CrankStore } from "@sweatpants/session-contract";
 
 // Crank-native authoring/runtime surface. Legacy ToolSession execution remains
@@ -50,6 +51,7 @@ export {
   defineDurableEffect,
   defineDurableProgramManifest,
 } from "@sweatpants/session-contract";
+/** Crank-native authoring and runtime contracts exposed by the durable handler package. */
 export type {
   DurableEffectRegistration,
   DurableProgramContext,
@@ -64,6 +66,7 @@ export type {
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
+/** Plugin-session lifecycle contracts re-exported by the durable handler package. */
 export type {
   PluginSessionManager,
   PluginSession,
@@ -75,6 +78,7 @@ export type {
 } from "./plugin-session-manager.ts";
 
 // Types
+/** Durable handler request, setup, stream, and tool-inventory contracts. */
 export type {
   // Execution adapter types
   SessionContractChatEngine,
