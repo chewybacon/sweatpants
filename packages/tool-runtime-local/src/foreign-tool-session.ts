@@ -99,6 +99,15 @@ export function createToolSessionForeignEffectRegistrations(
           `ToolSession ${continuation.sessionId} is unavailable`,
         );
       }
+      if (request.response.kind === "cancel") {
+        yield* session.cancel("durable program cancelled");
+        yield* options.registry.release(session.id);
+        return failure(
+          continuation.durability,
+          "foreign_tool_cancelled",
+          "Foreign tool was cancelled",
+        );
+      }
       const mismatch = continuation.pending.kind !== request.response.kind;
       if (mismatch) {
         return failure(
@@ -133,6 +142,9 @@ function* deliverResponse(
   continuation: ToolSessionContinuationState,
   request: ForeignToolContinueRequest,
 ): Operation<ForeignToolDisposition | undefined> {
+  if (request.response.kind === "cancel") {
+    return failure(continuation.durability, "foreign_tool_cancelled", "Foreign tool was cancelled");
+  }
   if (request.response.kind === "sample") {
     const response = decodeSampleResponse(request.response.value);
     if (!response) {

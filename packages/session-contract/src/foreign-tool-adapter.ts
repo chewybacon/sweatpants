@@ -45,39 +45,58 @@ const adapterTool = createDurableTool(FOREIGN_TOOL_ADAPTER_MANIFEST, function* (
     ...(request.route ? { route: request.route } : {}),
   });
 
-  while (disposition.type === "input_required") {
-    const response =
-      disposition.request.kind === "sample"
-        ? yield* context.effect(FOREIGN_MODEL_SAMPLE_EFFECT, disposition.request.payload, {
-            audience: "model-runtime",
-          })
-        : yield* context.elicit<Json>("foreign_input", disposition.request.message, true, {
-            foreignDriver: request.driver,
-            foreignTool: request.tool,
-            foreignKey: disposition.request.key,
-            responseSchema: disposition.request.responseSchema,
-            ...(disposition.request.context !== undefined
-              ? { context: disposition.request.context }
-              : {}),
-          });
+  let terminal = false;
+  try {
+    while (disposition.type === "input_required") {
+      const response =
+        disposition.request.kind === "sample"
+          ? yield* context.effect(FOREIGN_MODEL_SAMPLE_EFFECT, disposition.request.payload, {
+              audience: "model-runtime",
+            })
+          : yield* context.elicit<Json>("foreign_input", disposition.request.message, true, {
+              foreignDriver: request.driver,
+              foreignTool: request.tool,
+              foreignKey: disposition.request.key,
+              ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
+              responseSchema: disposition.request.responseSchema,
+              ...(disposition.request.context !== undefined
+                ? { context: disposition.request.context }
+                : {}),
+            });
 
-    disposition = yield* context.effect(
-      FOREIGN_TOOL_CONTINUE_EFFECT,
-      {
-        continuation: disposition.continuation,
-        response: { kind: disposition.request.kind, value: response },
-      },
-      {
-        audience,
-        ...(request.route ? { route: request.route } : {}),
-      },
-    );
-  }
+      disposition = yield* context.effect(
+        FOREIGN_TOOL_CONTINUE_EFFECT,
+        {
+          continuation: disposition.continuation,
+          response: { kind: disposition.request.kind, value: response },
+        },
+        {
+          audience,
+          ...(request.route ? { route: request.route } : {}),
+        },
+      );
+    }
 
-  if (disposition.type === "completed") {
-    return disposition.result;
+    terminal = true;
+    if (disposition.type === "completed") {
+      return disposition.result;
+    }
+    throw new CrankError(disposition.error.code, disposition.error.message, disposition.error);
+  } finally {
+    if (!terminal && disposition.type === "input_required") {
+      yield* context.effect(
+        FOREIGN_TOOL_CONTINUE_EFFECT,
+        {
+          continuation: disposition.continuation,
+          response: { kind: "cancel", value: null },
+        },
+        {
+          audience,
+          ...(request.route ? { route: request.route } : {}),
+        },
+      );
+    }
   }
-  throw new CrankError(disposition.error.code, disposition.error.message, disposition.error);
 });
 
 /** Durable adapter tool plus helper registration for lifted model sampling. */

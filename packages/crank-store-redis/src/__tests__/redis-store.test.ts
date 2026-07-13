@@ -125,7 +125,7 @@ describe("RedisCrankStore", () => {
       digest: "a".repeat(64),
       inputSchema: { type: "null" },
       outputSchema: true,
-      elicits: {},
+      elicits: { approval: { responseSchema: { type: "boolean" } } },
       effects: {
         echo: {
           name: "echo",
@@ -198,10 +198,47 @@ describe("RedisCrankStore", () => {
           outcome: { status: "ok", value: "value" },
         }),
       ).toMatchObject({ status: "accepted" });
+      const pending = yield* first.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 1,
+        pullIndex: 1,
+        descriptor: {
+          kind: "elicit",
+          key: "approval",
+          message: "Approve?",
+          responseSchema: { type: "boolean" },
+        },
+        programCapability: opened.programCapability,
+      });
+      if (pending.status !== "pending" || !pending.resolutionCapability) {
+        throw new Error("elicitation did not park");
+      }
+      const recoveredCapability = yield* second.resolutionCapability(
+        attach.sessionId,
+        attach.taskId,
+        pending.pullId,
+      );
+      expect(recoveredCapability).toBe(pending.resolutionCapability);
+      expect(
+        yield* second.resolve({
+          capability: recoveredCapability,
+          audience: "user:approval",
+          outcome: { status: "ok", value: true },
+        }),
+      ).toMatchObject({ status: "accepted" });
       expect(yield* first.runnableSessions()).toEqual(["durable-session"]);
       expect(
         (yield* second.readJournal("durable-session")).map((record) => record.payload.type),
-      ).toEqual(["TaskOpened", "PullRequested", "AttemptStarted", "PullResolved"]);
+      ).toEqual([
+        "TaskOpened",
+        "PullRequested",
+        "AttemptStarted",
+        "PullResolved",
+        "PullRequested",
+        "PullResolved",
+      ]);
     });
   });
 

@@ -1,4 +1,5 @@
 import { call } from "effection";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { describe, expect, it } from "./vitest-effection.ts";
 
 import { z } from "zod";
@@ -7,7 +8,13 @@ import {
   createInMemoryRegistryStore,
   setupDurableStreams,
 } from "../../../lib/chat/durable-streams/index.ts";
+import {
+  ToolRuntimeContext,
+  createToolExecutionRef,
+  type ToolRuntime,
+} from "../../../lib/chat/tool-runtime.ts";
 import { createDurableChatHandler } from "../handler.ts";
+import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { ChatHandlerSetup } from "../types.ts";
 import {
   consumeDurableResponse,
@@ -163,6 +170,7 @@ const legacyPublicEventTypes = new Set([
 function createTestHooks(
   provider: ReturnType<typeof createMockProvider>,
   tools: Array<ReturnType<typeof createMockTool>> = [],
+  runtimeOverride?: ToolRuntime,
 ): ChatHandlerSetup {
   const bufferStore = createInMemoryBufferStore<string>();
   const registryStore = createInMemoryRegistryStore();
@@ -171,7 +179,14 @@ function createTestHooks(
     yield* setupDurableStreams({ bufferStore, registryStore });
     yield* setupMockModelProvider(provider);
     yield* setupMockTools(tools);
+    if (runtimeOverride) {
+      yield* ToolRuntimeContext.set(runtimeOverride);
+    }
   };
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function assertSchemaValidPublicEvents(events: AgUiEvent[]) {
@@ -233,6 +248,14 @@ function assertAgUiLifecycle(events: AgUiEvent[]) {
   }
 }
 
+function createProgramDriverTestStore() {
+  return createInMemoryProgramDriverJournalStore({
+    keyring: createCapabilityKeyring("framework-program-driver-test", [
+      { keyId: "test-v1", secret: "framework-program-driver-test-key" },
+    ]),
+  });
+}
+
 function assertPublicConformance(events: AgUiEvent[]) {
   assertSchemaValidPublicEvents(events);
   assertAgUiLifecycle(events);
@@ -259,6 +282,293 @@ describe("strict AG-UI public conformance", () => {
     const result = yield* call(() => consumeDurableResponse(response));
 
     assertPublicConformance(result.events.map((entry) => entry.event as AgUiEvent));
+  });
+
+  it("runs a model-only HTTP turn through an injected ProgramRuntime journal", function* () {
+    const provider = createMockProvider({ responses: "Hello from ProgramRuntime" });
+    const journalStore = createProgramDriverTestStore();
+    const handler = createDurableChatHandler({
+      setup: createTestHooks(provider),
+      executionEngine: "program-driver",
+      programDriverJournalStore: journalStore,
+    });
+    const conversationId = "program-driver-model";
+    const { request } = createChatRequest(
+      [{ id: "user:program-driver", role: "user", content: "Use ProgramRuntime" }],
+      { conversationId },
+    );
+
+    const response = yield* call(() => handler(request));
+    const result = yield* call(() => consumeDurableResponse(response));
+    const events = result.events.map((entry) => entry.event as AgUiEvent);
+    const journal = yield* journalStore.open(conversationId);
+    const records = yield* journal.readJournal(conversationId);
+
+    assertPublicConformance(events);
+    expect(
+      events
+        .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
+        .map((event) => event["delta"]),
+    ).toEqual(["Hello from ProgramRuntime"]);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            type: "PullRequested",
+            descriptor: expect.objectContaining({ kind: "effect", name: "model.sample" }),
+          }),
+        }),
+        expect.objectContaining({
+          payload: expect.objectContaining({ type: "TaskClosed" }),
+        }),
+      ]),
+    );
+  });
+
+  it("runs a completed ToolRuntime call through the ProgramRuntime foreign boundary", function* () {
+    const echoTool = createMockTool("echo", "Echoes input");
+    const provider = createMockProvider({
+      responses: ["Calling echo", "Tool complete"],
+      toolCalls: [{ id: "call-program-echo", name: "echo", arguments: { input: "hello" } }],
+    });
+    const journalStore = createProgramDriverTestStore();
+    const handler = createDurableChatHandler({
+      setup: createTestHooks(provider, [echoTool]),
+      executionEngine: "program-driver",
+      programDriverJournalStore: journalStore,
+    });
+    const conversationId = "program-driver-tool";
+    const { request } = createChatRequest(
+      [{ id: "user:program-tool", role: "user", content: "Echo hello" }],
+      { conversationId, enabledTools: true },
+    );
+
+    const response = yield* call(() => handler(request));
+    const result = yield* call(() => consumeDurableResponse(response));
+    const events = result.events.map((entry) => entry.event as AgUiEvent);
+    const journal = yield* journalStore.open(conversationId);
+    const records = yield* journal.readJournal(conversationId);
+    const effectNames = records.flatMap((record) =>
+      record.payload.type === "PullRequested" && record.payload.descriptor.kind === "effect"
+        ? [record.payload.descriptor.name]
+        : [],
+    );
+
+    assertPublicConformance(events);
+    expect(events.map((event) => event.type)).toEqual(
+      expect.arrayContaining(["TOOL_CALL_START", "TOOL_CALL_RESULT"]),
+    );
+    expect(effectNames).toContain("foreign.tool.start");
+    expect(effectNames).not.toContain("tool.execute");
+    expect(effectNames).not.toContain("tool.resume");
+  });
+
+  it("parks and resumes a ToolRuntime elicitation through the durable HTTP path", function* () {
+    const echoTool = createMockTool("echo", "Echoes after approval");
+    const ref = createToolExecutionRef({
+      runtimeId: "eliciting-test-runtime",
+      executionId: "execution-program-elicit",
+      callId: "call-program-elicit",
+      toolName: "echo",
+    });
+    let resumeCount = 0;
+    const runtime: ToolRuntime = {
+      id: "eliciting-test-runtime",
+      *execute() {
+        return {
+          kind: "awaiting_elicit",
+          ref,
+          request: {
+            elicitId: "approval-1",
+            key: "approval",
+            message: "Approve echo?",
+            schema: {
+              type: "object",
+              required: ["approved"],
+              properties: { approved: { type: "boolean" } },
+            },
+          },
+        };
+      },
+      *resume(request) {
+        resumeCount += 1;
+        return { kind: "completed", ref: request.ref, result: { approved: true } };
+      },
+      *abort() {},
+    };
+    const provider = createMockProvider({
+      responses: ["Approval needed", "Approval complete"],
+      toolCalls: [{ id: "call-program-elicit", name: "echo", arguments: { input: "hello" } }],
+    });
+    const journalStore = createProgramDriverTestStore();
+    const handler = createDurableChatHandler({
+      setup: createTestHooks(provider, [echoTool], runtime),
+      executionEngine: "program-driver",
+      programDriverJournalStore: journalStore,
+    });
+    const conversationId = "program-driver-elicit";
+    const messages = [{ id: "user:program-elicit", role: "user" as const, content: "Approve" }];
+    const { request: firstRequest } = createChatRequest(messages, {
+      conversationId,
+      enabledTools: true,
+    });
+
+    const firstResponse = yield* call(() => handler(firstRequest));
+    const firstResult = yield* call(() => consumeDurableResponse(firstResponse));
+    const firstEvents = firstResult.events.map((entry) => entry.event as AgUiEvent);
+    assertPublicConformance(firstEvents);
+    const terminal = firstEvents.find((event) => event.type === "RUN_FINISHED");
+    const outcome = isUnknownRecord(terminal?.["outcome"]) ? terminal["outcome"] : undefined;
+    const interrupts = Array.isArray(outcome?.["interrupts"]) ? outcome["interrupts"] : [];
+    const interrupt = isUnknownRecord(interrupts[0]) ? interrupts[0] : undefined;
+    expect(outcome?.["type"]).toBe("interrupt");
+    expect(interrupt?.["message"]).toBe("Approve echo?");
+    const interruptId = interrupt?.["id"];
+    expect(typeof interruptId).toBe("string");
+    if (typeof interruptId !== "string") {
+      throw new Error("ProgramRuntime did not project an interrupt ID");
+    }
+
+    const secondRequest = new Request(
+      `http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          enabledTools: true,
+          resume: [
+            {
+              interruptId,
+              status: "resolved",
+              payload: { action: "accept", content: { approved: true } },
+            },
+          ],
+          elicitResponses: [
+            {
+              sessionId: ref.callId,
+              callId: ref.callId,
+              toolName: ref.toolName,
+              elicitId: interruptId,
+              result: { action: "accept", content: { approved: true } },
+            },
+          ],
+        }),
+      },
+    );
+    const secondResponse = yield* call(() => handler(secondRequest));
+    const secondResult = yield* call(() => consumeDurableResponse(secondResponse));
+    const secondEvents = secondResult.events.map((entry) => entry.event as AgUiEvent);
+    const journal = yield* journalStore.open(conversationId);
+    const records = yield* journal.readJournal(conversationId);
+
+    assertPublicConformance(secondEvents);
+    expect(resumeCount).toBe(1);
+    expect(secondEvents.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
+    expect(
+      records.some(
+        (record) =>
+          record.payload.type === "PullRequested" &&
+          record.payload.descriptor.kind === "effect" &&
+          record.payload.descriptor.name === "foreign.tool.continue",
+      ),
+    ).toBe(true);
+    expect(records.at(-1)?.payload.type).toBe("TaskClosed");
+  });
+
+  it("cancels a parked ProgramRuntime tool and closes its task tree", function* () {
+    const echoTool = createMockTool("echo", "Waits for cancellation");
+    const ref = createToolExecutionRef({
+      runtimeId: "cancelling-test-runtime",
+      executionId: "execution-program-cancel",
+      callId: "call-program-cancel",
+      toolName: "echo",
+    });
+    let abortCount = 0;
+    const runtime: ToolRuntime = {
+      id: "cancelling-test-runtime",
+      *execute() {
+        return {
+          kind: "awaiting_elicit",
+          ref,
+          request: {
+            elicitId: "cancel-approval",
+            key: "approval",
+            message: "Wait for cancellation",
+            schema: { type: "object" },
+          },
+        };
+      },
+      *resume(): Operation<never> {
+        throw new Error("Cancelled execution must not resume");
+      },
+      *abort() {
+        abortCount += 1;
+      },
+    };
+    const provider = createMockProvider({
+      responses: "Waiting",
+      toolCalls: [{ id: "call-program-cancel", name: "echo", arguments: { input: "hello" } }],
+    });
+    const journalStore = createProgramDriverTestStore();
+    const handler = createDurableChatHandler({
+      setup: createTestHooks(provider, [echoTool], runtime),
+      executionEngine: "program-driver",
+      programDriverJournalStore: journalStore,
+    });
+    const conversationId = "program-driver-cancel";
+    const messages = [{ id: "user:program-cancel", role: "user", content: "Wait" }];
+    const { request: firstRequest } = createChatRequest(messages, {
+      conversationId,
+      enabledTools: true,
+    });
+    const firstResponse = yield* call(() => handler(firstRequest));
+    yield* call(() => consumeDurableResponse(firstResponse));
+
+    const cancelRequest = new Request(
+      `http://localhost/chat?conversationId=${encodeURIComponent(conversationId)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          enabledTools: true,
+          pluginAbort: { sessionId: ref.executionId, reason: "user cancelled" },
+        }),
+      },
+    );
+    const cancelResponse = yield* call(() => handler(cancelRequest));
+    const cancelled = yield* call(() => consumeDurableResponse(cancelResponse));
+    const events = cancelled.events.map((entry) => entry.event as AgUiEvent);
+    const journal = yield* journalStore.open(conversationId);
+    const records = yield* journal.readJournal(conversationId);
+
+    assertPublicConformance(events);
+    expect(abortCount).toBe(1);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "RUN_ERROR", code: "PROGRAM_CANCELLED" }),
+      ]),
+    );
+    expect(
+      records.some(
+        (record) =>
+          record.payload.type === "CancellationRequested" &&
+          record.payload.reason === "user cancelled",
+      ),
+    ).toBe(true);
+    expect(
+      records.some(
+        (record) =>
+          record.payload.type === "PullResolved" && record.payload.outcome.status === "cancelled",
+      ),
+    ).toBe(true);
+    expect(
+      records.filter(
+        (record) =>
+          record.payload.type === "TaskClosed" && record.payload.outcome.status === "cancelled",
+      ),
+    ).toHaveLength(2);
   });
 
   it("validates tool runs against AG-UI schemas and lifecycle rules", function* () {
@@ -424,7 +734,9 @@ describe("strict AG-UI public conformance", () => {
 
     expect(JSON.stringify(result.events)).not.toContain("__SECRET_DEFAULT_PROMPT_DO_NOT_LEAK__");
     expect(
-      snapshots.flatMap((snapshot) => snapshot.messages).some((message) => message.role === "system"),
+      snapshots
+        .flatMap((snapshot) => snapshot.messages)
+        .some((message) => message.role === "system"),
     ).toBe(false);
   });
 

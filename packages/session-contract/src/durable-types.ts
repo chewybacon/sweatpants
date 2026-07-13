@@ -172,7 +172,7 @@ export type ForeignToolDisposition =
 /** Serializable response applied to a previously returned foreign continuation. */
 export type ForeignToolContinueRequest = {
   continuation: ForeignContinuation;
-  response: { kind: "sample" | "elicit"; value: Json };
+  response: { kind: "sample" | "elicit" | "cancel"; value: Json };
 };
 
 /** Descriptor joining a previously spawned owned task. */
@@ -579,4 +579,5 @@ export interface ProgramRunRequest {
 export type ProgramRunResult =
   | { state: "completed"; value: Json }
   | { state: "failed"; error: SerializedApplicationError }
+  | { state: "cancelled" }
   | { state: "parked"; pullId: string; reason: string };

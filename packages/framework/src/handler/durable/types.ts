@@ -12,6 +12,7 @@ import type {
 } from "../../lib/chat/browser-rendering/index.ts";
 import type { PluginSessionManager } from "./plugin-session-manager.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
+import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 
 export interface ToolSchema {
   name: string;
@@ -149,10 +150,26 @@ export interface ChatRequestBody {
   pluginAbort?: PluginAbortRequest;
 }
 
-export interface DurableChatHandlerConfig {
+interface DurableChatHandlerBaseConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
 }
+
+/**
+ * Durable handler configuration. Selecting ProgramRuntime requires an injected
+ * journal store, preventing an ephemeral authority from masquerading as durable.
+ */
+export type DurableChatHandlerConfig = DurableChatHandlerBaseConfig &
+  (
+    | {
+        executionEngine?: "legacy";
+        programDriverJournalStore?: never;
+      }
+    | {
+        executionEngine: "program-driver";
+        programDriverJournalStore: ProgramDriverJournalStore;
+      }
+  );
 
 export interface DurableStreamParams {
   sessionId?: string;

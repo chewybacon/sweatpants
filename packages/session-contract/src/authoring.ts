@@ -624,6 +624,9 @@ function deepFreeze<T>(value: T): T {
 
 /** Projects thrown unknown values into a safe, serializable application error. */
 export function serializeDurableError(error: unknown): SerializedApplicationError {
+  if (error instanceof DurableProgramCancellation) {
+    return { code: "program_cancelled", message: "Durable program cancelled" };
+  }
   if (error instanceof PullApplicationError) {
     return error.applicationError;
   }

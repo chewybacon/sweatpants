@@ -58,6 +58,8 @@ export interface RedisDurableJournalAuthority {
     attachmentId: string,
     audience?: string,
   ): Operation<{ executionEpoch: number; programCapability: string }>;
+  /** Idempotently records logical task cancellation. */
+  requestCancellation(sessionId: string, taskId: string, reason?: string): Operation<void>;
   /** Marks an in-flight attempt detached without revoking late resolution. */
   detachAttempt(
     sessionId: string,
@@ -86,6 +88,8 @@ export interface RedisDurableJournalAuthority {
     taskId: string,
     reason: "program_version_unavailable" | "program_corrupt",
   ): Operation<void>;
+  /** Returns the current resolver capability for an existing pending pull. */
+  resolutionCapability(sessionId: string, taskId: string, pullId: string): Operation<string>;
   /** Reads a parsed defensive semantic journal snapshot. */
   readJournal(sessionId: string): Operation<DurableSemanticRecord[]>;
   /** Reads deterministic runnable session IDs. */
@@ -197,6 +201,9 @@ export function createRedisDurableJournalAuthority(
     *complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
       return yield* mutate((value) => value.complete(request));
     },
+    *requestCancellation(sessionId, taskId, reason) {
+      yield* mutate((value) => value.requestCancellation(sessionId, taskId, reason));
+    },
     *detachAttempt(sessionId, taskId, pullId, reason) {
       yield* mutate((value) => value.detachAttempt(sessionId, taskId, pullId, reason));
     },
@@ -210,6 +217,9 @@ export function createRedisDurableJournalAuthority(
     },
     *forceOrphan(sessionId, taskId, reason) {
       yield* mutate((value) => value.forceOrphan(sessionId, taskId, reason));
+    },
+    *resolutionCapability(sessionId, taskId, pullId) {
+      return yield* read((value) => value.resolutionCapability(sessionId, taskId, pullId));
     },
     *readJournal(sessionId) {
       return yield* read((value) => value.readJournal(sessionId));
