@@ -76,6 +76,47 @@ describe("RedisCrankStore", () => {
     expect(records[0]?.payload).toMatchObject({ type: "command", command: { commandId: "c" } });
   });
 
+  it("rejects malformed persisted state before it reaches the crank store", async ({ skip }) => {
+    requireRedis(skip);
+    await client.set(
+      "test:corrupt:s:state",
+      JSON.stringify({
+        records: [null],
+        coordination: {
+          sessionId: "s",
+          epoch: 0,
+          phase: "idle",
+          journalHead: 1,
+          runnable: false,
+        },
+      }),
+    );
+    const store = createRedisCrankStore(client, { keyPrefix: "test:corrupt:" });
+
+    await expect(run(() => store.readJournal("s"))).rejects.toMatchObject({
+      code: "invalid_journal",
+      message: "Invalid Redis crank state",
+    });
+
+    await client.set(
+      "test:corrupt:s:state",
+      JSON.stringify({
+        records: [],
+        coordination: {
+          sessionId: "s",
+          epoch: 0,
+          phase: "idle",
+          journalHead: 0,
+          runnable: false,
+          unexpected: "must-not-cross-boundary",
+        },
+      }),
+    );
+    await expect(run(() => store.readJournal("s"))).rejects.toMatchObject({
+      code: "invalid_journal",
+    });
+  });
+
   it("persists atomic durable pull authorization and processless resolution", async ({ skip }) => {
     requireRedis(skip);
     const manifest: DurableProgramManifest = {

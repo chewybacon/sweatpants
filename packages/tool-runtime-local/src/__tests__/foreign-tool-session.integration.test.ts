@@ -28,6 +28,81 @@ import {
 } from "../index.ts";
 
 describe("ToolSession foreign-tool durability boundary", () => {
+  it("returns malformed continuation responses as expected failure values", async () => {
+    const tool = createTool("sample_once")
+      .description("Samples once")
+      .parameters(z.object({}))
+      .samples()
+      .execute(function* (_input, context) {
+        return yield* context.sample({ prompt: "sample" });
+      });
+
+    const result = await run(function* () {
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+        samplingProvider: {
+          *sample(): Operation<never> {
+            throw new Error("Sampling must be returned as a foreign input request");
+          },
+        },
+      });
+      const [start, continueRegistration] = createToolSessionForeignEffectRegistrations({
+        registry,
+        tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
+      });
+      const effectContext = {
+        sessionId: "malformed-response",
+        taskId: "turn-0/root",
+        pullId: "pull-0",
+        attemptId: "attempt-0",
+        cancellation: new AbortController().signal,
+        resolver: { audience: "foreign-tool" },
+      };
+      const started = yield* start.handler(
+        {
+          driver: "tool-session",
+          tool: tool.name,
+          input: {},
+          durability: "ephemeral_handle",
+        },
+        effectContext,
+      );
+      if (!started || typeof started !== "object" || Array.isArray(started)) {
+        throw new Error("Foreign start returned a non-object disposition");
+      }
+      const continuation = started["continuation"];
+      if (!continuation || typeof continuation !== "object" || Array.isArray(continuation)) {
+        throw new Error("Foreign start did not return a continuation");
+      }
+      const state = continuation["state"];
+      if (!state || typeof state !== "object" || Array.isArray(state)) {
+        throw new Error("Foreign continuation did not contain state");
+      }
+      const foreignSessionId = state["sessionId"];
+      if (typeof foreignSessionId !== "string") {
+        throw new Error("Foreign continuation did not contain a session ID");
+      }
+      const disposition = yield* continueRegistration.handler(
+        {
+          continuation,
+          response: { kind: "sample", value: { invalid: true } },
+        },
+        effectContext,
+      );
+      return {
+        disposition,
+        released: (yield* registry.get(foreignSessionId)) === null,
+      };
+    });
+
+    expect(result).toMatchObject({
+      disposition: {
+        type: "failed",
+        error: { code: "foreign_sample_response_invalid", retryable: false },
+      },
+      released: true,
+    });
+  });
+
   it("fails without restarting when an ephemeral ToolSession host disappears", async () => {
     let toolBodyExecutions = 0;
     let foreignStarts = 0;

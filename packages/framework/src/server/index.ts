@@ -9,30 +9,47 @@ import {
 } from "effection";
 import type { FetchHandler, ScopedFetchHandler } from "../handler/streaming.ts";
 
+/** Scoped setup context cancelled when the application closes. */
 export interface ChatApplicationSetupContext {
   signal: AbortSignal;
 }
 
+/** Fetch application whose root Effection scope is owned until close completes. */
 export interface ChatApplication {
   handle(request: Request): Promise<Response>;
   close(): Promise<void>;
 }
 
+/** Handler and optional scoped setup operation installed at composition. */
 export interface ChatApplicationConfig {
   handler: FetchHandler;
   setup?: (ctx: ChatApplicationSetupContext) => Operation<void>;
 }
 
-let closedApplicationErrorMessage = "ChatApplication is closed";
+const closedApplicationErrorMessage = "ChatApplication is closed";
+
+/** Boundary-required exception returned when callers use a closed application. */
+export class ChatApplicationClosedError extends Error {
+  readonly _tag = "ChatApplicationClosedError";
+
+  constructor() {
+    super(closedApplicationErrorMessage);
+    this.name = "ChatApplicationClosedError";
+  }
+}
 
 function isScopedFetchHandler(handler: FetchHandler): handler is ScopedFetchHandler {
-  return typeof (handler as { withScope?: unknown }).withScope === "function";
+  return "withScope" in handler && typeof handler.withScope === "function";
 }
 
 function isHaltedError(error: unknown): boolean {
   return error instanceof Error && error.message === "halted";
 }
 
+/**
+ * Creates a lazy, scope-owned chat application. Setup runs once; close cancels
+ * and awaits all owned work. Setup defects become a client-safe HTTP response.
+ */
 export function createChatApplication(config: ChatApplicationConfig): ChatApplication {
   const baseHandler = config.handler;
   const [rootScope, destroyRootScope] = createScope();
@@ -80,10 +97,14 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
 
   return {
     async handle(request: Request): Promise<Response> {
-      if (closed) throw new Error(closedApplicationErrorMessage);
+      if (closed) {
+        throw new ChatApplicationClosedError();
+      }
       try {
         const scope = await ensureSetup();
-        if (closed) throw new Error(closedApplicationErrorMessage);
+        if (closed) {
+          throw new ChatApplicationClosedError();
+        }
         if (!scopedHandler) {
           scopedHandler = isScopedFetchHandler(baseHandler)
             ? baseHandler.withScope(scope)
@@ -95,9 +116,9 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
         return scopedHandler(request);
       } catch (error) {
         if (closed || (error instanceof Error && error.message === closedApplicationErrorMessage)) {
-          throw new Error(closedApplicationErrorMessage);
+          throw new ChatApplicationClosedError();
         }
-        console.error("[ChatApplication] setup failed", error);
+        console.error("[ChatApplication] setup failed", { errorTag: "setup_failed" });
         return new Response(
           JSON.stringify({ type: "error", message: "Chat application setup failed" }),
           {
@@ -108,7 +129,9 @@ export function createChatApplication(config: ChatApplicationConfig): ChatApplic
       }
     },
     async close(): Promise<void> {
-      if (closed) return;
+      if (closed) {
+        return;
+      }
       closed = true;
       await destroyRootScope();
       scopedHandler = undefined;
@@ -139,6 +162,7 @@ export {
 
 export { createStreamingHandler, useHandlerContext, HandlerContext } from "../handler/streaming.ts";
 
+/** Crank-native persistence, authoring, and driver contracts for server composition. */
 export type {
   CrankStore,
   DurableProgramContext,
@@ -151,6 +175,7 @@ export type {
   ProgramDriver,
 } from "../handler/durable/index.ts";
 
+/** Durable chat handler and plugin-session contracts for application setup. */
 export type {
   DurableChatHandlerConfig as ChatHandlerConfig,
   ChatHandlerSetupContext,
@@ -169,6 +194,7 @@ export type {
   CreatePluginSessionConfig,
 } from "../handler/durable/index.ts";
 
+/** Streaming handler context and setup contracts. */
 export type {
   HandlerContext as HandlerContextValue,
   StreamingHandlerOptions,

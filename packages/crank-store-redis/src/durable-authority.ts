@@ -1,6 +1,7 @@
 import { call, type Operation } from "effection";
 import type { RedisClientType } from "redis";
 import {
+  CrankError,
   InMemoryDurableJournalAuthority,
   parseDurableAuthoritySnapshot,
   type AppendEmissionRequest,
@@ -19,6 +20,7 @@ import {
   type TaskCloseReceipt,
 } from "@sweatpants/session-contract";
 
+/** Redis authority configuration; keyring material remains process-local and is never persisted. */
 export interface RedisDurableJournalAuthorityOptions {
   journalId: string;
   journalIncarnation?: string;
@@ -28,31 +30,42 @@ export interface RedisDurableJournalAuthorityOptions {
   maxOutcomeBytes?: number;
 }
 
+/** CAS-backed durable authority port with processless journal reads and recovery operations. */
 export interface RedisDurableJournalAuthority {
+  /** Binds current program authority under Redis CAS fencing. */
   bindProgramAttachment(
     sessionId: string,
     taskId: string,
     attachmentId: string,
     executionEpoch: number,
   ): Operation<{ programCapability: string }>;
+  /** Idempotently allocates a deterministic child task. */
   ensureChildTask(request: EnsureChildTaskRequest): Operation<EnsureChildTaskResult>;
+  /** Atomically reserves an operation before host dispatch. */
   reserve(request: ReserveOperationRequest): Operation<ReserveOperationResult>;
+  /** Atomically commits a capability-authorized outcome. */
   resolve(request: ResolveOperationRequest): Operation<ResolveOperationResult>;
+  /** Atomically appends an ordered durable emission. */
   emit(request: AppendEmissionRequest): Operation<EmissionReceipt>;
+  /** Atomically closes a task after output validation. */
   complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt>;
+  /** Opens one pinned task exactly once. */
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
+  /** Fences an old attachment and advances its execution epoch. */
   replaceAttachment(
     sessionId: string,
     taskId: string,
     attachmentId: string,
     audience?: string,
   ): Operation<{ executionEpoch: number; programCapability: string }>;
+  /** Marks an in-flight attempt detached without revoking late resolution. */
   detachAttempt(
     sessionId: string,
     taskId: string,
     pullId: string,
     reason?: string,
   ): Operation<void>;
+  /** Revokes an attempt that can no longer resolve. */
   abandonAttempt(
     sessionId: string,
     taskId: string,
@@ -60,18 +73,22 @@ export interface RedisDurableJournalAuthority {
     attemptId: string,
     reason?: string,
   ): Operation<void>;
+  /** Retries unsafe ambiguity only after explicit duplicate-risk acknowledgement. */
   retryIndeterminateEffect(
     sessionId: string,
     taskId: string,
     pullId: string,
     acknowledgeDuplicateRisk: boolean,
   ): Operation<ReserveOperationResult>;
+  /** Orphans a task whose pinned program is unavailable or corrupt. */
   forceOrphan(
     sessionId: string,
     taskId: string,
     reason: "program_version_unavailable" | "program_corrupt",
   ): Operation<void>;
+  /** Reads a parsed defensive semantic journal snapshot. */
   readJournal(sessionId: string): Operation<DurableSemanticRecord[]>;
+  /** Reads deterministic runnable session IDs. */
   runnableSessions(): Operation<string[]>;
 }
 
@@ -82,6 +99,10 @@ redis.call('SET', KEYS[1], ARGV[2])
 return 1
 `;
 
+/**
+ * Creates a Redis-backed authority. Each mutation reloads, parses, applies, and
+ * atomically CAS-writes a complete snapshot; retry exhaustion throws CrankError.
+ */
 export function createRedisDurableJournalAuthority(
   client: RedisClientType,
   options: RedisDurableJournalAuthorityOptions,
@@ -136,7 +157,10 @@ export function createRedisDurableJournalAuthority(
         return result;
       }
     }
-    throw new Error(`Redis durable authority CAS contention exceeded for ${options.journalId}`);
+    throw new CrankError(
+      "cas_contention",
+      "Redis durable authority update contention exceeded its retry budget",
+    );
   }
 
   function* read<T>(select: (value: InMemoryDurableJournalAuthority) => T): Operation<T> {

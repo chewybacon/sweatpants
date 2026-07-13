@@ -7,6 +7,7 @@ import type {
 } from "./durable-types.ts";
 import type { Json } from "./types.ts";
 
+/** Pinned identity of the built-in foreign-tool adapter program. */
 export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
   id: "sweatpants.foreign-tool-adapter",
   version: "1.0.0",
@@ -33,6 +34,7 @@ const startDefinition: EffectDefinition<ForeignToolRequest, ForeignToolDispositi
   outputSchema: true,
   retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
 };
+/** Effect contract for starting a foreign driver invocation exactly once. */
 export const FOREIGN_TOOL_START_EFFECT = Object.freeze(startDefinition);
 
 const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignToolDisposition> = {
@@ -60,6 +62,7 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
   outputSchema: true,
   retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
 };
+/** Effect contract for applying one response to foreign continuation state. */
 export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 
 const modelSampleDefinition: EffectDefinition<Json, Json> = {
@@ -69,8 +72,10 @@ const modelSampleDefinition: EffectDefinition<Json, Json> = {
   outputSchema: true,
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 };
+/** Canonical model-sampling effect used by foreign ToolSession lifting. */
 export const FOREIGN_MODEL_SAMPLE_EFFECT = Object.freeze(modelSampleDefinition);
 
+/** Projects a foreign request into the pinned adapter child descriptor. */
 export function foreignToolAdapterChild(request: ForeignToolRequest): DurableChildDescriptor {
   return { ...FOREIGN_TOOL_ADAPTER_PROGRAM, input: request };
 }

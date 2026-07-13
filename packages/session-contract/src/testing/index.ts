@@ -1,6 +1,7 @@
 export { createInMemoryCrankStore, InMemoryCrankStore } from "../store.ts";
 export { buildReplayIndex, validateJournal } from "../journal.ts";
 export { canonicalSnapshot } from "../canonical.ts";
+/** Runtime contracts commonly required by external conformance fixtures. */
 export type { CrankRuntimeOptions, JournalRecord, ProgramFactory } from "../types.ts";
 export {
   runDurableDriverRecoveryFixture,

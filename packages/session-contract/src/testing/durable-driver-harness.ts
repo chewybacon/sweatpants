@@ -21,12 +21,14 @@ import {
   type ProgramRoute,
 } from "../index.ts";
 
+/** Dependencies for exercising one driver across park, snapshot, and recovery. */
 export interface DurableDriverRecoveryFixtureOptions {
   driverKind: string;
   route?: ProgramRoute;
   createDriver(registry: DurableToolRegistry): ProgramDriver;
 }
 
+/** Observable journal and outcome evidence returned by the recovery fixture. */
 export interface DurableDriverRecoveryEvidence {
   firstRun: { state: "parked"; pullId: string; reason: string };
   resolutionStatus: "accepted" | "duplicate";
@@ -72,6 +74,7 @@ const fixtureManifest: DurableProgramManifest = {
  * ProgramRuntime/JournalAuthority loop rather than testing adapter methods in
  * isolation.
  */
+/** Runs a deterministic park/recover scenario through production runtime seams. */
 export function* runDurableDriverRecoveryFixture(
   options: DurableDriverRecoveryFixtureOptions,
 ): Operation<DurableDriverRecoveryEvidence> {

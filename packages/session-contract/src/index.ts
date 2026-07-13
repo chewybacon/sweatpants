@@ -1,3 +1,4 @@
+/** Replay-crank public contracts. */
 export type {
   ActivationOutcome,
   AllPull,
@@ -66,6 +67,7 @@ export { createCrankSession } from "./session.ts";
 export { CrankStoreContext, useCrankStore, useOptionalCrankStore } from "./contexts.ts";
 export { projectRecord, publicEvents } from "./projections.ts";
 
+/** Crank-native durable runtime contracts. */
 export type {
   AppendEmissionRequest,
   AttachProgramRequest,

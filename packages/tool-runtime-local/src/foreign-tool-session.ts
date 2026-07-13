@@ -33,11 +33,16 @@ type ToolSessionContinuationState = {
   durability: ForeignDurability;
 };
 
+/** Scoped ToolSession registry and immutable authored-tool inventory used by the adapter. */
 export interface ToolSessionForeignDriverOptions {
   registry: ToolSessionRegistry;
   tools: ReadonlyMap<string, RuntimeTool>;
 }
 
+/**
+ * Creates start/continue registrations that own ToolSession acquisition, response
+ * parsing, cancellation, and release. Expected protocol failures are dispositions.
+ */
 export function createToolSessionForeignEffectRegistrations(
   options: ToolSessionForeignDriverOptions,
 ): readonly [DurableEffectRegistration, DurableEffectRegistration] {
@@ -102,7 +107,12 @@ export function createToolSessionForeignEffectRegistrations(
           `Expected ${continuation.pending.kind}, received ${request.response.kind}`,
         );
       }
-      yield* deliverResponse(session, continuation, request);
+      const responseFailure = yield* deliverResponse(session, continuation, request);
+      if (responseFailure) {
+        yield* session.cancel("invalid foreign continuation response");
+        yield* options.registry.release(session.id);
+        return responseFailure;
+      }
       const disposition = yield* nextDisposition(
         session,
         continuation.afterLsn,
@@ -122,20 +132,29 @@ function* deliverResponse(
   session: ToolSession,
   continuation: ToolSessionContinuationState,
   request: ForeignToolContinueRequest,
-): Operation<void> {
+): Operation<ForeignToolDisposition | undefined> {
   if (request.response.kind === "sample") {
     const response = decodeSampleResponse(request.response.value);
     if (!response) {
-      throw new Error("Invalid foreign sample response");
+      return failure(
+        continuation.durability,
+        "foreign_sample_response_invalid",
+        "Foreign sample response is invalid",
+      );
     }
     yield* session.respondToSample(continuation.pending.requestId, response);
-    return;
+    return undefined;
   }
   const response = decodeElicitResponse(request.response.value);
   if (!response) {
-    throw new Error("Invalid foreign elicitation response");
+    return failure(
+      continuation.durability,
+      "foreign_elicit_response_invalid",
+      "Foreign elicitation response is invalid",
+    );
   }
   yield* session.respondToElicit(continuation.pending.requestId, response);
+  return undefined;
 }
 
 function* nextDisposition(

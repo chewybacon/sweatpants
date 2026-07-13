@@ -6,6 +6,7 @@ export {
   type AgentCoreToolRuntimeDriverOptions,
 } from "./driver.ts";
 
+/** Serializable AgentCore transport, session, event, and store contracts. */
 export type {
   AgentCoreModelSelection,
   AgentCoreToolSessionHandle,

@@ -21,18 +21,23 @@ import type {
   ProgramStepProposal,
 } from "./durable-types.ts";
 
+/** Program-ID keyed immutable registry of crank-native tool definitions. */
 export type DurableToolRegistry = ReadonlyMap<string, DurableTool>;
+/** Driver-kind keyed immutable registry installed in an Effection scope. */
 export type ProgramDriverRegistry = ReadonlyMap<string, ProgramDriver>;
 
+/** Scoped durable-tool inventory used by local generator drivers. */
 export const DurableToolRegistryContext = createContext<DurableToolRegistry | undefined>(
   "session-contract:durable-tool-registry",
   undefined,
 );
+/** Scoped driver inventory used by ProgramRuntime. */
 export const ProgramDriverRegistryContext = createContext<ProgramDriverRegistry | undefined>(
   "session-contract:program-driver-registry",
   undefined,
 );
 
+/** Builds a registry and rejects duplicate program IDs. */
 export function createDurableToolRegistry(tools: Iterable<DurableTool>): DurableToolRegistry {
   const registry = new Map<string, DurableTool>();
   for (const tool of tools) {
@@ -45,12 +50,14 @@ export function createDurableToolRegistry(tools: Iterable<DurableTool>): Durable
   return registry;
 }
 
+/** Builds a driver registry and rejects duplicate or empty driver kinds. */
 export function createProgramDriverRegistry(
   drivers: Iterable<readonly [string, ProgramDriver]>,
 ): ProgramDriverRegistry {
   return new Map(drivers);
 }
 
+/** Resolves the current tool registry or fails fast outside an installed scope. */
 export function* useDurableToolRegistry(): Operation<DurableToolRegistry> {
   const registry = yield* DurableToolRegistryContext.get();
   if (!registry) {
@@ -59,6 +66,7 @@ export function* useDurableToolRegistry(): Operation<DurableToolRegistry> {
   return registry;
 }
 
+/** Resolves the current driver registry or fails fast outside an installed scope. */
 export function* useProgramDriverRegistry(): Operation<ProgramDriverRegistry> {
   const registry = yield* ProgramDriverRegistryContext.get();
   if (!registry) {
@@ -85,6 +93,7 @@ class RuntimeAttachmentHandle {
   }
 }
 
+/** Creates the process-local reference driver; generator state never crosses a process boundary. */
 export function createLocalGeneratorDriver(registry?: DurableToolRegistry): ProgramDriver {
   return {
     *attach(request: AttachProgramRequest): Operation<ProgramAttachment> {
@@ -182,8 +191,9 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
       if (command.type === "cancel") {
         try {
           state.actionIndex += 1;
-          // Generator.return requires the declared successful return type, but
-          // structured cancellation intentionally supplies no successful value.
+          // SAFETY: Generator.return requires the successful return type, but
+          // structured cancellation intentionally supplies no successful value;
+          // the result is classified as cancelled and never exposed as success.
           return advance(state, () => generator.return(undefined as never));
         } catch (error) {
           return fail(state, error);
@@ -301,6 +311,7 @@ function programKey(id: string, version: string, digest: string): string {
   return `${id}@${version}#${digest}`;
 }
 
+/** Derives a stable attachment identifier from pinned program and task identity. */
 export function stableProgramAttachmentId(request: AttachProgramRequest): string {
   return stableOpaqueId("attachment-seed", [
     request.sessionId,

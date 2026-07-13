@@ -2,8 +2,8 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 
 import {
+  CrankError,
   DurableEffectRegistryContext,
-  JournalAuthority,
   JournalAuthorityContext,
   ProgramDriverRegistryContext,
   ProgramPeer,
@@ -15,6 +15,8 @@ import {
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
   createProgramDriverRegistry,
+  parseDurableAuthoritySnapshot,
+  signCapability,
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type DurableProgramManifest,
@@ -53,6 +55,92 @@ const manifest: DurableProgramManifest = {
 const keyring = createCapabilityKeyring("test-issuer", [
   { keyId: "key-1", secret: "x".repeat(32) },
 ]);
+
+function captureError(action: () => unknown): unknown {
+  try {
+    action();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected action to fail");
+}
+
+describe("persisted boundary parsing", () => {
+  it("rejects malformed nested authority collections", () => {
+    expect(() =>
+      parseDurableAuthoritySnapshot(
+        JSON.stringify({ version: 1, tasks: [null], records: [], runnable: [], nonce: 0 }),
+      ),
+    ).toThrow("Invalid durable authority snapshot");
+    expect(() =>
+      parseDurableAuthoritySnapshot(
+        JSON.stringify({
+          version: 1,
+          tasks: [],
+          records: [["session-1", [null]]],
+          runnable: [],
+          nonce: 0,
+        }),
+      ),
+    ).toThrow("Invalid durable authority snapshot");
+    expect(() =>
+      parseDurableAuthoritySnapshot(
+        JSON.stringify({
+          version: 1,
+          tasks: [],
+          records: [
+            [
+              "session-1",
+              [
+                {
+                  offset: "1",
+                  eventId: "event-1",
+                  sessionId: "session-1",
+                  payload: { type: "FutureRecord", taskId: "task-1" },
+                },
+              ],
+            ],
+          ],
+          runnable: [],
+          nonce: 0,
+        }),
+      ),
+    ).toThrow("Invalid durable authority snapshot");
+  });
+});
+
+describe("capability boundary parsing", () => {
+  it("does not expose signing secrets through the keyring value", () => {
+    expect(Object.keys(keyring)).toEqual(["issuer", "activeKeyId"]);
+    expect(JSON.stringify(keyring)).not.toContain("xxxxxxxx");
+  });
+
+  it("rejects structurally valid claims with unrecognized fields", () => {
+    const permissions: ["propose", "complete"] = ["propose", "complete"];
+    const claims = {
+      journalId: "journal-1",
+      journalIncarnation: "incarnation-1",
+      sessionId: "session-1",
+      taskId: "turn-0/root",
+      programId: manifest.programId,
+      programVersion: manifest.version,
+      programDigest: manifest.digest,
+      attachmentId: "attachment-1",
+      executionEpoch: 1,
+      audience: "program-runtime",
+      permissions,
+      nonce: "nonce-1",
+      unexpected: "must-not-cross-boundary",
+    };
+
+    const error = captureError(() => signCapability(claims, keyring));
+    expect(error).toBeInstanceOf(CrankError);
+    expect(error).toMatchObject({
+      _tag: "CrankError",
+      code: "invalid_resolution_capability",
+    });
+  });
+});
 
 function attachRequest(sessionId = "session-1"): AttachProgramRequest {
   return {
@@ -154,7 +242,9 @@ describe("crank-native durable runtime", () => {
         programCapability: opened.programCapability,
       });
       expect(reserved.status).toBe("authorized");
-      if (reserved.status !== "authorized") return;
+      if (reserved.status !== "authorized") {
+        return;
+      }
       expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual([
         "TaskOpened",
         "PullRequested",
@@ -238,13 +328,15 @@ describe("crank-native durable runtime", () => {
         },
         programCapability: opened.programCapability,
       });
-      if (reserved.status !== "authorized") throw new Error("not authorized");
+      if (reserved.status !== "authorized") {
+        throw new Error("not authorized");
+      }
       const recovered = createInMemoryDurableJournalAuthority({
         journalId: "journal-1",
         journalIncarnation: "incarnation-1",
         keyring,
         now: () => 1_000,
-        snapshot: authority.exportSnapshot(),
+        snapshot: parseDurableAuthoritySnapshot(JSON.stringify(authority.exportSnapshot())),
       });
       expect(
         yield* recovered.resolve({
@@ -285,7 +377,9 @@ describe("crank-native durable runtime", () => {
         },
         programCapability: opened.programCapability,
       });
-      if (first.status !== "authorized") throw new Error("not authorized");
+      if (first.status !== "authorized") {
+        throw new Error("not authorized");
+      }
       const replacement = yield* authority.replaceAttachment(
         attach.sessionId,
         attach.taskId,
@@ -359,7 +453,9 @@ describe("crank-native durable runtime", () => {
         descriptor: { kind: "wait", key: "delay", durationMs: 500 },
         programCapability: opened.programCapability,
       });
-      if (pending.status !== "pending") throw new Error("wait did not park");
+      if (pending.status !== "pending") {
+        throw new Error("wait did not park");
+      }
       const capability = authority.resolutionCapability(
         attach.sessionId,
         attach.taskId,
