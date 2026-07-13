@@ -74,3 +74,8 @@ export {
 } from "./agentcore-aws-invoker.ts";
 
 export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore-fake-runtime.ts";
+
+export {
+  createAgentCoreDurableProgramDriver,
+  type AgentCoreDurableProgramTransport,
+} from "./durable-driver.ts";

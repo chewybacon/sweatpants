@@ -418,6 +418,9 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../../packages/session-contract
       '@sweatpants/stream-bridge':
         specifier: workspace:*
         version: link:../../packages/stream-bridge
@@ -1020,6 +1023,9 @@ importers:
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../durable-streams
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
       redis:
         specifier: ^4.7.0
         version: 4.7.1
@@ -1057,6 +1063,9 @@ importers:
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
     devDependencies:
       '@sweatpants/framework':
         specifier: workspace:*

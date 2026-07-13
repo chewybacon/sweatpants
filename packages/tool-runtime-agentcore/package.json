@@ -51,6 +51,7 @@
     "dependencies": {
         "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
         "@sweatpants/durable-streams": "workspace:*",
+        "@sweatpants/session-contract": "workspace:*",
         "redis": "^4.7.0"
     },
     "devDependencies": {

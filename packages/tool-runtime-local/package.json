@@ -47,7 +47,8 @@
         "build:types": "tsc -b tsconfig.json --force"
     },
     "dependencies": {
-        "@sweatpants/core": "workspace:*"
+        "@sweatpants/core": "workspace:*",
+        "@sweatpants/session-contract": "workspace:*"
     },
     "devDependencies": {
         "@sweatpants/framework": "workspace:*",
