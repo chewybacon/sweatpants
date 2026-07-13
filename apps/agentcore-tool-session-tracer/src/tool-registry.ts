@@ -1,12 +1,17 @@
 import type { RuntimeTool } from "@sweatpants/core";
 import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
+import { calculator } from "../../yo-chat/src/tools/calculator.ts";
+import { askQuestion } from "../../yo-chat/src/tools/general/ask-question/tool.ts";
+import { pickCard } from "../../yo-chat/src/tools/pick-card/tool.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
 
 type RuntimeMcpTool = RuntimeTool;
 
 function isBridgeCompatibleTool(tool: unknown): tool is RuntimeMcpTool {
-  if (typeof tool !== "function" || tool === null) return false;
+  if (typeof tool !== "function" || tool === null) {
+    return false;
+  }
   return "parameters" in tool && "capabilities" in tool && "schemas" in tool;
 }
 
@@ -19,22 +24,18 @@ function assertRuntimeMcpTool(name: string, tool: unknown): RuntimeMcpTool {
   return tool as RuntimeMcpTool;
 }
 
-const ALL_RUNTIME_TOOLS = [bookFlightTool, playTttTool, tictactoeTool] as const;
-
-const SUPPORTED_TOOL_NAMES = new Set<string>(
-  (process.env["AGENTCORE_TOOL_NAMES"] ?? "book_flight,play_ttt,tictactoe")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
+const ALL_RUNTIME_TOOLS = [
+  askQuestion,
+  bookFlightTool,
+  calculator,
+  pickCard,
+  playTttTool,
+  tictactoeTool,
+] as const;
 
 const runtimeTools = new Map<string, RuntimeMcpTool>();
-
 for (const tool of ALL_RUNTIME_TOOLS) {
-  const name = (tool as { name: string }).name;
-  if (SUPPORTED_TOOL_NAMES.has(name)) {
-    runtimeTools.set(name, assertRuntimeMcpTool(name, tool));
-  }
+  runtimeTools.set(tool.name, assertRuntimeMcpTool(tool.name, tool));
 }
 
 export function getRuntimeMcpTool(name: string): RuntimeMcpTool | undefined {
@@ -42,5 +43,5 @@ export function getRuntimeMcpTool(name: string): RuntimeMcpTool | undefined {
 }
 
 export function runtimeMcpToolNames(): string[] {
-  return Array.from(runtimeTools.keys()).sort();
+  return Array.from(runtimeTools.keys());
 }

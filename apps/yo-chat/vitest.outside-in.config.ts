@@ -34,9 +34,10 @@ const config: UserConfig = {
     // Fork pool: tool workers are real worker threads; the worker config also
     // passes explicit dev/tsx execArgv for workspace source imports.
     pool: "forks",
-    // Live-model flows share one provider/server; keep them serial to avoid
-    // provider throttling (mirrors playwright workers: 1 / design C7).
-    fileParallelism: false,
+    // Bound live-flow fan-out so the complete matrix remains below the
+    // 120-second suite budget while avoiding unbounded provider/runtime load.
+    fileParallelism: true,
+    maxWorkers: Number.parseInt(process.env["OUTSIDE_IN_MAX_WORKERS"] ?? "2", 10),
     // One failing flow must stop the matrix immediately; otherwise Tier A/B
     // permutations can serialize the same failure for several minutes.
     bail: 1,

@@ -22,32 +22,19 @@
  */
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
-import type { RuntimeTool } from "@sweatpants/core";
 import type { Operation } from "effection";
-import {
-  createChatApplication,
-  createChatHandler,
-  createPluginSessionManager,
-} from "@sweatpants/framework/server";
-import {
-  PluginSessionManagerContext,
-  PluginSessionRegistryContext,
-  ToolInventoryContext,
-  createToolInventory,
-  createToolInventoryEntry,
-  setupLogger,
-} from "@sweatpants/framework/chat";
+import { createChatApplication, createPluginSessionManager } from "@sweatpants/framework/server";
+import { setupLogger } from "@sweatpants/framework/chat";
 import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import {
-  ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
   createToolSessionRegistry,
-  installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 
 import { setupYoChatDurableStreams } from "@/server/durable-streams";
-import { setupYoChatBaseContexts, activePluginTools, allTools } from "@/server/tools";
-import { setupYoChatModelProvider } from "@/server/model-provider";
+import { setupYoChatBaseContexts, allTools } from "@/server/tools";
+import { createYoChatHandler } from "@/server/chat-handler";
+import { installYoChatToolRuntime } from "@/server/tool-runtime-installation";
 import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
 import { pluginSamplingProvider } from "@/server/plugin-sampling-provider";
 import {
@@ -57,13 +44,6 @@ import {
 
 import { handlerToChatFetch, type ChatBinding } from "./chat-fetch.ts";
 
-type LocalSessionTool = RuntimeTool;
-
-function localOnlyTools(): LocalSessionTool[] {
-  const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));
-  return allTools.filter((tool) => !pluginNames.has(tool.name));
-}
-
 function* setupTierAWorkerRuntime(): Operation<void> {
   const workerGenPath = fileURLToPath(YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL);
   if (!existsSync(workerGenPath)) {
@@ -71,8 +51,6 @@ function* setupTierAWorkerRuntime(): Operation<void> {
       `[outside-in:tier-a] generated worker entry not found at ${workerGenPath}. Run \`pnpm -C apps/yo-chat generate:tools\`.`,
     );
   }
-
-  yield* ToolSessionSamplingProviderContext.set(pluginSamplingProvider);
 
   const store = createInMemoryToolSessionStore();
   const registry: ToolSessionRegistry = yield* createToolSessionRegistry(store, {
@@ -84,23 +62,12 @@ function* setupTierAWorkerRuntime(): Operation<void> {
     samplingProvider: pluginSamplingProvider,
   });
 
-  yield* PluginSessionRegistryContext.set(registry);
-  yield* PluginSessionManagerContext.set(manager);
-
-  const pluginTools = activePluginTools;
-  const localTools = localOnlyTools();
-
-  yield* ToolInventoryContext.set(
-    createToolInventory([
-      ...localTools.map((tool) => createToolInventoryEntry(tool)),
-      ...pluginTools.map((tool) => createToolInventoryEntry(tool)),
-    ]),
-  );
-
-  yield* installLocalToolRuntime({
-    tools: [...pluginTools, ...localTools],
+  yield* installYoChatToolRuntime({
+    mode: "local",
     registry,
+    pluginManager: manager,
     samplingProvider: pluginSamplingProvider,
+    tools: [...allTools],
   });
 }
 
@@ -115,10 +82,7 @@ export function createTierABinding(): ChatBinding {
       yield* setupYoChatBaseContexts();
       yield* setupTierAWorkerRuntime();
     },
-    handler: createChatHandler({
-      setup: setupYoChatModelProvider,
-      maxToolIterations: 10,
-    }),
+    handler: createYoChatHandler(),
   });
 
   const baseUrl = "http://localhost/api/chat";

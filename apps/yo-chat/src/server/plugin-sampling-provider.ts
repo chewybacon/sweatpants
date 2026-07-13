@@ -5,14 +5,14 @@ import type {
   SamplingToolCall,
   SamplingToolDefinition,
 } from "@sweatpants/framework/chat";
-import type {
-  WireSampleResult,
-  WireSampleResultBase,
-  WireSampleResultWithParsed,
-  WireSampleResultWithToolCalls,
-  ToolSessionSamplingProvider,
+import {
+  extendedMessageToProviderMessage,
+  type ToolSessionSamplingProvider,
+  type WireSampleResult,
+  type WireSampleResultBase,
+  type WireSampleResultWithParsed,
+  type WireSampleResultWithToolCalls,
 } from "@sweatpants/framework/chat/mcp-tools";
-import { extendedMessageToProviderMessage } from "@sweatpants/framework/chat/mcp-tools";
 import {
   createPiAiModelProviderDriver,
   resolvePiAiModel,
@@ -110,8 +110,10 @@ function extractFencedJson(text: string): string | undefined {
 }
 
 function extractBalancedJson(text: string): string | undefined {
-  const start = text.search(/[\[{]/);
-  if (start < 0) return undefined;
+  const start = text.search(/[[{]/);
+  if (start < 0) {
+    return undefined;
+  }
 
   const opener = text[start];
   const closer = opener === "{" ? "}" : "]";
@@ -137,10 +139,18 @@ function extractBalancedJson(text: string): string | undefined {
       continue;
     }
 
-    if (inString) continue;
-    if (char === opener) depth += 1;
-    if (char === closer) depth -= 1;
-    if (depth === 0) return text.slice(start, index + 1);
+    if (inString) {
+      continue;
+    }
+    if (char === opener) {
+      depth += 1;
+    }
+    if (char === closer) {
+      depth -= 1;
+    }
+    if (depth === 0) {
+      return text.slice(start, index + 1);
+    }
   }
 
   return undefined;
@@ -278,4 +288,13 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
   };
 }
 
-export const pluginSamplingProvider = createPluginSamplingProvider();
+/**
+ * Compatibility provider that defers concrete model resolution until a sample
+ * operation runs. Importing server composition modules performs no provider or
+ * credential work.
+ */
+export const pluginSamplingProvider: ToolSessionSamplingProvider = {
+  *sample(messages, options): Operation<WireSampleResult> {
+    return yield* createPluginSamplingProvider().sample(messages, options);
+  },
+};

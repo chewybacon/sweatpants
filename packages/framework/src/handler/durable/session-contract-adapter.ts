@@ -17,6 +17,7 @@ import {
 
 import type {
   AssistantMessage,
+  ContentBlock,
   Context as RuntimeContext,
   Message as RuntimeMessage,
   ToolCallBlock,
@@ -706,12 +707,18 @@ export function toRuntimeMessage(value: Json): RuntimeMessage {
   const content =
     typeof message["content"] === "string" ? message["content"] : stringify(message["content"]);
   if (role === "assistant") {
+    const runtimeContent = Array.isArray(message["runtime_content"])
+      ? message["runtime_content"].flatMap((block) => {
+          const parsed = parseRuntimeContentBlock(block);
+          return parsed ? [parsed] : [];
+        })
+      : undefined;
     const toolCalls = Array.isArray(message["tool_calls"])
       ? message["tool_calls"].map(asObject)
       : [];
     return {
       role: "assistant",
-      content: [
+      content: runtimeContent ?? [
         ...(content ? [{ type: "text" as const, text: content }] : []),
         ...toolCalls.map((call) => {
           const fn = asObject(call["function"]);
@@ -720,6 +727,9 @@ export function toRuntimeMessage(value: Json): RuntimeMessage {
             id: String(call["id"] ?? "tool"),
             name: String(call["target"] ?? call["name"] ?? fn["name"] ?? "tool"),
             arguments: toolCallArguments(call["input"] ?? call["arguments"] ?? fn["arguments"]),
+            ...(typeof call["thoughtSignature"] === "string"
+              ? { thoughtSignature: call["thoughtSignature"] }
+              : {}),
           };
         }),
       ],
@@ -735,6 +745,52 @@ export function toRuntimeMessage(value: Json): RuntimeMessage {
     };
   if (role === "system") return { role: "system", content };
   return { role: "user", content };
+}
+
+function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
+  const block = asObject(value);
+  switch (block["type"]) {
+    case "text":
+      return typeof block["text"] === "string"
+        ? {
+            type: "text",
+            text: block["text"],
+            ...(typeof block["textSignature"] === "string"
+              ? { textSignature: block["textSignature"] }
+              : {}),
+          }
+        : undefined;
+    case "thinking":
+      return typeof block["text"] === "string"
+        ? {
+            type: "thinking",
+            text: block["text"],
+            ...(typeof block["format"] === "string" ? { format: block["format"] } : {}),
+            ...(typeof block["thinkingSignature"] === "string"
+              ? { thinkingSignature: block["thinkingSignature"] }
+              : {}),
+            ...(typeof block["redacted"] === "boolean" ? { redacted: block["redacted"] } : {}),
+          }
+        : undefined;
+    case "toolCall":
+      return typeof block["id"] === "string" && typeof block["name"] === "string"
+        ? {
+            type: "toolCall",
+            id: block["id"],
+            name: block["name"],
+            arguments: toolCallArguments(block["arguments"]),
+            ...(typeof block["thoughtSignature"] === "string"
+              ? { thoughtSignature: block["thoughtSignature"] }
+              : {}),
+          }
+        : undefined;
+    case "image":
+      return typeof block["data"] === "string" && typeof block["mimeType"] === "string"
+        ? { type: "image", data: block["data"], mimeType: block["mimeType"] }
+        : undefined;
+    default:
+      return undefined;
+  }
 }
 
 function textFromAssistant(message: AssistantMessage): string {

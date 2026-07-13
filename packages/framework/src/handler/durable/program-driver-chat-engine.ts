@@ -25,14 +25,14 @@ import {
   type Json,
 } from "@sweatpants/session-contract";
 
-import type { Context as RuntimeContext } from "../../lib/chat/runtime/index.ts";
+import type { AssistantMessage, Context as RuntimeContext } from "../../lib/chat/runtime/index.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
 import { toRuntimeMessage } from "./session-contract-adapter.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, SessionContractChatEngineParams } from "./types.ts";
 
-type ChatCall = { id: string; target: string; input: Json };
+type ChatCall = { id: string; target: string; input: Json; thoughtSignature?: string };
 type ChatSampleRequest = {
   messages: Json[];
   systemPrompt?: string;
@@ -45,6 +45,7 @@ type ChatSampleRequest = {
 type ChatSampleResult = {
   text: string;
   calls: ChatCall[];
+  content: Json[];
   model?: string;
   stopReason?: string;
   toolCalls?: Array<{ id: string; name: string; arguments: Json }>;
@@ -59,6 +60,7 @@ type ChatProgramInput = ChatSampleRequest & {
 type ProgramDriverChatEngineParams = SessionContractChatEngineParams & {
   journalStore: ProgramDriverJournalStore;
   foreignEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
+  continueAfterCancellation?: boolean;
 };
 
 const modelSample = defineDurableEffect<ChatSampleRequest, ChatSampleResult>({
@@ -80,7 +82,7 @@ const modelSample = defineDurableEffect<ChatSampleRequest, ChatSampleResult>({
   },
   outputSchema: {
     type: "object",
-    required: ["text", "calls"],
+    required: ["text", "calls", "content"],
     properties: {
       text: { type: "string" },
       calls: {
@@ -92,10 +94,12 @@ const modelSample = defineDurableEffect<ChatSampleRequest, ChatSampleResult>({
             id: { type: "string", minLength: 1 },
             target: { type: "string", minLength: 1 },
             input: true,
+            thoughtSignature: { type: "string" },
           },
           additionalProperties: false,
         },
       },
+      content: { type: "array", items: true },
       model: { type: "string" },
       stopReason: { type: "string" },
       toolCalls: { type: "array", items: true },
@@ -136,6 +140,14 @@ const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
 
 const rootTool = createDurableTool(manifest, function* (input, context) {
   const messages = [...input.messages];
+  const hasPriorAssistantOrTool = messages.some((message) => {
+    const value = jsonRecord(message);
+    return (
+      value?.["role"] === "assistant" ||
+      value?.["role"] === "tool" ||
+      value?.["role"] === "toolResult"
+    );
+  });
   const completedCallIds = new Set<string>();
   for (let iteration = 0; iteration < input.maxIterations; iteration += 1) {
     const sampled = yield* context.effect(
@@ -143,7 +155,7 @@ const rootTool = createDurableTool(manifest, function* (input, context) {
       {
         messages,
         ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
-        ...(iteration === 0 && input.toolChoice !== undefined
+        ...(iteration === 0 && !hasPriorAssistantOrTool && input.toolChoice !== undefined
           ? { toolChoice: input.toolChoice }
           : {}),
       },
@@ -157,7 +169,12 @@ const rootTool = createDurableTool(manifest, function* (input, context) {
     for (const call of calls) {
       completedCallIds.add(call.id);
     }
-    messages.push({ role: "assistant", content: sampled.text, tool_calls: calls });
+    messages.push({
+      role: "assistant",
+      content: sampled.text,
+      tool_calls: calls,
+      runtime_content: sampled.content,
+    });
     for (const call of calls) {
       yield* context.emit("tool_started", {
         callId: call.id,
@@ -287,7 +304,6 @@ export function createProgramDriverChatEngine(
         });
       });
     });
-
     const after = yield* journal.readJournal(params.conversationId);
     const events = projectRecords(after.slice(before.length), after);
     if (outcome.state === "completed") {
@@ -308,11 +324,25 @@ export function createProgramDriverChatEngine(
         });
       }
     } else if (outcome.state === "cancelled") {
-      events.push({
-        type: "RUN_ERROR",
-        code: "PROGRAM_CANCELLED",
-        message: params.pluginAbort?.reason ?? "Program was cancelled",
-      });
+      if (params.continueAfterCancellation) {
+        const {
+          pluginAbort: _pluginAbort,
+          continueAfterCancellation: _continueAfterCancellation,
+          ...continuationParams
+        } = params;
+        const continuation = yield* createProgramDriverChatEngine(continuationParams);
+        while (true) {
+          const next = yield* continuation.next();
+          if (next.done) break;
+          events.push(next.value);
+        }
+      } else {
+        events.push({
+          type: "RUN_ERROR",
+          code: "PROGRAM_CANCELLED",
+          message: params.pluginAbort?.reason ?? "Program was cancelled",
+        });
+      }
     } else {
       events.push({ type: "RUN_ERROR", code: outcome.error.code, message: outcome.error.message });
     }
@@ -337,17 +367,25 @@ function* sampleModel(
   cancellation: AbortSignal,
   pullId: string,
 ): Operation<ChatSampleResult> {
+  const foreignSamplingRequest =
+    request.maxTokens !== undefined ||
+    request.modelPreferences !== undefined ||
+    request.tools !== undefined ||
+    request.schema !== undefined;
   const runtimeContext: RuntimeContext = {
     ...(request.systemPrompt !== undefined ? { systemPrompt: request.systemPrompt } : {}),
     messages: request.messages.map(toRuntimeMessage),
-    tools:
-      request.tools !== undefined
-        ? sampleTools(request.tools)
-        : params.toolSchemas.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            parameters: tool.parameters,
-          })),
+    ...(request.tools !== undefined
+      ? { tools: sampleTools(request.tools) }
+      : foreignSamplingRequest
+        ? {}
+        : {
+            tools: params.toolSchemas.map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+            })),
+          }),
   };
   const stream = params.runtime.stream(params.model, runtimeContext, {
     ...params.streamOptions,
@@ -384,12 +422,20 @@ function* sampleModel(
       }
       for (const block of next.value.content) {
         if (block.type === "toolCall" && !calls.some((call) => call.id === block.id)) {
-          calls.push({ id: block.id, target: block.name, input: assertJson(block.arguments) });
+          calls.push({
+            id: block.id,
+            target: block.name,
+            input: assertJson(block.arguments),
+            ...(block.thoughtSignature !== undefined
+              ? { thoughtSignature: block.thoughtSignature }
+              : {}),
+          });
         }
       }
       const base: ChatSampleResult = {
         text,
         calls,
+        content: snapshotAssistantContent(next.value.content),
         model: params.model.id,
         stopReason: calls.length > 0 ? "toolUse" : "endTurn",
       };
@@ -426,7 +472,14 @@ function* sampleModel(
     if (next.value.type === "toolcall_end") {
       const block = next.value.toolCall;
       if (!calls.some((call) => call.id === block.id)) {
-        calls.push({ id: block.id, target: block.name, input: assertJson(block.arguments) });
+        calls.push({
+          id: block.id,
+          target: block.name,
+          input: assertJson(block.arguments),
+          ...(block.thoughtSignature !== undefined
+            ? { thoughtSignature: block.thoughtSignature }
+            : {}),
+        });
       }
     }
     if (next.value.type === "error") {
@@ -621,27 +674,29 @@ function projectRecords(
       typeof payload["callId"] === "string" &&
       typeof payload["tool"] === "string"
     ) {
-      if (!activeToolCalls.has(payload["callId"])) {
-        const started = previousToolStart(allRecords, payload["callId"]);
-        events.push({
-          type: "TOOL_CALL_START",
-          toolCallId: payload["callId"],
-          toolCallName: typeof started?.["tool"] === "string" ? started["tool"] : payload["tool"],
-          parentMessageId: `assistant:tools:${payload["callId"]}`,
-        });
+      const activeInThisRun = activeToolCalls.delete(payload["callId"]);
+      const startedPreviously = previousToolStart(allRecords, payload["callId"]);
+      if (activeInThisRun) {
+        events.push({ type: "TOOL_CALL_END", toolCallId: payload["callId"] });
+      } else if (!startedPreviously) {
+        events.push(
+          {
+            type: "TOOL_CALL_START",
+            toolCallId: payload["callId"],
+            toolCallName: payload["tool"],
+            parentMessageId: `assistant:tools:${payload["callId"]}`,
+          },
+          { type: "TOOL_CALL_END", toolCallId: payload["callId"] },
+        );
       }
-      activeToolCalls.delete(payload["callId"]);
-      events.push(
-        { type: "TOOL_CALL_END", toolCallId: payload["callId"] },
-        {
-          type: "TOOL_CALL_RESULT",
-          messageId: `tool:${payload["callId"]}`,
-          toolCallId: payload["callId"],
-          toolCallName: payload["tool"],
-          content: JSON.stringify(payload["result"] ?? null),
-          role: "tool",
-        },
-      );
+      events.push({
+        type: "TOOL_CALL_RESULT",
+        messageId: `tool:${payload["callId"]}`,
+        toolCallId: payload["callId"],
+        toolCallName: payload["tool"],
+        content: JSON.stringify(payload["result"] ?? null),
+        role: "tool",
+      });
     }
   }
   return events;
@@ -678,6 +733,8 @@ function projectInterrupt(
   const nested = jsonRecord(context?.["context"]);
   const callId = foreignCallId(context, nested);
   const elicitId = foreignElicitId(context, nested);
+  const publicKey =
+    typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key;
   return {
     type: "RUN_FINISHED",
     ...params.agUiRun,
@@ -691,7 +748,7 @@ function projectInterrupt(
           responseSchema: objectSchema(context?.["responseSchema"]),
           ...(callId ? { toolCallId: callId } : {}),
           metadata: {
-            "sweatpants/key": pending.descriptor.key,
+            "sweatpants/key": publicKey,
             ...(typeof nested?.["toolName"] === "string"
               ? { "sweatpants/toolName": nested["toolName"] }
               : {}),
@@ -722,6 +779,41 @@ function foreignElicitId(
     return nested["elicitId"];
   }
   return typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : undefined;
+}
+
+function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] {
+  return content.map((block) => {
+    switch (block.type) {
+      case "text":
+        return assertJson({
+          type: "text",
+          text: block.text,
+          ...(block.textSignature !== undefined ? { textSignature: block.textSignature } : {}),
+        });
+      case "thinking":
+        return assertJson({
+          type: "thinking",
+          text: block.text,
+          ...(block.format !== undefined ? { format: block.format } : {}),
+          ...(block.thinkingSignature !== undefined
+            ? { thinkingSignature: block.thinkingSignature }
+            : {}),
+          ...(block.redacted !== undefined ? { redacted: block.redacted } : {}),
+        });
+      case "toolCall":
+        return assertJson({
+          type: "toolCall",
+          id: block.id,
+          name: block.name,
+          arguments: block.arguments,
+          ...(block.thoughtSignature !== undefined
+            ? { thoughtSignature: block.thoughtSignature }
+            : {}),
+        });
+      case "image":
+        return assertJson({ type: "image", data: block.data, mimeType: block.mimeType });
+    }
+  });
 }
 
 function sampleTools(tools: Json[]) {

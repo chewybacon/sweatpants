@@ -996,8 +996,26 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const agUiRunId = body.runId?.trim() || crypto.randomUUID();
       const requestedResumeScopeId = deriveResumeScopeId(agUiThreadId, body.parentRunId);
       const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
-      const hasOpenInterrupts = openInterruptsForThread(agUiThreadId).length > 0;
-      const resumeValidation = body.pluginAbort
+      const openInterrupts = openInterruptsForThread(agUiThreadId);
+      const hasOpenInterrupts = openInterrupts.length > 0;
+      const supersedeOpenProgramTurn =
+        config.executionEngine === "program-driver" &&
+        method === "POST" &&
+        hasOpenInterrupts &&
+        body.resume === undefined &&
+        body.elicitResponses === undefined &&
+        body.pluginAbort === undefined &&
+        body.messages.some((message) => message.role === "user");
+      const effectivePluginAbort =
+        body.pluginAbort ??
+        (supersedeOpenProgramTurn
+          ? {
+              sessionId:
+                openInterrupts[0]?.toolCallId ?? openInterrupts[0]?.interruptId ?? agUiRunId,
+              reason: "superseded_by_user_message",
+            }
+          : undefined);
+      const resumeValidation = effectivePluginAbort
         ? null
         : body.resume
           ? requestedResumeScopeId || resumeScopeFromEntries
@@ -1270,7 +1288,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               }
             : {}),
           ...(crankStore ? { crankStore } : {}),
-          ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
+          ...(effectivePluginAbort && { pluginAbort: effectivePluginAbort }),
         };
         const engine = resumePreflightError
           ? createEmptyChatEngine()
@@ -1281,6 +1299,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 ...(programDriverForeignEffects
                   ? { foreignEffects: programDriverForeignEffects }
                   : {}),
+                ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
               })
             : createSessionContractChatEngine(engineParams);
         log.debug({ sessionId }, "new session path: chat engine created");

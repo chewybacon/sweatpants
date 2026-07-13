@@ -1,31 +1,15 @@
-import type { RuntimeTool } from "@sweatpants/core";
 import { call, type Operation } from "effection";
 import {
-  PluginSessionManagerContext,
-  PluginSessionRegistryContext,
-  ToolInventoryContext,
-  ToolRuntimeContext,
-  createStrategyToolRuntime,
-  createToolInventory,
-  createToolInventoryEntry,
-} from "@sweatpants/framework/chat";
-import {
-  ProgramDriverForeignEffectsContext,
   createPluginSessionManager,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
 import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import {
-  ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
-  createLocalSessionToolExecutionStrategy,
-  createToolSessionForeignEffectRegistrations,
   createToolSessionRegistry,
-  installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import {
   createAgentCoreRemoteToolRuntimeClient,
-  createAgentCoreToolExecutionStrategy,
   createAgentCoreToolSessionRegistry,
   createAwsSdkAgentCoreInvoker,
   createInMemoryAgentCoreToolSessionEventStore,
@@ -38,24 +22,19 @@ import {
 } from "@sweatpants/tool-runtime-agentcore";
 import { env } from "@/env";
 import { getSharedRedisClient } from "@/lib/shared-redis";
-import { activeAgentCoreToolNames, activePluginTools, allTools } from "./tools";
+import { allTools } from "./tools";
 import { pluginSamplingProvider } from "./plugin-sampling-provider";
+import { installYoChatToolRuntime } from "./tool-runtime-installation";
 
-// Bundled worker entry (auto-generated). The nodeWorkerPlugin turns this
-// `?modulePath` import into a URL to the built worker script so local tool
-// sessions run their `execute` generators inside a worker thread, preserving
-// the same serialization boundary the AgentCore runtime enforces remotely.
+// The Vite plugin resolves this to the generated worker module. It is used only
+// when the single selected runtime is local.
 import toolWorkerUrl from "../__generated__/tool-worker.gen.ts?modulePath";
 
-type LocalSessionTool = RuntimeTool;
-
-let sharedPluginSessionRegistry: ToolSessionRegistry | null = null;
+let sharedRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;
-let sharedLocalSessionRegistry: ToolSessionRegistry | null = null;
 
-function* createLocalPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
-  const store = createInMemoryToolSessionStore();
-  return yield* createToolSessionRegistry(store, {
+function* createLocalRegistry(): Operation<ToolSessionRegistry> {
+  return yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
     samplingProvider: pluginSamplingProvider,
     worker: {
       workerUrl: toolWorkerUrl,
@@ -72,11 +51,12 @@ function* createAgentCoreStores(): Operation<AgentCoreToolSessionStores> {
       events: createInMemoryAgentCoreToolSessionEventStore(),
     };
   }
-
   const redisOptions = {
     keyPrefix: env.AGENTCORE_REDIS_KEY_PREFIX,
     defaultTtlSeconds: Math.max(1, Math.ceil(env.AGENTCORE_TOOL_SESSION_TTL_MS / 1000)),
   };
+  // SAFETY: both adapters use the same Redis command subset; the framework
+  // client carries wider generic module metadata than the narrow store port.
   const client = redis as unknown as RedisLikeClient;
   return {
     handles: createRedisAgentCoreToolSessionHandleStore(client, redisOptions),
@@ -84,19 +64,11 @@ function* createAgentCoreStores(): Operation<AgentCoreToolSessionStores> {
   };
 }
 
-function* createAgentCorePluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
+function* createAgentCoreRegistry(): Operation<ToolSessionRegistry> {
   if (!env.AGENTCORE_RUNTIME_ARN) {
     throw new Error("AGENTCORE_RUNTIME_ARN is required when MCP_TOOL_RUNTIME=agentcore");
   }
-
-  const toolNames = activeAgentCoreToolNames();
-  if (toolNames.length === 0) {
-    throw new Error(
-      "generated AgentCore tool registry must contain at least one tool when MCP_TOOL_RUNTIME=agentcore",
-    );
-  }
-
-  const stores = yield* createAgentCoreStores();
+  const toolNames = allTools.map((tool) => tool.name);
   const runtimeClient = createAgentCoreRemoteToolRuntimeClient(
     createAwsSdkAgentCoreInvoker({ clientConfig: { region: env.AGENTCORE_REGION } }),
   );
@@ -108,9 +80,8 @@ function* createAgentCorePluginToolSessionRegistry(): Operation<ToolSessionRegis
     toolNames,
     maxSessionTtlMs: env.AGENTCORE_TOOL_SESSION_TTL_MS,
   };
-
   return createAgentCoreToolSessionRegistry({
-    stores,
+    stores: yield* createAgentCoreStores(),
     runtimeClient,
     profiles: [profile],
     defaultProfile: profile.name,
@@ -125,93 +96,34 @@ function redactAgentCoreArn(value: string | undefined): string | undefined {
   return `[redacted-agentcore-runtime:${suffix}]`;
 }
 
-function* createConfiguredPluginToolSessionRegistry(): Operation<ToolSessionRegistry> {
+function* createSelectedRegistry(): Operation<ToolSessionRegistry> {
   if (env.MCP_TOOL_RUNTIME === "agentcore") {
-    console.info("[yo-chat] MCP tool runtime: agentcore", {
+    console.info("[yo-chat] tool runtime: agentcore", {
       runtimeArn: redactAgentCoreArn(env.AGENTCORE_RUNTIME_ARN),
       endpointName: env.AGENTCORE_ENDPOINT_NAME,
       region: env.AGENTCORE_REGION,
-      toolNames: activeAgentCoreToolNames(),
+      toolCount: allTools.length,
     });
-    return yield* createAgentCorePluginToolSessionRegistry();
+    return yield* createAgentCoreRegistry();
   }
-
-  console.info("[yo-chat] MCP tool runtime: local");
-  return yield* createLocalPluginToolSessionRegistry();
+  console.info("[yo-chat] tool runtime: local", { toolCount: allTools.length });
+  return yield* createLocalRegistry();
 }
 
-function runtimePluginTools(): LocalSessionTool[] {
-  return activePluginTools;
-}
-
-function localTools(): LocalSessionTool[] {
-  const pluginNames = new Set<string>(activePluginTools.map((tool) => tool.name));
-  return allTools.filter((tool) => !pluginNames.has(tool.name));
-}
-
+/** Installs all discovered tools into the single selected runtime. */
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
-  yield* ToolSessionSamplingProviderContext.set(pluginSamplingProvider);
-
-  if (!sharedPluginSessionRegistry || !sharedPluginSessionManager) {
-    sharedPluginSessionRegistry = yield* createConfiguredPluginToolSessionRegistry();
+  if (!sharedRegistry || !sharedPluginSessionManager) {
+    sharedRegistry = yield* createSelectedRegistry();
     sharedPluginSessionManager = yield* createPluginSessionManager({
-      registry: sharedPluginSessionRegistry,
+      registry: sharedRegistry,
       samplingProvider: pluginSamplingProvider,
     });
   }
-
-  yield* PluginSessionRegistryContext.set(sharedPluginSessionRegistry);
-  yield* PluginSessionManagerContext.set(sharedPluginSessionManager);
-
-  const pluginTools = runtimePluginTools();
-  const localRuntimeTools = localTools();
-
-  if (env.MCP_TOOL_RUNTIME === "agentcore" && !sharedLocalSessionRegistry) {
-    sharedLocalSessionRegistry = yield* createLocalPluginToolSessionRegistry();
-  }
-  const localExecutionRegistry =
-    env.MCP_TOOL_RUNTIME === "agentcore"
-      ? sharedLocalSessionRegistry!
-      : sharedPluginSessionRegistry;
-
-  yield* ToolInventoryContext.set(
-    createToolInventory([
-      ...localRuntimeTools.map((tool) => createToolInventoryEntry(tool)),
-      ...pluginTools.map((tool) => createToolInventoryEntry(tool)),
-    ]),
-  );
-
-  if (env.MCP_TOOL_RUNTIME === "agentcore") {
-    const runtime = createStrategyToolRuntime({
-      id: "agentcore",
-      strategies: [
-        createAgentCoreToolExecutionStrategy({
-          tools: pluginTools,
-          registry: sharedPluginSessionRegistry,
-          samplingProvider: pluginSamplingProvider,
-        }),
-        createLocalSessionToolExecutionStrategy({
-          registry: localExecutionRegistry,
-          samplingProvider: pluginSamplingProvider,
-          tools: localRuntimeTools,
-        }),
-      ],
-    });
-
-    yield* ToolRuntimeContext.set(runtime);
-    return;
-  }
-
-  const allRuntimeTools = [...pluginTools, ...localRuntimeTools];
-  yield* ProgramDriverForeignEffectsContext.set(
-    createToolSessionForeignEffectRegistrations({
-      registry: localExecutionRegistry,
-      tools: new Map(allRuntimeTools.map((tool) => [tool.name, tool])),
-    }),
-  );
-  yield* installLocalToolRuntime({
-    tools: allRuntimeTools,
-    registry: localExecutionRegistry,
+  yield* installYoChatToolRuntime({
+    mode: env.MCP_TOOL_RUNTIME,
+    registry: sharedRegistry,
+    pluginManager: sharedPluginSessionManager,
     samplingProvider: pluginSamplingProvider,
+    tools: [...allTools],
   });
 }

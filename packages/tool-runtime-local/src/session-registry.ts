@@ -223,10 +223,17 @@ export function createToolSessionRegistry(
         };
         yield* store.set(session.id, entry as ToolSessionEntry);
 
-        // Event-driven terminal status monitor; no per-session timer.
+        // Event-driven terminal status monitor; do not call status() concurrently
+        // with a newly returned worker session. Immediate tools can settle while
+        // the caller is already consuming events, so settled() is the single
+        // startup-safe synchronization point.
         yield* spawn(function* () {
-          yield* store.updateStatus(session.id, yield* session.status());
-          yield* store.updateStatus(session.id, yield* waitForSettlement(session));
+          const status = session.settled
+            ? yield* session.settled()
+            : yield* waitForSettlement(session);
+          if (yield* store.get(session.id)) {
+            yield* store.updateStatus(session.id, status);
+          }
         });
 
         return session;

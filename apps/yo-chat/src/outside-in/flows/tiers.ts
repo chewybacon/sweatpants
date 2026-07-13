@@ -24,15 +24,16 @@ export function liveReady(): boolean {
 }
 
 export function selectedTiers(): TierCase[] {
-  const cases: TierCase[] = [
-    {
+  const cases: TierCase[] = [];
+  if (process.env["OUTSIDE_IN_TIER_A"] !== "0") {
+    cases.push({
       name: "tier-a",
       create: async () => {
         const { createTierABinding } = await import("../lib/tier-a.ts");
         return createTierABinding();
       },
-    },
-  ];
+    });
+  }
 
   if (process.env["OUTSIDE_IN_TIER_B"] === "1") {
     cases.push({

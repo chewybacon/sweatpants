@@ -36,6 +36,10 @@ import {
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
 
+import {
+  setupAgentCoreProgramDriverToolRuntime,
+  useAgentCoreProgramDriverAcceptance,
+} from "./program-driver-agentcore-setup.ts";
 import { createRedisProgramDriverJournalStore } from "../src/server/program-driver-journal.ts";
 import { playTttTool } from "../src/tools/play-ttt/tool.ts";
 
@@ -150,6 +154,10 @@ function createApplication(driver: ModelProviderDriver, journalStore: ProgramDri
         bufferStore: createInMemoryBufferStore<string>(),
         registryStore: createInMemoryRegistryStore(),
       });
+      if (useAgentCoreProgramDriverAcceptance()) {
+        yield* setupAgentCoreProgramDriverToolRuntime(playTttTool);
+        return;
+      }
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
         samplingProvider: {
           *sample(): Operation<never> {

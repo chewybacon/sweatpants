@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
@@ -33,6 +34,10 @@ import {
   createToolSessionForeignEffectRegistrations,
   createToolSessionRegistry,
 } from "@sweatpants/tool-runtime-local";
+import {
+  setupAgentCoreProgramDriverToolRuntime,
+  useAgentCoreProgramDriverAcceptance,
+} from "./program-driver-agentcore-setup.ts";
 import { createRedisProgramDriverJournalStore } from "../src/server/program-driver-journal.ts";
 import { bookFlightTool } from "../src/tools/book-flight/tool.ts";
 
@@ -125,6 +130,10 @@ describe("unchanged book_flight through the flagged HTTP ProgramRuntime", () => 
             bufferStore: createInMemoryBufferStore<string>(),
             registryStore: createInMemoryRegistryStore(),
           });
+          if (useAgentCoreProgramDriverAcceptance()) {
+            yield* setupAgentCoreProgramDriverToolRuntime(bookFlightTool);
+            return;
+          }
           const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
             samplingProvider: {
               *sample(): Operation<never> {
@@ -198,7 +207,7 @@ describe("unchanged book_flight through the flagged HTTP ProgramRuntime", () => 
         await redisClient.disconnect();
       }
     }
-  });
+  }, 20_000);
 });
 
 type PublicEvent = { type: string; [key: string]: unknown };

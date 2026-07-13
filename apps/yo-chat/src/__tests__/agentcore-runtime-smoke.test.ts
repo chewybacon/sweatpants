@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { run } from "effection";
+import type * as AgentCoreModule from "@sweatpants/tool-runtime-agentcore";
 
 describe("yo-chat AgentCore runtime smoke", () => {
   beforeEach(() => {
@@ -9,9 +10,9 @@ describe("yo-chat AgentCore runtime smoke", () => {
   });
 
   it("configures AgentCore runtime and executes a remote tool without a separate approval env var", async () => {
-    const actualAgentCore = await vi.importActual<
-      typeof import("@sweatpants/tool-runtime-agentcore")
-    >("@sweatpants/tool-runtime-agentcore");
+    const actualAgentCore = await vi.importActual<typeof AgentCoreModule>(
+      "@sweatpants/tool-runtime-agentcore",
+    );
     const fakeRuntime = new actualAgentCore.FakeAgentCoreRemoteToolRuntimeClient();
 
     vi.doMock("@/env", () => ({
@@ -46,11 +47,17 @@ describe("yo-chat AgentCore runtime smoke", () => {
           parameters: { type: "object", properties: {} },
         },
       ],
-      allTools: [],
+      allTools: [
+        {
+          name: "book_flight",
+          description: "Book a flight",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
     }));
 
     vi.doMock("@sweatpants/tool-runtime-agentcore", async () => {
-      const actual = await vi.importActual<typeof import("@sweatpants/tool-runtime-agentcore")>(
+      const actual = await vi.importActual<typeof AgentCoreModule>(
         "@sweatpants/tool-runtime-agentcore",
       );
       return {
@@ -66,9 +73,13 @@ describe("yo-chat AgentCore runtime smoke", () => {
 
     const { setupYoChatPluginsAndRuntime } = await import("../server/tool-runtime");
     const { ToolInventoryApi, ToolRuntimeApi } = await import("@sweatpants/framework/chat");
+    const { ProgramDriverForeignEffectsContext } = await import("@sweatpants/framework/server");
 
     await run(function* () {
       yield* setupYoChatPluginsAndRuntime();
+
+      const foreignEffects = yield* ProgramDriverForeignEffectsContext.get();
+      expect(foreignEffects).toHaveLength(2);
 
       const inventory = yield* ToolInventoryApi.list();
       expect(inventory.some((tool) => tool.definition.name === "book_flight")).toBe(true);
