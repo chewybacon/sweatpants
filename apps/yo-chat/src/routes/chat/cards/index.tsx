@@ -135,6 +135,7 @@ function CardsChatDemo() {
     // Only the pick-card plugin - focused demo
     tools: [],
     plugins: [pickCardPlugin],
+    initialToolChoice: 'required',
   })
 
   const [input, setInput] = useState('')
