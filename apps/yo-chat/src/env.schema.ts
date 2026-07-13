@@ -79,9 +79,6 @@ export const appEnv = createEnv({
       .default(process.env["AWS_REGION"] ?? process.env["AWS_DEFAULT_REGION"] ?? "us-east-1"),
     AGENTCORE_ENDPOINT_NAME: z.string().default("DEFAULT"),
     AGENTCORE_RUNTIME_PROFILE_NAME: z.string().default("yo-chat-agentcore"),
-    // Optional override/allowlist. When unset, yo-chat uses the generated
-    // AgentCore registry artifact as the source of truth for shipped tools.
-    AGENTCORE_TOOL_NAMES: z.string().optional(),
     AGENTCORE_TOOL_SESSION_TTL_MS: z.coerce.number().default(15 * 60 * 1000),
     AGENTCORE_REDIS_KEY_PREFIX: z.string().default("sp:yo-chat:agentcore:"),
   },

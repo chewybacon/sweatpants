@@ -613,7 +613,13 @@ export function projectCrankEventToAgUi(
         },
       ];
     }
-    case "input_requested":
+    case "input_requested": {
+      const inputContext = asRecord(event.context);
+      const modelContext = Object.fromEntries(
+        Object.entries(inputContext).filter(
+          ([key]) => key !== "callId" && key !== "elicitId" && key !== "toolName",
+        ),
+      );
       return [
         ...(textOpen
           ? [{ type: "TEXT_MESSAGE_END" as const, messageId: assistantMessageId(params) }]
@@ -628,7 +634,7 @@ export function projectCrankEventToAgUi(
                 id: event.pullId,
                 reason: "input_required",
                 message: event.message,
-                responseSchema: asRecord(event.responseSchema),
+                responseSchema: withModelContext(asRecord(event.responseSchema), modelContext),
                 ...(event.context &&
                 !Array.isArray(event.context) &&
                 typeof event.context === "object" &&
@@ -658,6 +664,7 @@ export function projectCrankEventToAgUi(
           },
         },
       ];
+    }
     case "turn_finished":
       return [
         ...(textOpen
@@ -889,6 +896,13 @@ function toolCallArguments(value: unknown): Record<string, unknown> {
     return {};
   }
 }
+function withModelContext(
+  schema: Record<string, unknown>,
+  context: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.keys(context).length > 0 ? { ...schema, "x-model-context": context } : schema;
+}
+
 function stringify(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value ?? null);
 }

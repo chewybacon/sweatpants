@@ -90,11 +90,6 @@ Legacy browser/rendering tools and arbitrary yo-chat TSX tools are out of scope 
 Optional settings:
 
 ```bash
-# Optional override/allowlist. Canonical values are intrinsic MCP tool names.
-# Supported generated aliases such as book-flight_book_flight are accepted but
-# normalized to canonical names before local plugin filtering and remote profile construction.
-AGENTCORE_TOOL_NAMES=book_flight,tictactoe,play_ttt
-
 AGENTCORE_TOOL_SESSION_TTL_MS=900000
 AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
@@ -121,7 +116,7 @@ AGENTCORE_TOOL_SAMPLE_MODEL_PROVIDER=amazon-bedrock
 AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 ```
 
-Unsupported names in `AGENTCORE_TOOL_NAMES` are rejected with a configuration error that lists the supported canonical names. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
+The selected runtime receives the complete generated tool inventory. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
 
 The `program-driver` engine uses concrete ToolSession registries to journal tool sampling and elicitation. In local mode, authored tools run through the local ToolSession registry. In AgentCore mode, a routed registry sends configured plugin tools to AgentCore and keeps local-only tools local; both routes expose sampling and elicitation to the same journal-aware foreign adapter.
 

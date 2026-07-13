@@ -387,6 +387,7 @@ describe("strict AG-UI public conformance", () => {
               required: ["approved"],
               properties: { approved: { type: "boolean" } },
             },
+            context: { prompt: "Approve the echo", choices: ["yes", "no"] },
           },
         };
       },
@@ -423,6 +424,12 @@ describe("strict AG-UI public conformance", () => {
     const interrupt = isUnknownRecord(interrupts[0]) ? interrupts[0] : undefined;
     expect(outcome?.["type"]).toBe("interrupt");
     expect(interrupt?.["message"]).toBe("Approve echo?");
+    expect(interrupt?.["responseSchema"]).toEqual({
+      type: "object",
+      required: ["approved"],
+      properties: { approved: { type: "boolean" } },
+      "x-model-context": { prompt: "Approve the echo", choices: ["yes", "no"] },
+    });
     const interruptId = interrupt?.["id"];
     expect(typeof interruptId).toBe("string");
     if (typeof interruptId !== "string") {
@@ -451,6 +458,22 @@ describe("strict AG-UI public conformance", () => {
               toolName: ref.toolName,
               elicitId: interruptId,
               result: { action: "accept", content: { approved: true } },
+              trace: {
+                version: 1,
+                startedAt: 1,
+                completedAt: 2,
+                emissions: [
+                  {
+                    order: 0,
+                    emissionId: "approval-emission",
+                    sourceInterruptId: interruptId,
+                    componentKey: "Approval",
+                    props: { prompt: "Approve the echo" },
+                    response: { approved: true },
+                    timestamp: 1,
+                  },
+                ],
+              },
             },
           ],
         }),
@@ -462,9 +485,22 @@ describe("strict AG-UI public conformance", () => {
     const journal = yield* journalStore.open(conversationId);
     const records = yield* journal.readJournal(conversationId);
 
-    assertPublicConformance(secondEvents);
+    // @ag-ui/core's current event union cannot parse ACTIVITY_SNAPSHOT even
+    // though activity snapshots are canonical AG-UI events. Validate the run
+    // lifecycle independently and assert the replay activity shape below.
+    assertPublicConformance(secondEvents.filter((event) => event.type !== "ACTIVITY_SNAPSHOT"));
     expect(resumeCount).toBe(1);
     expect(secondEvents.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
+    expect(secondEvents).toContainEqual(
+      expect.objectContaining({
+        type: "ACTIVITY_SNAPSHOT",
+        activityType: "sweatpants:plugin-replay",
+        content: expect.objectContaining({
+          toolCallId: ref.callId,
+          toolName: ref.toolName,
+        }),
+      }),
+    );
     expect(
       records.some(
         (record) =>

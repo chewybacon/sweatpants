@@ -26,6 +26,7 @@ import {
 } from "@sweatpants/session-contract";
 
 import type { AssistantMessage, Context as RuntimeContext } from "../../lib/chat/runtime/index.ts";
+import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
 import { toRuntimeMessage } from "./session-contract-adapter.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
@@ -305,7 +306,18 @@ export function createProgramDriverChatEngine(
       });
     });
     const after = yield* journal.readJournal(params.conversationId);
-    const events = projectRecords(after.slice(before.length), after);
+    const events: StreamEvent[] = (params.elicitResponses ?? []).flatMap((response) => {
+      if (!response.trace || !response.toolName) {
+        return [];
+      }
+      const activity = buildPluginReplayActivity({
+        toolCallId: response.callId,
+        toolName: response.toolName,
+        trace: response.trace,
+      });
+      return activity ? [activity] : [];
+    });
+    events.push(...projectRecords(after.slice(before.length), after));
     if (outcome.state === "completed") {
       events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
     } else if (outcome.state === "parked") {
@@ -733,6 +745,12 @@ function projectInterrupt(
   const nested = jsonRecord(context?.["context"]);
   const callId = foreignCallId(context, nested);
   const elicitId = foreignElicitId(context, nested);
+  const toolName =
+    typeof context?.["foreignTool"] === "string"
+      ? context["foreignTool"]
+      : typeof nested?.["toolName"] === "string"
+        ? nested["toolName"]
+        : undefined;
   const publicKey =
     typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : pending.descriptor.key;
   return {
@@ -745,13 +763,11 @@ function projectInterrupt(
           id: pending.pullId,
           reason: "input_required",
           message: pending.descriptor.message,
-          responseSchema: objectSchema(context?.["responseSchema"]),
+          responseSchema: schemaWithModelContext(context?.["responseSchema"], nested),
           ...(callId ? { toolCallId: callId } : {}),
           metadata: {
             "sweatpants/key": publicKey,
-            ...(typeof nested?.["toolName"] === "string"
-              ? { "sweatpants/toolName": nested["toolName"] }
-              : {}),
+            ...(toolName ? { "sweatpants/toolName": toolName } : {}),
             ...(callId ? { callId } : {}),
             ...(elicitId ? { elicitId } : {}),
           },
@@ -861,4 +877,22 @@ function jsonRecord(value: Json | undefined): Record<string, Json> | undefined {
 
 function objectSchema(value: Json | undefined): Record<string, unknown> {
   return jsonRecord(value) ?? {};
+}
+
+function schemaWithModelContext(
+  schema: Json | undefined,
+  context: Record<string, Json> | undefined,
+): Record<string, unknown> {
+  const parsed = objectSchema(schema);
+  if (!context) {
+    return parsed;
+  }
+  const modelContext = Object.fromEntries(
+    Object.entries(context).filter(
+      ([key]) => key !== "callId" && key !== "elicitId" && key !== "toolName",
+    ),
+  );
+  return Object.keys(modelContext).length > 0
+    ? { ...parsed, "x-model-context": modelContext }
+    : parsed;
 }

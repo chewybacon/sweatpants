@@ -34,6 +34,60 @@ describe("replay-crank AG-UI projection", () => {
     expect(projected.some((event) => event.type === "RUN_ERROR")).toBe(false);
   });
 
+  it("projects elicitation model context into the public response schema", () => {
+    const projected = projectCrankEventToAgUi(
+      {
+        type: "input_requested",
+        pullId: "pull-card",
+        key: "pickCard",
+        message: "Pick a card",
+        responseSchema: { type: "object" },
+        context: {
+          callId: "call-card",
+          elicitId: "elicit-card",
+          toolName: "pick_card",
+          cards: [{ rank: "A", suit: "Spades", display: "A♠" }],
+          prompt: "Pick one",
+        },
+      },
+      params(),
+      false,
+      new Map(),
+    );
+
+    expect(projected).toEqual([
+      {
+        type: "RUN_FINISHED",
+        threadId: "thread-1",
+        runId: "run-1",
+        outcome: {
+          type: "interrupt",
+          interrupts: [
+            {
+              id: "pull-card",
+              reason: "input_required",
+              message: "Pick a card",
+              toolCallId: "call-card",
+              responseSchema: {
+                type: "object",
+                "x-model-context": {
+                  cards: [{ rank: "A", suit: "Spades", display: "A♠" }],
+                  prompt: "Pick one",
+                },
+              },
+              metadata: {
+                "sweatpants/key": "pickCard",
+                "sweatpants/toolName": "pick_card",
+                callId: "call-card",
+                elicitId: "elicit-card",
+              },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   it("keeps AG-UI text lifecycle IDs consistent while durable IDs remain private", () => {
     const start = projectCrankEventToAgUi(
       { type: "text_started", messageId: "pull:0", attemptId: "attempt-0" },
