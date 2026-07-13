@@ -145,6 +145,7 @@ export {
   createPluginSessionManager,
   CrankStoreContext,
   createInMemoryCrankStore,
+  createCapabilityKeyring,
   createDurableTool,
   defineDurableEffect,
   defineDurableProgramManifest,
@@ -152,6 +153,8 @@ export {
   createDurableEffectRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
+  createInMemoryProgramDriverJournalStore,
+  ProgramDriverForeignEffectsContext,
   ProgramRuntime,
   ProgramPeer,
   JournalAuthority,
@@ -173,6 +176,9 @@ export type {
   ForeignToolDisposition,
   ForeignToolRequest,
   ProgramDriver,
+  ProgramDriverJournal,
+  ProgramDriverJournalStore,
+  InMemoryProgramDriverJournalStoreOptions,
 } from "../handler/durable/index.ts";
 
 /** Durable chat handler and plugin-session contracts for application setup. */

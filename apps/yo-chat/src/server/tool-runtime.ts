@@ -10,14 +10,16 @@ import {
   createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
 import {
+  ProgramDriverForeignEffectsContext,
   createPluginSessionManager,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
-import { type ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
+import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
 import {
   ToolSessionSamplingProviderContext,
   createInMemoryToolSessionStore,
   createLocalSessionToolExecutionStrategy,
+  createToolSessionForeignEffectRegistrations,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
@@ -116,7 +118,9 @@ function* createAgentCorePluginToolSessionRegistry(): Operation<ToolSessionRegis
 }
 
 function redactAgentCoreArn(value: string | undefined): string | undefined {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const suffix = value.split("/").pop()?.slice(-8) ?? "unknown";
   return `[redacted-agentcore-runtime:${suffix}]`;
 }
@@ -198,8 +202,15 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
     return;
   }
 
+  const allRuntimeTools = [...pluginTools, ...localRuntimeTools];
+  yield* ProgramDriverForeignEffectsContext.set(
+    createToolSessionForeignEffectRegistrations({
+      registry: localExecutionRegistry,
+      tools: new Map(allRuntimeTools.map((tool) => [tool.name, tool])),
+    }),
+  );
   yield* installLocalToolRuntime({
-    tools: [...pluginTools, ...localRuntimeTools],
+    tools: allRuntimeTools,
     registry: localExecutionRegistry,
     samplingProvider: pluginSamplingProvider,
   });

@@ -660,6 +660,27 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return receipt;
   }
 
+  /** Idempotently records logical cancellation before resolving pending work. */
+  *requestCancellation(sessionId: string, taskId: string, reason?: string): Operation<void> {
+    const task = this.#task(sessionId, taskId);
+    this.#assertActive(task);
+    const existing = (this.#records.get(sessionId) ?? []).find(
+      (record) =>
+        record.payload.type === "CancellationRequested" && record.payload.taskId === taskId,
+    );
+    if (existing?.payload.type === "CancellationRequested") {
+      if (existing.payload.reason !== reason) {
+        throw new CrankError("idempotency_conflict", "Cancellation reason differs");
+      }
+      return;
+    }
+    this.#append(sessionId, undefined, {
+      type: "CancellationRequested",
+      taskId,
+      ...(reason !== undefined ? { reason } : {}),
+    });
+  }
+
   /** Marks a live attempt detached without revoking its resolution capability. */
   *detachAttempt(
     sessionId: string,

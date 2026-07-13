@@ -99,6 +99,13 @@ AGENTCORE_TOOL_SESSION_TTL_MS=900000
 AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
 
+# Opt in to the crank-native HTTP chat engine. Legacy remains the default.
+# The capability secret is required only for program-driver and must contain at
+# least 32 bytes. Redis persists the private authority journal when configured;
+# otherwise the flagged engine is process-local and intended for development.
+SWEATPANTS_EXECUTION_ENGINE=program-driver
+PROGRAM_DRIVER_CAPABILITY_SECRET='replace-with-at-least-32-random-bytes'
+
 # Optional chat model allow-list. When unset, only the configured default is allowed.
 ALLOWED_CHAT_MODELS_JSON='[{"provider":"amazon-bedrock","id":"zai.glm-5"},{"provider":"ollama","id":"gemma4:12b-mlx"}]'
 
@@ -115,6 +122,8 @@ AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 ```
 
 Unsupported names in `AGENTCORE_TOOL_NAMES` are rejected with a configuration error that lists the supported canonical names. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
+
+The `program-driver` engine uses the concrete local ToolSession registry to journal tool sampling and elicitation. The AgentCore ToolRuntime fallback currently rejects sampling-capable tools rather than silently bypassing the journal; AgentCore sampling-aware cutover remains a separate integration step.
 
 # Building For Production
 

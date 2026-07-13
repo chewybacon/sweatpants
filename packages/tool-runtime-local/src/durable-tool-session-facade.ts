@@ -35,6 +35,7 @@ export class DurableToolFacadeError extends Error {
   constructor(
     readonly code:
       | "program_failed"
+      | "program_cancelled"
       | "unsupported_park"
       | "resolution_rejected"
       | "effect_handler_missing",
@@ -214,6 +215,9 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     }
     if (outcome.state === "failed") {
       throw new DurableToolFacadeError("program_failed", outcome.error.message);
+    }
+    if (outcome.state === "cancelled") {
+      throw new DurableToolFacadeError("program_cancelled", "Durable tool was cancelled");
     }
 
     const request = pendingElicit(authority.readJournal(invocationId), outcome.pullId);

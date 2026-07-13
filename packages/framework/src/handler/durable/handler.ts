@@ -19,15 +19,13 @@
  * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { call, resource, type Operation, type Stream, type Subscription } from "effection";
-import type {
-  SessionHandle,
-  SessionRegistry,
-  TokenBufferStore,
-} from "../../lib/chat/durable-streams/index.ts";
 import {
   useSessionRegistryStore,
   useSessionRegistry,
   useTokenBufferStore,
+  type SessionHandle,
+  type SessionRegistry,
+  type TokenBufferStore,
 } from "../../lib/chat/durable-streams/index.ts";
 import {
   MaxIterationsContext,
@@ -52,6 +50,8 @@ import { bindModel, createBindingSource, stringParam } from "../model-binder.ts"
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createSessionContractChatEngine } from "./session-contract-adapter.ts";
+import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
+import { useOptionalProgramDriverForeignEffects } from "./program-driver-effects.ts";
 import { useOptionalCrankStore } from "@sweatpants/session-contract";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
 import {
@@ -85,6 +85,7 @@ import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
   ElicitResponse,
+  SessionContractChatEngineParams,
   ToolSchema,
 } from "./types.ts";
 import type { Runtime } from "../../lib/chat/runtime/index.ts";
@@ -835,6 +836,16 @@ function* createConversationHydrateResponse(params: {
  * @param config - Handler configuration
  * @returns Fetch handler function
  */
+function createEmptyChatEngine(): Stream<StreamEvent, void> {
+  return resource(function* (provide) {
+    yield* provide({
+      *next(): Operation<IteratorResult<StreamEvent, void>> {
+        return { done: true, value: undefined };
+      },
+    });
+  });
+}
+
 export function createDurableChatHandler(config: DurableChatHandlerConfig) {
   const { setup, maxToolIterations = 10 } = config;
 
@@ -986,27 +997,29 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const requestedResumeScopeId = deriveResumeScopeId(agUiThreadId, body.parentRunId);
       const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
       const hasOpenInterrupts = openInterruptsForThread(agUiThreadId).length > 0;
-      const resumeValidation = body.resume
-        ? requestedResumeScopeId || resumeScopeFromEntries
-          ? validateResumeEntries({
-              threadId: resumeScopeFromEntries?.threadId ?? agUiThreadId,
-              scopeId: requestedResumeScopeId ?? resumeScopeFromEntries!.scopeId,
-              runId: agUiRunId,
-              resume: body.resume,
-            })
-          : ({
-              ok: false,
-              code: "INVALID_RESUME",
-              message: "Unable to determine resume scope",
-            } as const)
-        : hasOpenInterrupts && requestedResumeScopeId
-          ? validateResumeEntries({
-              threadId: agUiThreadId,
-              scopeId: requestedResumeScopeId,
-              runId: agUiRunId,
-              resume: [],
-            })
-          : null;
+      const resumeValidation = body.pluginAbort
+        ? null
+        : body.resume
+          ? requestedResumeScopeId || resumeScopeFromEntries
+            ? validateResumeEntries({
+                threadId: resumeScopeFromEntries?.threadId ?? agUiThreadId,
+                scopeId: requestedResumeScopeId ?? resumeScopeFromEntries!.scopeId,
+                runId: agUiRunId,
+                resume: body.resume,
+              })
+            : ({
+                ok: false,
+                code: "INVALID_RESUME",
+                message: "Unable to determine resume scope",
+              } as const)
+          : hasOpenInterrupts && requestedResumeScopeId
+            ? validateResumeEntries({
+                threadId: agUiThreadId,
+                scopeId: requestedResumeScopeId,
+                runId: agUiRunId,
+                resume: [],
+              })
+            : null;
       // Resume validation is pure. Interrupt state is committed only after the
       // crank respond commands are durably accepted by the adapter.
       const legacyElicitResponses = body.elicitResponses ?? [];
@@ -1207,6 +1220,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
         // Read the shared fenced crank store from context (optional).
         const crankStore = yield* useOptionalCrankStore();
+        const programDriverForeignEffects =
+          config.executionEngine === "program-driver"
+            ? yield* useOptionalProgramDriverForeignEffects()
+            : undefined;
 
         const resumePreflightError =
           resumeValidation && !resumeValidation.ok ? resumeValidation : null;
@@ -1214,53 +1231,58 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // Create the chat engine. If public resume validation failed, use an
         // empty engine and expose the failure as a schema-valid RUN_ERROR before
         // any replay projection or runtime continuation can occur.
+        const engineParams: SessionContractChatEngineParams = {
+          messages: body.messages,
+          ...(liveMode !== "sse" && body.replayState ? { replayState: body.replayState } : {}),
+          ...(systemPrompt !== undefined && { systemPrompt }),
+          toolSchemas,
+          runtime,
+          model,
+          ...(streamOptions ? { streamOptions } : {}),
+          ...(initialToolChoice ? { initialToolChoice } : {}),
+          toolInventoryEntries: inventoryEntries,
+          toolRuntime: activeToolRuntime,
+          toolRuntimeId: activeToolRuntime.id,
+          maxIterations,
+          signal: engineAbortController.signal,
+          conversationId: requestedConversationId,
+          agUiRun,
+          ...(pluginRegistry && { pluginRegistry }),
+          ...(mcpToolRegistry && { mcpToolRegistry }),
+          ...(pluginSessionManager && { pluginSessionManager }),
+          ...(pluginSamplingProvider && { pluginSamplingProvider }),
+          ...(effectiveElicitResponses.length > 0 && {
+            elicitResponses: effectiveElicitResponses,
+          }),
+          ...(resumeValidation?.ok && resumeValidation.idempotent
+            ? { resumeAlreadyApplied: true }
+            : {}),
+          ...(resumeValidation?.ok && !resumeValidation.idempotent
+            ? {
+                onResumeAccepted: function* (): Operation<void> {
+                  upsertInterruptRecords(resumeValidation.records);
+                  yield* recordThreadInterruptState(
+                    bufferStore,
+                    agUiThreadId,
+                    interruptRecordsForThread(agUiThreadId),
+                  );
+                },
+              }
+            : {}),
+          ...(crankStore ? { crankStore } : {}),
+          ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
+        };
         const engine = resumePreflightError
-          ? (createEmptyStream() as unknown as Stream<StreamEvent, void>)
-          : createSessionContractChatEngine({
-              messages: body.messages,
-              ...(liveMode !== "sse" && body.replayState ? { replayState: body.replayState } : {}),
-              ...(systemPrompt !== undefined && { systemPrompt }),
-              toolSchemas,
-              runtime,
-              model,
-              ...(streamOptions ? { streamOptions } : {}),
-              ...(initialToolChoice ? { initialToolChoice } : {}),
-              toolInventoryEntries: inventoryEntries,
-              toolRuntime: activeToolRuntime,
-              toolRuntimeId: activeToolRuntime.id,
-              maxIterations,
-              signal: engineAbortController.signal,
-              // Crank session identity is the durable conversation id only.
-              conversationId: requestedConversationId,
-              agUiRun,
-              // Plugin support for MCP tools
-              ...(pluginRegistry && { pluginRegistry }),
-              ...(mcpToolRegistry && { mcpToolRegistry }),
-              ...(pluginSessionManager && { pluginSessionManager }),
-              ...(pluginSamplingProvider && { pluginSamplingProvider }),
-              // Pass elicit responses if provided
-              ...(effectiveElicitResponses.length > 0 && {
-                elicitResponses: effectiveElicitResponses,
-              }),
-              ...(resumeValidation?.ok && resumeValidation.idempotent
-                ? { resumeAlreadyApplied: true }
-                : {}),
-              ...(resumeValidation?.ok && !resumeValidation.idempotent
-                ? {
-                    onResumeAccepted: function* (): Operation<void> {
-                      upsertInterruptRecords(resumeValidation.records);
-                      yield* recordThreadInterruptState(
-                        bufferStore,
-                        agUiThreadId,
-                        interruptRecordsForThread(agUiThreadId),
-                      );
-                    },
-                  }
-                : {}),
-              // Reopen the same durable journal across HTTP requests.
-              ...(crankStore ? { crankStore } : {}),
-              ...(body.pluginAbort && { pluginAbort: body.pluginAbort }),
-            });
+          ? createEmptyChatEngine()
+          : config.executionEngine === "program-driver"
+            ? createProgramDriverChatEngine({
+                ...engineParams,
+                journalStore: config.programDriverJournalStore,
+                ...(programDriverForeignEffects
+                  ? { foreignEffects: programDriverForeignEffects }
+                  : {}),
+              })
+            : createSessionContractChatEngine(engineParams);
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events

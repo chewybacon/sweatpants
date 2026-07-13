@@ -66,6 +66,14 @@ export type {
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
+export { createInMemoryProgramDriverJournalStore } from "./program-driver-journal.ts";
+export { ProgramDriverForeignEffectsContext } from "./program-driver-effects.ts";
+/** ProgramRuntime journal composition contracts. */
+export type {
+  InMemoryProgramDriverJournalStoreOptions,
+  ProgramDriverJournal,
+  ProgramDriverJournalStore,
+} from "./program-driver-journal.ts";
 /** Plugin-session lifecycle contracts re-exported by the durable handler package. */
 export type {
   PluginSessionManager,

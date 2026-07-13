@@ -6,7 +6,11 @@
  */
 import { describe, expect, it } from "./../src/handler/durable/__tests__/vitest-effection.ts";
 import { call } from "effection";
-import { createDurableChatHandler } from "../src/handler/durable/index.ts";
+import {
+  createDurableChatHandler,
+  createInMemoryProgramDriverJournalStore,
+} from "../src/handler/durable/index.ts";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
   createMockProvider,
   createChatRequest,
@@ -25,9 +29,7 @@ import type { ChatHandlerSetup } from "../src/handler/durable/types.ts";
 
 const retainForever: RetentionPolicy = { mode: "retain_forever" };
 
-function createSharedStoreHooks(
-  provider: ReturnType<typeof createMockProvider>,
-): ChatHandlerSetup {
+function createSharedStoreHooks(provider: ReturnType<typeof createMockProvider>): ChatHandlerSetup {
   const bufferStore = createInMemoryBufferStore<string>();
   const registryStore = createInMemoryRegistryStore();
   return function* setup() {
@@ -89,6 +91,45 @@ describe("demo: reconnect mid-stream", () => {
     ]);
   });
 
+  it("continues flagged ProgramRuntime work after the response disconnects", function* () {
+    const provider = createMockProvider({
+      responses: "ProgramRuntime survives response disconnect",
+      tokenDelayMs: 40,
+    });
+    const handler = createDurableChatHandler({
+      setup: createSharedStoreHooks(provider),
+      executionEngine: "program-driver",
+      programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+        keyring: createCapabilityKeyring("program-reconnect", [
+          { keyId: "test-v1", secret: "program-reconnect-acceptance-key" },
+        ]),
+      }),
+    });
+    const conversationId = `program-reconnect-${Date.now()}`;
+    const { request: initialRequest } = createChatRequest(
+      [{ id: "user:program-disconnect", role: "user", content: "Keep going" }],
+      { conversationId },
+    );
+    const initialResponse = yield* call(() => handler(initialRequest));
+    yield* call(async () => {
+      await initialResponse.body?.cancel();
+    });
+    yield* call(() => new Promise((resolve) => setTimeout(resolve, 400)));
+
+    const { request } = createChatRequest([], { method: "GET", conversationId });
+    const response = yield* call(() => handler(request));
+    const replay = yield* call(() => consumeDurableResponse(response));
+    const snapshots = getEventsByType(replay, "MESSAGES_SNAPSHOT") as Array<{
+      type: "MESSAGES_SNAPSHOT";
+      messages: Array<{ role: string; content?: string }>;
+    }>;
+
+    expect(snapshots[0]?.messages).toMatchObject([
+      { role: "user", content: "Keep going" },
+      { role: "assistant", content: "ProgramRuntime survives response disconnect" },
+    ]);
+  });
+
   it("supports session path reconnect from offset (protocol)", function* () {
     const provider = createMockProvider({ responses: "one two three four five" });
     const handler = createDurableChatHandler({
@@ -96,9 +137,7 @@ describe("demo: reconnect mid-stream", () => {
     });
 
     const { sessionId, result: initial } = yield* call(async () => {
-      const { request } = createChatRequest([
-        { id: "user:hi", role: "user", content: "Hi" },
-      ]);
+      const { request } = createChatRequest([{ id: "user:hi", role: "user", content: "Hi" }]);
       const response = await handler(request);
       const result = await consumeDurableResponse(response);
       return {

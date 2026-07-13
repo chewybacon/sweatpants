@@ -255,15 +255,16 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           return { state: "completed", value: step.value };
         }
         if (step.type === "failed") {
+          const cancelled = step.error.code === "program_cancelled";
           yield* JournalAuthority.operations.complete({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
-            outcome: { status: "error", error: step.error },
+            outcome: cancelled ? { status: "cancelled" } : { status: "error", error: step.error },
             programCapability,
           });
-          shutdownReason = "failed";
-          return { state: "failed", error: step.error };
+          shutdownReason = cancelled ? "cancelled" : "failed";
+          return cancelled ? { state: "cancelled" } : { state: "failed", error: step.error };
         }
         if (step.type === "emission") {
           const receipt = yield* JournalAuthority.operations.emit({
@@ -335,7 +336,9 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             childOutcome =
               childRun.state === "completed"
                 ? { status: "ok", value: childRun.value }
-                : { status: "error", error: childRun.error };
+                : childRun.state === "cancelled"
+                  ? { status: "cancelled" }
+                  : { status: "error", error: childRun.error };
           }
           if (!reservation.resolutionCapability) {
             throw new CrankError("runtime_error", "Child pull has no resolution capability");

@@ -1,0 +1,772 @@
+import { resource, type Operation, type Stream } from "effection";
+import {
+  CrankError,
+  DurableEffectRegistryContext,
+  JournalAuthorityContext,
+  ProgramDriverRegistryContext,
+  ProgramRuntime,
+  assertJson,
+  assertSchemaValue,
+  canonicalJson,
+  createDurableEffectRegistration,
+  createDurableEffectRegistry,
+  createDurableTool,
+  createDurableToolRegistry,
+  createLocalGeneratorDriver,
+  createProgramDriverRegistry,
+  defineDurableEffect,
+  defineDurableProgramManifest,
+  foreignToolAdapter,
+  sha256,
+  stableProgramAttachmentId,
+  type DurableEffectRegistration,
+  type DurableSemanticRecord,
+  type DurableTool,
+  type Json,
+} from "@sweatpants/session-contract";
+
+import type { Context as RuntimeContext } from "../../lib/chat/runtime/index.ts";
+import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
+import { toRuntimeMessage } from "./session-contract-adapter.ts";
+import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
+import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
+import type { ElicitResponse, SessionContractChatEngineParams } from "./types.ts";
+
+type ChatCall = { id: string; target: string; input: Json };
+type ChatSampleRequest = {
+  messages: Json[];
+  systemPrompt?: string;
+  maxTokens?: number;
+  modelPreferences?: Json;
+  tools?: Json[];
+  toolChoice?: Json;
+  schema?: Json;
+};
+type ChatSampleResult = {
+  text: string;
+  calls: ChatCall[];
+  model?: string;
+  stopReason?: string;
+  toolCalls?: Array<{ id: string; name: string; arguments: Json }>;
+  parsed?: Json;
+  parseError?: { message: string; rawText: string };
+};
+type ChatProgramInput = ChatSampleRequest & {
+  maxIterations: number;
+  foreignDriver: "tool-session" | "framework-tool-runtime";
+};
+
+type ProgramDriverChatEngineParams = SessionContractChatEngineParams & {
+  journalStore: ProgramDriverJournalStore;
+  foreignEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
+};
+
+const modelSample = defineDurableEffect<ChatSampleRequest, ChatSampleResult>({
+  name: "model.sample",
+  version: "1",
+  inputSchema: {
+    type: "object",
+    required: ["messages"],
+    properties: {
+      messages: { type: "array", items: true },
+      systemPrompt: { type: "string" },
+      maxTokens: { type: "integer", minimum: 1 },
+      modelPreferences: true,
+      tools: { type: "array", items: true },
+      toolChoice: true,
+      schema: true,
+    },
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object",
+    required: ["text", "calls"],
+    properties: {
+      text: { type: "string" },
+      calls: {
+        type: "array",
+        items: {
+          type: "object",
+          required: ["id", "target", "input"],
+          properties: {
+            id: { type: "string", minLength: 1 },
+            target: { type: "string", minLength: 1 },
+            input: true,
+          },
+          additionalProperties: false,
+        },
+      },
+      model: { type: "string" },
+      stopReason: { type: "string" },
+      toolCalls: { type: "array", items: true },
+      parsed: true,
+      parseError: {
+        type: "object",
+        required: ["message", "rawText"],
+        properties: { message: { type: "string" }, rawText: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+    additionalProperties: false,
+  },
+  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+});
+
+const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
+  programId: "sweatpants.chat-root",
+  version: "1.0.0",
+  digest: sha256("sweatpants.chat-root@1.0.0:model-tool-loop-v1"),
+  inputSchema: {
+    type: "object",
+    required: ["messages", "maxIterations", "foreignDriver"],
+    properties: {
+      messages: { type: "array", items: true },
+      systemPrompt: { type: "string" },
+      toolChoice: { enum: ["auto", "none", "required"] },
+      maxIterations: { type: "integer", minimum: 1, maximum: 100 },
+      foreignDriver: { enum: ["tool-session", "framework-tool-runtime"] },
+    },
+    additionalProperties: false,
+  },
+  outputSchema: { type: "string" },
+  elicits: {},
+  effects: { [modelSample.name]: modelSample },
+  capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
+});
+
+const rootTool = createDurableTool(manifest, function* (input, context) {
+  const messages = [...input.messages];
+  const completedCallIds = new Set<string>();
+  for (let iteration = 0; iteration < input.maxIterations; iteration += 1) {
+    const sampled = yield* context.effect(
+      modelSample,
+      {
+        messages,
+        ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
+        ...(iteration === 0 && input.toolChoice !== undefined
+          ? { toolChoice: input.toolChoice }
+          : {}),
+      },
+      { audience: "model-runtime" },
+    );
+    const calls = sampled.calls.filter((call) => !completedCallIds.has(call.id));
+    if (calls.length === 0) {
+      yield* context.emit("assistant_text", { text: sampled.text });
+      return sampled.text;
+    }
+    for (const call of calls) {
+      completedCallIds.add(call.id);
+    }
+    messages.push({ role: "assistant", content: sampled.text, tool_calls: calls });
+    for (const call of calls) {
+      yield* context.emit("tool_started", {
+        callId: call.id,
+        tool: call.target,
+        input: call.input,
+      });
+      const result = yield* context.foreignTool<Json>({
+        driver: input.foreignDriver,
+        tool: call.target,
+        input: call.input,
+        durability: "ephemeral_handle",
+        route: call.id,
+      });
+      yield* context.emit("tool_completed", {
+        callId: call.id,
+        tool: call.target,
+        result,
+      });
+      messages.push({
+        role: "tool",
+        tool_call_id: call.id,
+        tool_name: call.target,
+        content: result,
+      });
+    }
+  }
+  throw new CrankError("max_tool_iterations", "Maximum tool iterations reached");
+});
+
+/** Runs one HTTP chat activation through the crank-native ProgramRuntime. */
+export function createProgramDriverChatEngine(
+  params: ProgramDriverChatEngineParams,
+): Stream<StreamEvent, void> {
+  return resource(function* (provide) {
+    const journal = yield* params.journalStore.open(params.conversationId);
+    const scopedForeignEffects = params.foreignEffects;
+    let before = yield* journal.readJournal(params.conversationId);
+    const active = activeRoot(before);
+    const turnNumber = rootTaskCount(before);
+    const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
+    const turnId = active?.turnId ?? `turn-${turnNumber}`;
+    const requestedInput: ChatProgramInput = {
+      messages: params.messages.map((message) => assertJson(message)),
+      maxIterations: params.maxIterations,
+      foreignDriver: scopedForeignEffects ? "tool-session" : "framework-tool-runtime",
+      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+      ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
+    };
+    const input = active
+      ? assertSchemaValue<ChatProgramInput>(manifest.inputSchema, active.input)
+      : requestedInput;
+    const attach = {
+      sessionId: params.conversationId,
+      taskId,
+      program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
+      input,
+      route: { driverKind: "generator" },
+      executionEpoch: 1,
+    };
+    if (!active) {
+      try {
+        yield* journal.openTask({
+          sessionId: params.conversationId,
+          turnId,
+          taskId,
+          manifest,
+          input,
+          executionEpoch: 1,
+          attachmentId: stableProgramAttachmentId(attach),
+          audience: "program-runtime",
+        });
+      } catch (error) {
+        if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
+          throw error;
+        }
+        const raced = activeRoot(yield* journal.readJournal(params.conversationId));
+        if (raced?.taskId !== taskId || canonicalJson(raced.input) !== canonicalJson(input)) {
+          throw new CrankError("idempotency_conflict", "Concurrent root task input differs");
+        }
+      }
+      before = yield* journal.readJournal(params.conversationId);
+    }
+
+    if (active && params.pluginAbort) {
+      yield* journal.requestCancellation(
+        params.conversationId,
+        active.taskId,
+        params.pluginAbort.reason,
+      );
+      yield* cancelPendingElicits(journal, before, params.conversationId);
+    }
+    const accepted = params.pluginAbort
+      ? 0
+      : yield* resolveElicitResponses(params, journal, before);
+    if (accepted > 0 && params.onResumeAccepted) {
+      yield* params.onResumeAccepted();
+    }
+
+    // SAFETY: registry storage erases manifest type witnesses; both tools are
+    // restored from their exact pinned schemas before driver execution.
+    const tools = createDurableToolRegistry([
+      rootTool as unknown as DurableTool,
+      foreignToolAdapter as unknown as DurableTool,
+    ]);
+    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const foreignEffects =
+      input.foreignDriver === "tool-session"
+        ? requireScopedForeignEffects(scopedForeignEffects)
+        : createToolRuntimeForeignEffectRegistrations({
+            runtime: requireToolRuntime(params),
+            entries: params.toolInventoryEntries ?? [],
+            threadId: params.agUiRun.threadId,
+            runId: params.agUiRun.runId,
+          });
+    const effects = createDurableEffectRegistry([
+      createDurableEffectRegistration(
+        modelSample,
+        { mode: "idempotent", mechanism: "pull_id_key" },
+        (request, context) => sampleModel(params, request, context.cancellation, context.pullId),
+      ),
+      ...foreignEffects,
+    ]);
+    const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+      return yield* JournalAuthorityContext.with(journal.authority, function* () {
+        return yield* DurableEffectRegistryContext.with(effects, function* () {
+          return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        });
+      });
+    });
+
+    const after = yield* journal.readJournal(params.conversationId);
+    const events = projectRecords(after.slice(before.length), after);
+    if (outcome.state === "completed") {
+      events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+    } else if (outcome.state === "parked") {
+      const pending = pendingElicit(after, outcome.pullId);
+      if (pending) {
+        const pendingCallId = pendingToolCallId(pending);
+        if (pendingCallId) {
+          events.push({ type: "TOOL_CALL_END", toolCallId: pendingCallId });
+        }
+        events.push(projectInterrupt(pending, params));
+      } else {
+        events.push({
+          type: "RUN_ERROR",
+          code: "PROGRAM_PARKED",
+          message: "Program parked without a public input request",
+        });
+      }
+    } else if (outcome.state === "cancelled") {
+      events.push({
+        type: "RUN_ERROR",
+        code: "PROGRAM_CANCELLED",
+        message: params.pluginAbort?.reason ?? "Program was cancelled",
+      });
+    } else {
+      events.push({ type: "RUN_ERROR", code: outcome.error.code, message: outcome.error.message });
+    }
+
+    let cursor = 0;
+    yield* provide({
+      *next(): Operation<IteratorResult<StreamEvent, void>> {
+        const event = events[cursor];
+        if (!event) {
+          return { done: true, value: undefined };
+        }
+        cursor += 1;
+        return { done: false, value: event };
+      },
+    });
+  });
+}
+
+function* sampleModel(
+  params: SessionContractChatEngineParams,
+  request: ChatSampleRequest,
+  cancellation: AbortSignal,
+  pullId: string,
+): Operation<ChatSampleResult> {
+  const runtimeContext: RuntimeContext = {
+    ...(request.systemPrompt !== undefined ? { systemPrompt: request.systemPrompt } : {}),
+    messages: request.messages.map(toRuntimeMessage),
+    tools:
+      request.tools !== undefined
+        ? sampleTools(request.tools)
+        : params.toolSchemas.map((tool) => ({
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+          })),
+  };
+  const stream = params.runtime.stream(params.model, runtimeContext, {
+    ...params.streamOptions,
+    signal: cancellation,
+    sessionId: pullId,
+    ...(request.toolChoice === "auto" ||
+    request.toolChoice === "none" ||
+    request.toolChoice === "required"
+      ? { toolChoice: request.toolChoice }
+      : {}),
+    ...(request.maxTokens !== undefined ? { maxTokens: request.maxTokens } : {}),
+    ...(jsonRecord(request.schema)
+      ? {
+          responseFormat: {
+            type: "json_schema" as const,
+            name: "foreign_sample",
+            schema: objectSchema(request.schema),
+          },
+        }
+      : {}),
+  });
+  const subscription = yield* stream;
+  let text = "";
+  const calls: ChatCall[] = [];
+  while (true) {
+    const next = yield* subscription.next();
+    if (next.done) {
+      if (!text) {
+        for (const block of next.value.content) {
+          if (block.type === "text") {
+            text += block.text;
+          }
+        }
+      }
+      for (const block of next.value.content) {
+        if (block.type === "toolCall" && !calls.some((call) => call.id === block.id)) {
+          calls.push({ id: block.id, target: block.name, input: assertJson(block.arguments) });
+        }
+      }
+      const base: ChatSampleResult = {
+        text,
+        calls,
+        model: params.model.id,
+        stopReason: calls.length > 0 ? "toolUse" : "endTurn",
+      };
+      if (request.schema !== undefined) {
+        const schemaCall = calls[0];
+        if (schemaCall) {
+          return { ...base, parsed: schemaCall.input };
+        }
+        try {
+          return { ...base, parsed: assertJson(JSON.parse(text)) };
+        } catch {
+          return {
+            ...base,
+            parsed: null,
+            parseError: { message: "Failed to parse structured sample", rawText: text },
+          };
+        }
+      }
+      if (request.tools !== undefined && calls.length > 0) {
+        return {
+          ...base,
+          toolCalls: calls.map((call) => ({
+            id: call.id,
+            name: call.target,
+            arguments: call.input,
+          })),
+        };
+      }
+      return base;
+    }
+    if (next.value.type === "text_delta") {
+      text += next.value.delta;
+    }
+    if (next.value.type === "toolcall_end") {
+      const block = next.value.toolCall;
+      if (!calls.some((call) => call.id === block.id)) {
+        calls.push({ id: block.id, target: block.name, input: assertJson(block.arguments) });
+      }
+    }
+    if (next.value.type === "error") {
+      throw new CrankError("model_runtime_failed", "Model runtime failed");
+    }
+  }
+}
+
+function activeRoot(records: DurableSemanticRecord[]) {
+  const closed = new Set(
+    records.flatMap((record) =>
+      record.payload.type === "TaskClosed" ? [record.payload.taskId] : [],
+    ),
+  );
+  const opened = records.filter(
+    (record) =>
+      record.payload.type === "TaskOpened" &&
+      record.payload.parentTaskId === undefined &&
+      !closed.has(record.payload.taskId),
+  );
+  const latest = opened.at(-1);
+  return latest?.payload.type === "TaskOpened" ? latest.payload : undefined;
+}
+
+function rootTaskCount(records: DurableSemanticRecord[]): number {
+  return records.filter(
+    (record) => record.payload.type === "TaskOpened" && record.payload.parentTaskId === undefined,
+  ).length;
+}
+
+function* cancelPendingElicits(
+  journal: ProgramDriverJournal,
+  records: DurableSemanticRecord[],
+  sessionId: string,
+): Operation<void> {
+  const resolved = new Set(
+    records.flatMap((entry) =>
+      entry.payload.type === "PullResolved" ? [entry.payload.pullId] : [],
+    ),
+  );
+  for (const entry of records) {
+    const payload = entry.payload;
+    if (
+      payload.type !== "PullRequested" ||
+      payload.descriptor.kind !== "elicit" ||
+      resolved.has(payload.pullId)
+    ) {
+      continue;
+    }
+    const result = yield* journal.resolvePending({
+      sessionId,
+      taskId: payload.taskId,
+      pullId: payload.pullId,
+      audience: `user:${payload.descriptor.key}`,
+      outcome: { status: "cancelled" },
+    });
+    if (result.status === "rejected") {
+      throw new CrankError(result.code, "Pending cancellation was rejected");
+    }
+  }
+}
+
+function* resolveElicitResponses(
+  params: SessionContractChatEngineParams,
+  journal: ProgramDriverJournal,
+  records: DurableSemanticRecord[],
+): Operation<number> {
+  let accepted = 0;
+  for (const response of params.elicitResponses ?? []) {
+    const pending = findPendingResponse(records, response);
+    if (!pending) {
+      continue;
+    }
+    const result = yield* journal.resolvePending({
+      sessionId: params.conversationId,
+      taskId: pending.taskId,
+      pullId: pending.pullId,
+      audience: `user:${pending.key}`,
+      outcome: { status: "ok", value: assertJson(response.result) },
+    });
+    if (result.status === "accepted" || result.status === "duplicate") {
+      accepted += 1;
+    }
+  }
+  return accepted;
+}
+
+function findPendingResponse(records: DurableSemanticRecord[], response: ElicitResponse) {
+  const resolved = new Set(
+    records.flatMap((record) =>
+      record.payload.type === "PullResolved" ? [record.payload.pullId] : [],
+    ),
+  );
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const payload = records[index]?.payload;
+    if (
+      payload?.type !== "PullRequested" ||
+      payload.descriptor.kind !== "elicit" ||
+      resolved.has(payload.pullId)
+    ) {
+      continue;
+    }
+    const context = jsonRecord(payload.descriptor.context);
+    const nested = jsonRecord(context?.["context"]);
+    if (
+      foreignCallId(context, nested) === response.callId &&
+      (foreignElicitId(context, nested) === response.elicitId ||
+        payload.pullId === response.elicitId)
+    ) {
+      return {
+        taskId: payload.taskId,
+        pullId: payload.pullId,
+        key: payload.descriptor.key,
+      };
+    }
+  }
+  return undefined;
+}
+
+type PullRequestedPayload = Extract<DurableSemanticRecord["payload"], { type: "PullRequested" }>;
+type PendingElicit = Omit<PullRequestedPayload, "descriptor"> & {
+  descriptor: Extract<PullRequestedPayload["descriptor"], { kind: "elicit" }>;
+};
+
+function pendingElicit(
+  records: DurableSemanticRecord[],
+  pullId: string,
+): PendingElicit | undefined {
+  const resolved = records.some(
+    (record) => record.payload.type === "PullResolved" && record.payload.pullId === pullId,
+  );
+  if (resolved) {
+    return undefined;
+  }
+  const found = records.find(
+    (record) =>
+      record.payload.type === "PullRequested" &&
+      record.payload.pullId === pullId &&
+      record.payload.descriptor.kind === "elicit",
+  );
+  if (found?.payload.type !== "PullRequested" || found.payload.descriptor.kind !== "elicit") {
+    return undefined;
+  }
+  return { ...found.payload, descriptor: found.payload.descriptor };
+}
+
+function projectRecords(
+  records: DurableSemanticRecord[],
+  allRecords: DurableSemanticRecord[],
+): StreamEvent[] {
+  const events: StreamEvent[] = [];
+  const activeToolCalls = new Set<string>();
+  for (const recordEntry of records) {
+    if (recordEntry.payload.type !== "DurableEmission") {
+      continue;
+    }
+    const descriptor = recordEntry.payload.descriptor;
+    const payload = jsonRecord(descriptor.payload);
+    if (!payload) {
+      continue;
+    }
+    if (descriptor.eventType === "assistant_text" && typeof payload["text"] === "string") {
+      const messageId = `assistant:${recordEntry.payload.taskId}:${recordEntry.payload.emissionIndex}`;
+      events.push(
+        { type: "TEXT_MESSAGE_START", messageId, role: "assistant" },
+        { type: "TEXT_MESSAGE_CONTENT", messageId, delta: payload["text"] },
+        { type: "TEXT_MESSAGE_END", messageId },
+      );
+    }
+    if (
+      descriptor.eventType === "tool_started" &&
+      typeof payload["callId"] === "string" &&
+      typeof payload["tool"] === "string"
+    ) {
+      activeToolCalls.add(payload["callId"]);
+      events.push(
+        {
+          type: "TOOL_CALL_START",
+          toolCallId: payload["callId"],
+          toolCallName: payload["tool"],
+          parentMessageId: `assistant:tools:${payload["callId"]}`,
+        },
+        {
+          type: "TOOL_CALL_ARGS",
+          toolCallId: payload["callId"],
+          delta: JSON.stringify(payload["input"] ?? null),
+        },
+      );
+    }
+    if (
+      descriptor.eventType === "tool_completed" &&
+      typeof payload["callId"] === "string" &&
+      typeof payload["tool"] === "string"
+    ) {
+      if (!activeToolCalls.has(payload["callId"])) {
+        const started = previousToolStart(allRecords, payload["callId"]);
+        events.push({
+          type: "TOOL_CALL_START",
+          toolCallId: payload["callId"],
+          toolCallName: typeof started?.["tool"] === "string" ? started["tool"] : payload["tool"],
+          parentMessageId: `assistant:tools:${payload["callId"]}`,
+        });
+      }
+      activeToolCalls.delete(payload["callId"]);
+      events.push(
+        { type: "TOOL_CALL_END", toolCallId: payload["callId"] },
+        {
+          type: "TOOL_CALL_RESULT",
+          messageId: `tool:${payload["callId"]}`,
+          toolCallId: payload["callId"],
+          toolCallName: payload["tool"],
+          content: JSON.stringify(payload["result"] ?? null),
+          role: "tool",
+        },
+      );
+    }
+  }
+  return events;
+}
+
+function previousToolStart(
+  records: DurableSemanticRecord[],
+  callId: string,
+): Record<string, Json> | undefined {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const payload = records[index]?.payload;
+    if (payload?.type !== "DurableEmission" || payload.descriptor.eventType !== "tool_started") {
+      continue;
+    }
+    const candidate = jsonRecord(payload.descriptor.payload);
+    if (candidate?.["callId"] === callId) {
+      return candidate;
+    }
+  }
+  return undefined;
+}
+
+function pendingToolCallId(pending: PendingElicit): string | undefined {
+  const context = jsonRecord(pending.descriptor.context);
+  const nested = jsonRecord(context?.["context"]);
+  return foreignCallId(context, nested);
+}
+
+function projectInterrupt(
+  pending: NonNullable<ReturnType<typeof pendingElicit>>,
+  params: SessionContractChatEngineParams,
+): StreamEvent {
+  const context = jsonRecord(pending.descriptor.context);
+  const nested = jsonRecord(context?.["context"]);
+  const callId = foreignCallId(context, nested);
+  const elicitId = foreignElicitId(context, nested);
+  return {
+    type: "RUN_FINISHED",
+    ...params.agUiRun,
+    outcome: {
+      type: "interrupt",
+      interrupts: [
+        {
+          id: pending.pullId,
+          reason: "input_required",
+          message: pending.descriptor.message,
+          responseSchema: objectSchema(context?.["responseSchema"]),
+          ...(callId ? { toolCallId: callId } : {}),
+          metadata: {
+            "sweatpants/key": pending.descriptor.key,
+            ...(typeof nested?.["toolName"] === "string"
+              ? { "sweatpants/toolName": nested["toolName"] }
+              : {}),
+            ...(callId ? { callId } : {}),
+            ...(elicitId ? { elicitId } : {}),
+          },
+        },
+      ],
+    },
+  };
+}
+
+function foreignCallId(
+  context: Record<string, Json> | undefined,
+  nested: Record<string, Json> | undefined,
+): string | undefined {
+  if (typeof context?.["foreignRoute"] === "string") {
+    return context["foreignRoute"];
+  }
+  return typeof nested?.["callId"] === "string" ? nested["callId"] : undefined;
+}
+
+function foreignElicitId(
+  context: Record<string, Json> | undefined,
+  nested: Record<string, Json> | undefined,
+): string | undefined {
+  if (typeof nested?.["elicitId"] === "string") {
+    return nested["elicitId"];
+  }
+  return typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : undefined;
+}
+
+function sampleTools(tools: Json[]) {
+  return tools.map((value) => {
+    const tool = jsonRecord(value);
+    if (!tool || typeof tool["name"] !== "string" || tool["name"].length === 0) {
+      throw new CrankError("schema_validation_failed", "Sampling tool is invalid");
+    }
+    const parameters = jsonRecord(tool["inputSchema"]) ?? jsonRecord(tool["parameters"]);
+    if (!parameters) {
+      throw new CrankError("schema_validation_failed", "Sampling tool schema is invalid");
+    }
+    return {
+      name: tool["name"],
+      description: typeof tool["description"] === "string" ? tool["description"] : "",
+      parameters,
+    };
+  });
+}
+
+function requireScopedForeignEffects(
+  registrations: readonly [DurableEffectRegistration, DurableEffectRegistration] | undefined,
+) {
+  if (!registrations) {
+    throw new CrankError(
+      "foreign_driver_not_installed",
+      "The recorded tool-session foreign driver is not installed",
+    );
+  }
+  return registrations;
+}
+
+function requireToolRuntime(params: SessionContractChatEngineParams) {
+  if (!params.toolRuntime) {
+    throw new CrankError("tool_runtime_not_installed", "Tool runtime is not installed");
+  }
+  return params.toolRuntime;
+}
+
+function jsonRecord(value: Json | undefined): Record<string, Json> | undefined {
+  return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : undefined;
+}
+
+function objectSchema(value: Json | undefined): Record<string, unknown> {
+  return jsonRecord(value) ?? {};
+}

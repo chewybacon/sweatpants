@@ -53,7 +53,7 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
       response: {
         type: "object",
         required: ["kind", "value"],
-        properties: { kind: { enum: ["sample", "elicit"] }, value: true },
+        properties: { kind: { enum: ["sample", "elicit", "cancel"] }, value: true },
         additionalProperties: false,
       },
     },
