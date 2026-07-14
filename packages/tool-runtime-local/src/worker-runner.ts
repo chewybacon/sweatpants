@@ -371,6 +371,7 @@ function createMcpWorkerContext(
 
   // The context object
   const ctx: WorkerToolContext = {
+    signal: coreCtx.signal,
     log(level: LogLevel, message: string): Operation<void> {
       coreCtx.log(level, message);
       // Return a no-op operation so callers can yield* ctx.log(...)

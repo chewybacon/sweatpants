@@ -4,6 +4,7 @@ import {
   assertSchemaValue,
   createDurableProgramContext,
   serializeDurableError,
+  DurableProgramCancellation,
 } from "./authoring.ts";
 import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
@@ -190,11 +191,12 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
       }
       if (command.type === "cancel") {
         try {
-          state.actionIndex += 1;
-          // SAFETY: Generator.return requires the successful return type, but
-          // structured cancellation intentionally supplies no successful value;
-          // the result is classified as cancelled and never exposed as success.
-          return advance(state, () => generator.return(undefined as never));
+          // The pending proposal has not been reserved, so cancellation does not
+          // consume its action index. Catch/finally cleanup may safely propose at
+          // the same frontier under normal durable execution rules.
+          return advance(state, () =>
+            generator.throw(new DurableProgramCancellation(command.reason)),
+          );
         } catch (error) {
           return fail(state, error);
         }

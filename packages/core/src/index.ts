@@ -22,6 +22,14 @@ export {
 // Re-export tool utilities and types
 export {
   createTool,
+  createDurableTool,
+  type CreateDurableToolBuilderBase,
+  type CreateDurableToolBuilderReady,
+  type CreateDurableToolBuilderWithDescription,
+  type CreateDurableToolBuilderWithIdentity,
+  type CreateDurableToolBuilderWithParameters,
+  type DurableProgramContextFor,
+  type FluentDurableTool,
   type LogLevel,
   type ToolCtx,
   type BaseToolCtx,

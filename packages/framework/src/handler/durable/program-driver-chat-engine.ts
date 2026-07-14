@@ -57,6 +57,8 @@ type ChatSampleResult = {
   parsed?: Json;
   parseError?: { message: string; rawText: string };
 };
+type ChatSampleCancellationPartial = { text: string; interrupted: true };
+
 type ChatProgramInput = ChatSampleRequest & {
   maxIterations: number;
   foreignDriver: "tool-session" | "framework-tool-runtime";
@@ -68,7 +70,11 @@ type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
   continueAfterCancellation?: boolean;
 };
 
-const modelSample = defineDurableEffect<ChatSampleRequest, ChatSampleResult>({
+const modelSample = defineDurableEffect<
+  ChatSampleRequest,
+  ChatSampleResult,
+  ChatSampleCancellationPartial
+>({
   name: "model.sample",
   version: "1",
   inputSchema: {
@@ -117,6 +123,17 @@ const modelSample = defineDurableEffect<ChatSampleRequest, ChatSampleResult>({
       },
     },
     additionalProperties: false,
+  },
+  cancellation: {
+    partialSchema: {
+      type: "object",
+      required: ["text", "interrupted"],
+      properties: {
+        text: { type: "string", maxLength: 32_768 },
+        interrupted: { const: true },
+      },
+      additionalProperties: false,
+    },
   },
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
@@ -315,7 +332,34 @@ function* activateProgramDriverChatEngine(
     createDurableEffectRegistration(
       modelSample,
       { mode: "idempotent", mechanism: "pull_id_key" },
-      (request, context) => sampleModel(params, request, context.cancellation, context.pullId),
+      function* (request, context) {
+        let partialText = "";
+        try {
+          return {
+            status: "ok" as const,
+            value: yield* sampleModel(
+              params,
+              request,
+              context.cancellation,
+              context.pullId,
+              (text) => {
+                partialText = text.slice(-32_768);
+              },
+            ),
+          };
+        } catch (error) {
+          if (context.cancellation.aborted) {
+            return {
+              status: "cancelled" as const,
+              partial: { text: partialText, interrupted: true as const },
+            };
+          }
+          if (error instanceof CrankError) {
+            throw error;
+          }
+          throw new CrankError("model_runtime_failed", "Provider error");
+        }
+      },
     ),
     ...foreignEffects,
   ]);
@@ -390,6 +434,7 @@ function* sampleModel(
   request: ChatSampleRequest,
   cancellation: AbortSignal,
   pullId: string,
+  onText?: (text: string) => void,
 ): Operation<ChatSampleResult> {
   const foreignSamplingRequest =
     request.maxTokens !== undefined ||
@@ -494,6 +539,7 @@ function* sampleModel(
     }
     if (next.value.type === "text_delta") {
       text += next.value.delta;
+      onText?.(text);
     }
     if (next.value.type === "toolcall_end") {
       const block = next.value.toolCall;
@@ -564,7 +610,11 @@ function* cancelPendingElicits(
       audience: `user:${payload.descriptor.key}`,
       outcome: { status: "cancelled" },
     });
-    if (result.status === "rejected") {
+    if (
+      result.status === "rejected" &&
+      result.code !== "capability_revoked" &&
+      result.code !== "task_terminal"
+    ) {
       throw new CrankError(result.code, "Pending cancellation was rejected");
     }
   }
@@ -661,6 +711,31 @@ function projectRecords(
   const events: StreamEvent[] = [];
   const activeToolCalls = new Set<string>();
   for (const recordEntry of records) {
+    if (recordEntry.payload.type === "PullResolved") {
+      const partial =
+        recordEntry.payload.outcome.status === "cancelled"
+          ? jsonRecord(recordEntry.payload.outcome.partial)
+          : undefined;
+      const request = pullRequest(allRecords, recordEntry.payload.pullId);
+      if (
+        partial?.["interrupted"] === true &&
+        typeof partial["text"] === "string" &&
+        request?.descriptor.kind === "effect" &&
+        request.descriptor.name === modelSample.name
+      ) {
+        const messageId = `assistant:interrupted:${recordEntry.payload.taskId}:${recordEntry.payload.pullId}`;
+        events.push(
+          { type: "TEXT_MESSAGE_START", messageId, role: "assistant" },
+          {
+            type: "TEXT_MESSAGE_CONTENT",
+            messageId,
+            delta: `${partial["text"]}\n\n[interrupted]`,
+          },
+          { type: "TEXT_MESSAGE_END", messageId },
+        );
+      }
+      continue;
+    }
     if (recordEntry.payload.type !== "DurableEmission") {
       continue;
     }
@@ -727,7 +802,85 @@ function projectRecords(
       });
     }
   }
+
+  const cancellationClosed = records.some(
+    (record) =>
+      record.payload.type === "TaskClosed" && record.payload.outcome.status === "cancelled",
+  );
+  if (cancellationClosed) {
+    for (const pending of unfinishedToolCalls(allRecords)) {
+      const partial = cancellationPartialForCall(allRecords, pending.callId);
+      if (activeToolCalls.delete(pending.callId)) {
+        events.push({ type: "TOOL_CALL_END", toolCallId: pending.callId });
+      }
+      events.push({
+        type: "TOOL_CALL_RESULT",
+        messageId: `tool:${pending.callId}:cancelled`,
+        toolCallId: pending.callId,
+        toolCallName: pending.tool,
+        content: JSON.stringify({ status: "cancelled", ...(partial ? { partial } : {}) }),
+        role: "tool",
+      });
+    }
+  }
   return events;
+}
+
+function pullRequest(records: DurableSemanticRecord[], pullId: string) {
+  const record = records.find(
+    (candidate) =>
+      candidate.payload.type === "PullRequested" && candidate.payload.pullId === pullId,
+  );
+  return record?.payload.type === "PullRequested" ? record.payload : undefined;
+}
+
+function unfinishedToolCalls(
+  records: DurableSemanticRecord[],
+): Array<{ callId: string; tool: string }> {
+  const started = new Map<string, string>();
+  const completed = new Set<string>();
+  for (const record of records) {
+    if (record.payload.type !== "DurableEmission") {
+      continue;
+    }
+    const payload = jsonRecord(record.payload.descriptor.payload);
+    if (!payload || typeof payload["callId"] !== "string") {
+      continue;
+    }
+    if (
+      record.payload.descriptor.eventType === "tool_started" &&
+      typeof payload["tool"] === "string"
+    ) {
+      started.set(payload["callId"], payload["tool"]);
+    }
+    if (record.payload.descriptor.eventType === "tool_completed") {
+      completed.add(payload["callId"]);
+    }
+  }
+  return [...started]
+    .filter(([callId]) => !completed.has(callId))
+    .map(([callId, tool]) => ({ callId, tool }));
+}
+
+function cancellationPartialForCall(
+  records: DurableSemanticRecord[],
+  callId: string,
+): Json | undefined {
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    const payload = records[index]?.payload;
+    if (payload?.type !== "PullResolved" || payload.outcome.status !== "cancelled") {
+      continue;
+    }
+    const request = pullRequest(records, payload.pullId);
+    if (
+      request?.descriptor.kind === "effect" &&
+      request.descriptor.resolver.route === callId &&
+      payload.outcome.partial !== undefined
+    ) {
+      return payload.outcome.partial;
+    }
+  }
+  return undefined;
 }
 
 function previousToolStart(

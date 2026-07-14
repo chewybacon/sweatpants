@@ -42,7 +42,7 @@ export function createToolRuntimeForeignEffectRegistrations(
   const start = createDurableEffectRegistration(
     FOREIGN_TOOL_START_EFFECT,
     { mode: "unsafe" },
-    function* (request, context): Operation<ForeignToolDisposition> {
+    successfulEffect(function* (request, context): Operation<ForeignToolDisposition> {
       if (request.driver !== DRIVER) {
         return failure("foreign_driver_mismatch", `Unsupported foreign driver: ${request.driver}`);
       }
@@ -77,13 +77,13 @@ export function createToolRuntimeForeignEffectRegistrations(
           ? failure(validation.code, validation.message)
           : failure("foreign_tool_start_failed", "Foreign tool start failed");
       }
-    },
+    }),
   );
 
   const continueRegistration = createDurableEffectRegistration(
     FOREIGN_TOOL_CONTINUE_EFFECT,
     { mode: "unsafe" },
-    function* (request, context): Operation<ForeignToolDisposition> {
+    successfulEffect(function* (request, context): Operation<ForeignToolDisposition> {
       if (request.continuation.driver !== DRIVER) {
         return failure("foreign_continuation_invalid", "Foreign continuation is invalid");
       }
@@ -119,10 +119,18 @@ export function createToolRuntimeForeignEffectRegistrations(
           ? failure("foreign_tool_cancelled", "Foreign tool was cancelled")
           : failure("foreign_tool_continue_failed", "Foreign tool continuation failed");
       }
-    },
+    }),
   );
 
   return [start, continueRegistration];
+}
+
+function successfulEffect<I extends Json, O extends Json>(
+  handler: (input: I, context: DurableEffectContext) => Operation<O>,
+): (input: I, context: DurableEffectContext) => Operation<{ status: "ok"; value: O }> {
+  return function* (input, context) {
+    return { status: "ok", value: yield* handler(input, context) };
+  };
 }
 
 function* disposition(

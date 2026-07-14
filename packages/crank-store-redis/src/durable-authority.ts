@@ -6,8 +6,10 @@ import {
   parseDurableAuthoritySnapshot,
   type AppendEmissionRequest,
   type CapabilityKeyring,
+  type CancellationAcknowledgement,
   type CompleteTaskRequest,
   type DurableAuthoritySnapshot,
+  type DurableCancellationState,
   type DurableSemanticRecord,
   type EmissionReceipt,
   type EnsureChildTaskRequest,
@@ -32,6 +34,12 @@ export interface RedisDurableJournalAuthorityOptions {
 
 /** CAS-backed durable authority port with processless journal reads and recovery operations. */
 export interface RedisDurableJournalAuthority {
+  /** Clears the runnable marker when a structured activation starts. */
+  markActivated(sessionId: string): Operation<void>;
+  /** Reads durable cancellation lifecycle state. */
+  cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
+  /** Starts one-shot authored cancellation unwind. */
+  beginCancellationUnwind(sessionId: string, taskId: string): Operation<DurableCancellationState>;
   /** Binds current program authority under Redis CAS fencing. */
   bindProgramAttachment(
     sessionId: string,
@@ -59,7 +67,12 @@ export interface RedisDurableJournalAuthority {
     audience?: string,
   ): Operation<{ executionEpoch: number; programCapability: string }>;
   /** Idempotently records logical task cancellation. */
-  requestCancellation(sessionId: string, taskId: string, reason?: string): Operation<void>;
+  requestCancellation(
+    sessionId: string,
+    taskId: string,
+    reason?: string,
+    commandId?: string,
+  ): Operation<CancellationAcknowledgement>;
   /** Marks an in-flight attempt detached without revoking late resolution. */
   detachAttempt(
     sessionId: string,
@@ -86,7 +99,7 @@ export interface RedisDurableJournalAuthority {
   forceOrphan(
     sessionId: string,
     taskId: string,
-    reason: "program_version_unavailable" | "program_corrupt",
+    reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck",
   ): Operation<void>;
   /** Returns the current resolver capability for an existing pending pull. */
   resolutionCapability(sessionId: string, taskId: string, pullId: string): Operation<string>;
@@ -113,7 +126,7 @@ export function createRedisDurableJournalAuthority(
 ): RedisDurableJournalAuthority {
   const key = `${options.keyPrefix ?? "sweatpants:crank:"}durable-authority:${encodeURIComponent(options.journalId)}`;
   const empty: DurableAuthoritySnapshot = {
-    version: 1,
+    version: 2,
     tasks: [],
     records: [],
     runnable: [],
@@ -173,6 +186,15 @@ export function createRedisDurableJournalAuthority(
   }
 
   return {
+    *markActivated(sessionId) {
+      yield* mutate((value) => value.markActivated(sessionId));
+    },
+    *cancellationState(sessionId, taskId) {
+      return yield* mutate((value) => value.cancellationState(sessionId, taskId));
+    },
+    *beginCancellationUnwind(sessionId, taskId) {
+      return yield* mutate((value) => value.beginCancellationUnwind(sessionId, taskId));
+    },
     *bindProgramAttachment(sessionId, taskId, attachmentId, executionEpoch) {
       return yield* mutate((value) =>
         value.bindProgramAttachment(sessionId, taskId, attachmentId, executionEpoch),
@@ -201,8 +223,10 @@ export function createRedisDurableJournalAuthority(
     *complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
       return yield* mutate((value) => value.complete(request));
     },
-    *requestCancellation(sessionId, taskId, reason) {
-      yield* mutate((value) => value.requestCancellation(sessionId, taskId, reason));
+    *requestCancellation(sessionId, taskId, reason, commandId) {
+      return yield* mutate((value) =>
+        value.requestCancellation(sessionId, taskId, reason, commandId),
+      );
     },
     *detachAttempt(sessionId, taskId, pullId, reason) {
       yield* mutate((value) => value.detachAttempt(sessionId, taskId, pullId, reason));

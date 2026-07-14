@@ -1000,6 +1000,9 @@ export interface McpToolContext {
   // Current tool-local state
   // ---------------------------------------------------------------------------
 
+  /** Scope-owned cancellation signal for abort-aware external APIs. */
+  readonly signal: AbortSignal;
+
   /**
    * Messages in this tool context's conversation.
    * Auto-updated when using `sample({ prompt })` form.
@@ -1206,6 +1209,8 @@ export interface McpToolContextWithElicits<TElicits extends ElicitsMap> {
   // Current tool-local state - same as McpToolContext
   // ---------------------------------------------------------------------------
 
+  /** Scope-owned cancellation signal for abort-aware external APIs. */
+  readonly signal: AbortSignal;
   readonly messages: readonly Message[];
 
   // ---------------------------------------------------------------------------

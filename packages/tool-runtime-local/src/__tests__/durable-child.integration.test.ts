@@ -2,6 +2,7 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
+  DurableProgramCancellation,
   JournalAuthorityContext,
   ProgramDriverRegistryContext,
   ProgramRuntime,
@@ -60,6 +61,14 @@ const sampleDefinition = defineDurableEffect<SampleInput, SampleOutput>({
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
+const cleanupDefinition = defineDurableEffect<null, null>({
+  name: "child.cleanup",
+  version: "1",
+  inputSchema: { type: "null" },
+  outputSchema: { type: "null" },
+  retrySafety: { mode: "idempotent", mechanism: "inherent" },
+});
+
 const childManifest = defineDurableProgramManifest<ChildInput, ChildOutput>({
   programId: "fixture.looping-child",
   version: "1.0.0",
@@ -80,7 +89,10 @@ const childManifest = defineDurableProgramManifest<ChildInput, ChildOutput>({
     additionalProperties: false,
   },
   elicits: { choice: { responseSchema: choiceSchema } },
-  effects: { [sampleDefinition.name]: sampleDefinition },
+  effects: {
+    [sampleDefinition.name]: sampleDefinition,
+    [cleanupDefinition.name]: cleanupDefinition,
+  },
   capabilities: {
     durableEmissions: true,
     structuredChildren: false,
@@ -181,7 +193,7 @@ describe("automatic local durable parent/child recovery", () => {
         { mode: "idempotent", mechanism: "pull_id_key" },
         function* (input) {
           sampleExecutions += 1;
-          return { suggestion: `suggestion-${input.round}` };
+          return { status: "ok", value: { suggestion: `suggestion-${input.round}` } };
         },
       ),
     ]);
@@ -269,6 +281,175 @@ describe("automatic local durable parent/child recovery", () => {
     expect(attachmentCount).toBe(6);
     expect(shutdownCount).toBe(6);
   });
+
+  it("cancels an active child leaves-first and runs child cleanup before closing the parent", async () => {
+    let sampleExecutions = 0;
+    let cleanupExecutions = 0;
+    let childCancellationCatches = 0;
+
+    const child = createDurableTool(childManifest, function* (input, context) {
+      try {
+        const sampled = yield* context.effect(
+          sampleDefinition,
+          { round: 0, answers: [] },
+          { audience: "model-runtime" },
+        );
+        yield* context.emit("child_round", {
+          topic: input.topic,
+          round: 0,
+          suggestion: sampled.suggestion,
+        });
+        const response = yield* context.elicit<Choice>(
+          "choice",
+          `Choose: ${sampled.suggestion}`,
+          choiceSchema,
+        );
+        return { rounds: 1, answers: [response.answer] };
+      } catch (error) {
+        if (error instanceof DurableProgramCancellation) {
+          childCancellationCatches += 1;
+        }
+        return { rounds: 99, answers: ["must-not-be-success"] };
+      } finally {
+        yield* context.effect(cleanupDefinition, null, { audience: "child-cleanup" });
+        yield* context.emit("child_cleanup_complete", { cleaned: true });
+      }
+    });
+    const parent = createDurableTool(parentManifest, function* (_input, context) {
+      return yield* context.invoke<ChildOutput>({
+        id: childManifest.programId,
+        version: childManifest.version,
+        digest: childManifest.digest,
+        input: { topic: "cancellation" },
+      });
+    });
+    const tools = createDurableToolRegistry([parent, child]);
+    const drivers = createProgramDriverRegistry([
+      ["generator", createLocalDurableProgramDriver(tools)],
+    ]);
+    const effects = createDurableEffectRegistry([
+      createDurableEffectRegistration(
+        sampleDefinition,
+        { mode: "idempotent", mechanism: "pull_id_key" },
+        function* () {
+          sampleExecutions += 1;
+          return { status: "ok", value: { suggestion: "cancel-me" } };
+        },
+      ),
+      createDurableEffectRegistration(
+        cleanupDefinition,
+        { mode: "idempotent", mechanism: "inherent" },
+        function* () {
+          cleanupExecutions += 1;
+          return { status: "ok", value: null };
+        },
+      ),
+    ]);
+    const keyring = createCapabilityKeyring("parent-child-cancellation-test", [
+      { keyId: "active", secret: "parent-child-cancel-secret-32-bytes" },
+    ]);
+    let authority = createInMemoryDurableJournalAuthority({
+      journalId: "parent-child-integration",
+      journalIncarnation: "1",
+      keyring,
+    });
+    const sessionId = "parent-child-cancellation-session";
+    const parentTaskId = "turn-0/root";
+    const childTaskId = `${parentTaskId}.0`;
+    const attach = attachRequest(sessionId, parentTaskId);
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId,
+        turnId: "turn-0",
+        taskId: parentTaskId,
+        manifest: parentManifest,
+        input: null,
+        executionEpoch: 1,
+        attachmentId: "unattached-parent",
+        audience: "program-runtime",
+      });
+
+      expect(yield* runProgram(attach, authority, drivers, effects)).toMatchObject({
+        state: "parked",
+        reason: "elicit",
+      });
+      const pending = findPendingChildElicit(authority.readJournal(sessionId), childTaskId);
+      const staleCapability = authority.resolutionCapability(
+        sessionId,
+        childTaskId,
+        pending.pullId,
+      );
+
+      const accepted = yield* authority.requestCancellation(
+        sessionId,
+        parentTaskId,
+        "cancel-parent",
+        "cancel-parent-command",
+      );
+      expect(accepted).toMatchObject({
+        accepted: true,
+        duplicate: false,
+        frontier: { pullId: expect.any(String) },
+      });
+      expect(
+        yield* authority.resolve({
+          capability: staleCapability,
+          audience: "user:choice",
+          outcome: { status: "ok", value: { answer: "late", continue: false } },
+        }),
+      ).toEqual({ status: "rejected", code: "capability_revoked" });
+
+      authority = recreate(authority, keyring);
+      expect(yield* runProgram(attach, authority, drivers, effects)).toEqual({
+        state: "cancelled",
+      });
+    });
+
+    expect(sampleExecutions).toBe(1);
+    expect(cleanupExecutions).toBe(1);
+    expect(childCancellationCatches).toBe(1);
+
+    const journal = authority.readJournal(sessionId);
+    const cancellations = journal.filter(
+      (record) => record.payload.type === "CancellationRequested",
+    );
+    expect(cancellations.map((record) => record.payload.taskId)).toEqual([
+      parentTaskId,
+      childTaskId,
+    ]);
+    const childCleanup = journal.findIndex(
+      (record) =>
+        record.payload.type === "PullRequested" &&
+        record.payload.taskId === childTaskId &&
+        record.payload.descriptor.kind === "effect" &&
+        record.payload.descriptor.name === cleanupDefinition.name,
+    );
+    const childClose = journal.findIndex(
+      (record) => record.payload.type === "TaskClosed" && record.payload.taskId === childTaskId,
+    );
+    const parentResolution = journal.findIndex(
+      (record) => record.payload.type === "PullResolved" && record.payload.taskId === parentTaskId,
+    );
+    const parentClose = journal.findIndex(
+      (record) => record.payload.type === "TaskClosed" && record.payload.taskId === parentTaskId,
+    );
+    expect(childCleanup).toBeGreaterThan(-1);
+    expect(childCleanup).toBeLessThan(childClose);
+    expect(childClose).toBeLessThan(parentResolution);
+    expect(parentResolution).toBeLessThan(parentClose);
+    expect(journal[childClose]?.payload).toMatchObject({
+      type: "TaskClosed",
+      taskId: childTaskId,
+      outcome: { status: "cancelled" },
+    });
+    expect(journal[parentClose]?.payload).toMatchObject({
+      type: "TaskClosed",
+      taskId: parentTaskId,
+      outcome: { status: "cancelled" },
+    });
+    expect(JSON.stringify(journal)).not.toContain("must-not-be-success");
+  });
 });
 
 function attachRequest(sessionId: string, taskId: string): AttachProgramRequest {
@@ -311,6 +492,28 @@ function recreate(
     keyring,
     snapshot: authority.exportSnapshot(),
   });
+}
+
+function findPendingChildElicit(
+  journal: DurableSemanticRecord[],
+  childTaskId: string,
+): Extract<DurableSemanticRecord["payload"], { type: "PullRequested" }> {
+  const resolved = new Set(
+    journal.flatMap((record) =>
+      record.payload.type === "PullResolved" ? [record.payload.pullId] : [],
+    ),
+  );
+  const request = journal.find(
+    (record) =>
+      record.payload.type === "PullRequested" &&
+      record.payload.taskId === childTaskId &&
+      record.payload.descriptor.kind === "elicit" &&
+      !resolved.has(record.payload.pullId),
+  );
+  if (!request || request.payload.type !== "PullRequested") {
+    throw new Error("Missing child elicitation");
+  }
+  return request.payload;
 }
 
 function* acceptPending(

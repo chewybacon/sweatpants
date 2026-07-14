@@ -449,8 +449,9 @@ function toolEntry(tool: MockTool): ToolInventoryEntry {
   };
 }
 
-function createToolCtx(): Parameters<MockTool>[0] {
+function createToolCtx(signal = new AbortController().signal): Parameters<MockTool>[0] {
   return {
+    signal,
     messages: [],
     notify: function* () {},
     log: function* () {},
@@ -496,7 +497,7 @@ function createTestToolRuntime(tools: MockTool[]): ToolRuntime {
         callId: request.call.id,
       });
       try {
-        const invoke = yield* tool(createToolCtx());
+        const invoke = yield* tool(createToolCtx(request.signal));
         const result = yield* invoke(params as never);
         return { kind: "completed", ref, result };
       } catch (error) {

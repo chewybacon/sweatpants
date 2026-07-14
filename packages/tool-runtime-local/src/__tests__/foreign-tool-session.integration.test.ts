@@ -57,7 +57,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
         cancellation: new AbortController().signal,
         resolver: { audience: "foreign-tool" },
       };
-      const started = yield* start.handler(
+      const startedDisposition = yield* start.handler(
         {
           driver: "tool-session",
           tool: tool.name,
@@ -66,6 +66,10 @@ describe("ToolSession foreign-tool durability boundary", () => {
         },
         effectContext,
       );
+      if (startedDisposition.status !== "ok") {
+        throw new Error("Foreign start returned a non-success disposition");
+      }
+      const started = startedDisposition.value;
       if (!started || typeof started !== "object" || Array.isArray(started)) {
         throw new Error("Foreign start returned a non-object disposition");
       }
@@ -81,7 +85,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       if (typeof foreignSessionId !== "string") {
         throw new Error("Foreign continuation did not contain a session ID");
       }
-      const disposition = yield* continueRegistration.handler(
+      const effectDisposition = yield* continueRegistration.handler(
         {
           continuation,
           response: { kind: "sample", value: { invalid: true } },
@@ -89,7 +93,8 @@ describe("ToolSession foreign-tool durability boundary", () => {
         effectContext,
       );
       return {
-        disposition,
+        disposition:
+          effectDisposition.status === "ok" ? effectDisposition.value : effectDisposition,
         released: (yield* registry.get(foreignSessionId)) === null,
       };
     });

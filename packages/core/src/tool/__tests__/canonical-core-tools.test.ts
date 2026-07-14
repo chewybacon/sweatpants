@@ -4,6 +4,7 @@ import { createTool } from "../create.ts";
 import type { ToolCtx } from "../types.ts";
 
 const baseCtx: ToolCtx = {
+  signal: new AbortController().signal,
   messages: [],
   notify: function* () {},
   log: function* () {},
@@ -30,7 +31,9 @@ describe("canonical core createTool builder", () => {
     expect(Tool.annotations["mcp"]).toEqual({ title: "Analyze" });
     expect(Tool.extensions[0]?.namespace).toBe("test");
 
-    const invoke = yield* Tool(baseCtx as ToolCtx<{}, { classify: { output: z.ZodObject<{ label: z.ZodString }> } }>);
+    const invoke = yield* Tool(
+      baseCtx as ToolCtx<{}, { classify: { output: z.ZodObject<{ label: z.ZodString }> } }>,
+    );
     expect(yield* invoke({ text: "hello" })).toEqual({ ok: true });
   });
 
@@ -85,7 +88,9 @@ describe("canonical core createTool builder", () => {
     createTool("interactive")
       .description("interactive")
       .parameters(z.object({ id: z.string() }))
-      .elicits({ confirm: { context: z.object({ id: z.string() }), response: z.object({ ok: z.boolean() }) } })
+      .elicits({
+        confirm: { context: z.object({ id: z.string() }), response: z.object({ ok: z.boolean() }) },
+      })
       .samples({ classify: { output: z.object({ label: z.string() }) } })
       .execute(function* (_params, ctx) {
         const choice = yield* ctx.elicit("confirm", { message: "Continue?", context: { id: "1" } });

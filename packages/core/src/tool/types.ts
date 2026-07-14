@@ -337,6 +337,8 @@ export interface SampleSchemaResult<T> {
 // -----------------------------------------------------------------------------
 
 export interface BaseToolCtx {
+  /** Scope-owned live cancellation bridge. Never persist or serialize it. */
+  readonly signal: AbortSignal;
   /** Conversation messages visible to the current tool invocation. */
   readonly messages: readonly ToolMessage[];
   notify(message: string, progress?: number, level?: LogLevel): Operation<void>;

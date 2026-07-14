@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { run } from "effection";
 import { createClient, type RedisClientType } from "redis";
 
@@ -11,6 +11,7 @@ import {
 import { createRedisCrankStore, createRedisDurableJournalAuthority } from "../index.ts";
 
 const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
+const keyPrefix = `test:${process.pid}:redis-store:`;
 
 async function available(): Promise<boolean> {
   const client = createClient({ url });
@@ -38,17 +39,14 @@ describe("RedisCrankStore", () => {
     }
     client = createClient({ url });
     await client.connect();
-    await client.flushDb();
-  });
-
-  afterEach(async () => {
-    if (enabled) {
-      await client.flushDb();
-    }
   });
 
   afterAll(async () => {
     if (enabled && client.isOpen) {
+      const keys = await client.keys(`${keyPrefix}*`);
+      if (keys.length > 0) {
+        await client.del(keys);
+      }
       await client.disconnect();
     }
   });
@@ -61,7 +59,7 @@ describe("RedisCrankStore", () => {
 
   it("persists commands across independent store instances", async ({ skip }) => {
     requireRedis(skip);
-    const first = createRedisCrankStore(client, { keyPrefix: "test:crank:" });
+    const first = createRedisCrankStore(client, { keyPrefix: `${keyPrefix}crank:` });
     await run(function* () {
       yield* first.appendCommand({
         type: "send",
@@ -70,7 +68,7 @@ describe("RedisCrankStore", () => {
         message: "hello",
       });
     });
-    const second = createRedisCrankStore(client, { keyPrefix: "test:crank:" });
+    const second = createRedisCrankStore(client, { keyPrefix: `${keyPrefix}crank:` });
     const records = await run(() => second.readJournal("s"));
     expect(records).toHaveLength(1);
     expect(records[0]?.payload).toMatchObject({ type: "command", command: { commandId: "c" } });
@@ -79,7 +77,7 @@ describe("RedisCrankStore", () => {
   it("rejects malformed persisted state before it reaches the crank store", async ({ skip }) => {
     requireRedis(skip);
     await client.set(
-      "test:corrupt:s:state",
+      `${keyPrefix}corrupt:s:state`,
       JSON.stringify({
         records: [null],
         coordination: {
@@ -91,7 +89,7 @@ describe("RedisCrankStore", () => {
         },
       }),
     );
-    const store = createRedisCrankStore(client, { keyPrefix: "test:corrupt:" });
+    const store = createRedisCrankStore(client, { keyPrefix: `${keyPrefix}corrupt:` });
 
     await expect(run(() => store.readJournal("s"))).rejects.toMatchObject({
       code: "invalid_journal",
@@ -99,7 +97,7 @@ describe("RedisCrankStore", () => {
     });
 
     await client.set(
-      "test:corrupt:s:state",
+      `${keyPrefix}corrupt:s:state`,
       JSON.stringify({
         records: [],
         coordination: {
@@ -147,7 +145,7 @@ describe("RedisCrankStore", () => {
     const first = createRedisDurableJournalAuthority(client, {
       journalId: "redis-journal",
       keyring,
-      keyPrefix: "test:durable:",
+      keyPrefix: `${keyPrefix}durable:`,
     });
     const attach: AttachProgramRequest = {
       sessionId: "durable-session",
@@ -189,7 +187,7 @@ describe("RedisCrankStore", () => {
       const second = createRedisDurableJournalAuthority(client, {
         journalId: "redis-journal",
         keyring,
-        keyPrefix: "test:durable:",
+        keyPrefix: `${keyPrefix}durable:`,
       });
       expect(
         yield* second.resolve({
@@ -278,7 +276,7 @@ describe("RedisCrankStore", () => {
     const first = createRedisDurableJournalAuthority(client, {
       journalId: "redis-child-journal",
       keyring,
-      keyPrefix: "test:durable-child:",
+      keyPrefix: `${keyPrefix}durable-child:`,
     });
     await run(function* () {
       const opened = yield* first.openTask({
@@ -324,7 +322,7 @@ describe("RedisCrankStore", () => {
       const second = createRedisDurableJournalAuthority(client, {
         journalId: "redis-child-journal",
         keyring,
-        keyPrefix: "test:durable-child:",
+        keyPrefix: `${keyPrefix}durable-child:`,
       });
       expect(
         yield* second.ensureChildTask({
@@ -349,7 +347,10 @@ describe("RedisCrankStore", () => {
   it("fences stale owners and rediscovers expired running work", async ({ skip }) => {
     requireRedis(skip);
     let now = 0;
-    const store = createRedisCrankStore(client, { keyPrefix: "test:crank:", now: () => now });
+    const store = createRedisCrankStore(client, {
+      keyPrefix: `${keyPrefix}fencing:`,
+      now: () => now,
+    });
     await run(function* () {
       yield* store.appendCommand({ type: "send", sessionId: "s", commandId: "c", message: null });
       const first = yield* store.claim("s", "owner-a", 10);

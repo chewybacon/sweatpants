@@ -474,6 +474,9 @@ export interface WorkerSampleSchemaConfigMessages<T> extends WorkerSampleHelperC
  * events, the worker naturally slows down.
  */
 export interface WorkerToolContext {
+  /** Scope-owned cancellation signal inherited from the worker invocation. */
+  readonly signal: AbortSignal;
+
   /**
    * Log a message.
    * Fire-and-forget (no backpressure).

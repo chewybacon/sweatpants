@@ -1,4 +1,4 @@
-import type { Operation } from "effection";
+import { action, race, type Operation } from "effection";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
 import type { RuntimeTool } from "@sweatpants/core";
@@ -49,7 +49,7 @@ export function createToolSessionForeignEffectRegistrations(
   const start = createDurableEffectRegistration(
     FOREIGN_TOOL_START_EFFECT,
     { mode: "unsafe" },
-    function* (request, context) {
+    successfulEffect(function* (request, context) {
       if (request.driver !== "tool-session") {
         return failure(
           request.durability,
@@ -86,7 +86,12 @@ export function createToolSessionForeignEffectRegistrations(
         // durable adapter begins consuming events. Reading status is the
         // readiness barrier shared by worker and remote registries.
         yield* session.status();
-        disposition = yield* nextDisposition(session, 0, request.durability);
+        disposition = yield* nextDispositionWithCancellation(
+          session,
+          0,
+          request.durability,
+          context.cancellation,
+        );
       } catch {
         return failure(
           request.durability,
@@ -106,13 +111,13 @@ export function createToolSessionForeignEffectRegistrations(
         }
       }
       return disposition;
-    },
+    }),
   );
 
   const continueRegistration = createDurableEffectRegistration(
     FOREIGN_TOOL_CONTINUE_EFFECT,
     { mode: "unsafe" },
-    function* (request) {
+    successfulEffect(function* (request, context) {
       const continuation = decodeContinuation(request.continuation);
       if (!continuation) {
         return failure(
@@ -152,19 +157,58 @@ export function createToolSessionForeignEffectRegistrations(
         yield* options.registry.release(session.id);
         return responseFailure;
       }
-      const disposition = yield* nextDisposition(
+      const disposition = yield* nextDispositionWithCancellation(
         session,
         continuation.afterLsn,
         continuation.durability,
+        context.cancellation,
       );
       if (disposition.type !== "input_required") {
         yield* options.registry.release(session.id);
       }
       return disposition;
-    },
+    }),
   );
 
   return [start, continueRegistration];
+}
+
+function* nextDispositionWithCancellation(
+  session: ToolSession,
+  afterLsn: number,
+  durability: ForeignDurability,
+  signal: AbortSignal,
+): Operation<ForeignToolDisposition> {
+  return yield* race([
+    nextDisposition(session, afterLsn, durability),
+    (function* () {
+      if (!signal.aborted) {
+        yield* action<void>((resolve) => {
+          const onAbort = () => resolve();
+          signal.addEventListener("abort", onAbort, { once: true });
+          return () => signal.removeEventListener("abort", onAbort);
+        });
+      }
+      try {
+        yield* session.cancel("durable program cancelled");
+      } catch {
+        // The durable cancellation remains authoritative if best-effort live
+        // signalling races terminal ToolSession cleanup.
+      }
+      return failure(durability, "foreign_tool_cancelled", "Foreign tool was cancelled");
+    })(),
+  ]);
+}
+
+function successfulEffect<I extends Json, O extends Json>(
+  handler: (input: I, context: Parameters<DurableEffectRegistration["handler"]>[1]) => Operation<O>,
+): (
+  input: I,
+  context: Parameters<DurableEffectRegistration["handler"]>[1],
+) => Operation<{ status: "ok"; value: O }> {
+  return function* (input, context) {
+    return { status: "ok", value: yield* handler(input, context) };
+  };
 }
 
 function* deliverResponse(
