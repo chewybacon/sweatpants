@@ -9,12 +9,14 @@ import {
   suspend,
   type Operation,
 } from "effection";
-import type { RuntimeTool } from "@sweatpants/core";
 import { describe, expect, it } from "vitest";
 
-import { createChatHandler } from "@sweatpants/framework/server";
 import {
   CrankStoreContext,
+  createCapabilityKeyring,
+  createChatHandler,
+  createInMemoryProgramDriverJournalStore,
+  ProgramDriverForeignEffectsContext,
   createPluginSessionManager,
   createInMemoryCrankStore,
   type PluginSessionManager,
@@ -38,6 +40,7 @@ import {
 } from "@sweatpants/framework/chat/mcp-tools";
 import {
   createInMemoryToolSessionStore,
+  createToolSessionForeignEffectRegistrations,
   createToolSessionRegistry,
   installLocalToolRuntime,
 } from "@sweatpants/tool-runtime-local";
@@ -48,7 +51,6 @@ import {
 } from "../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts";
 import { bookFlightPlugin, bookFlightTool } from "../tools/book-flight";
 
-type LocalSessionTool = RuntimeTool;
 type PendingElicit = ChatState["pendingElicits"][string]["elicitations"][number];
 
 function createSingleToolMcpRegistry(tool: { name: string }) {
@@ -237,6 +239,12 @@ describe("book_flight return history", () => {
         yield* ToolInventoryContext.set(
           createToolInventory([createToolInventoryEntry(localBookFlightTool)]),
         );
+        yield* ProgramDriverForeignEffectsContext.set(
+          createToolSessionForeignEffectRegistrations({
+            registry: toolSessionRegistry,
+            tools: new Map([[localBookFlightTool.name, localBookFlightTool]]),
+          }),
+        );
         yield* installLocalToolRuntime({
           tools: [localBookFlightTool],
           registry: toolSessionRegistry,
@@ -244,10 +252,18 @@ describe("book_flight return history", () => {
         });
       };
 
-      const handler = createChatHandler({ setup, maxToolIterations: 5 });
+      const handler = createChatHandler({
+        setup,
+        maxToolIterations: 5,
+        programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+          keyring: createCapabilityKeyring("return-flight-history", [
+            { keyId: "test-v1", secret: "return-flight-history-program-secret" },
+          ]),
+        }),
+      });
       const originalFetch = globalThis.fetch;
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const { signal, ...restInit } = init ?? {};
+        const { signal: _signal, ...restInit } = init ?? {};
         const rawUrl =
           typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const url =

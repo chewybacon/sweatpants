@@ -27,7 +27,6 @@ import {
 } from "@sweatpants/tool-runtime-local";
 
 import { allTools } from "../src/server/tools.ts";
-import { calculator } from "../src/tools/calculator.ts";
 import { installYoChatToolRuntime } from "../src/server/tool-runtime-installation.ts";
 import { yoChatToolSessionWorkerConfig } from "../src/server/tool-worker-config.ts";
 
@@ -42,7 +41,7 @@ const model: Model = {
   maxTokens: 1_000,
 };
 
-describe("immediate worker tool through flagged ProgramRuntime HTTP", () => {
+describe("immediate worker tool through ProgramRuntime HTTP", () => {
   it("completes calculator and performs the following model sample", async () => {
     let calls = 0;
     const driver: ModelProviderDriver = {
@@ -79,7 +78,6 @@ describe("immediate worker tool through flagged ProgramRuntime HTTP", () => {
       ]),
     });
     const handler = createDurableChatHandler({
-      executionEngine: "program-driver",
       programDriverJournalStore: journalStore,
       setup: function* () {
         yield* ModelProviderContext.set(driver);

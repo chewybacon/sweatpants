@@ -6,13 +6,11 @@
  */
 import { describe, expect, it } from "./../src/handler/durable/__tests__/vitest-effection.ts";
 import { call } from "effection";
-import {
-  createDurableChatHandler,
-  createInMemoryProgramDriverJournalStore,
-} from "../src/handler/durable/index.ts";
+import { createInMemoryProgramDriverJournalStore } from "../src/handler/durable/index.ts";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import {
   createMockProvider,
+  createTestDurableChatHandler,
   createChatRequest,
   consumeDurableResponse,
   getEventsByType,
@@ -51,7 +49,7 @@ describe("demo: reconnect mid-stream", () => {
       responses: "Disconnect and finish the turn completely",
       tokenDelayMs: 40,
     });
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createSharedStoreHooks(provider),
     });
 
@@ -91,14 +89,13 @@ describe("demo: reconnect mid-stream", () => {
     ]);
   });
 
-  it("continues flagged ProgramRuntime work after the response disconnects", function* () {
+  it("continues ProgramRuntime work after the response disconnects", function* () {
     const provider = createMockProvider({
       responses: "ProgramRuntime survives response disconnect",
       tokenDelayMs: 40,
     });
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createSharedStoreHooks(provider),
-      executionEngine: "program-driver",
       programDriverJournalStore: createInMemoryProgramDriverJournalStore({
         keyring: createCapabilityKeyring("program-reconnect", [
           { keyId: "test-v1", secret: "program-reconnect-acceptance-key" },
@@ -132,7 +129,7 @@ describe("demo: reconnect mid-stream", () => {
 
   it("supports session path reconnect from offset (protocol)", function* () {
     const provider = createMockProvider({ responses: "one two three four five" });
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createSharedStoreHooks(provider),
     });
 

@@ -1,16 +1,8 @@
-import type { Operation, Stream, Channel } from "effection";
+import type { Operation, Stream } from "effection";
 import type { Model, Runtime, StreamOptions } from "../../lib/chat/runtime/index.ts";
-import type { ToolSessionSamplingProvider } from "../../lib/chat/mcp-tools/session/types.ts";
 import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
 import type { StreamEvent, ChatMessage } from "../types.ts";
-import type { CrankStore } from "@sweatpants/session-contract";
-import type { PluginRegistry } from "../../lib/chat/mcp-tools/plugin-registry.ts";
-import type {
-  ComponentEmissionPayload,
-  PendingEmission,
-  ToolExecutionTrace,
-} from "../../lib/chat/browser-rendering/index.ts";
-import type { PluginSessionManager } from "./plugin-session-manager.ts";
+import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/index.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
 import type { ProgramDriverJournalStore } from "./program-driver-journal.ts";
 
@@ -26,9 +18,8 @@ export interface McpToolRegistry {
   names(): string[];
 }
 
-export interface SessionContractChatEngineParams {
+export interface ProgramRuntimeChatEngineParams {
   messages: ChatMessage[];
-  replayState?: ConversationReplayState;
   systemPrompt?: string;
   toolSchemas: ToolSchema[];
   runtime: Runtime;
@@ -37,11 +28,7 @@ export interface SessionContractChatEngineParams {
   initialToolChoice?: StreamOptions["toolChoice"];
   toolInventoryEntries?: ToolInventoryEntry[];
   toolRuntime?: ToolRuntime;
-  toolRuntimeId?: string;
-  pluginSamplingProvider?: ToolSessionSamplingProvider;
   maxIterations: number;
-  signal: AbortSignal;
-  sessionInfo?: StreamEvent & { type: "session_info" };
   /**
    * Durable conversation identity. This is the only key used for the fold
    * session log.
@@ -54,15 +41,7 @@ export interface SessionContractChatEngineParams {
    */
   conversationId: string;
   agUiRun: AgUiRunMetadata;
-  pluginRegistry?: PluginRegistry;
-  pluginEmissionChannel?: Channel<PendingEmission<ComponentEmissionPayload, unknown>, void>;
-  mcpToolRegistry?: McpToolRegistry;
-  pluginSessionManager?: PluginSessionManager;
-  /** Shared fenced crank store. Product hosts install it once per process. */
-  crankStore?: CrankStore;
   elicitResponses?: ElicitResponse[];
-  /** Resume was already durably consumed by an earlier request. */
-  resumeAlreadyApplied?: boolean;
   /** Called only after all resume commands are durably accepted. */
   onResumeAccepted?: () => Operation<void>;
   pluginAbort?: PluginAbortRequest;
@@ -150,30 +129,19 @@ export interface ChatRequestBody {
   pluginAbort?: PluginAbortRequest;
 }
 
-interface DurableChatHandlerBaseConfig {
+/**
+ * Durable handler configuration. ProgramRuntime is the sole execution engine,
+ * and its journal authority MUST be supplied by the host composition.
+ */
+export interface DurableChatHandlerConfig {
   setup?: ChatHandlerSetup;
   maxToolIterations?: number;
+  programDriverJournalStore: ProgramDriverJournalStore;
 }
-
-/**
- * Durable handler configuration. Selecting ProgramRuntime requires an injected
- * journal store, preventing an ephemeral authority from masquerading as durable.
- */
-export type DurableChatHandlerConfig = DurableChatHandlerBaseConfig &
-  (
-    | {
-        executionEngine?: "legacy";
-        programDriverJournalStore?: never;
-      }
-    | {
-        executionEngine: "program-driver";
-        programDriverJournalStore: ProgramDriverJournalStore;
-      }
-  );
 
 export interface DurableStreamParams {
   sessionId?: string;
   lastLSN?: number;
 }
 
-export type SessionContractChatEngine = Stream<StreamEvent, void>;
+export type ProgramRuntimeChatEngine = Stream<StreamEvent, void>;

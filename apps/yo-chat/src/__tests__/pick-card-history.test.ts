@@ -9,12 +9,13 @@ import {
   suspend,
   type Operation,
 } from "effection";
-import type { RuntimeTool } from "@sweatpants/core";
 import { describe, expect, it } from "vitest";
 
-import { createChatHandler } from "@sweatpants/framework/server";
 import {
   CrankStoreContext,
+  createCapabilityKeyring,
+  createChatHandler,
+  createInMemoryProgramDriverJournalStore,
   createPluginSessionManager,
   createInMemoryCrankStore,
   type PluginSessionManager,
@@ -48,7 +49,6 @@ import {
 } from "../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts";
 import { pickCard, pickCardPlugin } from "../tools/pick-card";
 
-type LocalSessionTool = RuntimeTool;
 type PendingElicit = ChatState["pendingElicits"][string]["elicitations"][number];
 
 function createSingleToolMcpRegistry(tool: { name: string }) {
@@ -211,11 +211,19 @@ describe("pick_card session history", () => {
         });
       };
 
-      const handler = createChatHandler({ setup, maxToolIterations: 5 });
+      const handler = createChatHandler({
+        setup,
+        maxToolIterations: 5,
+        programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+          keyring: createCapabilityKeyring("pick-card-history", [
+            { keyId: "test-v1", secret: "pick-card-history-program-secret" },
+          ]),
+        }),
+      });
 
       const originalFetch = globalThis.fetch;
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const { signal, ...restInit } = init ?? {};
+        const { signal: _signal, ...restInit } = init ?? {};
         const rawUrl =
           typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
         const url =

@@ -62,9 +62,7 @@ export const appEnv = createEnv({
     // Redis configuration (optional, falls back to in-memory if not set)
     REDIS_URL: z.string().optional(),
 
-    // Opt-in crank-native HTTP execution. Legacy remains the default until the
-    // flagged reconnect/cancellation/tool suites are complete.
-    SWEATPANTS_EXECUTION_ENGINE: z.enum(["legacy", "program-driver"]).default("legacy"),
+    // ProgramRuntime journal signing secret. Startup fails when it is absent.
     PROGRAM_DRIVER_CAPABILITY_SECRET: z.string().min(32).optional(),
 
     // MCP plugin tool execution mode.

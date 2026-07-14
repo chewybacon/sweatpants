@@ -173,6 +173,7 @@ describe("framework package boundaries", () => {
       "src/lib/chat/providers/config.ts",
       "src/lib/chat/runtime/contexts.ts",
       "src/handler/index.ts",
+      "src/handler/durable/session-contract-adapter.ts",
       "src/lib/chat/mcp-tools/session/in-memory-store.ts",
       "src/lib/chat/mcp-tools/session/session-registry.ts",
       "src/lib/chat/mcp-tools/session/setup.ts",

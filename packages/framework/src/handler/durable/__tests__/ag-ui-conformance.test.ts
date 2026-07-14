@@ -13,7 +13,6 @@ import {
   createToolExecutionRef,
   type ToolRuntime,
 } from "../../../lib/chat/tool-runtime.ts";
-import { createDurableChatHandler } from "../handler.ts";
 import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
 import type { ChatHandlerSetup } from "../types.ts";
 import {
@@ -21,6 +20,7 @@ import {
   createChatRequest,
   createMockProvider,
   createMockTool,
+  createTestDurableChatHandler,
   setupMockModelProvider,
   setupMockTools,
 } from "./test-utils.ts";
@@ -273,7 +273,7 @@ function parseSseDataObjects(raw: string): AgUiEvent[] {
 describe("strict AG-UI public conformance", () => {
   it("validates normal text runs against AG-UI schemas and lifecycle rules", function* () {
     const provider = createMockProvider({ responses: "Hello schema world" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const { request } = createChatRequest([
       { id: "user:ag-ui-normal", role: "user", content: "Say hello" },
@@ -287,9 +287,8 @@ describe("strict AG-UI public conformance", () => {
   it("runs a model-only HTTP turn through an injected ProgramRuntime journal", function* () {
     const provider = createMockProvider({ responses: "Hello from ProgramRuntime" });
     const journalStore = createProgramDriverTestStore();
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createTestHooks(provider),
-      executionEngine: "program-driver",
       programDriverJournalStore: journalStore,
     });
     const conversationId = "program-driver-model";
@@ -332,9 +331,8 @@ describe("strict AG-UI public conformance", () => {
       toolCalls: [{ id: "call-program-echo", name: "echo", arguments: { input: "hello" } }],
     });
     const journalStore = createProgramDriverTestStore();
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createTestHooks(provider, [echoTool]),
-      executionEngine: "program-driver",
       programDriverJournalStore: journalStore,
     });
     const conversationId = "program-driver-tool";
@@ -402,9 +400,8 @@ describe("strict AG-UI public conformance", () => {
       toolCalls: [{ id: "call-program-elicit", name: "echo", arguments: { input: "hello" } }],
     });
     const journalStore = createProgramDriverTestStore();
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createTestHooks(provider, [echoTool], runtime),
-      executionEngine: "program-driver",
       programDriverJournalStore: journalStore,
     });
     const conversationId = "program-driver-elicit";
@@ -547,9 +544,8 @@ describe("strict AG-UI public conformance", () => {
       toolCalls: [{ id: "call-program-cancel", name: "echo", arguments: { input: "hello" } }],
     });
     const journalStore = createProgramDriverTestStore();
-    const handler = createDurableChatHandler({
+    const handler = createTestDurableChatHandler({
       setup: createTestHooks(provider, [echoTool], runtime),
-      executionEngine: "program-driver",
       programDriverJournalStore: journalStore,
     });
     const conversationId = "program-driver-cancel";
@@ -613,7 +609,7 @@ describe("strict AG-UI public conformance", () => {
       responses: "Calling tool",
       toolCalls: [{ id: "call-ag-ui-tool", name: "echo", arguments: { input: "hello" } }],
     });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider, [echoTool]) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider, [echoTool]) });
 
     const { request } = createChatRequest(
       [{ id: "user:ag-ui-tool", role: "user", content: "Echo hello" }],
@@ -633,7 +629,7 @@ describe("strict AG-UI public conformance", () => {
     // with MESSAGES_SNAPSHOT rather than RUN_STARTED, so the run-lifecycle
     // assertion is intentionally not applied here.
     const provider = createMockProvider({ responses: "Hydrate me" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const conversationId = `thread-hydrate-schema-${Date.now()}`;
     const { request: postRequest } = createChatRequest(
@@ -660,7 +656,7 @@ describe("strict AG-UI public conformance", () => {
   it("keeps replay activity out of message snapshots and emits activity snapshots separately", function* () {
     const callId = "call-replay-order";
     const provider = createMockProvider({ responses: "ok" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const response = yield* call(() =>
       handler(
@@ -746,7 +742,7 @@ describe("strict AG-UI public conformance", () => {
 
   it("does not leak server-injected system prompts into public snapshots", function* () {
     const provider = createMockProvider({ responses: "prompt safe" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const response = yield* call(() =>
       handler(
@@ -778,7 +774,7 @@ describe("strict AG-UI public conformance", () => {
 
   it("emits raw strict SSE frames whose data payloads are AG-UI events", function* () {
     const provider = createMockProvider({ responses: "sse public" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const { request } = createChatRequest(
       [{ id: "user:raw-sse", role: "user", content: "Say hello over SSE" }],
@@ -795,7 +791,7 @@ describe("strict AG-UI public conformance", () => {
 
   it("preserves developer and reasoning roles while excluding non-history activity", function* () {
     const provider = createMockProvider({ responses: "role safe" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const response = yield* call(() =>
       handler(
@@ -844,7 +840,7 @@ describe("strict AG-UI public conformance", () => {
 
   it("strips private runtime session metadata from public interrupts", function* () {
     const provider = createMockProvider({ responses: "interrupt safe" });
-    const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+    const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
 
     const response = yield* call(() =>
       handler(

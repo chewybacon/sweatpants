@@ -27,13 +27,7 @@ import {
   type SessionRegistry,
   type TokenBufferStore,
 } from "../../lib/chat/durable-streams/index.ts";
-import {
-  MaxIterationsContext,
-  McpToolRegistryContext,
-  PersonaResolverContext,
-  PluginRegistryContext,
-  PluginSessionManagerContext,
-} from "../../lib/chat/contexts.ts";
+import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
 import {
   ModelProviderApi,
   ModelProviderContext,
@@ -49,10 +43,8 @@ import { useLogger } from "../../lib/logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
-import { createSessionContractChatEngine } from "./session-contract-adapter.ts";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { useOptionalProgramDriverForeignEffects } from "./program-driver-effects.ts";
-import { useOptionalCrankStore } from "@sweatpants/session-contract";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
 import {
   activitySnapshotsForMessages,
@@ -85,11 +77,10 @@ import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
   ElicitResponse,
-  SessionContractChatEngineParams,
+  ProgramRuntimeChatEngineParams,
   ToolSchema,
 } from "./types.ts";
 import type { Runtime } from "../../lib/chat/runtime/index.ts";
-import { ToolSessionSamplingProviderContext } from "../../lib/chat/mcp-tools/session/contexts.ts";
 import {
   deriveResumeScopeFromEntries,
   deriveResumeScopeId,
@@ -999,7 +990,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const openInterrupts = openInterruptsForThread(agUiThreadId);
       const hasOpenInterrupts = openInterrupts.length > 0;
       const supersedeOpenProgramTurn =
-        config.executionEngine === "program-driver" &&
         method === "POST" &&
         hasOpenInterrupts &&
         body.resume === undefined &&
@@ -1040,7 +1030,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             : null;
       // Resume validation is pure. Interrupt state is committed only after the
       // crank respond commands are durably accepted by the adapter.
-      const legacyElicitResponses = body.elicitResponses ?? [];
+      const directElicitResponses = body.elicitResponses ?? [];
       log.debug(
         { provider: model.provider, model: model.id, api: model.api },
         "model provider configured",
@@ -1053,34 +1043,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       const resolvePersona = yield* PersonaResolverContext.get();
       const maxIterations = (yield* MaxIterationsContext.get()) ?? maxToolIterations;
-
-      // Get optional plugin contexts for MCP plugin tools
-      const pluginRegistry = yield* PluginRegistryContext.get();
-      const mcpToolRegistry = yield* McpToolRegistryContext.get();
-      const pluginSamplingProvider = yield* ToolSessionSamplingProviderContext.get();
-      if (pluginRegistry) {
-        log.debug("plugin registry configured");
-      }
-      if (mcpToolRegistry) {
-        log.debug("mcp tool registry configured");
-      }
-
-      // Get the shared plugin session manager. It must be installed at server
-      // startup (via PluginSessionManagerContext) so multi-step elicitation
-      // sessions survive across request boundaries.
-      let pluginSessionManager = undefined;
-      if (pluginRegistry && mcpToolRegistry) {
-        const sharedManager = yield* PluginSessionManagerContext.get();
-        if (sharedManager) {
-          pluginSessionManager = sharedManager;
-          log.debug("using shared plugin session manager from context");
-        } else {
-          log.error(
-            "PluginSessionManagerContext not set - multi-step elicitation will not work. " +
-              "Install a shared PluginSessionManager at server startup.",
-          );
-        }
-      }
 
       // Get session registry from durable streams context
       log.debug("getting session registry");
@@ -1096,7 +1058,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         ? mapResumeEntriesToElicitResponses(body, resumeValidation.records, activeToolRuntime.id)
         : [];
       const effectiveElicitResponses =
-        legacyElicitResponses.length > 0 ? legacyElicitResponses : publicResumeResponses;
+        directElicitResponses.length > 0 ? directElicitResponses : publicResumeResponses;
       const initialToolChoice = effectiveElicitResponses.length
         ? undefined
         : body.initialToolChoice;
@@ -1104,7 +1066,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       // Build tool schemas
       const enabledToolNames = new Set<string>();
       let systemPrompt: string | undefined;
-      let sessionInfo: (StreamEvent & { type: "session_info" }) | undefined;
 
       // Handle persona mode vs manual mode
       if (body.persona) {
@@ -1128,17 +1089,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             throw new Error(`Unknown persona tool: ${toolName}`);
           }
         }
-
-        sessionInfo = {
-          type: "session_info",
-          capabilities: {
-            ...resolved.capabilities,
-            tools: Array.from(
-              new Set(resolved.capabilities.tools.filter((name) => inventoryNames.has(name))),
-            ),
-          },
-          persona: resolved.name,
-        };
       } else {
         // Manual mode
         if (body.enabledTools === true) {
@@ -1156,16 +1106,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         if (body.systemPrompt) {
           systemPrompt = body.systemPrompt;
         }
-
-        sessionInfo = {
-          type: "session_info",
-          capabilities: {
-            thinking: true,
-            streaming: true,
-            tools: Array.from(enabledToolNames),
-          },
-          persona: null,
-        };
       }
 
       const storedSystemPrompt = yield* readLatestThreadSystemPrompt(bufferStore, agUiThreadId);
@@ -1222,26 +1162,12 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // NEW SESSION PATH: Create engine, stream to buffer, then to response
         log.debug({ sessionId }, "new session path: creating chat engine");
 
-        // Create our own AbortController for the chat engine.
-        // NOTE: We cannot use request.signal directly because some frameworks
-        // (e.g., TanStack Start with h3) abort the signal after reading the body,
-        // before the handler has returned a response. This causes the engine to
-        // see an aborted signal and fail immediately.
-        const engineAbortController = new AbortController();
-
         const agUiRun = {
           threadId: agUiThreadId,
           runId: agUiRunId,
           ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
         };
-        void sessionInfo;
-
-        // Read the shared fenced crank store from context (optional).
-        const crankStore = yield* useOptionalCrankStore();
-        const programDriverForeignEffects =
-          config.executionEngine === "program-driver"
-            ? yield* useOptionalProgramDriverForeignEffects()
-            : undefined;
+        const programDriverForeignEffects = yield* useOptionalProgramDriverForeignEffects();
 
         const resumePreflightError =
           resumeValidation && !resumeValidation.ok ? resumeValidation : null;
@@ -1249,9 +1175,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // Create the chat engine. If public resume validation failed, use an
         // empty engine and expose the failure as a schema-valid RUN_ERROR before
         // any replay projection or runtime continuation can occur.
-        const engineParams: SessionContractChatEngineParams = {
+        const engineParams: ProgramRuntimeChatEngineParams = {
           messages: body.messages,
-          ...(liveMode !== "sse" && body.replayState ? { replayState: body.replayState } : {}),
           ...(systemPrompt !== undefined && { systemPrompt }),
           toolSchemas,
           runtime,
@@ -1260,21 +1185,12 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(initialToolChoice ? { initialToolChoice } : {}),
           toolInventoryEntries: inventoryEntries,
           toolRuntime: activeToolRuntime,
-          toolRuntimeId: activeToolRuntime.id,
           maxIterations,
-          signal: engineAbortController.signal,
           conversationId: requestedConversationId,
           agUiRun,
-          ...(pluginRegistry && { pluginRegistry }),
-          ...(mcpToolRegistry && { mcpToolRegistry }),
-          ...(pluginSessionManager && { pluginSessionManager }),
-          ...(pluginSamplingProvider && { pluginSamplingProvider }),
           ...(effectiveElicitResponses.length > 0 && {
             elicitResponses: effectiveElicitResponses,
           }),
-          ...(resumeValidation?.ok && resumeValidation.idempotent
-            ? { resumeAlreadyApplied: true }
-            : {}),
           ...(resumeValidation?.ok && !resumeValidation.idempotent
             ? {
                 onResumeAccepted: function* (): Operation<void> {
@@ -1287,21 +1203,18 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 },
               }
             : {}),
-          ...(crankStore ? { crankStore } : {}),
           ...(effectivePluginAbort && { pluginAbort: effectivePluginAbort }),
         };
         const engine = resumePreflightError
           ? createEmptyChatEngine()
-          : config.executionEngine === "program-driver"
-            ? createProgramDriverChatEngine({
-                ...engineParams,
-                journalStore: config.programDriverJournalStore,
-                ...(programDriverForeignEffects
-                  ? { foreignEffects: programDriverForeignEffects }
-                  : {}),
-                ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
-              })
-            : createSessionContractChatEngine(engineParams);
+          : createProgramDriverChatEngine({
+              ...engineParams,
+              journalStore: config.programDriverJournalStore,
+              ...(programDriverForeignEffects
+                ? { foreignEffects: programDriverForeignEffects }
+                : {}),
+              ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
+            });
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events

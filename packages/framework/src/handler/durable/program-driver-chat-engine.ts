@@ -25,13 +25,17 @@ import {
   type Json,
 } from "@sweatpants/session-contract";
 
-import type { AssistantMessage, Context as RuntimeContext } from "../../lib/chat/runtime/index.ts";
+import type {
+  AssistantMessage,
+  ContentBlock,
+  Context as RuntimeContext,
+  Message as RuntimeMessage,
+} from "../../lib/chat/runtime/index.ts";
 import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
-import { toRuntimeMessage } from "./session-contract-adapter.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
-import type { ElicitResponse, SessionContractChatEngineParams } from "./types.ts";
+import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
 
 type ChatCall = { id: string; target: string; input: Json; thoughtSignature?: string };
 type ChatSampleRequest = {
@@ -58,7 +62,7 @@ type ChatProgramInput = ChatSampleRequest & {
   foreignDriver: "tool-session" | "framework-tool-runtime";
 };
 
-type ProgramDriverChatEngineParams = SessionContractChatEngineParams & {
+type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
   journalStore: ProgramDriverJournalStore;
   foreignEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
   continueAfterCancellation?: boolean;
@@ -210,158 +214,11 @@ export function createProgramDriverChatEngine(
   params: ProgramDriverChatEngineParams,
 ): Stream<StreamEvent, void> {
   return resource(function* (provide) {
-    const journal = yield* params.journalStore.open(params.conversationId);
-    const scopedForeignEffects = params.foreignEffects;
-    let before = yield* journal.readJournal(params.conversationId);
-    const active = activeRoot(before);
-    const turnNumber = rootTaskCount(before);
-    const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
-    const turnId = active?.turnId ?? `turn-${turnNumber}`;
-    const requestedInput: ChatProgramInput = {
-      messages: params.messages.map((message) => assertJson(message)),
-      maxIterations: params.maxIterations,
-      foreignDriver: scopedForeignEffects ? "tool-session" : "framework-tool-runtime",
-      ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
-      ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
-    };
-    const input = active
-      ? assertSchemaValue<ChatProgramInput>(manifest.inputSchema, active.input)
-      : requestedInput;
-    const attach = {
-      sessionId: params.conversationId,
-      taskId,
-      program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
-      input,
-      route: { driverKind: "generator" },
-      executionEpoch: 1,
-    };
-    if (!active) {
-      try {
-        yield* journal.openTask({
-          sessionId: params.conversationId,
-          turnId,
-          taskId,
-          manifest,
-          input,
-          executionEpoch: 1,
-          attachmentId: stableProgramAttachmentId(attach),
-          audience: "program-runtime",
-        });
-      } catch (error) {
-        if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
-          throw error;
-        }
-        const raced = activeRoot(yield* journal.readJournal(params.conversationId));
-        if (raced?.taskId !== taskId || canonicalJson(raced.input) !== canonicalJson(input)) {
-          throw new CrankError("idempotency_conflict", "Concurrent root task input differs");
-        }
-      }
-      before = yield* journal.readJournal(params.conversationId);
-    }
-
-    if (active && params.pluginAbort) {
-      yield* journal.requestCancellation(
-        params.conversationId,
-        active.taskId,
-        params.pluginAbort.reason,
-      );
-      yield* cancelPendingElicits(journal, before, params.conversationId);
-    }
-    const accepted = params.pluginAbort
-      ? 0
-      : yield* resolveElicitResponses(params, journal, before);
-    if (accepted > 0 && params.onResumeAccepted) {
-      yield* params.onResumeAccepted();
-    }
-
-    // SAFETY: registry storage erases manifest type witnesses; both tools are
-    // restored from their exact pinned schemas before driver execution.
-    const tools = createDurableToolRegistry([
-      rootTool as unknown as DurableTool,
-      foreignToolAdapter as unknown as DurableTool,
-    ]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
-    const foreignEffects =
-      input.foreignDriver === "tool-session"
-        ? requireScopedForeignEffects(scopedForeignEffects)
-        : createToolRuntimeForeignEffectRegistrations({
-            runtime: requireToolRuntime(params),
-            entries: params.toolInventoryEntries ?? [],
-            threadId: params.agUiRun.threadId,
-            runId: params.agUiRun.runId,
-          });
-    const effects = createDurableEffectRegistry([
-      createDurableEffectRegistration(
-        modelSample,
-        { mode: "idempotent", mechanism: "pull_id_key" },
-        (request, context) => sampleModel(params, request, context.cancellation, context.pullId),
-      ),
-      ...foreignEffects,
-    ]);
-    const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-      return yield* JournalAuthorityContext.with(journal.authority, function* () {
-        return yield* DurableEffectRegistryContext.with(effects, function* () {
-          return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
-        });
-      });
-    });
-    const after = yield* journal.readJournal(params.conversationId);
-    const events: StreamEvent[] = (params.elicitResponses ?? []).flatMap((response) => {
-      if (!response.trace || !response.toolName) {
-        return [];
-      }
-      const activity = buildPluginReplayActivity({
-        toolCallId: response.callId,
-        toolName: response.toolName,
-        trace: response.trace,
-      });
-      return activity ? [activity] : [];
-    });
-    events.push(...projectRecords(after.slice(before.length), after));
-    if (outcome.state === "completed") {
-      events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
-    } else if (outcome.state === "parked") {
-      const pending = pendingElicit(after, outcome.pullId);
-      if (pending) {
-        const pendingCallId = pendingToolCallId(pending);
-        if (pendingCallId) {
-          events.push({ type: "TOOL_CALL_END", toolCallId: pendingCallId });
-        }
-        events.push(projectInterrupt(pending, params));
-      } else {
-        events.push({
-          type: "RUN_ERROR",
-          code: "PROGRAM_PARKED",
-          message: "Program parked without a public input request",
-        });
-      }
-    } else if (outcome.state === "cancelled") {
-      if (params.continueAfterCancellation) {
-        const {
-          pluginAbort: _pluginAbort,
-          continueAfterCancellation: _continueAfterCancellation,
-          ...continuationParams
-        } = params;
-        const continuation = yield* createProgramDriverChatEngine(continuationParams);
-        while (true) {
-          const next = yield* continuation.next();
-          if (next.done) break;
-          events.push(next.value);
-        }
-      } else {
-        events.push({
-          type: "RUN_ERROR",
-          code: "PROGRAM_CANCELLED",
-          message: params.pluginAbort?.reason ?? "Program was cancelled",
-        });
-      }
-    } else {
-      events.push({ type: "RUN_ERROR", code: outcome.error.code, message: outcome.error.message });
-    }
-
+    let events: StreamEvent[] | undefined;
     let cursor = 0;
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
+        events ??= yield* activateProgramDriverChatEngine(params);
         const event = events[cursor];
         if (!event) {
           return { done: true, value: undefined };
@@ -373,8 +230,163 @@ export function createProgramDriverChatEngine(
   });
 }
 
+function* activateProgramDriverChatEngine(
+  params: ProgramDriverChatEngineParams,
+): Operation<StreamEvent[]> {
+  const journal = yield* params.journalStore.open(params.conversationId);
+  const scopedForeignEffects = params.foreignEffects;
+  let before = yield* journal.readJournal(params.conversationId);
+  const active = activeRoot(before);
+  const turnNumber = rootTaskCount(before);
+  const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
+  const turnId = active?.turnId ?? `turn-${turnNumber}`;
+  const requestedInput: ChatProgramInput = {
+    messages: params.messages.map((message) => assertJson(message)),
+    maxIterations: params.maxIterations,
+    foreignDriver: scopedForeignEffects ? "tool-session" : "framework-tool-runtime",
+    ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
+    ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
+  };
+  const input = active
+    ? assertSchemaValue<ChatProgramInput>(manifest.inputSchema, active.input)
+    : requestedInput;
+  const attach = {
+    sessionId: params.conversationId,
+    taskId,
+    program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
+    input,
+    route: { driverKind: "generator" },
+    executionEpoch: 1,
+  };
+  if (!active) {
+    try {
+      yield* journal.openTask({
+        sessionId: params.conversationId,
+        turnId,
+        taskId,
+        manifest,
+        input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-runtime",
+      });
+    } catch (error) {
+      if (!(error instanceof CrankError) || error.code !== "invalid_journal") {
+        throw error;
+      }
+      const raced = activeRoot(yield* journal.readJournal(params.conversationId));
+      if (raced?.taskId !== taskId || canonicalJson(raced.input) !== canonicalJson(input)) {
+        throw new CrankError("idempotency_conflict", "Concurrent root task input differs");
+      }
+    }
+    before = yield* journal.readJournal(params.conversationId);
+  }
+
+  if (active && params.pluginAbort) {
+    yield* journal.requestCancellation(
+      params.conversationId,
+      active.taskId,
+      params.pluginAbort.reason,
+    );
+    yield* cancelPendingElicits(journal, before, params.conversationId);
+  }
+  const accepted = params.pluginAbort ? 0 : yield* resolveElicitResponses(params, journal, before);
+  if (accepted > 0 && params.onResumeAccepted) {
+    yield* params.onResumeAccepted();
+  }
+
+  // SAFETY: registry storage erases manifest type witnesses; both tools are
+  // restored from their exact pinned schemas before driver execution.
+  const tools = createDurableToolRegistry([
+    rootTool as unknown as DurableTool,
+    foreignToolAdapter as unknown as DurableTool,
+  ]);
+  const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+  const foreignEffects =
+    input.foreignDriver === "tool-session"
+      ? requireScopedForeignEffects(scopedForeignEffects)
+      : createToolRuntimeForeignEffectRegistrations({
+          runtime: requireToolRuntime(params),
+          entries: params.toolInventoryEntries ?? [],
+          threadId: params.agUiRun.threadId,
+          runId: params.agUiRun.runId,
+        });
+  const effects = createDurableEffectRegistry([
+    createDurableEffectRegistration(
+      modelSample,
+      { mode: "idempotent", mechanism: "pull_id_key" },
+      (request, context) => sampleModel(params, request, context.cancellation, context.pullId),
+    ),
+    ...foreignEffects,
+  ]);
+  const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+    return yield* JournalAuthorityContext.with(journal.authority, function* () {
+      return yield* DurableEffectRegistryContext.with(effects, function* () {
+        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+      });
+    });
+  });
+  const after = yield* journal.readJournal(params.conversationId);
+  const events: StreamEvent[] = (params.elicitResponses ?? []).flatMap((response) => {
+    if (!response.trace || !response.toolName) {
+      return [];
+    }
+    const activity = buildPluginReplayActivity({
+      toolCallId: response.callId,
+      toolName: response.toolName,
+      trace: response.trace,
+    });
+    return activity ? [activity] : [];
+  });
+  events.push(...projectRecords(after.slice(before.length), after));
+  if (outcome.state === "completed") {
+    events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
+  } else if (outcome.state === "parked") {
+    const pending = pendingElicit(after, outcome.pullId);
+    if (pending) {
+      const pendingCallId = pendingToolCallId(pending);
+      if (pendingCallId) {
+        events.push({ type: "TOOL_CALL_END", toolCallId: pendingCallId });
+      }
+      events.push(projectInterrupt(pending, params));
+    } else {
+      events.push({
+        type: "RUN_ERROR",
+        code: "PROGRAM_PARKED",
+        message: "Program parked without a public input request",
+      });
+    }
+  } else if (outcome.state === "cancelled") {
+    if (params.continueAfterCancellation) {
+      const {
+        pluginAbort: _pluginAbort,
+        continueAfterCancellation: _continueAfterCancellation,
+        ...continuationParams
+      } = params;
+      const continuation = yield* createProgramDriverChatEngine(continuationParams);
+      while (true) {
+        const next = yield* continuation.next();
+        if (next.done) {
+          break;
+        }
+        events.push(next.value);
+      }
+    } else {
+      events.push({
+        type: "RUN_ERROR",
+        code: "PROGRAM_CANCELLED",
+        message: params.pluginAbort?.reason ?? "Program was cancelled",
+      });
+    }
+  } else {
+    events.push({ type: "RUN_ERROR", code: outcome.error.code, message: outcome.error.message });
+  }
+
+  return events;
+}
+
 function* sampleModel(
-  params: SessionContractChatEngineParams,
+  params: ProgramRuntimeChatEngineParams,
   request: ChatSampleRequest,
   cancellation: AbortSignal,
   pullId: string,
@@ -436,7 +448,9 @@ function* sampleModel(
         if (block.type === "toolCall" && !calls.some((call) => call.id === block.id)) {
           calls.push({
             id: block.id,
-            target: block.name,
+            target: foreignSamplingRequest
+              ? block.name
+              : resolveOuterToolTarget(block.name, params.toolSchemas),
             input: assertJson(block.arguments),
             ...(block.thoughtSignature !== undefined
               ? { thoughtSignature: block.thoughtSignature }
@@ -486,7 +500,9 @@ function* sampleModel(
       if (!calls.some((call) => call.id === block.id)) {
         calls.push({
           id: block.id,
-          target: block.name,
+          target: foreignSamplingRequest
+            ? block.name
+            : resolveOuterToolTarget(block.name, params.toolSchemas),
           input: assertJson(block.arguments),
           ...(block.thoughtSignature !== undefined
             ? { thoughtSignature: block.thoughtSignature }
@@ -555,7 +571,7 @@ function* cancelPendingElicits(
 }
 
 function* resolveElicitResponses(
-  params: SessionContractChatEngineParams,
+  params: ProgramRuntimeChatEngineParams,
   journal: ProgramDriverJournal,
   records: DurableSemanticRecord[],
 ): Operation<number> {
@@ -739,7 +755,7 @@ function pendingToolCallId(pending: PendingElicit): string | undefined {
 
 function projectInterrupt(
   pending: NonNullable<ReturnType<typeof pendingElicit>>,
-  params: SessionContractChatEngineParams,
+  params: ProgramRuntimeChatEngineParams,
 ): StreamEvent {
   const context = jsonRecord(pending.descriptor.context);
   const nested = jsonRecord(context?.["context"]);
@@ -797,6 +813,125 @@ function foreignElicitId(
   return typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : undefined;
 }
 
+function toRuntimeMessage(value: Json): RuntimeMessage {
+  const message = jsonRecord(value) ?? {};
+  const role = message["role"];
+  const content =
+    typeof message["content"] === "string"
+      ? message["content"]
+      : JSON.stringify(message["content"] ?? null);
+  if (role === "assistant") {
+    const runtimeContent = Array.isArray(message["runtime_content"])
+      ? message["runtime_content"].flatMap((block) => {
+          const parsed = parseRuntimeContentBlock(block);
+          return parsed ? [parsed] : [];
+        })
+      : undefined;
+    const toolCalls = Array.isArray(message["tool_calls"])
+      ? message["tool_calls"].flatMap((callValue) => {
+          const call = jsonRecord(callValue);
+          return call ? [call] : [];
+        })
+      : [];
+    return {
+      role: "assistant",
+      content: runtimeContent ?? [
+        ...(content ? [{ type: "text" as const, text: content }] : []),
+        ...toolCalls.map((call) => {
+          const fn = jsonRecord(call["function"]);
+          return {
+            type: "toolCall" as const,
+            id: String(call["id"] ?? "tool"),
+            name: String(call["target"] ?? call["name"] ?? fn?.["name"] ?? "tool"),
+            arguments: toolCallArguments(call["input"] ?? call["arguments"] ?? fn?.["arguments"]),
+            ...(typeof call["thoughtSignature"] === "string"
+              ? { thoughtSignature: call["thoughtSignature"] }
+              : {}),
+          };
+        }),
+      ],
+    };
+  }
+  if (role === "tool") {
+    return {
+      role: "toolResult",
+      toolCallId: String(message["tool_call_id"] ?? "tool"),
+      toolName: String(message["tool_name"] ?? "tool"),
+      content: [{ type: "text", text: content }],
+      isError: false,
+    };
+  }
+  if (role === "system") {
+    return { role: "system", content };
+  }
+  return { role: "user", content };
+}
+
+function parseRuntimeContentBlock(value: Json): ContentBlock | undefined {
+  const block = jsonRecord(value);
+  if (!block) {
+    return undefined;
+  }
+  switch (block["type"]) {
+    case "text":
+      return typeof block["text"] === "string"
+        ? {
+            type: "text",
+            text: block["text"],
+            ...(typeof block["textSignature"] === "string"
+              ? { textSignature: block["textSignature"] }
+              : {}),
+          }
+        : undefined;
+    case "thinking":
+      return typeof block["text"] === "string"
+        ? {
+            type: "thinking",
+            text: block["text"],
+            ...(typeof block["format"] === "string" ? { format: block["format"] } : {}),
+            ...(typeof block["thinkingSignature"] === "string"
+              ? { thinkingSignature: block["thinkingSignature"] }
+              : {}),
+            ...(typeof block["redacted"] === "boolean" ? { redacted: block["redacted"] } : {}),
+          }
+        : undefined;
+    case "toolCall":
+      return typeof block["id"] === "string" && typeof block["name"] === "string"
+        ? {
+            type: "toolCall",
+            id: block["id"],
+            name: block["name"],
+            arguments: toolCallArguments(block["arguments"]),
+            ...(typeof block["thoughtSignature"] === "string"
+              ? { thoughtSignature: block["thoughtSignature"] }
+              : {}),
+          }
+        : undefined;
+    case "image":
+      return typeof block["data"] === "string" && typeof block["mimeType"] === "string"
+        ? { type: "image", data: block["data"], mimeType: block["mimeType"] }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+function toolCallArguments(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return isUnknownRecord(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return isUnknownRecord(value) ? value : {};
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] {
   return content.map((block) => {
     switch (block.type) {
@@ -832,6 +967,17 @@ function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] 
   });
 }
 
+function resolveOuterToolTarget(requested: string, tools: ReadonlyArray<{ name: string }>): string {
+  if (tools.some((tool) => tool.name === requested)) {
+    return requested;
+  }
+  const aliases = tools.filter((tool) => tool.name.startsWith(`${requested}_`));
+  if (aliases.length === 1) {
+    return aliases[0]!.name;
+  }
+  throw new CrankError("foreign_tool_not_found", `Tool not found: ${requested}`);
+}
+
 function sampleTools(tools: Json[]) {
   return tools.map((value) => {
     const tool = jsonRecord(value);
@@ -862,7 +1008,7 @@ function requireScopedForeignEffects(
   return registrations;
 }
 
-function requireToolRuntime(params: SessionContractChatEngineParams) {
+function requireToolRuntime(params: ProgramRuntimeChatEngineParams) {
   if (!params.toolRuntime) {
     throw new CrankError("tool_runtime_not_installed", "Tool runtime is not installed");
   }

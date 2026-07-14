@@ -15,9 +15,6 @@ export { createDurableChatHandler } from "./handler.ts";
 // Alias for consolidation - createChatHandler is the durable handler
 export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 
-// Session-contract chat execution adapter
-export { createSessionContractChatEngine } from "./session-contract-adapter.ts";
-
 // Replay-crank store context + in-memory development implementation.
 export {
   CrankStoreContext,
@@ -28,8 +25,8 @@ export {
 /** Re-exported durable persistence port for framework composition. */
 export type { CrankStore } from "@sweatpants/session-contract";
 
-// Crank-native authoring/runtime surface. Legacy ToolSession execution remains
-// available only as an explicitly opaque compatibility path.
+// Crank-native authoring/runtime surface. Foreign ToolSession execution remains
+// available only through the explicit journaled compatibility boundary.
 export {
   DurableEffectRegistryContext,
   JournalAuthority,
@@ -88,9 +85,9 @@ export type {
 // Types
 /** Durable handler request, setup, stream, and tool-inventory contracts. */
 export type {
-  // Execution adapter types
-  SessionContractChatEngine,
-  SessionContractChatEngineParams,
+  // ProgramRuntime execution types
+  ProgramRuntimeChatEngine,
+  ProgramRuntimeChatEngineParams,
 
   // Tool types
   ToolSchema,

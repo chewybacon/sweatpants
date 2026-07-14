@@ -66,6 +66,17 @@ describe("yo-chat chat application composition", () => {
     }
   });
 
+  it("uses ProgramRuntime as the only durable chat execution engine", () => {
+    const envSchema = read("src/env.schema.ts");
+    const handler = read("src/server/chat-handler.ts");
+
+    expect(envSchema).not.toContain("SWEATPANTS_EXECUTION_ENGINE");
+    expect(envSchema).not.toContain('z.enum(["legacy", "program-driver"])');
+    expect(handler).not.toContain("executionEngine");
+    expect(handler).toContain("programDriverJournalStore");
+    expect(handler).toContain("PROGRAM_DRIVER_CAPABILITY_SECRET");
+  });
+
   it("keeps scripted rendering fixtures behind explicit Playwright-only gates", () => {
     const envSchema = read("src/env.schema.ts");
     const modelProvider = read("src/server/model-provider.ts");

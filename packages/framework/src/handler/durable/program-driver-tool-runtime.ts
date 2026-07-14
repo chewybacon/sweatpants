@@ -12,6 +12,7 @@ import {
 } from "@sweatpants/session-contract";
 
 import type { ToolInventoryEntry } from "../../lib/chat/tool-inventory.ts";
+import { getToolParameterValidationErrorPayload } from "../../lib/chat/tool-parameters.ts";
 import type {
   ToolExecution,
   ToolExecutionEvent,
@@ -67,9 +68,13 @@ export function createToolRuntimeForeignEffectRegistrations(
           metadata: effectMetadata(options, context),
         });
         return yield* disposition(execution, request.tool, options.runtime);
-      } catch {
-        return context.cancellation.aborted
-          ? failure("foreign_tool_cancelled", "Foreign tool was cancelled")
+      } catch (error) {
+        if (context.cancellation.aborted) {
+          return failure("foreign_tool_cancelled", "Foreign tool was cancelled");
+        }
+        const validation = getToolParameterValidationErrorPayload(error);
+        return validation
+          ? failure(validation.code, validation.message)
           : failure("foreign_tool_start_failed", "Foreign tool start failed");
       }
     },
