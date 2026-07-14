@@ -17,9 +17,9 @@ import {
 } from "../../../lib/chat/durable-streams/index.ts";
 import { setupDurableStreams } from "../../../lib/chat/durable-streams/setup.ts";
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
-import { createDurableChatHandler } from "../handler.ts";
 import {
   createMockProvider,
+  createTestDurableChatHandler,
   consumeDurableResponse,
   setupMockModelProvider,
   setupMockTools,
@@ -58,7 +58,7 @@ function createTestHandler(mockResponse: string) {
     },
   ];
 
-  return createDurableChatHandler({ setup: composeSetup(setup) });
+  return createTestDurableChatHandler({ setup: composeSetup(setup) });
 }
 
 /**
@@ -92,7 +92,7 @@ function createTestHandlerWithSharedStorage(
     },
   ];
 
-  return createDurableChatHandler({ setup: composeSetup(setup) });
+  return createTestDurableChatHandler({ setup: composeSetup(setup) });
 }
 
 // =============================================================================
@@ -297,10 +297,14 @@ describe("Durable Chat Handler HTTP Smoke Tests", () => {
       const decoder = new TextDecoder();
       const partialEvents: Array<{ lsn: number; event: unknown }> = [];
 
-      // Read a few chunks to get some events
-      for (let i = 0; i < 3; i++) {
+      // ProgramRuntime durably projects the model sample after it resolves, so
+      // disconnect after the initial protocol snapshot chunk while sampling is
+      // still active rather than waiting for model output.
+      for (let i = 0; i < 1; i++) {
         const { value, done } = await reader.read();
-        if (done) break;
+        if (done) {
+          break;
+        }
         const text = decoder.decode(value, { stream: true });
         const lines = text.trim().split("\n").filter(Boolean);
         for (const line of lines) {
@@ -380,9 +384,11 @@ describe("Durable Chat Handler HTTP Smoke Tests", () => {
       const decoder = new TextDecoder();
       let lastLSN = 0;
 
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < 1; i++) {
         const { value, done } = await reader.read();
-        if (done || !value) break;
+        if (done || !value) {
+          break;
+        }
         const text = decoder.decode(value, { stream: true });
         for (const line of text.trim().split("\n").filter(Boolean)) {
           try {
@@ -672,7 +678,7 @@ describe("Durable Chat Handler HTTP Smoke Tests", () => {
         // No provider setup - should cause error
       ];
 
-      const handler = createDurableChatHandler({ setup: composeSetup(setup) });
+      const handler = createTestDurableChatHandler({ setup: composeSetup(setup) });
       server = await createHttpTestServer(handler);
 
       const response = await fetch(server.url, {
@@ -901,7 +907,7 @@ function createOllamaHandler() {
     },
   ];
 
-  return createDurableChatHandler({ setup: composeSetup(setup) });
+  return createTestDurableChatHandler({ setup: composeSetup(setup) });
 }
 
 /**
@@ -921,7 +927,7 @@ function createOllamaHandlerWithSharedStorage(sharedStorage: SharedStorage<strin
     },
   ];
 
-  return createDurableChatHandler({ setup: composeSetup(setup) });
+  return createTestDurableChatHandler({ setup: composeSetup(setup) });
 }
 
 describe.skip("Durable Chat Handler - Ollama Integration (moved to @sweatpants/model-provider-pi-ai)", () => {

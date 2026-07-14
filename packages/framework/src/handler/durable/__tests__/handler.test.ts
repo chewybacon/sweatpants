@@ -23,22 +23,16 @@ import {
   setupDurableStreams,
 } from "../../../lib/chat/durable-streams/index.ts";
 import type { RetentionPolicy } from "@sweatpants/durable-streams";
-import { createDurableChatHandler, assertPendingResumeConsistency } from "../handler.ts";
+import { assertPendingResumeConsistency } from "../handler.ts";
 import type { ChatHandlerSetup } from "../types.ts";
-import {
-  interruptRecordsForThread,
-  registerInterruptsFromRunFinished,
-  resetInterruptRegistry,
-} from "../interrupt-registry.ts";
-import { recordThreadInterruptState } from "../interrupt-store.ts";
-import { ToolInventoryContext, createToolInventory } from "../../../lib/chat/tool-inventory.ts";
-import { ToolRuntimeContext } from "../../../lib/chat/tool-runtime.ts";
+import { registerInterruptsFromRunFinished } from "../interrupt-registry.ts";
 import { resetPrivateModelContextRegistry } from "../model-context-registry.ts";
 type LegacyTestTool = any;
 import type { Message } from "../../../lib/chat/types.ts";
 import {
   createMockProvider,
   createMockTool,
+  createTestDurableChatHandler,
   consumeDurableResponse,
   createChatRequest,
   getEventsByType,
@@ -100,7 +94,7 @@ describe("Durable Chat Handler", () => {
   describe("New Session: Basic Streaming", () => {
     it("should hydrate conversationId GET from snapshots instead of replaying terminal text events", function* () {
       const provider = createMockProvider({ responses: "Hello from durable world" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -141,7 +135,7 @@ describe("Durable Chat Handler", () => {
 
     it("should hydrate from a stored conversation checkpoint even after the raw session is deleted", function* () {
       const provider = createMockProvider({ responses: "Checkpoint survives" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -189,7 +183,7 @@ describe("Durable Chat Handler", () => {
         responses: "Disconnect and finish",
         tokenDelayMs: 50,
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -224,7 +218,7 @@ describe("Durable Chat Handler", () => {
 
     it("should return checkpoint metadata for HEAD conversation reads after raw session deletion", function* () {
       const provider = createMockProvider({ responses: "Checkpoint head" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -249,7 +243,7 @@ describe("Durable Chat Handler", () => {
 
     it("should normalize divergent body threadId to the durable conversationId", function* () {
       const provider = createMockProvider({ responses: "normalized" });
-      const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+      const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
       const conversationId = `thread-normalized-${Date.now()}`;
 
       const response = yield* call(() =>
@@ -277,7 +271,7 @@ describe("Durable Chat Handler", () => {
 
     it("enforces identity law: conversationId durable, threadId alias, runId ephemeral, stream id separate", function* () {
       const provider = createMockProvider({ responses: "identity-law" });
-      const handler = createDurableChatHandler({ setup: createTestHooks(provider) });
+      const handler = createTestDurableChatHandler({ setup: createTestHooks(provider) });
       const conversationId = `identity-law-${Date.now()}`;
 
       // No client runId: server must mint one, never reuse X-Session-Id.
@@ -359,7 +353,7 @@ describe("Durable Chat Handler", () => {
 
     it("should reuse the same durable session for repeated conversationId requests", function* () {
       const provider = createMockProvider({ responses: ["First response", "Second response"] });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -405,7 +399,7 @@ describe("Durable Chat Handler", () => {
 
     it("should reset stale conversation offsets to the current snapshot hydrate", function* () {
       const provider = createMockProvider({ responses: "Reset me" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -443,7 +437,7 @@ describe("Durable Chat Handler", () => {
         responses: "active tail",
         tokenDelayMs: 100,
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -479,7 +473,7 @@ describe("Durable Chat Handler", () => {
 
     it("should hydrate paused threads with snapshots plus a public interrupt marker", function* () {
       const provider = createMockProvider({ responses: "Paused hello" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -615,7 +609,7 @@ describe("Durable Chat Handler", () => {
           return fallback.stream(messages, options);
         },
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -645,7 +639,7 @@ describe("Durable Chat Handler", () => {
 
     it("should stream a simple text response with strict AG-UI run lifecycle", function* () {
       const provider = createMockProvider({ responses: "Hello, world!" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -675,7 +669,7 @@ describe("Durable Chat Handler", () => {
 
     it("should include LSN in correct order", function* () {
       const provider = createMockProvider({ responses: "One Two Three" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -698,7 +692,7 @@ describe("Durable Chat Handler", () => {
         responses: "Let me echo that",
         toolCalls: [{ id: "call-1", name: "echo", arguments: { input: "hello" } }],
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [echoTool]),
         maxToolIterations: 1,
       });
@@ -748,7 +742,7 @@ describe("Durable Chat Handler", () => {
           );
         },
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [routeTool]),
         maxToolIterations: 2,
       });
@@ -763,26 +757,13 @@ describe("Durable Chat Handler", () => {
         ),
       );
 
-      const toolResults = getEventsByType(result, "TOOL_CALL_RESULT") as Array<{
-        type: "TOOL_CALL_RESULT";
-        toolCallId: string;
-        toolCallName?: string;
-        content: string;
-        error?: { code?: string; issues?: Array<{ path: Array<string | number> }> };
-      }>;
-
       expect(serverCalls).toBe(0);
-      expect(result.toolResults).toHaveLength(1);
-      expect(toolResults).toHaveLength(1);
-      expect(toolResults[0]).toMatchObject({
-        toolCallId: "call-missing-from",
-        toolCallName: "book_flight",
+      expect(result.toolResults).toBeNull();
+      expect(result.error).toMatchObject({
+        type: "RUN_ERROR",
+        code: "TOOL_PARAMETER_VALIDATION_FAILED",
       });
-      expect(toolResults[0]?.content).toContain("Error:");
-      expect(toolResults[0]?.error?.code).toBe("TOOL_PARAMETER_VALIDATION_FAILED");
-      expect(toolResults[0]?.error?.issues?.some((issue) => issue.path.includes("from"))).toBe(
-        true,
-      );
+      expect(result.error?.message).toContain('Invalid parameters for tool "book_flight"');
     });
 
     it("should reconcile unique generated tool-name aliases before execution", function* () {
@@ -791,7 +772,7 @@ describe("Durable Chat Handler", () => {
         responses: "I will book that",
         toolCalls: [{ id: "call-1", name: "book-flight", arguments: { input: "NYC to LAX" } }],
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [generatedTool]),
         maxToolIterations: 1,
       });
@@ -807,7 +788,7 @@ describe("Durable Chat Handler", () => {
       expect(result.toolResults?.[0]?.content).toContain("Mock result for: NYC to LAX");
     });
 
-    it("should finish cleanly when provider tool calls do not match any supported tool", function* () {
+    it("should fail with a stable code when the provider names an unsupported tool", function* () {
       const echoTool = createMockTool("echo", "Echoes input");
       const provider = createMockProvider({
         responses: "",
@@ -815,7 +796,7 @@ describe("Durable Chat Handler", () => {
           { id: "call-unsupported", name: "unsupported_tool", arguments: { input: "hello" } },
         ],
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [echoTool]),
         maxToolIterations: 1,
       });
@@ -830,10 +811,14 @@ describe("Durable Chat Handler", () => {
         ),
       );
 
-      expect(result.error).toBeNull();
+      expect(result.error).toMatchObject({
+        type: "RUN_ERROR",
+        code: "foreign_tool_not_found",
+      });
+      expect(result.error?.message).toBe("Tool not found: unsupported_tool");
       expect(result.toolCalls).toBeNull();
       expect(result.toolResults).toBeNull();
-      expect(result.complete).not.toBeNull();
+      expect(result.complete).toBeNull();
     });
 
     it("should emit AG-UI tool lifecycle events for server-side tools", function* () {
@@ -842,7 +827,7 @@ describe("Durable Chat Handler", () => {
         responses: "Let me echo that",
         toolCalls: [{ id: "call-1", name: "echo", arguments: { input: "hello" } }],
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [echoTool]),
         maxToolIterations: 1,
       });
@@ -900,7 +885,7 @@ describe("Durable Chat Handler", () => {
           throw new Error("Provider error");
         },
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -914,7 +899,7 @@ describe("Durable Chat Handler", () => {
     });
 
     it("should emit error when provider is not configured", function* () {
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: function* () {
           // Only setup durable streams, no provider
           const bufferStore = createInMemoryBufferStore<string>();
@@ -935,7 +920,7 @@ describe("Durable Chat Handler", () => {
   describe("Session Management", () => {
     it("should return session ID in response headers", function* () {
       const provider = createMockProvider({ responses: "Hello" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -950,7 +935,7 @@ describe("Durable Chat Handler", () => {
 
     it("should return correct content type", function* () {
       const provider = createMockProvider({ responses: "Hello" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -967,7 +952,7 @@ describe("Durable Chat Handler", () => {
   describe("Protocol Alignment", () => {
     it("should support reconnect via /sessions/{id}?offset=N", function* () {
       const provider = createMockProvider({ responses: "one two three" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -990,7 +975,7 @@ describe("Durable Chat Handler", () => {
 
     it("should return metadata for HEAD /sessions/{id}", function* () {
       const provider = createMockProvider({ responses: "head metadata" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1021,7 +1006,7 @@ describe("Durable Chat Handler", () => {
 
     it("should return 304 for If-None-Match when up-to-date", function* () {
       const provider = createMockProvider({ responses: "etag check" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1069,7 +1054,7 @@ describe("Durable Chat Handler", () => {
         responses: "slow response",
         tokenDelayMs: 1_000,
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1109,7 +1094,7 @@ describe("Durable Chat Handler", () => {
 
     it("should return 200 for long-poll when backlog data exists", function* () {
       const provider = createMockProvider({ responses: "long poll backlog" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1134,7 +1119,7 @@ describe("Durable Chat Handler", () => {
 
     it("should stream SSE data and control events", function* () {
       const provider = createMockProvider({ responses: "sse stream payload" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1170,7 +1155,7 @@ describe("Durable Chat Handler", () => {
 
     it("should emit streamClosed control event for SSE at closed tail", function* () {
       const provider = createMockProvider({ responses: "closed stream" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1220,7 +1205,7 @@ describe("Durable Chat Handler", () => {
 
     it("should treat offset=-1 as stream beginning", function* () {
       const provider = createMockProvider({ responses: "offset beginning" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1253,7 +1238,7 @@ describe("Durable Chat Handler", () => {
         responses: "offset now",
         tokenDelayMs: 1_000,
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1290,7 +1275,7 @@ describe("Durable Chat Handler", () => {
         responses: "offset now json",
         tokenDelayMs: 1_000,
       });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1324,7 +1309,7 @@ describe("Durable Chat Handler", () => {
 
     it("should return [] when caught up with JSON accept header", function* () {
       const provider = createMockProvider({ responses: "already caught up" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider, [], {
           retentionPolicy: { mode: "retain_forever" },
         }),
@@ -1362,7 +1347,7 @@ describe("Durable Chat Handler", () => {
 
     it("should support protocol-native PUT/POST/DELETE lifecycle on /sessions/{id}", function* () {
       const provider = createMockProvider({ responses: "unused" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1436,7 +1421,7 @@ describe("Durable Chat Handler", () => {
   describe("Response Format", () => {
     it("should emit events as NDJSON with LSN", function* () {
       const provider = createMockProvider({ responses: "Test" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1458,7 +1443,7 @@ describe("Durable Chat Handler", () => {
 
     it("should not emit legacy checkpoints for durable thread hydration", function* () {
       const provider = createMockProvider({ responses: "Test" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 
@@ -1478,7 +1463,7 @@ describe("Durable Chat Handler", () => {
 
     it("should emit AG-UI run, message, and state events for threaded requests", function* () {
       const provider = createMockProvider({ responses: "Hello there" });
-      const handler = createDurableChatHandler({
+      const handler = createTestDurableChatHandler({
         setup: createTestHooks(provider),
       });
 

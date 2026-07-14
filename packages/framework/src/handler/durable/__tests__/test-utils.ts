@@ -7,10 +7,10 @@
  * - Response consumption helpers
  * - DI setup helpers
  */
-import { resource, sleep } from "effection";
-import type { Operation, Stream } from "effection";
+import { resource, sleep, type Operation, type Stream } from "effection";
 import { z } from "zod";
 import { createTool, type ToolDefinition as CoreToolDefinition } from "@sweatpants/core";
+import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import type {
   ChatEvent,
   ChatResult,
@@ -44,8 +44,27 @@ import {
   setupInMemoryDurableStreams,
   type DurableStreamsSetup,
 } from "../../../lib/chat/durable-streams/index.ts";
-import type { ChatHandlerSetup, DurableStreamEvent } from "../types.ts";
+import { createDurableChatHandler } from "../handler.ts";
+import { createInMemoryProgramDriverJournalStore } from "../program-driver-journal.ts";
+import type { ChatHandlerSetup, DurableChatHandlerConfig, DurableStreamEvent } from "../types.ts";
 import type { StreamEvent } from "../../types.ts";
+
+/** Test-only handler composition with an isolated in-memory ProgramRuntime journal. */
+export function createTestDurableChatHandler(
+  config: Omit<DurableChatHandlerConfig, "programDriverJournalStore"> &
+    Partial<Pick<DurableChatHandlerConfig, "programDriverJournalStore">>,
+): ReturnType<typeof createDurableChatHandler> {
+  return createDurableChatHandler({
+    ...config,
+    programDriverJournalStore:
+      config.programDriverJournalStore ??
+      createInMemoryProgramDriverJournalStore({
+        keyring: createCapabilityKeyring("framework-test-program-runtime", [
+          { keyId: "test-v1", secret: "framework-test-program-runtime-secret" },
+        ]),
+      }),
+  });
+}
 
 // =============================================================================
 // MOCK PROVIDER

@@ -15,8 +15,10 @@ import { call, resource, type Operation, type Subscription } from "effection";
 import { z } from "zod";
 import { createTool } from "@sweatpants/core";
 import {
+  createCapabilityKeyring,
   createChatApplication,
   createChatHandler,
+  createInMemoryProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
 import {
   ModelProviderContext,
@@ -270,6 +272,11 @@ describe("product facade golden path", () => {
         yield* ToolRuntimeContext.set(createLocalToolRuntime([echo as any]));
       },
       handler: createChatHandler({
+        programDriverJournalStore: createInMemoryProgramDriverJournalStore({
+          keyring: createCapabilityKeyring("golden-path-program-runtime", [
+            { keyId: "test-v1", secret: "golden-path-program-runtime-secret" },
+          ]),
+        }),
         setup: function* () {
           yield* ModelProviderContext.set(provider);
           yield* ModelProviderModelContext.set(mockModel());
@@ -301,8 +308,7 @@ describe("product facade golden path", () => {
       expect(JSON.stringify(toolResults)).toContain("echo:hello-facade");
 
       const hasAssistantSignal =
-        eventsOfType(events, "TEXT_MESSAGE_CONTENT").length > 0 ||
-        toolResults.length > 0;
+        eventsOfType(events, "TEXT_MESSAGE_CONTENT").length > 0 || toolResults.length > 0;
       expect(hasAssistantSignal).toBe(true);
     } finally {
       await app.close();

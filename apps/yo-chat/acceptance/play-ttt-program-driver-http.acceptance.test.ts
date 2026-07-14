@@ -54,7 +54,7 @@ const model: Model = {
   maxTokens: 1_000,
 };
 
-describe("unchanged play_ttt through the flagged HTTP ProgramRuntime", () => {
+describe("unchanged play_ttt through the HTTP ProgramRuntime", () => {
   it("journals tool-calling and structured samples through game completion", async () => {
     let sampleCount = 0;
     const driver: ModelProviderDriver = {
@@ -139,7 +139,6 @@ function createApplication(driver: ModelProviderDriver, journalStore: ProgramDri
     *abort(): Operation<void> {},
   };
   const handler = createDurableChatHandler({
-    executionEngine: "program-driver",
     programDriverJournalStore: journalStore,
     maxToolIterations: 5,
     setup: function* () {

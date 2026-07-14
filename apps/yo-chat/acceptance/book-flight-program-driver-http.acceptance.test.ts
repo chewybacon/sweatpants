@@ -52,7 +52,7 @@ const model: Model = {
   maxTokens: 1_000,
 };
 
-describe("unchanged book_flight through the flagged HTTP ProgramRuntime", () => {
+describe("unchanged book_flight through the HTTP ProgramRuntime", () => {
   it("journals elicits and sampling without tool.execute/tool.resume", async () => {
     let sampleIndex = 0;
     const driver: ModelProviderDriver = {
@@ -113,7 +113,6 @@ describe("unchanged book_flight through the flagged HTTP ProgramRuntime", () => 
       *abort(): Operation<void> {},
     };
     const handler = createDurableChatHandler({
-      executionEngine: "program-driver",
       programDriverJournalStore: journalStore,
       maxToolIterations: 5,
       setup: function* () {

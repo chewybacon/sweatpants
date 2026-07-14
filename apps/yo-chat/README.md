@@ -79,26 +79,19 @@ pnpm dev
 
 Configure the default chat model with `DEFAULT_CHAT_MODEL_PROVIDER` and `DEFAULT_CHAT_MODEL_ID` (for example `ollama`/`gemma4:12b-mlx`, `openai`/`gpt-5-chat-latest`, or `amazon-bedrock`/`zai.glm-5`). AgentCore mode only moves MCP tool execution remote; primary chat inference still runs in the local app server through pi-ai. For local Ollama tool-calling demos, use a tool-capable model such as `gemma4:12b-mlx`; smaller/default chat models may answer with JSON text instead of making native tool calls.
 
-Batch 1 AgentCore remote execution supports only this explicit MCP bridge-compatible subset:
+Runtime selection is binary: `local` runs the complete generated tool registry in local workers, while `agentcore` runs that same complete registry in AgentCore. There is no per-tool hybrid router.
 
-- `book_flight`
-- `play_ttt`
-- `tictactoe`
-
-Legacy browser/rendering tools and arbitrary yo-chat TSX tools are out of scope for this AgentCore runtime prototype and remain local/unsupported for remote AgentCore execution.
-
-Optional settings:
+Runtime settings:
 
 ```bash
 AGENTCORE_TOOL_SESSION_TTL_MS=900000
 AGENTCORE_REDIS_KEY_PREFIX=sp:yo-chat:agentcore:
 REDIS_URL=redis://localhost:6379
 
-# Opt in to the crank-native HTTP chat engine. Legacy remains the default.
-# The capability secret is required only for program-driver and must contain at
-# least 32 bytes. Redis persists the private authority journal when configured;
-# otherwise the flagged engine is process-local and intended for development.
-SWEATPANTS_EXECUTION_ENGINE=program-driver
+# ProgramRuntime is the only HTTP chat engine. Its capability secret is
+# required and must contain at least 32 bytes. Redis persists the private
+# authority journal when configured; otherwise it is process-local and intended
+# only for development.
 PROGRAM_DRIVER_CAPABILITY_SECRET='replace-with-at-least-32-random-bytes'
 
 # Optional chat model allow-list. When unset, only the configured default is allowed.
@@ -118,7 +111,7 @@ AGENTCORE_TOOL_SAMPLE_MODEL_ID=zai.glm-5
 
 The selected runtime receives the complete generated tool inventory. If `REDIS_URL` is set, AgentCore session handles/events are stored in Redis. Otherwise they use in-memory app-side stores for local development.
 
-The `program-driver` engine uses concrete ToolSession registries to journal tool sampling and elicitation. In local mode, authored tools run through the local ToolSession registry. In AgentCore mode, a routed registry sends configured plugin tools to AgentCore and keeps local-only tools local; both routes expose sampling and elicitation to the same journal-aware foreign adapter.
+ProgramRuntime uses concrete ToolSession registries to journal tool sampling and elicitation. Both local and AgentCore modes expose those operations through the same journal-aware foreign adapter.
 
 # Building For Production
 
