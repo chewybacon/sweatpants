@@ -484,7 +484,7 @@ function parseStoredState(serialized: string, expectedSessionId: string): Stored
     }
     return { records, coordination };
   } catch (error) {
-    if (error instanceof CrankError && error.code === "invalid_journal") {
+    if (error instanceof CrankError && (error as { code?: unknown }).code === "invalid_journal") {
       throw error;
     }
     throw invalidStoredState(error);

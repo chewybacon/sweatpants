@@ -23,7 +23,7 @@
  *
  * @packageDocumentation
  */
-import type { Operation } from "effection";
+import { useAbortSignal, type Operation } from "effection";
 import { z } from "zod";
 import type {
   ToolCtx,
@@ -330,7 +330,7 @@ export function runMCPTool<
   tool: ToolDefinition<TName, TParams, TResult, TElicits>,
   params: TParams,
   client: MockMCPClient,
-  _options: RunMCPToolOptions = {},
+  options: RunMCPToolOptions = {},
 ): Operation<TResult> {
   return {
     *[Symbol.iterator]() {
@@ -358,6 +358,7 @@ export function runMCPTool<
       const validatedParams = parseResult.data as TParams;
 
       const clientCtx = client.createContext();
+      const signal = options.signal ?? (yield* useAbortSignal());
 
       if (typeof tool !== "function") {
         throw new Error(
@@ -365,7 +366,7 @@ export function runMCPTool<
         );
       }
       const invoke = yield* (tool as ToolDefinition<TName, TParams, TResult, TElicits>)(
-        createCoreToolCtx(tool, clientCtx) as unknown as ToolCtx<TElicits, undefined>,
+        createCoreToolCtx(tool, clientCtx, signal) as unknown as ToolCtx<TElicits, undefined>,
       );
       return yield* invoke(validatedParams);
     },
@@ -375,9 +376,11 @@ export function runMCPTool<
 function createCoreToolCtx(
   tool: RuntimeTool,
   clientCtx: MockMCPClientContext,
+  signal: AbortSignal,
 ): ToolCtx<any, any> {
   // Mock context: single documented assertion; overload surface is exercised by real runtimes.
   const ctx = {
+    signal,
     messages: [],
     notify: (message: string, fraction?: number) => clientCtx.notify(message, fraction),
     log: (level: LogLevel, message: string) => clientCtx.log(level, message),

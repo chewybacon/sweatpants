@@ -1,4 +1,14 @@
 export { createTool } from "./create.ts";
+export { createDurableTool } from "./durable-create.ts";
+export type {
+  CreateDurableToolBuilderBase,
+  CreateDurableToolBuilderReady,
+  CreateDurableToolBuilderWithDescription,
+  CreateDurableToolBuilderWithIdentity,
+  CreateDurableToolBuilderWithParameters,
+  DurableProgramContextFor,
+  FluentDurableTool,
+} from "./durable-create.ts";
 export type {
   LogLevel,
   AnySchema,

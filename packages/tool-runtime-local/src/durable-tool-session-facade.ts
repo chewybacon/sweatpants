@@ -280,7 +280,9 @@ function effectRegistrations(
           );
         })();
       }
-      return bridgeModelSample(input, outerContext);
+      return (function* () {
+        return { status: "ok" as const, value: yield* bridgeModelSample(input, outerContext) };
+      })();
     },
   }));
 }

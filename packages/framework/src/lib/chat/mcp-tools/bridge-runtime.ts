@@ -28,6 +28,7 @@ import {
   spawn,
   each,
   call,
+  useAbortSignal,
 } from "effection";
 import { z } from "zod";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
@@ -391,6 +392,7 @@ function addTokens(tracker: TokenTracker, tokens: number): void {
 // =============================================================================
 
 interface BridgeExecutionState<TElicits extends ElicitsMap> {
+  readonly signal: AbortSignal;
   messages: Message[];
   systemPrompt?: string;
   limits: McpToolLimits;
@@ -427,6 +429,10 @@ function createBridgeContext<TElicits extends ElicitsMap>(
   state: BridgeExecutionState<TElicits>,
 ): McpToolContextWithElicits<TElicits> {
   return {
+    get signal() {
+      return state.signal;
+    },
+
     // Current tool execution state
     get messages() {
       return state.messages as readonly Message[];
@@ -1167,7 +1173,9 @@ export function createBridgeHost<
           }
 
           // Create initial tool execution state
+          const signal = config.signal ?? (yield* useAbortSignal());
           const initialState: BridgeExecutionState<TElicits> = {
+            signal,
             messages: [],
             limits,
             tokenTracker: rootTokenTracker,

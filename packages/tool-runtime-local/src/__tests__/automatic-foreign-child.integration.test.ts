@@ -290,7 +290,7 @@ describe("automatic foreign adapter child orchestration", () => {
           definition: afterChildEffect,
           satisfies: { mode: "idempotent", mechanism: "inherent" },
           *handler(input) {
-            return input;
+            return { status: "ok", value: input };
           },
         },
       ]);

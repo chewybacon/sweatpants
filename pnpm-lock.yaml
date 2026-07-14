@@ -671,6 +671,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9

@@ -1,6 +1,9 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { runDurableDriverRecoveryFixture } from "@sweatpants/session-contract/testing";
+import {
+  runDurableDriverCancellationFixture,
+  runDurableDriverRecoveryFixture,
+} from "@sweatpants/session-contract/testing";
 
 import { createLocalDurableProgramDriver } from "../index.ts";
 
@@ -32,5 +35,46 @@ describe("local crank-native ProgramDriver integration", () => {
       "PullResolved",
       "TaskClosed",
     ]);
+  });
+
+  it("replays cancellation into typed catch/finally cleanup without allowing catch-return success", async () => {
+    const evidence = await run(() =>
+      runDurableDriverCancellationFixture({
+        driverKind: "generator",
+        route: { driverKind: "generator", runtime: "local-package" },
+        createDriver: (registry) => createLocalDurableProgramDriver(registry),
+      }),
+    );
+
+    expect(evidence.firstRun).toMatchObject({ state: "parked", reason: "elicit" });
+    expect(evidence.secondRun).toEqual({ state: "cancelled" });
+    expect(evidence.attachmentWasProcessless).toBe(true);
+    expect(evidence.attachmentCount).toBe(2);
+    expect(evidence.shutdownCount).toBe(2);
+    expect(evidence.effectExecutions).toBe(1);
+    expect(evidence.cleanupExecutions).toBe(1);
+    expect(evidence.cancellationCatches).toBe(1);
+    expect(evidence.normalizedJournal).toEqual([
+      "TaskOpened",
+      "PullRequested",
+      "AttemptStarted",
+      "PullResolved",
+      "PullRequested",
+      "CancellationRequested",
+      "PullResolved",
+      "PullRequested",
+      "AttemptStarted",
+      "PullResolved",
+      "DurableEmission",
+      "TaskClosed",
+    ]);
+    expect(evidence.semanticJournal.at(-1)?.payload).toEqual({
+      type: "TaskClosed",
+      taskId: evidence.invocationId,
+      outcome: { status: "cancelled" },
+    });
+    expect(JSON.stringify(evidence.semanticJournal)).not.toContain(
+      "caught-cancellation-must-not-be-success",
+    );
   });
 });

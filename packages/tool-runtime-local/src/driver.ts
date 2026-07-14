@@ -1,5 +1,5 @@
 import type { RuntimeTool } from "@sweatpants/core";
-import { resource, type Operation, type Stream } from "effection";
+import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
   ToolRuntimeError,
@@ -132,6 +132,17 @@ function mcpEventToExecution(
   }
 }
 
+function* waitForAbort(signal: AbortSignal): Operation<void> {
+  if (signal.aborted) {
+    return;
+  }
+  yield* action<void>((resolve) => {
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    return () => signal.removeEventListener("abort", onAbort);
+  });
+}
+
 function afterLsnFromElicitId(elicitId: string | undefined): number | undefined {
   if (!elicitId) return undefined;
   const requestMatch = /:req:(\d+)$/.exec(elicitId);
@@ -214,6 +225,12 @@ export function createLocalSessionToolExecutionStrategy(
         sessionId: call.id,
         ...(ctx.signal ? { signal: ctx.signal } : {}),
       });
+      if (ctx.signal) {
+        yield* spawn(function* () {
+          yield* waitForAbort(ctx.signal!);
+          yield* session.cancel("tool invocation cancelled");
+        });
+      }
       return yield* nextMcpExecution(ctx.runtimeId, call, session, options.samplingProvider);
     },
     *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
@@ -232,6 +249,12 @@ export function createLocalSessionToolExecutionStrategy(
       if (!input.elicitId)
         throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
       yield* session.respondToElicit(input.elicitId, input.result as WireElicitResult<unknown>);
+      if (ctx.signal) {
+        yield* spawn(function* () {
+          yield* waitForAbort(ctx.signal!);
+          yield* session.cancel("tool invocation cancelled");
+        });
+      }
       return yield* nextMcpExecution(
         ctx.runtimeId,
         {

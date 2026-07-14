@@ -3,12 +3,16 @@ import { createApi } from "effection/experimental";
 
 import { assertInlineSize, assertSchemaValue, serializeDurableError } from "./authoring.ts";
 import { CrankError, type Json } from "./types.ts";
+import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
 import type {
   AppendEmissionRequest,
+  CancellationFrontier,
   CompleteTaskRequest,
+  DurableCancellationState,
   DurableEffectAuthorization,
   DurableEffectContext,
+  DurableEffectDisposition,
   DurableEffectRegistration,
   DurableEffectRegistry,
   DurableJournalAuthorityService,
@@ -44,17 +48,21 @@ export const DurableEffectRegistryContext = createContext<DurableEffectRegistry 
 );
 
 /** Binds a typed effect definition to a schema-parsing Effection handler. */
-export function createDurableEffectRegistration<I extends Json, O extends Json>(
-  definition: EffectDefinition<I, O>,
+export function createDurableEffectRegistration<
+  I extends Json,
+  O extends Json,
+  P extends Json = never,
+>(
+  definition: EffectDefinition<I, O, P>,
   satisfies: DurableEffectRegistration["satisfies"],
-  handler: (input: I, context: DurableEffectContext) => Operation<O>,
+  handler: (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>,
 ): DurableEffectRegistration {
   return {
-    definition,
+    definition: definition as EffectDefinition<Json, Json, Json>,
     satisfies,
     handler(input, context) {
       const validated = assertSchemaValue<I>(definition.inputSchema, input);
-      return handler(validated, context);
+      return handler(validated, context) as Operation<DurableEffectDisposition<Json, Json>>;
     },
   };
 }
@@ -185,6 +193,13 @@ export const DurableEffects = createApi("crank-durable-effects", {
       "invalid_descriptor",
     );
     const controller = new AbortController();
+    const release = registerLiveDurableEffect(
+      authorization.sessionId,
+      authorization.taskId,
+      authorization.pullId,
+      authorization.attemptId,
+      (reason) => controller.abort(reason),
+    );
     let outcome: OperationOutcome;
     try {
       const operation = registration.handler(input, {
@@ -201,17 +216,31 @@ export const DurableEffects = createApi("crank-durable-effects", {
           "Durable effect handler returned a Promise or plain value",
         );
       }
-      let rawValue: unknown;
-      try {
-        rawValue = yield* operation;
-      } finally {
+      const disposition = yield* operation;
+      if (!isEffectDisposition(disposition)) {
+        throw new CrankError("invalid_manifest", "Durable effect returned an invalid disposition");
+      }
+      if (disposition.status === "ok") {
+        const value = assertSchemaValue(registration.definition.outputSchema, disposition.value);
+        assertInlineSize(value);
+        outcome = { status: "ok", value };
+      } else if (disposition.status === "cancelled") {
+        outcome =
+          disposition.partial === undefined
+            ? { status: "cancelled" }
+            : { status: "cancelled", partial: disposition.partial };
+      } else {
+        outcome = { status: "error", error: disposition.error };
+      }
+    } catch (error) {
+      outcome = controller.signal.aborted
+        ? { status: "cancelled" }
+        : { status: "error", error: serializeDurableError(error) };
+    } finally {
+      release();
+      if (!controller.signal.aborted) {
         controller.abort();
       }
-      const value = assertSchemaValue(registration.definition.outputSchema, rawValue);
-      assertInlineSize(value);
-      outcome = { status: "ok", value };
-    } catch (error) {
-      outcome = { status: "error", error: serializeDurableError(error) };
     }
     return yield* JournalAuthority.operations.resolve({
       capability: authorization.resolutionCapability,
@@ -229,6 +258,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
     try {
       attachment = yield* ProgramPeer.operations.attach(request.attach);
       const authority = yield* useJournalAuthority();
+      yield* authority.markActivated(request.attach.sessionId);
       const programCapability =
         request.programCapability ??
         (yield* authority.bindProgramAttachment(
@@ -242,8 +272,40 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
         input: request.attach.input,
       });
       let pullIndex = 0;
+      let cancellationInjected = false;
       while (true) {
+        let cancellation = yield* authority.cancellationState(
+          request.attach.sessionId,
+          request.attach.taskId,
+        );
+        if (
+          !cancellationInjected &&
+          isCancellationInProgress(cancellation) &&
+          shouldInjectBeforeStep(step, cancellation.frontier)
+        ) {
+          if (cancellation.type !== "unwinding") {
+            cancellation = yield* authority.beginCancellationUnwind(
+              request.attach.sessionId,
+              request.attach.taskId,
+            );
+          }
+          if (step.type === "operation" || step.type === "emission") {
+            const cancellationReason = "reason" in cancellation ? cancellation.reason : undefined;
+            step = yield* ProgramPeer.operations.step(attachment, {
+              type: "cancel",
+              ...(cancellationReason !== undefined ? { reason: cancellationReason } : {}),
+            });
+            cancellationInjected = true;
+            continue;
+          }
+        }
         if (step.type === "completed") {
+          if (isCancellationInProgress(cancellation) && cancellation.type !== "unwinding") {
+            cancellation = yield* authority.beginCancellationUnwind(
+              request.attach.sessionId,
+              request.attach.taskId,
+            );
+          }
           yield* JournalAuthority.operations.complete({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
@@ -251,11 +313,23 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             outcome: { status: "ok", value: step.value },
             programCapability,
           });
-          shutdownReason = "completed";
-          return { state: "completed", value: step.value };
+          const cancelled = isCancellationInProgress(cancellation);
+          shutdownReason = cancelled ? "cancelled" : "completed";
+          return cancelled ? { state: "cancelled" } : { state: "completed", value: step.value };
         }
         if (step.type === "failed") {
-          const cancelled = step.error.code === "program_cancelled";
+          const cancelled =
+            step.error.code === "program_cancelled" || isCancellationInProgress(cancellation);
+          if (
+            cancelled &&
+            isCancellationInProgress(cancellation) &&
+            cancellation.type !== "unwinding"
+          ) {
+            cancellation = yield* authority.beginCancellationUnwind(
+              request.attach.sessionId,
+              request.attach.taskId,
+            );
+          }
           yield* JournalAuthority.operations.complete({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
@@ -292,6 +366,19 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
         });
         if (reservation.status === "resolved") {
           pullIndex += 1;
+          if (
+            reservation.outcome.status === "cancelled" &&
+            isCancellationInProgress(cancellation) &&
+            cancellation.frontier.pullId === reservation.receipt.pullId
+          ) {
+            if (cancellation.type !== "unwinding") {
+              yield* authority.beginCancellationUnwind(
+                request.attach.sessionId,
+                request.attach.taskId,
+              );
+            }
+            cancellationInjected = true;
+          }
           step = yield* ProgramPeer.operations.step(attachment, {
             type: "resume",
             actionIndex: step.actionIndex,
@@ -458,6 +545,53 @@ function effectKey(name: string, version: string): string {
 function turnIdFor(taskId: string): string {
   const slash = taskId.indexOf("/");
   return slash === -1 ? "turn-0" : taskId.slice(0, slash);
+}
+
+function isCancellationInProgress(
+  state: DurableCancellationState,
+): state is Extract<
+  DurableCancellationState,
+  { type: "requested" | "settling_effect" | "cancelling_children" | "unwinding" }
+> {
+  return (
+    state.type === "requested" ||
+    state.type === "settling_effect" ||
+    state.type === "cancelling_children" ||
+    state.type === "unwinding"
+  );
+}
+
+function shouldInjectBeforeStep(step: ProgramStep, frontier: CancellationFrontier): boolean {
+  if (step.type === "completed" || step.type === "failed") {
+    return step.actionIndex >= frontier.actionIndex;
+  }
+  return frontier.pullId === undefined
+    ? step.actionIndex >= frontier.actionIndex
+    : step.actionIndex > frontier.actionIndex;
+}
+
+function isEffectDisposition(value: unknown): value is DurableEffectDisposition<Json, Json> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const disposition = value as Record<string, unknown>;
+  if (disposition["status"] === "ok") {
+    return "value" in disposition;
+  }
+  if (disposition["status"] === "cancelled") {
+    return true;
+  }
+  if (disposition["status"] !== "error") {
+    return false;
+  }
+  const error = disposition["error"];
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    !Array.isArray(error) &&
+    typeof (error as Record<string, unknown>)["code"] === "string" &&
+    typeof (error as Record<string, unknown>)["message"] === "string",
+  );
 }
 
 function isOperation(value: unknown): value is Operation<unknown> {

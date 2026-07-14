@@ -2,6 +2,7 @@ import type { Operation } from "effection";
 
 import {
   DurableEffectRegistryContext,
+  DurableProgramCancellation,
   JournalAuthorityContext,
   ProgramDriverRegistryContext,
   ProgramRuntime,
@@ -43,6 +44,22 @@ export interface DurableDriverRecoveryEvidence {
   effectExecutions: number;
 }
 
+/** Evidence that cancellation was replayed through typed catch/finally cleanup. */
+export interface DurableDriverCancellationEvidence {
+  firstRun: { state: "parked"; pullId: string; reason: string };
+  secondRun: { state: "cancelled" };
+  invocationId: string;
+  pendingPullId: string;
+  normalizedJournal: string[];
+  semanticJournal: DurableSemanticRecord[];
+  attachmentWasProcessless: boolean;
+  attachmentCount: number;
+  shutdownCount: number;
+  effectExecutions: number;
+  cleanupExecutions: number;
+  cancellationCatches: number;
+}
+
 const echoDefinition = defineDurableEffect<string, string>({
   name: "echo",
   version: "1",
@@ -66,6 +83,21 @@ const fixtureManifest: DurableProgramManifest = {
     structuredChildren: false,
     replay: "strict",
   },
+};
+
+const cleanupDefinition = defineDurableEffect<null, null>({
+  name: "cleanup",
+  version: "1",
+  inputSchema: { type: "null" },
+  outputSchema: { type: "null" },
+  retrySafety: { mode: "idempotent", mechanism: "inherent" },
+});
+
+const cancellationManifest: DurableProgramManifest = {
+  ...fixtureManifest,
+  programId: "conformance.cancellation-sequence",
+  digest: "e".repeat(64),
+  effects: { echo: echoDefinition, cleanup: cleanupDefinition },
 };
 
 /**
@@ -122,7 +154,7 @@ export function* runDurableDriverRecoveryFixture(
       { mode: "idempotent", mechanism: "pull_id_key" },
       function* (input) {
         effectExecutions += 1;
-        return input;
+        return { status: "ok", value: input };
       },
     ),
   ]);
@@ -215,6 +247,160 @@ export function* runDurableDriverRecoveryFixture(
     attachmentCount,
     shutdownCount,
     effectExecutions,
+  };
+}
+
+/** Runs processless cancellation through the concrete driver and normal cleanup effects. */
+export function* runDurableDriverCancellationFixture(
+  options: DurableDriverRecoveryFixtureOptions,
+): Operation<DurableDriverCancellationEvidence> {
+  let effectExecutions = 0;
+  let cleanupExecutions = 0;
+  let cancellationCatches = 0;
+  const tool = createDurableTool(cancellationManifest, function* (input, context) {
+    const echoed = yield* context.effect(echoDefinition, input, {
+      audience: "fixture-effects",
+    });
+    try {
+      yield* context.elicit<boolean>("approval", "Approve cancellation fixture?", {
+        type: "boolean",
+      });
+      return echoed;
+    } catch (error) {
+      if (error instanceof DurableProgramCancellation) {
+        cancellationCatches += 1;
+      }
+      return "caught-cancellation-must-not-be-success";
+    } finally {
+      yield* context.effect(cleanupDefinition, null, { audience: "fixture-cleanup" });
+      yield* context.emit("cleanup_complete", { cleaned: true });
+    }
+  });
+  const tools = createDurableToolRegistry([tool]);
+  const concreteDriver = options.createDriver(tools);
+  let activeAttachments = 0;
+  let attachmentCount = 0;
+  let shutdownCount = 0;
+  const driver: ProgramDriver = {
+    *attach(request) {
+      const attachment = yield* concreteDriver.attach(request);
+      attachmentCount += 1;
+      activeAttachments += 1;
+      return attachment;
+    },
+    *step(attachment, command) {
+      return yield* concreteDriver.step(attachment, command);
+    },
+    *shutdown(attachment, reason) {
+      try {
+        yield* concreteDriver.shutdown(attachment, reason);
+      } finally {
+        shutdownCount += 1;
+        activeAttachments -= 1;
+      }
+    },
+  };
+  const drivers = createProgramDriverRegistry([[options.driverKind, driver]]);
+  const effects = createDurableEffectRegistry([
+    createDurableEffectRegistration(
+      echoDefinition,
+      { mode: "idempotent", mechanism: "pull_id_key" },
+      function* (input) {
+        effectExecutions += 1;
+        return { status: "ok", value: input };
+      },
+    ),
+    createDurableEffectRegistration(
+      cleanupDefinition,
+      { mode: "idempotent", mechanism: "inherent" },
+      function* () {
+        cleanupExecutions += 1;
+        return { status: "ok", value: null };
+      },
+    ),
+  ]);
+  const keyring = createCapabilityKeyring("driver-cancellation-integration", [
+    { keyId: "fixture-key", secret: "driver-cancellation-secret-32-bytes!!" },
+  ]);
+  let authority = createInMemoryDurableJournalAuthority({
+    journalId: `driver-cancellation-integration:${options.driverKind}`,
+    journalIncarnation: "fixture-1",
+    keyring,
+  });
+  const invocationId = "turn-0/root";
+  const attach = {
+    sessionId: `driver-cancellation-session:${options.driverKind}`,
+    taskId: invocationId,
+    program: {
+      id: cancellationManifest.programId,
+      version: cancellationManifest.version,
+      digest: cancellationManifest.digest,
+    },
+    input: "hello",
+    route: options.route ?? { driverKind: options.driverKind },
+    executionEpoch: 1,
+  };
+  yield* authority.openTask({
+    sessionId: attach.sessionId,
+    turnId: "turn-0",
+    taskId: attach.taskId,
+    manifest: cancellationManifest,
+    input: attach.input,
+    executionEpoch: attach.executionEpoch,
+    attachmentId: "unattached",
+    audience: "fixture-program",
+  });
+
+  const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+    return yield* JournalAuthorityContext.with(authority, function* () {
+      return yield* DurableEffectRegistryContext.with(effects, function* () {
+        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+      });
+    });
+  });
+  if (first.state !== "parked") {
+    throw new Error(`Expected cancellation fixture to park, received ${first.state}`);
+  }
+  const pending = findPendingElicit(authority.readJournal(attach.sessionId));
+  const attachmentWasProcessless = activeAttachments === 0 && shutdownCount === 1;
+  yield* authority.requestCancellation(
+    attach.sessionId,
+    attach.taskId,
+    "integration-test-cancellation",
+    "cancel-command-1",
+  );
+
+  authority = createInMemoryDurableJournalAuthority({
+    journalId: `driver-cancellation-integration:${options.driverKind}`,
+    journalIncarnation: "fixture-1",
+    keyring,
+    snapshot: authority.exportSnapshot(),
+  });
+  const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+    return yield* JournalAuthorityContext.with(authority, function* () {
+      return yield* DurableEffectRegistryContext.with(effects, function* () {
+        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+      });
+    });
+  });
+  if (second.state !== "cancelled") {
+    throw new Error(`Expected recovered cancellation, received ${second.state}`);
+  }
+
+  const semanticJournal = authority.readJournal(attach.sessionId);
+  return {
+    firstRun: first,
+    secondRun: second,
+    invocationId,
+    pendingPullId: pending.payload.pullId,
+    normalizedJournal: semanticJournal.map((record) => record.payload.type),
+    semanticJournal,
+    attachmentWasProcessless,
+    attachmentCount,
+    shutdownCount,
+    effectExecutions,
+    cleanupExecutions,
+    cancellationCatches,
   };
 }
 

@@ -22,8 +22,8 @@ import type {
   ToolSessionOptions,
   ToolSessionSamplingProvider,
   ToolSessionStatus,
+  ElicitsMap,
 } from "@sweatpants/framework/chat/mcp-tools";
-import type { ElicitsMap } from "@sweatpants/framework/chat/mcp-tools";
 import type { ToolDefinition } from "@sweatpants/core";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createToolSession } from "./tool-session.ts";

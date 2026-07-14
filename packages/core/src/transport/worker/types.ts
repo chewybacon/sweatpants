@@ -328,6 +328,9 @@ export interface WorkerToolCall {
  * Context provided to tool handlers running in the worker.
  */
 export interface WorkerToolContext {
+  /** Scope-owned cancellation signal for abort-aware worker APIs. */
+  readonly signal: AbortSignal;
+
   /**
    * Sample the LLM.
    */

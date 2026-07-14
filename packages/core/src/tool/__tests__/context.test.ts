@@ -9,6 +9,7 @@ describe("ToolCtx integration", () => {
     const logs: Array<{ level: string; message: string }> = [];
 
     const ctx: ToolCtx = {
+      signal: new AbortController().signal,
       messages: [{ role: "user", content: [{ type: "text", text: "hello" }] }],
       notify: function* (message, progress) {
         notifications.push({ message, progress });

@@ -25,9 +25,11 @@ import type {
 export const DEFAULT_MAX_INLINE_BYTES = 1024 * 1024;
 
 /** Defines and freezes a schema-witnessed durable effect contract. */
-export function defineDurableEffect<I extends Json = Json, O extends Json = Json>(
-  definition: EffectDefinition<I, O>,
-): EffectDefinition<I, O> {
+export function defineDurableEffect<
+  I extends Json = Json,
+  O extends Json = Json,
+  P extends Json = never,
+>(definition: EffectDefinition<I, O, P>): EffectDefinition<I, O, P> {
   validateEffectDefinition(definition);
   return deepFreeze(structuredClone(definition));
 }
@@ -115,7 +117,7 @@ export function validateDurableManifest(manifest: DurableProgramManifest): void 
 }
 
 /** Rejects malformed effect identity, schemas, or retry-safety policy. */
-export function validateEffectDefinition(definition: EffectDefinition): void {
+export function validateEffectDefinition(definition: EffectDefinition<Json, Json, Json>): void {
   if (!definition || typeof definition !== "object") {
     invalidManifest("effect definition");
   }
@@ -123,6 +125,15 @@ export function validateEffectDefinition(definition: EffectDefinition): void {
   requireId(definition.version, "effect version");
   validateSchema(definition.inputSchema, `${definition.name}.inputSchema`);
   validateSchema(definition.outputSchema, `${definition.name}.outputSchema`);
+  if (definition.cancellation !== undefined) {
+    if (!isRecord(definition.cancellation)) {
+      invalidManifest(`${definition.name}.cancellation`);
+    }
+    validateSchema(
+      definition.cancellation.partialSchema,
+      `${definition.name}.cancellation.partialSchema`,
+    );
+  }
   const safety = definition.retrySafety;
   if (
     !safety ||
@@ -140,8 +151,8 @@ export function validateEffectDefinition(definition: EffectDefinition): void {
 
 type EffectResolver = { audience: string; route?: string };
 
-function durableEffect<I extends Json, O extends Json>(
-  definition: EffectDefinition<I, O>,
+function durableEffect<I extends Json, O extends Json, P extends Json = never>(
+  definition: EffectDefinition<I, O, P>,
   input: I,
   resolver: EffectResolver,
 ): Generator<ProgramStepProposal, O, ProgramResume>;
@@ -152,7 +163,7 @@ function durableEffect<T extends Json = Json>(
   resolver: EffectResolver,
 ): Generator<ProgramStepProposal, T, ProgramResume>;
 function* durableEffect(
-  definitionOrName: EffectDefinition | string,
+  definitionOrName: EffectDefinition<Json, Json, Json> | string,
   versionOrInput: Json,
   inputOrResolver: Json | EffectResolver,
   explicitResolver?: EffectResolver,
@@ -368,7 +379,7 @@ function isOperationOutcome(value: unknown): value is OperationOutcome {
     return false;
   }
   if (value["status"] === "cancelled") {
-    return true;
+    return !("partial" in value) || value["partial"] !== undefined;
   }
   if (value["status"] === "ok") {
     return "value" in value;
@@ -384,9 +395,14 @@ function isOperationOutcome(value: unknown): value is OperationOutcome {
 
 /** Structured cancellation signal raised inside a resumed durable generator. */
 export class DurableProgramCancellation extends Error {
-  constructor() {
+  readonly reason?: string;
+
+  constructor(reason?: string) {
     super("Durable program cancelled");
     this.name = "DurableProgramCancellation";
+    if (reason !== undefined) {
+      this.reason = reason;
+    }
   }
 }
 
@@ -637,5 +653,7 @@ export function serializeDurableError(error: unknown): SerializedApplicationErro
       ...(error.details !== undefined ? { details: error.details } : {}),
     };
   }
-  return { code: "program_error", message: error instanceof Error ? error.message : String(error) };
+  // Unknown thrown values may contain credentials, process handles, or transport
+  // internals. They are intentionally not stringified into durable history.
+  return { code: "program_error", message: "Durable program failed" };
 }

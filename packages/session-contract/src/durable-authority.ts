@@ -9,9 +9,12 @@ import {
 } from "./capabilities.ts";
 import { assertJson, canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
+import { hasLiveDurableEffect, signalLiveDurableEffect } from "./durable-cancellation-live.ts";
 import type {
   AppendEmissionRequest,
+  CancellationAcknowledgement,
   CompleteTaskRequest,
+  DurableCancellationState,
   DurableJournalAuthorityService,
   DurableOperationDescriptor,
   DurableProgramManifest,
@@ -107,16 +110,35 @@ export type DurableSemanticRecord = {
         closeOffset: string;
         outcomeDigest: string;
       }
-    | { type: "CancellationRequested"; taskId: string; reason?: string }
+    | {
+        type: "CancellationRequested";
+        taskId: string;
+        commandId: string;
+        reason?: string;
+        frontier: { actionIndex: number; pullId?: string };
+      }
+    | {
+        type: "CancellationPartialDiscarded";
+        taskId: string;
+        pullId: string;
+        reason: "schema_validation_failed" | "payload_too_large";
+      }
+    | {
+        type: "AttemptOutcomeUnknown";
+        taskId: string;
+        pullId: string;
+        attemptId?: string;
+        reason: "no_settlement_path" | "force_orphaned";
+      }
     | {
         type: "CleanupSkipped";
         taskId: string;
-        reason: "program_version_unavailable" | "program_corrupt";
+        reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck";
       }
     | {
         type: "TaskOrphaned";
         taskId: string;
-        reason: "program_version_unavailable" | "program_corrupt";
+        reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck";
       }
     | { type: "TaskClosed"; taskId: string; outcome: OperationOutcome };
 };
@@ -145,6 +167,7 @@ type Pull = {
   outcomeDigest?: string;
   receipt?: ResolutionReceipt;
   indeterminate: boolean;
+  revoked: boolean;
 };
 
 type Task = {
@@ -162,6 +185,7 @@ type Task = {
   pullsByAction: Map<number, Pull>;
   emissionsByAction: Map<number, { digest: string; receipt: EmissionReceipt }>;
   status: "active" | "closed" | "cancelled" | "orphaned";
+  cancellation: DurableCancellationState;
   close?: { digest: string; receipt: TaskCloseReceipt };
   parentTaskId?: string;
   parentPullId?: string;
@@ -174,7 +198,7 @@ type TaskSnapshot = Omit<Task, "pullsByAction" | "emissionsByAction"> & {
 
 /** Versioned canonical snapshot DTO used only after boundary parsing. */
 export interface DurableAuthoritySnapshot {
-  version: 1;
+  version: 2;
   tasks: TaskSnapshot[];
   records: Array<[string, DurableSemanticRecord[]]>;
   runnable: string[];
@@ -255,6 +279,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       pullsByAction: new Map(),
       emissionsByAction: new Map(),
       status: "active",
+      cancellation: { type: "none" },
     };
     this.#tasks.set(key, task);
     this.#append(request.sessionId, request.executionEpoch, {
@@ -416,6 +441,15 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         resolutionCapability: existing.capability,
       };
     }
+    if (
+      task.cancellation.type !== "none" &&
+      task.cancellation.type !== "unwinding" &&
+      task.cancellation.type !== "cancelled" &&
+      task.cancellation.type !== "orphaned" &&
+      request.actionIndex >= task.cancellation.frontier.actionIndex
+    ) {
+      throw new CrankError("cancellation_blocked", "Cancellation must unwind before new work");
+    }
     if (request.actionIndex !== task.nextActionIndex || request.pullIndex !== task.nextPullIndex) {
       throw new CrankError("nondeterminism_detected", "Task-local action or pull cursor mismatch");
     }
@@ -446,6 +480,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       maxOutcomeBytes: this.#options.maxOutcomeBytes,
       attempts: [],
       indeterminate: false,
+      revoked: false,
     };
     task.pullsByAction.set(request.actionIndex, pull);
     task.nextPullIndex += 1;
@@ -512,7 +547,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       claims.attemptId === "none"
         ? undefined
         : pull.attempts.find((candidate) => candidate.attemptId === claims.attemptId);
-    if (claims.attemptId !== "none" && (!attempt || attempt.state === "revoked")) {
+    if (
+      pull.revoked ||
+      (claims.attemptId !== "none" && (!attempt || attempt.state === "revoked"))
+    ) {
       return { status: "rejected", code: "capability_revoked" };
     }
     if (task.status !== "active") {
@@ -521,7 +559,42 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     let outcome: OperationOutcome;
     try {
       outcome = snapshotOutcome(request.outcome);
-      assertInlineSize(outcome, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+      if (outcome.status === "cancelled" && outcome.partial !== undefined) {
+        const definition =
+          pull.descriptor.kind === "effect"
+            ? task.manifest.effects[pull.descriptor.name]
+            : undefined;
+        try {
+          if (!definition?.cancellation) {
+            throw new CrankError("schema_validation_failed");
+          }
+          const partial = assertSchemaValue(definition.cancellation.partialSchema, outcome.partial);
+          assertInlineSize(partial, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+          outcome = { status: "cancelled", partial };
+        } catch (error) {
+          const reason =
+            error instanceof CrankError && error.code === "payload_too_large"
+              ? "payload_too_large"
+              : "schema_validation_failed";
+          const alreadyDiscarded = (this.#records.get(task.sessionId) ?? []).some(
+            (record) =>
+              record.payload.type === "CancellationPartialDiscarded" &&
+              record.payload.taskId === task.taskId &&
+              record.payload.pullId === pull.pullId,
+          );
+          if (!alreadyDiscarded) {
+            this.#append(task.sessionId, undefined, {
+              type: "CancellationPartialDiscarded",
+              taskId: task.taskId,
+              pullId: pull.pullId,
+              reason,
+            });
+          }
+          outcome = { status: "cancelled" };
+        }
+      } else {
+        assertInlineSize(outcome, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+      }
       if (outcome.status === "ok") {
         assertSchemaValue(pull.resultSchema, outcome.value);
       }
@@ -588,6 +661,14 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     pull.receipt = receipt;
     pull.indeterminate = false;
     task.nextActionIndex = Math.max(task.nextActionIndex, pull.actionIndex + 1);
+    if (task.cancellation.type === "settling_effect" && task.cancellation.pullId === pull.pullId) {
+      task.cancellation = {
+        type: "requested",
+        commandId: task.cancellation.commandId,
+        ...(task.cancellation.reason !== undefined ? { reason: task.cancellation.reason } : {}),
+        frontier: task.cancellation.frontier,
+      };
+    }
     this.#runnable.add(task.sessionId);
     return { status: "accepted", receipt };
   }
@@ -631,7 +712,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   *complete(request: CompleteTaskRequest): Operation<TaskCloseReceipt> {
     const task = this.#task(request.sessionId, request.taskId);
     this.#assertProgram(request.programCapability, task);
-    const outcome = snapshotOutcome(request.outcome);
+    const proposedOutcome = snapshotOutcome(request.outcome);
+    const outcome: OperationOutcome =
+      task.cancellation.type === "unwinding" ? { status: "cancelled" } : proposedOutcome;
     const digest = canonicalSnapshot(outcome).sha;
     if (task.close) {
       if (task.close.digest !== digest) {
@@ -657,28 +740,113 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     const receipt = { offset, duplicate: false };
     task.close = { digest, receipt };
     task.status = outcome.status === "cancelled" ? "cancelled" : "closed";
+    if (outcome.status === "cancelled") {
+      const commandId =
+        task.cancellation.type !== "none" && task.cancellation.type !== "orphaned"
+          ? task.cancellation.commandId
+          : stableOpaqueId("cancel-command", [task.sessionId, task.taskId]);
+      task.cancellation = { type: "cancelled", commandId };
+    }
     return receipt;
   }
 
-  /** Idempotently records logical cancellation before resolving pending work. */
-  *requestCancellation(sessionId: string, taskId: string, reason?: string): Operation<void> {
+  /** Idempotently fixes a cancellation frontier and wakes parked work. */
+  *requestCancellation(
+    sessionId: string,
+    taskId: string,
+    reason?: string,
+    commandId = stableOpaqueId("cancel-command", [sessionId, taskId]),
+  ): Operation<CancellationAcknowledgement> {
     const task = this.#task(sessionId, taskId);
-    this.#assertActive(task);
     const existing = (this.#records.get(sessionId) ?? []).find(
       (record) =>
         record.payload.type === "CancellationRequested" && record.payload.taskId === taskId,
     );
     if (existing?.payload.type === "CancellationRequested") {
-      if (existing.payload.reason !== reason) {
-        throw new CrankError("idempotency_conflict", "Cancellation reason differs");
-      }
-      return;
+      return {
+        accepted: true,
+        duplicate: true,
+        commandId: existing.payload.commandId,
+        ...(existing.payload.reason !== undefined ? { reason: existing.payload.reason } : {}),
+        frontier: structuredClone(existing.payload.frontier),
+      };
     }
+    this.#assertActive(task);
+
+    const frontierPull = task.pullsByAction.get(task.nextActionIndex);
+    const frontier = {
+      actionIndex: task.nextActionIndex,
+      ...(frontierPull ? { pullId: frontierPull.pullId } : {}),
+    };
+    const safeReason = sanitizeCancellationReason(reason);
+    task.cancellation = {
+      type: "requested",
+      commandId,
+      ...(safeReason !== undefined ? { reason: safeReason } : {}),
+      frontier,
+    };
     this.#append(sessionId, undefined, {
       type: "CancellationRequested",
       taskId,
-      ...(reason !== undefined ? { reason } : {}),
+      commandId,
+      ...(safeReason !== undefined ? { reason: safeReason } : {}),
+      frontier,
     });
+    this.#runnable.add(sessionId);
+
+    if (frontierPull && !frontierPull.outcome) {
+      const child =
+        frontierPull.descriptor.kind === "invoke"
+          ? [...this.#tasks.values()].find(
+              (candidate) =>
+                candidate.sessionId === sessionId &&
+                candidate.parentTaskId === taskId &&
+                candidate.parentPullId === frontierPull.pullId &&
+                candidate.status === "active",
+            )
+          : undefined;
+      if (child) {
+        task.cancellation = {
+          type: "cancelling_children",
+          commandId,
+          childTaskIds: [child.taskId],
+          ...(safeReason !== undefined ? { reason: safeReason } : {}),
+          frontier,
+        };
+        yield* this.requestCancellation(
+          sessionId,
+          child.taskId,
+          safeReason,
+          `${commandId}:child:${child.taskId}`,
+        );
+      } else {
+        const started = frontierPull.attempts.find((attempt) => attempt.state === "started");
+        const live =
+          frontierPull.descriptor.kind === "effect" &&
+          started !== undefined &&
+          hasLiveDurableEffect(sessionId, taskId, frontierPull.pullId);
+        if (live) {
+          task.cancellation = {
+            type: "settling_effect",
+            commandId,
+            pullId: frontierPull.pullId,
+            ...(safeReason !== undefined ? { reason: safeReason } : {}),
+            frontier,
+          };
+          signalLiveDurableEffect(sessionId, taskId, frontierPull.pullId, safeReason);
+        } else {
+          this.#cancelNonSettleablePull(task, frontierPull);
+        }
+      }
+    }
+
+    return {
+      accepted: true,
+      duplicate: false,
+      commandId,
+      ...(safeReason !== undefined ? { reason: safeReason } : {}),
+      frontier,
+    };
   }
 
   /** Marks a live attempt detached without revoking its resolution capability. */
@@ -746,7 +914,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   *forceOrphan(
     sessionId: string,
     taskId: string,
-    reason: "program_version_unavailable" | "program_corrupt",
+    reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck",
   ): Operation<void> {
     const task = this.#task(sessionId, taskId);
     if (task.status === "orphaned") {
@@ -754,15 +922,28 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     this.#assertActive(task);
     for (const pull of task.pullsByAction.values()) {
+      if (!pull.outcome) {
+        pull.revoked = true;
+      }
       for (const attempt of pull.attempts) {
         if (attempt.state === "started" || attempt.state === "detached") {
           attempt.state = "revoked";
+          if (!pull.outcome) {
+            this.#append(sessionId, undefined, {
+              type: "AttemptOutcomeUnknown",
+              taskId,
+              pullId: pull.pullId,
+              attemptId: attempt.attemptId,
+              reason: "force_orphaned",
+            });
+          }
         }
       }
     }
     this.#append(sessionId, undefined, { type: "CleanupSkipped", taskId, reason });
     this.#append(sessionId, undefined, { type: "TaskOrphaned", taskId, reason });
     task.status = "orphaned";
+    task.cancellation = { type: "orphaned", reason };
   }
 
   /** Returns the current pull capability for an external resolver. */
@@ -797,12 +978,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       pullsByAction: [...task.pullsByAction.entries()],
       emissionsByAction: [...task.emissionsByAction.entries()],
       status: task.status,
+      cancellation: task.cancellation,
       ...(task.close ? { close: task.close } : {}),
       ...(task.parentTaskId ? { parentTaskId: task.parentTaskId } : {}),
       ...(task.parentPullId ? { parentPullId: task.parentPullId } : {}),
     }));
     return {
-      version: 1,
+      version: 2,
       tasks: structuredClone(tasks),
       records: structuredClone([...this.#records.entries()]),
       runnable: [...this.#runnable],
@@ -816,13 +998,47 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   /** Clears a session's runnable marker after an activation owner claims it. */
-  markActivated(sessionId: string): void {
+  *markActivated(sessionId: string): Operation<void> {
     this.#runnable.delete(sessionId);
+  }
+
+  /** Returns a defensive cancellation-state snapshot for fresh replay. */
+  *cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState> {
+    return structuredClone(this.#task(sessionId, taskId).cancellation);
+  }
+
+  /** Begins one-shot authored unwind after the fixed frontier has settled. */
+  *beginCancellationUnwind(sessionId: string, taskId: string): Operation<DurableCancellationState> {
+    const task = this.#task(sessionId, taskId);
+    const current = task.cancellation;
+    if (current.type === "unwinding" || current.type === "cancelled") {
+      return structuredClone(current);
+    }
+    if (
+      current.type !== "requested" &&
+      current.type !== "settling_effect" &&
+      current.type !== "cancelling_children"
+    ) {
+      throw new CrankError("invalid_command", "Task has no cancellation to unwind");
+    }
+    const frontierPull = current.frontier.pullId
+      ? [...task.pullsByAction.values()].find((pull) => pull.pullId === current.frontier.pullId)
+      : undefined;
+    if (frontierPull && !frontierPull.outcome) {
+      throw new CrankError("cancellation_blocked", "Cancellation frontier has not settled");
+    }
+    task.cancellation = {
+      type: "unwinding",
+      commandId: current.commandId,
+      ...(current.reason !== undefined ? { reason: current.reason } : {}),
+      frontier: current.frontier,
+    };
+    return structuredClone(task.cancellation);
   }
 
   #restore(snapshot: DurableAuthoritySnapshot): void {
     if (
-      snapshot.version !== 1 ||
+      snapshot.version !== 2 ||
       !Array.isArray(snapshot.tasks) ||
       !Array.isArray(snapshot.records)
     ) {
@@ -887,6 +1103,51 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       attemptId,
       resolutionCapability: capability,
     };
+  }
+
+  #cancelNonSettleablePull(task: Task, pull: Pull): void {
+    pull.revoked = true;
+    let uncertainAttempt: Attempt | undefined;
+    for (const attempt of pull.attempts) {
+      if (attempt.state === "completed" || attempt.state === "superseded") {
+        continue;
+      }
+      if (attempt.state === "detached" || attempt.state === "started") {
+        uncertainAttempt ??= attempt;
+      }
+      attempt.state = "revoked";
+    }
+    if (uncertainAttempt) {
+      this.#append(task.sessionId, undefined, {
+        type: "AttemptOutcomeUnknown",
+        taskId: task.taskId,
+        pullId: pull.pullId,
+        attemptId: uncertainAttempt.attemptId,
+        reason: "no_settlement_path",
+      });
+    }
+    const outcome: OperationOutcome = { status: "cancelled" };
+    const digest = canonicalSnapshot(outcome).sha;
+    const offset = this.#append(task.sessionId, undefined, {
+      type: "PullResolved",
+      taskId: task.taskId,
+      pullId: pull.pullId,
+      outcome,
+      outcomeDigest: digest,
+    });
+    const receipt: ResolutionReceipt = {
+      sessionId: task.sessionId,
+      taskId: task.taskId,
+      pullId: pull.pullId,
+      resolutionOffset: offset,
+      outcomeDigest: digest,
+      status: "accepted",
+    };
+    pull.outcome = outcome;
+    pull.outcomeDigest = digest;
+    pull.receipt = receipt;
+    pull.indeterminate = false;
+    task.nextActionIndex = Math.max(task.nextActionIndex, pull.actionIndex + 1);
   }
 
   #detachAttempts(task: Task, pull: Pull, reason: string): void {
@@ -1067,7 +1328,7 @@ function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySn
     return false;
   }
   return (
-    value["version"] === 1 &&
+    value["version"] === 2 &&
     isNonNegativeInteger(value["nonce"]) &&
     Array.isArray(value["tasks"]) &&
     value["tasks"].every(isTaskSnapshot) &&
@@ -1097,6 +1358,7 @@ function isTaskSnapshot(value: Json): boolean {
     "pullsByAction",
     "emissionsByAction",
     "status",
+    "cancellation",
   ];
   const optional = ["close", "parentTaskId", "parentPullId"];
   if (!hasOnlyKeys(value, required, optional)) {
@@ -1115,7 +1377,9 @@ function isTaskSnapshot(value: Json): boolean {
     Array.isArray(value["emissionsByAction"]) &&
     value["emissionsByAction"].every(isIndexedEmissionTuple) &&
     ["active", "closed", "cancelled", "orphaned"].includes(String(value["status"])) &&
-    (value["status"] === "closed") === isTaskCloseSnapshot(value["close"]) &&
+    isCancellationStateSnapshot(value["cancellation"]) &&
+    ["closed", "cancelled"].includes(String(value["status"])) ===
+      isTaskCloseSnapshot(value["close"]) &&
     (value["parentTaskId"] === undefined) === (value["parentPullId"] === undefined) &&
     optional.every(
       (key) =>
@@ -1159,7 +1423,14 @@ function isManifestSnapshot(value: unknown): boolean {
     Object.entries(effects).every(
       ([name, effect]) =>
         isJsonRecord(effect) &&
-        hasExactKeys(effect, ["name", "version", "inputSchema", "outputSchema", "retrySafety"]) &&
+        hasOnlyKeys(
+          effect,
+          ["name", "version", "inputSchema", "outputSchema", "retrySafety"],
+          ["cancellation"],
+        ) &&
+        (effect["cancellation"] === undefined ||
+          (isJsonRecord(effect["cancellation"]) &&
+            hasExactKeys(effect["cancellation"], ["partialSchema"]))) &&
         effect["name"] === name &&
         typeof effect["version"] === "string" &&
         isRetrySafetySnapshot(effect["retrySafety"]),
@@ -1223,6 +1494,7 @@ function isIndexedPullTuple(value: Json): boolean {
         "maxOutcomeBytes",
         "attempts",
         "indeterminate",
+        "revoked",
       ],
       ["capability", "outcome", "outcomeDigest", "receipt"],
     )
@@ -1244,6 +1516,7 @@ function isIndexedPullTuple(value: Json): boolean {
     Array.isArray(pull["attempts"]) &&
     pull["attempts"].every(isAttemptSnapshot) &&
     typeof pull["indeterminate"] === "boolean" &&
+    typeof pull["revoked"] === "boolean" &&
     (pull["capability"] === undefined || typeof pull["capability"] === "string") &&
     (pull["outcome"] === undefined || isOperationOutcomeJson(pull["outcome"])) &&
     (pull["outcome"] === undefined) === (pull["outcomeDigest"] === undefined) &&
@@ -1508,14 +1781,31 @@ function isSemanticPayload(value: unknown): boolean {
       );
     case "CancellationRequested":
       return (
-        hasOnlyKeys(value, ["type", "taskId"], ["reason"]) &&
-        (value["reason"] === undefined || typeof value["reason"] === "string")
+        hasOnlyKeys(value, ["type", "taskId", "commandId", "frontier"], ["reason"]) &&
+        typeof value["commandId"] === "string" &&
+        (value["reason"] === undefined || typeof value["reason"] === "string") &&
+        isCancellationFrontierSnapshot(value["frontier"])
+      );
+    case "CancellationPartialDiscarded":
+      return (
+        hasExactKeys(value, ["type", "taskId", "pullId", "reason"]) &&
+        typeof value["pullId"] === "string" &&
+        (value["reason"] === "schema_validation_failed" || value["reason"] === "payload_too_large")
+      );
+    case "AttemptOutcomeUnknown":
+      return (
+        hasOnlyKeys(value, ["type", "taskId", "pullId", "reason"], ["attemptId"]) &&
+        typeof value["pullId"] === "string" &&
+        (value["attemptId"] === undefined || typeof value["attemptId"] === "string") &&
+        (value["reason"] === "no_settlement_path" || value["reason"] === "force_orphaned")
       );
     case "CleanupSkipped":
     case "TaskOrphaned":
       return (
         hasExactKeys(value, ["type", "taskId", "reason"]) &&
-        (value["reason"] === "program_version_unavailable" || value["reason"] === "program_corrupt")
+        (value["reason"] === "program_version_unavailable" ||
+          value["reason"] === "program_corrupt" ||
+          value["reason"] === "cleanup_stuck")
       );
     case "TaskClosed":
       return (
@@ -1543,7 +1833,68 @@ function isOperationOutcomeJson(value: unknown): boolean {
         typeof value["error"]["message"] === "string"
       );
     case "cancelled":
-      return hasExactKeys(value, ["status"]);
+      return hasOnlyKeys(value, ["status"], ["partial"]);
+    default:
+      return false;
+  }
+}
+
+function isCancellationFrontierSnapshot(value: unknown): boolean {
+  return (
+    isJsonRecord(value) &&
+    hasOnlyKeys(value, ["actionIndex"], ["pullId"]) &&
+    isNonNegativeInteger(value["actionIndex"]) &&
+    (value["pullId"] === undefined || typeof value["pullId"] === "string")
+  );
+}
+
+function isCancellationStateSnapshot(value: unknown): boolean {
+  if (!isJsonRecord(value) || typeof value["type"] !== "string") {
+    return false;
+  }
+  switch (value["type"]) {
+    case "none":
+      return hasExactKeys(value, ["type"]);
+    case "requested":
+      return (
+        hasOnlyKeys(value, ["type", "commandId", "frontier"], ["reason"]) &&
+        typeof value["commandId"] === "string" &&
+        (value["reason"] === undefined || typeof value["reason"] === "string") &&
+        isCancellationFrontierSnapshot(value["frontier"])
+      );
+    case "settling_effect":
+      return (
+        hasOnlyKeys(value, ["type", "commandId", "pullId", "frontier"], ["reason"]) &&
+        typeof value["commandId"] === "string" &&
+        typeof value["pullId"] === "string" &&
+        (value["reason"] === undefined || typeof value["reason"] === "string") &&
+        isCancellationFrontierSnapshot(value["frontier"])
+      );
+    case "cancelling_children":
+      return (
+        hasOnlyKeys(value, ["type", "commandId", "childTaskIds", "frontier"], ["reason"]) &&
+        typeof value["commandId"] === "string" &&
+        Array.isArray(value["childTaskIds"]) &&
+        value["childTaskIds"].every((entry) => typeof entry === "string") &&
+        (value["reason"] === undefined || typeof value["reason"] === "string") &&
+        isCancellationFrontierSnapshot(value["frontier"])
+      );
+    case "unwinding":
+      return (
+        hasOnlyKeys(value, ["type", "commandId", "frontier"], ["reason"]) &&
+        typeof value["commandId"] === "string" &&
+        (value["reason"] === undefined || typeof value["reason"] === "string") &&
+        isCancellationFrontierSnapshot(value["frontier"])
+      );
+    case "cancelled":
+      return hasExactKeys(value, ["type", "commandId"]) && typeof value["commandId"] === "string";
+    case "orphaned":
+      return (
+        hasExactKeys(value, ["type", "reason"]) &&
+        (value["reason"] === "program_version_unavailable" ||
+          value["reason"] === "program_corrupt" ||
+          value["reason"] === "cleanup_stuck")
+      );
     default:
       return false;
   }
@@ -1572,6 +1923,20 @@ function hasOnlyKeys(
   return (
     required.every((key) => key in value) && Object.keys(value).every((key) => allowed.has(key))
   );
+}
+
+function sanitizeCancellationReason(reason: string | undefined): string | undefined {
+  if (reason === undefined) {
+    return undefined;
+  }
+  const normalized = [...reason]
+    .map((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code <= 31 || code === 127 ? " " : character;
+    })
+    .join("")
+    .trim();
+  return normalized.slice(0, 512);
 }
 
 function invalidSnapshot(cause?: unknown): CrankError {

@@ -1,5 +1,5 @@
 import type { RuntimeTool } from "@sweatpants/core";
-import { resource, type Operation, type Stream } from "effection";
+import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
   ToolRuntimeError,
@@ -142,6 +142,17 @@ function modelSelectionFromMetadata(
   return { provider: provider.trim(), id: id.trim() };
 }
 
+function* waitForAbort(signal: AbortSignal): Operation<void> {
+  if (signal.aborted) {
+    return;
+  }
+  yield* action<void>((resolve) => {
+    const onAbort = () => resolve();
+    signal.addEventListener("abort", onAbort, { once: true });
+    return () => signal.removeEventListener("abort", onAbort);
+  });
+}
+
 function afterLsnFromPendingId(id: string | undefined): number | undefined {
   if (!id) return undefined;
 
@@ -248,6 +259,12 @@ export function createAgentCoreToolExecutionStrategy(
         ...(ctx.signal ? { signal: ctx.signal } : {}),
         ...(selectedModel ? { model: selectedModel } : {}),
       });
+      if (ctx.signal) {
+        yield* spawn(function* () {
+          yield* waitForAbort(ctx.signal!);
+          yield* session.cancel("tool invocation cancelled");
+        });
+      }
       return yield* nextAgentCoreExecution(ctx.runtimeId, call, session, options.samplingProvider);
     },
     *resume(ref, input, ctx: ToolExecutionContext): Operation<ToolExecution> {
@@ -269,6 +286,12 @@ export function createAgentCoreToolExecutionStrategy(
         if (!input.elicitId)
           throw new ToolRuntimeError("ELICIT_ID_REQUIRED", "Elicit continuation requires elicitId");
         yield* session.respondToElicit(input.elicitId, input.result as WireElicitResult<unknown>);
+      }
+      if (ctx.signal) {
+        yield* spawn(function* () {
+          yield* waitForAbort(ctx.signal!);
+          yield* session.cancel("tool invocation cancelled");
+        });
       }
       return yield* nextAgentCoreExecution(
         ctx.runtimeId,

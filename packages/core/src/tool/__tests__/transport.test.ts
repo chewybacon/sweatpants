@@ -4,6 +4,7 @@ import { createTool } from "../create.ts";
 import type { ToolCtx } from "../types.ts";
 
 const baseCtx: ToolCtx = {
+  signal: new AbortController().signal,
   messages: [],
   notify: function* () {},
   log: function* () {},

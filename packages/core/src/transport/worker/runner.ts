@@ -20,7 +20,7 @@
  */
 
 import { workerMain } from "@effectionx/worker";
-import type { Operation, Subscription } from "effection";
+import { useAbortSignal, type Operation, type Subscription } from "effection";
 import type {
   WorkerRequest,
   WorkerResponse,
@@ -112,7 +112,9 @@ export async function runToolWorker<T = unknown>(handler: ToolWorkerHandler<T>):
       /**
        * Create the tool context for the handler.
        */
+      const signal = yield* useAbortSignal();
       const ctx: WorkerToolContext = {
+        signal,
         *sample(options): Operation<WorkerSampleResponse> {
           const id = generateRequestId();
           const request: WorkerSampleRequest = {

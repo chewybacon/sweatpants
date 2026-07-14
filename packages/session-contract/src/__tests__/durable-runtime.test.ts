@@ -1,4 +1,4 @@
-import { run, type Operation } from "effection";
+import { run } from "effection";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -20,7 +20,6 @@ import {
   stableProgramAttachmentId,
   type AttachProgramRequest,
   type DurableProgramManifest,
-  type Json,
 } from "../index.ts";
 
 const digest = "a".repeat(64);
@@ -496,9 +495,9 @@ describe("crank-native durable runtime", () => {
       {
         definition: manifest.effects.echo!,
         satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
-        handler: (input): Operation<Json> =>
+        handler: (input) =>
           (function* () {
-            return input;
+            return { status: "ok" as const, value: input };
           })(),
       },
     ]);

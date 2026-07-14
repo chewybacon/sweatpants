@@ -111,7 +111,9 @@ export const foreignToolAdapter: ForeignToolAdapter = Object.freeze({
     return createDurableEffectRegistration(
       FOREIGN_MODEL_SAMPLE_EFFECT,
       { mode: "idempotent", mechanism: "pull_id_key" },
-      handler,
+      function* (request) {
+        return { status: "ok", value: yield* handler(request) };
+      },
     );
   },
 });

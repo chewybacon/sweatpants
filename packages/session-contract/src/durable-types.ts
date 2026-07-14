@@ -12,18 +12,33 @@ export type RetrySafety =
 
 declare const effectInputType: unique symbol;
 declare const effectOutputType: unique symbol;
+declare const effectCancellationPartialType: unique symbol;
 
 /** Versioned effect contract carrying runtime schemas and compile-time witnesses. */
-export interface EffectDefinition<I extends Json = Json, O extends Json = Json> {
-  /** Compile-time-only carriers used to infer handler input/output types. */
+export interface EffectDefinition<
+  I extends Json = Json,
+  O extends Json = Json,
+  P extends Json = never,
+> {
+  /** Compile-time-only carriers used to infer handler input/output/partial types. */
   readonly [effectInputType]?: I;
   readonly [effectOutputType]?: O;
+  readonly [effectCancellationPartialType]?: P;
   name: string;
   version: string;
   inputSchema: JsonSchema;
   outputSchema: JsonSchema;
+  cancellation?: { partialSchema: JsonSchema };
   retrySafety: RetrySafety;
 }
+
+/** Closed terminal report returned by every durable effect handler. */
+export type DurableEffectDisposition<O extends Json, P extends Json = never> =
+  | { status: "ok"; value: O }
+  | { status: "error"; error: SerializedApplicationError }
+  | ([P] extends [never]
+      ? { status: "cancelled"; partial?: never }
+      : { status: "cancelled"; partial?: P });
 
 declare const programInputType: unique symbol;
 declare const programOutputType: unique symbol;
@@ -45,7 +60,7 @@ export interface DurableProgramManifest<I extends Json = Json, O extends Json = 
       contextSchema?: JsonSchema;
     }
   >;
-  effects: Record<string, EffectDefinition>;
+  effects: Record<string, EffectDefinition<Json, Json, Json>>;
   capabilities: {
     durableEmissions: boolean;
     structuredChildren: boolean;
@@ -202,7 +217,47 @@ export interface EmissionDescriptor {
 export type OperationOutcome =
   | { status: "ok"; value: Json }
   | { status: "error"; error: SerializedApplicationError }
-  | { status: "cancelled" };
+  | { status: "cancelled"; partial?: Json };
+
+/** Task-local durable boundary fixed by the first accepted cancellation. */
+export interface CancellationFrontier {
+  actionIndex: number;
+  pullId?: string;
+}
+
+/** Durable lifecycle of one explicit cancellation command. */
+export type DurableCancellationState =
+  | { type: "none" }
+  | { type: "requested"; commandId: string; reason?: string; frontier: CancellationFrontier }
+  | {
+      type: "settling_effect";
+      commandId: string;
+      pullId: string;
+      reason?: string;
+      frontier: CancellationFrontier;
+    }
+  | {
+      type: "cancelling_children";
+      commandId: string;
+      childTaskIds: readonly string[];
+      reason?: string;
+      frontier: CancellationFrontier;
+    }
+  | { type: "unwinding"; commandId: string; reason?: string; frontier: CancellationFrontier }
+  | { type: "cancelled"; commandId: string }
+  | {
+      type: "orphaned";
+      reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck";
+    };
+
+/** Idempotent acknowledgement of the first durable cancellation request. */
+export interface CancellationAcknowledgement {
+  accepted: true;
+  duplicate: boolean;
+  commandId: string;
+  reason?: string;
+  frontier: CancellationFrontier;
+}
 
 /** Stable receipt proving acceptance or idempotent replay of one resolution. */
 export interface ResolutionReceipt {
@@ -304,8 +359,8 @@ export type ProgramStepProposal =
 /** Authoring API that constructs only declared, serializable durable proposals. */
 export interface DurableProgramContext {
   /** Proposes a declared host effect and returns its schema-parsed recorded result. */
-  effect<I extends Json, O extends Json>(
-    definition: EffectDefinition<I, O>,
+  effect<I extends Json, O extends Json, P extends Json = never>(
+    definition: EffectDefinition<I, O, P>,
     input: I,
     resolver: { audience: string; route?: string },
   ): Generator<ProgramStepProposal, O, ProgramResume>;
@@ -515,6 +570,12 @@ export interface EnsureChildTaskResult {
 
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
+  /** Clears the runnable marker when a structured activation starts. */
+  markActivated(sessionId: string): Operation<void>;
+  /** Reads the durable cancellation state used by fresh replay attachments. */
+  cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
+  /** Transitions a settled cancellation frontier into one-shot unwind. */
+  beginCancellationUnwind(sessionId: string, taskId: string): Operation<DurableCancellationState>;
   /** Binds program authority to one attachment and execution epoch. */
   bindProgramAttachment(
     sessionId: string,
@@ -555,13 +616,17 @@ export interface DurableEffectContext {
   resolver: { audience: string; route?: string };
 }
 
-/** Effection-native host-effect handler returning canonical JSON. */
-export type DurableEffectHandler = (input: Json, context: DurableEffectContext) => Operation<Json>;
+/** Effection-native host-effect handler returning one explicit disposition. */
+export type DurableEffectHandler<
+  I extends Json = Json,
+  O extends Json = Json,
+  P extends Json = never,
+> = (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>;
 
 /** Effect handler registration proving compatibility with its retry declaration. */
 export interface DurableEffectRegistration {
-  definition: EffectDefinition;
-  handler: DurableEffectHandler;
+  definition: EffectDefinition<Json, Json, Json>;
+  handler: DurableEffectHandler<Json, Json, Json>;
   satisfies: { mode: "unsafe" } | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
 }
 

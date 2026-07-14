@@ -121,6 +121,10 @@ export function createToolSession<
 ): Operation<ToolSession<TResult>> {
   return resource<ToolSession<TResult>>(function* (provide) {
     const sessionId = options.sessionId ?? generateSessionId();
+    const invocationController = new AbortController();
+    const invocationSignal = options.signal
+      ? AbortSignal.any([options.signal, invocationController.signal])
+      : invocationController.signal;
 
     // Session state
     const state: SessionState<TResult> = {
@@ -155,7 +159,7 @@ export function createToolSession<
       tool,
       params: validatedParams,
       callId: sessionId,
-      ...(options.signal !== undefined && { signal: options.signal }),
+      signal: invocationSignal,
       ...(options.systemPrompt !== undefined && { systemPrompt: options.systemPrompt }),
     };
     const host = createBridgeHost(hostConfig);
@@ -386,6 +390,7 @@ export function createToolSession<
           return;
         }
 
+        invocationController.abort("tool invocation cancelled");
         state.status = "cancelled";
         notifySettled(state.status);
         state.toolCompleted = true;
@@ -401,7 +406,13 @@ export function createToolSession<
       },
     };
 
-    yield* provide(session);
+    try {
+      yield* provide(session);
+    } finally {
+      if (!invocationController.signal.aborted) {
+        invocationController.abort("tool invocation scope exited");
+      }
+    }
   });
 }
 
