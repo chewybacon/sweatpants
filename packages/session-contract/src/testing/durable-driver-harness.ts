@@ -9,18 +9,26 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
+  createDurableSchemaRegistry,
   createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
   defineDurableEffect,
   type DurableProgramManifest,
+  type DurableSchemaRegistryEntry,
   type DurableSemanticRecord,
   type DurableToolRegistry,
   type Json,
   type ProgramDriver,
   type ProgramRoute,
 } from "../index.ts";
+import {
+  booleanGuard,
+  createSchemaFixture,
+  nullGuard,
+  stringGuard,
+} from "./schema-fixtures.ts";
 
 /** Dependencies for exercising one driver across park, snapshot, and recovery. */
 export interface DurableDriverRecoveryFixtureOptions {
@@ -60,11 +68,66 @@ export interface DurableDriverCancellationEvidence {
   cancellationCatches: number;
 }
 
+const echoInput = createSchemaFixture(
+  "conformance.echo/input",
+  "effect_input",
+  { type: "string" },
+  stringGuard,
+);
+const echoOutput = createSchemaFixture(
+  "conformance.echo/output",
+  "effect_output",
+  { type: "string" },
+  stringGuard,
+);
+const programInput = createSchemaFixture(
+  "conformance.recovery-sequence/input",
+  "program_input",
+  { type: "string" },
+  stringGuard,
+);
+const programOutput = createSchemaFixture(
+  "conformance.recovery-sequence/output",
+  "program_output",
+  { type: "string" },
+  stringGuard,
+);
+const approvalResponse = createSchemaFixture(
+  "conformance.recovery-sequence/approval-response",
+  "elicit_response",
+  { type: "boolean" },
+  booleanGuard,
+);
+const cleanupInput = createSchemaFixture(
+  "conformance.cleanup/input",
+  "effect_input",
+  { type: "null" },
+  nullGuard,
+);
+const cleanupOutput = createSchemaFixture(
+  "conformance.cleanup/output",
+  "effect_output",
+  { type: "null" },
+  nullGuard,
+);
+
+/** Registry entries for every fixture descriptor used by the driver harness. */
+export const DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] =
+  Object.freeze([
+    echoInput.entry,
+    echoOutput.entry,
+    programInput.entry,
+    programOutput.entry,
+    approvalResponse.entry,
+    cleanupInput.entry,
+    cleanupOutput.entry,
+  ]);
+
 const echoDefinition = defineDurableEffect<string, string>({
   name: "echo",
   version: "1",
-  inputSchema: { type: "string" },
-  outputSchema: { type: "string" },
+  inputSchema: echoInput.descriptor,
+  outputSchema: echoOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
@@ -72,10 +135,10 @@ const fixtureManifest: DurableProgramManifest = {
   programId: "conformance.recovery-sequence",
   version: "1.0.0",
   digest: "d".repeat(64),
-  inputSchema: { type: "string" },
-  outputSchema: { type: "string" },
+  inputSchema: programInput.descriptor,
+  outputSchema: programOutput.descriptor,
   elicits: {
-    approval: { responseSchema: { type: "boolean" } },
+    approval: { response: approvalResponse.descriptor },
   },
   effects: { echo: echoDefinition },
   capabilities: {
@@ -88,8 +151,8 @@ const fixtureManifest: DurableProgramManifest = {
 const cleanupDefinition = defineDurableEffect<null, null>({
   name: "cleanup",
   version: "1",
-  inputSchema: { type: "null" },
-  outputSchema: { type: "null" },
+  inputSchema: cleanupInput.descriptor,
+  outputSchema: cleanupOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "inherent" },
 });
 
@@ -108,11 +171,12 @@ export const durableDriverRecoveryFixtureTool = createDurableTool(
       audience: "fixture-effects",
     });
     yield* context.emit("fixture_progress", { echoed });
-    const approved = yield* context.elicit<boolean>(
+    const approval = yield* context.elicit<boolean>(
       "approval",
       "Approve the recovered execution?",
-      { type: "boolean" },
+      approvalResponse.descriptor,
     );
+    const approved = approval.action === "accept" ? approval.content : false;
     return `${echoed}:${approved}`;
   },
 );
@@ -125,9 +189,11 @@ export const durableDriverCancellationFixtureTool = createDurableTool(
       audience: "fixture-effects",
     });
     try {
-      yield* context.elicit<boolean>("approval", "Approve cancellation fixture?", {
-        type: "boolean",
-      });
+      yield* context.elicit<boolean>(
+        "approval",
+        "Approve cancellation fixture?",
+        approvalResponse.descriptor,
+      );
       return echoed;
     } catch (error) {
       if (error instanceof DurableProgramCancellation) {
@@ -199,6 +265,7 @@ export function* runDurableDriverRecoveryFixture(
     keyring: createCapabilityKeyring("driver-integration", [
       { keyId: "fixture-key", secret: "fixture-secret-32-bytes-minimum!!" },
     ]),
+    schemaRegistry: createDurableSchemaRegistry([...DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES]),
   });
   const invocationId = "turn-0/root";
   const attach = {
@@ -249,7 +316,7 @@ export function* runDurableDriverRecoveryFixture(
   const resolution = yield* authority.resolve({
     capability,
     audience: "user:approval",
-    outcome: { status: "ok", value: true },
+    outcome: { status: "ok", value: { action: "accept", content: true } },
   });
   if (resolution.status === "rejected") {
     throw new Error(`Fixture elicitation resolution failed: ${resolution.code}`);
@@ -341,6 +408,7 @@ export function* runDurableDriverCancellationFixture(
     journalId: `driver-cancellation-integration:${options.driverKind}`,
     journalIncarnation: "fixture-1",
     keyring,
+    schemaRegistry: createDurableSchemaRegistry([...DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES]),
   });
   const invocationId = "turn-0/root";
   const attach = {
@@ -390,6 +458,7 @@ export function* runDurableDriverCancellationFixture(
     journalIncarnation: "fixture-1",
     keyring,
     snapshot: authority.exportSnapshot(),
+    schemaRegistry: createDurableSchemaRegistry([...DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES]),
   });
   const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* JournalAuthorityContext.with(authority, function* () {

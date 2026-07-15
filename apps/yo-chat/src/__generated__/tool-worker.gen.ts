@@ -8,7 +8,6 @@
 import { askQuestion } from '../tools/general/ask-question/tool.ts'
 import { bookFlightTool } from '../tools/book-flight/tool.ts'
 import { calculator } from '../tools/calculator.ts'
-import { pickCard } from '../tools/pick-card/tool.ts'
 import { playTttTool } from '../tools/play-ttt/tool.ts'
 import { tictactoeTool } from '../tools/tictactoe/tool.ts'
 
@@ -37,17 +36,6 @@ const registry = createWorkerToolRegistry([
   } },
   { name: 'calculator', handler: function* (params, ctx) {
     const tool = calculator
-    if (tool && typeof tool === 'function' && 'capabilities' in tool) {
-      const invoke = yield* (tool as any)(ctx)
-      return yield* invoke(params)
-    }
-    if (tool && typeof tool === 'object' && 'execute' in (tool as unknown as Record<string, unknown>)) {
-      return yield* (tool as any).execute(params, ctx)
-    }
-    return yield* (tool as any)(params, ctx)
-  } },
-  { name: 'pick_card', handler: function* (params, ctx) {
-    const tool = pickCard
     if (tool && typeof tool === 'function' && 'capabilities' in tool) {
       const invoke = yield* (tool as any)(ctx)
       return yield* invoke(params)

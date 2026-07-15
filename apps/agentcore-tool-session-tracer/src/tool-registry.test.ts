@@ -7,13 +7,12 @@ const expectedTools = [
   "ask_question",
   "book_flight",
   "calculator",
-  "pick_card",
   "play_ttt",
   "tictactoe",
 ];
 
-describe("AgentCore complete tool registry", () => {
-  it("ships the complete yo-chat inventory as one runtime", () => {
+describe("AgentCore ordinary tool registry", () => {
+  it("ships every AgentCore-compatible ordinary yo-chat tool", () => {
     expect(runtimeMcpToolNames()).toEqual(expectedTools);
   });
 
@@ -22,5 +21,9 @@ describe("AgentCore complete tool registry", () => {
     expect(tool).toBeDefined();
     expect(tool?.name).toBe(name);
     expect(tool?.parameters).toBeDefined();
+  });
+
+  it("omits pick_card until a crank-native AgentCore ProgramDriver is installed", () => {
+    expect(getRuntimeMcpTool("pick_card")).toBeUndefined();
   });
 });

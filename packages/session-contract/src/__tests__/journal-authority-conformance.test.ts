@@ -22,6 +22,7 @@ const factory: JournalAuthorityConformanceFactory = {
         journalIncarnation: "conformance-v1",
         keyring: options.keyring,
         now: () => 1_000,
+        schemaRegistry: options.schemaRegistry,
       });
       authorities.set(options.journalId, authority);
     }

@@ -1,17 +1,32 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z, type ZodSchema } from "zod";
 import {
-  assertJson,
+  ANY_JSON_SCHEMA_DESCRIPTOR,
   createDurableTool as createLowLevelDurableTool,
   type DurableProgramContext,
   type DurableProgramGenerator,
+  type DurableProgramManifest,
+  type DurableSchemaRegistryEntry,
   type DurableTool,
   type EffectDefinition,
   type Json,
+  type PortableSchemaDescriptor,
   type ProgramResume,
   type ProgramStepProposal,
+  type WireElicitResultJson,
 } from "@sweatpants/session-contract";
 
-import type { ElicitDefinition, ElicitsMap } from "./types.ts";
+import { toPortableSchema } from "../schema/zod-adapter.ts";
+import { effectCatalogEntries } from "./durable-effect.ts";
+import type { ToolSchemaArtifacts } from "./contract.ts";
+import type {
+  ElicitDefinition,
+  ElicitsMap,
+  ExtractElicitContext,
+  ExtractElicitResponse,
+  NormalizedElicitsMap,
+  ToolExtensionMetadata,
+} from "./types.ts";
 
 type JsonOutput<T> = T extends Json ? T : never;
 type EffectInput<D> = D extends EffectDefinition<infer I, Json, Json> ? I : never;
@@ -19,24 +34,68 @@ type EffectOutput<D> = D extends EffectDefinition<Json, infer O, Json> ? O : nev
 type EffectMap = Record<string, EffectDefinition<Json, Json, Json>>;
 type EffectFromMap<E extends EffectMap> = E[keyof E];
 
-export type DurableProgramContextFor<E extends EffectMap> = Omit<
-  DurableProgramContext,
-  "effect"
-> & {
+type ElicitRequestFor<E> =
+  ExtractElicitContext<E> extends undefined
+    ? { message: string }
+    : { message: string; context: ExtractElicitContext<E> };
+
+/** Typed durable program context bound to declared effects and elicitations. */
+export type DurableProgramContextFor<
+  E extends EffectMap,
+  TElicits extends ElicitsMap = {},
+> = Omit<DurableProgramContext, "effect" | "elicit"> & {
   effect<D extends EffectFromMap<E>>(
     definition: D,
     input: EffectInput<D>,
     resolver?: { audience: string; route?: string },
   ): Generator<ProgramStepProposal, EffectOutput<D>, ProgramResume>;
+  /**
+   * Proposes a declared elicitation with the canonical authored context only.
+   * Resumes with the typed wire action envelope; an explicit task cancellation
+   * is a separate `DurableProgramCancellation` and never an envelope.
+   */
+  elicit<K extends keyof TElicits & string>(
+    key: K,
+    request: ElicitRequestFor<TElicits[K]>,
+  ): Generator<
+    ProgramStepProposal,
+    WireElicitResultJson<JsonOutput<ExtractElicitResponse<TElicits[K]>>>,
+    ProgramResume
+  >;
 };
 
-export type FluentDurableTool<N extends string, I extends Json, O extends Json> = DurableTool<
-  I,
-  O
-> & {
+/**
+ * Crank-native durable tool definition satisfying the execution-neutral
+ * `ToolContract` while adding the pinned manifest and pure program.
+ */
+export interface DurableToolDefinition<
+  N extends string = string,
+  I extends Json = Json,
+  O extends Json = Json,
+  TElicits extends ElicitsMap = {},
+> {
+  readonly execution: "crank_native";
+  readonly durability: "crank_native";
   readonly name: N;
   readonly description: string;
-};
+  readonly parameters: StandardSchemaV1<unknown, I>;
+  readonly output?: StandardSchemaV1<unknown, O> | undefined;
+  readonly elicits: NormalizedElicitsMap<TElicits>;
+  readonly samples: Readonly<Record<string, never>>;
+  readonly artifacts: ToolSchemaArtifacts;
+  readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
+  readonly annotations: Readonly<Record<string, unknown>>;
+  readonly extensions: readonly ToolExtensionMetadata[];
+  readonly manifest: DurableProgramManifest<I, O>;
+  readonly program: DurableTool<I, O>["program"];
+}
+
+/** Compatibility alias for the previous fluent durable tool name. */
+export type FluentDurableTool<
+  N extends string,
+  I extends Json,
+  O extends Json,
+> = DurableToolDefinition<N, I, O>;
 
 export interface CreateDurableToolBuilderBase<N extends string> {
   description(description: string): CreateDurableToolBuilderWithDescription<N>;
@@ -66,21 +125,22 @@ export interface CreateDurableToolBuilderWithParameters<
   ): CreateDurableToolBuilderWithParameters<N, I, O, Next>;
   effects<Effects extends EffectMap>(
     effects: Effects,
-  ): CreateDurableToolBuilderReady<N, I, O, Effects>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects>;
 }
 
 export interface CreateDurableToolBuilderReady<
   N extends string,
   I extends Json,
   O extends Json | undefined,
+  E extends ElicitsMap,
   Effects extends EffectMap,
 > {
   execute<Result extends O extends Json ? O : Json>(
     program: (
       input: I,
-      context: DurableProgramContextFor<Effects>,
+      context: DurableProgramContextFor<Effects, E>,
     ) => DurableProgramGenerator<Result>,
-  ): FluentDurableTool<N, I, O extends Json ? O : Result>;
+  ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
 
 type BuilderState = {
@@ -137,13 +197,75 @@ function builder(state: BuilderState): unknown {
       requireStage(state.effects, ".effects()", ".execute()");
       const identity = state.identity!;
       const description = state.description!;
+      const normalizedElicits = normalizeElicits(state.elicits ?? {});
+      const catalog: DurableSchemaRegistryEntry[] = [];
+      const identityPrefix = `program:${state.name}`;
+
+      const input = toPortableSchema(state.parameters as unknown as StandardSchemaV1, {
+        identity: `${identityPrefix}/input`,
+        role: "program_input",
+        version: identity.version,
+      });
+      catalog.push(input.entry);
+      let outputDescriptor: PortableSchemaDescriptor;
+      if (state.output) {
+        const output = toPortableSchema(state.output as unknown as StandardSchemaV1, {
+          identity: `${identityPrefix}/output`,
+          role: "program_output",
+          version: identity.version,
+        });
+        catalog.push(output.entry);
+        outputDescriptor = output.descriptor;
+      } else {
+        // Undeclared program output remains any bounded canonical JSON through
+        // the built-in descriptor whose validator every registry retains.
+        outputDescriptor = ANY_JSON_SCHEMA_DESCRIPTOR;
+      }
+
+      const manifestElicits: Record<
+        string,
+        { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+      > = {};
+      const elicitArtifacts: Record<
+        string,
+        { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+      > = {};
+      for (const [key, definition] of Object.entries(normalizedElicits)) {
+        const response = toPortableSchema(definition.response as unknown as StandardSchemaV1, {
+          identity: `${identityPrefix}/elicits/${key}/response`,
+          role: "elicit_response",
+          version: identity.version,
+        });
+        catalog.push(response.entry);
+        let context;
+        if (definition.context) {
+          context = toPortableSchema(definition.context as unknown as StandardSchemaV1, {
+            identity: `${identityPrefix}/elicits/${key}/context`,
+            role: "elicit_context",
+            version: identity.version,
+          });
+          catalog.push(context.entry);
+        }
+        const declaration = {
+          response: response.descriptor,
+          ...(context ? { context: context.descriptor } : {}),
+        };
+        manifestElicits[key] = declaration;
+        elicitArtifacts[key] = declaration;
+      }
+
+      // Effect schema catalog entries travel with their authored definitions;
+      // the manifest embeds only their descriptors.
+      for (const definition of Object.values(state.effects!)) {
+        catalog.push(...effectCatalogEntries(definition));
+      }
       const manifest = {
         programId: state.name,
         version: identity.version,
         digest: identity.digest,
-        inputSchema: jsonSchema(state.parameters!),
-        outputSchema: state.output ? jsonSchema(state.output) : true,
-        elicits: durableElicits(state.elicits ?? {}),
+        inputSchema: input.descriptor,
+        outputSchema: outputDescriptor,
+        elicits: manifestElicits,
         effects: state.effects!,
         capabilities: {
           durableEmissions: true,
@@ -151,16 +273,40 @@ function builder(state: BuilderState): unknown {
           replay: "strict" as const,
         },
       };
-      const tool = createLowLevelDurableTool(
-        manifest,
-        (input: Json, context: DurableProgramContext) => program(input, contextForEffects(context)),
+      const tool = createLowLevelDurableTool(manifest, (rawInput: Json, context) =>
+        program(rawInput, contextForDeclarations(context, manifestElicits)),
       );
-      return Object.freeze({ ...tool, name: state.name, description });
+      const artifacts: ToolSchemaArtifacts = Object.freeze({
+        parameters: input.descriptor,
+        output: outputDescriptor,
+        elicits: Object.freeze(elicitArtifacts),
+        catalog: Object.freeze(catalog),
+      });
+      return Object.freeze({
+        ...tool,
+        execution: "crank_native" as const,
+        name: state.name,
+        description,
+        parameters: state.parameters,
+        ...(state.output ? { output: state.output } : {}),
+        elicits: normalizedElicits,
+        samples: Object.freeze({}),
+        artifacts,
+        capabilities: Object.freeze({
+          elicitation: Object.keys(normalizedElicits).length > 0,
+          sampling: false,
+        }),
+        annotations: Object.freeze({}),
+        extensions: Object.freeze([]),
+      });
     },
   };
 }
 
-function contextForEffects(context: DurableProgramContext): DurableProgramContext {
+function contextForDeclarations(
+  context: DurableProgramContext,
+  elicits: Record<string, { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }>,
+): DurableProgramContext {
   const adapted = Object.freeze({
     ...context,
     effect(
@@ -184,27 +330,47 @@ function contextForEffects(context: DurableProgramContext): DurableProgramContex
         resolver ?? { audience: `effect:${definitionOrName.name}` },
       );
     },
+    elicit(
+      key: string,
+      requestOrMessage: { message: string; context?: Json } | string,
+      response?: PortableSchemaDescriptor,
+      rawContext?: Json,
+    ) {
+      // Low-level escape hatch: (key, message, descriptor, context).
+      if (typeof requestOrMessage === "string") {
+        return context.elicit(key, requestOrMessage, response!, rawContext);
+      }
+      const declaration = elicits[key];
+      if (!declaration) {
+        throw new Error(`Durable tool elicit "${key}" is not declared`);
+      }
+      return context.elicit(
+        key,
+        requestOrMessage.message,
+        declaration.response,
+        requestOrMessage.context,
+      );
+    },
   });
-  // SAFETY: the adapter preserves both low-level overloads and only adds a
-  // default resolver for the definition-based fluent form.
+  // SAFETY: the adapter preserves the low-level overloads while routing the
+  // fluent keyed forms through declared descriptors and default resolvers.
   return adapted as DurableProgramContext;
 }
 
-function durableElicits(elicits: ElicitsMap) {
+function normalizeElicits(
+  elicits: ElicitsMap,
+): Record<string, ElicitDefinition<ZodSchema, ZodSchema | undefined>> {
   return Object.fromEntries(
     Object.entries(elicits).map(([key, entry]) => {
       const definition: ElicitDefinition<ZodSchema, ZodSchema | undefined> = isElicitDefinition(
         entry,
       )
-        ? entry
+        ? { ...entry }
         : { response: entry };
-      return [
-        key,
-        {
-          responseSchema: jsonSchema(definition.response),
-          ...(definition.context ? { contextSchema: jsonSchema(definition.context) } : {}),
-        },
-      ];
+      if (definition.response === undefined) {
+        throw new Error(`Durable tool elicit "${key}" is missing a response schema`);
+      }
+      return [key, definition];
     }),
   );
 }
@@ -214,12 +380,9 @@ function isElicitDefinition(value: unknown): value is ElicitDefinition<ZodSchema
     value &&
     typeof value === "object" &&
     typeof (value as { safeParse?: unknown }).safeParse !== "function" &&
+    !("~standard" in (value as object)) &&
     "response" in value,
   );
-}
-
-function jsonSchema(schema: ZodSchema): Json {
-  return assertJson(z.toJSONSchema(schema));
 }
 
 function requireStage(value: unknown, required: string, attempted: string): void {

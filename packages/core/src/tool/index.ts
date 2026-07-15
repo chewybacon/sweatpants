@@ -7,12 +7,35 @@ export type {
   CreateDurableToolBuilderWithIdentity,
   CreateDurableToolBuilderWithParameters,
   DurableProgramContextFor,
+  DurableToolDefinition,
   FluentDurableTool,
 } from "./durable-create.ts";
+export {
+  defineEffect,
+  effectCatalogEntries,
+  effectRuntimeValidators,
+  type DefineEffectOptions,
+  type DurableEffectRuntimeValidators,
+} from "./durable-effect.ts";
+export { buildToolSchemaArtifacts, type ToolSchemaArtifactInputs } from "./artifacts.ts";
+export type {
+  AnyToolContract,
+  ToolContract,
+  ToolElicitSchemaArtifact,
+  ToolExecutionKind,
+  ToolSchemaArtifacts,
+} from "./contract.ts";
+export {
+  isStandardSchema,
+  toPortableSchema,
+  type LoweredSchema,
+  type PortableSchemaOptions,
+} from "../schema/zod-adapter.ts";
 export type {
   LogLevel,
   AnySchema,
   InferSchema,
+  InferSchemaInput,
   ToolCtx,
   BaseToolCtx,
   ToolElicitCtx,
@@ -24,6 +47,7 @@ export type {
   ElicitEntry,
   ElicitsMap,
   ExtractElicitResponse,
+  ExtractElicitResponseInput,
   ExtractElicitContext,
   ExtractElicitResponseSchema,
   ExtractElicitContextSchema,

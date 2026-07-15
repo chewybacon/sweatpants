@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createTool, type RuntimeTool } from "@sweatpants/core";
 import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
   DurableEffectRegistryContext,
   JournalAuthorityContext,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
   ProgramDriverRegistryContext,
   ProgramRuntime,
   createCapabilityKeyring,
@@ -32,8 +34,8 @@ const parentManifest = defineDurableProgramManifest<null, Json>({
   programId: "acceptance.abort-signal-parent",
   version: "1.0.0",
   digest: "9".repeat(64),
-  inputSchema: { type: "null" },
-  outputSchema: true,
+  inputSchema: NULL_RESULT_SCHEMA_DESCRIPTOR,
+  outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
   elicits: {},
   effects: {},
   capabilities: {

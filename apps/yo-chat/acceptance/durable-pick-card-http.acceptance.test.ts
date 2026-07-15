@@ -20,6 +20,7 @@ import {
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
   createPluginSessionManager,
+  programDriverSchemaRegistry,
 } from "@sweatpants/framework/server";
 import {
   createInMemoryToolSessionStore,
@@ -27,8 +28,7 @@ import {
 } from "@sweatpants/tool-runtime-local";
 
 import type { Card } from "../src/tools/pick-card/cards";
-import { durablePickCard, drawPickCards } from "../src/tools/pick-card/durable";
-import { pickCard } from "../src/tools/pick-card/tool";
+import { durablePickCard, drawPickCards, pickCard } from "../src/tools/pick-card/durable";
 import { installYoChatToolRuntime } from "../src/server/tool-runtime-installation";
 import { yoChatToolSessionWorkerConfig } from "../src/server/tool-worker-config";
 
@@ -79,6 +79,7 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
       keyring: createCapabilityKeyring("durable-pick-card-http", [
         { keyId: "test-v1", secret: "durable-pick-card-http-secret-key" },
       ]),
+      schemaRegistry: programDriverSchemaRegistry(pickCard.artifacts.catalog),
     });
     const handler = createDurableChatHandler({
       programDriverJournalStore: journalStore,
@@ -275,7 +276,7 @@ function interrupt(events: PublicEvent[]): {
 }
 
 function modelContextCards(schema: Record<string, unknown>): Card[] {
-  const context = schema["x-model-context"];
+  const context = schema["x-elicit-context"];
   if (!isRecord(context) || !Array.isArray(context["cards"])) {
     throw new Error("CardPicker model context is missing cards");
   }

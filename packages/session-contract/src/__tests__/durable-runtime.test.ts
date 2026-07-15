@@ -18,33 +18,83 @@ import {
   parseDurableAuthoritySnapshot,
   signCapability,
   stableProgramAttachmentId,
+  createDurableSchemaRegistry,
   type AttachProgramRequest,
   type DurableProgramManifest,
 } from "../index.ts";
+import { anyGuard, booleanGuard, createSchemaFixture, stringGuard } from "../testing/index.ts";
+
+const programInput = createSchemaFixture(
+  "fixture.basic/input",
+  "program_input",
+  { type: "string" },
+  stringGuard,
+);
+const programOutput = createSchemaFixture(
+  "fixture.basic/output",
+  "program_output",
+  { type: "string" },
+  stringGuard,
+);
+const approvalResponse = createSchemaFixture(
+  "fixture.basic/approval-response",
+  "elicit_response",
+  { type: "boolean" },
+  booleanGuard,
+);
+const echoInput = createSchemaFixture(
+  "fixture.basic/echo-input",
+  "effect_input",
+  { type: "string" },
+  stringGuard,
+);
+const echoOutput = createSchemaFixture(
+  "fixture.basic/echo-output",
+  "effect_output",
+  { type: "string" },
+  stringGuard,
+);
+const mutateInput = createSchemaFixture("fixture.basic/mutate-input", "effect_input", true, anyGuard);
+const mutateOutput = createSchemaFixture(
+  "fixture.basic/mutate-output",
+  "effect_output",
+  true,
+  anyGuard,
+);
+const fixtureSchemaRegistry = () =>
+  createDurableSchemaRegistry([
+    programInput.entry,
+    programOutput.entry,
+    approvalResponse.entry,
+    echoInput.entry,
+    echoOutput.entry,
+    mutateInput.entry,
+    mutateOutput.entry,
+  ]);
 
 const digest = "a".repeat(64);
 const manifest: DurableProgramManifest = {
   programId: "fixture.basic",
   version: "1.0.0",
   digest,
-  inputSchema: { type: "string" },
-  outputSchema: { type: "string" },
+  inputSchema: programInput.descriptor,
+  outputSchema: programOutput.descriptor,
   elicits: {
-    approval: { responseSchema: { type: "boolean" } },
+    approval: { response: approvalResponse.descriptor },
   },
   effects: {
     echo: {
       name: "echo",
       version: "1",
-      inputSchema: { type: "string" },
-      outputSchema: { type: "string" },
+      inputSchema: echoInput.descriptor,
+      outputSchema: echoOutput.descriptor,
       retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
     },
     mutate: {
       name: "mutate",
       version: "1",
-      inputSchema: true,
-      outputSchema: true,
+      inputSchema: mutateInput.descriptor,
+      outputSchema: mutateOutput.descriptor,
       retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
     },
   },
@@ -158,6 +208,7 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
     journalIncarnation: "incarnation-1",
     keyring,
     now,
+    schemaRegistry: fixtureSchemaRegistry(),
   });
   const attach = attachRequest(sessionId);
   return { authority, attach };
@@ -336,6 +387,7 @@ describe("crank-native durable runtime", () => {
         keyring,
         now: () => 1_000,
         snapshot: parseDurableAuthoritySnapshot(JSON.stringify(authority.exportSnapshot())),
+        schemaRegistry: fixtureSchemaRegistry(),
       });
       expect(
         yield* recovered.resolve({
@@ -481,6 +533,68 @@ describe("crank-native durable runtime", () => {
       expect(request?.payload).toMatchObject({
         descriptor: { durationMs: 500, notBefore: new Date(10_500).toISOString() },
       });
+    });
+  });
+
+  it("keeps payload commands pending when a retained validator bundle is unavailable", async () => {
+    const { authority, attach } = createAuthority("missing-schema");
+    await run(function* () {
+      const opened = yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const reserved = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor: {
+          kind: "effect",
+          name: "echo",
+          version: "1",
+          input: "hello",
+          resolver: { audience: "host-effects" },
+        },
+        programCapability: opened.programCapability,
+      });
+      if (reserved.status !== "authorized") throw new Error("effect not authorized");
+      const unavailable = createInMemoryDurableJournalAuthority({
+        journalId: "journal-1",
+        journalIncarnation: "incarnation-1",
+        keyring,
+        snapshot: authority.exportSnapshot(),
+      });
+      expect(
+        yield* unavailable.resolve({
+          capability: reserved.resolutionCapability,
+          audience: "host-effects",
+          outcome: { status: "ok", value: "hello" },
+        }),
+      ).toEqual({ status: "rejected", code: "schema_version_unavailable" });
+      expect(
+        unavailable
+          .readJournal(attach.sessionId)
+          .some((record) => record.payload.type === "PullResolved"),
+      ).toBe(false);
+      expect(yield* unavailable.nonterminalSchemaDigests()).toContain(
+        manifest.effects.echo?.outputSchema.digest,
+      );
+      // Cancellation without a payload schema remains available.
+      expect(
+        yield* unavailable.requestCancellation(
+          attach.sessionId,
+          attach.taskId,
+          "bundle missing",
+          "cancel-missing-schema",
+        ),
+      ).toMatchObject({ accepted: true });
     });
   });
 

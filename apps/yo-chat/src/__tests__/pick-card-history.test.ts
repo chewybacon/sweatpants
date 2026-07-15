@@ -16,7 +16,9 @@ import {
   createCapabilityKeyring,
   createChatHandler,
   createInMemoryProgramDriverJournalStore,
+  ProgramDriverNativeToolsContext,
   createPluginSessionManager,
+  programDriverSchemaRegistry,
   createInMemoryCrankStore,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
@@ -47,7 +49,16 @@ import {
   createMockProvider,
   setupMockModelProvider,
 } from "../../../../packages/framework/src/handler/durable/__tests__/test-utils.ts";
-import { pickCard, pickCardPlugin } from "../tools/pick-card";
+import {
+  drawPickCards,
+  pickCard,
+  pickCardPlugin,
+} from "../tools/pick-card";
+import {
+  createDurableEffectRegistration,
+  createDurableToolRegistry,
+  createLocalGeneratorDriver,
+} from "@sweatpants/session-contract";
 
 type PendingElicit = ChatState["pendingElicits"][string]["elicitations"][number];
 
@@ -105,7 +116,7 @@ describe("pick_card session history", () => {
   it("keeps the selected card in subsequent-turn history for the model", async () => {
     await run(function* () {
       const pluginRegistry = createPluginRegistryFrom([pickCardPlugin.client as any]);
-      const mcpToolRegistry = createSingleToolMcpRegistry(pickCard);
+      const mcpToolRegistry = createSingleToolMcpRegistry({ name: "ordinary-tools-only" });
 
       const [serverScope, destroyServerScope] = createScope();
       const ready = createChannel<
@@ -200,12 +211,45 @@ describe("pick_card session history", () => {
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);
         yield* PluginSessionManagerContext.set(pluginSessionManager);
-        const localPickCardTool = pickCard;
         yield* ToolInventoryContext.set(
-          createToolInventory([createToolInventoryEntry(localPickCardTool)]),
+          createToolInventory([createToolInventoryEntry(pickCard)]),
         );
+        yield* ProgramDriverNativeToolsContext.set({
+          bindings: new Map([
+            [
+              pickCard.name,
+              {
+                publicName: pickCard.name,
+                tool: pickCard,
+                route: { driverKind: "native-pick-card-generator" },
+              },
+            ],
+          ]),
+          drivers: [
+            [
+              "native-pick-card-generator",
+              createLocalGeneratorDriver(createDurableToolRegistry([pickCard])),
+            ],
+          ],
+          effects: [
+            createDurableEffectRegistration(
+              drawPickCards,
+              { mode: "idempotent", mechanism: "pull_id_key" },
+              function* ({ count }) {
+                const cards = [
+                  { rank: "5", suit: "Spades", display: "5♠" },
+                  { rank: "A", suit: "Hearts", display: "A♥" },
+                  { rank: "K", suit: "Clubs", display: "K♣" },
+                  { rank: "Q", suit: "Diamonds", display: "Q♦" },
+                  { rank: "10", suit: "Spades", display: "10♠" },
+                ].slice(0, count);
+                return { status: "ok", value: { cards } };
+              },
+            ),
+          ],
+        });
         yield* installLocalToolRuntime({
-          tools: [localPickCardTool],
+          tools: [],
           registry: toolSessionRegistry,
           samplingProvider,
         });
@@ -218,6 +262,7 @@ describe("pick_card session history", () => {
           keyring: createCapabilityKeyring("pick-card-history", [
             { keyId: "test-v1", secret: "pick-card-history-program-secret" },
           ]),
+          schemaRegistry: programDriverSchemaRegistry(pickCard.artifacts.catalog),
         }),
       });
 

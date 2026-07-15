@@ -27,6 +27,9 @@ catalogs:
     '@effectionx/worker':
       specifier: ^0.5.2
       version: 0.5.2
+    '@standard-schema/spec':
+      specifier: 1.1.0
+      version: 1.1.0
     '@t3-oss/env-core':
       specifier: ^0.13.8
       version: 0.13.10
@@ -671,6 +674,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../session-contract
@@ -785,6 +791,9 @@ importers:
 
   packages/framework:
     dependencies:
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
@@ -976,6 +985,9 @@ importers:
       '@noble/hashes':
         specifier: ^2.2.0
         version: 2.2.0
+      '@standard-schema/spec':
+        specifier: 'catalog:'
+        version: 1.1.0
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -3794,6 +3806,9 @@ packages:
     resolution: {integrity: sha512-hZ/M/qr25QOCcwDPOHtGjxTD8w2mNyVAYvcfgwzBHq2RwNqHNdDNsMZYap20+ruRwW4A3Cdkczyoz0TSxLCAPQ==}
     peerDependencies:
       solid-js: ^1.6.12
+
+  '@standard-schema/spec@1.1.0':
+    resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
   '@szmarczak/http-timer@5.0.1':
     resolution: {integrity: sha512-+PmQX0PiAYPMeVYe237LJAYvOMYW1j2rH5YROyS3b4CTVJum34HfRvKvAzozHAQG0TnHNdUfY9nCeUyRAs//cw==}
@@ -11200,6 +11215,8 @@ snapshots:
   '@solid-primitives/utils@6.3.2(solid-js@1.9.10)':
     dependencies:
       solid-js: 1.9.10
+
+  '@standard-schema/spec@1.1.0': {}
 
   '@szmarczak/http-timer@5.0.1':
     dependencies:

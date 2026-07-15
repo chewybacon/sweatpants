@@ -11,7 +11,7 @@ export type NativeProgramIdentity = { id: string; version: string; digest: strin
 /** One public model-tool name routed to a crank-native child program. */
 export interface ProgramDriverNativeToolBinding {
   readonly publicName: string;
-  readonly tool: DurableTool;
+  readonly tool: DurableTool<any, any>;
   readonly route: ProgramRoute;
 }
 

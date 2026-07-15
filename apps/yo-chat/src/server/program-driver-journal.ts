@@ -1,6 +1,7 @@
 import { call, type Operation } from "effection";
 import {
   createInMemoryProgramDriverJournalStore,
+  programDriverSchemaRegistry,
   type ProgramDriverJournal,
   type ProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
@@ -13,14 +14,17 @@ import type {
 } from "@sweatpants/session-contract";
 
 import { getSharedRedisClient } from "@/lib/shared-redis";
+import { pickCard } from "../tools/pick-card/durable";
 
 /** Creates the yo-chat ProgramRuntime journal adapter over shared Redis or development memory. */
 export function createYoChatProgramDriverJournalStore(
   keyring: CapabilityKeyring,
 ): ProgramDriverJournalStore {
+  const schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog);
   const fallback = createInMemoryProgramDriverJournalStore({
     keyring,
     journalPrefix: "yo-chat-program-driver",
+    schemaRegistry,
   });
 
   return {
@@ -29,7 +33,9 @@ export function createYoChatProgramDriverJournalStore(
       if (!client) {
         return yield* fallback.open(conversationId);
       }
-      return yield* createRedisProgramDriverJournalStore(client, keyring).open(conversationId);
+      return yield* createRedisProgramDriverJournalStore(client, keyring, schemaRegistry).open(
+        conversationId,
+      );
     },
   };
 }
@@ -38,6 +44,7 @@ export function createYoChatProgramDriverJournalStore(
 export function createRedisProgramDriverJournalStore(
   client: RedisClientType,
   keyring: CapabilityKeyring,
+  schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog),
 ): ProgramDriverJournalStore {
   return {
     *open(conversationId): Operation<ProgramDriverJournal> {
@@ -45,6 +52,7 @@ export function createRedisProgramDriverJournalStore(
         journalId: `yo-chat-program-driver:${conversationId}`,
         journalIncarnation: "1",
         keyring,
+        schemaRegistry,
       });
       return {
         authority,

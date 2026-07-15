@@ -8,7 +8,7 @@ import {
 } from "@sweatpants/framework/chat";
 import { createPluginRegistryFrom } from "@sweatpants/framework/chat/mcp-tools";
 import type { McpToolRegistry } from "@sweatpants/framework/server";
-import { toolList } from "../__generated__/tool-registry.gen";
+import { ordinaryTools, toolList } from "../__generated__/tool-registry.gen";
 import { bookFlightPlugin, bookFlightTool } from "../tools/book-flight";
 import { askQuestion, askQuestionPlugin } from "../tools/general/ask_question";
 import { pickCard, pickCardPlugin } from "../tools/pick-card";
@@ -25,7 +25,9 @@ const pluginToolModules = [
   { tool: tictactoeTool, plugin: tictactoePlugin },
 ] as const;
 
-export const mcpPluginTools = pluginToolModules.map(({ tool }) => tool);
+export const mcpPluginTools = pluginToolModules
+  .map(({ tool }) => tool)
+  .filter((tool) => tool.execution === "ordinary");
 
 type NamedTool = { name: string };
 
@@ -44,10 +46,12 @@ function createToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
 
 /** Complete generated inventory sent to AgentCore when that runtime is selected. */
 export function activeAgentCoreToolNames(): string[] {
-  return allTools.map((tool) => tool.name);
+  // No crank-native AgentCore ProgramDriver is installed yet; availability
+  // projection omits durable contracts instead of routing an ordinary twin.
+  return Object.values(ordinaryTools).map((tool) => tool.name);
 }
 
-const pluginClients = pluginToolModules.map(({ plugin }) => plugin.client as any);
+const pluginClients = pluginToolModules.map(({ plugin }) => plugin.client);
 export const pluginRegistry = createPluginRegistryFrom(pluginClients);
 
 export const activePluginTools = mcpPluginTools;

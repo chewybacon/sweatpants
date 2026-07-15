@@ -22,7 +22,11 @@ const clientReg: PluginClientRegistrationInput = {
 
 const tictactoePlugin: PluginHandleInput = {
   tool: { name: "tictactoe" },
-  server: { tools: [], toolName: "tictactoe" },
+  server: {
+    toolName: "tictactoe",
+    execution: "ordinary",
+    contract: { name: "tictactoe" },
+  },
   client: clientReg,
 };
 

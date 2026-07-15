@@ -186,7 +186,10 @@ export function* runChatSession(
     const baseUrl = options.baseUrl ?? contextBaseUrl ?? "/api/chat";
     const replayTools = [
       ...(options.tools ?? []),
-      ...(options.plugins ?? []).map((plugin) => plugin.tool),
+      ...(options.plugins ?? []).map((plugin) => ({
+        name: plugin.client.toolName,
+        ...(plugin.client.replayTrace ? { replayTrace: plugin.client.replayTrace } : {}),
+      })),
     ];
     const durableHistory = yield* readDurableHistory({
       baseUrl,

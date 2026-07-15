@@ -9,6 +9,7 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
+  createDurableSchemaRegistry,
   createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
@@ -22,6 +23,7 @@ import {
   type Json,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/session-contract/testing";
 
 import {
   createInMemoryToolSessionStore,
@@ -33,11 +35,48 @@ import {
 type Result = { answers: string[] };
 type Choice = { answer: string; continue: boolean };
 
+const afterInput = createSchemaFixture(
+  "fixture.after-child/input",
+  "effect_input",
+  true,
+  anyGuard,
+);
+const afterOutput = createSchemaFixture(
+  "fixture.after-child/output",
+  "effect_output",
+  true,
+  anyGuard,
+);
+const parentInput = createSchemaFixture(
+  "fixture.automatic-foreign-parent/input",
+  "program_input",
+  { type: "null" },
+  nullGuard,
+);
+const parentOutput = createSchemaFixture(
+  "fixture.automatic-foreign-parent/output",
+  "program_output",
+  {
+    type: "object",
+    required: ["answers"],
+    properties: { answers: { type: "array", items: { type: "string" } } },
+    additionalProperties: false,
+  },
+  anyGuard,
+);
+const fixtureSchemas = () =>
+  createDurableSchemaRegistry([
+    afterInput.entry,
+    afterOutput.entry,
+    parentInput.entry,
+    parentOutput.entry,
+  ]);
+
 const afterChildEffect = defineDurableEffect<Result, Result>({
   name: "fixture.after-child",
   version: "1",
-  inputSchema: true,
-  outputSchema: true,
+  inputSchema: afterInput.descriptor,
+  outputSchema: afterOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "inherent" },
 });
 
@@ -45,13 +84,8 @@ const parentManifest = defineDurableProgramManifest<null, Result>({
   programId: "fixture.automatic-foreign-parent",
   version: "1.0.0",
   digest: "3".repeat(64),
-  inputSchema: { type: "null" },
-  outputSchema: {
-    type: "object",
-    required: ["answers"],
-    properties: { answers: { type: "array", items: { type: "string" } } },
-    additionalProperties: false,
-  },
+  inputSchema: parentInput.descriptor,
+  outputSchema: parentOutput.descriptor,
   elicits: {},
   effects: { [afterChildEffect.name]: afterChildEffect },
   capabilities: {
@@ -114,6 +148,7 @@ describe("automatic foreign adapter child orchestration", () => {
       journalId: "automatic-child",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: fixtureSchemas(),
     });
     const sessionId = "automatic-child-session";
     const taskId = "turn-0/root";
@@ -252,6 +287,7 @@ describe("automatic foreign adapter child orchestration", () => {
       journalId: "immediate-child",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: fixtureSchemas(),
     });
     const sessionId = "immediate-child-session";
     const taskId = "turn-0/root";
@@ -335,6 +371,7 @@ function recreate(
     journalIncarnation: "1",
     keyring,
     snapshot: authority.exportSnapshot(),
+    schemaRegistry: fixtureSchemas(),
   });
 }
 

@@ -13,30 +13,89 @@ import {
   createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
+  createDurableSchemaRegistry,
   createLocalGeneratorDriver,
   createProgramDriverRegistry,
   defineDurableEffect,
   stableProgramAttachmentId,
   type DurableProgramManifest,
 } from "../index.ts";
+import { booleanGuard, createSchemaFixture, nullGuard, stringGuard } from "../testing/index.ts";
 
 const keyring = createCapabilityKeyring("cancellation-test", [
   { keyId: "active", secret: "durable-cancellation-test-secret!!" },
 ]);
 const digest = "e".repeat(64);
 
+const cancellableInput = createSchemaFixture(
+  "fixture.cancellation/cancellable-input",
+  "effect_input",
+  { type: "string" },
+  stringGuard,
+);
+const cancellableOutput = createSchemaFixture(
+  "fixture.cancellation/cancellable-output",
+  "effect_output",
+  { type: "string" },
+  stringGuard,
+);
+const cancellablePartial = createSchemaFixture(
+  "fixture.cancellation/cancellable-partial",
+  "effect_cancellation_partial",
+  {
+    type: "object",
+    required: ["completed"],
+    properties: { completed: { type: "integer", minimum: 0 } },
+    additionalProperties: false,
+  },
+  (value) =>
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Number.isSafeInteger((value as { completed?: unknown }).completed) &&
+    ((value as { completed: number }).completed satisfies number) >= 0 &&
+    Object.keys(value).length === 1
+      ? undefined
+      : "partial must be { completed: nonnegative integer }",
+);
+const cleanupInput = createSchemaFixture(
+  "fixture.cancellation/cleanup-input",
+  "effect_input",
+  { type: "null" },
+  nullGuard,
+);
+const cleanupOutput = createSchemaFixture(
+  "fixture.cancellation/cleanup-output",
+  "effect_output",
+  { type: "null" },
+  nullGuard,
+);
+const programInput = createSchemaFixture(
+  "fixture.cancellation/input",
+  "program_input",
+  { type: "null" },
+  nullGuard,
+);
+const programOutput = createSchemaFixture(
+  "fixture.cancellation/output",
+  "program_output",
+  { type: "string" },
+  stringGuard,
+);
+const approvalResponse = createSchemaFixture(
+  "fixture.cancellation/approval-response",
+  "elicit_response",
+  { type: "boolean" },
+  booleanGuard,
+);
+
 const cancellable = defineDurableEffect<string, string, { completed: number }>({
   name: "cancellable",
   version: "1",
-  inputSchema: { type: "string" },
-  outputSchema: { type: "string" },
+  inputSchema: cancellableInput.descriptor,
+  outputSchema: cancellableOutput.descriptor,
   cancellation: {
-    partialSchema: {
-      type: "object",
-      required: ["completed"],
-      properties: { completed: { type: "integer", minimum: 0 } },
-      additionalProperties: false,
-    },
+    partialSchema: cancellablePartial.descriptor,
   },
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
@@ -44,8 +103,8 @@ const cancellable = defineDurableEffect<string, string, { completed: number }>({
 const cleanup = defineDurableEffect<null, null>({
   name: "cleanup",
   version: "1",
-  inputSchema: { type: "null" },
-  outputSchema: { type: "null" },
+  inputSchema: cleanupInput.descriptor,
+  outputSchema: cleanupOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "inherent" },
 });
 
@@ -53,9 +112,9 @@ const manifest: DurableProgramManifest<null, string> = {
   programId: "fixture.cancellation",
   version: "1",
   digest,
-  inputSchema: { type: "null" },
-  outputSchema: { type: "string" },
-  elicits: { approval: { responseSchema: { type: "boolean" } } },
+  inputSchema: programInput.descriptor,
+  outputSchema: programOutput.descriptor,
+  elicits: { approval: { response: approvalResponse.descriptor } },
   effects: { cancellable, cleanup },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
 };
@@ -65,6 +124,16 @@ function authority(name: string, maxOutcomeBytes?: number) {
     journalId: name,
     journalIncarnation: "1",
     keyring,
+    schemaRegistry: createDurableSchemaRegistry([
+      cancellableInput.entry,
+      cancellableOutput.entry,
+      cancellablePartial.entry,
+      cleanupInput.entry,
+      cleanupOutput.entry,
+      programInput.entry,
+      programOutput.entry,
+      approvalResponse.entry,
+    ]),
     ...(maxOutcomeBytes !== undefined ? { maxOutcomeBytes } : {}),
   });
 }
@@ -196,7 +265,7 @@ describe("durable cancellation and partial results", () => {
     let cleanupRuns = 0;
     const tool = createDurableTool(manifest, function* (_input, context) {
       try {
-        yield* context.elicit<boolean>("approval", "Approve?", { type: "boolean" });
+        yield* context.elicit<boolean>("approval", "Approve?", approvalResponse.descriptor);
         return "approved";
       } catch (error) {
         if (error instanceof DurableProgramCancellation) catches += 1;

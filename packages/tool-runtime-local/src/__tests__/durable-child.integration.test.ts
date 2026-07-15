@@ -9,6 +9,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
+  createDurableSchemaRegistry,
   createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
@@ -17,10 +18,10 @@ import {
   defineDurableProgramManifest,
   type AttachProgramRequest,
   type DurableSemanticRecord,
-  type JsonSchema,
   type ProgramDriver,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { anyGuard, createSchemaFixture, nullGuard } from "@sweatpants/session-contract/testing";
 
 import { createLocalDurableProgramDriver } from "../index.ts";
 
@@ -30,42 +31,87 @@ type SampleOutput = { suggestion: string };
 type Choice = { answer: string; continue: boolean };
 type ChildOutput = { rounds: number; answers: string[] };
 
-const choiceSchema: JsonSchema = {
-  type: "object",
-  required: ["answer", "continue"],
-  properties: {
-    answer: { type: "string" },
-    continue: { type: "boolean" },
+const choiceSchema = createSchemaFixture(
+  "fixture.looping-child/choice",
+  "elicit_response",
+  {
+    type: "object",
+    required: ["answer", "continue"],
+    properties: {
+      answer: { type: "string" },
+      continue: { type: "boolean" },
+    },
+    additionalProperties: false,
   },
-  additionalProperties: false,
-};
+  anyGuard,
+);
+const sampleInput = createSchemaFixture(
+  "fixture.model-sample/input",
+  "effect_input",
+  true,
+  anyGuard,
+);
+const sampleOutput = createSchemaFixture(
+  "fixture.model-sample/output",
+  "effect_output",
+  true,
+  anyGuard,
+);
+const cleanupInput = createSchemaFixture(
+  "fixture.child-cleanup/input",
+  "effect_input",
+  { type: "null" },
+  nullGuard,
+);
+const cleanupOutput = createSchemaFixture(
+  "fixture.child-cleanup/output",
+  "effect_output",
+  { type: "null" },
+  nullGuard,
+);
+const childInput = createSchemaFixture(
+  "fixture.looping-child/input",
+  "program_input",
+  true,
+  anyGuard,
+);
+const childOutput = createSchemaFixture(
+  "fixture.looping-child/output",
+  "program_output",
+  true,
+  anyGuard,
+);
+const parentInput = createSchemaFixture(
+  "fixture.parent/input",
+  "program_input",
+  { type: "null" },
+  nullGuard,
+);
+const fixtureSchemas = () =>
+  createDurableSchemaRegistry([
+    choiceSchema.entry,
+    sampleInput.entry,
+    sampleOutput.entry,
+    cleanupInput.entry,
+    cleanupOutput.entry,
+    childInput.entry,
+    childOutput.entry,
+    parentInput.entry,
+  ]);
 
 const sampleDefinition = defineDurableEffect<SampleInput, SampleOutput>({
   name: "model.sample",
   version: "1",
-  inputSchema: {
-    type: "object",
-    required: ["round", "answers"],
-    properties: {
-      round: { type: "integer" },
-      answers: { type: "array", items: { type: "string" } },
-    },
-    additionalProperties: false,
-  },
-  outputSchema: {
-    type: "object",
-    required: ["suggestion"],
-    properties: { suggestion: { type: "string" } },
-    additionalProperties: false,
-  },
+  inputSchema: sampleInput.descriptor,
+  outputSchema: sampleOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
 const cleanupDefinition = defineDurableEffect<null, null>({
   name: "child.cleanup",
   version: "1",
-  inputSchema: { type: "null" },
-  outputSchema: { type: "null" },
+  inputSchema: cleanupInput.descriptor,
+  outputSchema: cleanupOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "inherent" },
 });
 
@@ -73,22 +119,9 @@ const childManifest = defineDurableProgramManifest<ChildInput, ChildOutput>({
   programId: "fixture.looping-child",
   version: "1.0.0",
   digest: "c".repeat(64),
-  inputSchema: {
-    type: "object",
-    required: ["topic"],
-    properties: { topic: { type: "string" } },
-    additionalProperties: false,
-  },
-  outputSchema: {
-    type: "object",
-    required: ["rounds", "answers"],
-    properties: {
-      rounds: { type: "integer" },
-      answers: { type: "array", items: { type: "string" } },
-    },
-    additionalProperties: false,
-  },
-  elicits: { choice: { responseSchema: choiceSchema } },
+  inputSchema: childInput.descriptor,
+  outputSchema: childOutput.descriptor,
+  elicits: { choice: { response: choiceSchema.descriptor } },
   effects: {
     [sampleDefinition.name]: sampleDefinition,
     [cleanupDefinition.name]: cleanupDefinition,
@@ -104,7 +137,7 @@ const parentManifest = defineDurableProgramManifest<null, ChildOutput>({
   programId: "fixture.parent",
   version: "1.0.0",
   digest: "b".repeat(64),
-  inputSchema: { type: "null" },
+  inputSchema: parentInput.descriptor,
   outputSchema: childManifest.outputSchema,
   elicits: {},
   effects: {},
@@ -138,13 +171,14 @@ describe("automatic local durable parent/child recovery", () => {
           round,
           suggestion: sampled.suggestion,
         });
-        const response = yield* context.elicit<Choice>(
+        const result = yield* context.elicit<Choice>(
           "choice",
           `Round ${round + 1}: ${sampled.suggestion}`,
-          choiceSchema,
+          choiceSchema.descriptor,
         );
-        answers.push(response.answer);
-        if (!response.continue) {
+        if (result.action !== "accept") break;
+        answers.push(result.content.answer);
+        if (!result.content.continue) {
           break;
         }
       }
@@ -204,6 +238,7 @@ describe("automatic local durable parent/child recovery", () => {
       journalId: "parent-child-integration",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: fixtureSchemas(),
     });
     const sessionId = "parent-child-session";
     const parentTaskId = "turn-0/root";
@@ -299,12 +334,15 @@ describe("automatic local durable parent/child recovery", () => {
           round: 0,
           suggestion: sampled.suggestion,
         });
-        const response = yield* context.elicit<Choice>(
+        const result = yield* context.elicit<Choice>(
           "choice",
           `Choose: ${sampled.suggestion}`,
-          choiceSchema,
+          choiceSchema.descriptor,
         );
-        return { rounds: 1, answers: [response.answer] };
+        return {
+          rounds: 1,
+          answers: result.action === "accept" ? [result.content.answer] : [],
+        };
       } catch (error) {
         if (error instanceof DurableProgramCancellation) {
           childCancellationCatches += 1;
@@ -352,6 +390,7 @@ describe("automatic local durable parent/child recovery", () => {
       journalId: "parent-child-integration",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: fixtureSchemas(),
     });
     const sessionId = "parent-child-cancellation-session";
     const parentTaskId = "turn-0/root";
@@ -491,6 +530,7 @@ function recreate(
     journalIncarnation: "1",
     keyring,
     snapshot: authority.exportSnapshot(),
+    schemaRegistry: fixtureSchemas(),
   });
 }
 
@@ -541,7 +581,7 @@ function* acceptPending(
   const result = yield* authority.resolve({
     capability: authority.resolutionCapability(sessionId, childTaskId, request.payload.pullId),
     audience: "user:choice",
-    outcome: { status: "ok", value },
+    outcome: { status: "ok", value: { action: "accept", content: value } },
   });
   if (result.status === "rejected") {
     throw new Error(result.code);

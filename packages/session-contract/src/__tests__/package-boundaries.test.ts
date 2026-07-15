@@ -9,8 +9,12 @@ describe("session-contract package boundaries", () => {
     const packageJson = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as {
       dependencies?: Record<string, string>;
     };
+    // @standard-schema/spec is an intentional, pinned interface-only
+    // dependency (unified tool contract design); Zod, framework, runtime, and
+    // Redis imports remain forbidden.
     expect(Object.keys(packageJson.dependencies ?? {}).sort()).toEqual([
       "@noble/hashes",
+      "@standard-schema/spec",
       "effection",
     ]);
 
@@ -32,6 +36,7 @@ describe("session-contract package boundaries", () => {
       expect(source, file).not.toContain("@sweatpants/framework");
       expect(source, file).not.toContain("@sweatpants/tool-runtime");
       expect(source, file).not.toContain(' from "redis"');
+      expect(source, file).not.toContain(' from "zod"');
     }
   });
 });

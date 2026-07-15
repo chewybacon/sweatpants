@@ -5,7 +5,7 @@
  * When a tool calls `ctx.elicit(key, {message})`, the runtime:
  * 1. Emits an ElicitRequest to the output channel
  * 2. Suspends waiting for a response via Signal
- * 3. Validates the response with Zod and resumes the generator
+ * 3. Validates accepted content through Standard Schema and resumes the generator
  *
  * This enables UI-driven elicitation where the client renders a component
  * and sends back the user's response.
@@ -32,6 +32,7 @@ import {
 } from "effection";
 import { z } from "zod";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
+import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/session-contract";
 import { validateToolParameters } from "../tool-parameters.ts";
 import type {
   McpToolContextWithElicits,
@@ -1014,18 +1015,31 @@ function createBridgeContext<TElicits extends ElicitsMap>(
             );
           }
 
-          // If accepted, validate content with Zod (use response schema)
+          // If accepted, validate content through the Standard Schema
+          // interface. Defaults/transforms run once here and parsed output
+          // becomes the tool-visible value.
           if (response.result.action === "accept") {
-            const parseResult = responseSchema.safeParse(response.result.content);
-            if (!parseResult.success) {
+            const parseResult = yield* validateStandardSchema(
+              responseSchema,
+              response.result.content,
+            );
+            if (parseResult.issues !== undefined) {
               throw new Error(
-                `Elicit response validation failed for key "${key}": ${parseResult.error.message}`,
+                `Elicit response validation failed for key "${key}": ${safeSchemaIssues(
+                  parseResult.issues,
+                )
+                  .map((issue) =>
+                    issue.path ? `${issue.path}: ${issue.message}` : issue.message,
+                  )
+                  .join("; ")}`,
               );
             }
 
             // Construct the exchange for the accept result using MCP format
             const toolCallId = `elicit_${id.callId}_${id.seq}`;
-            const parsedContent = parseResult.data;
+            // SAFETY: responseSchema is the exact declaration for K; its
+            // Standard Schema output is the tool-visible response type.
+            const parsedContent = parseResult.value as ExtractElicitResponse<TElicits[K]>;
 
             // Build request message (assistant with tool_use content)
             const requestMessage: ToolMessage & { role: "assistant" } = {

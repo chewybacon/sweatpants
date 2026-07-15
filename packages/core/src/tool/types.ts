@@ -1,13 +1,23 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { z, ZodSchema } from "zod";
+
+import type { ToolSchemaArtifacts } from "./contract.ts";
 
 // =============================================================================
 // Canonical core tool substrate
 // =============================================================================
 
 export type LogLevel = "debug" | "info" | "warning" | "error";
-export type InferSchema<T> = T extends ZodSchema<infer O> ? O : unknown;
-export type AnySchema<T = unknown> = ZodSchema<T>;
+/** Validated (output) type of a Standard Schema; Zod schemas satisfy this. */
+export type InferSchema<T> = T extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<T>
+  : unknown;
+/** Pre-validation (input) type of a Standard Schema; producers use this side. */
+export type InferSchemaInput<T> = T extends StandardSchemaV1
+  ? StandardSchemaV1.InferInput<T>
+  : unknown;
+export type AnySchema<T = unknown> = StandardSchemaV1<unknown, T>;
 
 export interface PerCallInterruptOptions {
   reason?: string;
@@ -73,6 +83,10 @@ export type ElicitsMap = Record<string, ElicitEntry<any, any>>;
 export type ExtractElicitResponse<E> =
   E extends ElicitDefinition<infer R, any> ? InferSchema<R> : InferSchema<E>;
 
+/** Pre-validation content type produced by plugin handlers (Standard Schema input side). */
+export type ExtractElicitResponseInput<E> =
+  E extends ElicitDefinition<infer R, any> ? InferSchemaInput<R> : InferSchemaInput<E>;
+
 export type ExtractElicitContext<E> = E extends { readonly context: infer C }
   ? InferSchema<C>
   : undefined;
@@ -81,15 +95,20 @@ export type ExtractElicitResponseSchema<E> = E extends ElicitDefinition<infer R,
 
 export type ExtractElicitContextSchema<E> = E extends { readonly context: infer C } ? C : undefined;
 
-export type NormalizedElicitDefinition<TResponse = unknown, TContext = unknown> = ElicitDefinition<
-  ZodSchema<TResponse>,
-  ZodSchema<TContext> | undefined
+export type NormalizedElicitDefinition<
+  TResponse = unknown,
+  TContext = unknown,
+  TResponseInput = TResponse,
+> = ElicitDefinition<
+  StandardSchemaV1<TResponseInput, TResponse>,
+  StandardSchemaV1<unknown, TContext> | undefined
 >;
 
 export type NormalizedElicitsMap<TElicits extends ElicitsMap = ElicitsMap> = {
   readonly [K in keyof TElicits]: NormalizedElicitDefinition<
     ExtractElicitResponse<TElicits[K]>,
-    ExtractElicitContext<TElicits[K]>
+    ExtractElicitContext<TElicits[K]>,
+    ExtractElicitResponseInput<TElicits[K]>
   >;
 };
 
@@ -459,15 +478,22 @@ export interface ToolDefinition<
   TSamples extends SamplesMap | true | undefined = undefined,
 > {
   (ctx: ToolCtx<TElicits, TSamples>): Operation<(input: TParams) => Operation<TResult>>;
+  /** Ordinary definitions execute through a callable Effection factory. */
+  readonly execution: "ordinary";
   readonly name: TName;
   readonly description: string;
-  readonly parameters: ZodSchema<TParams>;
-  readonly output?: ZodSchema<TResult>;
+  readonly parameters: StandardSchemaV1<unknown, TParams>;
+  readonly output?: StandardSchemaV1<unknown, TResult>;
   readonly elicits: NormalizedElicitsMap<TElicits>;
   readonly samples: TSamples extends SamplesMap
     ? NormalizedSamplesMap<TSamples>
     : Readonly<Record<string, never>>;
-  readonly schemas: { readonly input: ZodSchema<TParams>; readonly output?: ZodSchema<TResult> };
+  readonly schemas: {
+    readonly input: StandardSchemaV1<unknown, TParams>;
+    readonly output?: StandardSchemaV1<unknown, TResult>;
+  };
+  /** Retained portable schema projections and digest-keyed validator catalog. */
+  readonly artifacts: ToolSchemaArtifacts;
   readonly capabilities: { readonly elicitation: boolean; readonly sampling: boolean };
   readonly annotations: Readonly<Record<string, unknown>>;
   readonly extensions: readonly ToolExtensionMetadata[];

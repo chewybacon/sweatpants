@@ -1,5 +1,9 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { ZodSchema } from "zod";
+import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/session-contract";
+
+import { buildToolSchemaArtifacts } from "./artifacts.ts";
 import type {
   CreateToolBuilderBase,
   ToolCtx,
@@ -123,6 +127,16 @@ function finalizeCoreUnifiedTool(options: {
 }): ToolDefinition {
   const normalizedElicits = normalizeCoreElicits(options.elicits);
   const normalizedSamples = options.samples === true ? {} : normalizeCoreSamples(options.samples ?? {});
+  const artifacts = buildToolSchemaArtifacts({
+    identity: `tool:${options.name}`,
+    version: schemaVersionAnnotation(options.annotations),
+    parameters: options.parameters as StandardSchemaV1,
+    output: options.output as StandardSchemaV1 | undefined,
+    elicits: normalizedElicits as Record<
+      string,
+      ElicitDefinition<StandardSchemaV1, StandardSchemaV1 | undefined>
+    >,
+  });
   const factory = function unifiedToolFactory(
     ctx: ToolCtx,
   ): Operation<(input: unknown) => Operation<unknown>> {
@@ -130,23 +144,35 @@ function finalizeCoreUnifiedTool(options: {
       *[Symbol.iterator]() {
         const invoke = (input: unknown): Operation<unknown> =>
           (function* (): Operation<unknown> {
-            const parsed = options.parameters.safeParse(input);
-            if (!parsed.success || parsed.data === undefined) {
+            // Validation flows through the Standard Schema interface; sync or
+            // Promise-returning validators compose as Effection operations.
+            const parsed = yield* validateStandardSchema(
+              options.parameters as StandardSchemaV1,
+              input,
+            );
+            if (parsed.issues !== undefined || parsed.value === undefined) {
               throw codedToolError(
                 "invalid_tool_input",
-                `Invalid input for tool "${options.name}": ${parsed.error?.message ?? "validation failed"}`,
+                `Invalid input for tool "${options.name}": ${describeIssues(
+                  parsed.issues ?? undefined,
+                )}`,
               );
             }
-            const result = yield* options.impl(parsed.data, ctx);
+            const result = yield* options.impl(parsed.value, ctx);
             if (options.output) {
-              const parsedOutput = options.output.safeParse(result);
-              if (!parsedOutput.success || parsedOutput.data === undefined) {
+              const parsedOutput = yield* validateStandardSchema(
+                options.output as StandardSchemaV1,
+                result,
+              );
+              if (parsedOutput.issues !== undefined || parsedOutput.value === undefined) {
                 throw codedToolError(
                   "invalid_tool_output",
-                  `Invalid output for tool "${options.name}": ${parsedOutput.error?.message ?? "validation failed"}`,
+                  `Invalid output for tool "${options.name}": ${describeIssues(
+                    parsedOutput.issues ?? undefined,
+                  )}`,
                 );
               }
-              return parsedOutput.data;
+              return parsedOutput.value;
             }
             return result;
           })();
@@ -156,6 +182,7 @@ function finalizeCoreUnifiedTool(options: {
   };
 
   Object.defineProperties(factory, {
+    execution: { value: "ordinary", enumerable: true, writable: false, configurable: true },
     name: { value: options.name, enumerable: true, writable: false, configurable: true },
     description: {
       value: options.description,
@@ -188,6 +215,7 @@ function finalizeCoreUnifiedTool(options: {
       writable: false,
       configurable: true,
     },
+    artifacts: { value: artifacts, enumerable: true, writable: false, configurable: true },
     capabilities: {
       value: {
         elicitation: Object.keys(normalizedElicits).length > 0,
@@ -212,6 +240,20 @@ function finalizeCoreUnifiedTool(options: {
   });
 
   return factory as unknown as ToolDefinition;
+}
+
+function describeIssues(issues: readonly StandardSchemaV1.Issue[] | undefined): string {
+  if (!issues || issues.length === 0) {
+    return "validation failed";
+  }
+  return safeSchemaIssues(issues)
+    .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+    .join("; ");
+}
+
+function schemaVersionAnnotation(annotations: Record<string, unknown>): string {
+  const declared = annotations["sweatpants/schemaVersion"];
+  return typeof declared === "string" && declared ? declared : "1";
 }
 
 function codedToolError(code: string, message: string): Error & { code: string } {

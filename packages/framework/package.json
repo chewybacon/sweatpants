@@ -1,165 +1,166 @@
 {
-  "name": "@sweatpants/framework",
-  "version": "0.1.0",
-  "description": "Framework utilities for TanStack-based AI apps - tool discovery, codegen, and more",
-  "type": "module",
-  "exports": {
-    ".": {
-      "development": {
-        "import": "./src/lib/chat/index.ts",
-        "types": "./src/lib/chat/index.ts"
-      },
-      "import": {
-        "types": "./dist/lib/chat/index.d.ts",
-        "default": "./dist/index.js"
-      },
-      "require": {
-        "types": "./dist/lib/chat/index.d.ts",
-        "default": "./dist/index.cjs"
-      }
+    "name": "@sweatpants/framework",
+    "version": "0.1.0",
+    "description": "Framework utilities for TanStack-based AI apps - tool discovery, codegen, and more",
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/lib/chat/index.ts",
+                "types": "./src/lib/chat/index.ts"
+            },
+            "import": {
+                "types": "./dist/lib/chat/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/lib/chat/index.d.ts",
+                "default": "./dist/index.cjs"
+            }
+        },
+        "./server": {
+            "development": {
+                "import": "./src/server/index.ts",
+                "types": "./src/server/index.ts"
+            },
+            "import": {
+                "types": "./dist/server/index.d.ts",
+                "default": "./dist/server.js"
+            },
+            "require": {
+                "types": "./dist/server/index.d.ts",
+                "default": "./dist/server.cjs"
+            }
+        },
+        "./chat": {
+            "development": {
+                "import": "./src/lib/chat/index.ts",
+                "types": "./src/lib/chat/index.ts"
+            },
+            "import": {
+                "types": "./dist/lib/chat/index.d.ts",
+                "default": "./dist/chat.js"
+            },
+            "require": {
+                "types": "./dist/lib/chat/index.d.ts",
+                "default": "./dist/chat.cjs"
+            }
+        },
+        "./chat/durable-streams": {
+            "development": {
+                "import": "./src/lib/chat/durable-streams/index.ts",
+                "types": "./src/lib/chat/durable-streams/index.ts"
+            },
+            "import": {
+                "types": "./dist/lib/chat/durable-streams/index.d.ts",
+                "default": "./dist/chat/durable-streams.js"
+            },
+            "require": {
+                "types": "./dist/lib/chat/durable-streams/index.d.ts",
+                "default": "./dist/chat/durable-streams.cjs"
+            }
+        },
+        "./chat/browser-rendering": {
+            "development": {
+                "import": "./src/lib/chat/browser-rendering/index.ts",
+                "types": "./src/lib/chat/browser-rendering/index.ts"
+            },
+            "import": {
+                "types": "./dist/lib/chat/browser-rendering/index.d.ts",
+                "default": "./dist/chat/browser-rendering.js"
+            },
+            "require": {
+                "types": "./dist/lib/chat/browser-rendering/index.d.ts",
+                "default": "./dist/chat/browser-rendering.cjs"
+            }
+        },
+        "./chat/mcp-tools": {
+            "development": {
+                "import": "./src/lib/chat/mcp-tools/index.ts",
+                "types": "./src/lib/chat/mcp-tools/index.ts"
+            },
+            "import": {
+                "types": "./dist/lib/chat/mcp-tools/index.d.ts",
+                "default": "./dist/chat/mcp-tools.js"
+            },
+            "require": {
+                "types": "./dist/lib/chat/mcp-tools/index.d.ts",
+                "default": "./dist/chat/mcp-tools.cjs"
+            }
+        }
     },
-    "./server": {
-      "development": {
-        "import": "./src/server/index.ts",
-        "types": "./src/server/index.ts"
-      },
-      "import": {
-        "types": "./dist/server/index.d.ts",
-        "default": "./dist/server.js"
-      },
-      "require": {
-        "types": "./dist/server/index.d.ts",
-        "default": "./dist/server.cjs"
-      }
+    "files": [
+        "dist",
+        "src"
+    ],
+    "engines": {
+        "node": ">=22.19.0"
     },
-    "./chat": {
-      "development": {
-        "import": "./src/lib/chat/index.ts",
-        "types": "./src/lib/chat/index.ts"
-      },
-      "import": {
-        "types": "./dist/lib/chat/index.d.ts",
-        "default": "./dist/chat.js"
-      },
-      "require": {
-        "types": "./dist/lib/chat/index.d.ts",
-        "default": "./dist/chat.cjs"
-      }
+    "scripts": {
+        "build": "tsup && pnpm build:types",
+        "dev": "tsup --watch",
+        "check": "tsc -b",
+        "test": "vitest",
+        "test:acceptance": "vitest run acceptance",
+        "build:types": "tsc -b tsconfig.lib.json --force"
     },
-    "./chat/durable-streams": {
-      "development": {
-        "import": "./src/lib/chat/durable-streams/index.ts",
-        "types": "./src/lib/chat/durable-streams/index.ts"
-      },
-      "import": {
-        "types": "./dist/lib/chat/durable-streams/index.d.ts",
-        "default": "./dist/chat/durable-streams.js"
-      },
-      "require": {
-        "types": "./dist/lib/chat/durable-streams/index.d.ts",
-        "default": "./dist/chat/durable-streams.cjs"
-      }
+    "peerDependencies": {
+        "@effectionx/context-api": "^0.2.1",
+        "effection": ">=4.1.0-alpha.9 <5.0.0",
+        "zod": "^3.24.0 || ^4.0.0"
     },
-    "./chat/browser-rendering": {
-      "development": {
-        "import": "./src/lib/chat/browser-rendering/index.ts",
-        "types": "./src/lib/chat/browser-rendering/index.ts"
-      },
-      "import": {
-        "types": "./dist/lib/chat/browser-rendering/index.d.ts",
-        "default": "./dist/chat/browser-rendering.js"
-      },
-      "require": {
-        "types": "./dist/lib/chat/browser-rendering/index.d.ts",
-        "default": "./dist/chat/browser-rendering.cjs"
-      }
+    "peerDependenciesMeta": {
+        "vite": {
+            "optional": true
+        }
     },
-    "./chat/mcp-tools": {
-      "development": {
-        "import": "./src/lib/chat/mcp-tools/index.ts",
-        "types": "./src/lib/chat/mcp-tools/index.ts"
-      },
-      "import": {
-        "types": "./dist/lib/chat/mcp-tools/index.d.ts",
-        "default": "./dist/chat/mcp-tools.js"
-      },
-      "require": {
-        "types": "./dist/lib/chat/mcp-tools/index.d.ts",
-        "default": "./dist/chat/mcp-tools.cjs"
-      }
-    }
-  },
-  "files": [
-    "dist",
-    "src"
-  ],
-  "engines": {
-    "node": ">=22.19.0"
-  },
-  "scripts": {
-    "build": "tsup && pnpm build:types",
-    "dev": "tsup --watch",
-    "check": "tsc -b",
-    "test": "vitest",
-    "test:acceptance": "vitest run acceptance",
-    "build:types": "tsc -b tsconfig.lib.json --force"
-  },
-  "peerDependencies": {
-    "@effectionx/context-api": "^0.2.1",
-    "effection": ">=4.1.0-alpha.9 <5.0.0",
-    "zod": "^3.24.0 || ^4.0.0"
-  },
-  "peerDependenciesMeta": {
-    "vite": {
-      "optional": true
-    }
-  },
-  "dependencies": {
-    "@sweatpants/core": "workspace:*",
-    "@sweatpants/durable-streams": "workspace:*",
-    "@sweatpants/elicit-context": "workspace:*",
-    "@sweatpants/session-contract": "workspace:*",
-    "@sweatpants/stream-bridge": "workspace:*",
-    "pg": "^8.13.1",
-    "pino": "^9.6.0",
-    "pino-pretty": "^13.0.0",
-    "redis": "^4.7.0"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.24.0",
-    "@babel/preset-typescript": "^7.24.0",
-    "@babel/types": "^7.24.0",
-    "@effectionx/context-api": "catalog:",
-    "@effectionx/raf": "catalog:",
-    "@interactors/html": "^1.0.1",
-    "@sweatpants/ts-config": "workspace:*",
-    "@testing-library/react": "catalog:",
-    "@types/babel__core": "^7.20.5",
-    "@types/node": "catalog:",
-    "@types/pg": "^8.11.10",
-    "@types/react": "catalog:",
-    "clsx": "^2.1.1",
-    "effection": "catalog:",
-    "katex": "^0.16.27",
-    "marked": "^17.0.1",
-    "mermaid": "^11.12.2",
-    "react": "catalog:",
-    "shiki": "^3.20.0",
-    "tailwind-merge": "catalog:",
-    "tsup": "catalog:",
-    "typescript": "catalog:",
-    "vite": "catalog:",
-    "vitest": "catalog:",
-    "zod": "catalog:",
-    "fast-glob": "^3.3.2",
-    "magic-string": "catalog:"
-  },
-  "keywords": [
-    "vite",
-    "tanstack",
-    "framework",
-    "tools",
-    "codegen"
-  ],
-  "license": "MIT"
+    "dependencies": {
+        "@standard-schema/spec": "catalog:",
+        "@sweatpants/core": "workspace:*",
+        "@sweatpants/durable-streams": "workspace:*",
+        "@sweatpants/elicit-context": "workspace:*",
+        "@sweatpants/session-contract": "workspace:*",
+        "@sweatpants/stream-bridge": "workspace:*",
+        "pg": "^8.13.1",
+        "pino": "^9.6.0",
+        "pino-pretty": "^13.0.0",
+        "redis": "^4.7.0"
+    },
+    "devDependencies": {
+        "@babel/core": "^7.24.0",
+        "@babel/preset-typescript": "^7.24.0",
+        "@babel/types": "^7.24.0",
+        "@effectionx/context-api": "catalog:",
+        "@effectionx/raf": "catalog:",
+        "@interactors/html": "^1.0.1",
+        "@sweatpants/ts-config": "workspace:*",
+        "@testing-library/react": "catalog:",
+        "@types/babel__core": "^7.20.5",
+        "@types/node": "catalog:",
+        "@types/pg": "^8.11.10",
+        "@types/react": "catalog:",
+        "clsx": "^2.1.1",
+        "effection": "catalog:",
+        "katex": "^0.16.27",
+        "marked": "^17.0.1",
+        "mermaid": "^11.12.2",
+        "react": "catalog:",
+        "shiki": "^3.20.0",
+        "tailwind-merge": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vite": "catalog:",
+        "vitest": "catalog:",
+        "zod": "catalog:",
+        "fast-glob": "^3.3.2",
+        "magic-string": "catalog:"
+    },
+    "keywords": [
+        "vite",
+        "tanstack",
+        "framework",
+        "tools",
+        "codegen"
+    ],
+    "license": "MIT"
 }

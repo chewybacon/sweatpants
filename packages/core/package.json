@@ -95,6 +95,7 @@
         "test:acceptance": "vitest run acceptance"
     },
     "dependencies": {
+        "@standard-schema/spec": "catalog:",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:"
     },

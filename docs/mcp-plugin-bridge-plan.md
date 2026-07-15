@@ -33,7 +33,7 @@ Deliverable: TypeScript compilation passes; MCP unit tests updated/added.
 
 ## Phase 2 — Plugin artifact definition
 - [ ] Define `McpPlugin` interface:
-  - `server.tools` (server registration)
+  - `server.contract` + `server.execution` (execution-neutral, placement-aware registration)
   - `client` (client registration)
 - [ ] Implement `makePlugin(mcpTool)` builder:
   - `.onElicit({ ...handlers })` exhaustive map

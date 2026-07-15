@@ -61,15 +61,19 @@ export function toolDiscoveryPlugin(userOptions: ToolDiscoveryOptions = {}): Plu
         if (!ast) return null;
 
         let modified = false;
+        const localBuilders = importedBuilderBindings(ast.program.body, options);
 
         traverse(ast, {
           CallExpression(path) {
             const { node } = path;
 
-            const exportFunctionNames = options.exportFunctionName;
-
-            // Check if this is a recognized tool builder call
-            if (!t.isIdentifier(node.callee) || !exportFunctionNames.includes(node.callee.name)) {
+            // Check import provenance before recognizing a builder. Legacy
+            // exportFunctionName configuration remains a bare-name fallback.
+            if (
+              !t.isIdentifier(node.callee) ||
+              (!localBuilders.has(node.callee.name) &&
+                !options.exportFunctionName.includes(node.callee.name))
+            ) {
               return;
             }
 
@@ -202,6 +206,60 @@ function findEnclosingExportName(path: { parentPath: any }): string | null | und
   return undefined;
 }
 
+function importedBuilderBindings(
+  body: readonly t.Statement[],
+  options: ResolvedToolDiscoveryOptions,
+): Map<string, DiscoveredTool["execution"]> {
+  const bindings = new Map<string, DiscoveredTool["execution"]>();
+  for (const statement of body) {
+    if (!t.isImportDeclaration(statement)) continue;
+    const moduleName = statement.source.value;
+    for (const specifier of statement.specifiers) {
+      if (!t.isImportSpecifier(specifier)) continue;
+      const importedName = t.isIdentifier(specifier.imported)
+        ? specifier.imported.name
+        : specifier.imported.value;
+      const configured = options.builders.find(
+        (builder) =>
+          (builder.module === "*" || builder.module === moduleName) &&
+          builder.export === importedName,
+      );
+      if (configured) {
+        bindings.set(specifier.local.name, configured.execution);
+      }
+    }
+  }
+  return bindings;
+}
+
+function importedBuilderNamesFromContent(
+  content: string,
+  options: ResolvedToolDiscoveryOptions,
+): Map<string, DiscoveredTool["execution"]> {
+  const bindings = new Map<string, DiscoveredTool["execution"]>();
+  const imports = /import\s*\{([^}]+)\}\s*from\s*["']([^"']+)["']/g;
+  let match: RegExpExecArray | null;
+  while ((match = imports.exec(content)) !== null) {
+    const group = match[1] ?? "";
+    const moduleName = match[2] ?? "";
+    for (const raw of group.split(",")) {
+      const declaration = raw.trim().replace(/^type\s+/, "");
+      if (!declaration) continue;
+      const [imported, alias] = declaration.split(/\s+as\s+/).map((part) => part.trim());
+      if (!imported) continue;
+      const configured = options.builders.find(
+        (builder) =>
+          (builder.module === "*" || builder.module === moduleName) &&
+          builder.export === imported,
+      );
+      if (configured) {
+        bindings.set(alias || imported, configured.execution);
+      }
+    }
+  }
+  return bindings;
+}
+
 function isToolFile(
   file: string,
   toolsDir: string,
@@ -277,7 +335,7 @@ async function generateRegistry(
   const seen = new Map<string, string>(); // toolName -> filePath
   for (const tool of tools) {
     const existing = seen.get(tool.toolName);
-    if (existing && existing !== tool.filePath) {
+    if (existing) {
       throw new Error(
         `Duplicate tool name detected: '${tool.toolName}' (from ${tool.filePath}, conflicts with ${existing})`,
       );
@@ -323,7 +381,19 @@ export function discoverToolsInContent(
 ): DiscoveredTool[] {
   const tools: DiscoveredTool[] = [];
 
-  const fnNames = options.exportFunctionName;
+  const imported = importedBuilderNamesFromContent(content, options);
+  // Preserve the pre-release custom-name fallback for import-free fixture and
+  // legacy sources, while imported aliases always take precedence.
+  const localBuilders =
+    imported.size > 0
+      ? imported
+      : new Map(
+          options.exportFunctionName.map((name) => [name, "ordinary" as const]),
+        );
+  const fnNames = [...localBuilders.keys()];
+  if (fnNames.length === 0) {
+    return [];
+  }
   const fnPattern = fnNames.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
 
   // Helper to compute the final tool name for a discovered call.
@@ -341,13 +411,13 @@ export function discoverToolsInContent(
   // export const guessCard = createTool('guess_card')
   // export const guessCard = createTool()
   const namedExportRegex = new RegExp(
-    `export\\s+const\\s+(\\w+)\\s*=\\s*(?:${fnPattern})\\s*\\(([^)]*)\\)`,
+    `export\\s+const\\s+(\\w+)\\s*=\\s*(${fnPattern})\\s*\\(([^)]*)\\)`,
     "g",
   );
 
   while ((match = namedExportRegex.exec(content)) !== null) {
-    const [, exportName, argBody] = match;
-    if (!exportName) continue;
+    const [, exportName, builderName, argBody] = match;
+    if (!exportName || !builderName) continue;
     const explicitName = extractStringArg(argBody);
     const toolName = finalName(explicitName, exportName);
     tools.push({
@@ -355,6 +425,7 @@ export function discoverToolsInContent(
       absolutePath: file,
       exportName,
       toolName,
+      execution: localBuilders.get(builderName) ?? "ordinary",
       variableName: exportName,
     });
   }
@@ -363,18 +434,20 @@ export function discoverToolsInContent(
   // export default createTool('guess_card')
   // export default createTool()
   const defaultExportRegex = new RegExp(
-    `export\\s+default\\s+(?:${fnPattern})\\s*\\(([^)]*)\\)`,
+    `export\\s+default\\s+(${fnPattern})\\s*\\(([^)]*)\\)`,
     "g",
   );
 
   while ((match = defaultExportRegex.exec(content)) !== null) {
-    const [, argBody] = match;
+    const [, builderName, argBody] = match;
+    if (!builderName) continue;
     const explicitName = extractStringArg(argBody ?? "");
     const toolName = finalName(explicitName, undefined);
     tools.push({
       filePath: relative(toolsDir, file),
       absolutePath: file,
       toolName,
+      execution: localBuilders.get(builderName) ?? "ordinary",
       variableName: toCamelCase(toolName),
     });
   }
@@ -382,15 +455,25 @@ export function discoverToolsInContent(
   // Variable definition (not directly exported).
   // const guessCard = createTool('guess_card')
   // const guessCard = createTool()
-  const varDefRegex = new RegExp(`const\\s+(\\w+)\\s*=\\s*(?:${fnPattern})\\s*\\(([^)]*)\\)`, "g");
+  const varDefRegex = new RegExp(
+    `const\\s+(\\w+)\\s*=\\s*(${fnPattern})\\s*\\(([^)]*)\\)`,
+    "g",
+  );
 
-  const varDefs = new Map<string, { explicitName: string | undefined; toolName: string }>();
+  const varDefs = new Map<
+    string,
+    { explicitName: string | undefined; toolName: string; execution: DiscoveredTool["execution"] }
+  >();
   while ((match = varDefRegex.exec(content)) !== null) {
-    const [, varName, argBody] = match;
-    if (!varName) continue;
+    const [, varName, builderName, argBody] = match;
+    if (!varName || !builderName) continue;
     const explicitName = extractStringArg(argBody ?? "");
     const toolName = finalName(explicitName, varName);
-    varDefs.set(varName, { explicitName, toolName });
+    varDefs.set(varName, {
+      explicitName,
+      toolName,
+      execution: localBuilders.get(builderName) ?? "ordinary",
+    });
   }
 
   // Check for default export of a variable
@@ -406,6 +489,7 @@ export function discoverToolsInContent(
           filePath: relative(toolsDir, file),
           absolutePath: file,
           toolName: def.toolName,
+          execution: def.execution,
           variableName: varName,
         });
       }
@@ -435,6 +519,7 @@ export function discoverToolsInContent(
             absolutePath: file,
             exportName,
             toolName: def.toolName,
+            execution: def.execution,
             variableName: exportName,
           });
         }
@@ -498,6 +583,8 @@ export function generateRegistryContent(
   // Generate imports and registry
   const imports: string[] = [];
   const registryEntries: string[] = [];
+  const ordinaryEntries: string[] = [];
+  const durableEntries: string[] = [];
   const typeEntries: string[] = [];
 
   // Sort tools for deterministic output
@@ -514,6 +601,11 @@ export function generateRegistryContent(
     }
 
     registryEntries.push(`  ${tool.variableName},`);
+    if (tool.execution === "crank_native") {
+      durableEntries.push(`  '${tool.toolName}': ${tool.variableName},`);
+    } else {
+      ordinaryEntries.push(`  '${tool.toolName}': ${tool.variableName},`);
+    }
     typeEntries.push(`  | '${tool.toolName}'`);
   }
 
@@ -538,6 +630,36 @@ ${registryEntries.join("\n")}
  * Array of all tools (for runtime iteration).
  */
 export const toolList = Object.values(tools)
+
+/** Ordinary executable definitions only; safe for ToolSession/worker routing. */
+export const ordinaryTools = {
+${ordinaryEntries.join("\n")}
+} as const
+
+/** Crank-native definitions only; consumed by durable ProgramDriver placement. */
+export const durablePrograms = {
+${durableEntries.join("\n")}
+} as const
+
+/** Digest-keyed runtime validators reachable from generated contracts. */
+export const validatorCatalog = toolList.flatMap((tool) =>
+  'artifacts' in tool ? [...tool.artifacts.catalog] : []
+)
+
+/** Versioned catalogs published beside each exact crank-native definition. */
+export const durableValidatorCatalogs = Object.fromEntries(
+  Object.entries(durablePrograms).map(([name, tool]) => [
+    name,
+    {
+      program: {
+        id: tool.manifest.programId,
+        version: tool.manifest.version,
+        digest: tool.manifest.digest,
+      },
+      entries: [...tool.artifacts.catalog],
+    },
+  ])
+)
 
 /**
  * Union type of all tool names.
@@ -573,7 +695,9 @@ export function generateWorkerContent(
   // Worker files run as raw Node.js ESM with --experimental-strip-types,
   // which supports .ts but NOT .tsx (JSX requires transformation).
   // Skip .tsx files because raw Node.js workers do not transform JSX.
-  const workerCompatibleTools = tools.filter((t) => !t.absolutePath.endsWith(".tsx"));
+  const workerCompatibleTools = tools.filter(
+    (tool) => tool.execution === "ordinary" && !tool.absolutePath.endsWith(".tsx"),
+  );
   const sortedTools = [...workerCompatibleTools].sort((a, b) =>
     a.toolName.localeCompare(b.toolName),
   );

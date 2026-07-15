@@ -1,24 +1,20 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { defineDurableEffect } from "@sweatpants/session-contract";
+import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/session-contract";
 
 import { createDurableTool } from "../durable-create.ts";
+import { defineEffect, effectCatalogEntries } from "../durable-effect.ts";
 
-const echo = defineDurableEffect<string, { echoed: string }>({
+const echo = defineEffect({
   name: "echo",
   version: "1",
-  inputSchema: { type: "string" },
-  outputSchema: {
-    type: "object",
-    required: ["echoed"],
-    properties: { echoed: { type: "string" } },
-    additionalProperties: false,
-  },
+  input: z.string(),
+  output: z.object({ echoed: z.string() }),
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
 describe("createDurableTool fluent builder", () => {
-  it("lowers inferred output to schema true and supplies a stable default effect audience", () => {
+  it("lowers inferred output to the built-in any descriptor and supplies a stable default effect audience", () => {
     const tool = createDurableTool("durable.echo")
       .description("Echo durably")
       .identity({ version: "1.0.0", digest: "a".repeat(64) })
@@ -30,12 +26,13 @@ describe("createDurableTool fluent builder", () => {
 
     expect(tool.name).toBe("durable.echo");
     expect(tool.description).toBe("Echo durably");
-    expect(tool.manifest.outputSchema).toBe(true);
+    expect(tool.execution).toBe("crank_native");
+    expect(tool.manifest.outputSchema).toEqual(ANY_JSON_SCHEMA_DESCRIPTOR);
     expect(tool.manifest.effects).toEqual({ echo });
     expect(Object.isFrozen(tool)).toBe(true);
   });
 
-  it("uses refined Zod output and elicit schemas in the low-level manifest", () => {
+  it("lowers Zod output and elicit content schemas to portable descriptors in the manifest", () => {
     const tool = createDurableTool("durable.refined")
       .description("Refined")
       .identity({ version: "2", digest: "b".repeat(64) })
@@ -47,8 +44,29 @@ describe("createDurableTool fluent builder", () => {
         return yield* context.effect(echo, message);
       });
 
-    expect(tool.manifest.outputSchema).toMatchObject({ type: "object" });
-    expect(tool.manifest.elicits.approval?.responseSchema).toMatchObject({ type: "boolean" });
+    expect(tool.manifest.outputSchema.outputProjection).toMatchObject({ type: "object" });
+    expect(tool.manifest.outputSchema.role).toBe("program_output");
+    expect(tool.manifest.elicits.approval?.response.inputProjection).toMatchObject({
+      type: "boolean",
+    });
+    expect(tool.manifest.elicits.approval?.response.role).toBe("elicit_response");
+    // Artifacts retain the same descriptors plus a digest-keyed validator catalog.
+    expect(tool.artifacts.parameters).toEqual(tool.manifest.inputSchema);
+    expect(tool.artifacts.elicits["approval"]?.response).toEqual(
+      tool.manifest.elicits.approval?.response,
+    );
+    const digests = tool.artifacts.catalog.map((entry) => entry.descriptor.digest);
+    expect(digests).toContain(tool.manifest.inputSchema.digest);
+    expect(digests).toContain(tool.manifest.elicits.approval?.response.digest);
+    expect(digests).toContain(echo.inputSchema.digest);
+  });
+
+  it("publishes effect validator catalog entries beside authored definitions", () => {
+    const entries = effectCatalogEntries(echo);
+    expect(entries.map((entry) => entry.descriptor.digest)).toEqual([
+      echo.inputSchema.digest,
+      echo.outputSchema.digest,
+    ]);
   });
 
   it("rejects mutable or malformed identity at runtime", () => {
