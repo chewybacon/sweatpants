@@ -20,9 +20,11 @@ import { Route as ChatMathIndexRouteImport } from './routes/chat/math/index'
 import { Route as ChatFlightIndexRouteImport } from './routes/chat/flight/index'
 import { Route as ChatCardsIndexRouteImport } from './routes/chat/cards/index'
 import { Route as ChatBasicIndexRouteImport } from './routes/chat/basic/index'
+import { Route as LabDurabilityJournalRouteImport } from './routes/lab/durability/journal'
 import { Route as ApiThreadedChatThreadsIndexRouteImport } from './routes/api/threaded-chat/threads/index'
 import { Route as ApiThreadedChatThreadsThreadIdRouteImport } from './routes/api/threaded-chat/threads/$threadId'
 import { Route as ApiStreamsChatThreadIdRouteImport } from './routes/api/streams/chat/$threadId'
+import { Route as ApiDevJournalsConversationIdRouteImport } from './routes/api/dev/journals/$conversationId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -79,6 +81,11 @@ const ChatBasicIndexRoute = ChatBasicIndexRouteImport.update({
   path: '/chat/basic/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LabDurabilityJournalRoute = LabDurabilityJournalRouteImport.update({
+  id: '/lab/durability/journal',
+  path: '/lab/durability/journal',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiThreadedChatThreadsIndexRoute =
   ApiThreadedChatThreadsIndexRouteImport.update({
     id: '/api/threaded-chat/threads/',
@@ -96,11 +103,18 @@ const ApiStreamsChatThreadIdRoute = ApiStreamsChatThreadIdRouteImport.update({
   path: '/api/streams/chat/$threadId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDevJournalsConversationIdRoute =
+  ApiDevJournalsConversationIdRouteImport.update({
+    id: '/api/dev/journals/$conversationId',
+    path: '/api/dev/journals/$conversationId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
+  '/lab/durability/journal': typeof LabDurabilityJournalRoute
   '/chat/basic': typeof ChatBasicIndexRoute
   '/chat/cards': typeof ChatCardsIndexRoute
   '/chat/flight': typeof ChatFlightIndexRoute
@@ -109,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/chat/threaded': typeof ChatThreadedIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
   '/lab/durability': typeof LabDurabilityIndexRoute
+  '/api/dev/journals/$conversationId': typeof ApiDevJournalsConversationIdRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
@@ -117,6 +132,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
+  '/lab/durability/journal': typeof LabDurabilityJournalRoute
   '/chat/basic': typeof ChatBasicIndexRoute
   '/chat/cards': typeof ChatCardsIndexRoute
   '/chat/flight': typeof ChatFlightIndexRoute
@@ -125,6 +141,7 @@ export interface FileRoutesByTo {
   '/chat/threaded': typeof ChatThreadedIndexRoute
   '/chat/tictactoe': typeof ChatTictactoeIndexRoute
   '/lab/durability': typeof LabDurabilityIndexRoute
+  '/api/dev/journals/$conversationId': typeof ApiDevJournalsConversationIdRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads': typeof ApiThreadedChatThreadsIndexRoute
@@ -134,6 +151,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/api/chat': typeof ApiChatRoute
   '/api/hello-stream': typeof ApiHelloStreamRoute
+  '/lab/durability/journal': typeof LabDurabilityJournalRoute
   '/chat/basic/': typeof ChatBasicIndexRoute
   '/chat/cards/': typeof ChatCardsIndexRoute
   '/chat/flight/': typeof ChatFlightIndexRoute
@@ -142,6 +160,7 @@ export interface FileRoutesById {
   '/chat/threaded/': typeof ChatThreadedIndexRoute
   '/chat/tictactoe/': typeof ChatTictactoeIndexRoute
   '/lab/durability/': typeof LabDurabilityIndexRoute
+  '/api/dev/journals/$conversationId': typeof ApiDevJournalsConversationIdRoute
   '/api/streams/chat/$threadId': typeof ApiStreamsChatThreadIdRoute
   '/api/threaded-chat/threads/$threadId': typeof ApiThreadedChatThreadsThreadIdRoute
   '/api/threaded-chat/threads/': typeof ApiThreadedChatThreadsIndexRoute
@@ -152,6 +171,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/hello-stream'
+    | '/lab/durability/journal'
     | '/chat/basic'
     | '/chat/cards'
     | '/chat/flight'
@@ -160,6 +180,7 @@ export interface FileRouteTypes {
     | '/chat/threaded'
     | '/chat/tictactoe'
     | '/lab/durability'
+    | '/api/dev/journals/$conversationId'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads'
@@ -168,6 +189,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/hello-stream'
+    | '/lab/durability/journal'
     | '/chat/basic'
     | '/chat/cards'
     | '/chat/flight'
@@ -176,6 +198,7 @@ export interface FileRouteTypes {
     | '/chat/threaded'
     | '/chat/tictactoe'
     | '/lab/durability'
+    | '/api/dev/journals/$conversationId'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads'
@@ -184,6 +207,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/chat'
     | '/api/hello-stream'
+    | '/lab/durability/journal'
     | '/chat/basic/'
     | '/chat/cards/'
     | '/chat/flight/'
@@ -192,6 +216,7 @@ export interface FileRouteTypes {
     | '/chat/threaded/'
     | '/chat/tictactoe/'
     | '/lab/durability/'
+    | '/api/dev/journals/$conversationId'
     | '/api/streams/chat/$threadId'
     | '/api/threaded-chat/threads/$threadId'
     | '/api/threaded-chat/threads/'
@@ -201,6 +226,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiChatRoute: typeof ApiChatRoute
   ApiHelloStreamRoute: typeof ApiHelloStreamRoute
+  LabDurabilityJournalRoute: typeof LabDurabilityJournalRoute
   ChatBasicIndexRoute: typeof ChatBasicIndexRoute
   ChatCardsIndexRoute: typeof ChatCardsIndexRoute
   ChatFlightIndexRoute: typeof ChatFlightIndexRoute
@@ -209,6 +235,7 @@ export interface RootRouteChildren {
   ChatThreadedIndexRoute: typeof ChatThreadedIndexRoute
   ChatTictactoeIndexRoute: typeof ChatTictactoeIndexRoute
   LabDurabilityIndexRoute: typeof LabDurabilityIndexRoute
+  ApiDevJournalsConversationIdRoute: typeof ApiDevJournalsConversationIdRoute
   ApiStreamsChatThreadIdRoute: typeof ApiStreamsChatThreadIdRoute
   ApiThreadedChatThreadsThreadIdRoute: typeof ApiThreadedChatThreadsThreadIdRoute
   ApiThreadedChatThreadsIndexRoute: typeof ApiThreadedChatThreadsIndexRoute
@@ -293,6 +320,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatBasicIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/lab/durability/journal': {
+      id: '/lab/durability/journal'
+      path: '/lab/durability/journal'
+      fullPath: '/lab/durability/journal'
+      preLoaderRoute: typeof LabDurabilityJournalRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/threaded-chat/threads/': {
       id: '/api/threaded-chat/threads/'
       path: '/api/threaded-chat/threads'
@@ -314,6 +348,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStreamsChatThreadIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/dev/journals/$conversationId': {
+      id: '/api/dev/journals/$conversationId'
+      path: '/api/dev/journals/$conversationId'
+      fullPath: '/api/dev/journals/$conversationId'
+      preLoaderRoute: typeof ApiDevJournalsConversationIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -321,6 +362,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiChatRoute: ApiChatRoute,
   ApiHelloStreamRoute: ApiHelloStreamRoute,
+  LabDurabilityJournalRoute: LabDurabilityJournalRoute,
   ChatBasicIndexRoute: ChatBasicIndexRoute,
   ChatCardsIndexRoute: ChatCardsIndexRoute,
   ChatFlightIndexRoute: ChatFlightIndexRoute,
@@ -329,6 +371,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatThreadedIndexRoute: ChatThreadedIndexRoute,
   ChatTictactoeIndexRoute: ChatTictactoeIndexRoute,
   LabDurabilityIndexRoute: LabDurabilityIndexRoute,
+  ApiDevJournalsConversationIdRoute: ApiDevJournalsConversationIdRoute,
   ApiStreamsChatThreadIdRoute: ApiStreamsChatThreadIdRoute,
   ApiThreadedChatThreadsThreadIdRoute: ApiThreadedChatThreadsThreadIdRoute,
   ApiThreadedChatThreadsIndexRoute: ApiThreadedChatThreadsIndexRoute,

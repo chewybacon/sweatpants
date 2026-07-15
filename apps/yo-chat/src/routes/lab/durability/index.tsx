@@ -69,6 +69,20 @@ function DurabilityLabPage() {
           />
         </ol>
 
+        <section className="rounded-xl border border-cyan-800 bg-cyan-950/30 p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-2">Inspect durable execution</h2>
+          <p className="text-slate-300 mb-4">
+            Open the ProgramDriver semantic journal for a known conversation ID and inspect tasks,
+            pulls, outcomes, schema identities, cancellation, and emissions.
+          </p>
+          <Link
+            to="/lab/durability/journal"
+            className="inline-block rounded-lg bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium"
+          >
+            Open Journal Inspector
+          </Link>
+        </section>
+
         <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-6 mb-8">
           <h2 className="text-xl font-semibold mb-2">What you do not need</h2>
           <ul className="list-disc list-inside text-slate-300 space-y-1">

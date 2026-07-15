@@ -6,17 +6,13 @@ import {
   setupDurableStreams,
   type RetentionPolicy,
 } from "@sweatpants/framework/chat/durable-streams";
-import { CrankStoreContext, createInMemoryCrankStore } from "@sweatpants/framework/server";
-import { createRedisCrankStore, type CrankStore } from "@sweatpants/crank-store-redis";
 import { createRedisTokenBufferStore } from "@sweatpants/durable-streams/redis";
 import { getSharedRedisClient } from "@/lib/shared-redis";
 
 const sharedStorage = createSharedStorage<string>();
 const retainForeverPolicy: RetentionPolicy = { mode: "retain_forever" };
 
-/** Shared fenced replay-crank store. Redis replaces this development reference in production. */
-let crankStore: CrankStore = createInMemoryCrankStore();
-
+/** Installs response-stream buffering only; durable execution uses ProgramDriverJournalStore. */
 export function* setupYoChatDurableStreams(): Operation<void> {
   const client = yield* call(() => getSharedRedisClient());
 
@@ -26,8 +22,6 @@ export function* setupYoChatDurableStreams(): Operation<void> {
       registryStore: createInMemoryRegistryStore(),
       retentionPolicy: retainForeverPolicy,
     });
-    crankStore = createRedisCrankStore(client);
-    yield* CrankStoreContext.set(crankStore);
     return;
   }
 
@@ -37,5 +31,4 @@ export function* setupYoChatDurableStreams(): Operation<void> {
     registryStore,
     retentionPolicy: retainForeverPolicy,
   });
-  yield* CrankStoreContext.set(crankStore);
 }

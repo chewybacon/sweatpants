@@ -143,8 +143,6 @@ export {
   createChatHandler,
   createDurableChatHandler,
   createPluginSessionManager,
-  CrankStoreContext,
-  createInMemoryCrankStore,
   createCapabilityKeyring,
   createDurableTool,
   defineDurableEffect,
@@ -170,7 +168,6 @@ export { createStreamingHandler, useHandlerContext, HandlerContext } from "../ha
 
 /** Crank-native persistence, authoring, and driver contracts for server composition. */
 export type {
-  CrankStore,
   DurableProgramContext,
   DurableProgramManifest,
   DurableTool,
