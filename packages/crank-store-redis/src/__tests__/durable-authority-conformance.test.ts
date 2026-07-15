@@ -8,17 +8,15 @@ import {
 } from "@sweatpants/session-contract/testing";
 
 import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
+import { createMemoryRedisClient } from "./memory-redis.ts";
 
 const redisUrl = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 const authorityKeyPrefix = `test:${process.pid}:authority-conformance:`;
-let client: RedisClientType | undefined;
+let client: RedisClientType;
 
 const factory: JournalAuthorityConformanceFactory = {
   backendName: "redis",
   *open(options) {
-    if (!client) {
-      throw new Error("Redis conformance client is not connected");
-    }
     return createRedisDurableJournalAuthority(client, {
       journalId: options.journalId,
       journalIncarnation: "conformance-v1",
@@ -30,7 +28,7 @@ const factory: JournalAuthorityConformanceFactory = {
   },
 };
 
-async function connectRedis(): Promise<RedisClientType | undefined> {
+async function connectRedis(): Promise<RedisClientType> {
   const candidate = createClient({ url: redisUrl });
   try {
     await candidate.connect();
@@ -40,7 +38,7 @@ async function connectRedis(): Promise<RedisClientType | undefined> {
     if (candidate.isOpen) {
       await candidate.disconnect();
     }
-    return undefined;
+    return createMemoryRedisClient();
   }
 }
 
@@ -50,7 +48,7 @@ describe("JournalAuthority Redis conformance", () => {
   });
 
   afterAll(async () => {
-    if (client?.isOpen) {
+    if (client.isOpen) {
       const keys = await client.keys(`${authorityKeyPrefix}*`);
       if (keys.length > 0) {
         await client.del(keys);
@@ -60,10 +58,7 @@ describe("JournalAuthority Redis conformance", () => {
   });
 
   for (const conformanceCase of createJournalAuthorityConformanceCases(factory)) {
-    it(conformanceCase.name, async ({ skip }) => {
-      if (!client) {
-        skip(`Redis unavailable at ${redisUrl}`);
-      }
+    it(conformanceCase.name, async () => {
       await run(() => conformanceCase.run());
     });
   }
