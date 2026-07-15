@@ -46,6 +46,10 @@ export const DurableEffectRegistryContext = createContext<DurableEffectRegistry 
   "session-contract:durable-effect-registry",
   undefined,
 );
+/** Deployment-owned child placement policy; program code remains location-neutral. */
+export const ProgramRouteResolverContext = createContext<
+  ((program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>) | undefined
+>("session-contract:program-route-resolver", undefined);
 
 /** Binds a typed effect definition to a schema-parsing Effection handler. */
 export function createDurableEffectRegistration<
@@ -390,7 +394,11 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
         }
         if (reservation.status === "pending" && step.descriptor.kind === "invoke") {
           const child = step.descriptor.child;
-          const manifest = yield* ProgramPeer.operations.manifest(request.attach.route, child);
+          const routeResolver = yield* ProgramRouteResolverContext.get();
+          const childRoute = routeResolver
+            ? yield* routeResolver(child, request.attach.route)
+            : request.attach.route;
+          const manifest = yield* ProgramPeer.operations.manifest(childRoute, child);
           const childTask = yield* authority.ensureChildTask({
             sessionId: request.attach.sessionId,
             turnId: turnIdFor(request.attach.taskId),
@@ -409,7 +417,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
                 taskId: childTask.taskId,
                 program: child,
                 input: child.input,
-                route: request.attach.route,
+                route: childRoute,
                 executionEpoch: request.attach.executionEpoch,
               },
               ...(request.executeHostEffects !== undefined

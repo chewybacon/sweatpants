@@ -155,6 +155,7 @@ export {
   createInMemoryDurableJournalAuthority,
   createInMemoryProgramDriverJournalStore,
   ProgramDriverForeignEffectsContext,
+  ProgramDriverNativeToolsContext,
   ProgramRuntime,
   ProgramPeer,
   JournalAuthority,
@@ -178,6 +179,8 @@ export type {
   ProgramDriver,
   ProgramDriverJournal,
   ProgramDriverJournalStore,
+  ProgramDriverNativeToolBinding,
+  ProgramDriverNativeToolComposition,
   InMemoryProgramDriverJournalStoreOptions,
 } from "../handler/durable/index.ts";
 

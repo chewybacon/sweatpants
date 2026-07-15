@@ -185,6 +185,7 @@ export {
   JournalAuthority,
   JournalAuthorityContext,
   ProgramPeer,
+  ProgramRouteResolverContext,
   ProgramRuntime,
   appendDurableEmission,
   attachProgram,

@@ -1,6 +1,8 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import durableProgramWorkerUrl from "./durable-program-worker.ts?modulePath";
+
 const serverDir = dirname(fileURLToPath(import.meta.url));
 
 export const YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL = pathToFileURL(
@@ -18,6 +20,13 @@ export const yoChatToolSessionWorkerConfig: {
   isDev: false,
   execArgv: [...yoChatWorkerExecArgv],
 };
+
+export const yoChatDurableProgramWorkerUrl =
+  durableProgramWorkerUrl instanceof URL
+    ? durableProgramWorkerUrl
+    : typeof durableProgramWorkerUrl === "string"
+      ? new URL(durableProgramWorkerUrl, import.meta.url)
+      : pathToFileURL(resolve(serverDir, "./durable-program-worker-bootstrap.mjs"));
 
 export const yoChatTestToolSessionWorkerConfig: {
   workerUrl: URL;

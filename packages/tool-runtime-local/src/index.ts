@@ -37,6 +37,10 @@ export {
   type DurableWorkerProgramTransport,
 } from "./durable-driver.ts";
 export {
+  createLocalWorkerDurableProgramDriver,
+  type LocalWorkerDurableProgramDriverOptions,
+} from "./local-worker-durable-driver.ts";
+export {
   createToolSessionForeignEffectRegistrations,
   type ToolSessionForeignDriverOptions,
 } from "./foreign-tool-session.ts";

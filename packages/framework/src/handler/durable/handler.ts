@@ -45,6 +45,7 @@ import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
 import type { StreamEvent } from "../types.ts";
 import { createProgramDriverChatEngine } from "./program-driver-chat-engine.ts";
 import { useOptionalProgramDriverForeignEffects } from "./program-driver-effects.ts";
+import { useOptionalProgramDriverNativeTools } from "./program-driver-native-tools.ts";
 import { buildAgUiCustomState } from "../../lib/chat/session/ag-ui-checkpoint.ts";
 import {
   activitySnapshotsForMessages,
@@ -1168,6 +1169,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(body.parentRunId ? { parentRunId: body.parentRunId } : {}),
         };
         const programDriverForeignEffects = yield* useOptionalProgramDriverForeignEffects();
+        const programDriverNativeTools = yield* useOptionalProgramDriverNativeTools();
 
         const resumePreflightError =
           resumeValidation && !resumeValidation.ok ? resumeValidation : null;
@@ -1213,6 +1215,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
               ...(programDriverForeignEffects
                 ? { foreignEffects: programDriverForeignEffects }
                 : {}),
+              ...(programDriverNativeTools ? { nativeTools: programDriverNativeTools } : {}),
               ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
             });
         log.debug({ sessionId }, "new session path: chat engine created");

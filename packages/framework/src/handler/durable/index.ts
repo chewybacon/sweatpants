@@ -65,6 +65,12 @@ export type {
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
 export { createInMemoryProgramDriverJournalStore } from "./program-driver-journal.ts";
 export { ProgramDriverForeignEffectsContext } from "./program-driver-effects.ts";
+export {
+  ProgramDriverNativeToolsContext,
+  nativeProgramIdentities,
+  type ProgramDriverNativeToolBinding,
+  type ProgramDriverNativeToolComposition,
+} from "./program-driver-native-tools.ts";
 /** ProgramRuntime journal composition contracts. */
 export type {
   InMemoryProgramDriverJournalStoreOptions,

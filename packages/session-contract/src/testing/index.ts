@@ -4,6 +4,9 @@ export { canonicalSnapshot } from "../canonical.ts";
 /** Runtime contracts commonly required by external conformance fixtures. */
 export type { CrankRuntimeOptions, JournalRecord, ProgramFactory } from "../types.ts";
 export {
+  DURABLE_DRIVER_FIXTURE_TOOLS,
+  durableDriverCancellationFixtureTool,
+  durableDriverRecoveryFixtureTool,
   runDurableDriverCancellationFixture,
   runDurableDriverRecoveryFixture,
   type DurableDriverCancellationEvidence,
