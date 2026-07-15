@@ -39,10 +39,31 @@ export const ordinaryTools = {
   'tictactoe': tictactoeTool,
 } as const
 
-/** Crank-native definitions only; consumed by durable ProgramDriver placement. */
+/** Crank-native definitions only; consumed by host ProgramDriver placement. */
 export const durablePrograms = {
   'pick_card': pickCard,
 } as const
+
+/**
+ * Exact AgentCore evaluator registry, deliberately separate from ordinary
+ * ToolSession worker output. Runtime images look up only id@version#digest.
+ */
+export const agentCoreDurablePrograms = new Map(
+  Object.values(durablePrograms).map((tool) => [
+    `${tool.manifest.programId}@${tool.manifest.version}#${tool.manifest.digest}`,
+    tool,
+  ] as const)
+)
+
+/** Immutable deployment catalog used by release readiness reconciliation. */
+export const agentCoreDurableProgramCatalog = Object.values(durablePrograms).map((tool) => ({
+  publicName: tool.name,
+  program: {
+    id: tool.manifest.programId,
+    version: tool.manifest.version,
+    digest: tool.manifest.digest,
+  },
+}))
 
 /** Digest-keyed runtime validators reachable from generated contracts. */
 export const validatorCatalog = toolList.flatMap((tool) =>

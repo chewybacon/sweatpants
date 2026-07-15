@@ -249,8 +249,7 @@ function importedBuilderNamesFromContent(
       if (!imported) continue;
       const configured = options.builders.find(
         (builder) =>
-          (builder.module === "*" || builder.module === moduleName) &&
-          builder.export === imported,
+          (builder.module === "*" || builder.module === moduleName) && builder.export === imported,
       );
       if (configured) {
         bindings.set(alias || imported, configured.execution);
@@ -387,9 +386,7 @@ export function discoverToolsInContent(
   const localBuilders =
     imported.size > 0
       ? imported
-      : new Map(
-          options.exportFunctionName.map((name) => [name, "ordinary" as const]),
-        );
+      : new Map(options.exportFunctionName.map((name) => [name, "ordinary" as const]));
   const fnNames = [...localBuilders.keys()];
   if (fnNames.length === 0) {
     return [];
@@ -455,10 +452,7 @@ export function discoverToolsInContent(
   // Variable definition (not directly exported).
   // const guessCard = createTool('guess_card')
   // const guessCard = createTool()
-  const varDefRegex = new RegExp(
-    `const\\s+(\\w+)\\s*=\\s*(${fnPattern})\\s*\\(([^)]*)\\)`,
-    "g",
-  );
+  const varDefRegex = new RegExp(`const\\s+(\\w+)\\s*=\\s*(${fnPattern})\\s*\\(([^)]*)\\)`, "g");
 
   const varDefs = new Map<
     string,
@@ -636,10 +630,31 @@ export const ordinaryTools = {
 ${ordinaryEntries.join("\n")}
 } as const
 
-/** Crank-native definitions only; consumed by durable ProgramDriver placement. */
+/** Crank-native definitions only; consumed by host ProgramDriver placement. */
 export const durablePrograms = {
 ${durableEntries.join("\n")}
 } as const
+
+/**
+ * Exact AgentCore evaluator registry, deliberately separate from ordinary
+ * ToolSession worker output. Runtime images look up only id@version#digest.
+ */
+export const agentCoreDurablePrograms = new Map(
+  Object.values(durablePrograms).map((tool) => [
+    \`${"${tool.manifest.programId}"}@${"${tool.manifest.version}"}#${"${tool.manifest.digest}"}\`,
+    tool,
+  ] as const)
+)
+
+/** Immutable deployment catalog used by release readiness reconciliation. */
+export const agentCoreDurableProgramCatalog = Object.values(durablePrograms).map((tool) => ({
+  publicName: tool.name,
+  program: {
+    id: tool.manifest.programId,
+    version: tool.manifest.version,
+    digest: tool.manifest.digest,
+  },
+}))
 
 /** Digest-keyed runtime validators reachable from generated contracts. */
 export const validatorCatalog = toolList.flatMap((tool) =>

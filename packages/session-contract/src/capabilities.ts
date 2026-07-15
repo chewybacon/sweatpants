@@ -107,6 +107,62 @@ export function signCapability(
   return `${signingInput}.${base64url(signature)}`;
 }
 
+/** Signs host-private canonical JSON under a domain-separated purpose. */
+export function signPrivateAuthorityToken(
+  purpose: string,
+  claims: unknown,
+  keyring: CapabilityKeyring,
+): string {
+  if (!purpose) throw new CrankError("invalid_manifest", "Private token purpose is required");
+  const keyId = keyring.activeKeyId;
+  const key = keyringState(keyring).get(keyId);
+  if (!key || key.status !== "active") throw invalid();
+  const body = canonicalJson(claims);
+  const keyPart = base64url(encoder.encode(keyId));
+  const claimsPart = base64url(encoder.encode(body));
+  const signingInput = `pv1.${base64url(encoder.encode(purpose))}.${keyPart}.${claimsPart}`;
+  return `${signingInput}.${base64url(hmac(sha256, key.secret, encoder.encode(signingInput)))}`;
+}
+
+/** Verifies and returns host-private canonical JSON for one exact purpose. */
+export function verifyPrivateAuthorityToken(
+  token: string,
+  purpose: string,
+  keyring: CapabilityKeyring,
+): unknown {
+  try {
+    const [version, purposePart, keyPart, claimsPart, signaturePart, ...extra] = token.split(".");
+    if (
+      version !== "pv1" ||
+      !purposePart ||
+      !keyPart ||
+      !claimsPart ||
+      !signaturePart ||
+      extra.length
+    )
+      throw invalid();
+    if (new TextDecoder().decode(fromBase64url(purposePart)) !== purpose) throw invalid();
+    const keyId = new TextDecoder().decode(fromBase64url(keyPart));
+    const key = keyringState(keyring).get(keyId);
+    if (!key || key.status === "retired") throw invalid();
+    const signingInput = [version, purposePart, keyPart, claimsPart].join(".");
+    if (
+      !equalBytes(
+        hmac(sha256, key.secret, encoder.encode(signingInput)),
+        fromBase64url(signaturePart),
+      )
+    )
+      throw invalid();
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(fromBase64url(claimsPart));
+    const claims: unknown = JSON.parse(decoded);
+    if (canonicalJson(claims) !== decoded) throw invalid();
+    return claims;
+  } catch (error) {
+    if (error instanceof CrankError) throw error;
+    throw invalid();
+  }
+}
+
 /** Authenticates and parses an exact canonical capability DTO. */
 export function verifyCapability(token: string, keyring: CapabilityKeyring): CapabilityClaims {
   try {

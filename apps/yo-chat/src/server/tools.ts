@@ -44,11 +44,12 @@ function createToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
   };
 }
 
-/** Complete generated inventory sent to AgentCore when that runtime is selected. */
-export function activeAgentCoreToolNames(): string[] {
-  // No crank-native AgentCore ProgramDriver is installed yet; availability
-  // projection omits durable contracts instead of routing an ordinary twin.
-  return Object.values(ordinaryTools).map((tool) => tool.name);
+/** Complete AgentCore inventory; durable pick_card appears only after exact readiness. */
+export function activeAgentCoreToolNames(durablePickCardReady = false): string[] {
+  return [
+    ...Object.values(ordinaryTools).map((tool) => tool.name),
+    ...(durablePickCardReady ? [pickCard.name] : []),
+  ];
 }
 
 const pluginClients = pluginToolModules.map(({ plugin }) => plugin.client);

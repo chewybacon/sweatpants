@@ -4,8 +4,10 @@ import type {
   ProgramAttachment,
   ProgramCommand,
   ProgramDriver,
+  ProgramRestoreRequest,
   ProgramShutdownReason,
   ProgramStep,
+  RestoredProgramAttachment,
 } from "@sweatpants/session-contract";
 
 /**
@@ -17,6 +19,7 @@ export interface AgentCoreDurableProgramTransport {
   attach(request: AttachProgramRequest): Operation<ProgramAttachment>;
   step(attachment: ProgramAttachment, command: ProgramCommand): Operation<ProgramStep>;
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
+  restore?(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment>;
 }
 
 /** Creates an AgentCore transport driver; the caller owns the scoped client and cancellation. */
@@ -34,5 +37,16 @@ export function createAgentCoreDurableProgramDriver(
     *shutdown(attachment, reason) {
       yield* transport.shutdown(attachment, reason);
     },
+    ...(transport.restore
+      ? {
+          *restore(request: ProgramRestoreRequest) {
+            const restored = yield* transport.restore!(request);
+            return {
+              ...restored,
+              attachment: { ...restored.attachment, driverKind: "agentcore" },
+            };
+          },
+        }
+      : {}),
   };
 }
