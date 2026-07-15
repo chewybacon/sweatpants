@@ -3,28 +3,30 @@ import { run } from "effection";
 import { createClient, type RedisClientType } from "redis";
 
 import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
   createCapabilityKeyring,
   type AttachProgramRequest,
   type DurableProgramManifest,
 } from "@sweatpants/session-contract";
 
 import { createRedisCrankStore, createRedisDurableJournalAuthority } from "../index.ts";
+import { createMemoryRedisClient } from "./memory-redis.ts";
 
 const url = process.env["REDIS_URL"] ?? "redis://localhost:6379";
 const keyPrefix = `test:${process.pid}:redis-store:`;
 
-async function available(): Promise<boolean> {
-  const client = createClient({ url });
+async function connectRedis(): Promise<RedisClientType> {
+  const candidate = createClient({ url });
   try {
-    await client.connect();
-    await client.ping();
-    return true;
+    await candidate.connect();
+    await candidate.ping();
+    return candidate;
   } catch {
-    return false;
-  } finally {
-    if (client.isOpen) {
-      await client.disconnect();
+    if (candidate.isOpen) {
+      await candidate.disconnect();
     }
+    return createMemoryRedisClient();
   }
 }
 
@@ -33,16 +35,12 @@ describe("RedisCrankStore", () => {
   let enabled = false;
 
   beforeAll(async () => {
-    enabled = await available();
-    if (!enabled) {
-      return;
-    }
-    client = createClient({ url });
-    await client.connect();
+    client = await connectRedis();
+    enabled = true;
   });
 
   afterAll(async () => {
-    if (enabled && client.isOpen) {
+    if (client.isOpen) {
       const keys = await client.keys(`${keyPrefix}*`);
       if (keys.length > 0) {
         await client.del(keys);
@@ -121,15 +119,15 @@ describe("RedisCrankStore", () => {
       programId: "redis.fixture",
       version: "1",
       digest: "a".repeat(64),
-      inputSchema: { type: "null" },
-      outputSchema: true,
-      elicits: { approval: { responseSchema: { type: "boolean" } } },
+      inputSchema: NULL_RESULT_SCHEMA_DESCRIPTOR,
+      outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
+      elicits: { approval: { response: ANY_JSON_SCHEMA_DESCRIPTOR } },
       effects: {
         echo: {
           name: "echo",
           version: "1",
-          inputSchema: true,
-          outputSchema: true,
+          inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
+          outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
           retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
         },
       },
@@ -206,7 +204,7 @@ describe("RedisCrankStore", () => {
           kind: "elicit",
           key: "approval",
           message: "Approve?",
-          responseSchema: { type: "boolean" },
+          response: ANY_JSON_SCHEMA_DESCRIPTOR,
         },
         programCapability: opened.programCapability,
       });
@@ -223,7 +221,7 @@ describe("RedisCrankStore", () => {
         yield* second.resolve({
           capability: recoveredCapability,
           audience: "user:approval",
-          outcome: { status: "ok", value: true },
+          outcome: { status: "ok", value: { action: "accept", content: true } },
         }),
       ).toMatchObject({ status: "accepted" });
       expect(yield* first.runnableSessions()).toEqual(["durable-session"]);
@@ -249,8 +247,8 @@ describe("RedisCrankStore", () => {
       programId: "redis.parent",
       version: "1",
       digest: "1".repeat(64),
-      inputSchema: { type: "null" },
-      outputSchema: true,
+      inputSchema: NULL_RESULT_SCHEMA_DESCRIPTOR,
+      outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
       elicits: {},
       effects: {},
       capabilities: {
@@ -263,8 +261,8 @@ describe("RedisCrankStore", () => {
       programId: "redis.child",
       version: "1",
       digest: "2".repeat(64),
-      inputSchema: { type: "object" },
-      outputSchema: true,
+      inputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
+      outputSchema: ANY_JSON_SCHEMA_DESCRIPTOR,
       elicits: {},
       effects: {},
       capabilities: {

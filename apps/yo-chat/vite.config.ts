@@ -43,7 +43,9 @@ const config = defineConfig({
     // import and makes esbuild choke on the query-laden .ts path. Tests mock the
     // worker URL directly; real dev/prod builds keep the plugin.
     ...(process.env["VITEST"] ? [] : [nodeWorkerPlugin()]),
-    devtools(),
+    // The devtools event bus binds a fixed auxiliary port; omit it from the
+    // isolated Playwright server so it can run beside a developer instance.
+    ...(process.env["PLAYWRIGHT_TEST_SERVER"] === "1" ? [] : [devtools()]),
     viteTsConfigPaths({
       projects: ["./tsconfig.json"],
     }),

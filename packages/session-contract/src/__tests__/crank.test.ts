@@ -405,7 +405,9 @@ describe("replay crank", () => {
   });
 
   it("rejects non-canonical sparse, symbol-keyed, and invalid Unicode inputs", () => {
-    expect(() => canonicalSnapshot(new Array(1))).toThrow(/sparse array/);
+    const sparse: unknown[] = [];
+    sparse.length = 1;
+    expect(() => canonicalSnapshot(sparse)).toThrow(/sparse array/);
     expect(() => canonicalSnapshot({ [Symbol("secret")]: 1 })).toThrow(/symbol-keyed/);
     expect(() => canonicalSnapshot("\ud800")).toThrow(/lone high surrogate/);
   });
