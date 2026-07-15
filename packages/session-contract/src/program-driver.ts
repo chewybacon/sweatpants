@@ -1,7 +1,7 @@
 import { createContext, type Operation } from "effection";
 
 import {
-  assertSchemaValue,
+  assertReplayedCanonicalValue,
   createDurableProgramContext,
   serializeDurableError,
   DurableProgramCancellation,
@@ -23,7 +23,7 @@ import type {
 } from "./durable-types.ts";
 
 /** Program-ID keyed immutable registry of crank-native tool definitions. */
-export type DurableToolRegistry = ReadonlyMap<string, DurableTool>;
+export type DurableToolRegistry = ReadonlyMap<string, DurableTool<any, any>>;
 /** Driver-kind keyed immutable registry installed in an Effection scope. */
 export type ProgramDriverRegistry = ReadonlyMap<string, ProgramDriver>;
 
@@ -39,8 +39,10 @@ export const ProgramDriverRegistryContext = createContext<ProgramDriverRegistry 
 );
 
 /** Builds a registry and rejects duplicate program IDs. */
-export function createDurableToolRegistry(tools: Iterable<DurableTool>): DurableToolRegistry {
-  const registry = new Map<string, DurableTool>();
+export function createDurableToolRegistry(
+  tools: Iterable<DurableTool<any, any>>,
+): DurableToolRegistry {
+  const registry = new Map<string, DurableTool<any, any>>();
   for (const tool of tools) {
     const key = programKey(tool.manifest.programId, tool.manifest.version, tool.manifest.digest);
     if (registry.has(key)) {
@@ -78,7 +80,7 @@ export function* useProgramDriverRegistry(): Operation<ProgramDriverRegistry> {
 
 type GeneratorState = {
   request: AttachProgramRequest;
-  tool: DurableTool;
+  tool: DurableTool<any, any>;
   generator?: DurableProgramGenerator;
   pending?: ProgramStepProposal;
   actionIndex: number;
@@ -104,11 +106,9 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
       if (!tool) {
         throw new CrankError("program_version_unavailable", `No exact program bundle for ${key}`);
       }
-      const input = assertSchemaValue(
-        tool.manifest.inputSchema,
-        request.input,
-        "invalid_descriptor",
-      );
+      // Attachment input was validated once at the authority acceptance
+      // boundary; replay only re-checks canonical structure (DR-023).
+      const input = assertReplayedCanonicalValue(request.input, "invalid_descriptor");
       const canonicalRoute = canonicalSnapshot(request.route).value;
       const attachmentId = nextProgramAttachmentId(request);
       const state: GeneratorState = {
@@ -139,11 +139,7 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
         if (state.started) {
           throw protocol("start repeated");
         }
-        const input = assertSchemaValue(
-          state.tool.manifest.inputSchema,
-          command.input,
-          "invalid_descriptor",
-        );
+        const input = assertReplayedCanonicalValue(command.input, "invalid_descriptor");
         if (canonicalSnapshot(input).sha !== canonicalSnapshot(state.request.input).sha) {
           throw protocol("start input mismatch");
         }
@@ -240,11 +236,9 @@ function advance(
     if (result.done) {
       delete state.pending;
       state.terminal = true;
-      const value = assertSchemaValue(
-        state.tool.manifest.outputSchema,
-        result.value,
-        "schema_validation_failed",
-      );
+      // Output is validated exactly once by the authority's registry-backed
+      // complete(); the driver only enforces canonical JSON structure.
+      const value = assertReplayedCanonicalValue(result.value, "schema_validation_failed");
       return { type: "completed", actionIndex: state.actionIndex, value };
     }
     validateProposal(result.value);

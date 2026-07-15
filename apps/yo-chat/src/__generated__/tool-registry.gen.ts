@@ -8,7 +8,7 @@
 import { askQuestion } from '../tools/general/ask-question/tool'
 import { bookFlightTool } from '../tools/book-flight/tool'
 import { calculator } from '../tools/calculator'
-import { pickCard } from '../tools/pick-card/tool'
+import { pickCard } from '../tools/pick-card/durable'
 import { playTttTool } from '../tools/play-ttt/tool'
 import { tictactoeTool } from '../tools/tictactoe/tool'
 
@@ -29,6 +29,40 @@ export const tools = {
  * Array of all tools (for runtime iteration).
  */
 export const toolList = Object.values(tools)
+
+/** Ordinary executable definitions only; safe for ToolSession/worker routing. */
+export const ordinaryTools = {
+  'ask_question': askQuestion,
+  'book_flight': bookFlightTool,
+  'calculator': calculator,
+  'play_ttt': playTttTool,
+  'tictactoe': tictactoeTool,
+} as const
+
+/** Crank-native definitions only; consumed by durable ProgramDriver placement. */
+export const durablePrograms = {
+  'pick_card': pickCard,
+} as const
+
+/** Digest-keyed runtime validators reachable from generated contracts. */
+export const validatorCatalog = toolList.flatMap((tool) =>
+  'artifacts' in tool ? [...tool.artifacts.catalog] : []
+)
+
+/** Versioned catalogs published beside each exact crank-native definition. */
+export const durableValidatorCatalogs = Object.fromEntries(
+  Object.entries(durablePrograms).map(([name, tool]) => [
+    name,
+    {
+      program: {
+        id: tool.manifest.programId,
+        version: tool.manifest.version,
+        digest: tool.manifest.digest,
+      },
+      entries: [...tool.artifacts.catalog],
+    },
+  ])
+)
 
 /**
  * Union type of all tool names.

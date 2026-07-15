@@ -1,6 +1,18 @@
 import type { Operation } from "effection";
 
-import { assertInlineSize, assertSchemaValue, DEFAULT_MAX_INLINE_BYTES } from "./authoring.ts";
+import { assertInlineSize, DEFAULT_MAX_INLINE_BYTES } from "./authoring.ts";
+import {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+} from "./schema-descriptor.ts";
+import {
+  createDurableSchemaRegistry,
+  validateRegisteredSchema,
+  type DurableSchemaRegistry,
+  type RegistrySchemaValidation,
+} from "./schema-registry.ts";
 import {
   signCapability,
   verifyProgramCapability,
@@ -121,7 +133,7 @@ export type DurableSemanticRecord = {
         type: "CancellationPartialDiscarded";
         taskId: string;
         pullId: string;
-        reason: "schema_validation_failed" | "payload_too_large";
+        reason: "schema_validation_failed" | "payload_too_large" | "schema_version_unavailable";
       }
     | {
         type: "AttemptOutcomeUnknown";
@@ -157,7 +169,7 @@ type Pull = {
   descriptor: DurableOperationDescriptor;
   descriptorDigest: string;
   effectiveDescriptor: DurableOperationDescriptor;
-  resultSchema: Json;
+  resultDescriptor: PortableSchemaDescriptor;
   resultSchemaDigest: string;
   audience: string;
   maxOutcomeBytes: number;
@@ -213,6 +225,13 @@ export interface InMemoryDurableJournalOptions {
   now?: () => number;
   maxOutcomeBytes?: number;
   snapshot?: DurableAuthoritySnapshot;
+  /**
+   * Digest-keyed Standard Schema validator registry used for every ownerless
+   * command-lane validation. Defaults to the built-in registry (null/any and
+   * the foreign adapter catalog); deployments merge their generated validator
+   * catalogs into this registry.
+   */
+  schemaRegistry?: DurableSchemaRegistry;
 }
 
 /** Complete root/child task identity and pinned program input required to open a task. */
@@ -237,9 +256,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   readonly #tasks = new Map<string, Task>();
   readonly #records = new Map<string, DurableSemanticRecord[]>();
   readonly #runnable = new Set<string>();
-  readonly #options: Required<Omit<InMemoryDurableJournalOptions, "keyring" | "snapshot">> & {
+  readonly #options: Required<
+    Omit<InMemoryDurableJournalOptions, "keyring" | "snapshot" | "schemaRegistry">
+  > & {
     keyring: CapabilityKeyring;
   };
+  readonly #schemas: DurableSchemaRegistry;
   #nonce = 0;
 
   /** Creates an empty authority or restores a previously parsed snapshot. */
@@ -247,12 +269,14 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (!options.journalId) {
       throw new CrankError("invalid_manifest", "journalId is required");
     }
+    const { schemaRegistry, ...rest } = options;
     this.#options = {
-      ...options,
+      ...rest,
       journalIncarnation: options.journalIncarnation ?? "1",
       now: options.now ?? Date.now,
       maxOutcomeBytes: options.maxOutcomeBytes ?? DEFAULT_MAX_INLINE_BYTES,
     };
+    this.#schemas = schemaRegistry ?? createDurableSchemaRegistry();
     if (options.snapshot) {
       this.#restore(options.snapshot);
     }
@@ -264,11 +288,16 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (this.#tasks.has(key)) {
       throw new CrankError("invalid_journal", "Task already exists");
     }
-    const input = assertSchemaValue(
-      request.manifest.inputSchema,
+    const input = yield* this.#validateThroughRegistry(
+      request.manifest.inputSchema.digest,
       request.input,
       "invalid_descriptor",
     );
+    // Async validation re-entry: reject if a competing open won while the
+    // registry validator awaited.
+    if (this.#tasks.has(key)) {
+      throw new CrankError("invalid_journal", "Task already exists");
+    }
     assertInlineSize(input, this.#options.maxOutcomeBytes);
     const task: Task = {
       ...request,
@@ -441,25 +470,34 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         resolutionCapability: existing.capability,
       };
     }
-    if (
-      task.cancellation.type !== "none" &&
-      task.cancellation.type !== "unwinding" &&
-      task.cancellation.type !== "cancelled" &&
-      task.cancellation.type !== "orphaned" &&
-      request.actionIndex >= task.cancellation.frontier.actionIndex
-    ) {
-      throw new CrankError("cancellation_blocked", "Cancellation must unwind before new work");
-    }
-    if (request.actionIndex !== task.nextActionIndex || request.pullIndex !== task.nextPullIndex) {
-      throw new CrankError("nondeterminism_detected", "Task-local action or pull cursor mismatch");
-    }
+    const verifyReservable = () => {
+      this.#assertProgram(request.programCapability, task);
+      this.#assertActive(task);
+      if (request.turnId !== task.turnId) {
+        throw new CrankError("invalid_descriptor", "Turn identity mismatch");
+      }
+      if (
+        task.cancellation.type !== "none" &&
+        task.cancellation.type !== "unwinding" &&
+        task.cancellation.type !== "cancelled" &&
+        task.cancellation.type !== "orphaned" &&
+        request.actionIndex >= task.cancellation.frontier.actionIndex
+      ) {
+        throw new CrankError("cancellation_blocked", "Cancellation must unwind before new work");
+      }
+      if (
+        request.actionIndex !== task.nextActionIndex ||
+        request.pullIndex !== task.nextPullIndex ||
+        task.pullsByAction.has(request.actionIndex)
+      ) {
+        throw new CrankError(
+          "nondeterminism_detected",
+          "Task-local action or pull cursor mismatch",
+        );
+      }
+    };
+    verifyReservable();
     const policy = operationPolicy(task.manifest, descriptor);
-    const pullId = stableOpaqueId("pull", [
-      request.sessionId,
-      request.turnId,
-      request.taskId,
-      request.pullIndex,
-    ]);
     let effectiveDescriptor = descriptor;
     if (descriptor.kind === "wait" && descriptor.durationMs !== undefined) {
       effectiveDescriptor = {
@@ -467,6 +505,33 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         notBefore: new Date(this.#options.now() + descriptor.durationMs).toISOString(),
       };
     }
+    if (descriptor.kind === "effect") {
+      // Effect input transforms/defaults run exactly once here; the canonical
+      // parsed input becomes the durable effective descriptor.
+      const parsedInput = yield* this.#validateThroughRegistry(
+        policy.inputDigest!,
+        descriptor.input,
+        "invalid_descriptor",
+      );
+      effectiveDescriptor = { ...descriptor, input: parsedInput };
+    }
+    if (descriptor.kind === "elicit" && policy.contextDigest && descriptor.context !== undefined) {
+      const parsedContext = yield* this.#validateThroughRegistry(
+        policy.contextDigest,
+        descriptor.context,
+        "invalid_descriptor",
+      );
+      effectiveDescriptor = { ...descriptor, context: parsedContext };
+    }
+    // Registry validators may await; re-verify authentication, task state, and
+    // cursors immediately before the append.
+    verifyReservable();
+    const pullId = stableOpaqueId("pull", [
+      request.sessionId,
+      request.turnId,
+      request.taskId,
+      request.pullIndex,
+    ]);
     const pull: Pull = {
       pullId,
       actionIndex: request.actionIndex,
@@ -474,8 +539,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       descriptor,
       descriptorDigest,
       effectiveDescriptor,
-      resultSchema: policy.resultSchema,
-      resultSchemaDigest: canonicalSnapshot(policy.resultSchema).sha,
+      resultDescriptor: policy.resultDescriptor,
+      resultSchemaDigest: policy.resultDescriptor.digest,
       audience: policy.audience,
       maxOutcomeBytes: this.#options.maxOutcomeBytes,
       attempts: [],
@@ -537,72 +602,157 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (!pull) {
       return { status: "rejected", code: "pull_not_found" };
     }
-    if (
-      pull.descriptorDigest !== claims.descriptorDigest ||
-      pull.resultSchemaDigest !== claims.resultSchemaDigest
-    ) {
-      return { status: "rejected", code: "invalid_resolution_capability" };
-    }
     const attempt =
       claims.attemptId === "none"
         ? undefined
         : pull.attempts.find((candidate) => candidate.attemptId === claims.attemptId);
-    if (
-      pull.revoked ||
-      (claims.attemptId !== "none" && (!attempt || attempt.state === "revoked"))
-    ) {
-      return { status: "rejected", code: "capability_revoked" };
-    }
-    if (task.status !== "active") {
-      return { status: "rejected", code: "task_terminal" };
+    const verifyResolvable = (): Extract<ResolveOperationResult, { status: "rejected" }> | undefined => {
+      if (
+        pull.descriptorDigest !== claims.descriptorDigest ||
+        pull.resultSchemaDigest !== claims.resultSchemaDigest
+      ) {
+        return { status: "rejected", code: "invalid_resolution_capability" };
+      }
+      if (
+        pull.revoked ||
+        (claims.attemptId !== "none" && (!attempt || attempt.state === "revoked"))
+      ) {
+        return { status: "rejected", code: "capability_revoked" };
+      }
+      if (task.status !== "active") {
+        return { status: "rejected", code: "task_terminal" };
+      }
+      return undefined;
+    };
+    const preRejection = verifyResolvable();
+    if (preRejection) {
+      return preRejection;
     }
     let outcome: OperationOutcome;
     try {
       outcome = snapshotOutcome(request.outcome);
-      if (outcome.status === "cancelled" && outcome.partial !== undefined) {
-        const definition =
-          pull.descriptor.kind === "effect"
-            ? task.manifest.effects[pull.descriptor.name]
-            : undefined;
-        try {
-          if (!definition?.cancellation) {
-            throw new CrankError("schema_validation_failed");
+    } catch {
+      return { status: "rejected", code: "schema_validation_failed" };
+    }
+    if (outcome.status === "cancelled" && outcome.partial !== undefined) {
+      // Cancellation itself never requires payload validation; an unusable
+      // partial is durably discarded rather than blocking the cancellation.
+      const definition =
+        pull.descriptor.kind === "effect" ? task.manifest.effects[pull.descriptor.name] : undefined;
+      let reason: "schema_validation_failed" | "payload_too_large" | "schema_version_unavailable";
+      let partial: Json | undefined;
+      if (!definition?.cancellation) {
+        reason = "schema_validation_failed";
+      } else {
+        const validated = yield* validateRegisteredSchema(
+          this.#schemas,
+          definition.cancellation.partialSchema.digest,
+          outcome.partial,
+        );
+        if (validated.status === "ok") {
+          try {
+            assertInlineSize(validated.value, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+            partial = validated.value;
+            reason = "schema_validation_failed";
+          } catch {
+            reason = "payload_too_large";
           }
-          const partial = assertSchemaValue(definition.cancellation.partialSchema, outcome.partial);
-          assertInlineSize(partial, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
-          outcome = { status: "cancelled", partial };
-        } catch (error) {
-          const reason =
-            error instanceof CrankError && error.code === "payload_too_large"
-              ? "payload_too_large"
+        } else {
+          reason =
+            validated.status === "unavailable"
+              ? "schema_version_unavailable"
               : "schema_validation_failed";
-          const alreadyDiscarded = (this.#records.get(task.sessionId) ?? []).some(
-            (record) =>
-              record.payload.type === "CancellationPartialDiscarded" &&
-              record.payload.taskId === task.taskId &&
-              record.payload.pullId === pull.pullId,
+        }
+      }
+      const partialRejection = verifyResolvable();
+      if (partialRejection) {
+        return partialRejection;
+      }
+      if (partial !== undefined) {
+        outcome = { status: "cancelled", partial };
+      } else {
+        const alreadyDiscarded = (this.#records.get(task.sessionId) ?? []).some(
+          (record) =>
+            record.payload.type === "CancellationPartialDiscarded" &&
+            record.payload.taskId === task.taskId &&
+            record.payload.pullId === pull.pullId,
+        );
+        if (!alreadyDiscarded) {
+          this.#append(task.sessionId, undefined, {
+            type: "CancellationPartialDiscarded",
+            taskId: task.taskId,
+            pullId: pull.pullId,
+            reason,
+          });
+        }
+        outcome = { status: "cancelled" };
+      }
+    } else {
+      try {
+        assertInlineSize(outcome, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+      } catch (error) {
+        if (error instanceof CrankError && error.code === "payload_too_large") {
+          return { status: "rejected", code: "payload_too_large" };
+        }
+        return { status: "rejected", code: "schema_validation_failed" };
+      }
+    }
+    if (outcome.status === "ok") {
+      if (pull.descriptor.kind === "elicit") {
+        // One WireElicitResult algebra: accepted content is validated against
+        // the declared content schema; decline/cancel keep only bounded safe
+        // fields and never run the content validator.
+        const envelope = parseWireElicitEnvelope(outcome.value);
+        if (!envelope) {
+          return { status: "rejected", code: "schema_validation_failed" };
+        }
+        if (envelope.action === "accept") {
+          const validated = yield* validateRegisteredSchema(
+            this.#schemas,
+            pull.resultSchemaDigest,
+            envelope.content,
           );
-          if (!alreadyDiscarded) {
-            this.#append(task.sessionId, undefined, {
-              type: "CancellationPartialDiscarded",
-              taskId: task.taskId,
-              pullId: pull.pullId,
-              reason,
-            });
+          if (validated.status === "unavailable") {
+            return { status: "rejected", code: "schema_version_unavailable" };
           }
-          outcome = { status: "cancelled" };
+          if (validated.status === "invalid") {
+            return { status: "rejected", code: "schema_validation_failed" };
+          }
+          outcome = { status: "ok", value: { action: "accept", content: validated.value } };
+        } else {
+          const reason = sanitizeCancellationReason(
+            typeof envelope.reason === "string" ? envelope.reason : undefined,
+          );
+          outcome = {
+            status: "ok",
+            value: { action: envelope.action, ...(reason !== undefined ? { reason } : {}) },
+          };
         }
       } else {
-        assertInlineSize(outcome, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+        const validated = yield* validateRegisteredSchema(
+          this.#schemas,
+          pull.resultSchemaDigest,
+          outcome.value,
+        );
+        if (validated.status === "unavailable") {
+          return { status: "rejected", code: "schema_version_unavailable" };
+        }
+        if (validated.status === "invalid") {
+          return { status: "rejected", code: "schema_validation_failed" };
+        }
+        outcome = { status: "ok", value: validated.value };
       }
-      if (outcome.status === "ok") {
-        assertSchemaValue(pull.resultSchema, outcome.value);
-      }
-    } catch (error) {
-      if (error instanceof CrankError && error.code === "payload_too_large") {
-        return { status: "rejected", code: "payload_too_large" };
-      }
-      return { status: "rejected", code: "schema_validation_failed" };
+    }
+    // Registry validators may await; re-verify capability revocation, task
+    // state, and digest binding immediately before the append.
+    const postRejection = verifyResolvable();
+    if (postRejection) {
+      return postRejection;
+    }
+    try {
+      assertInlineSize(outcome, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+    } catch {
+      return { status: "rejected", code: "payload_too_large" };
     }
     if (pull.effectiveDescriptor.kind === "wait" && outcome.status === "ok") {
       const notBefore = pull.effectiveDescriptor.notBefore;
@@ -713,8 +863,23 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     const task = this.#task(request.sessionId, request.taskId);
     this.#assertProgram(request.programCapability, task);
     const proposedOutcome = snapshotOutcome(request.outcome);
-    const outcome: OperationOutcome =
+    let outcome: OperationOutcome =
       task.cancellation.type === "unwinding" ? { status: "cancelled" } : proposedOutcome;
+    if (outcome.status === "ok") {
+      outcome = {
+        status: "ok",
+        value: yield* this.#validateThroughRegistry(
+          task.manifest.outputSchema.digest,
+          outcome.value,
+          "schema_validation_failed",
+        ),
+      };
+      // Registry validators may await; re-verify authority state before append.
+      this.#assertProgram(request.programCapability, task);
+      if (task.cancellation.type === "unwinding") {
+        outcome = { status: "cancelled" };
+      }
+    }
     const digest = canonicalSnapshot(outcome).sha;
     if (task.close) {
       if (task.close.digest !== digest) {
@@ -728,9 +893,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     if ([...task.pullsByAction.values()].some((pull) => !pull.outcome)) {
       throw new CrankError("history_not_exhausted", "Task has an unresolved pull");
-    }
-    if (outcome.status === "ok") {
-      assertSchemaValue(task.manifest.outputSchema, outcome.value);
     }
     const offset = this.#append(task.sessionId, task.executionEpoch, {
       type: "TaskClosed",
@@ -992,6 +1154,30 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
+  /** Canonical parsed input accepted at task open; schema code is not rerun. */
+  *taskInput(sessionId: string, taskId: string): Operation<Json> {
+    return structuredClone(this.#task(sessionId, taskId).input);
+  }
+
+  /** Exact schema digests referenced by nonterminal tasks for deployment reconciliation. */
+  *nonterminalSchemaDigests(): Operation<string[]> {
+    const digests = new Set<string>();
+    for (const task of this.#tasks.values()) {
+      if (task.status !== "active") {
+        continue;
+      }
+      for (const digest of manifestSchemaDigests(task.manifest)) {
+        digests.add(digest);
+      }
+      for (const pull of task.pullsByAction.values()) {
+        if (!pull.outcome) {
+          digests.add(pull.resultSchemaDigest);
+        }
+      }
+    }
+    return sortedStrings(digests);
+  }
+
   /** Returns runnable session IDs in deterministic lexical order. */
   runnableSessions(): string[] {
     return sortedStrings(this.#runnable);
@@ -1078,6 +1264,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         status: "authorized",
         pullId: pull.pullId,
         attemptId: active.attemptId,
+        descriptor: effectDescriptor(pull.effectiveDescriptor),
         resolutionCapability: active.capability,
       };
     }
@@ -1101,6 +1288,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       status: "authorized",
       pullId: pull.pullId,
       attemptId,
+      descriptor: effectDescriptor(pull.effectiveDescriptor),
       resolutionCapability: capability,
     };
   }
@@ -1270,6 +1458,34 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
   }
 
+  /** Validates through the digest-selected registry validator, throwing on failure. */
+  *#validateThroughRegistry(
+    digest: string,
+    value: unknown,
+    errorCode: string,
+  ): Operation<Json> {
+    const validated: RegistrySchemaValidation = yield* validateRegisteredSchema(
+      this.#schemas,
+      digest,
+      value,
+    );
+    if (validated.status === "unavailable") {
+      throw new CrankError(
+        "schema_version_unavailable",
+        `No retained validator bundle for schema digest ${digest}`,
+      );
+    }
+    if (validated.status === "invalid") {
+      throw new CrankError(errorCode, "Schema validation failed", {
+        issues: validated.issues.map((issue) => ({
+          message: issue.message,
+          ...(issue.path !== undefined ? { path: issue.path } : {}),
+        })),
+      });
+    }
+    return validated.value;
+  }
+
   #append(
     sessionId: string,
     ownerEpoch: number | undefined,
@@ -1413,11 +1629,16 @@ function isManifestSnapshot(value: unknown): boolean {
     typeof value["version"] === "string" &&
     typeof value["digest"] === "string" &&
     /^[0-9a-f]{64}$/.test(value["digest"]) &&
+    isSchemaDescriptorSnapshot(value["inputSchema"]) &&
+    isSchemaDescriptorSnapshot(value["outputSchema"]) &&
     isJsonRecord(value["elicits"]) &&
     Object.values(value["elicits"]).every(
       (declaration) =>
         isJsonRecord(declaration) &&
-        hasOnlyKeys(declaration, ["responseSchema"], ["contextSchema"]),
+        hasOnlyKeys(declaration, ["response"], ["context"]) &&
+        isSchemaDescriptorSnapshot(declaration["response"]) &&
+        (declaration["context"] === undefined ||
+          isSchemaDescriptorSnapshot(declaration["context"])),
     ) &&
     isJsonRecord(effects) &&
     Object.entries(effects).every(
@@ -1428,9 +1649,12 @@ function isManifestSnapshot(value: unknown): boolean {
           ["name", "version", "inputSchema", "outputSchema", "retrySafety"],
           ["cancellation"],
         ) &&
+        isSchemaDescriptorSnapshot(effect["inputSchema"]) &&
+        isSchemaDescriptorSnapshot(effect["outputSchema"]) &&
         (effect["cancellation"] === undefined ||
           (isJsonRecord(effect["cancellation"]) &&
-            hasExactKeys(effect["cancellation"], ["partialSchema"]))) &&
+            hasExactKeys(effect["cancellation"], ["partialSchema"]) &&
+            isSchemaDescriptorSnapshot(effect["cancellation"]["partialSchema"]))) &&
         effect["name"] === name &&
         typeof effect["version"] === "string" &&
         isRetrySafetySnapshot(effect["retrySafety"]),
@@ -1488,7 +1712,7 @@ function isIndexedPullTuple(value: Json): boolean {
         "descriptor",
         "descriptorDigest",
         "effectiveDescriptor",
-        "resultSchema",
+        "resultDescriptor",
         "resultSchemaDigest",
         "audience",
         "maxOutcomeBytes",
@@ -1509,8 +1733,10 @@ function isIndexedPullTuple(value: Json): boolean {
     typeof pull["descriptorDigest"] === "string" &&
     pull["descriptorDigest"] === canonicalSnapshot(pull["descriptor"]).sha &&
     isDescriptorSnapshot(pull["effectiveDescriptor"]) &&
+    isSchemaDescriptorSnapshot(pull["resultDescriptor"]) &&
     typeof pull["resultSchemaDigest"] === "string" &&
-    pull["resultSchemaDigest"] === canonicalSnapshot(pull["resultSchema"]).sha &&
+    pull["resultSchemaDigest"] ===
+      (pull["resultDescriptor"] as Record<string, Json>)["digest"] &&
     typeof pull["audience"] === "string" &&
     isNonNegativeInteger(pull["maxOutcomeBytes"]) &&
     Array.isArray(pull["attempts"]) &&
@@ -1562,9 +1788,10 @@ function isDescriptorSnapshot(value: unknown): boolean {
       );
     case "elicit":
       return (
-        hasOnlyKeys(value, ["kind", "key", "message", "responseSchema"], ["context"]) &&
+        hasOnlyKeys(value, ["kind", "key", "message", "response"], ["context"]) &&
         typeof value["key"] === "string" &&
-        typeof value["message"] === "string"
+        typeof value["message"] === "string" &&
+        isSchemaDescriptorSnapshot(value["response"])
       );
     case "wait": {
       const hasAbsolute =
@@ -1596,6 +1823,15 @@ function isDescriptorSnapshot(value: unknown): boolean {
       );
     default:
       return false;
+  }
+}
+
+function isSchemaDescriptorSnapshot(value: unknown): boolean {
+  try {
+    parsePortableSchemaDescriptor(value);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -1790,7 +2026,9 @@ function isSemanticPayload(value: unknown): boolean {
       return (
         hasExactKeys(value, ["type", "taskId", "pullId", "reason"]) &&
         typeof value["pullId"] === "string" &&
-        (value["reason"] === "schema_validation_failed" || value["reason"] === "payload_too_large")
+        (value["reason"] === "schema_validation_failed" ||
+          value["reason"] === "payload_too_large" ||
+          value["reason"] === "schema_version_unavailable")
       );
     case "AttemptOutcomeUnknown":
       return (
@@ -1948,7 +2186,12 @@ function invalidSnapshot(cause?: unknown): CrankError {
 function operationPolicy(
   manifest: DurableProgramManifest,
   descriptor: DurableOperationDescriptor,
-): { resultSchema: Json; audience: string } {
+): {
+  resultDescriptor: PortableSchemaDescriptor;
+  audience: string;
+  inputDigest?: string;
+  contextDigest?: string;
+} {
   switch (descriptor.kind) {
     case "effect": {
       const definition = manifest.effects[descriptor.name];
@@ -1958,27 +2201,36 @@ function operationPolicy(
           `Undeclared effect ${descriptor.name}@${descriptor.version}`,
         );
       }
-      assertSchemaValue(definition.inputSchema, descriptor.input, "invalid_descriptor");
-      return { resultSchema: definition.outputSchema, audience: descriptor.resolver.audience };
+      return {
+        resultDescriptor: definition.outputSchema,
+        audience: descriptor.resolver.audience,
+        inputDigest: definition.inputSchema.digest,
+      };
     }
     case "elicit": {
       const declaration = manifest.elicits[descriptor.key];
       if (!declaration) {
         throw new CrankError("invalid_descriptor", `Undeclared elicitation ${descriptor.key}`);
       }
-      if (
-        canonicalSnapshot(declaration.responseSchema).sha !==
-        canonicalSnapshot(descriptor.responseSchema).sha
-      ) {
+      if (declaration.response.digest !== descriptor.response.digest) {
         throw new CrankError(
           "invalid_descriptor",
-          "Elicitation response schema differs from manifest",
+          "Elicitation content schema differs from manifest",
         );
       }
-      if (descriptor.context !== undefined && declaration.contextSchema !== undefined) {
-        assertSchemaValue(declaration.contextSchema, descriptor.context, "invalid_descriptor");
+      if ((declaration.context === undefined) !== (descriptor.context === undefined)) {
+        throw new CrankError(
+          "invalid_descriptor",
+          "Elicitation authored context presence differs from manifest",
+        );
       }
-      return { resultSchema: declaration.responseSchema, audience: `user:${descriptor.key}` };
+      return {
+        resultDescriptor: declaration.response,
+        audience: `user:${descriptor.key}`,
+        ...(declaration.context !== undefined
+          ? { contextDigest: declaration.context.digest }
+          : {}),
+      };
     }
     case "wait":
       if ((descriptor.notBefore === undefined) === (descriptor.durationMs === undefined)) {
@@ -1996,7 +2248,7 @@ function operationPolicy(
       ) {
         throw new CrankError("invalid_descriptor", "Invalid wait duration");
       }
-      return { resultSchema: { type: "null" }, audience: "scheduler" };
+      return { resultDescriptor: NULL_RESULT_SCHEMA_DESCRIPTOR, audience: "scheduler" };
     case "invoke":
     case "all":
     case "race":
@@ -2005,8 +2257,43 @@ function operationPolicy(
       if (!manifest.capabilities.structuredChildren) {
         throw new CrankError("invalid_descriptor", "Program does not declare structured children");
       }
-      return { resultSchema: true, audience: "child-runtime" };
+      return { resultDescriptor: ANY_JSON_SCHEMA_DESCRIPTOR, audience: "child-runtime" };
   }
+}
+
+function effectDescriptor(descriptor: DurableOperationDescriptor): Extract<DurableOperationDescriptor, { kind: "effect" }> {
+  if (descriptor.kind !== "effect") {
+    throw new CrankError("invalid_descriptor", "Authorized pull is not an effect");
+  }
+  return descriptor;
+}
+
+function parseWireElicitEnvelope(
+  value: Json,
+): { action: "accept"; content: Json } | { action: "decline" | "cancel"; reason?: string } | undefined {
+  if (!isJsonRecord(value) || typeof value["action"] !== "string") {
+    return undefined;
+  }
+  if (value["action"] === "accept") {
+    if (!("content" in value) || !hasOnlyKeys(value, ["action", "content"], [])) {
+      return undefined;
+    }
+    return { action: "accept", content: value["content"] as Json };
+  }
+  if (value["action"] === "decline" || value["action"] === "cancel") {
+    if (!hasOnlyKeys(value, ["action"], ["reason"])) {
+      return undefined;
+    }
+    const reason = value["reason"];
+    if (reason !== undefined && typeof reason !== "string") {
+      return undefined;
+    }
+    return {
+      action: value["action"],
+      ...(typeof reason === "string" ? { reason } : {}),
+    };
+  }
+  return undefined;
 }
 
 function snapshotDescriptor(descriptor: DurableOperationDescriptor): DurableOperationDescriptor {
@@ -2045,6 +2332,22 @@ function pendingReason(descriptor: DurableOperationDescriptor): "elicit" | "wait
 
 function taskKey(sessionId: string, taskId: string): string {
   return `${sessionId}\u0000${taskId}`;
+}
+
+function manifestSchemaDigests(manifest: DurableProgramManifest): string[] {
+  return [
+    manifest.inputSchema.digest,
+    manifest.outputSchema.digest,
+    ...Object.values(manifest.elicits).flatMap((elicit) => [
+      elicit.response.digest,
+      ...(elicit.context ? [elicit.context.digest] : []),
+    ]),
+    ...Object.values(manifest.effects).flatMap((effect) => [
+      effect.inputSchema.digest,
+      effect.outputSchema.digest,
+      ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
+    ]),
+  ];
 }
 
 function sortedStrings(values: Iterable<string>): string[] {

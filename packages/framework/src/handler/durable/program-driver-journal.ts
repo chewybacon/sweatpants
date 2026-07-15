@@ -1,13 +1,29 @@
 import type { Operation } from "effection";
 import {
+  createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
   type CapabilityKeyring,
+  type DurableSchemaRegistryEntry,
   type DurableJournalAuthorityService,
+  type DurableSchemaRegistry,
   type DurableSemanticRecord,
   type OpenDurableTaskRequest,
   type OperationOutcome,
   type ResolveOperationResult,
 } from "@sweatpants/session-contract";
+
+import { programDriverChatEngineSchemaEntries } from "./program-driver-chat-engine.ts";
+
+/**
+ * Builds the digest-keyed validator registry for one program-driver
+ * deployment: the built-in chat-engine catalog merged with generated
+ * tool/effect validator entries.
+ */
+export function programDriverSchemaRegistry(
+  entries: Iterable<DurableSchemaRegistryEntry> = [],
+): ReturnType<typeof createDurableSchemaRegistry> {
+  return createDurableSchemaRegistry([...programDriverChatEngineSchemaEntries(), ...entries]);
+}
 
 /** Authority operations required by the framework without exposing signing capabilities. */
 export interface ProgramDriverJournal {
@@ -40,6 +56,12 @@ export interface InMemoryProgramDriverJournalStoreOptions {
   keyring: CapabilityKeyring;
   journalPrefix?: string;
   now?: () => number;
+  /**
+   * Digest-keyed Standard Schema validator registry for ownerless command
+   * validation. Deployments merge the built-in chat-engine catalog with their
+   * generated tool/effect catalogs.
+   */
+  schemaRegistry?: DurableSchemaRegistry;
 }
 
 /**
@@ -61,6 +83,7 @@ export function createInMemoryProgramDriverJournalStore(
           journalIncarnation: "1",
           keyring: options.keyring,
           ...(options.now ? { now: options.now } : {}),
+          schemaRegistry: options.schemaRegistry ?? programDriverSchemaRegistry(),
         });
         authorities.set(conversationId, authority);
       }

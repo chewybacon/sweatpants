@@ -154,6 +154,8 @@ export {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createInMemoryProgramDriverJournalStore,
+  programDriverSchemaRegistry,
+  programDriverChatEngineSchemaEntries,
   ProgramDriverForeignEffectsContext,
   ProgramDriverNativeToolsContext,
   ProgramRuntime,

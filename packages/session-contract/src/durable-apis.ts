@@ -1,7 +1,10 @@
 import { createContext, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 
-import { assertInlineSize, assertSchemaValue, serializeDurableError } from "./authoring.ts";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import { assertInlineSize, serializeDurableError } from "./authoring.ts";
+import { assertJson, canonicalSnapshot } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
@@ -51,7 +54,22 @@ export const ProgramRouteResolverContext = createContext<
   ((program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>) | undefined
 >("session-contract:program-route-resolver", undefined);
 
-/** Binds a typed effect definition to a schema-parsing Effection handler. */
+/** Optional scope-local runtime validators paired with one effect registration. */
+export interface DurableEffectRuntimeSchemas {
+  readonly input?: StandardSchemaV1;
+  readonly output?: StandardSchemaV1;
+}
+
+const registrationSchemas = new WeakMap<DurableEffectRegistration, DurableEffectRuntimeSchemas>();
+
+/** Reads scope-local runtime validators attached to a registration, if any. */
+export function durableEffectRuntimeSchemas(
+  registration: DurableEffectRegistration,
+): DurableEffectRuntimeSchemas | undefined {
+  return registrationSchemas.get(registration);
+}
+
+/** Binds a typed effect definition to an Effection handler with optional runtime validators. */
 export function createDurableEffectRegistration<
   I extends Json,
   O extends Json,
@@ -60,15 +78,23 @@ export function createDurableEffectRegistration<
   definition: EffectDefinition<I, O, P>,
   satisfies: DurableEffectRegistration["satisfies"],
   handler: (input: I, context: DurableEffectContext) => Operation<DurableEffectDisposition<O, P>>,
+  schemas?: DurableEffectRuntimeSchemas,
 ): DurableEffectRegistration {
-  return {
+  const registration: DurableEffectRegistration = {
     definition: definition as EffectDefinition<Json, Json, Json>,
     satisfies,
     handler(input, context) {
-      const validated = assertSchemaValue<I>(definition.inputSchema, input);
-      return handler(validated, context) as Operation<DurableEffectDisposition<Json, Json>>;
+      // The authority validated and canonicalized this input at the reserve
+      // boundary; the handler receives the recorded canonical value.
+      // SAFETY: I is witnessed by the effect definition whose registered
+      // validator accepted this value.
+      return handler(input as I, context) as Operation<DurableEffectDisposition<Json, Json>>;
     },
   };
+  if (schemas) {
+    registrationSchemas.set(registration, schemas);
+  }
+  return registration;
 }
 
 /** Creates an immutable registry and rejects duplicate symbolic effect names. */
@@ -191,11 +217,10 @@ export const DurableEffects = createApi("crank-durable-effects", {
         `No durable effect handler for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
       );
     }
-    const input = assertSchemaValue(
-      registration.definition.inputSchema,
-      authorization.descriptor.input,
-      "invalid_descriptor",
-    );
+    // The authority already ran defaults/transforms exactly once and returned
+    // this effective descriptor with the authorization. Host dispatch performs
+    // structural canonicalization only.
+    const input = canonicalSnapshot(assertJson(authorization.descriptor.input)).value;
     const controller = new AbortController();
     const release = registerLiveDurableEffect(
       authorization.sessionId,
@@ -225,7 +250,9 @@ export const DurableEffects = createApi("crank-durable-effects", {
         throw new CrankError("invalid_manifest", "Durable effect returned an invalid disposition");
       }
       if (disposition.status === "ok") {
-        const value = assertSchemaValue(registration.definition.outputSchema, disposition.value);
+        // Output Standard Schema validation runs once in authority.resolve();
+        // host code supplies only bounded canonical pre-validation input.
+        const value = canonicalSnapshot(assertJson(disposition.value)).value;
         assertInlineSize(value);
         outcome = { status: "ok", value };
       } else if (disposition.status === "cancelled") {
@@ -260,8 +287,13 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
     let attachment: ProgramAttachment | undefined;
     let shutdownReason: ProgramShutdownReason = "scope_exit";
     try {
-      attachment = yield* ProgramPeer.operations.attach(request.attach);
       const authority = yield* useJournalAuthority();
+      const acceptedInput = yield* authority.taskInput(
+        request.attach.sessionId,
+        request.attach.taskId,
+      );
+      const acceptedAttach = { ...request.attach, input: acceptedInput };
+      attachment = yield* ProgramPeer.operations.attach(acceptedAttach);
       yield* authority.markActivated(request.attach.sessionId);
       const programCapability =
         request.programCapability ??
@@ -273,7 +305,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
         )).programCapability;
       let step = yield* ProgramPeer.operations.step(attachment, {
         type: "start",
-        input: request.attach.input,
+        input: acceptedInput,
       });
       let pullIndex = 0;
       let cancellationInjected = false;
@@ -466,7 +498,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             taskId: request.attach.taskId,
             pullId: reservation.pullId,
             attemptId: reservation.attemptId,
-            descriptor: step.descriptor,
+            descriptor: reservation.descriptor,
             resolutionCapability: reservation.resolutionCapability,
             resolver: step.descriptor.resolver,
           });

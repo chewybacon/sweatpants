@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { AnyToolContract, RuntimeTool } from "@sweatpants/core";
 import type { Operation } from "effection";
 import {
   PluginSessionManagerContext,
@@ -8,10 +8,12 @@ import {
   createStrategyToolRuntime,
   createToolInventory,
   createToolInventoryEntry,
+  projectAvailableToolContracts,
 } from "@sweatpants/framework/chat";
 import {
   ProgramDriverForeignEffectsContext,
   ProgramDriverNativeToolsContext,
+  programDriverSchemaRegistry,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
 import { createDurableToolRegistry } from "@sweatpants/session-contract";
@@ -27,7 +29,7 @@ import {
 } from "@sweatpants/tool-runtime-local";
 import { createAgentCoreToolExecutionStrategy } from "@sweatpants/tool-runtime-agentcore";
 
-import { durablePickCard, runtimeDurablePickCard } from "../tools/pick-card/durable";
+import { pickCard } from "../tools/pick-card/durable";
 import { createDrawPickCardsRegistration } from "../tools/pick-card/durable-effects";
 import { yoChatDurableProgramWorkerUrl } from "./tool-worker-config";
 
@@ -37,7 +39,7 @@ export interface YoChatToolRuntimeInstallation {
   registry: ToolSessionRegistry;
   pluginManager: PluginSessionManager;
   samplingProvider: ToolSessionSamplingProvider;
-  tools: RuntimeTool[];
+  tools: AnyToolContract[];
 }
 
 /**
@@ -45,28 +47,55 @@ export interface YoChatToolRuntimeInstallation {
  * mode uses one worker-backed registry; AgentCore mode uses one remote registry.
  */
 export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation): Operation<void> {
+  const ordinaryContracts = options.tools.filter(
+    (tool) => tool.execution !== "crank_native",
+  );
+  const ordinaryTools = ordinaryContracts.filter(
+    (tool): tool is RuntimeTool => typeof tool === "function",
+  );
+  const schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog);
+  const availableContracts = projectAvailableToolContracts(options.tools, {
+    ordinaryTools: new Set(ordinaryContracts.map((tool) => tool.name)),
+    drivers: new Set(options.mode === "local" ? ["worker"] : []),
+    programs: new Set(
+      options.mode === "local"
+        ? [
+            `${pickCard.manifest.programId}@${pickCard.manifest.version}#${pickCard.manifest.digest}`,
+          ]
+        : [],
+    ),
+    effects: new Set(
+      options.mode === "local"
+        ? Object.values(pickCard.manifest.effects).map(
+            (effect) => `${effect.name}@${effect.version}`,
+          )
+        : [],
+    ),
+    schemas: schemaRegistry,
+    durableDrivers: new Map(options.mode === "local" ? [[pickCard.name, "worker"]] : []),
+  });
   yield* ToolSessionSamplingProviderContext.set(options.samplingProvider);
   yield* PluginSessionRegistryContext.set(options.registry);
   yield* PluginSessionManagerContext.set(options.pluginManager);
   yield* ToolInventoryContext.set(
-    createToolInventory(options.tools.map((tool) => createToolInventoryEntry(tool))),
+    createToolInventory(availableContracts.map((tool) => createToolInventoryEntry(tool))),
   );
   yield* ProgramDriverForeignEffectsContext.set(
     createToolSessionForeignEffectRegistrations({
       registry: options.registry,
-      tools: new Map(options.tools.map((tool) => [tool.name, tool])),
+      tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
     }),
   );
 
   if (options.mode === "local") {
-    const durableRegistry = createDurableToolRegistry([runtimeDurablePickCard]);
+    const durableRegistry = createDurableToolRegistry([pickCard]);
     yield* ProgramDriverNativeToolsContext.set({
       bindings: new Map([
         [
-          durablePickCard.name,
+          pickCard.name,
           {
-            publicName: durablePickCard.name,
-            tool: runtimeDurablePickCard,
+            publicName: pickCard.name,
+            tool: pickCard,
             route: { driverKind: "worker", profile: "yo-chat-durable-tools" },
           },
         ],
@@ -91,7 +120,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
         id: "agentcore",
         strategies: [
           createAgentCoreToolExecutionStrategy({
-            tools: options.tools,
+            tools: ordinaryContracts as RuntimeTool[],
             registry: options.registry,
             samplingProvider: options.samplingProvider,
           }),
@@ -102,7 +131,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   }
 
   yield* installLocalToolRuntime({
-    tools: options.tools,
+    tools: ordinaryTools,
     registry: options.registry,
     samplingProvider: options.samplingProvider,
   });

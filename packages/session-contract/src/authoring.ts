@@ -1,5 +1,10 @@
-import { assertJson, canonicalSnapshot } from "./canonical.ts";
+import { canonicalSnapshot } from "./canonical.ts";
 import { foreignToolAdapterChild } from "./foreign-tool-contract.ts";
+import {
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+  type PortableSchemaRole,
+} from "./schema-descriptor.ts";
 import {
   CrankError,
   PullApplicationError,
@@ -15,10 +20,10 @@ import type {
   DurableTool,
   ForeignToolRequest,
   EffectDefinition,
-  JsonSchema,
   OperationOutcome,
   ProgramResume,
   ProgramStepProposal,
+  WireElicitResultJson,
 } from "./durable-types.ts";
 
 /** Default canonical payload limit enforced at journal boundaries. */
@@ -81,8 +86,8 @@ export function validateDurableManifest(manifest: DurableProgramManifest): void 
   if (typeof manifest.digest !== "string" || !/^[0-9a-f]{64}$/.test(manifest.digest)) {
     invalidManifest("digest must be a lowercase SHA-256 hex value");
   }
-  validateSchema(manifest.inputSchema, "inputSchema");
-  validateSchema(manifest.outputSchema, "outputSchema");
+  validateDescriptorField(manifest.inputSchema, "program_input", "inputSchema");
+  validateDescriptorField(manifest.outputSchema, "program_output", "outputSchema");
   if (!isRecord(manifest.elicits)) {
     invalidManifest("elicits");
   }
@@ -91,9 +96,9 @@ export function validateDurableManifest(manifest: DurableProgramManifest): void 
     if (!isRecord(declaration)) {
       invalidManifest(`elicits.${key}`);
     }
-    validateSchema(declaration.responseSchema, `elicits.${key}.responseSchema`);
-    if (declaration.contextSchema !== undefined) {
-      validateSchema(declaration.contextSchema, `elicits.${key}.contextSchema`);
+    validateDescriptorField(declaration.response, "elicit_response", `elicits.${key}.response`);
+    if (declaration.context !== undefined) {
+      validateDescriptorField(declaration.context, "elicit_context", `elicits.${key}.context`);
     }
   }
   if (!isRecord(manifest.effects)) {
@@ -123,14 +128,19 @@ export function validateEffectDefinition(definition: EffectDefinition<Json, Json
   }
   requireId(definition.name, "effect name");
   requireId(definition.version, "effect version");
-  validateSchema(definition.inputSchema, `${definition.name}.inputSchema`);
-  validateSchema(definition.outputSchema, `${definition.name}.outputSchema`);
+  validateDescriptorField(definition.inputSchema, "effect_input", `${definition.name}.inputSchema`);
+  validateDescriptorField(
+    definition.outputSchema,
+    "effect_output",
+    `${definition.name}.outputSchema`,
+  );
   if (definition.cancellation !== undefined) {
     if (!isRecord(definition.cancellation)) {
       invalidManifest(`${definition.name}.cancellation`);
     }
-    validateSchema(
+    validateDescriptorField(
       definition.cancellation.partialSchema,
+      "effect_cancellation_partial",
       `${definition.name}.cancellation.partialSchema`,
     );
   }
@@ -179,9 +189,8 @@ function* durableEffect(
   if (typeof version !== "string" || !isEffectResolver(resolver)) {
     throw new CrankError("invalid_descriptor", "Invalid durable effect invocation");
   }
-  if (definition) {
-    assertSchemaValue(definition.inputSchema, input, "invalid_descriptor");
-  }
+  // Effect input is validated processlessly by the journal authority through
+  // the digest-selected Standard Schema validator at the reserve boundary.
   const outcome = yield {
     type: "operation",
     descriptor: {
@@ -207,21 +216,21 @@ export function createDurableProgramContext(): DurableProgramContext {
     *elicit<T extends Json = Json>(
       key: string,
       message: string,
-      responseSchema: JsonSchema,
+      response: PortableSchemaDescriptor,
       context?: Json,
-    ): Generator<ProgramStepProposal, T, ProgramResume> {
-      validateSchema(responseSchema, "elicit.responseSchema");
+    ): Generator<ProgramStepProposal, WireElicitResultJson<T>, ProgramResume> {
+      const descriptor = parsePortableSchemaDescriptor(response);
       const outcome = yield {
         type: "operation",
         descriptor: {
           kind: "elicit",
           key: requireId(key, "elicit key"),
           message: typeof message === "string" ? message : String(message),
-          responseSchema: canonicalSnapshot(responseSchema).value,
+          response: canonicalSnapshot(descriptor).value,
           ...(context !== undefined ? { context: canonicalSnapshot(context).value } : {}),
         },
       };
-      return unwrapOutcome<T>(outcome);
+      return unwrapOutcome<WireElicitResultJson<T>>(outcome);
     },
     *emit(eventType: string, payload: Json): Generator<ProgramStepProposal, void, ProgramResume> {
       yield {
@@ -335,20 +344,26 @@ export function createDurableProgramContext(): DurableProgramContext {
   });
 }
 
-/** Parses canonical JSON through a schema supplied as the runtime witness for `T`. */
-export function assertSchemaValue<T extends Json = Json>(
-  schema: JsonSchema,
+/**
+ * Canonicalizes an already-accepted durable value without rerunning schema
+ * code. Replay of recorded canonical values is structurally checked only;
+ * Standard Schema validation happens exactly once at the authority acceptance
+ * boundary through the digest-selected registry validator.
+ */
+export function assertReplayedCanonicalValue<T extends Json = Json>(
   value: unknown,
-  errorCode = "schema_validation_failed",
+  errorCode = "invalid_descriptor",
 ): T {
-  const snapshot = canonicalSnapshot(assertJson(value));
-  const error = schemaError(schema, snapshot.value, "$", new Set());
-  if (error) {
-    throw new CrankError(errorCode, error);
+  try {
+    // SAFETY: canonicalSnapshot rejects every value that is not bounded
+    // canonical JSON; the recorded value's type witness was fixed when the
+    // authority accepted it.
+    return canonicalSnapshot(value as T).value;
+  } catch (error) {
+    throw new CrankError(errorCode, "Recorded value is not canonical JSON", undefined, {
+      cause: error,
+    });
   }
-  // SAFETY: callers requesting T must supply T's exact runtime schema; this
-  // function canonicalizes and validates before restoring that type witness.
-  return snapshot.value as T;
 }
 
 /** Enforces a canonical UTF-8 payload limit before persistence or transport. */
@@ -418,174 +433,24 @@ function snapshotChild(child: DurableChildDescriptor): DurableChildDescriptor {
   };
 }
 
-function validateSchema(schema: JsonSchema, path: string): void {
-  canonicalSnapshot(schema);
-  if (typeof schema === "boolean") {
-    return;
-  }
-  if (!isRecord(schema)) {
-    invalidManifest(`${path} must be a JSON Schema object or boolean`);
-  }
-  if (schema["type"] !== undefined) {
-    const type = schema["type"];
-    const allowed = ["null", "boolean", "number", "integer", "string", "array", "object"];
-    if (
-      !(typeof type === "string" && allowed.includes(type)) &&
-      !(
-        Array.isArray(type) &&
-        type.every((entry) => typeof entry === "string" && allowed.includes(entry))
-      )
-    ) {
-      invalidManifest(`${path}.type`);
-    }
-  }
-}
-
-function schemaError(
-  schema: JsonSchema,
-  value: Json,
+function validateDescriptorField(
+  descriptor: PortableSchemaDescriptor,
+  role: PortableSchemaRole,
   path: string,
-  seen: Set<JsonSchema>,
-): string | undefined {
-  if (schema === true) {
-    return undefined;
-  }
-  if (schema === false) {
-    return `${path} is rejected by schema`;
-  }
-  if (!isRecord(schema)) {
-    return `${path} has an invalid schema`;
-  }
-  if (seen.has(schema)) {
-    return `${path} has a recursive inline schema`;
-  }
-  seen.add(schema);
+): void {
+  let parsed: PortableSchemaDescriptor;
   try {
-    if (
-      "const" in schema &&
-      canonicalSnapshot(schema["const"]).canonical !== canonicalSnapshot(value).canonical
-    ) {
-      return `${path} does not equal const`;
-    }
-    if (
-      Array.isArray(schema["enum"]) &&
-      !schema["enum"].some(
-        (candidate) =>
-          canonicalSnapshot(candidate).canonical === canonicalSnapshot(value).canonical,
-      )
-    ) {
-      return `${path} is not in enum`;
-    }
-    if (Array.isArray(schema["allOf"])) {
-      for (const candidate of schema["allOf"]) {
-        const error = schemaError(candidate, value, path, seen);
-        if (error) {
-          return error;
-        }
-      }
-    }
-    if (
-      Array.isArray(schema["anyOf"]) &&
-      !schema["anyOf"].some((candidate) => !schemaError(candidate, value, path, new Set(seen)))
-    ) {
-      return `${path} does not match anyOf`;
-    }
-    if (
-      Array.isArray(schema["oneOf"]) &&
-      schema["oneOf"].filter((candidate) => !schemaError(candidate, value, path, new Set(seen)))
-        .length !== 1
-    ) {
-      return `${path} does not match exactly one oneOf schema`;
-    }
-    const declared = schema["type"];
-    const types =
-      typeof declared === "string" ? [declared] : Array.isArray(declared) ? declared : [];
-    if (types.length > 0 && !types.some((type) => matchesType(type, value))) {
-      return `${path} has the wrong type`;
-    }
-    if (typeof value === "string") {
-      if (typeof schema["minLength"] === "number" && [...value].length < schema["minLength"]) {
-        return `${path} is too short`;
-      }
-      if (typeof schema["maxLength"] === "number" && [...value].length > schema["maxLength"]) {
-        return `${path} is too long`;
-      }
-      if (typeof schema["pattern"] === "string" && !new RegExp(schema["pattern"]).test(value)) {
-        return `${path} does not match pattern`;
-      }
-    }
-    if (typeof value === "number") {
-      if (typeof schema["minimum"] === "number" && value < schema["minimum"]) {
-        return `${path} is below minimum`;
-      }
-      if (typeof schema["maximum"] === "number" && value > schema["maximum"]) {
-        return `${path} exceeds maximum`;
-      }
-    }
-    if (Array.isArray(value)) {
-      if (typeof schema["minItems"] === "number" && value.length < schema["minItems"]) {
-        return `${path} has too few items`;
-      }
-      if (typeof schema["maxItems"] === "number" && value.length > schema["maxItems"]) {
-        return `${path} has too many items`;
-      }
-      if (schema["items"] !== undefined) {
-        for (const [index, item] of value.entries()) {
-          const error = schemaError(schema["items"], item, `${path}[${index}]`, seen);
-          if (error) {
-            return error;
-          }
-        }
-      }
-    }
-    if (isRecord(value)) {
-      const required = Array.isArray(schema["required"]) ? schema["required"] : [];
-      for (const key of required) {
-        if (typeof key === "string" && !(key in value)) {
-          return `${path}.${key} is required`;
-        }
-      }
-      const properties = isRecord(schema["properties"]) ? schema["properties"] : {};
-      for (const [key, childSchema] of Object.entries(properties)) {
-        const property = value[key];
-        if (property !== undefined) {
-          const error = schemaError(childSchema, property, `${path}.${key}`, seen);
-          if (error) {
-            return error;
-          }
-        }
-      }
-      if (schema["additionalProperties"] === false) {
-        const extra = Object.keys(value).find((key) => !(key in properties));
-        if (extra) {
-          return `${path}.${extra} is not allowed`;
-        }
-      }
-    }
-    return undefined;
-  } finally {
-    seen.delete(schema);
+    parsed = parsePortableSchemaDescriptor(descriptor);
+  } catch (error) {
+    throw new CrankError(
+      "invalid_manifest",
+      `Invalid durable manifest: ${path} is not a portable schema descriptor`,
+      undefined,
+      { cause: error },
+    );
   }
-}
-
-function matchesType(type: Json, value: Json): boolean {
-  switch (type) {
-    case "null":
-      return value === null;
-    case "boolean":
-      return typeof value === "boolean";
-    case "number":
-      return typeof value === "number";
-    case "integer":
-      return typeof value === "number" && Number.isInteger(value);
-    case "string":
-      return typeof value === "string";
-    case "array":
-      return Array.isArray(value);
-    case "object":
-      return isRecord(value);
-    default:
-      return false;
+  if (parsed.role !== role && parsed.role !== "builtin") {
+    invalidManifest(`${path} descriptor role must be ${role}`);
   }
 }
 

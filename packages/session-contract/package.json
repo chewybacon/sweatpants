@@ -49,6 +49,7 @@
     },
     "dependencies": {
         "@noble/hashes": "^2.2.0",
+        "@standard-schema/spec": "catalog:",
         "effection": "catalog:"
     },
     "devDependencies": {

@@ -63,7 +63,11 @@ export type {
 
 // Plugin session manager
 export { createPluginSessionManager } from "./plugin-session-manager.ts";
-export { createInMemoryProgramDriverJournalStore } from "./program-driver-journal.ts";
+export {
+  createInMemoryProgramDriverJournalStore,
+  programDriverSchemaRegistry,
+} from "./program-driver-journal.ts";
+export { programDriverChatEngineSchemaEntries } from "./program-driver-chat-engine.ts";
 export { ProgramDriverForeignEffectsContext } from "./program-driver-effects.ts";
 export {
   ProgramDriverNativeToolsContext,

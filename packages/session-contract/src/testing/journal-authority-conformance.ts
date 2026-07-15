@@ -2,7 +2,19 @@ import { all, type Operation } from "effection";
 
 import { canonicalJson } from "../canonical.ts";
 import { createCapabilityKeyring, type CapabilityKeyring } from "../capabilities.ts";
+import {
+  createDurableSchemaRegistry,
+  type DurableSchemaRegistry,
+  type DurableSchemaRegistryEntry,
+} from "../schema-registry.ts";
 import { CrankError } from "../types.ts";
+import {
+  anyGuard,
+  booleanGuard,
+  createSchemaFixture,
+  nullGuard,
+  stringGuard,
+} from "./schema-fixtures.ts";
 import type {
   CancellationAcknowledgement,
   ReserveOperationRequest,
@@ -76,6 +88,7 @@ export interface JournalAuthorityConformanceFactory {
   open(options: {
     journalId: string;
     keyring: CapabilityKeyring;
+    schemaRegistry: DurableSchemaRegistry;
   }): Operation<JournalAuthorityConformancePort>;
 }
 
@@ -102,26 +115,81 @@ export class JournalAuthorityConformanceError extends Error {
   }
 }
 
+const conformanceProgramInput = createSchemaFixture(
+  "conformance.authority/input",
+  "program_input",
+  { type: "null" },
+  nullGuard,
+);
+const conformanceProgramOutput = createSchemaFixture(
+  "conformance.authority/output",
+  "program_output",
+  true,
+  anyGuard,
+);
+const conformanceApprovalResponse = createSchemaFixture(
+  "conformance.authority/approval-response",
+  "elicit_response",
+  { type: "boolean" },
+  booleanGuard,
+);
+const conformanceEchoInput = createSchemaFixture(
+  "conformance.authority/echo-input",
+  "effect_input",
+  { type: "string" },
+  stringGuard,
+);
+const conformanceEchoOutput = createSchemaFixture(
+  "conformance.authority/echo-output",
+  "effect_output",
+  { type: "string" },
+  stringGuard,
+);
+const conformanceMutateInput = createSchemaFixture(
+  "conformance.authority/mutate-input",
+  "effect_input",
+  true,
+  anyGuard,
+);
+const conformanceMutateOutput = createSchemaFixture(
+  "conformance.authority/mutate-output",
+  "effect_output",
+  true,
+  anyGuard,
+);
+
+/** Registry entries required by every backend running the conformance corpus. */
+export const JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] =
+  Object.freeze([
+    conformanceProgramInput.entry,
+    conformanceProgramOutput.entry,
+    conformanceApprovalResponse.entry,
+    conformanceEchoInput.entry,
+    conformanceEchoOutput.entry,
+    conformanceMutateInput.entry,
+    conformanceMutateOutput.entry,
+  ]);
+
 const idempotentManifest: DurableProgramManifest = {
   programId: "conformance.authority",
   version: "1.0.0",
   digest: "c".repeat(64),
-  inputSchema: { type: "null" },
-  outputSchema: true,
-  elicits: { approval: { responseSchema: { type: "boolean" } } },
+  inputSchema: conformanceProgramInput.descriptor,
+  outputSchema: conformanceProgramOutput.descriptor,
+  elicits: { approval: { response: conformanceApprovalResponse.descriptor } },
   effects: {
     echo: {
       name: "echo",
       version: "1",
-      inputSchema: { type: "string" },
-      outputSchema: { type: "string" },
+      inputSchema: conformanceEchoInput.descriptor,
+      outputSchema: conformanceEchoOutput.descriptor,
       retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
     },
     mutate: {
       name: "mutate",
       version: "1",
-      inputSchema: true,
-      outputSchema: true,
+      inputSchema: conformanceMutateInput.descriptor,
+      outputSchema: conformanceMutateOutput.descriptor,
       retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
     },
   },
@@ -230,7 +298,15 @@ function defineCase(
   return {
     name,
     *run() {
-      yield* scenario(caseName, () => factory.open({ journalId, keyring }));
+      yield* scenario(caseName, () =>
+        factory.open({
+          journalId,
+          keyring,
+          schemaRegistry: createDurableSchemaRegistry([
+            ...JOURNAL_AUTHORITY_CONFORMANCE_SCHEMA_ENTRIES,
+          ]),
+        }),
+      );
     },
   };
 }
@@ -693,7 +769,7 @@ function* directElicitCancellation(
       kind: "elicit",
       key: "approval",
       message: "Approve?",
-      responseSchema: { type: "boolean" },
+      response: conformanceApprovalResponse.descriptor,
     },
     programCapability,
   });

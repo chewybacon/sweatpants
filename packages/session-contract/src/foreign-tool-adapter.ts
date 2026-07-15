@@ -3,7 +3,11 @@ import type { Operation } from "effection";
 import { createDurableEffectRegistration } from "./durable-apis.ts";
 import { createDurableTool, defineDurableProgramManifest } from "./authoring.ts";
 import {
+  FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
+  FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
   FOREIGN_MODEL_SAMPLE_EFFECT,
+  FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
+  FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
   FOREIGN_TOOL_ADAPTER_PROGRAM,
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
@@ -17,12 +21,12 @@ export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<Foreig
     programId: FOREIGN_TOOL_ADAPTER_PROGRAM.id,
     version: FOREIGN_TOOL_ADAPTER_PROGRAM.version,
     digest: FOREIGN_TOOL_ADAPTER_PROGRAM.digest,
-    inputSchema: FOREIGN_TOOL_START_EFFECT.inputSchema,
-    outputSchema: true,
+    inputSchema: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
+    outputSchema: FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
     elicits: {
       foreign_input: {
-        responseSchema: true,
-        contextSchema: true,
+        response: FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
+        context: FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
       },
     },
     effects: {
@@ -53,16 +57,21 @@ const adapterTool = createDurableTool(FOREIGN_TOOL_ADAPTER_MANIFEST, function* (
           ? yield* context.effect(FOREIGN_MODEL_SAMPLE_EFFECT, disposition.request.payload, {
               audience: "model-runtime",
             })
-          : yield* context.elicit<Json>("foreign_input", disposition.request.message, true, {
-              foreignDriver: request.driver,
-              foreignTool: request.tool,
-              foreignKey: disposition.request.key,
-              ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
-              responseSchema: disposition.request.responseSchema,
-              ...(disposition.request.context !== undefined
-                ? { context: disposition.request.context }
-                : {}),
-            });
+          : yield* context.elicit<Json>(
+              "foreign_input",
+              disposition.request.message,
+              FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
+              {
+                foreignDriver: request.driver,
+                foreignTool: request.tool,
+                foreignKey: disposition.request.key,
+                ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
+                responseSchema: disposition.request.responseSchema,
+                ...(disposition.request.context !== undefined
+                  ? { context: disposition.request.context }
+                  : {}),
+              },
+            );
 
       disposition = yield* context.effect(
         FOREIGN_TOOL_CONTINUE_EFFECT,

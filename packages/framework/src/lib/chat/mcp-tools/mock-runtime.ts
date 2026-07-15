@@ -24,6 +24,7 @@
  * @packageDocumentation
  */
 import { useAbortSignal, type Operation } from "effection";
+import { safeSchemaIssues, validateStandardSchema } from "@sweatpants/session-contract";
 import { z } from "zod";
 import type {
   ToolCtx,
@@ -350,12 +351,16 @@ export function runMCPTool<
         );
       }
 
-      // Validate params
-      const parseResult = tool.parameters.safeParse(params);
-      if (!parseResult.success) {
-        throw new Error(`Invalid params for tool "${tool.name}": ${parseResult.error.message}`);
+      // Validate params through the Standard Schema interface (DR-007).
+      const parseResult = yield* validateStandardSchema(tool.parameters, params);
+      if (parseResult.issues !== undefined) {
+        throw new Error(
+          `Invalid params for tool "${tool.name}": ${safeSchemaIssues(parseResult.issues)
+            .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
+            .join("; ")}`,
+        );
       }
-      const validatedParams = parseResult.data as TParams;
+      const validatedParams = parseResult.value as TParams;
 
       const clientCtx = client.createContext();
       const signal = options.signal ?? (yield* useAbortSignal());

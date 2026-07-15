@@ -1,8 +1,9 @@
 import type { Operation } from "effection";
 
+import type { PortableSchemaDescriptor } from "./schema-descriptor.ts";
 import type { Json, SerializedApplicationError } from "./types.ts";
 
-/** JSON Schema document interpreted by the runtime's strict boundary parser. */
+/** Portable JSON Schema projection carried on wire/browser transports. */
 export type JsonSchema = Json;
 
 /** Retry policy declaring whether duplicate host execution is safe. */
@@ -26,9 +27,9 @@ export interface EffectDefinition<
   readonly [effectCancellationPartialType]?: P;
   name: string;
   version: string;
-  inputSchema: JsonSchema;
-  outputSchema: JsonSchema;
-  cancellation?: { partialSchema: JsonSchema };
+  inputSchema: PortableSchemaDescriptor;
+  outputSchema: PortableSchemaDescriptor;
+  cancellation?: { partialSchema: PortableSchemaDescriptor };
   retrySafety: RetrySafety;
 }
 
@@ -51,13 +52,14 @@ export interface DurableProgramManifest<I extends Json = Json, O extends Json = 
   programId: string;
   version: string;
   digest: string;
-  inputSchema: JsonSchema;
-  outputSchema: JsonSchema;
+  inputSchema: PortableSchemaDescriptor;
+  outputSchema: PortableSchemaDescriptor;
   elicits: Record<
     string,
     {
-      responseSchema: JsonSchema;
-      contextSchema?: JsonSchema;
+      /** Accepted-content schema descriptor; never the wire action envelope. */
+      response: PortableSchemaDescriptor;
+      context?: PortableSchemaDescriptor;
     }
   >;
   effects: Record<string, EffectDefinition<Json, Json, Json>>;
@@ -77,12 +79,14 @@ export interface EffectDescriptor {
   resolver: { audience: string; route?: string };
 }
 
-/** Journaled user-input request with a persisted response schema. */
+/** Journaled user-input request with a persisted content-schema descriptor. */
 export interface DurableElicitDescriptor {
   kind: "elicit";
   key: string;
   message: string;
-  responseSchema: JsonSchema;
+  /** Portable descriptor for the accepted content; not the action envelope. */
+  response: PortableSchemaDescriptor;
+  /** Canonical authored context only; correlation metadata stays private. */
   context?: Json;
 }
 
@@ -158,6 +162,12 @@ export type ForeignContinuation = {
   driver: string;
   state: Json;
 };
+
+/** Canonical wire action envelope for one elicitation resolution. */
+export type WireElicitResultJson<T extends Json = Json> =
+  | { action: "accept"; content: T }
+  | { action: "decline"; reason?: string }
+  | { action: "cancel"; reason?: string };
 
 /** Closed foreign backchannel request algebra. */
 export type ForeignInputRequest =
@@ -370,13 +380,13 @@ export interface DurableProgramContext {
     input: Json,
     resolver: { audience: string; route?: string },
   ): Generator<ProgramStepProposal, T, ProgramResume>;
-  /** Proposes user input whose response must satisfy the persisted schema. */
+  /** Proposes user input; accepted content must satisfy the descriptor's registered validator. */
   elicit<T extends Json = Json>(
     key: string,
     message: string,
-    responseSchema: JsonSchema,
+    response: PortableSchemaDescriptor,
     context?: Json,
-  ): Generator<ProgramStepProposal, T, ProgramResume>;
+  ): Generator<ProgramStepProposal, WireElicitResultJson<T>, ProgramResume>;
   /** Proposes an ordered, durable public emission. */
   emit(eventType: string, payload: Json): Generator<ProgramStepProposal, void, ProgramResume>;
   /** Deterministic scheduler operations; relative sleeps become persisted absolute deadlines. */
@@ -484,6 +494,8 @@ export type ReserveOperationResult =
       status: "authorized";
       pullId: string;
       attemptId: string;
+      /** Canonical parsed effect descriptor accepted by the authority. */
+      descriptor: EffectDescriptor;
       resolutionCapability: string;
       notBefore?: string;
     }
@@ -516,6 +528,7 @@ export type ResolveOperationResult =
         | "resolution_conflict"
         | "idempotency_conflict"
         | "schema_validation_failed"
+        | "schema_version_unavailable"
         | "wait_not_due";
     };
 
@@ -570,6 +583,10 @@ export interface EnsureChildTaskResult {
 
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
+  /** Returns the canonical parsed input accepted for a task; replay never reruns schema code. */
+  taskInput(sessionId: string, taskId: string): Operation<Json>;
+  /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
+  nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when a structured activation starts. */
   markActivated(sessionId: string): Operation<void>;
   /** Reads the durable cancellation state used by fresh replay attachments. */

@@ -8,6 +8,7 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
+  createDurableSchemaRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
   type AttachProgramRequest,
@@ -32,6 +33,7 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
       journalId: "durable-pick-card-worker",
       journalIncarnation: "1",
       keyring,
+      schemaRegistry: createDurableSchemaRegistry(durablePickCard.artifacts.catalog),
     });
     const concrete = createLocalWorkerDurableProgramDriver({
       workerUrl,
@@ -71,7 +73,7 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
         version: durablePickCard.manifest.version,
         digest: durablePickCard.manifest.digest,
       },
-      input: { count: 3, toolCallId: "call-durable-pick-card" },
+      input: { count: 3 },
       route: { driverKind: "worker", profile: "yo-chat-durable-tools" },
       executionEpoch: 1,
     };
@@ -121,6 +123,7 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
         journalIncarnation: "1",
         keyring,
         snapshot: authority.exportSnapshot(),
+        schemaRegistry: createDurableSchemaRegistry(durablePickCard.artifacts.catalog),
       });
       expect(yield* runProgram(attach, authority, drivers, effects)).toEqual({
         state: "completed",
@@ -209,14 +212,10 @@ function resolvedDrawCards(records: DurableSemanticRecord[]): Card[] {
 
 function elicitedCards(pending: ReturnType<typeof pendingPickCard>): Card[] {
   const context = pending.descriptor.context;
-  if (
-    !isRecord(context) ||
-    !isRecord(context["context"]) ||
-    !Array.isArray(context["context"]["cards"])
-  ) {
+  if (!isRecord(context) || !Array.isArray(context["cards"])) {
     throw new Error("Durable pick_card elicitation omitted card context");
   }
-  return context["context"]["cards"] as Card[];
+  return context["cards"] as Card[];
 }
 
 function requestFor(records: DurableSemanticRecord[], pullId: string) {

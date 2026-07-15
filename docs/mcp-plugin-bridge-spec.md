@@ -199,7 +199,7 @@ Rationale: supporting multiple concurrent UI prompts requires UX and state decis
 
 ### Plugin export shape
 A plugin should provide:
-- `server.tools`: server-side tool(s) to register into the chat handler tool registry
+- `server.contract` + `server.execution`: execution-neutral contract metadata routed by deployment composition
 - `client`: client-side registration object consumed by `useChat({ plugins: [...] })`
 
 Optional later:
@@ -209,7 +209,7 @@ Optional later:
 Server:
 ```ts
 import { bookFlightPlugin } from './bookFlightPlugin'
-registerTools(bookFlightPlugin.server.tools)
+routePluginContract(bookFlightPlugin.server.contract, bookFlightPlugin.server.execution)
 ```
 
 Client:

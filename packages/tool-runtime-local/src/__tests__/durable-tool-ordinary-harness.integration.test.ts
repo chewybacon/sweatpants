@@ -8,6 +8,7 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
+  createDurableSchemaRegistry,
   createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
@@ -18,9 +19,9 @@ import {
   type AttachProgramRequest,
   type DurableSemanticRecord,
   type ForeignToolRequest,
-  type JsonSchema,
   type ProgramRunResult,
 } from "@sweatpants/session-contract";
+import { anyGuard, createSchemaFixture } from "@sweatpants/session-contract/testing";
 import type { RuntimeTool } from "@sweatpants/core";
 
 import {
@@ -38,52 +39,49 @@ type SampleInput = { prompt: string; round: number };
 type SampleOutput = { text: string };
 type Choice = { answer: string; continue: boolean };
 
+const sampleInput = createSchemaFixture("ordinary-harness/sample-input", "effect_input", true, anyGuard);
+const sampleOutput = createSchemaFixture("ordinary-harness/sample-output", "effect_output", true, anyGuard);
+const choiceSchema = createSchemaFixture(
+  "ordinary-harness/choice",
+  "elicit_response",
+  {
+    type: "object",
+    required: ["answer", "continue"],
+    properties: {
+      answer: { type: "string" },
+      continue: { type: "boolean" },
+    },
+    additionalProperties: false,
+  },
+  anyGuard,
+);
+const innerInput = createSchemaFixture("ordinary-harness/inner-input", "program_input", true, anyGuard);
+const innerOutput = createSchemaFixture("ordinary-harness/inner-output", "program_output", true, anyGuard);
+const innerSchemas = () =>
+  createDurableSchemaRegistry([
+    sampleInput.entry,
+    sampleOutput.entry,
+    choiceSchema.entry,
+    innerInput.entry,
+    innerOutput.entry,
+  ]);
+
 const modelSample = defineDurableEffect<SampleInput, SampleOutput>({
   name: "model.sample",
   version: "1",
-  inputSchema: {
-    type: "object",
-    required: ["prompt", "round"],
-    properties: { prompt: { type: "string" }, round: { type: "integer" } },
-    additionalProperties: false,
-  },
-  outputSchema: {
-    type: "object",
-    required: ["text"],
-    properties: { text: { type: "string" } },
-    additionalProperties: false,
-  },
+  inputSchema: sampleInput.descriptor,
+  outputSchema: sampleOutput.descriptor,
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
-
-const choiceSchema: JsonSchema = {
-  type: "object",
-  required: ["answer", "continue"],
-  properties: {
-    answer: { type: "string" },
-    continue: { type: "boolean" },
-  },
-  additionalProperties: false,
-};
 
 const innerManifest = defineDurableProgramManifest<InnerInput, InnerOutput>({
   programId: "fixture.inner-durable-behind-ordinary-harness",
   version: "1.0.0",
   digest: "4".repeat(64),
-  inputSchema: {
-    type: "object",
-    required: ["topic"],
-    properties: { topic: { type: "string" } },
-    additionalProperties: false,
-  },
-  outputSchema: {
-    type: "object",
-    required: ["answers"],
-    properties: { answers: { type: "array", items: { type: "string" } } },
-    additionalProperties: false,
-  },
+  inputSchema: innerInput.descriptor,
+  outputSchema: innerOutput.descriptor,
   elicits: {
-    choice: { responseSchema: choiceSchema },
+    choice: { response: choiceSchema.descriptor },
   },
   effects: { [modelSample.name]: modelSample },
   capabilities: {
@@ -107,9 +105,14 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
           { prompt: `Suggest ${topic}, round ${round}`, round },
           { audience: "inner-model" },
         );
-        const choice = yield* context.elicit<Choice>("choice", sampled.text, choiceSchema);
-        answers.push(choice.answer);
-        if (!choice.continue) {
+        const result = yield* context.elicit<Choice>(
+          "choice",
+          sampled.text,
+          choiceSchema.descriptor,
+        );
+        if (result.action !== "accept") break;
+        answers.push(result.content.answer);
+        if (!result.content.continue) {
           break;
         }
       }
@@ -125,6 +128,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
       stateStore,
       keyring,
       name: "ordinary_durable_tool",
+      schemaRegistry: innerSchemas(),
       onActivation: function* () {
         innerActivations += 1;
       },
@@ -218,6 +222,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         journalIncarnation: "1",
         keyring,
         snapshot: innerSnapshot,
+        schemaRegistry: innerSchemas(),
       });
       const innerJournal = innerAuthority.readJournal(taskId);
       expect(countEffectPulls(innerJournal, "model.sample")).toBe(2);

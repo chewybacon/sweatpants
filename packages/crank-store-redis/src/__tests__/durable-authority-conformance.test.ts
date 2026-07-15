@@ -25,6 +25,7 @@ const factory: JournalAuthorityConformanceFactory = {
       keyPrefix: authorityKeyPrefix,
       keyring: options.keyring,
       now: () => 1_000,
+      schemaRegistry: options.schemaRegistry,
     });
   },
 };

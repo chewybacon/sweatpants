@@ -1,3 +1,4 @@
+import { effectRuntimeValidators } from "@sweatpants/core";
 import {
   createDurableEffectRegistration,
   sha256,
@@ -29,5 +30,6 @@ export function createDrawPickCardsRegistration(): DurableEffectRegistration {
       }
       return { status: "ok", value: { cards } };
     },
+    effectRuntimeValidators(drawPickCards),
   );
 }

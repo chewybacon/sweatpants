@@ -132,12 +132,41 @@ export type {
   ForeignToolContinueRequest,
   ForeignToolDisposition,
   ForeignToolRequest,
+  WireElicitResultJson,
 } from "./durable-types.ts";
+export {
+  ANY_JSON_SCHEMA_DESCRIPTOR,
+  NULL_RESULT_SCHEMA_DESCRIPTOR,
+  SCHEMA_DESCRIPTOR_DIGEST_DOMAIN,
+  computePortableSchemaDigest,
+  createPortableSchemaDescriptor,
+  parsePortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+  type PortableSchemaDescriptorFields,
+  type PortableSchemaFidelity,
+  type PortableSchemaRole,
+} from "./schema-descriptor.ts";
+export {
+  createDurableSchemaCatalog,
+  createDurableSchemaRegistry,
+  createDurableSchemaRegistryFromCatalogs,
+  reconcileSchemaCoverage,
+  safeSchemaIssues,
+  standardSchemaOf,
+  validateRegisteredSchema,
+  validateStandardSchema,
+  type DurableSchemaCatalog,
+  type DurableSchemaRegistry,
+  type DurableSchemaRegistryEntry,
+  type RegistrySchemaValidation,
+  type SafeSchemaIssue,
+} from "./schema-registry.ts";
+export type { StandardSchemaV1, StandardTypedV1 } from "@standard-schema/spec";
 export {
   DEFAULT_MAX_INLINE_BYTES,
   DurableProgramCancellation,
   assertInlineSize,
-  assertSchemaValue,
+  assertReplayedCanonicalValue,
   createDurableProgramContext,
   createDurableTool,
   defineDurableProgramManifest,
@@ -192,7 +221,9 @@ export {
   completeDurableTask,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
+  durableEffectRuntimeSchemas,
   executeDurableEffect,
+  type DurableEffectRuntimeSchemas,
   reserveOperation,
   resolveOperation,
   resolveProgramManifest,
@@ -231,11 +262,16 @@ export {
   type ToolDurability,
 } from "./transport-bindings.ts";
 export {
+  FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
+  FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
   FOREIGN_MODEL_SAMPLE_EFFECT,
+  FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR,
+  FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR,
   FOREIGN_TOOL_ADAPTER_PROGRAM,
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
   foreignToolAdapterChild,
+  foreignToolSchemaEntries,
 } from "./foreign-tool-contract.ts";
 export {
   FOREIGN_TOOL_ADAPTER_MANIFEST,

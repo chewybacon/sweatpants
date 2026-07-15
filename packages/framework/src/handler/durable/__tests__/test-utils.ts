@@ -440,11 +440,18 @@ export function createMockTool(name: string, description: string = "A mock tool"
 // =============================================================================
 
 function toolEntry(tool: MockTool): ToolInventoryEntry {
+  const artifacts = (
+    tool as MockTool & {
+      artifacts?: { parameters?: { inputProjection?: Record<string, unknown> } };
+    }
+  ).artifacts;
   return {
     definition: {
       name: tool.name,
       description: tool.description,
-      parameters: z.toJSONSchema(tool.parameters),
+      parameters:
+        artifacts?.parameters?.inputProjection ??
+        z.toJSONSchema(tool.parameters as unknown as z.ZodType),
     },
   };
 }

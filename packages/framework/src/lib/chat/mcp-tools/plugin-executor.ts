@@ -22,7 +22,7 @@
  */
 import type { Operation, Channel } from 'effection'
 import type { z } from 'zod'
-import type { ElicitRequest, ElicitsMap, ExtractElicitResponse, WireElicitResult } from './mcp-tool-types.ts'
+import type { ElicitRequest, WireElicitResult } from './mcp-tool-types.ts'
 import type { PluginClientContext, PluginClientRegistration } from './plugin.ts'
 import {
   type RuntimePrimitive,
@@ -157,15 +157,15 @@ export function createPluginClientContext<TElicitRequest = ElicitRequest<string,
  * @returns The handler result
  */
 export function* executeElicitHandler<
-  TElicits extends ElicitsMap,
-  K extends keyof TElicits & string,
+  TNormalized extends Record<string, unknown>,
+  K extends keyof TNormalized & string,
 >(
-  plugin: PluginClientRegistration<TElicits>,
+  plugin: PluginClientRegistration<TNormalized>,
   key: K,
   // Use `any` for schema type to avoid Zod v3/v4 incompatibility issues
   request: ElicitRequest<K, any>,
   ctx: PluginClientContext<ElicitRequest<K, any>>
-): Operation<WireElicitResult<ExtractElicitResponse<TElicits[K]>>> {
+): Operation<WireElicitResult<unknown>> {
   const handler = plugin.handlers[key]
 
   if (!handler) {
@@ -189,12 +189,12 @@ export function* executeElicitHandler<
  * @param ctx - The plugin client context
  * @returns The handler result
  */
-export function* executeElicitHandlerFromRequest<TElicits extends ElicitsMap>(
-  plugin: PluginClientRegistration<TElicits>,
+export function* executeElicitHandlerFromRequest<TNormalized extends Record<string, unknown>>(
+  plugin: PluginClientRegistration<TNormalized>,
   request: ElicitRequest<string, z.ZodType>,
   ctx: PluginClientContext
 ): Operation<WireElicitResult<unknown>> {
-  const key = request.key as keyof TElicits & string
+  const key = request.key as keyof TNormalized & string
 
   if (!(key in plugin.handlers)) {
     throw new Error(
@@ -220,6 +220,6 @@ export function* executeElicitHandlerFromRequest<TElicits extends ElicitsMap>(
  * Uses `any` for schema type to avoid Zod v3/v4 incompatibility issues.
  */
 export type PluginContextForKey<
-  TElicits extends ElicitsMap,
+  TElicits extends Record<string, unknown>,
   K extends keyof TElicits & string,
 > = PluginClientContext<ElicitRequest<K, any>>

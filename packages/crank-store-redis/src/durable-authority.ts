@@ -17,6 +17,8 @@ import {
   type OpenDurableTaskRequest,
   type ReserveOperationRequest,
   type ReserveOperationResult,
+  type DurableSchemaRegistry,
+  type Json,
   type ResolveOperationRequest,
   type ResolveOperationResult,
   type TaskCloseReceipt,
@@ -30,10 +32,20 @@ export interface RedisDurableJournalAuthorityOptions {
   keyPrefix?: string;
   now?: () => number;
   maxOutcomeBytes?: number;
+  /**
+   * Digest-keyed Standard Schema validator registry shared with the in-memory
+   * authority path. Runtime validators are never persisted to Redis; every
+   * CAS retry reloads state and reruns validation through this registry.
+   */
+  schemaRegistry?: DurableSchemaRegistry;
 }
 
 /** CAS-backed durable authority port with processless journal reads and recovery operations. */
 export interface RedisDurableJournalAuthority {
+  /** Returns the canonical parsed input accepted for one task. */
+  taskInput(sessionId: string, taskId: string): Operation<Json>;
+  /** Lists exact schema digests referenced by nonterminal tasks. */
+  nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when a structured activation starts. */
   markActivated(sessionId: string): Operation<void>;
   /** Reads durable cancellation lifecycle state. */
@@ -153,6 +165,7 @@ export function createRedisDurableJournalAuthority(
       ...(options.maxOutcomeBytes !== undefined
         ? { maxOutcomeBytes: options.maxOutcomeBytes }
         : {}),
+      ...(options.schemaRegistry !== undefined ? { schemaRegistry: options.schemaRegistry } : {}),
     });
   }
 
@@ -186,6 +199,14 @@ export function createRedisDurableJournalAuthority(
   }
 
   return {
+    *taskInput(sessionId, taskId) {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).taskInput(sessionId, taskId);
+    },
+    *nonterminalSchemaDigests() {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).nonterminalSchemaDigests();
+    },
     *markActivated(sessionId) {
       yield* mutate((value) => value.markActivated(sessionId));
     },

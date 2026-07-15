@@ -5,7 +5,6 @@ register();
 const { runWorker, createWorkerToolRegistry } =
     await import("../../../../packages/tool-runtime-local/src/worker.ts");
 const { bookFlightTool } = await import("../tools/book-flight/tool.ts");
-const { pickCard } = await import("../tools/pick-card/tool.ts");
 
 function canonicalWorkerTool(tool) {
     return {
@@ -53,7 +52,6 @@ const confirmBookingTool = {
 
 const registry = createWorkerToolRegistry([
     canonicalWorkerTool(bookFlightTool),
-    canonicalWorkerTool(pickCard),
     confirmBookingTool,
 ]);
 

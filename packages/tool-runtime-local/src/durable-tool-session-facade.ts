@@ -7,8 +7,9 @@ import {
   ProgramDriverRegistryContext,
   ProgramRuntime,
   assertJson,
-  assertSchemaValue,
+  assertReplayedCanonicalValue,
   createDurableEffectRegistry,
+  createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -17,6 +18,8 @@ import {
   type DurableEffectHandler,
   type DurableEffectRegistration,
   type DurableProgramManifest,
+  type DurableSchemaRegistry,
+  type DurableSchemaRegistryEntry,
   type DurableSemanticRecord,
   type DurableTool,
   type Json,
@@ -76,6 +79,9 @@ export interface DurableToolSessionFacadeOptions<I extends Json, O extends Json>
   keyring: CapabilityKeyring;
   name?: string;
   effectHandlers?: ReadonlyMap<string, DurableEffectHandler>;
+  /** Runtime validators for low-level durable definitions. Core-authored tools
+   * expose `artifacts.catalog` and are detected automatically. */
+  schemaRegistry?: DurableSchemaRegistry;
   onActivation?: (evidence: {
     invocationId: string;
     activation: number;
@@ -129,7 +135,7 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
     .samples()
     .annotate(DURABLE_TOOL_FACADE_ANNOTATION, { version: 1 })
     .execute(function* ({ invocationId, input }, context) {
-      const validatedInput = assertManifestInput<I>(options.tool.manifest.inputSchema, input);
+      const validatedInput = assertManifestInput<I>(input);
       return yield* runFacadeProgram(options, invocationId, validatedInput, context);
     });
 }
@@ -150,10 +156,17 @@ function* runFacadeProgram<I extends Json, O extends Json>(
   let activation = 0;
 
   while (true) {
+    const authoredCatalog = (
+      options.tool as DurableTool<I, O> & {
+        artifacts?: { catalog?: readonly DurableSchemaRegistryEntry[] };
+      }
+    ).artifacts?.catalog;
     const authority = createInMemoryDurableJournalAuthority({
       journalId: `durable-tool-facade:${options.tool.manifest.programId}`,
       journalIncarnation: "1",
       keyring: options.keyring,
+      schemaRegistry:
+        options.schemaRegistry ?? createDurableSchemaRegistry(authoredCatalog ?? []),
       ...(snapshot ? { snapshot } : {}),
     });
     const taskId = "turn-0/root";
@@ -211,7 +224,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     }
 
     if (outcome.state === "completed") {
-      return assertSchemaValue<O>(options.tool.manifest.outputSchema, outcome.value);
+      return assertReplayedCanonicalValue<O>(outcome.value);
     }
     if (outcome.state === "failed") {
       throw new DurableToolFacadeError("program_failed", outcome.error.message);
@@ -231,7 +244,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       message: request.descriptor.message,
       context: {
         key: request.descriptor.key,
-        responseSchema: request.descriptor.responseSchema,
+        responseSchema: request.descriptor.response.inputProjection,
         ...(request.descriptor.context !== undefined
           ? { context: request.descriptor.context }
           : {}),
@@ -240,10 +253,16 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     const resolution = yield* authority.resolve({
       capability: authority.resolutionCapability(invocationId, taskId, request.pullId),
       audience: `user:${request.descriptor.key}`,
-      outcome:
-        response.action === "accept"
-          ? { status: "ok", value: assertJson(response.content) }
-          : { status: "cancelled" },
+      outcome: {
+        status: "ok",
+        value:
+          response.action === "accept"
+            ? { action: "accept", content: assertJson(response.content) }
+            : {
+                action: response.action,
+                ...(response.reason !== undefined ? { reason: response.reason } : {}),
+              },
+      },
     });
     if (resolution.status === "rejected") {
       throw new DurableToolFacadeError(
@@ -302,8 +321,8 @@ function* bridgeModelSample(input: Json, context: FacadeOuterContext): Operation
   };
 }
 
-function assertManifestInput<I extends Json>(schema: Json, input: unknown): I {
-  return assertSchemaValue<I>(schema, input);
+function assertManifestInput<I extends Json>(input: unknown): I {
+  return assertReplayedCanonicalValue<I>(input);
 }
 
 function pendingElicit(records: DurableSemanticRecord[], pullId: string) {

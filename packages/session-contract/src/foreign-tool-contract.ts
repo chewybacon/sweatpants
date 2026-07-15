@@ -1,9 +1,16 @@
+import { assertJson } from "./canonical.ts";
+import {
+  createPortableSchemaDescriptor,
+  type PortableSchemaDescriptor,
+  type PortableSchemaRole,
+} from "./schema-descriptor.ts";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
   DurableChildDescriptor,
   EffectDefinition,
   ForeignToolContinueRequest,
-  ForeignToolDisposition,
   ForeignToolRequest,
+  ForeignToolDisposition,
 } from "./durable-types.ts";
 import type { Json } from "./types.ts";
 
@@ -14,33 +21,83 @@ export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
   digest: "7e589ef471bf10722d6a236e52c4bd93f948a60cd73823bb7a85e53c7b2790f5",
 });
 
-const startDefinition: EffectDefinition<ForeignToolRequest, ForeignToolDisposition> = {
-  name: "foreign.tool.start",
-  version: "1",
-  inputSchema: {
+const FOREIGN_DURABILITIES = [
+  "opaque",
+  "ephemeral_handle",
+  "resumable_handle",
+  "server_task",
+  "crank_native",
+] as const;
+
+function builtinDescriptor(
+  identity: string,
+  role: PortableSchemaRole,
+  projection: Json,
+): PortableSchemaDescriptor {
+  return createPortableSchemaDescriptor({
+    identity,
+    role,
+    version: "1",
+    vendor: "sweatpants",
+    inputProjection: projection,
+    outputProjection: projection,
+    fidelity: { input: "explicit", output: "explicit" },
+  });
+}
+
+function guardSchema(
+  guard: (value: unknown) => string | undefined,
+): StandardSchemaV1 {
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "sweatpants",
+      validate(value: unknown) {
+        const message = guard(value);
+        return message === undefined
+          ? { value: assertJson(value) }
+          : { issues: [{ message }] };
+      },
+    },
+  };
+}
+
+const anyJsonGuard = (value: unknown): string | undefined => {
+  try {
+    assertJson(value);
+    return undefined;
+  } catch {
+    return "value must be canonical JSON";
+  }
+};
+
+const FOREIGN_TOOL_START_INPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/start-input",
+  "effect_input",
+  {
     type: "object",
     required: ["driver", "tool", "input", "durability"],
     properties: {
       driver: { type: "string" },
       tool: { type: "string" },
       input: true,
-      durability: {
-        enum: ["opaque", "ephemeral_handle", "resumable_handle", "server_task", "crank_native"],
-      },
+      durability: { enum: [...FOREIGN_DURABILITIES] },
       route: { type: "string" },
     },
     additionalProperties: false,
   },
-  outputSchema: true,
-  retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
-};
-/** Effect contract for starting a foreign driver invocation exactly once. */
-export const FOREIGN_TOOL_START_EFFECT = Object.freeze(startDefinition);
+);
 
-const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignToolDisposition> = {
-  name: "foreign.tool.continue",
-  version: "1",
-  inputSchema: {
+const FOREIGN_TOOL_START_OUTPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/start-output",
+  "effect_output",
+  true,
+);
+
+const FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/continue-input",
+  "effect_input",
+  {
     type: "object",
     required: ["continuation", "response"],
     properties: {
@@ -59,7 +116,164 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
     },
     additionalProperties: false,
   },
-  outputSchema: true,
+);
+
+const FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/continue-output",
+  "effect_output",
+  true,
+);
+
+const FOREIGN_MODEL_SAMPLE_INPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/model-sample-input",
+  "effect_input",
+  true,
+);
+
+const FOREIGN_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/model-sample-output",
+  "effect_output",
+  true,
+);
+
+/** Program-input descriptor for the built-in foreign adapter program. */
+export const FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/program-input",
+  "program_input",
+  {
+    type: "object",
+    required: ["driver", "tool", "input", "durability"],
+    properties: {
+      driver: { type: "string" },
+      tool: { type: "string" },
+      input: true,
+      durability: { enum: [...FOREIGN_DURABILITIES] },
+      route: { type: "string" },
+    },
+    additionalProperties: false,
+  },
+);
+
+/** Program-output descriptor for the built-in foreign adapter program. */
+export const FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/program-output",
+  "program_output",
+  true,
+);
+
+/** Accepted-content descriptor for lifted foreign elicitations (any canonical JSON). */
+export const FOREIGN_INPUT_RESPONSE_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/foreign-input-response",
+  "elicit_response",
+  true,
+);
+
+/** Context descriptor for lifted foreign elicitations (any canonical JSON). */
+export const FOREIGN_INPUT_CONTEXT_DESCRIPTOR = builtinDescriptor(
+  "sweatpants.foreign-tool-adapter/foreign-input-context",
+  "elicit_context",
+  true,
+);
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+const foreignStartGuard = (value: unknown): string | undefined => {
+  const structural = anyJsonGuard(value);
+  if (structural) {
+    return structural;
+  }
+  if (!isRecordValue(value)) {
+    return "foreign start request must be an object";
+  }
+  if (typeof value["driver"] !== "string" || typeof value["tool"] !== "string") {
+    return "driver and tool must be strings";
+  }
+  if (!("input" in value)) {
+    return "input is required";
+  }
+  if (!FOREIGN_DURABILITIES.includes(value["durability"] as never)) {
+    return "durability is invalid";
+  }
+  if (value["route"] !== undefined && typeof value["route"] !== "string") {
+    return "route must be a string";
+  }
+  const allowed = new Set(["driver", "tool", "input", "durability", "route"]);
+  if (!Object.keys(value).every((key) => allowed.has(key))) {
+    return "foreign start request has unexpected keys";
+  }
+  return undefined;
+};
+
+const foreignContinueGuard = (value: unknown): string | undefined => {
+  const structural = anyJsonGuard(value);
+  if (structural) {
+    return structural;
+  }
+  if (!isRecordValue(value)) {
+    return "foreign continue request must be an object";
+  }
+  const continuation = value["continuation"];
+  const response = value["response"];
+  if (
+    !isRecordValue(continuation) ||
+    typeof continuation["driver"] !== "string" ||
+    !("state" in continuation)
+  ) {
+    return "continuation is invalid";
+  }
+  if (
+    !isRecordValue(response) ||
+    !["sample", "elicit", "cancel"].includes(String(response["kind"])) ||
+    !("value" in response)
+  ) {
+    return "response is invalid";
+  }
+  const allowed = new Set(["continuation", "response"]);
+  if (!Object.keys(value).every((key) => allowed.has(key))) {
+    return "foreign continue request has unexpected keys";
+  }
+  return undefined;
+};
+
+/** Runtime validator entries for every built-in foreign adapter descriptor. */
+export function foreignToolSchemaEntries(): Array<{
+  descriptor: PortableSchemaDescriptor;
+  schema: StandardSchemaV1;
+}> {
+  return [
+    { descriptor: FOREIGN_TOOL_START_INPUT_DESCRIPTOR, schema: guardSchema(foreignStartGuard) },
+    { descriptor: FOREIGN_TOOL_START_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    {
+      descriptor: FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR,
+      schema: guardSchema(foreignContinueGuard),
+    },
+    { descriptor: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    { descriptor: FOREIGN_MODEL_SAMPLE_INPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    { descriptor: FOREIGN_MODEL_SAMPLE_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    { descriptor: FOREIGN_INPUT_RESPONSE_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    { descriptor: FOREIGN_INPUT_CONTEXT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    { descriptor: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR, schema: guardSchema(foreignStartGuard) },
+    { descriptor: FOREIGN_TOOL_ADAPTER_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+  ];
+}
+
+const startDefinition: EffectDefinition<ForeignToolRequest, ForeignToolDisposition> = {
+  name: "foreign.tool.start",
+  version: "1",
+  inputSchema: FOREIGN_TOOL_START_INPUT_DESCRIPTOR,
+  outputSchema: FOREIGN_TOOL_START_OUTPUT_DESCRIPTOR,
+  retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+};
+/** Effect contract for starting a foreign driver invocation exactly once. */
+export const FOREIGN_TOOL_START_EFFECT = Object.freeze(startDefinition);
+
+const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignToolDisposition> = {
+  name: "foreign.tool.continue",
+  version: "1",
+  inputSchema: FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR,
+  outputSchema: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR,
   retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
 };
 /** Effect contract for applying one response to foreign continuation state. */
@@ -68,8 +282,8 @@ export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 const modelSampleDefinition: EffectDefinition<Json, Json> = {
   name: "model.sample",
   version: "1",
-  inputSchema: true,
-  outputSchema: true,
+  inputSchema: FOREIGN_MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  outputSchema: FOREIGN_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 };
 /** Canonical model-sampling effect used by foreign ToolSession lifting. */

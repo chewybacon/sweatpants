@@ -1,7 +1,7 @@
 import { getElicitContext, makePlugin, stripMessageContext } from '@sweatpants/framework/chat'
 
 import { CardPicker } from './components/CardPicker'
-import { pickCard } from './tool'
+import { pickCard } from './durable'
 
 type PickCardContext = {
   cards: Array<{ rank: string; suit: string; display: string }>
@@ -39,6 +39,5 @@ export const pickCardPlugin = makePlugin(pickCard)
       return { action: 'accept' as const, content: result }
     },
   })
+  .onReplay(replayPickCardTrace)
   .build()
-
-;(pickCard as typeof pickCard & { replayTrace?: typeof replayPickCardTrace }).replayTrace = replayPickCardTrace

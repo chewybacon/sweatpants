@@ -1,5 +1,5 @@
 import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import type { Card } from '../tool'
+import type { Card } from '../cards'
 
 export interface CardPickerProps extends RenderableProps<{ picked: Card }> {
   cards: Card[]

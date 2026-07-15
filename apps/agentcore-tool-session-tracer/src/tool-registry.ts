@@ -2,7 +2,6 @@ import type { RuntimeTool } from "@sweatpants/core";
 import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
 import { calculator } from "../../yo-chat/src/tools/calculator.ts";
 import { askQuestion } from "../../yo-chat/src/tools/general/ask-question/tool.ts";
-import { pickCard } from "../../yo-chat/src/tools/pick-card/tool.ts";
 import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
 import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
 
@@ -28,7 +27,6 @@ const ALL_RUNTIME_TOOLS = [
   askQuestion,
   bookFlightTool,
   calculator,
-  pickCard,
   playTttTool,
   tictactoeTool,
 ] as const;
