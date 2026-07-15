@@ -799,9 +799,22 @@ function* sampleModel(
       }
     }
     if (next.value.type === "error") {
-      throw new CrankError("model_runtime_failed", "Model runtime failed");
+      const providerMessage = safeProviderErrorMessage(next.value.error.errorMessage);
+      throw new CrankError(
+        "model_runtime_failed",
+        providerMessage ? `Model runtime failed: ${providerMessage}` : "Model runtime failed",
+      );
     }
   }
+}
+
+function safeProviderErrorMessage(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return value
+    .replaceAll(/[\u0000-\u001f\u007f]/g, " ")
+    .replaceAll(/(bearer|token|api[-_ ]?key)\s*[:=]?\s*[^\s,;]+/gi, "$1 [redacted]")
+    .trim()
+    .slice(0, 512);
 }
 
 function activeRoot(records: DurableSemanticRecord[]) {

@@ -1,7 +1,7 @@
 {
     "name": "@sweatpants/session-contract",
     "version": "0.1.0",
-    "description": "Replay-crank durable pull-program runtime, journal, and conformance kit",
+    "description": "ProgramDriver durable runtime, journal authority, schemas, and conformance kit",
     "license": "MIT",
     "files": [
         "dist",
@@ -28,16 +28,6 @@
             "import": {
                 "types": "./dist/testing.d.ts",
                 "default": "./dist/testing.js"
-            }
-        },
-        "./projections": {
-            "development": {
-                "import": "./src/projections.ts",
-                "types": "./src/projections.ts"
-            },
-            "import": {
-                "types": "./dist/projections.d.ts",
-                "default": "./dist/projections.js"
             }
         }
     },

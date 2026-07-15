@@ -10,21 +10,18 @@ describe("yo-chat tool wiring", () => {
     vi.clearAllMocks();
   });
 
-  it("installs a shared crank buffer store in the durable host setup", async () => {
+  it("installs durable response-stream storage without a legacy crank runtime", async () => {
     vi.doMock("@/lib/shared-redis", () => ({
       getSharedRedisClient: async () => null,
     }));
 
-    const { CrankStoreContext } = await import("@sweatpants/framework/server");
+    const { useTokenBufferStore } = await import("@sweatpants/framework/chat/durable-streams");
     const { setupYoChatDurableStreams } = await import("../server/durable-streams");
 
     await run(function* () {
       yield* setupYoChatDurableStreams();
-      // Same context read path the durable handler uses for fold reopen.
-      const store = yield* CrankStoreContext.get();
+      const store = yield* useTokenBufferStore<string>();
       expect(store).toBeDefined();
-      expect(typeof store?.readJournal).toBe("function");
-      expect(typeof store?.claim).toBe("function");
     });
   });
 

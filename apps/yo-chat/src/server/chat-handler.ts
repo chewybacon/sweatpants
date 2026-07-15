@@ -2,6 +2,7 @@ import { createCapabilityKeyring, createChatHandler } from "@sweatpants/framewor
 import { env } from "@/env";
 import { setupYoChatModelProvider } from "./model-provider";
 import { createYoChatProgramDriverJournalStore } from "./program-driver-journal";
+import type { ProgramDriverJournalStore } from "@sweatpants/framework/server";
 
 /** Expected composition failure for invalid ProgramRuntime configuration. */
 export class ProgramDriverConfigurationError extends Error {
@@ -14,6 +15,13 @@ export class ProgramDriverConfigurationError extends Error {
   }
 }
 
+let activeProgramDriverJournalStore: ProgramDriverJournalStore | undefined;
+
+/** Returns the journal store owned by the active yo-chat handler for dev inspection. */
+export function getActiveProgramDriverJournalStore(): ProgramDriverJournalStore | undefined {
+  return activeProgramDriverJournalStore;
+}
+
 /** Creates the configured yo-chat handler without acquiring application resources. */
 export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
   const secret = env.PROGRAM_DRIVER_CAPABILITY_SECRET;
@@ -23,9 +31,11 @@ export function createYoChatHandler(): ReturnType<typeof createChatHandler> {
   const keyring = createCapabilityKeyring("yo-chat-program-driver", [
     { keyId: "yo-chat-program-driver-v1", secret },
   ]);
+  const journalStore = createYoChatProgramDriverJournalStore(keyring);
+  activeProgramDriverJournalStore = journalStore;
   return createChatHandler({
     setup: setupYoChatModelProvider,
     maxToolIterations: 10,
-    programDriverJournalStore: createYoChatProgramDriverJournalStore(keyring),
+    programDriverJournalStore: journalStore,
   });
 }

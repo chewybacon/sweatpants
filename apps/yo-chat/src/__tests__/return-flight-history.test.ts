@@ -12,13 +12,11 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  CrankStoreContext,
   createCapabilityKeyring,
   createChatHandler,
   createInMemoryProgramDriverJournalStore,
   ProgramDriverForeignEffectsContext,
   createPluginSessionManager,
-  createInMemoryCrankStore,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
 import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
@@ -156,7 +154,6 @@ describe("book_flight return history", () => {
       const providerMessages: Message[][] = [];
       const returnInference: Array<{ canInferReturn: boolean; args?: Record<string, unknown> }> =
         [];
-      const crankStore = createInMemoryCrankStore();
       const provider = createMockProvider({
         customStream: (messages, options) => {
           const transcript = messages.map((message) => message.content).join("\n");
@@ -230,7 +227,6 @@ describe("book_flight return history", () => {
 
       const setup = function* setup() {
         yield* setupInMemoryDurableStreams<string>();
-        yield* CrankStoreContext.set(crankStore);
         yield* setupMockModelProvider(provider);
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);

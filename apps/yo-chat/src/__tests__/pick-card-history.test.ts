@@ -12,14 +12,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import {
-  CrankStoreContext,
   createCapabilityKeyring,
   createChatHandler,
   createInMemoryProgramDriverJournalStore,
   ProgramDriverNativeToolsContext,
   createPluginSessionManager,
   programDriverSchemaRegistry,
-  createInMemoryCrankStore,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
 import { setupInMemoryDurableStreams } from "@sweatpants/framework/chat/durable-streams";
@@ -154,7 +152,6 @@ describe("pick_card session history", () => {
       } = readyResult.value;
 
       const providerMessages: Message[][] = [];
-      const crankStore = createInMemoryCrankStore();
       const provider = createMockProvider({
         customStream: (messages, options) => {
           providerMessages.push(JSON.parse(JSON.stringify(messages)) as Message[]);
@@ -206,7 +203,6 @@ describe("pick_card session history", () => {
 
       const setup = function* setup() {
         yield* setupInMemoryDurableStreams<string>();
-        yield* CrankStoreContext.set(crankStore);
         yield* setupMockModelProvider(provider);
         yield* PluginRegistryContext.set(pluginRegistry);
         yield* McpToolRegistryContext.set(mcpToolRegistry);

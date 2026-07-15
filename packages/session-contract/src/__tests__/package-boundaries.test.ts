@@ -19,16 +19,15 @@ describe("session-contract package boundaries", () => {
     ]);
 
     const sourceFiles = [
+      "authoring.ts",
       "canonical.ts",
-      "contexts.ts",
-      "crank.ts",
+      "durable-apis.ts",
+      "durable-authority.ts",
+      "durable-types.ts",
       "index.ts",
-      "journal.ts",
-      "projections.ts",
-      "pulls.ts",
-      "recovery.ts",
-      "session.ts",
-      "store.ts",
+      "program-driver.ts",
+      "schema-descriptor.ts",
+      "schema-registry.ts",
       "types.ts",
     ];
     for (const file of sourceFiles) {
