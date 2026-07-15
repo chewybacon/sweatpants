@@ -36,6 +36,20 @@
                 "types": "./dist/host.d.ts",
                 "default": "./dist/host.cjs"
             }
+        },
+        "./evaluator-runtime": {
+            "development": {
+                "import": "./src/evaluator-runtime.ts",
+                "types": "./src/evaluator-runtime.ts"
+            },
+            "import": {
+                "types": "./dist/evaluator-runtime.d.ts",
+                "default": "./dist/evaluator-runtime.js"
+            },
+            "require": {
+                "types": "./dist/evaluator-runtime.d.ts",
+                "default": "./dist/evaluator-runtime.cjs"
+            }
         }
     },
     "scripts": {

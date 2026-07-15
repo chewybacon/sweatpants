@@ -364,10 +364,16 @@ export function computeReplayChainSeed(input: ReplayChainSeedInput): string {
   );
 }
 
+export type UnlinkedReplayEntry = ReplayEntry extends infer Entry
+  ? Entry extends ReplayEntry
+    ? Omit<Entry, "previousEntryDigest" | "entryDigest">
+    : never
+  : never;
+
 export function linkReplayEntry(
   seed: string,
   previousEntryDigest: string,
-  entry: Omit<ReplayEntry, "previousEntryDigest" | "entryDigest">,
+  entry: UnlinkedReplayEntry,
 ): ReplayEntry {
   if (!digest(seed) || !digest(previousEntryDigest))
     throw protocol("program_protocol_error", "Invalid replay chain digest");

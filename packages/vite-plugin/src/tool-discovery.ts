@@ -295,8 +295,9 @@ async function generateRegistry(
     await access(toolsDir);
   } catch {
     log(options, "verbose", `[tool-discovery] Tools directory not found: ${options.dir}`);
-    // Generate empty registry
+    // Generate empty registries
     await writeRegistryFile(outFile, [], options);
+    await writeAgentCoreDurableRegistryFile(outFile, []);
     if (options.generateWorker) {
       await writeWorkerFile(workerOutFile, [], options);
     }
@@ -314,6 +315,7 @@ async function generateRegistry(
   if (files.length === 0) {
     log(options, "normal", `[tool-discovery] No tool files found in ${options.dir}`);
     await writeRegistryFile(outFile, [], options);
+    await writeAgentCoreDurableRegistryFile(outFile, []);
     if (options.generateWorker) {
       await writeWorkerFile(workerOutFile, [], options);
     }
@@ -345,6 +347,8 @@ async function generateRegistry(
   // Generate registry
   await writeRegistryFile(outFile, tools, options);
   log(options, "normal", `[tool-discovery] Generated ${relative(root, outFile)}`);
+  const agentCoreOutFile = await writeAgentCoreDurableRegistryFile(outFile, tools);
+  log(options, "normal", `[tool-discovery] Generated ${relative(root, agentCoreOutFile)}`);
 
   if (options.generateWorker) {
     await writeWorkerFile(workerOutFile, tools, options);
@@ -547,6 +551,53 @@ async function writeRegistryFile(
 
   const content = generateRegistryContent(tools, outFile, options);
   await writeFile(outFile, content);
+}
+
+async function writeAgentCoreDurableRegistryFile(
+  registryOutFile: string,
+  tools: DiscoveredTool[],
+): Promise<string> {
+  const outFile = join(dirname(registryOutFile), "agentcore-durable-program-registry.gen.ts");
+  await mkdir(dirname(outFile), { recursive: true });
+  const durableTools = tools
+    .filter((tool) => tool.execution === "crank_native")
+    .sort((left, right) => left.toolName.localeCompare(right.toolName));
+  const imports = durableTools.map((tool) => {
+    const importPath = calculateImportPath(outFile, tool.absolutePath);
+    return tool.exportName
+      ? `import { ${tool.exportName} } from '${importPath}'`
+      : `import ${tool.variableName} from '${importPath}'`;
+  });
+  const entries = durableTools.map((tool) => `  '${tool.toolName}': ${tool.variableName},`);
+  const content = `/**
+ * Exact AgentCore durable-program registry (auto-generated).
+ *
+ * DO NOT EDIT. This artifact intentionally imports no ordinary ToolSession tool.
+ */
+${imports.join("\n")}
+
+export const agentCoreDurableDefinitions = {
+${entries.join("\n")}
+} as const
+
+export const agentCoreDurablePrograms = new Map(
+  Object.values(agentCoreDurableDefinitions).map((tool) => [
+    \`${"${tool.manifest.programId}"}@${"${tool.manifest.version}"}#${"${tool.manifest.digest}"}\`,
+    tool,
+  ] as const)
+)
+
+export const agentCoreDurableProgramCatalog = Object.values(agentCoreDurableDefinitions).map((tool) => ({
+  publicName: tool.name,
+  program: {
+    id: tool.manifest.programId,
+    version: tool.manifest.version,
+    digest: tool.manifest.digest,
+  },
+}))
+`;
+  await writeFile(outFile, content);
+  return outFile;
 }
 
 async function writeWorkerFile(
