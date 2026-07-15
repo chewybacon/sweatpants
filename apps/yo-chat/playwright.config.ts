@@ -20,6 +20,7 @@ const deterministicBrowserSmokeSpecs = [
   "**/interactors-playwright.spec.ts",
   "**/journal-inspector.spec.ts",
   "**/rendering-pipeline.spec.ts",
+  "**/threaded-reconstruction.spec.ts",
 ];
 
 export default defineConfig({

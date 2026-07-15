@@ -30,12 +30,28 @@ If an acceptance test consistently fails:
 
 ### E2E Tests: Land the Plane
 
-E2E tests are the final confidence gate when applicable. Use them to land the plane after the narrower tests are passing.
+Use the bounded landing orchestrator after narrow implementation gates:
 
-- For app/browser flows, run the relevant Playwright e2e tests before calling the work done.
-- For broad/risky changes, run the full e2e suite.
-- Prefer deterministic acceptance tests during implementation, then e2e as the final integration check.
-- If testing against an already-running dev server, set `PLAYWRIGHT_REUSE_EXISTING_SERVER=1`; otherwise Playwright may launch a separate server instance.
+```bash
+pnpm land       # mandatory deterministic landing gate
+pnpm land:live  # provider/model-dependent validation only
+pnpm land:full  # deterministic followed by live validation
+```
+
+`pnpm land` is the default definition of landed for broad, risky, multi-package, or browser-visible changes. It runs generated checks, types, lint, build, each package test sequentially with fail-fast settings, yo-mcp Playwright, and hermetic yo-chat Playwright—including deterministic threaded AG-UI reconstruction.
+
+Live-provider tests are separate because auth, provider availability, and model behavior are not deterministic. Run `pnpm land:live` when provider/model integration changed or the user explicitly requests live confidence. Use `pnpm land:full` when both are required.
+
+#### Landing failure rules
+
+- Stop at the first failed stage. Do not continue gathering unrelated failures.
+- Do not increase a timeout after the first timeout failure.
+- Do not run an identical failing command more than twice. A second identical failure requires a new diagnosis or user input.
+- Auth, port, configuration, generated-artifact, module-resolution, and deterministic assertion failures are not model-latency problems.
+- Skipped Playwright tests do not satisfy landing coverage.
+- Never claim `pnpm land` passed when only a subset or live-provider suite ran.
+- Full logs belong under `.artifacts/landing/<run>/`. Read the bounded failure tail first; do not load complete logs into agent context unless the bounded diagnostics are insufficient.
+- Timeout changes require concrete evidence of forward progress immediately before the deadline. Never escalate timeouts speculatively.
 
 ### Generated Files
 
@@ -55,27 +71,12 @@ If generated output is stale, regenerate it and review the generated diff. Do no
 Before ending a coding session:
 
 1. Summarize what changed and list touched areas.
-2. Run the relevant fast iteration gates for touched code.
-3. Run applicable acceptance tests and ensure they pass.
-4. Run applicable e2e tests as the final landing step.
-5. Report any skipped, failing, or not-run gates explicitly with the reason.
+2. Run the narrow package/type/acceptance gates while iterating.
+3. For broad, risky, multi-package, generated, or user-visible changes, run `pnpm land` exactly once after narrow gates are green.
+4. Run `pnpm land:live` only when provider/model integration requires it; otherwise report it as intentionally not applicable.
+5. Report the landing summary path and any failing, skipped, or not-run gate accurately.
 
-For changes affecting multiple apps/packages or user-visible browser flows, the expected final gate is:
-
-```bash
-pnpm test:e2e
-```
-
-This root e2e gate includes both:
-
-```bash
-pnpm -C apps/yo-chat test:e2e
-pnpm -C apps/yo-mcp test
-```
-
-Run the headless yo-mcp e2e suite (`pnpm -C apps/yo-mcp test`) as part of landing changes to MCP protocol behavior, MCP tool authoring, sampling/elicitation backchannels, streamable HTTP transport, or the MCP Inspector-driven demos. The yo-mcp suite should pass with no skipped tests.
-
-unless the user explicitly scopes the validation more narrowly.
+A passing `pnpm land` is required before declaring broad work complete unless the user explicitly narrows the validation scope. Do not substitute `pnpm test`, `pnpm test:e2e`, an individual Playwright file, or an existing-server run for the deterministic landing gate.
 
 ## Git Operations (When Requested)
 
