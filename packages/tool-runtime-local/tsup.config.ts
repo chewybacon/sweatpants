@@ -8,7 +8,13 @@ export default defineConfig({
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ["@sweatpants/framework", "@sweatpants/session-contract", "effection", "zod"],
+  external: [
+    "@effectionx/worker",
+    "@sweatpants/framework",
+    "@sweatpants/session-contract",
+    "effection",
+    "zod",
+  ],
   treeshake: true,
   skipNodeModulesBundle: true,
 });

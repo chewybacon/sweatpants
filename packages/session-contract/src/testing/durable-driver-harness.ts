@@ -100,6 +100,53 @@ const cancellationManifest: DurableProgramManifest = {
   effects: { echo: echoDefinition, cleanup: cleanupDefinition },
 };
 
+/** Static fixture program loadable by in-process and isolated worker registries. */
+export const durableDriverRecoveryFixtureTool = createDurableTool(
+  fixtureManifest,
+  function* (input, context) {
+    const echoed = yield* context.effect(echoDefinition, input, {
+      audience: "fixture-effects",
+    });
+    yield* context.emit("fixture_progress", { echoed });
+    const approved = yield* context.elicit<boolean>(
+      "approval",
+      "Approve the recovered execution?",
+      { type: "boolean" },
+    );
+    return `${echoed}:${approved}`;
+  },
+);
+
+/** Static cancellation fixture whose catch evidence crosses a durable emission boundary. */
+export const durableDriverCancellationFixtureTool = createDurableTool(
+  cancellationManifest,
+  function* (input, context) {
+    const echoed = yield* context.effect(echoDefinition, input, {
+      audience: "fixture-effects",
+    });
+    try {
+      yield* context.elicit<boolean>("approval", "Approve cancellation fixture?", {
+        type: "boolean",
+      });
+      return echoed;
+    } catch (error) {
+      if (error instanceof DurableProgramCancellation) {
+        yield* context.emit("cancellation_caught", { caught: true });
+      }
+      return "caught-cancellation-must-not-be-success";
+    } finally {
+      yield* context.effect(cleanupDefinition, null, { audience: "fixture-cleanup" });
+      yield* context.emit("cleanup_complete", { cleaned: true });
+    }
+  },
+);
+
+/** Exact static program set used by concrete ProgramDriver transport fixtures. */
+export const DURABLE_DRIVER_FIXTURE_TOOLS = Object.freeze([
+  durableDriverRecoveryFixtureTool,
+  durableDriverCancellationFixtureTool,
+]);
+
 /**
  * Shared protocol-neutral integration fixture used by concrete runtime
  * packages. It proves that the concrete driver participates in the real
@@ -111,19 +158,7 @@ export function* runDurableDriverRecoveryFixture(
   options: DurableDriverRecoveryFixtureOptions,
 ): Operation<DurableDriverRecoveryEvidence> {
   let effectExecutions = 0;
-  const tool = createDurableTool(fixtureManifest, function* (input, context) {
-    const echoed = yield* context.effect(echoDefinition, input, {
-      audience: "fixture-effects",
-    });
-    yield* context.emit("fixture_progress", { echoed });
-    const approved = yield* context.elicit<boolean>(
-      "approval",
-      "Approve the recovered execution?",
-      { type: "boolean" },
-    );
-    return `${echoed}:${approved}`;
-  });
-  const tools = createDurableToolRegistry([tool]);
+  const tools = createDurableToolRegistry([durableDriverRecoveryFixtureTool]);
   const concreteDriver = options.createDriver(tools);
   let activeAttachments = 0;
   let attachmentCount = 0;
@@ -256,27 +291,7 @@ export function* runDurableDriverCancellationFixture(
 ): Operation<DurableDriverCancellationEvidence> {
   let effectExecutions = 0;
   let cleanupExecutions = 0;
-  let cancellationCatches = 0;
-  const tool = createDurableTool(cancellationManifest, function* (input, context) {
-    const echoed = yield* context.effect(echoDefinition, input, {
-      audience: "fixture-effects",
-    });
-    try {
-      yield* context.elicit<boolean>("approval", "Approve cancellation fixture?", {
-        type: "boolean",
-      });
-      return echoed;
-    } catch (error) {
-      if (error instanceof DurableProgramCancellation) {
-        cancellationCatches += 1;
-      }
-      return "caught-cancellation-must-not-be-success";
-    } finally {
-      yield* context.effect(cleanupDefinition, null, { audience: "fixture-cleanup" });
-      yield* context.emit("cleanup_complete", { cleaned: true });
-    }
-  });
-  const tools = createDurableToolRegistry([tool]);
+  const tools = createDurableToolRegistry([durableDriverCancellationFixtureTool]);
   const concreteDriver = options.createDriver(tools);
   let activeAttachments = 0;
   let attachmentCount = 0;
@@ -400,7 +415,11 @@ export function* runDurableDriverCancellationFixture(
     shutdownCount,
     effectExecutions,
     cleanupExecutions,
-    cancellationCatches,
+    cancellationCatches: semanticJournal.filter(
+      (record) =>
+        record.payload.type === "DurableEmission" &&
+        record.payload.descriptor.eventType === "cancellation_caught",
+    ).length,
   };
 }
 

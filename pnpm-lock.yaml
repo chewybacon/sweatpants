@@ -1063,6 +1063,9 @@ importers:
 
   packages/tool-runtime-local:
     dependencies:
+      '@effectionx/worker':
+        specifier: 'catalog:'
+        version: 0.5.2(effection@4.1.0-alpha.9)
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
@@ -13655,7 +13658,7 @@ snapshots:
     dependencies:
       duplexer: 0.1.2
 
-  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8)):
+  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16)):
     dependencies:
       rou3: 0.8.1
       srvx: 0.11.16
@@ -14658,7 +14661,7 @@ snapshots:
       crossws: 0.4.6(srvx@0.11.16)
       db0: 0.3.4
       env-runner: 0.1.14
-      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8))
+      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16))
       hookable: 6.1.1
       nf3: 0.3.17
       ocache: 0.1.5

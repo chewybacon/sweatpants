@@ -48,7 +48,7 @@ export type {
   WorkerSampleConfig,
   WorkerSampleToolsConfig,
   WorkerSampleSchemaConfig,
-} from './worker-types.ts'
+} from "./worker-types.ts";
 
 // =============================================================================
 // WORKER RUNNER (runs inside worker thread)
@@ -58,7 +58,17 @@ export {
   // Worker runner (runs inside worker)
   runWorker,
   createWorkerToolRegistry,
-} from './worker-runner.ts'
+} from "./worker-runner.ts";
+
+/** Runs pure crank-native durable programs inside an isolated worker. */
+export { runDurableProgramWorker } from "./durable-worker-runner.ts";
+export type {
+  DurableProgramWorkerError,
+  DurableProgramWorkerRequest,
+  DurableProgramWorkerResponse,
+  DurableProgramWorkerResult,
+  DurableWorkerAttachmentMetadata,
+} from "./durable-worker-protocol.ts";
 
 // =============================================================================
 // WORKER TOOL SESSION (host-side adapter for worker-based tools)
@@ -68,4 +78,4 @@ export {
   // Worker tool session adapter
   createWorkerToolSession,
   type WorkerToolSessionOptions,
-} from './worker-tool-session.ts'
+} from "./worker-tool-session.ts";

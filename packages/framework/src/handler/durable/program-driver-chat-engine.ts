@@ -4,6 +4,7 @@ import {
   DurableEffectRegistryContext,
   JournalAuthorityContext,
   ProgramDriverRegistryContext,
+  ProgramRouteResolverContext,
   ProgramRuntime,
   assertJson,
   assertSchemaValue,
@@ -33,6 +34,11 @@ import type {
 } from "../../lib/chat/runtime/index.ts";
 import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
+import {
+  nativeProgramIdentities,
+  type NativeProgramIdentity,
+  type ProgramDriverNativeToolComposition,
+} from "./program-driver-native-tools.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
@@ -62,11 +68,13 @@ type ChatSampleCancellationPartial = { text: string; interrupted: true };
 type ChatProgramInput = ChatSampleRequest & {
   maxIterations: number;
   foreignDriver: "tool-session" | "framework-tool-runtime";
+  durablePrograms: Record<string, NativeProgramIdentity>;
 };
 
 type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
   journalStore: ProgramDriverJournalStore;
   foreignEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
+  nativeTools?: ProgramDriverNativeToolComposition;
   continueAfterCancellation?: boolean;
 };
 
@@ -140,17 +148,30 @@ const modelSample = defineDurableEffect<
 
 const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
   programId: "sweatpants.chat-root",
-  version: "1.0.0",
-  digest: sha256("sweatpants.chat-root@1.0.0:model-tool-loop-v1"),
+  version: "1.1.0",
+  digest: sha256("sweatpants.chat-root@1.1.0:native-child-tool-routing-v1"),
   inputSchema: {
     type: "object",
-    required: ["messages", "maxIterations", "foreignDriver"],
+    required: ["messages", "maxIterations", "foreignDriver", "durablePrograms"],
     properties: {
       messages: { type: "array", items: true },
       systemPrompt: { type: "string" },
       toolChoice: { enum: ["auto", "none", "required"] },
       maxIterations: { type: "integer", minimum: 1, maximum: 100 },
       foreignDriver: { enum: ["tool-session", "framework-tool-runtime"] },
+      durablePrograms: {
+        type: "object",
+        additionalProperties: {
+          type: "object",
+          required: ["id", "version", "digest"],
+          properties: {
+            id: { type: "string" },
+            version: { type: "string" },
+            digest: { type: "string", pattern: "^[0-9a-f]{64}$" },
+          },
+          additionalProperties: false,
+        },
+      },
     },
     additionalProperties: false,
   },
@@ -203,13 +224,19 @@ const rootTool = createDurableTool(manifest, function* (input, context) {
         tool: call.target,
         input: call.input,
       });
-      const result = yield* context.foreignTool<Json>({
-        driver: input.foreignDriver,
-        tool: call.target,
-        input: call.input,
-        durability: "ephemeral_handle",
-        route: call.id,
-      });
+      const nativeProgram = input.durablePrograms[call.target];
+      const result = nativeProgram
+        ? yield* context.invoke<Json>({
+            ...nativeProgram,
+            input: durableToolInput(call),
+          })
+        : yield* context.foreignTool<Json>({
+            driver: input.foreignDriver,
+            tool: call.target,
+            input: call.input,
+            durability: "ephemeral_handle",
+            route: call.id,
+          });
       yield* context.emit("tool_completed", {
         callId: call.id,
         tool: call.target,
@@ -261,6 +288,7 @@ function* activateProgramDriverChatEngine(
     messages: params.messages.map((message) => assertJson(message)),
     maxIterations: params.maxIterations,
     foreignDriver: scopedForeignEffects ? "tool-session" : "framework-tool-runtime",
+    durablePrograms: nativeProgramIdentities(params.nativeTools),
     ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
     ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
   };
@@ -317,8 +345,12 @@ function* activateProgramDriverChatEngine(
   const tools = createDurableToolRegistry([
     rootTool as unknown as DurableTool,
     foreignToolAdapter as unknown as DurableTool,
+    ...[...(params.nativeTools?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
-  const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+  const drivers = createProgramDriverRegistry([
+    ["generator", createLocalGeneratorDriver(tools)],
+    ...(params.nativeTools?.drivers ?? []),
+  ]);
   const foreignEffects =
     input.foreignDriver === "tool-session"
       ? requireScopedForeignEffects(scopedForeignEffects)
@@ -362,11 +394,25 @@ function* activateProgramDriverChatEngine(
       },
     ),
     ...foreignEffects,
+    ...(params.nativeTools?.effects ?? []),
   ]);
   const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* JournalAuthorityContext.with(journal.authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+        return yield* ProgramRouteResolverContext.with(
+          function* (program, parentRoute) {
+            const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
+              (candidate) =>
+                candidate.tool.manifest.programId === program.id &&
+                candidate.tool.manifest.version === program.version &&
+                candidate.tool.manifest.digest === program.digest,
+            );
+            return binding?.route ?? parentRoute;
+          },
+          function* () {
+            return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+          },
+        );
       });
     });
   });
@@ -1166,6 +1212,11 @@ function requireToolRuntime(params: ProgramRuntimeChatEngineParams) {
     throw new CrankError("tool_runtime_not_installed", "Tool runtime is not installed");
   }
   return params.toolRuntime;
+}
+
+function durableToolInput(call: ChatCall): Json {
+  const input = jsonRecord(call.input);
+  return input ? { ...input, toolCallId: call.id } : { input: call.input, toolCallId: call.id };
 }
 
 function jsonRecord(value: Json | undefined): Record<string, Json> | undefined {

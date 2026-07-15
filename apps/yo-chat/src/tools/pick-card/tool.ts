@@ -1,55 +1,38 @@
-import { createTool } from '@sweatpants/core'
-import { z } from 'zod'
+import { createTool } from "@sweatpants/core";
+import { z } from "zod";
 
-const CARDS = ['A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2']
-const SUITS = ['Hearts', 'Diamonds', 'Clubs', 'Spades']
-const SUIT_SYMBOLS: Record<string, string> = {
-  Hearts: '\u2665',
-  Diamonds: '\u2666',
-  Clubs: '\u2663',
-  Spades: '\u2660',
-}
+import { CARD_RANKS, CARD_SUITS, CARD_SUIT_SYMBOLS, CardSchema, type Card } from "./cards";
 
-export interface Card {
-  rank: string
-  suit: string
-  display: string
-}
-
-export const CardSchema = z.object({
-  rank: z.string(),
-  suit: z.string(),
-  display: z.string(),
-})
+export { CardSchema, type Card } from "./cards";
 
 function drawRandomCard(): Card {
-  const rank = CARDS[Math.floor(Math.random() * CARDS.length)]!
-  const suit = SUITS[Math.floor(Math.random() * SUITS.length)]!
+  const rank = CARD_RANKS[Math.floor(Math.random() * CARD_RANKS.length)]!;
+  const suit = CARD_SUITS[Math.floor(Math.random() * CARD_SUITS.length)]!;
   return {
     rank,
     suit,
-    display: `${rank}${SUIT_SYMBOLS[suit]}`,
-  }
+    display: `${rank}${CARD_SUIT_SYMBOLS[suit]}`,
+  };
 }
 
 function drawUniqueCards(count: number): Card[] {
-  const cards = new Map<string, Card>()
-  while (cards.size < count && cards.size < CARDS.length * SUITS.length) {
-    const card = drawRandomCard()
-    const key = `${card.rank}-${card.suit}`
+  const cards = new Map<string, Card>();
+  while (cards.size < count && cards.size < CARD_RANKS.length * CARD_SUITS.length) {
+    const card = drawRandomCard();
+    const key = `${card.rank}-${card.suit}`;
     if (!cards.has(key)) {
-      cards.set(key, card)
+      cards.set(key, card);
     }
   }
-  return [...cards.values()]
+  return [...cards.values()];
 }
 
-export const pickCard = createTool('pick_card')
-  .description('Draw random cards and let the user pick one')
+export const pickCard = createTool("pick_card")
+  .description("Draw random cards and let the user pick one")
   .parameters(
     z.object({
-      count: z.number().min(2).max(10).default(5).describe('Number of cards to draw'),
-    })
+      count: z.number().min(2).max(10).default(5).describe("Number of cards to draw"),
+    }),
   )
   .elicits({
     pickCard: {
@@ -63,21 +46,21 @@ export const pickCard = createTool('pick_card')
     },
   })
   .execute(function* (params, ctx) {
-    const cards = drawUniqueCards(params.count)
-    const prompt = `Pick one of these ${cards.length} cards:`
-    const picked = yield* ctx.elicit('pickCard', {
+    const cards = drawUniqueCards(params.count);
+    const prompt = `Pick one of these ${cards.length} cards:`;
+    const picked = yield* ctx.elicit("pickCard", {
       message: prompt,
       context: { cards, prompt },
-    })
+    });
 
-    if (picked.action !== 'accept') {
-      return 'No card was selected.'
+    if (picked.action !== "accept") {
+      return "No card was selected.";
     }
 
-    const card = picked.content.picked
+    const card = picked.content.picked;
     return [
       `Card selection recorded: the user picked ${card.rank} of ${card.suit} (${card.display}).`,
-      'Remember this selected card for later questions in the same conversation.',
-      'Acknowledge the specific selected card to the user now.',
-    ].join(' ')
-  })
+      "Remember this selected card for later questions in the same conversation.",
+      "Acknowledge the specific selected card to the user now.",
+    ].join(" ");
+  });
