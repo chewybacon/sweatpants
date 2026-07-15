@@ -15,6 +15,8 @@ import {
 } from "./schema-registry.ts";
 import {
   signCapability,
+  signPrivateAuthorityToken,
+  verifyPrivateAuthorityToken,
   verifyProgramCapability,
   verifyResolutionCapability,
   type CapabilityKeyring,
@@ -23,9 +25,15 @@ import { assertJson, canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import { hasLiveDurableEffect, signalLiveDurableEffect } from "./durable-cancellation-live.ts";
 import type {
+  ActivationLeaseState,
+  AgentCoreTaskPlacement,
   AppendEmissionRequest,
   CancellationAcknowledgement,
+  ClaimActivationRequest,
+  ClaimActivationResult,
   CompleteTaskRequest,
+  ConsumeRestoreTicketRequest,
+  ConsumeRestoreTicketResult,
   DurableCancellationState,
   DurableJournalAuthorityService,
   DurableOperationDescriptor,
@@ -33,13 +41,20 @@ import type {
   EmissionReceipt,
   EnsureChildTaskRequest,
   EnsureChildTaskResult,
+  IssueRestoreTicketRequest,
+  IssueRestoreTicketResult,
   OperationOutcome,
   ReserveOperationRequest,
   ReserveOperationResult,
   ResolutionCapabilityClaims,
+  ReleaseActivationRequest,
+  ReleaseActivationResult,
+  RenewActivationRequest,
+  RenewActivationResult,
   ResolutionReceipt,
   ResolveOperationRequest,
   ResolveOperationResult,
+  RestoreTicketClaims,
   TaskCloseReceipt,
 } from "./durable-types.ts";
 
@@ -210,11 +225,18 @@ type TaskSnapshot = Omit<Task, "pullsByAction" | "emissionsByAction"> & {
 
 /** Versioned canonical snapshot DTO used only after boundary parsing. */
 export interface DurableAuthoritySnapshot {
-  version: 2;
+  version: 3;
   tasks: TaskSnapshot[];
   records: Array<[string, DurableSemanticRecord[]]>;
   runnable: string[];
   nonce: number;
+  activationLeases: Array<[string, ActivationLeaseState]>;
+  lastActivationEpochBySession: Array<[string, number]>;
+  taskRevisions: Array<[string, number]>;
+  restoreNonces: Array<[string, string]>;
+  consecutiveRestoreStales: Array<[string, number]>;
+  activationNotBeforeMs: Array<[string, number]>;
+  placements: Array<[string, AgentCoreTaskPlacement]>;
 }
 
 /** Composition options for a process-local authority and optional parsed snapshot. */
@@ -256,6 +278,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   readonly #tasks = new Map<string, Task>();
   readonly #records = new Map<string, DurableSemanticRecord[]>();
   readonly #runnable = new Set<string>();
+  readonly #activationLeases = new Map<string, ActivationLeaseState>();
+  readonly #lastActivationEpochBySession = new Map<string, number>();
+  readonly #taskRevisions = new Map<string, number>();
+  readonly #restoreNonces = new Map<string, string>();
+  readonly #consecutiveRestoreStales = new Map<string, number>();
+  readonly #activationNotBeforeMs = new Map<string, number>();
+  readonly #placements = new Map<string, AgentCoreTaskPlacement>();
   readonly #options: Required<
     Omit<InMemoryDurableJournalOptions, "keyring" | "snapshot" | "schemaRegistry">
   > & {
@@ -323,6 +352,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(request.parentTaskId ? { parentTaskId: request.parentTaskId } : {}),
       ...(request.parentPullId ? { parentPullId: request.parentPullId } : {}),
     });
+    this.#runnable.add(request.sessionId);
     return { programCapability: this.#programCapability(task) };
   }
 
@@ -526,6 +556,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     // Registry validators may await; re-verify authentication, task state, and
     // cursors immediately before the append.
     verifyReservable();
+    if (request.restoredFrontier) {
+      yield* this.#consumeRestoredFrontier(request.restoredFrontier, task);
+    }
     const pullId = stableOpaqueId("pull", [
       request.sessionId,
       request.turnId,
@@ -606,7 +639,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       claims.attemptId === "none"
         ? undefined
         : pull.attempts.find((candidate) => candidate.attemptId === claims.attemptId);
-    const verifyResolvable = (): Extract<ResolveOperationResult, { status: "rejected" }> | undefined => {
+    const verifyResolvable = ():
+      | Extract<ResolveOperationResult, { status: "rejected" }>
+      | undefined => {
       if (
         pull.descriptorDigest !== claims.descriptorDigest ||
         pull.resultSchemaDigest !== claims.resultSchemaDigest
@@ -651,7 +686,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         );
         if (validated.status === "ok") {
           try {
-            assertInlineSize(validated.value, Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes));
+            assertInlineSize(
+              validated.value,
+              Math.min(claims.maxOutcomeBytes, pull.maxOutcomeBytes),
+            );
             partial = validated.value;
             reason = "schema_validation_failed";
           } catch {
@@ -844,6 +882,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       throw new CrankError("nondeterminism_detected", "Emission action cursor mismatch");
     }
     assertInlineSize(descriptor.payload, this.#options.maxOutcomeBytes);
+    if (request.restoredFrontier) {
+      yield* this.#consumeRestoredFrontier(request.restoredFrontier, task);
+    }
     const offset = this.#append(task.sessionId, task.executionEpoch, {
       type: "DurableEmission",
       taskId: task.taskId,
@@ -893,6 +934,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     if ([...task.pullsByAction.values()].some((pull) => !pull.outcome)) {
       throw new CrankError("history_not_exhausted", "Task has an unresolved pull");
+    }
+    if (request.restoredFrontier) {
+      yield* this.#consumeRestoredFrontier(request.restoredFrontier, task);
     }
     const offset = this.#append(task.sessionId, task.executionEpoch, {
       type: "TaskClosed",
@@ -1146,11 +1190,18 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(task.parentPullId ? { parentPullId: task.parentPullId } : {}),
     }));
     return {
-      version: 2,
+      version: 3,
       tasks: structuredClone(tasks),
       records: structuredClone([...this.#records.entries()]),
       runnable: [...this.#runnable],
       nonce: this.#nonce,
+      activationLeases: structuredClone([...this.#activationLeases.entries()]),
+      lastActivationEpochBySession: [...this.#lastActivationEpochBySession.entries()],
+      taskRevisions: [...this.#taskRevisions.entries()],
+      restoreNonces: [...this.#restoreNonces.entries()],
+      consecutiveRestoreStales: [...this.#consecutiveRestoreStales.entries()],
+      activationNotBeforeMs: [...this.#activationNotBeforeMs.entries()],
+      placements: structuredClone([...this.#placements.entries()]),
     };
   }
 
@@ -1183,9 +1234,189 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return sortedStrings(this.#runnable);
   }
 
-  /** Clears a session's runnable marker after an activation owner claims it. */
+  /** Clears a session's runnable marker after a legacy process-local activation starts. */
   *markActivated(sessionId: string): Operation<void> {
     this.#runnable.delete(sessionId);
+  }
+
+  /** Claims runnable work with one authority-time lease and monotonically increasing epoch. */
+  *claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult> {
+    if (!request.sessionId || !request.ownerId) {
+      throw new CrankError("invalid_command", "Activation session and owner are required");
+    }
+    const duration = request.leaseDurationMs ?? 30_000;
+    if (!Number.isInteger(duration) || duration < 1_000 || duration > 300_000) {
+      throw new CrankError("invalid_command", "Activation lease duration is out of bounds");
+    }
+    const now = this.#options.now();
+    const notBefore = this.#activationNotBeforeMs.get(request.sessionId) ?? 0;
+    if (now < notBefore) {
+      return { status: "busy", retryAfterMs: notBefore - now };
+    }
+    const current = this.#activationLeases.get(request.sessionId);
+    if (current && now < current.expiresAtMs) {
+      return { status: "busy", retryAfterMs: current.expiresAtMs - now };
+    }
+    if (!this.#runnable.has(request.sessionId)) {
+      return { status: "not_runnable" };
+    }
+    const epoch = (this.#lastActivationEpochBySession.get(request.sessionId) ?? 0) + 1;
+    this.#lastActivationEpochBySession.set(request.sessionId, epoch);
+    for (const task of this.#tasks.values()) {
+      if (task.sessionId === request.sessionId && task.status === "active")
+        task.executionEpoch = epoch;
+    }
+    const taskRevision = this.#taskRevisions.get(request.sessionId) ?? 0;
+    const journalHeadDigest = this.#journalHeadDigest(request.sessionId);
+    const restoreNonce = this.#nextNonce();
+    this.#restoreNonces.set(request.sessionId, restoreNonce);
+    this.#activationLeases.set(request.sessionId, {
+      sessionId: request.sessionId,
+      ownerId: request.ownerId,
+      epoch,
+      expiresAtMs: now + duration,
+      claimedTaskRevision: taskRevision,
+      claimedHeadDigest: journalHeadDigest,
+      restoreNonce,
+    });
+    this.#runnable.delete(request.sessionId);
+    return {
+      status: "claimed",
+      epoch,
+      expiresAtMs: now + duration,
+      taskRevision,
+      journalHeadDigest,
+    };
+  }
+
+  /** Renews only a current, unexpired owner; equality with expiry is stale. */
+  *renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult> {
+    const now = this.#options.now();
+    const current = this.#activationLeases.get(request.sessionId);
+    if (
+      !current ||
+      current.ownerId !== request.ownerId ||
+      current.epoch !== request.epoch ||
+      now >= current.expiresAtMs
+    ) {
+      return { status: "stale_activation" };
+    }
+    const duration = Math.max(1_000, current.expiresAtMs - (now - 10_000));
+    const expiresAtMs = now + Math.min(duration, 300_000);
+    this.#activationLeases.set(request.sessionId, { ...current, expiresAtMs });
+    return { status: "renewed", expiresAtMs };
+  }
+
+  /** Releases exact ownership and preserves any command that raced the activation. */
+  *releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult> {
+    const current = this.#activationLeases.get(request.sessionId);
+    if (!current || current.ownerId !== request.ownerId || current.epoch !== request.epoch) {
+      return { status: "stale_activation" };
+    }
+    this.#activationLeases.delete(request.sessionId);
+    const retryable = ["failed", "scope_exit", "lease_lost"].includes(request.reason);
+    // Journal mutations performed by this owner do not themselves imply a
+    // wakeup (for example publishing a new unresolved elicit). External command
+    // lanes atomically set #runnable, so preserving that winning marker is the
+    // exact no-lost-wakeup re-derivation.
+    const runnable =
+      request.reason !== "terminal" && (retryable || this.#runnable.has(request.sessionId));
+    if (runnable) this.#runnable.add(request.sessionId);
+    else this.#runnable.delete(request.sessionId);
+    return { status: "released", runnable };
+  }
+
+  /** Issues one authenticated host-private ticket for the current claimed snapshot. */
+  *issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult> {
+    const lease = this.#activationLeases.get(request.sessionId);
+    const now = this.#options.now();
+    if (
+      !lease ||
+      lease.ownerId !== request.ownerId ||
+      lease.epoch !== request.activationEpoch ||
+      now >= lease.expiresAtMs
+    ) {
+      throw new CrankError("stale_activation");
+    }
+    this.#task(request.sessionId, request.taskId);
+    const restoreNonce = this.#nextNonce();
+    this.#restoreNonces.set(request.sessionId, restoreNonce);
+    this.#activationLeases.set(request.sessionId, { ...lease, restoreNonce });
+    const claims: RestoreTicketClaims = {
+      version: 1,
+      journalId: this.#options.journalId,
+      journalIncarnation: this.#options.journalIncarnation,
+      sessionId: request.sessionId,
+      taskId: request.taskId,
+      ownerId: request.ownerId,
+      activationEpoch: request.activationEpoch,
+      taskRevision: this.#taskRevisions.get(request.sessionId) ?? 0,
+      journalHeadDigest: this.#journalHeadDigest(request.sessionId),
+      replayedThroughActionIndex: request.replayedThroughActionIndex,
+      replayChainDigest: request.replayChainDigest,
+      restoreNonce,
+    };
+    return {
+      restoreTicket: signPrivateAuthorityToken("restore-ticket", claims, this.#options.keyring),
+      taskRevision: claims.taskRevision,
+      journalHeadDigest: claims.journalHeadDigest,
+    };
+  }
+
+  /** Verifies and atomically consumes a single-use restored-frontier ticket. */
+  *consumeRestoreTicket(
+    request: ConsumeRestoreTicketRequest,
+  ): Operation<ConsumeRestoreTicketResult> {
+    let claims: RestoreTicketClaims | undefined;
+    try {
+      claims = parseRestoreTicketClaims(
+        verifyPrivateAuthorityToken(
+          request.proof.restoreTicket,
+          "restore-ticket",
+          this.#options.keyring,
+        ),
+      );
+    } catch {
+      return this.#recordRestoreStale(request.sessionId);
+    }
+    const lease = this.#activationLeases.get(request.sessionId);
+    const valid =
+      /^[0-9a-f]{64}$/.test(request.proof.frontierDigest) &&
+      claims.journalId === this.#options.journalId &&
+      claims.journalIncarnation === this.#options.journalIncarnation &&
+      claims.sessionId === request.sessionId &&
+      claims.taskId === request.taskId &&
+      claims.ownerId === request.ownerId &&
+      claims.activationEpoch === request.activationEpoch &&
+      lease?.ownerId === request.ownerId &&
+      lease.epoch === request.activationEpoch &&
+      this.#options.now() < lease.expiresAtMs &&
+      claims.taskRevision === (this.#taskRevisions.get(request.sessionId) ?? 0) &&
+      claims.journalHeadDigest === this.#journalHeadDigest(request.sessionId) &&
+      claims.restoreNonce === this.#restoreNonces.get(request.sessionId);
+    if (!valid) return this.#recordRestoreStale(request.sessionId);
+    const consumedNonce = this.#nextNonce();
+    this.#restoreNonces.set(request.sessionId, consumedNonce);
+    this.#activationLeases.set(request.sessionId, { ...lease, restoreNonce: consumedNonce });
+    this.#consecutiveRestoreStales.delete(request.sessionId);
+    this.#activationNotBeforeMs.delete(request.sessionId);
+    return { status: "consumed" };
+  }
+
+  /** Stores one trusted private placement exactly once and rejects task/sandbox rebinding. */
+  setAgentCorePlacement(placement: AgentCoreTaskPlacement): void {
+    const key = taskKey(placement.journalId, placement.taskId);
+    const existing = this.#placements.get(key);
+    if (existing && canonicalSnapshot(existing).sha !== canonicalSnapshot(placement).sha) {
+      throw new CrankError("idempotency_conflict", "AgentCore task placement is immutable");
+    }
+    this.#placements.set(key, structuredClone(placement));
+  }
+
+  /** Reads private placement without projecting it into semantic records. */
+  agentCorePlacement(journalId: string, taskId: string): AgentCoreTaskPlacement | undefined {
+    const placement = this.#placements.get(taskKey(journalId, taskId));
+    return placement ? structuredClone(placement) : undefined;
   }
 
   /** Returns a defensive cancellation-state snapshot for fresh replay. */
@@ -1224,7 +1455,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
 
   #restore(snapshot: DurableAuthoritySnapshot): void {
     if (
-      snapshot.version !== 2 ||
+      snapshot.version !== 3 ||
       !Array.isArray(snapshot.tasks) ||
       !Array.isArray(snapshot.records)
     ) {
@@ -1233,6 +1464,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     this.#tasks.clear();
     this.#records.clear();
     this.#runnable.clear();
+    this.#activationLeases.clear();
+    this.#lastActivationEpochBySession.clear();
+    this.#taskRevisions.clear();
+    this.#restoreNonces.clear();
+    this.#consecutiveRestoreStales.clear();
+    this.#activationNotBeforeMs.clear();
+    this.#placements.clear();
     for (const value of snapshot.tasks) {
       const task: Task = {
         ...structuredClone(value),
@@ -1247,6 +1485,17 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     for (const sessionId of snapshot.runnable) {
       this.#runnable.add(sessionId);
     }
+    for (const [sessionId, lease] of snapshot.activationLeases)
+      this.#activationLeases.set(sessionId, structuredClone(lease));
+    for (const entry of snapshot.lastActivationEpochBySession)
+      this.#lastActivationEpochBySession.set(...entry);
+    for (const entry of snapshot.taskRevisions) this.#taskRevisions.set(...entry);
+    for (const entry of snapshot.restoreNonces) this.#restoreNonces.set(...entry);
+    for (const entry of snapshot.consecutiveRestoreStales)
+      this.#consecutiveRestoreStales.set(...entry);
+    for (const entry of snapshot.activationNotBeforeMs) this.#activationNotBeforeMs.set(...entry);
+    for (const [key, placement] of snapshot.placements)
+      this.#placements.set(key, structuredClone(placement));
     this.#nonce = snapshot.nonce;
   }
 
@@ -1459,11 +1708,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   /** Validates through the digest-selected registry validator, throwing on failure. */
-  *#validateThroughRegistry(
-    digest: string,
-    value: unknown,
-    errorCode: string,
-  ): Operation<Json> {
+  *#validateThroughRegistry(digest: string, value: unknown, errorCode: string): Operation<Json> {
     const validated: RegistrySchemaValidation = yield* validateRegisteredSchema(
       this.#schemas,
       digest,
@@ -1501,7 +1746,57 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       payload: structuredClone(payload),
     });
     this.#records.set(sessionId, records);
+    this.#taskRevisions.set(sessionId, (this.#taskRevisions.get(sessionId) ?? 0) + 1);
     return offset;
+  }
+
+  *#consumeRestoredFrontier(
+    proof: NonNullable<ReserveOperationRequest["restoredFrontier"]>,
+    task: Task,
+  ): Operation<void> {
+    const lease = this.#activationLeases.get(task.sessionId);
+    if (!lease) throw new CrankError("restore_stale");
+    const result = yield* this.consumeRestoreTicket({
+      sessionId: task.sessionId,
+      taskId: task.taskId,
+      ownerId: lease.ownerId,
+      activationEpoch: task.executionEpoch,
+      proof,
+    });
+    if (result.status === "restore_stale") {
+      throw new CrankError("restore_stale", "Restored frontier is stale", {
+        consecutiveStales: result.consecutiveStales,
+        retryAfterMs: result.retryAfterMs,
+        releaseRequired: result.releaseRequired,
+      });
+    }
+  }
+
+  #journalHeadDigest(sessionId: string): string {
+    return canonicalSnapshot(this.#records.get(sessionId) ?? []).sha;
+  }
+
+  #recordRestoreStale(sessionId: string): ConsumeRestoreTicketResult {
+    const count = (this.#consecutiveRestoreStales.get(sessionId) ?? 0) + 1;
+    this.#consecutiveRestoreStales.set(sessionId, count);
+    if (count < 3) {
+      return {
+        status: "restore_stale",
+        consecutiveStales: count,
+        retryAfterMs: 0,
+        releaseRequired: false,
+      };
+    }
+    const retryAfterMs = Math.min(250 * 2 ** (count - 3), 5_000);
+    this.#activationNotBeforeMs.set(sessionId, this.#options.now() + retryAfterMs);
+    this.#activationLeases.delete(sessionId);
+    this.#runnable.add(sessionId);
+    return {
+      status: "restore_stale",
+      consecutiveStales: count,
+      retryAfterMs,
+      releaseRequired: true,
+    };
   }
 
   #nextNonce(): string {
@@ -1523,7 +1818,7 @@ export function createInMemoryDurableJournalAuthority(
  */
 export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthoritySnapshot {
   try {
-    const value = assertJson(JSON.parse(serialized));
+    const value = migrateDurableAuthoritySnapshot(assertJson(JSON.parse(serialized)));
     if (!isDurableAuthoritySnapshot(value)) {
       throw invalidSnapshot();
     }
@@ -1536,22 +1831,201 @@ export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthor
   }
 }
 
-function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySnapshot {
+function migrateDurableAuthoritySnapshot(value: Json): Json {
+  if (!isJsonRecord(value) || value["version"] !== 2) return value;
   if (
-    !isJsonRecord(value) ||
-    !hasExactKeys(value, ["version", "tasks", "records", "runnable", "nonce"])
-  ) {
-    return false;
-  }
+    !hasExactKeys(value, ["version", "tasks", "records", "runnable", "nonce"]) ||
+    !Array.isArray(value["records"])
+  )
+    return value;
+  const taskRevisions = value["records"].flatMap((entry): Json[] =>
+    Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1])
+      ? [[entry[0], entry[1].length]]
+      : [],
+  );
+  return {
+    ...value,
+    version: 3,
+    activationLeases: [],
+    lastActivationEpochBySession: [],
+    taskRevisions,
+    restoreNonces: [],
+    consecutiveRestoreStales: [],
+    activationNotBeforeMs: [],
+    placements: [],
+  };
+}
+
+function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySnapshot {
+  const keys = [
+    "version",
+    "tasks",
+    "records",
+    "runnable",
+    "nonce",
+    "activationLeases",
+    "lastActivationEpochBySession",
+    "taskRevisions",
+    "restoreNonces",
+    "consecutiveRestoreStales",
+    "activationNotBeforeMs",
+    "placements",
+  ];
+  if (!isJsonRecord(value) || !hasExactKeys(value, keys)) return false;
   return (
-    value["version"] === 2 &&
+    value["version"] === 3 &&
     isNonNegativeInteger(value["nonce"]) &&
     Array.isArray(value["tasks"]) &&
     value["tasks"].every(isTaskSnapshot) &&
     Array.isArray(value["records"]) &&
     value["records"].every(isRecordCollection) &&
     Array.isArray(value["runnable"]) &&
-    value["runnable"].every((entry) => typeof entry === "string")
+    value["runnable"].every((entry) => typeof entry === "string") &&
+    Array.isArray(value["activationLeases"]) &&
+    value["activationLeases"].every(isActivationLeaseTuple) &&
+    isStringNumberTupleArray(value["lastActivationEpochBySession"]) &&
+    isStringNumberTupleArray(value["taskRevisions"]) &&
+    isStringStringTupleArray(value["restoreNonces"]) &&
+    isStringNumberTupleArray(value["consecutiveRestoreStales"]) &&
+    isStringNumberTupleArray(value["activationNotBeforeMs"]) &&
+    Array.isArray(value["placements"]) &&
+    value["placements"].every(isPlacementTuple)
+  );
+}
+
+function isStringNumberTupleArray(value: Json | undefined): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        typeof entry[0] === "string" &&
+        isNonNegativeInteger(entry[1]),
+    )
+  );
+}
+
+function isStringStringTupleArray(value: Json | undefined): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        Array.isArray(entry) &&
+        entry.length === 2 &&
+        typeof entry[0] === "string" &&
+        typeof entry[1] === "string",
+    )
+  );
+}
+
+function isActivationLeaseTuple(value: Json): boolean {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    typeof value[0] !== "string" ||
+    !isJsonRecord(value[1])
+  )
+    return false;
+  const lease = value[1];
+  return (
+    hasExactKeys(lease, [
+      "sessionId",
+      "ownerId",
+      "epoch",
+      "expiresAtMs",
+      "claimedTaskRevision",
+      "claimedHeadDigest",
+      "restoreNonce",
+    ]) &&
+    lease["sessionId"] === value[0] &&
+    typeof lease["ownerId"] === "string" &&
+    isNonNegativeInteger(lease["epoch"]) &&
+    isNonNegativeInteger(lease["expiresAtMs"]) &&
+    isNonNegativeInteger(lease["claimedTaskRevision"]) &&
+    typeof lease["claimedHeadDigest"] === "string" &&
+    typeof lease["restoreNonce"] === "string"
+  );
+}
+
+function isPlacementTuple(value: Json): boolean {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 2 ||
+    typeof value[0] !== "string" ||
+    !isJsonRecord(value[1])
+  )
+    return false;
+  const placement = value[1];
+  const affinity = placement["affinity"];
+  const release = placement["release"];
+  const program = placement["program"];
+  return (
+    hasOnlyKeys(
+      placement,
+      ["journalId", "taskId", "affinity", "runtimeSessionId", "release", "program", "createdAt"],
+      ["terminalAt", "lastComputeGeneration"],
+    ) &&
+    ["journalId", "taskId", "runtimeSessionId", "createdAt"].every(
+      (key) => typeof placement[key] === "string",
+    ) &&
+    isJsonRecord(affinity) &&
+    hasExactKeys(affinity, ["kind", "key"]) &&
+    ["invocation", "conversation", "workspace"].includes(String(affinity["kind"])) &&
+    typeof affinity["key"] === "string" &&
+    isPinnedProgramSnapshot(program) &&
+    isRuntimeReleaseSnapshot(release) &&
+    (placement["terminalAt"] === undefined || typeof placement["terminalAt"] === "string") &&
+    (placement["lastComputeGeneration"] === undefined ||
+      typeof placement["lastComputeGeneration"] === "string")
+  );
+}
+
+function isPinnedProgramSnapshot(value: unknown): boolean {
+  return (
+    isJsonRecord(value) &&
+    hasExactKeys(value, ["id", "version", "digest"]) &&
+    typeof value["id"] === "string" &&
+    typeof value["version"] === "string" &&
+    typeof value["digest"] === "string"
+  );
+}
+
+function isRuntimeReleaseSnapshot(value: unknown): boolean {
+  if (!isJsonRecord(value)) return false;
+  const filesystem = value["filesystem"];
+  const lifecycle = value["lifecycle"];
+  return (
+    hasExactKeys(value, [
+      "releaseId",
+      "runtimeArn",
+      "region",
+      "imageDigest",
+      "protocolVersion",
+      "registryDigest",
+      "iamProfile",
+      "networkProfile",
+      "filesystem",
+      "lifecycle",
+    ]) &&
+    [
+      "releaseId",
+      "runtimeArn",
+      "region",
+      "imageDigest",
+      "registryDigest",
+      "iamProfile",
+      "networkProfile",
+    ].every((key) => typeof value[key] === "string") &&
+    value["protocolVersion"] === 1 &&
+    isJsonRecord(filesystem) &&
+    hasExactKeys(filesystem, ["kind", "mountPath"]) &&
+    filesystem["kind"] === "managed_session_storage" &&
+    typeof filesystem["mountPath"] === "string" &&
+    isJsonRecord(lifecycle) &&
+    hasExactKeys(lifecycle, ["idleRuntimeSessionTimeoutSeconds", "maxLifetimeSeconds"]) &&
+    isNonNegativeInteger(lifecycle["idleRuntimeSessionTimeoutSeconds"]) &&
+    isNonNegativeInteger(lifecycle["maxLifetimeSeconds"])
   );
 }
 
@@ -1735,8 +2209,7 @@ function isIndexedPullTuple(value: Json): boolean {
     isDescriptorSnapshot(pull["effectiveDescriptor"]) &&
     isSchemaDescriptorSnapshot(pull["resultDescriptor"]) &&
     typeof pull["resultSchemaDigest"] === "string" &&
-    pull["resultSchemaDigest"] ===
-      (pull["resultDescriptor"] as Record<string, Json>)["digest"] &&
+    pull["resultSchemaDigest"] === (pull["resultDescriptor"] as Record<string, Json>)["digest"] &&
     typeof pull["audience"] === "string" &&
     isNonNegativeInteger(pull["maxOutcomeBytes"]) &&
     Array.isArray(pull["attempts"]) &&
@@ -2177,6 +2650,46 @@ function sanitizeCancellationReason(reason: string | undefined): string | undefi
   return normalized.slice(0, 512);
 }
 
+function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
+  if (
+    !isJsonRecord(value) ||
+    !hasExactKeys(value, [
+      "version",
+      "journalId",
+      "journalIncarnation",
+      "sessionId",
+      "taskId",
+      "ownerId",
+      "activationEpoch",
+      "taskRevision",
+      "journalHeadDigest",
+      "replayedThroughActionIndex",
+      "replayChainDigest",
+      "restoreNonce",
+    ])
+  )
+    throw new CrankError("restore_stale");
+  const stringFields = [
+    "journalId",
+    "journalIncarnation",
+    "sessionId",
+    "taskId",
+    "ownerId",
+    "journalHeadDigest",
+    "replayChainDigest",
+    "restoreNonce",
+  ];
+  if (
+    value["version"] !== 1 ||
+    !stringFields.every((field) => typeof value[field] === "string") ||
+    !isNonNegativeInteger(value["activationEpoch"]) ||
+    !isNonNegativeInteger(value["taskRevision"]) ||
+    !isNonNegativeInteger(value["replayedThroughActionIndex"])
+  )
+    throw new CrankError("restore_stale");
+  return value as unknown as RestoreTicketClaims;
+}
+
 function invalidSnapshot(cause?: unknown): CrankError {
   return new CrankError("invalid_journal", "Invalid durable authority snapshot", undefined, {
     cause,
@@ -2227,9 +2740,7 @@ function operationPolicy(
       return {
         resultDescriptor: declaration.response,
         audience: `user:${descriptor.key}`,
-        ...(declaration.context !== undefined
-          ? { contextDigest: declaration.context.digest }
-          : {}),
+        ...(declaration.context !== undefined ? { contextDigest: declaration.context.digest } : {}),
       };
     }
     case "wait":
@@ -2261,7 +2772,9 @@ function operationPolicy(
   }
 }
 
-function effectDescriptor(descriptor: DurableOperationDescriptor): Extract<DurableOperationDescriptor, { kind: "effect" }> {
+function effectDescriptor(
+  descriptor: DurableOperationDescriptor,
+): Extract<DurableOperationDescriptor, { kind: "effect" }> {
   if (descriptor.kind !== "effect") {
     throw new CrankError("invalid_descriptor", "Authorized pull is not an effect");
   }
@@ -2270,7 +2783,10 @@ function effectDescriptor(descriptor: DurableOperationDescriptor): Extract<Durab
 
 function parseWireElicitEnvelope(
   value: Json,
-): { action: "accept"; content: Json } | { action: "decline" | "cancel"; reason?: string } | undefined {
+):
+  | { action: "accept"; content: Json }
+  | { action: "decline" | "cancel"; reason?: string }
+  | undefined {
   if (!isJsonRecord(value) || typeof value["action"] !== "string") {
     return undefined;
   }

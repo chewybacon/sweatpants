@@ -22,12 +22,15 @@ import {
   defineDurableProgramManifest,
   foreignToolAdapter,
   sha256,
+  stableOpaqueId,
   stableProgramAttachmentId,
   type DurableEffectRegistration,
+  type DurableJournalAuthorityService,
   type DurableSchemaRegistryEntry,
   type DurableSemanticRecord,
   type DurableTool,
   type Json,
+  type ProgramRunResult,
   type PortableSchemaDescriptor,
   type PortableSchemaRole,
 } from "@sweatpants/session-contract";
@@ -606,7 +609,22 @@ function* activateProgramDriverChatEngine(
             return binding?.route ?? parentRoute;
           },
           function* () {
-            return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+            const agentCorePlaced = [...(params.nativeTools?.bindings.values() ?? [])].some(
+              (binding) => isAgentCoreRoute(binding.route),
+            );
+            return yield* runFencedActivation(
+              journal.authority,
+              params.conversationId,
+              attach.executionEpoch,
+              agentCorePlaced,
+              function* (executionEpoch, activationOwnerId) {
+                return yield* ProgramRuntime.operations.run({
+                  attach: { ...attach, executionEpoch },
+                  executeHostEffects: true,
+                  ...(activationOwnerId ? { activationOwnerId } : {}),
+                });
+              },
+            );
           },
         );
       });
@@ -1206,9 +1224,7 @@ function projectInterrupt(
           ...(correlation.callId ? { toolCallId: correlation.callId } : {}),
           metadata: {
             "sweatpants/key": publicKey,
-            ...(correlation.toolName
-              ? { "sweatpants/toolName": correlation.toolName }
-              : {}),
+            ...(correlation.toolName ? { "sweatpants/toolName": correlation.toolName } : {}),
             ...(correlation.callId ? { callId: correlation.callId } : {}),
             ...(correlation.elicitId ? { elicitId: correlation.elicitId } : {}),
           },
@@ -1244,16 +1260,14 @@ function pendingCorrelation(
   // private by deriving the child invocation from TaskOpened.parentPullId and
   // the immediately preceding root `tool_started` emission.
   const opened = records.find(
-    (record) =>
-      record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
+    (record) => record.payload.type === "TaskOpened" && record.payload.taskId === pending.taskId,
   );
   if (opened?.payload.type !== "TaskOpened" || !opened.payload.parentPullId) {
     return { elicitId: pending.pullId };
   }
   const parentPullId = opened.payload.parentPullId;
   const parentPullIndex = records.findIndex(
-    (record) =>
-      record.payload.type === "PullRequested" && record.payload.pullId === parentPullId,
+    (record) => record.payload.type === "PullRequested" && record.payload.pullId === parentPullId,
   );
   const parentTaskId = opened.payload.parentTaskId;
   for (let index = parentPullIndex - 1; index >= 0; index -= 1) {
@@ -1449,6 +1463,49 @@ function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] 
         return assertJson({ type: "image", data: block.data, mimeType: block.mimeType });
     }
   });
+}
+
+let activationOwnerCounter = 0;
+
+function isAgentCoreRoute(route: Json): boolean {
+  return Boolean(
+    route &&
+    typeof route === "object" &&
+    !Array.isArray(route) &&
+    route["driverKind"] === "agentcore",
+  );
+}
+
+/** Fences only deployments that actually install an AgentCore native driver. */
+function* runFencedActivation(
+  authority: DurableJournalAuthorityService,
+  sessionId: string,
+  fallbackEpoch: number,
+  fenced: boolean,
+  activate: (epoch: number, ownerId?: string) => Operation<ProgramRunResult>,
+): Operation<ProgramRunResult> {
+  if (!fenced) return yield* activate(fallbackEpoch);
+  activationOwnerCounter += 1;
+  const ownerId = stableOpaqueId("host-activation", [
+    process.pid,
+    Date.now(),
+    activationOwnerCounter,
+  ]);
+  const claim = yield* authority.claimActivation({ sessionId, ownerId, leaseDurationMs: 30_000 });
+  if (claim.status === "busy")
+    throw new CrankError("activation_busy", "Durable activation is owned by another host");
+  if (claim.status === "not_runnable")
+    throw new CrankError("activation_busy", "Durable task has no runnable command");
+  let reason: "parked" | "terminal" | "failed" = "failed";
+  try {
+    // Long-lived production scanners wrap this crank with the AgentCore host
+    // coordinator, which owns the 10s renewal timer outside durable execution.
+    const outcome = yield* activate(claim.epoch, ownerId);
+    reason = outcome.state === "parked" ? "parked" : "terminal";
+    return outcome;
+  } finally {
+    yield* authority.releaseActivation({ sessionId, ownerId, epoch: claim.epoch, reason });
+  }
 }
 
 function resolveOuterToolTarget(requested: string, tools: ReadonlyArray<{ name: string }>): string {

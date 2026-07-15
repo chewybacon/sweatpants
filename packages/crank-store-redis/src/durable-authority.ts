@@ -7,18 +7,28 @@ import {
   type AppendEmissionRequest,
   type CapabilityKeyring,
   type CancellationAcknowledgement,
+  type ClaimActivationRequest,
+  type ClaimActivationResult,
   type CompleteTaskRequest,
+  type ConsumeRestoreTicketRequest,
+  type ConsumeRestoreTicketResult,
   type DurableAuthoritySnapshot,
   type DurableCancellationState,
   type DurableSemanticRecord,
   type EmissionReceipt,
   type EnsureChildTaskRequest,
   type EnsureChildTaskResult,
+  type IssueRestoreTicketRequest,
+  type IssueRestoreTicketResult,
   type OpenDurableTaskRequest,
   type ReserveOperationRequest,
   type ReserveOperationResult,
   type DurableSchemaRegistry,
   type Json,
+  type ReleaseActivationRequest,
+  type ReleaseActivationResult,
+  type RenewActivationRequest,
+  type RenewActivationResult,
   type ResolveOperationRequest,
   type ResolveOperationResult,
   type TaskCloseReceipt,
@@ -46,8 +56,13 @@ export interface RedisDurableJournalAuthority {
   taskInput(sessionId: string, taskId: string): Operation<Json>;
   /** Lists exact schema digests referenced by nonterminal tasks. */
   nonterminalSchemaDigests(): Operation<string[]>;
-  /** Clears the runnable marker when a structured activation starts. */
+  /** Clears the runnable marker when a legacy structured activation starts. */
   markActivated(sessionId: string): Operation<void>;
+  claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
+  renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
+  releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
+  issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult>;
+  consumeRestoreTicket(request: ConsumeRestoreTicketRequest): Operation<ConsumeRestoreTicketResult>;
   /** Reads durable cancellation lifecycle state. */
   cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
   /** Starts one-shot authored cancellation unwind. */
@@ -138,11 +153,18 @@ export function createRedisDurableJournalAuthority(
 ): RedisDurableJournalAuthority {
   const key = `${options.keyPrefix ?? "sweatpants:crank:"}durable-authority:${encodeURIComponent(options.journalId)}`;
   const empty: DurableAuthoritySnapshot = {
-    version: 2,
+    version: 3,
     tasks: [],
     records: [],
     runnable: [],
     nonce: 0,
+    activationLeases: [],
+    lastActivationEpochBySession: [],
+    taskRevisions: [],
+    restoreNonces: [],
+    consecutiveRestoreStales: [],
+    activationNotBeforeMs: [],
+    placements: [],
   };
 
   async function load(): Promise<{ raw: string; snapshot: DurableAuthoritySnapshot }> {
@@ -209,6 +231,21 @@ export function createRedisDurableJournalAuthority(
     },
     *markActivated(sessionId) {
       yield* mutate((value) => value.markActivated(sessionId));
+    },
+    *claimActivation(request) {
+      return yield* mutate((value) => value.claimActivation(request));
+    },
+    *renewActivation(request) {
+      return yield* mutate((value) => value.renewActivation(request));
+    },
+    *releaseActivation(request) {
+      return yield* mutate((value) => value.releaseActivation(request));
+    },
+    *issueRestoreTicket(request) {
+      return yield* mutate((value) => value.issueRestoreTicket(request));
+    },
+    *consumeRestoreTicket(request) {
+      return yield* mutate((value) => value.consumeRestoreTicket(request));
     },
     *cancellationState(sessionId, taskId) {
       return yield* mutate((value) => value.cancellationState(sessionId, taskId));

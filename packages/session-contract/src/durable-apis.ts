@@ -309,6 +309,33 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
       });
       let pullIndex = 0;
       let cancellationInjected = false;
+      const restoring = request.activationOwnerId !== undefined;
+      let replayChainDigest = canonicalSnapshot({
+        domain: "sweatpants.program-runtime.replay-fallback.v1",
+        sessionId: request.attach.sessionId,
+        taskId: request.attach.taskId,
+        executionEpoch: request.attach.executionEpoch,
+      }).sha;
+      const restoredProof = function* (frontier: ProgramStep) {
+        if (!restoring || !request.activationOwnerId) return undefined;
+        const issued = yield* authority.issueRestoreTicket({
+          sessionId: request.attach.sessionId,
+          taskId: request.attach.taskId,
+          ownerId: request.activationOwnerId,
+          activationEpoch: request.attach.executionEpoch,
+          replayedThroughActionIndex: Math.max(0, frontier.actionIndex - 1),
+          replayChainDigest,
+        });
+        return {
+          restoreTicket: issued.restoreTicket,
+          frontierDigest: canonicalSnapshot({
+            domain: "sweatpants.program-runtime.frontier-fallback.v1",
+            executionEpoch: request.attach.executionEpoch,
+            replayChainDigest,
+            step: frontier,
+          }).sha,
+        };
+      };
       while (true) {
         let cancellation = yield* authority.cancellationState(
           request.attach.sessionId,
@@ -336,6 +363,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           }
         }
         if (step.type === "completed") {
+          const proof = yield* restoredProof(step);
           if (isCancellationInProgress(cancellation) && cancellation.type !== "unwinding") {
             cancellation = yield* authority.beginCancellationUnwind(
               request.attach.sessionId,
@@ -348,12 +376,14 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             actionIndex: step.actionIndex,
             outcome: { status: "ok", value: step.value },
             programCapability,
+            ...(proof ? { restoredFrontier: proof } : {}),
           });
           const cancelled = isCancellationInProgress(cancellation);
           shutdownReason = cancelled ? "cancelled" : "completed";
           return cancelled ? { state: "cancelled" } : { state: "completed", value: step.value };
         }
         if (step.type === "failed") {
+          const proof = yield* restoredProof(step);
           const cancelled =
             step.error.code === "program_cancelled" || isCancellationInProgress(cancellation);
           if (
@@ -372,18 +402,24 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             actionIndex: step.actionIndex,
             outcome: cancelled ? { status: "cancelled" } : { status: "error", error: step.error },
             programCapability,
+            ...(proof ? { restoredFrontier: proof } : {}),
           });
           shutdownReason = cancelled ? "cancelled" : "failed";
           return cancelled ? { state: "cancelled" } : { state: "failed", error: step.error };
         }
         if (step.type === "emission") {
+          const proof = yield* restoredProof(step);
           const receipt = yield* JournalAuthority.operations.emit({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
             descriptor: step.descriptor,
             programCapability,
+            ...(proof ? { restoredFrontier: proof } : {}),
           });
+          if (receipt.duplicate) {
+            replayChainDigest = canonicalSnapshot({ replayChainDigest, step, receipt }).sha;
+          }
           step = yield* ProgramPeer.operations.step(attachment, {
             type: "ack_emission",
             actionIndex: step.actionIndex,
@@ -391,6 +427,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           });
           continue;
         }
+        const proof = yield* restoredProof(step);
         const reservation = yield* JournalAuthority.operations.reserve({
           sessionId: request.attach.sessionId,
           turnId: turnIdFor(request.attach.taskId),
@@ -399,9 +436,13 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           pullIndex,
           descriptor: step.descriptor,
           programCapability,
+          ...(proof ? { restoredFrontier: proof } : {}),
         });
         if (reservation.status === "resolved") {
           pullIndex += 1;
+          if (reservation.receipt.status === "duplicate") {
+            replayChainDigest = canonicalSnapshot({ replayChainDigest, step, reservation }).sha;
+          }
           if (
             reservation.outcome.status === "cancelled" &&
             isCancellationInProgress(cancellation) &&

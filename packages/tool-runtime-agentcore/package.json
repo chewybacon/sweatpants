@@ -50,15 +50,20 @@
     },
     "dependencies": {
         "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
+        "@aws-sdk/credential-provider-node": "^3.972.57",
+        "@smithy/protocol-http": "^5.5.1",
+        "@smithy/signature-v4": "^5.5.1",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
-        "redis": "^4.7.0"
+        "redis": "^4.7.0",
+        "ws": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/core": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
+        "@types/ws": "catalog:",
         "effection": "catalog:",
         "tsup": "catalog:",
         "typescript": "catalog:",

@@ -1035,6 +1035,15 @@ importers:
       '@aws-sdk/client-bedrock-agentcore':
         specifier: ^3.996.0
         version: 3.1071.0
+      '@aws-sdk/credential-provider-node':
+        specifier: ^3.972.57
+        version: 3.972.57
+      '@smithy/protocol-http':
+        specifier: ^5.5.1
+        version: 5.5.1
+      '@smithy/signature-v4':
+        specifier: ^5.5.1
+        version: 5.5.1
       '@sweatpants/durable-streams':
         specifier: workspace:*
         version: link:../durable-streams
@@ -1044,6 +1053,9 @@ importers:
       redis:
         specifier: ^4.7.0
         version: 4.7.1
+      ws:
+        specifier: 'catalog:'
+        version: 8.19.0
     devDependencies:
       '@sweatpants/core':
         specifier: workspace:*
@@ -1057,6 +1069,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.1
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
@@ -13675,7 +13690,7 @@ snapshots:
     dependencies:
       duplexer: 0.1.2
 
-  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16)):
+  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8)):
     dependencies:
       rou3: 0.8.1
       srvx: 0.11.16
@@ -14678,7 +14693,7 @@ snapshots:
       crossws: 0.4.6(srvx@0.11.16)
       db0: 0.3.4
       env-runner: 0.1.14
-      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16))
+      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8))
       hookable: 6.1.1
       nf3: 0.3.17
       ocache: 0.1.5

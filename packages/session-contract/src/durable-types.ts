@@ -105,6 +105,139 @@ export interface PinnedProgram {
   digest: string;
 }
 
+/** Trusted sandbox scope. V1 placement installs invocation affinity only. */
+export type SandboxAffinity =
+  | { readonly kind: "invocation"; readonly key: string }
+  | { readonly kind: "conversation"; readonly key: string }
+  | { readonly kind: "workspace"; readonly key: string };
+
+/** Immutable AgentCore release metadata retained for exact task replay. */
+export interface AgentCoreRuntimeRelease {
+  readonly releaseId: string;
+  readonly runtimeArn: string;
+  readonly region: string;
+  readonly imageDigest: string;
+  readonly protocolVersion: 1;
+  readonly registryDigest: string;
+  readonly iamProfile: string;
+  readonly networkProfile: string;
+  readonly filesystem: {
+    readonly kind: "managed_session_storage";
+    readonly mountPath: string;
+  };
+  readonly lifecycle: {
+    readonly idleRuntimeSessionTimeoutSeconds: number;
+    readonly maxLifetimeSeconds: number;
+  };
+}
+
+/** Private task placement. None of these fields belong in semantic descriptors. */
+export interface AgentCoreTaskPlacement {
+  readonly journalId: string;
+  readonly taskId: string;
+  readonly affinity: SandboxAffinity;
+  readonly runtimeSessionId: string;
+  readonly release: AgentCoreRuntimeRelease;
+  readonly program: PinnedProgram;
+  readonly createdAt: string;
+  readonly terminalAt?: string;
+  readonly lastComputeGeneration?: string;
+}
+
+/** Private, authority-time activation ownership state. */
+export interface ActivationLeaseState {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly epoch: number;
+  readonly expiresAtMs: number;
+  readonly claimedTaskRevision: number;
+  readonly claimedHeadDigest: string;
+  readonly restoreNonce: string;
+}
+
+export interface ClaimActivationRequest {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly leaseDurationMs?: number;
+}
+export type ClaimActivationResult =
+  | {
+      readonly status: "claimed";
+      readonly epoch: number;
+      readonly expiresAtMs: number;
+      readonly taskRevision: number;
+      readonly journalHeadDigest: string;
+    }
+  | { readonly status: "busy"; readonly retryAfterMs: number }
+  | { readonly status: "not_runnable" };
+export interface RenewActivationRequest {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly epoch: number;
+}
+export type RenewActivationResult =
+  | { readonly status: "renewed"; readonly expiresAtMs: number }
+  | { readonly status: "stale_activation" };
+export interface ReleaseActivationRequest {
+  readonly sessionId: string;
+  readonly ownerId: string;
+  readonly epoch: number;
+  readonly reason: "parked" | "terminal" | "failed" | "scope_exit" | "lease_lost";
+}
+export type ReleaseActivationResult =
+  | { readonly status: "released"; readonly runnable: boolean }
+  | { readonly status: "stale_activation" };
+
+/** Host-private claims authenticated by the authority for one restored frontier. */
+export interface RestoreTicketClaims {
+  readonly version: 1;
+  readonly journalId: string;
+  readonly journalIncarnation: string;
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly ownerId: string;
+  readonly activationEpoch: number;
+  readonly taskRevision: number;
+  readonly journalHeadDigest: string;
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainDigest: string;
+  readonly restoreNonce: string;
+}
+
+export interface RestoredFrontierProof {
+  readonly restoreTicket: string;
+  readonly frontierDigest: string;
+}
+
+export interface IssueRestoreTicketRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly ownerId: string;
+  readonly activationEpoch: number;
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainDigest: string;
+}
+export interface IssueRestoreTicketResult {
+  readonly restoreTicket: string;
+  readonly taskRevision: number;
+  readonly journalHeadDigest: string;
+}
+export interface ConsumeRestoreTicketRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly ownerId: string;
+  readonly activationEpoch: number;
+  readonly proof: RestoredFrontierProof;
+}
+export type ConsumeRestoreTicketResult =
+  | { readonly status: "consumed" }
+  | {
+      readonly status: "restore_stale";
+      readonly consecutiveStales: number;
+      readonly retryAfterMs: number;
+      readonly releaseRequired: boolean;
+    };
+
 /** Pinned child invocation and canonical input. */
 export interface DurableChildDescriptor extends PinnedProgram {
   input: Json;
@@ -339,7 +472,55 @@ export type ProgramShutdownReason =
   | "transport_lost"
   | "scope_exit";
 
-/** Scoped adapter port for attaching, stepping, and shutting down one program artifact. */
+/** One bounded operation entry streamed during fresh-generator restoration. */
+export interface ReplayOperationEntry {
+  readonly type: "operation";
+  readonly actionIndex: number;
+  readonly descriptorKind: string;
+  readonly descriptorDigest: string;
+  readonly previousEntryDigest: string;
+  readonly entryDigest: string;
+  readonly outcome: OperationOutcome;
+  readonly receipt: ResolutionReceipt;
+}
+
+/** One bounded emission acknowledgement streamed during restoration. */
+export interface ReplayEmissionEntry {
+  readonly type: "emission";
+  readonly actionIndex: number;
+  readonly descriptorKind: string;
+  readonly descriptorDigest: string;
+  readonly previousEntryDigest: string;
+  readonly entryDigest: string;
+  readonly offset: string;
+}
+
+export type ReplayEntry = ReplayOperationEntry | ReplayEmissionEntry;
+
+/** Async-agnostic replay source; implementations may stream without buffering history. */
+export interface ProgramReplayStream {
+  readonly [Symbol.iterator]?: () => Iterator<ReplayEntry>;
+  readonly [Symbol.asyncIterator]?: () => AsyncIterator<ReplayEntry>;
+}
+
+export interface ProgramRestoreRequest {
+  readonly attach: AttachProgramRequest;
+  readonly replay: ProgramReplayStream;
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainSeed: string;
+  readonly replayChainDigest: string;
+}
+
+export interface RestoredProgramAttachment {
+  readonly attachment: ProgramAttachment;
+  readonly frontier: ProgramStep;
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainDigest: string;
+  readonly frontierDigest: string;
+  readonly computeGeneration?: string;
+}
+
+/** Scoped adapter port for attaching, restoring, stepping, and shutting down one artifact. */
 export interface ProgramDriver {
   /** Acquires an attachment owned by the caller's Effection scope. */
   attach(request: AttachProgramRequest): Operation<ProgramAttachment>;
@@ -347,6 +528,8 @@ export interface ProgramDriver {
   step(attachment: ProgramAttachment, command: ProgramCommand): Operation<ProgramStep>;
   /** Releases attachment resources on every terminal or scope-exit path. */
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
+  /** Optional streamed fresh-generator replay fast path. */
+  restore?(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment>;
   /** Resolves an exact pinned manifest when the driver owns artifact lookup. */
   manifest?(program: PinnedProgram): Operation<DurableProgramManifest>;
 }
@@ -485,6 +668,7 @@ export interface ReserveOperationRequest {
   pullIndex: number;
   descriptor: DurableOperationDescriptor;
   programCapability: string;
+  restoredFrontier?: RestoredFrontierProof;
 }
 
 /** Reserve result distinguishing replay, host authorization, and durable parking. */
@@ -539,6 +723,7 @@ export interface AppendEmissionRequest {
   actionIndex: number;
   descriptor: EmissionDescriptor;
   programCapability: string;
+  restoredFrontier?: RestoredFrontierProof;
 }
 
 /** Stable receipt identifying an appended or duplicate emission. */
@@ -555,6 +740,7 @@ export interface CompleteTaskRequest {
   actionIndex: number;
   outcome: OperationOutcome;
   programCapability: string;
+  restoredFrontier?: RestoredFrontierProof;
 }
 
 /** Stable receipt identifying task closure or idempotent replay. */
@@ -587,8 +773,18 @@ export interface DurableJournalAuthorityService {
   taskInput(sessionId: string, taskId: string): Operation<Json>;
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
   nonterminalSchemaDigests(): Operation<string[]>;
-  /** Clears the runnable marker when a structured activation starts. */
+  /** Legacy local activation marker. Distributed coordinators use claimActivation. */
   markActivated(sessionId: string): Operation<void>;
+  /** Claims absent/expired runnable work under an authority-minted epoch. */
+  claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
+  /** Renews only the exact current owner and epoch using authority time. */
+  renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
+  /** Releases exact ownership and re-derives runnable state without losing wakeups. */
+  releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
+  /** Issues a host-private single-use ticket for one authority snapshot. */
+  issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult>;
+  /** Atomically verifies and consumes one first-live-frontier ticket. */
+  consumeRestoreTicket(request: ConsumeRestoreTicketRequest): Operation<ConsumeRestoreTicketResult>;
   /** Reads the durable cancellation state used by fresh replay attachments. */
   cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
   /** Transitions a settled cancellation frontier into one-shot unwind. */
@@ -655,6 +851,8 @@ export interface ProgramRunRequest {
   attach: AttachProgramRequest;
   programCapability?: string;
   executeHostEffects?: boolean;
+  /** Host-private owner used to issue/consume restore tickets under a claimed lease. */
+  activationOwnerId?: string;
 }
 
 /** Caller-visible terminal or parked result of one runtime activation. */
