@@ -1,0 +1,13 @@
+{
+    "extends": "@sweatpants/ts-config/tsconfig.package.json",
+    "compilerOptions": {
+        "noEmit": true,
+        "rootDir": "../.."
+    },
+    "include": [
+        "src/**/*.ts",
+        "scripts/**/*.ts",
+        "../yo-chat/src/__generated__/agentcore-durable-program-registry.gen.ts",
+        "../yo-chat/src/tools/pick-card/**/*.ts"
+    ]
+}
