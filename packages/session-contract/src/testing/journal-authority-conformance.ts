@@ -192,6 +192,13 @@ const idempotentManifest: DurableProgramManifest = {
       outputSchema: conformanceMutateOutput.descriptor,
       retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
     },
+    fail_mutate: {
+      name: "fail_mutate",
+      version: "1",
+      inputSchema: conformanceMutateInput.descriptor,
+      outputSchema: conformanceMutateOutput.descriptor,
+      retrySafety: { mode: "unsafe", onIndeterminate: "fail" },
+    },
   },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
 };
@@ -266,6 +273,11 @@ export function createJournalAuthorityConformanceCases(
       takeover,
     ),
     defineCase(factory, "attempt detachment and abandonment remain distinct", attemptStates),
+    defineCase(
+      factory,
+      "fail-on-indeterminate settles a replayable coded outcome",
+      failOnIndeterminate,
+    ),
     defineCase(factory, "competing outcomes converge atomically", competingOutcomes),
     defineCase(factory, "cancellation and resolution preserve journal ordering", cancellationRace),
     defineCase(
@@ -456,6 +468,60 @@ function* takeover(
     "AttemptStarted",
     "AttemptDetached",
     "PullIndeterminate",
+    "PullResolved",
+  ]);
+}
+
+function* failOnIndeterminate(
+  caseName: string,
+  open: () => Operation<JournalAuthorityConformancePort>,
+): Operation<void> {
+  const authority = yield* open();
+  const oldProgramCapability = yield* openRoot(authority);
+  const first = requireAuthorized(
+    caseName,
+    yield* authority.reserve(
+      effectRequest(oldProgramCapability, "fail_mutate", "fail-closed-mutator"),
+    ),
+  );
+  const replacement = yield* authority.replaceAttachment(
+    sessionId,
+    taskId,
+    "replacement-attachment",
+  );
+
+  const replay = yield* authority.reserve(
+    effectRequest(replacement.programCapability, "fail_mutate", "fail-closed-mutator"),
+  );
+  assert(
+    caseName,
+    replay.status === "resolved" &&
+      replay.outcome.status === "error" &&
+      replay.outcome.error.code === "effect_outcome_indeterminate",
+    "fail policy must settle the detached pull as a coded replayable error",
+  );
+  assert(
+    caseName,
+    (yield* authority.runnableSessions()).includes(sessionId),
+    "fail policy must make the session runnable",
+  );
+  assertEqual(
+    caseName,
+    yield* authority.resolve({
+      capability: first.resolutionCapability,
+      audience: "fail-closed-mutator",
+      outcome: { status: "ok", value: { committed: true } },
+    }),
+    { status: "rejected", code: "capability_revoked" },
+    "late detached resolution must be revoked after fail-closed settlement",
+  );
+  assertTypes(caseName, yield* authority.readJournal(sessionId), [
+    "TaskOpened",
+    "PullRequested",
+    "AttemptStarted",
+    "AttemptDetached",
+    "PullIndeterminate",
+    "AttemptAbandoned",
     "PullResolved",
   ]);
 }
@@ -857,7 +923,7 @@ function* openRoot(
 
 function effectRequest(
   programCapability: string,
-  name: "echo" | "mutate",
+  name: "echo" | "mutate" | "fail_mutate",
   audience: string,
   selectedSessionId = sessionId,
   selectedTaskId = taskId,

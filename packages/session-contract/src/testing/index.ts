@@ -28,3 +28,11 @@ export {
   type JournalAuthorityConformanceFactory,
   type JournalAuthorityConformancePort,
 } from "./journal-authority-conformance.ts";
+export {
+  DurableSandboxConformanceError,
+  adaptInMemoryAuthorityForSandboxConformance,
+  createDurableSandboxConformanceCases,
+  type DurableSandboxConformanceCase,
+  type DurableSandboxConformanceFactory,
+  type DurableSandboxConformancePort,
+} from "./durable-sandbox-conformance.ts";
