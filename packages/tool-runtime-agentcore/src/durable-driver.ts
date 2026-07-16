@@ -4,6 +4,7 @@ import type {
   ProgramAttachment,
   ProgramCommand,
   ProgramDriver,
+  ProgramRestoreContext,
   ProgramRestoreRequest,
   ProgramShutdownReason,
   ProgramStep,
@@ -20,6 +21,7 @@ export interface AgentCoreDurableProgramTransport {
   step(attachment: ProgramAttachment, command: ProgramCommand): Operation<ProgramStep>;
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
   restore?(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment>;
+  restoreContext?(request: AttachProgramRequest): Operation<ProgramRestoreContext>;
 }
 
 /** Creates an AgentCore transport driver; the caller owns the scoped client and cancellation. */
@@ -37,6 +39,13 @@ export function createAgentCoreDurableProgramDriver(
     *shutdown(attachment, reason) {
       yield* transport.shutdown(attachment, reason);
     },
+    ...(transport.restoreContext
+      ? {
+          *restoreContext(request: AttachProgramRequest) {
+            return yield* transport.restoreContext!(request);
+          },
+        }
+      : {}),
     ...(transport.restore
       ? {
           *restore(request: ProgramRestoreRequest) {

@@ -246,6 +246,13 @@ export function* runDurableDriverRecoveryFixture(
         activeAttachments -= 1;
       }
     },
+    ...(concreteDriver.restoreContext
+      ? {
+          *restoreContext(request) {
+            return yield* concreteDriver.restoreContext!(request);
+          },
+        }
+      : {}),
     ...(concreteDriver.restore
       ? {
           *restore(request) {

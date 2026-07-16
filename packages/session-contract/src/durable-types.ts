@@ -206,6 +206,8 @@ export interface RestoreTicketClaims {
   readonly activationEpoch: number;
   readonly releaseId?: string;
   readonly sandboxSessionId?: string;
+  readonly replayDomain?: string;
+  readonly frontierDomain?: string;
   readonly taskRevision: number;
   readonly journalHeadDigest: string;
   readonly replayedThroughActionIndex: number;
@@ -233,6 +235,13 @@ export interface IssueRestoreTicketResult {
 }
 
 /** Trusted context used by the authority to derive a nonce-hiding replay chain. */
+export interface ProgramRestoreContext {
+  readonly replayDomain: string;
+  readonly frontierDomain: string;
+  readonly releaseId: string;
+  readonly sandboxSessionId: string;
+}
+
 export interface PrepareProgramRestoreRequest {
   readonly sessionId: string;
   readonly taskId: string;
@@ -240,6 +249,8 @@ export interface PrepareProgramRestoreRequest {
   readonly activationEpoch: number;
   readonly releaseId: string;
   readonly sandboxSessionId: string;
+  readonly replayDomain: string;
+  readonly frontierDomain: string;
 }
 export interface PreparedProgramRestore {
   readonly restoreTicket: string;
@@ -569,6 +580,8 @@ export interface ProgramDriver {
   shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void>;
   /** Optional streamed fresh-generator replay fast path. */
   restore?(request: ProgramRestoreRequest): Operation<RestoredProgramAttachment>;
+  /** Supplies driver-owned serializable identity/digest domains for authority restoration. */
+  restoreContext?(request: AttachProgramRequest): Operation<ProgramRestoreContext>;
   /** Resolves an exact pinned manifest when the driver owns artifact lookup. */
   manifest?(program: PinnedProgram): Operation<DurableProgramManifest>;
 }

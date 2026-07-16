@@ -4,7 +4,7 @@ import { createApi } from "effection/experimental";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { assertInlineSize, serializeDurableError } from "./authoring.ts";
-import { assertJson, canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
+import { assertJson, canonicalSnapshot } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
@@ -308,10 +308,10 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
       let programCapability = request.programCapability;
       let pullIndex = 0;
       if (request.activationOwnerId && driver.restore) {
-        const context = agentCoreRestoreContext(acceptedAttach);
-        if (!context) {
-          throw new CrankError("placement_unavailable", "AgentCore restore context is missing");
+        if (!driver.restoreContext) {
+          throw new CrankError("placement_unavailable", "Driver restore context is missing");
         }
+        const context = yield* driver.restoreContext(acceptedAttach);
         const prepared = yield* authority.prepareProgramRestore({
           sessionId: acceptedAttach.sessionId,
           taskId: acceptedAttach.taskId,
@@ -319,6 +319,8 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           activationEpoch: acceptedAttach.executionEpoch,
           releaseId: context.releaseId,
           sandboxSessionId: context.sandboxSessionId,
+          replayDomain: context.replayDomain,
+          frontierDomain: context.frontierDomain,
         });
         pullIndex = prepared.replay.filter((entry) => entry.type === "operation").length;
         const restored = yield* ProgramPeer.operations.restore({
@@ -654,43 +656,6 @@ function* driverFor(kind: string): Operation<ProgramDriver> {
     throw new CrankError("unknown_target", `No program driver for ${kind}`);
   }
   return driver;
-}
-
-function agentCoreRestoreContext(
-  attach: ProgramRestoreRequest["attach"],
-): { releaseId: string; sandboxSessionId: string } | undefined {
-  if (!attach.route || typeof attach.route !== "object" || Array.isArray(attach.route)) {
-    return undefined;
-  }
-  const placement = attach.route["placement"];
-  if (placement && typeof placement === "object" && !Array.isArray(placement)) {
-    const release = placement["release"];
-    const runtimeSessionId = placement["runtimeSessionId"];
-    if (
-      release &&
-      typeof release === "object" &&
-      !Array.isArray(release) &&
-      typeof release["releaseId"] === "string" &&
-      typeof runtimeSessionId === "string"
-    ) {
-      return { releaseId: release["releaseId"], sandboxSessionId: runtimeSessionId };
-    }
-  }
-  const release = attach.route["release"];
-  const journalId = attach.route["journalId"];
-  if (
-    release &&
-    typeof release === "object" &&
-    !Array.isArray(release) &&
-    typeof release["releaseId"] === "string" &&
-    typeof journalId === "string"
-  ) {
-    return {
-      releaseId: release["releaseId"],
-      sandboxSessionId: stableOpaqueId("sp-ac", [journalId, attach.taskId, release["releaseId"]]),
-    };
-  }
-  return undefined;
 }
 
 function driverKind(route: ProgramRoute): string {

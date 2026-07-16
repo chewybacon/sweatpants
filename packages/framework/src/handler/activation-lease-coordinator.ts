@@ -31,6 +31,9 @@ export function* runWithRenewedActivationLease(
   try {
     const outcome = yield* race([
       (function* (): Operation<ProgramRunResult> {
+        // Retries stay inside the same fenced activation epoch. On the third
+        // consecutive stale restore the authority deletes that lease; the next
+        // attempt therefore fails stale_activation and exits instead of bypassing backoff.
         for (let attempt = 0; ; attempt += 1) {
           try {
             return yield* activate(claim.epoch, ownerId);
