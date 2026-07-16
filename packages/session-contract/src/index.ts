@@ -78,6 +78,7 @@ export type {
   ReplayEmissionEntry,
   ReplayEntry,
   ReplayOperationEntry,
+  RecoverableSession,
   ReleaseActivationRequest,
   ReleaseActivationResult,
   RenewActivationRequest,

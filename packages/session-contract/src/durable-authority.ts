@@ -58,6 +58,7 @@ import type {
   ReplayEmissionEntry,
   ReplayEntry,
   ReplayOperationEntry,
+  RecoverableSession,
   ReserveOperationRequest,
   ReserveOperationResult,
   ResolutionCapabilityClaims,
@@ -1289,6 +1290,26 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     this.#runnable.delete(sessionId);
   }
 
+  /** Returns work recoverable from durable runnable state or an expired owner. */
+  *recoverableSessions(): Operation<RecoverableSession[]> {
+    const now = this.#options.now();
+    const sessions = new Map<string, RecoverableSession>();
+    for (const sessionId of this.#runnable) {
+      const notBeforeMs = this.#activationNotBeforeMs.get(sessionId);
+      if (notBeforeMs === undefined || now >= notBeforeMs) {
+        sessions.set(sessionId, { sessionId, reason: "runnable" });
+      }
+    }
+    for (const [sessionId, lease] of this.#activationLeases) {
+      if (now >= lease.expiresAtMs) {
+        sessions.set(sessionId, { sessionId, reason: "expired_activation" });
+      }
+    }
+    return [...sessions.values()].sort((left, right) =>
+      left.sessionId.localeCompare(right.sessionId),
+    );
+  }
+
   /** Claims runnable work with one authority-time lease and monotonically increasing epoch. */
   *claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult> {
     if (!request.sessionId || !request.ownerId) {
@@ -1307,7 +1328,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (current && now < current.expiresAtMs) {
       return { status: "busy", retryAfterMs: current.expiresAtMs - now };
     }
-    if (!this.#runnable.has(request.sessionId)) {
+    const expiredTakeover = current !== undefined && now >= current.expiresAtMs;
+    if (!this.#runnable.has(request.sessionId) && !expiredTakeover) {
       return { status: "not_runnable" };
     }
     const epoch = (this.#lastActivationEpochBySession.get(request.sessionId) ?? 0) + 1;
