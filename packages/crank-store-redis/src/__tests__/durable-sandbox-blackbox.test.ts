@@ -1,45 +1,45 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, it } from "vitest";
+import { run } from "effection";
 import type { RedisClientType } from "redis";
 
+import {
+  createDurableSandboxConformanceCases,
+  type DurableSandboxConformanceFactory,
+} from "@sweatpants/session-contract/testing";
+
+import { createRedisDurableJournalAuthority } from "../durable-authority.ts";
 import { createMemoryRedisClient } from "./memory-redis.ts";
-import { DurableSandboxSubject } from "./durable-sandbox-subject.ts";
 
+const authorityKeyPrefix = `test:${process.pid}:sandbox-conformance:`;
 let client: RedisClientType;
-afterEach(async () => {
-  if (client?.isOpen) await client.disconnect();
-});
 
-describe("durable sandbox distributed-host behavior", () => {
-  it("Given host A parked an elicit, when host B acknowledges and dies, then scanner A completes exactly once", async () => {
+const factory: DurableSandboxConformanceFactory = {
+  backendName: "redis",
+  *open(options) {
+    return createRedisDurableJournalAuthority(client, {
+      journalId: options.journalId,
+      journalIncarnation: "sandbox-conformance-v1",
+      keyPrefix: authorityKeyPrefix,
+      keyring: options.keyring,
+      now: () => 1_000,
+    });
+  },
+};
+
+describe("durable sandbox Redis conformance", () => {
+  beforeAll(() => {
     client = createMemoryRedisClient();
-    const subject = new DurableSandboxSubject(
-      client,
-      `test:${process.pid}:${Date.now()}:two-host:`,
-    );
-
-    await subject.givenTask();
-    await subject.whenHostAActivatesUntilParked();
-    await subject.whenHostBAcceptsResponse();
-    expect(subject.acknowledgedPullId).toBeTruthy();
-    subject.whenHostBDiesAfterAcknowledgement();
-    await subject.whenRecoveryScannerRuns();
-    await subject.thenTaskCompletedExactlyOnce();
   });
 
-  for (const duplicateSchedule of ["before-scanner", "after-ack"] as const) {
-    it(`preserves one durable response for an equal duplicate ${duplicateSchedule}`, async () => {
-      client = createMemoryRedisClient();
-      const subject = new DurableSandboxSubject(
-        client,
-        `test:${process.pid}:${Date.now()}:${duplicateSchedule}:`,
-      );
-      await subject.givenTask();
-      await subject.whenHostAActivatesUntilParked();
-      await subject.whenHostBAcceptsResponse();
-      await subject.whenHostBAcceptsResponse();
-      subject.whenHostBDiesAfterAcknowledgement();
-      await subject.whenRecoveryScannerRuns();
-      await subject.thenTaskCompletedExactlyOnce();
+  afterAll(async () => {
+    if (client.isOpen) {
+      await client.disconnect();
+    }
+  });
+
+  for (const conformanceCase of createDurableSandboxConformanceCases(factory)) {
+    it(conformanceCase.name, async () => {
+      await run(() => conformanceCase.run());
     });
   }
 });

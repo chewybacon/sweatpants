@@ -1105,7 +1105,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
-  /** Marks a live attempt detached without revoking its resolution capability. */
+  /** Detaches a live attempt and applies its declared indeterminate policy. */
   *detachAttempt(
     sessionId: string,
     taskId: string,
@@ -1840,9 +1840,71 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
             pullId: pull.pullId,
             attemptId: attempt.attemptId,
           });
+          if (definition.retrySafety.onIndeterminate === "fail") {
+            this.#failIndeterminatePull(task, pull, attempt, reason);
+          }
         }
       }
     }
+  }
+
+  /**
+   * Settles an unsafe detached effect as a replayable application failure.
+   * The detached attempt is revoked before the outcome is published so a late
+   * resolver cannot race the configured fail-closed policy.
+   */
+  #failIndeterminatePull(task: Task, pull: Pull, attempt: Attempt, reason: string): void {
+    attempt.state = "revoked";
+    this.#append(task.sessionId, undefined, {
+      type: "AttemptAbandoned",
+      taskId: task.taskId,
+      pullId: pull.pullId,
+      attemptId: attempt.attemptId,
+      reason: "indeterminate_fail",
+    });
+    const outcome: OperationOutcome = {
+      status: "error",
+      error: {
+        code: "effect_outcome_indeterminate",
+        message: "Unsafe effect outcome became indeterminate",
+        details: {
+          pullId: pull.pullId,
+          attemptId: attempt.attemptId,
+          reason: sanitizeCancellationReason(reason) ?? "detached",
+        },
+      },
+    };
+    assertInlineSize(outcome, pull.maxOutcomeBytes);
+    const outcomeDigest = canonicalSnapshot(outcome).sha;
+    const resolutionOffset = this.#append(task.sessionId, undefined, {
+      type: "PullResolved",
+      taskId: task.taskId,
+      pullId: pull.pullId,
+      attemptId: attempt.attemptId,
+      outcome,
+      outcomeDigest,
+    });
+    pull.outcome = outcome;
+    pull.outcomeDigest = outcomeDigest;
+    pull.receipt = {
+      sessionId: task.sessionId,
+      taskId: task.taskId,
+      pullId: pull.pullId,
+      resolutionOffset,
+      outcomeDigest,
+      status: "accepted",
+    };
+    pull.indeterminate = false;
+    task.nextActionIndex = Math.max(task.nextActionIndex, pull.actionIndex + 1);
+    if (task.cancellation.type === "settling_effect" && task.cancellation.pullId === pull.pullId) {
+      task.cancellation = {
+        type: "requested",
+        commandId: task.cancellation.commandId,
+        ...(task.cancellation.reason !== undefined ? { reason: task.cancellation.reason } : {}),
+        frontier: task.cancellation.frontier,
+      };
+    }
+    this.#runnable.add(task.sessionId);
   }
 
   #programCapability(task: Task): string {

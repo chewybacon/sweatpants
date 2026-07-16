@@ -114,7 +114,7 @@ export interface RedisDurableJournalAuthority {
     reason?: string,
     commandId?: string,
   ): Operation<CancellationAcknowledgement>;
-  /** Marks an in-flight attempt detached without revoking late resolution. */
+  /** Detaches an in-flight attempt and applies its declared indeterminate policy. */
   detachAttempt(
     sessionId: string,
     taskId: string,
