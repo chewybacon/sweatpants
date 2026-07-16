@@ -174,7 +174,11 @@ function createConnection(socket: WebSocket, signal: AbortSignal): AgentCoreWebS
     ),
   );
   const abort = () => {
-    socket.close(1000, "scope_exit");
+    if (socket.readyState === WebSocket.CONNECTING) {
+      socket.terminate();
+    } else {
+      socket.close(1001, "scope_exit");
+    }
     fail();
   };
   signal.addEventListener("abort", abort, { once: true });

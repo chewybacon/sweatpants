@@ -116,8 +116,9 @@ export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluat
             throw new CrankError("history_not_exhausted", "Replay history end mismatch");
           if (!step)
             step = yield* driver.step(current, { type: "start", input: requireInput(input) });
-          if (step.actionIndex <= replayedThrough && replayCount === 0)
+          if (step.actionIndex <= replayedThrough) {
             throw new CrankError("history_not_exhausted", "Replay history was not exhausted");
+          }
           const frontierDigest = computeFrontierDigest({
             releaseId: options.releaseId,
             taskId: taskId!,

@@ -4,7 +4,7 @@ import { createApi } from "effection/experimental";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { assertInlineSize, serializeDurableError } from "./authoring.ts";
-import { assertJson, canonicalSnapshot } from "./canonical.ts";
+import { assertJson, canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
@@ -27,6 +27,7 @@ import type {
   ProgramAttachment,
   ProgramCommand,
   ProgramDriver,
+  ProgramRestoreRequest,
   ProgramRunRequest,
   ProgramRoute,
   ProgramRunResult,
@@ -34,6 +35,7 @@ import type {
   ProgramStep,
   ReserveOperationRequest,
   ReserveOperationResult,
+  RestoredFrontierProof,
   ResolveOperationRequest,
   ResolveOperationResult,
   TaskCloseReceipt,
@@ -168,6 +170,13 @@ export const ProgramPeer = createApi("crank-program-peer", {
     const driver = yield* driverFor(attachment.driverKind);
     return yield* driver.step(attachment, command);
   },
+  *restore(request: ProgramRestoreRequest) {
+    const driver = yield* driverFor(driverKind(request.attach.route));
+    if (!driver.restore) {
+      throw new CrankError("program_protocol_error", "Program driver has no restore fast path");
+    }
+    return yield* driver.restore(request);
+  },
   *shutdown(attachment: ProgramAttachment, reason: ProgramShutdownReason): Operation<void> {
     const driver = yield* driverFor(attachment.driverKind);
     yield* driver.shutdown(attachment, reason);
@@ -293,49 +302,73 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
         request.attach.taskId,
       );
       const acceptedAttach = { ...request.attach, input: acceptedInput };
-      attachment = yield* ProgramPeer.operations.attach(acceptedAttach);
-      yield* authority.markActivated(request.attach.sessionId);
-      const programCapability =
-        request.programCapability ??
-        (yield* authority.bindProgramAttachment(
+      const driver = yield* driverFor(driverKind(acceptedAttach.route));
+      let step: ProgramStep;
+      let frontierProof: RestoredFrontierProof | undefined;
+      let programCapability = request.programCapability;
+      let pullIndex = 0;
+      if (request.activationOwnerId && driver.restore) {
+        const context = agentCoreRestoreContext(acceptedAttach);
+        if (!context) {
+          throw new CrankError("placement_unavailable", "AgentCore restore context is missing");
+        }
+        const prepared = yield* authority.prepareProgramRestore({
+          sessionId: acceptedAttach.sessionId,
+          taskId: acceptedAttach.taskId,
+          ownerId: request.activationOwnerId,
+          activationEpoch: acceptedAttach.executionEpoch,
+          releaseId: context.releaseId,
+          sandboxSessionId: context.sandboxSessionId,
+        });
+        pullIndex = prepared.replay.filter((entry) => entry.type === "operation").length;
+        const restored = yield* ProgramPeer.operations.restore({
+          attach: acceptedAttach,
+          replay: prepared.replay,
+          replayedThroughActionIndex: prepared.replayedThroughActionIndex,
+          replayChainSeed: prepared.replayChainSeed,
+          replayChainDigest: prepared.replayChainDigest,
+        });
+        if (
+          restored.replayedThroughActionIndex !== prepared.replayedThroughActionIndex ||
+          restored.replayChainDigest !== prepared.replayChainDigest
+        ) {
+          throw new CrankError("replay_diverged", "Restored replay evidence differs");
+        }
+        attachment = restored.attachment;
+        step = restored.frontier;
+        programCapability ??= (yield* authority.bindProgramAttachment(
           request.attach.sessionId,
           request.attach.taskId,
           attachment.attachmentId,
           request.attach.executionEpoch,
         )).programCapability;
-      let step = yield* ProgramPeer.operations.step(attachment, {
-        type: "start",
-        input: acceptedInput,
-      });
-      let pullIndex = 0;
-      let cancellationInjected = false;
-      const restoring = request.activationOwnerId !== undefined;
-      let replayChainDigest = canonicalSnapshot({
-        domain: "sweatpants.program-runtime.replay-fallback.v1",
-        sessionId: request.attach.sessionId,
-        taskId: request.attach.taskId,
-        executionEpoch: request.attach.executionEpoch,
-      }).sha;
-      const restoredProof = function* (frontier: ProgramStep) {
-        if (!restoring || !request.activationOwnerId) return undefined;
-        const issued = yield* authority.issueRestoreTicket({
-          sessionId: request.attach.sessionId,
-          taskId: request.attach.taskId,
+        const bound = yield* authority.bindRestoreFrontier({
+          sessionId: acceptedAttach.sessionId,
+          taskId: acceptedAttach.taskId,
           ownerId: request.activationOwnerId,
-          activationEpoch: request.attach.executionEpoch,
-          replayedThroughActionIndex: Math.max(0, frontier.actionIndex - 1),
-          replayChainDigest,
+          activationEpoch: acceptedAttach.executionEpoch,
+          restoreTicket: prepared.restoreTicket,
+          frontierDigest: restored.frontierDigest,
         });
-        return {
-          restoreTicket: issued.restoreTicket,
-          frontierDigest: canonicalSnapshot({
-            domain: "sweatpants.program-runtime.frontier-fallback.v1",
-            executionEpoch: request.attach.executionEpoch,
-            replayChainDigest,
-            step: frontier,
-          }).sha,
-        };
-      };
+        if (bound.status !== "bound") {
+          throw new CrankError("restore_stale");
+        }
+        frontierProof = bound.proof;
+      } else {
+        attachment = yield* ProgramPeer.operations.attach(acceptedAttach);
+        step = yield* ProgramPeer.operations.step(attachment, {
+          type: "start",
+          input: acceptedInput,
+        });
+      }
+      yield* authority.markActivated(request.attach.sessionId);
+      programCapability ??= (yield* authority.bindProgramAttachment(
+        request.attach.sessionId,
+        request.attach.taskId,
+        attachment.attachmentId,
+        request.attach.executionEpoch,
+      )).programCapability;
+      let cancellationInjected = false;
       while (true) {
         let cancellation = yield* authority.cancellationState(
           request.attach.sessionId,
@@ -350,7 +383,9 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             cancellation = yield* authority.beginCancellationUnwind(
               request.attach.sessionId,
               request.attach.taskId,
+              frontierProof ? { proof: frontierProof, step } : undefined,
             );
+            frontierProof = undefined;
           }
           if (step.type === "operation" || step.type === "emission") {
             const cancellationReason = "reason" in cancellation ? cancellation.reason : undefined;
@@ -363,27 +398,28 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           }
         }
         if (step.type === "completed") {
-          const proof = yield* restoredProof(step);
           if (isCancellationInProgress(cancellation) && cancellation.type !== "unwinding") {
             cancellation = yield* authority.beginCancellationUnwind(
               request.attach.sessionId,
               request.attach.taskId,
+              frontierProof ? { proof: frontierProof, step } : undefined,
             );
+            frontierProof = undefined;
           }
+          const proof = frontierProof;
           yield* JournalAuthority.operations.complete({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
             outcome: { status: "ok", value: step.value },
             programCapability,
-            ...(proof ? { restoredFrontier: proof } : {}),
+            ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
           });
           const cancelled = isCancellationInProgress(cancellation);
           shutdownReason = cancelled ? "cancelled" : "completed";
           return cancelled ? { state: "cancelled" } : { state: "completed", value: step.value };
         }
         if (step.type === "failed") {
-          const proof = yield* restoredProof(step);
           const cancelled =
             step.error.code === "program_cancelled" || isCancellationInProgress(cancellation);
           if (
@@ -394,31 +430,34 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             cancellation = yield* authority.beginCancellationUnwind(
               request.attach.sessionId,
               request.attach.taskId,
+              frontierProof ? { proof: frontierProof, step } : undefined,
             );
+            frontierProof = undefined;
           }
+          const proof = frontierProof;
           yield* JournalAuthority.operations.complete({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
             outcome: cancelled ? { status: "cancelled" } : { status: "error", error: step.error },
             programCapability,
-            ...(proof ? { restoredFrontier: proof } : {}),
+            ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
           });
           shutdownReason = cancelled ? "cancelled" : "failed";
           return cancelled ? { state: "cancelled" } : { state: "failed", error: step.error };
         }
         if (step.type === "emission") {
-          const proof = yield* restoredProof(step);
+          const proof = frontierProof;
           const receipt = yield* JournalAuthority.operations.emit({
             sessionId: request.attach.sessionId,
             taskId: request.attach.taskId,
             actionIndex: step.actionIndex,
             descriptor: step.descriptor,
             programCapability,
-            ...(proof ? { restoredFrontier: proof } : {}),
+            ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
           });
-          if (receipt.duplicate) {
-            replayChainDigest = canonicalSnapshot({ replayChainDigest, step, receipt }).sha;
+          if (receipt.restoredFrontierConsumed) {
+            frontierProof = undefined;
           }
           step = yield* ProgramPeer.operations.step(attachment, {
             type: "ack_emission",
@@ -427,7 +466,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           });
           continue;
         }
-        const proof = yield* restoredProof(step);
+        const proof = frontierProof;
         const reservation = yield* JournalAuthority.operations.reserve({
           sessionId: request.attach.sessionId,
           turnId: turnIdFor(request.attach.taskId),
@@ -436,13 +475,13 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           pullIndex,
           descriptor: step.descriptor,
           programCapability,
-          ...(proof ? { restoredFrontier: proof } : {}),
+          ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
         });
+        if (reservation.restoredFrontierConsumed) {
+          frontierProof = undefined;
+        }
         if (reservation.status === "resolved") {
           pullIndex += 1;
-          if (reservation.receipt.status === "duplicate") {
-            replayChainDigest = canonicalSnapshot({ replayChainDigest, step, reservation }).sha;
-          }
           if (
             reservation.outcome.status === "cancelled" &&
             isCancellationInProgress(cancellation) &&
@@ -452,7 +491,9 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
               yield* authority.beginCancellationUnwind(
                 request.attach.sessionId,
                 request.attach.taskId,
+                frontierProof ? { proof: frontierProof, step } : undefined,
               );
+              frontierProof = undefined;
             }
             cancellationInjected = true;
           }
@@ -495,6 +536,9 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
               },
               ...(request.executeHostEffects !== undefined
                 ? { executeHostEffects: request.executeHostEffects }
+                : {}),
+              ...(request.activationOwnerId
+                ? { activationOwnerId: request.activationOwnerId }
                 : {}),
             });
             if (childRun.state === "parked") {
@@ -586,6 +630,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
 /** Bound ProgramPeer operations for composition without API-object lookup. */
 export const {
   attach: attachProgram,
+  restore: restoreProgram,
   step: stepProgram,
   shutdown: shutdownProgram,
   manifest: resolveProgramManifest,
@@ -609,6 +654,43 @@ function* driverFor(kind: string): Operation<ProgramDriver> {
     throw new CrankError("unknown_target", `No program driver for ${kind}`);
   }
   return driver;
+}
+
+function agentCoreRestoreContext(
+  attach: ProgramRestoreRequest["attach"],
+): { releaseId: string; sandboxSessionId: string } | undefined {
+  if (!attach.route || typeof attach.route !== "object" || Array.isArray(attach.route)) {
+    return undefined;
+  }
+  const placement = attach.route["placement"];
+  if (placement && typeof placement === "object" && !Array.isArray(placement)) {
+    const release = placement["release"];
+    const runtimeSessionId = placement["runtimeSessionId"];
+    if (
+      release &&
+      typeof release === "object" &&
+      !Array.isArray(release) &&
+      typeof release["releaseId"] === "string" &&
+      typeof runtimeSessionId === "string"
+    ) {
+      return { releaseId: release["releaseId"], sandboxSessionId: runtimeSessionId };
+    }
+  }
+  const release = attach.route["release"];
+  const journalId = attach.route["journalId"];
+  if (
+    release &&
+    typeof release === "object" &&
+    !Array.isArray(release) &&
+    typeof release["releaseId"] === "string" &&
+    typeof journalId === "string"
+  ) {
+    return {
+      releaseId: release["releaseId"],
+      sandboxSessionId: stableOpaqueId("sp-ac", [journalId, attach.taskId, release["releaseId"]]),
+    };
+  }
+  return undefined;
 }
 
 function driverKind(route: ProgramRoute): string {

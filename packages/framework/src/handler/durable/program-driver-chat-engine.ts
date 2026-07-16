@@ -41,6 +41,7 @@ import type {
   Context as RuntimeContext,
   Message as RuntimeMessage,
 } from "../../lib/chat/runtime/index.ts";
+import { runWithRenewedActivationLease } from "../activation-lease-coordinator.ts";
 import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
 import {
@@ -1491,21 +1492,12 @@ function* runFencedActivation(
     Date.now(),
     activationOwnerCounter,
   ]);
-  const claim = yield* authority.claimActivation({ sessionId, ownerId, leaseDurationMs: 30_000 });
-  if (claim.status === "busy")
-    throw new CrankError("activation_busy", "Durable activation is owned by another host");
-  if (claim.status === "not_runnable")
-    throw new CrankError("activation_busy", "Durable task has no runnable command");
-  let reason: "parked" | "terminal" | "failed" = "failed";
-  try {
-    // Long-lived production scanners wrap this crank with the AgentCore host
-    // coordinator, which owns the 10s renewal timer outside durable execution.
-    const outcome = yield* activate(claim.epoch, ownerId);
-    reason = outcome.state === "parked" ? "parked" : "terminal";
-    return outcome;
-  } finally {
-    yield* authority.releaseActivation({ sessionId, ownerId, epoch: claim.epoch, reason });
-  }
+  return yield* runWithRenewedActivationLease(
+    authority,
+    sessionId,
+    ownerId,
+    (epoch, currentOwnerId) => activate(epoch, currentOwnerId),
+  );
 }
 
 function resolveOuterToolTarget(requested: string, tools: ReadonlyArray<{ name: string }>): string {
