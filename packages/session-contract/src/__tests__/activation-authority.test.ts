@@ -129,6 +129,8 @@ describe("activation leases and restore fencing", () => {
         activationEpoch: 1,
         releaseId: "release",
         sandboxSessionId: "sandbox",
+        replayDomain: "sweatpants.agentcore.replay.v1",
+        frontierDomain: "sweatpants.agentcore.frontier.v1",
       });
       expect(prepared.replay).toEqual([]);
       expect(prepared.replayedThroughActionIndex).toBe(-1);

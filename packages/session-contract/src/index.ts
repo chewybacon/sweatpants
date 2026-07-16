@@ -67,6 +67,7 @@ export type {
   ProgramDriver,
   ProgramExecutionCapabilityClaims,
   ProgramReplayStream,
+  ProgramRestoreContext,
   ProgramRestoreRequest,
   ProgramResume,
   ProgramRoute,

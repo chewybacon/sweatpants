@@ -32,6 +32,16 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
   let generation = 0;
 
   const transport: AgentCoreDurableProgramTransport = {
+    *restoreContext(request) {
+      const route = request.route as Record<string, unknown>;
+      const release = route["release"] as { releaseId: string };
+      return {
+        replayDomain: "sweatpants.agentcore.replay.v1",
+        frontierDomain: "sweatpants.agentcore.frontier.v1",
+        releaseId: release.releaseId,
+        sandboxSessionId: `sandbox-${request.taskId}`,
+      };
+    },
     *attach(request) {
       generation += 1;
       containerGenerations.push(generation);

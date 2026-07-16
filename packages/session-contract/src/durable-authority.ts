@@ -1456,7 +1456,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     const restoreNonce = this.#nextNonce();
     const replayChainSeed = sha256(
       canonicalJson({
-        domain: "sweatpants.agentcore.replay.v1",
+        domain: request.replayDomain,
         protocolVersion: 1,
         releaseId: request.releaseId,
         sessionId: request.sandboxSessionId,
@@ -1526,6 +1526,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       activationEpoch: request.activationEpoch,
       releaseId: request.releaseId,
       sandboxSessionId: request.sandboxSessionId,
+      replayDomain: request.replayDomain,
+      frontierDomain: request.frontierDomain,
       taskRevision,
       journalHeadDigest,
       replayedThroughActionIndex,
@@ -1993,10 +1995,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     } catch {
       throw new CrankError("restore_stale");
     }
-    if (!claims.releaseId) throw new CrankError("restore_stale");
+    if (!claims.releaseId || !claims.frontierDomain) throw new CrankError("restore_stale");
     const expectedFrontierDigest = sha256(
       canonicalJson({
-        domain: "sweatpants.agentcore.frontier.v1",
+        domain: claims.frontierDomain,
         protocolVersion: 1,
         releaseId: claims.releaseId,
         taskId: task.taskId,
@@ -2950,7 +2952,7 @@ function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
         "replayChainDigest",
         "restoreNonce",
       ],
-      ["releaseId", "sandboxSessionId"],
+      ["releaseId", "sandboxSessionId", "replayDomain", "frontierDomain"],
     )
   )
     throw new CrankError("restore_stale");
@@ -2964,7 +2966,7 @@ function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
     "replayChainDigest",
     "restoreNonce",
   ];
-  const optionalStrings = ["releaseId", "sandboxSessionId"];
+  const optionalStrings = ["releaseId", "sandboxSessionId", "replayDomain", "frontierDomain"];
   if (
     value["version"] !== 1 ||
     !stringFields.every((field) => typeof value[field] === "string") ||

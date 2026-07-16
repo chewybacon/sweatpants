@@ -61,6 +61,15 @@ export function createAgentCoreWebSocketProgramTransport(
   connector: AgentCoreWebSocketConnector,
 ): AgentCoreDurableProgramTransport {
   return {
+    *restoreContext(request) {
+      const placement = placementFrom(request);
+      return {
+        replayDomain: "sweatpants.agentcore.replay.v1",
+        frontierDomain: "sweatpants.agentcore.frontier.v1",
+        releaseId: placement.release.releaseId,
+        sandboxSessionId: placement.runtimeSessionId,
+      };
+    },
     *attach(request): Operation<ProgramAttachment> {
       const restored = yield* openAndBegin(connector, request, -1, emptyDigest(), emptyDigest());
       return restored.attachment;
