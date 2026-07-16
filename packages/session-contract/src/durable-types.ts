@@ -189,6 +189,12 @@ export type ReleaseActivationResult =
   | { readonly status: "released"; readonly runnable: boolean }
   | { readonly status: "stale_activation" };
 
+export interface RecoverableSession {
+  readonly sessionId: string;
+  readonly reason: "runnable" | "expired_activation";
+  readonly notBeforeMs?: number;
+}
+
 /** Host-private claims authenticated by the authority for one restored frontier. */
 export interface RestoreTicketClaims {
   readonly version: 1;
@@ -820,6 +826,8 @@ export interface DurableJournalAuthorityService {
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Legacy local activation marker. Distributed coordinators use claimActivation. */
   markActivated(sessionId: string): Operation<void>;
+  /** Lists runnable work plus expired in-flight ownership for restart recovery. */
+  recoverableSessions(): Operation<RecoverableSession[]>;
   /** Claims absent/expired runnable work under an authority-minted epoch. */
   claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
   /** Renews only the exact current owner and epoch using authority time. */

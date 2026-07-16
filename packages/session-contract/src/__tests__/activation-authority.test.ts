@@ -74,6 +74,38 @@ describe("activation leases and restore fencing", () => {
     });
   });
 
+  it("recovers an expired in-flight lease even though claim cleared runnable", async () => {
+    let clock = 1_000;
+    const value = authority(() => clock);
+    await run(function* () {
+      yield* value.openTask({
+        sessionId: "crashed",
+        turnId: "turn",
+        taskId: "task",
+        manifest,
+        input: {},
+        executionEpoch: 1,
+        attachmentId: "initial",
+        audience: "program-runtime",
+      });
+      expect(
+        yield* value.claimActivation({
+          sessionId: "crashed",
+          ownerId: "dead",
+          leaseDurationMs: 1_000,
+        }),
+      ).toMatchObject({ status: "claimed" });
+      expect(yield* value.recoverableSessions()).toEqual([]);
+      clock = 2_000;
+      expect(yield* value.recoverableSessions()).toEqual([
+        { sessionId: "crashed", reason: "expired_activation" },
+      ]);
+      expect(
+        yield* value.claimActivation({ sessionId: "crashed", ownerId: "replacement" }),
+      ).toMatchObject({ status: "claimed", epoch: 2 });
+    });
+  });
+
   it("binds the verified frontier digest to the exact first semantic transition", async () => {
     const value = authority(() => 2_000);
     await run(function* () {

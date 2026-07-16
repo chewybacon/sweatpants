@@ -26,6 +26,7 @@ import {
   type PrepareProgramRestoreRequest,
   type PreparedProgramRestore,
   type ProgramStep,
+  type RecoverableSession,
   type ReserveOperationRequest,
   type ReserveOperationResult,
   type DurableSchemaRegistry,
@@ -64,6 +65,7 @@ export interface RedisDurableJournalAuthority {
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when a legacy structured activation starts. */
   markActivated(sessionId: string): Operation<void>;
+  recoverableSessions(): Operation<RecoverableSession[]>;
   claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
   renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
   releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
@@ -244,6 +246,10 @@ export function createRedisDurableJournalAuthority(
     },
     *markActivated(sessionId) {
       yield* mutate((value) => value.markActivated(sessionId));
+    },
+    *recoverableSessions() {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).recoverableSessions();
     },
     *claimActivation(request) {
       return yield* mutate((value) => value.claimActivation(request));
