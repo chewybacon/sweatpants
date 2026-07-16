@@ -1,4 +1,5 @@
 export { canonicalSnapshot } from "../canonical.ts";
+export { normalizeSemanticJournal } from "./semantic-journal-normalizer.ts";
 export {
   anyGuard,
   booleanGuard,

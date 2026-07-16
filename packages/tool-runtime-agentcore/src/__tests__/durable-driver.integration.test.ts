@@ -1,14 +1,20 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
+  canonicalSnapshot,
   createLocalGeneratorDriver,
   type DurableToolRegistry,
   type ProgramAttachment,
   type ProgramShutdownReason,
 } from "@sweatpants/session-contract";
-import { runDurableDriverRecoveryFixture } from "@sweatpants/session-contract/testing";
+import {
+  normalizeSemanticJournal,
+  runDurableDriverCancellationFixture,
+  runDurableDriverRecoveryFixture,
+} from "@sweatpants/session-contract/testing";
 
 import {
+  computeFrontierDigest,
   createAgentCoreDurableProgramDriver,
   type AgentCoreDurableProgramTransport,
 } from "../index.ts";
@@ -17,10 +23,12 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
   transport: AgentCoreDurableProgramTransport;
   containerGenerations: number[];
   shutdownReasons: ProgramShutdownReason[];
+  replayEntryCounts: number[];
 } {
   const evaluator = createLocalGeneratorDriver(registry);
   const containerGenerations: number[] = [];
   const shutdownReasons: ProgramShutdownReason[] = [];
+  const replayEntryCounts: number[] = [];
   let generation = 0;
 
   const transport: AgentCoreDurableProgramTransport = {
@@ -38,6 +46,57 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
         },
       } satisfies ProgramAttachment;
     },
+    *restore(request) {
+      generation += 1;
+      containerGenerations.push(generation);
+      const local = yield* evaluator.attach(request.attach);
+      const attachment = { ...local, driverKind: "agentcore" } satisfies ProgramAttachment;
+      let step = yield* evaluator.step(attachment, {
+        type: "start",
+        input: request.attach.input,
+      });
+      const entries = [...(request.replay[Symbol.iterator]?.() ?? [])];
+      replayEntryCounts.push(entries.length);
+      for (const entry of entries) {
+        expect(step.actionIndex).toBe(entry.actionIndex);
+        expect(step.type).toBe(entry.type);
+        if (step.type !== "operation" && step.type !== "emission") {
+          throw new Error("fixture replay returned before history ended");
+        }
+        expect(canonicalSnapshot(step.descriptor).sha).toBe(entry.descriptorDigest);
+        step =
+          entry.type === "operation"
+            ? yield* evaluator.step(attachment, {
+                type: "resume",
+                actionIndex: entry.actionIndex,
+                outcome: entry.outcome,
+                receipt: entry.receipt,
+                replayed: true,
+              })
+            : yield* evaluator.step(attachment, {
+                type: "ack_emission",
+                actionIndex: entry.actionIndex,
+                offset: entry.offset,
+              });
+      }
+      const route = request.attach.route as Record<string, unknown>;
+      const release = route["release"] as { releaseId: string };
+      return {
+        attachment,
+        frontier: step,
+        replayedThroughActionIndex: request.replayedThroughActionIndex,
+        replayChainDigest: request.replayChainDigest,
+        frontierDigest: computeFrontierDigest({
+          releaseId: release.releaseId,
+          taskId: request.attach.taskId,
+          activationEpoch: request.attach.executionEpoch,
+          replayedThroughActionIndex: request.replayedThroughActionIndex,
+          replayChainDigest: request.replayChainDigest,
+          step,
+        }),
+        computeGeneration: `generation-${generation}`,
+      };
+    },
     *step(attachment, command) {
       return yield* evaluator.step(attachment, command);
     },
@@ -47,8 +106,25 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
     },
   };
 
-  return { transport, containerGenerations, shutdownReasons };
+  return { transport, containerGenerations, shutdownReasons, replayEntryCounts };
 }
+
+const agentRoute = {
+  driverKind: "agentcore",
+  journalId: "driver-integration:agentcore",
+  release: {
+    releaseId: "integration-release",
+    runtimeArn: "private-runtime",
+    region: "us-east-1",
+    imageDigest: "image",
+    protocolVersion: 1,
+    registryDigest: "registry",
+    iamProfile: "pure",
+    networkProfile: "isolated",
+    filesystem: { kind: "managed_session_storage", mountPath: "/mnt/workspace" },
+    lifecycle: { idleRuntimeSessionTimeoutSeconds: 120, maxLifetimeSeconds: 28_800 },
+  },
+} as const;
 
 describe("AgentCore crank-native ProgramDriver integration", () => {
   it("replaces the remote container after park and reconstructs execution from the crank journal", async () => {
@@ -57,7 +133,8 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
     const evidence = await run(() =>
       runDurableDriverRecoveryFixture({
         driverKind: "agentcore",
-        route: { driverKind: "agentcore", profile: "integration-fake" },
+        route: agentRoute,
+        useActivationLease: true,
         createDriver(registry) {
           transportEvidence = createReplacingAgentCoreTransport(registry);
           return createAgentCoreDurableProgramDriver(transportEvidence.transport);
@@ -73,6 +150,7 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
     expect(evidence.effectExecutions).toBe(1);
     expect(transportEvidence?.containerGenerations).toEqual([1, 2]);
     expect(transportEvidence?.shutdownReasons).toEqual(["parked", "completed"]);
+    expect(transportEvidence?.replayEntryCounts).toEqual([0, 3]);
     const semanticJson = JSON.stringify(evidence.semanticJournal);
     expect(semanticJson).not.toContain("containerGeneration");
     expect(semanticJson).not.toContain("remoteInvocationId");
@@ -87,5 +165,59 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
       "PullResolved",
       "TaskClosed",
     ]);
+  });
+
+  it("matches the local driver's normalized semantic journal", async () => {
+    const local = await run(() =>
+      runDurableDriverRecoveryFixture({
+        driverKind: "generator",
+        sessionId: "parity-session",
+        createDriver: createLocalGeneratorDriver,
+      }),
+    );
+    const agentcore = await run(() =>
+      runDurableDriverRecoveryFixture({
+        driverKind: "agentcore",
+        sessionId: "parity-session",
+        route: agentRoute,
+        useActivationLease: true,
+        createDriver(registry) {
+          return createAgentCoreDurableProgramDriver(
+            createReplacingAgentCoreTransport(registry).transport,
+          );
+        },
+      }),
+    );
+    expect(normalizeSemanticJournal(agentcore.semanticJournal)).toEqual(
+      normalizeSemanticJournal(local.semanticJournal),
+    );
+  });
+
+  it("matches local cancellation-unwind semantics", async () => {
+    const local = await run(() =>
+      runDurableDriverCancellationFixture({
+        driverKind: "generator",
+        sessionId: "cancellation-parity-session",
+        createDriver: createLocalGeneratorDriver,
+      }),
+    );
+    const agentcore = await run(() =>
+      runDurableDriverCancellationFixture({
+        driverKind: "agentcore",
+        sessionId: "cancellation-parity-session",
+        createDriver(registry) {
+          return createAgentCoreDurableProgramDriver(
+            createReplacingAgentCoreTransport(registry).transport,
+          );
+        },
+      }),
+    );
+    const localPayloads = normalizeSemanticJournal(local.semanticJournal).map(
+      (record) => (record as { payload: unknown }).payload,
+    );
+    const agentPayloads = normalizeSemanticJournal(agentcore.semanticJournal).map(
+      (record) => (record as { payload: unknown }).payload,
+    );
+    expect(agentPayloads).toEqual(localPayloads);
   });
 });

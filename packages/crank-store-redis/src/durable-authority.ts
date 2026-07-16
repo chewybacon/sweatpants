@@ -5,6 +5,8 @@ import {
   InMemoryDurableJournalAuthority,
   parseDurableAuthoritySnapshot,
   type AppendEmissionRequest,
+  type BindRestoreFrontierRequest,
+  type BindRestoreFrontierResult,
   type CapabilityKeyring,
   type CancellationAcknowledgement,
   type ClaimActivationRequest,
@@ -21,6 +23,9 @@ import {
   type IssueRestoreTicketRequest,
   type IssueRestoreTicketResult,
   type OpenDurableTaskRequest,
+  type PrepareProgramRestoreRequest,
+  type PreparedProgramRestore,
+  type ProgramStep,
   type ReserveOperationRequest,
   type ReserveOperationResult,
   type DurableSchemaRegistry,
@@ -29,6 +34,7 @@ import {
   type ReleaseActivationResult,
   type RenewActivationRequest,
   type RenewActivationResult,
+  type RestoredFrontierProof,
   type ResolveOperationRequest,
   type ResolveOperationResult,
   type TaskCloseReceipt,
@@ -62,11 +68,17 @@ export interface RedisDurableJournalAuthority {
   renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
   releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
   issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult>;
+  prepareProgramRestore(request: PrepareProgramRestoreRequest): Operation<PreparedProgramRestore>;
+  bindRestoreFrontier(request: BindRestoreFrontierRequest): Operation<BindRestoreFrontierResult>;
   consumeRestoreTicket(request: ConsumeRestoreTicketRequest): Operation<ConsumeRestoreTicketResult>;
   /** Reads durable cancellation lifecycle state. */
   cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
   /** Starts one-shot authored cancellation unwind. */
-  beginCancellationUnwind(sessionId: string, taskId: string): Operation<DurableCancellationState>;
+  beginCancellationUnwind(
+    sessionId: string,
+    taskId: string,
+    restoredFrontier?: { readonly proof: RestoredFrontierProof; readonly step: ProgramStep },
+  ): Operation<DurableCancellationState>;
   /** Binds current program authority under Redis CAS fencing. */
   bindProgramAttachment(
     sessionId: string,
@@ -153,7 +165,7 @@ export function createRedisDurableJournalAuthority(
 ): RedisDurableJournalAuthority {
   const key = `${options.keyPrefix ?? "sweatpants:crank:"}durable-authority:${encodeURIComponent(options.journalId)}`;
   const empty: DurableAuthoritySnapshot = {
-    version: 3,
+    version: 4,
     tasks: [],
     records: [],
     runnable: [],
@@ -162,6 +174,7 @@ export function createRedisDurableJournalAuthority(
     lastActivationEpochBySession: [],
     taskRevisions: [],
     restoreNonces: [],
+    restoreFrontierDigests: [],
     consecutiveRestoreStales: [],
     activationNotBeforeMs: [],
     placements: [],
@@ -244,14 +257,22 @@ export function createRedisDurableJournalAuthority(
     *issueRestoreTicket(request) {
       return yield* mutate((value) => value.issueRestoreTicket(request));
     },
+    *prepareProgramRestore(request) {
+      return yield* mutate((value) => value.prepareProgramRestore(request));
+    },
+    *bindRestoreFrontier(request) {
+      return yield* mutate((value) => value.bindRestoreFrontier(request));
+    },
     *consumeRestoreTicket(request) {
       return yield* mutate((value) => value.consumeRestoreTicket(request));
     },
     *cancellationState(sessionId, taskId) {
       return yield* mutate((value) => value.cancellationState(sessionId, taskId));
     },
-    *beginCancellationUnwind(sessionId, taskId) {
-      return yield* mutate((value) => value.beginCancellationUnwind(sessionId, taskId));
+    *beginCancellationUnwind(sessionId, taskId, restoredFrontier) {
+      return yield* mutate((value) =>
+        value.beginCancellationUnwind(sessionId, taskId, restoredFrontier),
+      );
     },
     *bindProgramAttachment(sessionId, taskId, attachmentId, executionEpoch) {
       return yield* mutate((value) =>

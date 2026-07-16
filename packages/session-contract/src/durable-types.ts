@@ -150,6 +150,7 @@ export interface ActivationLeaseState {
   readonly ownerId: string;
   readonly epoch: number;
   readonly expiresAtMs: number;
+  readonly leaseDurationMs: number;
   readonly claimedTaskRevision: number;
   readonly claimedHeadDigest: string;
   readonly restoreNonce: string;
@@ -197,6 +198,8 @@ export interface RestoreTicketClaims {
   readonly taskId: string;
   readonly ownerId: string;
   readonly activationEpoch: number;
+  readonly releaseId?: string;
+  readonly sandboxSessionId?: string;
   readonly taskRevision: number;
   readonly journalHeadDigest: string;
   readonly replayedThroughActionIndex: number;
@@ -222,6 +225,36 @@ export interface IssueRestoreTicketResult {
   readonly taskRevision: number;
   readonly journalHeadDigest: string;
 }
+
+/** Trusted context used by the authority to derive a nonce-hiding replay chain. */
+export interface PrepareProgramRestoreRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly ownerId: string;
+  readonly activationEpoch: number;
+  readonly releaseId: string;
+  readonly sandboxSessionId: string;
+}
+export interface PreparedProgramRestore {
+  readonly restoreTicket: string;
+  readonly replay: readonly ReplayEntry[];
+  readonly replayedThroughActionIndex: number;
+  readonly replayChainSeed: string;
+  readonly replayChainDigest: string;
+  readonly taskRevision: number;
+  readonly journalHeadDigest: string;
+}
+export interface BindRestoreFrontierRequest {
+  readonly sessionId: string;
+  readonly taskId: string;
+  readonly ownerId: string;
+  readonly activationEpoch: number;
+  readonly restoreTicket: string;
+  readonly frontierDigest: string;
+}
+export type BindRestoreFrontierResult =
+  | { readonly status: "bound"; readonly proof: RestoredFrontierProof }
+  | { readonly status: "restore_stale" };
 export interface ConsumeRestoreTicketRequest {
   readonly sessionId: string;
   readonly taskId: string;
@@ -669,11 +702,17 @@ export interface ReserveOperationRequest {
   descriptor: DurableOperationDescriptor;
   programCapability: string;
   restoredFrontier?: RestoredFrontierProof;
+  restoredFrontierStep?: ProgramStep;
 }
 
 /** Reserve result distinguishing replay, host authorization, and durable parking. */
 export type ReserveOperationResult =
-  | { status: "resolved"; outcome: OperationOutcome; receipt: ResolutionReceipt }
+  | {
+      status: "resolved";
+      outcome: OperationOutcome;
+      receipt: ResolutionReceipt;
+      restoredFrontierConsumed?: true;
+    }
   | {
       status: "authorized";
       pullId: string;
@@ -682,12 +721,14 @@ export type ReserveOperationResult =
       descriptor: EffectDescriptor;
       resolutionCapability: string;
       notBefore?: string;
+      restoredFrontierConsumed?: true;
     }
   | {
       status: "pending";
       pullId: string;
       reason: "elicit" | "wait" | "child" | "indeterminate";
       resolutionCapability?: string;
+      restoredFrontierConsumed?: true;
     };
 
 /** Capability-bearing request to commit one canonical operation outcome. */
@@ -724,6 +765,7 @@ export interface AppendEmissionRequest {
   descriptor: EmissionDescriptor;
   programCapability: string;
   restoredFrontier?: RestoredFrontierProof;
+  restoredFrontierStep?: ProgramStep;
 }
 
 /** Stable receipt identifying an appended or duplicate emission. */
@@ -731,6 +773,7 @@ export interface EmissionReceipt {
   offset: string;
   eventId: string;
   duplicate: boolean;
+  restoredFrontierConsumed?: true;
 }
 
 /** Program-authorized request to close a task with a schema-valid outcome. */
@@ -741,12 +784,14 @@ export interface CompleteTaskRequest {
   outcome: OperationOutcome;
   programCapability: string;
   restoredFrontier?: RestoredFrontierProof;
+  restoredFrontierStep?: ProgramStep;
 }
 
 /** Stable receipt identifying task closure or idempotent replay. */
 export interface TaskCloseReceipt {
   offset: string;
   duplicate: boolean;
+  restoredFrontierConsumed?: true;
 }
 
 /** Complete deterministic child-allocation request tied to a parent pull. */
@@ -783,12 +828,20 @@ export interface DurableJournalAuthorityService {
   releaseActivation(request: ReleaseActivationRequest): Operation<ReleaseActivationResult>;
   /** Issues a host-private single-use ticket for one authority snapshot. */
   issueRestoreTicket(request: IssueRestoreTicketRequest): Operation<IssueRestoreTicketResult>;
+  /** Derives one integrity-linked replay plan and ticket from the claimed snapshot. */
+  prepareProgramRestore(request: PrepareProgramRestoreRequest): Operation<PreparedProgramRestore>;
+  /** Binds the host-verified remote frontier digest without consuming the ticket. */
+  bindRestoreFrontier(request: BindRestoreFrontierRequest): Operation<BindRestoreFrontierResult>;
   /** Atomically verifies and consumes one first-live-frontier ticket. */
   consumeRestoreTicket(request: ConsumeRestoreTicketRequest): Operation<ConsumeRestoreTicketResult>;
   /** Reads the durable cancellation state used by fresh replay attachments. */
   cancellationState(sessionId: string, taskId: string): Operation<DurableCancellationState>;
   /** Transitions a settled cancellation frontier into one-shot unwind. */
-  beginCancellationUnwind(sessionId: string, taskId: string): Operation<DurableCancellationState>;
+  beginCancellationUnwind(
+    sessionId: string,
+    taskId: string,
+    restoredFrontier?: { readonly proof: RestoredFrontierProof; readonly step: ProgramStep },
+  ): Operation<DurableCancellationState>;
   /** Binds program authority to one attachment and execution epoch. */
   bindProgramAttachment(
     sessionId: string,

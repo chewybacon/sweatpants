@@ -22,19 +22,18 @@ import {
   type Json,
   type ProgramDriver,
   type ProgramRoute,
+  type ProgramRunResult,
 } from "../index.ts";
-import {
-  booleanGuard,
-  createSchemaFixture,
-  nullGuard,
-  stringGuard,
-} from "./schema-fixtures.ts";
+import { booleanGuard, createSchemaFixture, nullGuard, stringGuard } from "./schema-fixtures.ts";
 
 /** Dependencies for exercising one driver across park, snapshot, and recovery. */
 export interface DurableDriverRecoveryFixtureOptions {
   driverKind: string;
   route?: ProgramRoute;
   createDriver(registry: DurableToolRegistry): ProgramDriver;
+  /** Exercises authority-claimed restore/ticket behavior used by remote placements. */
+  useActivationLease?: boolean;
+  sessionId?: string;
 }
 
 /** Observable journal and outcome evidence returned by the recovery fixture. */
@@ -247,6 +246,16 @@ export function* runDurableDriverRecoveryFixture(
         activeAttachments -= 1;
       }
     },
+    ...(concreteDriver.restore
+      ? {
+          *restore(request) {
+            const restored = yield* concreteDriver.restore!(request);
+            attachmentCount += 1;
+            activeAttachments += 1;
+            return restored;
+          },
+        }
+      : {}),
   };
   const drivers = createProgramDriverRegistry([[options.driverKind, driver]]);
   const effects = createDurableEffectRegistry([
@@ -269,7 +278,7 @@ export function* runDurableDriverRecoveryFixture(
   });
   const invocationId = "turn-0/root";
   const attach = {
-    sessionId: `driver-session:${options.driverKind}`,
+    sessionId: options.sessionId ?? `driver-session:${options.driverKind}`,
     taskId: invocationId,
     program: {
       id: fixtureManifest.programId,
@@ -291,16 +300,45 @@ export function* runDurableDriverRecoveryFixture(
     audience: "fixture-program",
   });
 
-  const first = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(authority, function* () {
-      return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({
-          attach,
-          executeHostEffects: true,
+  let activationCount = 0;
+  const activate = function* (): Operation<ProgramRunResult> {
+    activationCount += 1;
+    const ownerId = `fixture-owner-${activationCount}`;
+    const claim = options.useActivationLease
+      ? yield* authority.claimActivation({ sessionId: attach.sessionId, ownerId })
+      : undefined;
+    if (claim && claim.status !== "claimed") {
+      throw new Error(`Fixture activation claim failed: ${claim.status}`);
+    }
+    const executionEpoch = claim?.status === "claimed" ? claim.epoch : attach.executionEpoch;
+    let releaseReason: "parked" | "terminal" | "failed" = "failed";
+    try {
+      const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* DurableEffectRegistryContext.with(effects, function* () {
+            return yield* ProgramRuntime.operations.run({
+              attach: { ...attach, executionEpoch },
+              executeHostEffects: true,
+              ...(claim?.status === "claimed" ? { activationOwnerId: ownerId } : {}),
+            });
+          });
         });
       });
-    });
-  });
+      releaseReason = outcome.state === "parked" ? "parked" : "terminal";
+      return outcome;
+    } finally {
+      if (claim?.status === "claimed") {
+        yield* authority.releaseActivation({
+          sessionId: attach.sessionId,
+          ownerId,
+          epoch: claim.epoch,
+          reason: releaseReason,
+        });
+      }
+    }
+  };
+
+  const first = yield* activate();
   if (first.state !== "parked") {
     throw new Error(`Expected first durable run to park, received ${first.state}`);
   }
@@ -322,16 +360,7 @@ export function* runDurableDriverRecoveryFixture(
     throw new Error(`Fixture elicitation resolution failed: ${resolution.code}`);
   }
 
-  const second = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(authority, function* () {
-      return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRuntime.operations.run({
-          attach,
-          executeHostEffects: true,
-        });
-      });
-    });
-  });
+  const second = yield* activate();
   if (second.state !== "completed") {
     throw new Error(`Expected recovered durable run to complete, received ${second.state}`);
   }
@@ -412,7 +441,7 @@ export function* runDurableDriverCancellationFixture(
   });
   const invocationId = "turn-0/root";
   const attach = {
-    sessionId: `driver-cancellation-session:${options.driverKind}`,
+    sessionId: options.sessionId ?? `driver-cancellation-session:${options.driverKind}`,
     taskId: invocationId,
     program: {
       id: cancellationManifest.programId,

@@ -201,7 +201,7 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
         ]) ||
         !record(payload["attach"]) ||
         !nonempty(payload["programInputDigest"]) ||
-        !integer(payload["replayedThroughActionIndex"]) ||
+        !replayPosition(payload["replayedThroughActionIndex"]) ||
         !digest(payload["replayChainSeed"])
       )
         fail();
@@ -291,7 +291,7 @@ function validateRuntimePayload(type: string, envelope: Record<string, Json>): v
           "frontierDigest",
         ]) ||
         !validStep(payload["step"]) ||
-        !integer(payload["replayedThroughActionIndex"]) ||
+        !replayPosition(payload["replayedThroughActionIndex"]) ||
         !digest(payload["replayChainDigest"]) ||
         !digest(payload["frontierDigest"]) ||
         !nonempty(envelope["attachmentId"])
@@ -418,6 +418,9 @@ function validStep(value: Json | undefined): boolean {
 }
 function record(value: unknown): value is Record<string, Json> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+function replayPosition(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= -1;
 }
 function integer(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;

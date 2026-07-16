@@ -21,13 +21,21 @@ import {
   verifyResolutionCapability,
   type CapabilityKeyring,
 } from "./capabilities.ts";
-import { assertJson, canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
+import {
+  assertJson,
+  canonicalJson,
+  canonicalSnapshot,
+  sha256,
+  stableOpaqueId,
+} from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import { hasLiveDurableEffect, signalLiveDurableEffect } from "./durable-cancellation-live.ts";
 import type {
   ActivationLeaseState,
   AgentCoreTaskPlacement,
   AppendEmissionRequest,
+  BindRestoreFrontierRequest,
+  BindRestoreFrontierResult,
   CancellationAcknowledgement,
   ClaimActivationRequest,
   ClaimActivationResult,
@@ -44,6 +52,12 @@ import type {
   IssueRestoreTicketRequest,
   IssueRestoreTicketResult,
   OperationOutcome,
+  PrepareProgramRestoreRequest,
+  PreparedProgramRestore,
+  ProgramStep,
+  ReplayEmissionEntry,
+  ReplayEntry,
+  ReplayOperationEntry,
   ReserveOperationRequest,
   ReserveOperationResult,
   ResolutionCapabilityClaims,
@@ -52,6 +66,7 @@ import type {
   RenewActivationRequest,
   RenewActivationResult,
   ResolutionReceipt,
+  RestoredFrontierProof,
   ResolveOperationRequest,
   ResolveOperationResult,
   RestoreTicketClaims,
@@ -225,7 +240,7 @@ type TaskSnapshot = Omit<Task, "pullsByAction" | "emissionsByAction"> & {
 
 /** Versioned canonical snapshot DTO used only after boundary parsing. */
 export interface DurableAuthoritySnapshot {
-  version: 3;
+  version: 4;
   tasks: TaskSnapshot[];
   records: Array<[string, DurableSemanticRecord[]]>;
   runnable: string[];
@@ -234,6 +249,7 @@ export interface DurableAuthoritySnapshot {
   lastActivationEpochBySession: Array<[string, number]>;
   taskRevisions: Array<[string, number]>;
   restoreNonces: Array<[string, string]>;
+  restoreFrontierDigests: Array<[string, string]>;
   consecutiveRestoreStales: Array<[string, number]>;
   activationNotBeforeMs: Array<[string, number]>;
   placements: Array<[string, AgentCoreTaskPlacement]>;
@@ -282,6 +298,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   readonly #lastActivationEpochBySession = new Map<string, number>();
   readonly #taskRevisions = new Map<string, number>();
   readonly #restoreNonces = new Map<string, string>();
+  readonly #restoreFrontierDigests = new Map<string, string>();
   readonly #consecutiveRestoreStales = new Map<string, number>();
   readonly #activationNotBeforeMs = new Map<string, number>();
   readonly #placements = new Map<string, AgentCoreTaskPlacement>();
@@ -440,6 +457,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     attachmentId: string,
     audience?: string,
   ): Operation<{ executionEpoch: number; programCapability: string }> {
+    if (this.#activationLeases.has(sessionId)) {
+      throw new CrankError(
+        "stale_activation",
+        "replaceAttachment is not valid for a lease-managed session",
+      );
+    }
     const task = this.#task(sessionId, taskId);
     this.#assertActive(task);
     for (const pull of task.pullsByAction.values()) {
@@ -556,8 +579,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     // Registry validators may await; re-verify authentication, task state, and
     // cursors immediately before the append.
     verifyReservable();
+    const restoredFrontierConsumed = request.restoredFrontier !== undefined;
     if (request.restoredFrontier) {
-      yield* this.#consumeRestoredFrontier(request.restoredFrontier, task);
+      yield* this.#consumeRestoredFrontier(
+        request.restoredFrontier,
+        request.restoredFrontierStep,
+        task,
+      );
     }
     const pullId = stableOpaqueId("pull", [
       request.sessionId,
@@ -593,7 +621,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       descriptorDigest,
     });
     if (descriptor.kind === "effect") {
-      return this.#startAttempt(task, pull);
+      return {
+        ...this.#startAttempt(task, pull),
+        ...(restoredFrontierConsumed ? { restoredFrontierConsumed: true as const } : {}),
+      };
     }
     pull.capability = this.#resolutionCapability(task, pull, undefined);
     return {
@@ -601,6 +632,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       pullId,
       reason: pendingReason(descriptor),
       resolutionCapability: pull.capability,
+      ...(restoredFrontierConsumed ? { restoredFrontierConsumed: true as const } : {}),
     };
   }
 
@@ -883,7 +915,11 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     assertInlineSize(descriptor.payload, this.#options.maxOutcomeBytes);
     if (request.restoredFrontier) {
-      yield* this.#consumeRestoredFrontier(request.restoredFrontier, task);
+      yield* this.#consumeRestoredFrontier(
+        request.restoredFrontier,
+        request.restoredFrontierStep,
+        task,
+      );
     }
     const offset = this.#append(task.sessionId, task.executionEpoch, {
       type: "DurableEmission",
@@ -893,7 +929,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       descriptor,
       descriptorDigest: digest,
     });
-    const receipt = { offset, eventId: `journal:${task.sessionId}:${offset}`, duplicate: false };
+    const receipt: EmissionReceipt = {
+      offset,
+      eventId: `journal:${task.sessionId}:${offset}`,
+      duplicate: false,
+      ...(request.restoredFrontier ? { restoredFrontierConsumed: true } : {}),
+    };
     task.emissionsByAction.set(request.actionIndex, { digest, receipt });
     task.nextActionIndex += 1;
     return receipt;
@@ -936,14 +977,22 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       throw new CrankError("history_not_exhausted", "Task has an unresolved pull");
     }
     if (request.restoredFrontier) {
-      yield* this.#consumeRestoredFrontier(request.restoredFrontier, task);
+      yield* this.#consumeRestoredFrontier(
+        request.restoredFrontier,
+        request.restoredFrontierStep,
+        task,
+      );
     }
     const offset = this.#append(task.sessionId, task.executionEpoch, {
       type: "TaskClosed",
       taskId: task.taskId,
       outcome,
     });
-    const receipt = { offset, duplicate: false };
+    const receipt: TaskCloseReceipt = {
+      offset,
+      duplicate: false,
+      ...(request.restoredFrontier ? { restoredFrontierConsumed: true } : {}),
+    };
     task.close = { digest, receipt };
     task.status = outcome.status === "cancelled" ? "cancelled" : "closed";
     if (outcome.status === "cancelled") {
@@ -1190,7 +1239,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(task.parentPullId ? { parentPullId: task.parentPullId } : {}),
     }));
     return {
-      version: 3,
+      version: 4,
       tasks: structuredClone(tasks),
       records: structuredClone([...this.#records.entries()]),
       runnable: [...this.#runnable],
@@ -1199,6 +1248,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       lastActivationEpochBySession: [...this.#lastActivationEpochBySession.entries()],
       taskRevisions: [...this.#taskRevisions.entries()],
       restoreNonces: [...this.#restoreNonces.entries()],
+      restoreFrontierDigests: [...this.#restoreFrontierDigests.entries()],
       consecutiveRestoreStales: [...this.#consecutiveRestoreStales.entries()],
       activationNotBeforeMs: [...this.#activationNotBeforeMs.entries()],
       placements: structuredClone([...this.#placements.entries()]),
@@ -1275,6 +1325,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ownerId: request.ownerId,
       epoch,
       expiresAtMs: now + duration,
+      leaseDurationMs: duration,
       claimedTaskRevision: taskRevision,
       claimedHeadDigest: journalHeadDigest,
       restoreNonce,
@@ -1301,8 +1352,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     ) {
       return { status: "stale_activation" };
     }
-    const duration = Math.max(1_000, current.expiresAtMs - (now - 10_000));
-    const expiresAtMs = now + Math.min(duration, 300_000);
+    const expiresAtMs = now + current.leaseDurationMs;
     this.#activationLeases.set(request.sessionId, { ...current, expiresAtMs });
     return { status: "renewed", expiresAtMs };
   }
@@ -1363,6 +1413,151 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
+  /** Derives an integrity-linked replay plan and ticket from one claimed snapshot. */
+  *prepareProgramRestore(request: PrepareProgramRestoreRequest): Operation<PreparedProgramRestore> {
+    const lease = this.#activationLeases.get(request.sessionId);
+    const now = this.#options.now();
+    if (
+      !lease ||
+      lease.ownerId !== request.ownerId ||
+      lease.epoch !== request.activationEpoch ||
+      now >= lease.expiresAtMs
+    ) {
+      throw new CrankError("stale_activation");
+    }
+    const task = this.#task(request.sessionId, request.taskId);
+    if (task.executionEpoch !== request.activationEpoch) {
+      throw new CrankError("stale_activation");
+    }
+    const taskRevision = this.#taskRevisions.get(request.sessionId) ?? 0;
+    const journalHeadDigest = this.#journalHeadDigest(request.sessionId);
+    const restoreNonce = this.#nextNonce();
+    const replayChainSeed = sha256(
+      canonicalJson({
+        domain: "sweatpants.agentcore.replay.v1",
+        protocolVersion: 1,
+        releaseId: request.releaseId,
+        sessionId: request.sandboxSessionId,
+        taskId: request.taskId,
+        program: {
+          id: task.manifest.programId,
+          version: task.manifest.version,
+          digest: task.manifest.digest,
+        },
+        activationEpoch: request.activationEpoch,
+        journalHeadDigest,
+        restoreNonce,
+      }),
+    );
+    const replay: ReplayEntry[] = [];
+    let previousEntryDigest = replayChainSeed;
+    let replayedThroughActionIndex = -1;
+    for (let actionIndex = 0; actionIndex < task.nextActionIndex; actionIndex += 1) {
+      const pull = task.pullsByAction.get(actionIndex);
+      const emission = task.emissionsByAction.get(actionIndex);
+      let entryWithoutEntryDigest:
+        | Omit<ReplayOperationEntry, "entryDigest">
+        | Omit<ReplayEmissionEntry, "entryDigest">;
+      if (pull?.outcome && pull.receipt) {
+        entryWithoutEntryDigest = {
+          type: "operation",
+          actionIndex,
+          descriptorKind: pull.descriptor.kind,
+          descriptorDigest: pull.descriptorDigest,
+          previousEntryDigest,
+          outcome: structuredClone(pull.outcome),
+          receipt: structuredClone(pull.receipt),
+        };
+      } else if (emission) {
+        entryWithoutEntryDigest = {
+          type: "emission",
+          actionIndex,
+          descriptorKind: "emission",
+          descriptorDigest: emission.digest,
+          previousEntryDigest,
+          offset: emission.receipt.offset,
+        };
+      } else {
+        throw new CrankError("invalid_journal", "Replay history has an action gap");
+      }
+      const entryDigest = sha256(
+        canonicalJson({
+          replayChainSeed,
+          previousEntryDigest,
+          entryWithoutEntryDigest,
+        }),
+      );
+      replay.push({ ...entryWithoutEntryDigest, entryDigest } as ReplayEntry);
+      previousEntryDigest = entryDigest;
+      replayedThroughActionIndex = actionIndex;
+    }
+    this.#restoreNonces.set(request.sessionId, restoreNonce);
+    this.#restoreFrontierDigests.delete(request.sessionId);
+    this.#activationLeases.set(request.sessionId, { ...lease, restoreNonce });
+    const claims: RestoreTicketClaims = {
+      version: 1,
+      journalId: this.#options.journalId,
+      journalIncarnation: this.#options.journalIncarnation,
+      sessionId: request.sessionId,
+      taskId: request.taskId,
+      ownerId: request.ownerId,
+      activationEpoch: request.activationEpoch,
+      releaseId: request.releaseId,
+      sandboxSessionId: request.sandboxSessionId,
+      taskRevision,
+      journalHeadDigest,
+      replayedThroughActionIndex,
+      replayChainDigest: previousEntryDigest,
+      restoreNonce,
+    };
+    return {
+      restoreTicket: signPrivateAuthorityToken("restore-ticket", claims, this.#options.keyring),
+      replay,
+      replayedThroughActionIndex,
+      replayChainSeed,
+      replayChainDigest: previousEntryDigest,
+      taskRevision,
+      journalHeadDigest,
+    };
+  }
+
+  /** Binds the independently verified remote frontier digest to the pending ticket. */
+  *bindRestoreFrontier(request: BindRestoreFrontierRequest): Operation<BindRestoreFrontierResult> {
+    let claims: RestoreTicketClaims;
+    try {
+      claims = parseRestoreTicketClaims(
+        verifyPrivateAuthorityToken(request.restoreTicket, "restore-ticket", this.#options.keyring),
+      );
+    } catch {
+      return { status: "restore_stale" };
+    }
+    const lease = this.#activationLeases.get(request.sessionId);
+    if (
+      !/^[0-9a-f]{64}$/.test(request.frontierDigest) ||
+      !lease ||
+      this.#options.now() >= lease.expiresAtMs ||
+      lease.ownerId !== request.ownerId ||
+      lease.epoch !== request.activationEpoch ||
+      claims.sessionId !== request.sessionId ||
+      claims.taskId !== request.taskId ||
+      claims.ownerId !== request.ownerId ||
+      claims.activationEpoch !== request.activationEpoch ||
+      claims.taskRevision !== (this.#taskRevisions.get(request.sessionId) ?? 0) ||
+      claims.journalHeadDigest !== this.#journalHeadDigest(request.sessionId) ||
+      claims.restoreNonce !== this.#restoreNonces.get(request.sessionId)
+    ) {
+      return { status: "restore_stale" };
+    }
+    this.#restoreFrontierDigests.set(request.sessionId, request.frontierDigest);
+    return {
+      status: "bound",
+      proof: {
+        restoreTicket: request.restoreTicket,
+        frontierDigest: request.frontierDigest,
+      },
+    };
+  }
+
   /** Verifies and atomically consumes a single-use restored-frontier ticket. */
   *consumeRestoreTicket(
     request: ConsumeRestoreTicketRequest,
@@ -1393,10 +1588,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       this.#options.now() < lease.expiresAtMs &&
       claims.taskRevision === (this.#taskRevisions.get(request.sessionId) ?? 0) &&
       claims.journalHeadDigest === this.#journalHeadDigest(request.sessionId) &&
-      claims.restoreNonce === this.#restoreNonces.get(request.sessionId);
+      claims.restoreNonce === this.#restoreNonces.get(request.sessionId) &&
+      request.proof.frontierDigest === this.#restoreFrontierDigests.get(request.sessionId);
     if (!valid) return this.#recordRestoreStale(request.sessionId);
     const consumedNonce = this.#nextNonce();
     this.#restoreNonces.set(request.sessionId, consumedNonce);
+    this.#restoreFrontierDigests.delete(request.sessionId);
     this.#activationLeases.set(request.sessionId, { ...lease, restoreNonce: consumedNonce });
     this.#consecutiveRestoreStales.delete(request.sessionId);
     this.#activationNotBeforeMs.delete(request.sessionId);
@@ -1425,7 +1622,11 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   }
 
   /** Begins one-shot authored unwind after the fixed frontier has settled. */
-  *beginCancellationUnwind(sessionId: string, taskId: string): Operation<DurableCancellationState> {
+  *beginCancellationUnwind(
+    sessionId: string,
+    taskId: string,
+    restoredFrontier?: { readonly proof: RestoredFrontierProof; readonly step: ProgramStep },
+  ): Operation<DurableCancellationState> {
     const task = this.#task(sessionId, taskId);
     const current = task.cancellation;
     if (current.type === "unwinding" || current.type === "cancelled") {
@@ -1444,6 +1645,9 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (frontierPull && !frontierPull.outcome) {
       throw new CrankError("cancellation_blocked", "Cancellation frontier has not settled");
     }
+    if (restoredFrontier) {
+      yield* this.#consumeRestoredFrontier(restoredFrontier.proof, restoredFrontier.step, task);
+    }
     task.cancellation = {
       type: "unwinding",
       commandId: current.commandId,
@@ -1455,7 +1659,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
 
   #restore(snapshot: DurableAuthoritySnapshot): void {
     if (
-      snapshot.version !== 3 ||
+      snapshot.version !== 4 ||
       !Array.isArray(snapshot.tasks) ||
       !Array.isArray(snapshot.records)
     ) {
@@ -1468,6 +1672,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     this.#lastActivationEpochBySession.clear();
     this.#taskRevisions.clear();
     this.#restoreNonces.clear();
+    this.#restoreFrontierDigests.clear();
     this.#consecutiveRestoreStales.clear();
     this.#activationNotBeforeMs.clear();
     this.#placements.clear();
@@ -1491,6 +1696,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       this.#lastActivationEpochBySession.set(...entry);
     for (const entry of snapshot.taskRevisions) this.#taskRevisions.set(...entry);
     for (const entry of snapshot.restoreNonces) this.#restoreNonces.set(...entry);
+    for (const entry of snapshot.restoreFrontierDigests) this.#restoreFrontierDigests.set(...entry);
     for (const entry of snapshot.consecutiveRestoreStales)
       this.#consecutiveRestoreStales.set(...entry);
     for (const entry of snapshot.activationNotBeforeMs) this.#activationNotBeforeMs.set(...entry);
@@ -1752,10 +1958,40 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
 
   *#consumeRestoredFrontier(
     proof: NonNullable<ReserveOperationRequest["restoredFrontier"]>,
+    frontier: ProgramStep | undefined,
     task: Task,
   ): Operation<void> {
     const lease = this.#activationLeases.get(task.sessionId);
-    if (!lease) throw new CrankError("restore_stale");
+    if (!lease || !frontier) throw new CrankError("restore_stale");
+    let claims: RestoreTicketClaims;
+    try {
+      claims = parseRestoreTicketClaims(
+        verifyPrivateAuthorityToken(proof.restoreTicket, "restore-ticket", this.#options.keyring),
+      );
+    } catch {
+      throw new CrankError("restore_stale");
+    }
+    if (!claims.releaseId) throw new CrankError("restore_stale");
+    const expectedFrontierDigest = sha256(
+      canonicalJson({
+        domain: "sweatpants.agentcore.frontier.v1",
+        protocolVersion: 1,
+        releaseId: claims.releaseId,
+        taskId: task.taskId,
+        activationEpoch: task.executionEpoch,
+        replayedThroughActionIndex: claims.replayedThroughActionIndex,
+        replayChainDigest: claims.replayChainDigest,
+        step: frontier,
+      }),
+    );
+    if (proof.frontierDigest !== expectedFrontierDigest) {
+      const stale = this.#recordRestoreStale(task.sessionId);
+      throw new CrankError("restore_stale", "Restored frontier digest differs", {
+        consecutiveStales: stale.consecutiveStales,
+        retryAfterMs: stale.retryAfterMs,
+        releaseRequired: stale.releaseRequired,
+      });
+    }
     const result = yield* this.consumeRestoreTicket({
       sessionId: task.sessionId,
       taskId: task.taskId,
@@ -1776,7 +2012,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return canonicalSnapshot(this.#records.get(sessionId) ?? []).sha;
   }
 
-  #recordRestoreStale(sessionId: string): ConsumeRestoreTicketResult {
+  #recordRestoreStale(
+    sessionId: string,
+  ): Extract<ConsumeRestoreTicketResult, { status: "restore_stale" }> {
+    this.#restoreFrontierDigests.delete(sessionId);
     const count = (this.#consecutiveRestoreStales.get(sessionId) ?? 0) + 1;
     this.#consecutiveRestoreStales.set(sessionId, count);
     if (count < 3) {
@@ -1832,27 +2071,43 @@ export function parseDurableAuthoritySnapshot(serialized: string): DurableAuthor
 }
 
 function migrateDurableAuthoritySnapshot(value: Json): Json {
-  if (!isJsonRecord(value) || value["version"] !== 2) return value;
-  if (
-    !hasExactKeys(value, ["version", "tasks", "records", "runnable", "nonce"]) ||
-    !Array.isArray(value["records"])
-  )
-    return value;
-  const taskRevisions = value["records"].flatMap((entry): Json[] =>
-    Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1])
-      ? [[entry[0], entry[1].length]]
-      : [],
-  );
+  if (!isJsonRecord(value)) return value;
+  let migrated = value;
+  if (migrated["version"] === 2) {
+    if (
+      !hasExactKeys(migrated, ["version", "tasks", "records", "runnable", "nonce"]) ||
+      !Array.isArray(migrated["records"])
+    )
+      return migrated;
+    const taskRevisions = migrated["records"].flatMap((entry): Json[] =>
+      Array.isArray(entry) && typeof entry[0] === "string" && Array.isArray(entry[1])
+        ? [[entry[0], entry[1].length]]
+        : [],
+    );
+    migrated = {
+      ...migrated,
+      version: 3,
+      activationLeases: [],
+      lastActivationEpochBySession: [],
+      taskRevisions,
+      restoreNonces: [],
+      consecutiveRestoreStales: [],
+      activationNotBeforeMs: [],
+      placements: [],
+    };
+  }
+  if (migrated["version"] !== 3 || !Array.isArray(migrated["activationLeases"])) {
+    return migrated;
+  }
   return {
-    ...value,
-    version: 3,
-    activationLeases: [],
-    lastActivationEpochBySession: [],
-    taskRevisions,
-    restoreNonces: [],
-    consecutiveRestoreStales: [],
-    activationNotBeforeMs: [],
-    placements: [],
+    ...migrated,
+    version: 4,
+    activationLeases: migrated["activationLeases"].flatMap((entry): Json[] =>
+      Array.isArray(entry) && typeof entry[0] === "string" && isJsonRecord(entry[1])
+        ? [[entry[0], { ...entry[1], leaseDurationMs: 30_000 }]]
+        : [],
+    ),
+    restoreFrontierDigests: [],
   };
 }
 
@@ -1867,13 +2122,14 @@ function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySn
     "lastActivationEpochBySession",
     "taskRevisions",
     "restoreNonces",
+    "restoreFrontierDigests",
     "consecutiveRestoreStales",
     "activationNotBeforeMs",
     "placements",
   ];
   if (!isJsonRecord(value) || !hasExactKeys(value, keys)) return false;
   return (
-    value["version"] === 3 &&
+    value["version"] === 4 &&
     isNonNegativeInteger(value["nonce"]) &&
     Array.isArray(value["tasks"]) &&
     value["tasks"].every(isTaskSnapshot) &&
@@ -1886,6 +2142,7 @@ function isDurableAuthoritySnapshot(value: unknown): value is DurableAuthoritySn
     isStringNumberTupleArray(value["lastActivationEpochBySession"]) &&
     isStringNumberTupleArray(value["taskRevisions"]) &&
     isStringStringTupleArray(value["restoreNonces"]) &&
+    isStringStringTupleArray(value["restoreFrontierDigests"]) &&
     isStringNumberTupleArray(value["consecutiveRestoreStales"]) &&
     isStringNumberTupleArray(value["activationNotBeforeMs"]) &&
     Array.isArray(value["placements"]) &&
@@ -1934,6 +2191,7 @@ function isActivationLeaseTuple(value: Json): boolean {
       "ownerId",
       "epoch",
       "expiresAtMs",
+      "leaseDurationMs",
       "claimedTaskRevision",
       "claimedHeadDigest",
       "restoreNonce",
@@ -1942,6 +2200,7 @@ function isActivationLeaseTuple(value: Json): boolean {
     typeof lease["ownerId"] === "string" &&
     isNonNegativeInteger(lease["epoch"]) &&
     isNonNegativeInteger(lease["expiresAtMs"]) &&
+    isNonNegativeInteger(lease["leaseDurationMs"]) &&
     isNonNegativeInteger(lease["claimedTaskRevision"]) &&
     typeof lease["claimedHeadDigest"] === "string" &&
     typeof lease["restoreNonce"] === "string"
@@ -2653,20 +2912,24 @@ function sanitizeCancellationReason(reason: string | undefined): string | undefi
 function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
   if (
     !isJsonRecord(value) ||
-    !hasExactKeys(value, [
-      "version",
-      "journalId",
-      "journalIncarnation",
-      "sessionId",
-      "taskId",
-      "ownerId",
-      "activationEpoch",
-      "taskRevision",
-      "journalHeadDigest",
-      "replayedThroughActionIndex",
-      "replayChainDigest",
-      "restoreNonce",
-    ])
+    !hasOnlyKeys(
+      value,
+      [
+        "version",
+        "journalId",
+        "journalIncarnation",
+        "sessionId",
+        "taskId",
+        "ownerId",
+        "activationEpoch",
+        "taskRevision",
+        "journalHeadDigest",
+        "replayedThroughActionIndex",
+        "replayChainDigest",
+        "restoreNonce",
+      ],
+      ["releaseId", "sandboxSessionId"],
+    )
   )
     throw new CrankError("restore_stale");
   const stringFields = [
@@ -2679,12 +2942,20 @@ function parseRestoreTicketClaims(value: unknown): RestoreTicketClaims {
     "replayChainDigest",
     "restoreNonce",
   ];
+  const optionalStrings = ["releaseId", "sandboxSessionId"];
   if (
     value["version"] !== 1 ||
     !stringFields.every((field) => typeof value[field] === "string") ||
+    !optionalStrings.every(
+      (field) => value[field] === undefined || typeof value[field] === "string",
+    ) ||
     !isNonNegativeInteger(value["activationEpoch"]) ||
     !isNonNegativeInteger(value["taskRevision"]) ||
-    !isNonNegativeInteger(value["replayedThroughActionIndex"])
+    !(
+      typeof value["replayedThroughActionIndex"] === "number" &&
+      Number.isSafeInteger(value["replayedThroughActionIndex"]) &&
+      value["replayedThroughActionIndex"] >= -1
+    )
   )
     throw new CrankError("restore_stale");
   return value as unknown as RestoreTicketClaims;

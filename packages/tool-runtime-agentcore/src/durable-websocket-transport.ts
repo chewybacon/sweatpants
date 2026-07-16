@@ -62,7 +62,7 @@ export function createAgentCoreWebSocketProgramTransport(
 ): AgentCoreDurableProgramTransport {
   return {
     *attach(request): Operation<ProgramAttachment> {
-      const restored = yield* openAndBegin(connector, request, 0, emptyDigest(), emptyDigest());
+      const restored = yield* openAndBegin(connector, request, -1, emptyDigest(), emptyDigest());
       return restored.attachment;
     },
 
@@ -77,7 +77,7 @@ export function createAgentCoreWebSocketProgramTransport(
       const handle = attachmentHandle(restored.attachment);
       let previous = request.replayChainSeed;
       let count = 0;
-      for (const entry of yield* collectReplay(request)) {
+      yield* streamReplay(request, function* (entry) {
         if (!verifyReplayEntry(request.replayChainSeed, previous, entry)) {
           yield* handle.connection.close(1002, "replay_diverged");
           throw new CrankError("replay_diverged", "Replay integrity chain diverged");
@@ -85,7 +85,7 @@ export function createAgentCoreWebSocketProgramTransport(
         yield* send(handle.connection, envelopeForEntry(handle, entry));
         previous = entry.entryDigest;
         count += 1;
-      }
+      });
       if (previous !== request.replayChainDigest) {
         yield* handle.connection.close(1002, "replay_diverged");
         throw new CrankError("replay_diverged", "Replay chain end diverged");
@@ -192,8 +192,8 @@ function* openAndBegin(
   try {
     yield* send(connection, begin);
     const ready = parseRuntimeProgramMessage(yield* connection.receive());
-    assertEnvelope(ready, placement, request.taskId, request.executionEpoch);
     if (ready.type === "rejected") throw rejected(ready);
+    assertEnvelope(ready, placement, request.taskId, request.executionEpoch);
     if (ready.type !== "restore_ready") throw protocol("Expected restore_ready");
     const attachmentId = ready.payload.attachment.attachmentId;
     if (!attachmentId || ready.payload.attachment.taskId !== request.taskId)
@@ -329,28 +329,29 @@ function envelopeForEntry(
   } as HostProgramMessage;
 }
 
-function* collectReplay(request: ProgramRestoreRequest): Operation<ReplayEntry[]> {
+function* streamReplay(
+  request: ProgramRestoreRequest,
+  visit: (entry: ReplayEntry) => Operation<void>,
+): Operation<void> {
   const replay = request.replay;
   const asyncIterator = replay[Symbol.asyncIterator];
   if (asyncIterator) {
-    const iterator = asyncIterator.call(replay);
-    const entries: ReplayEntry[] = [];
+    const source = asyncIterator.call(replay);
     while (true) {
-      const next = yield* call(() => iterator.next());
-      if (next.done) return entries;
-      entries.push(next.value);
+      const next = yield* call(() => source.next());
+      if (next.done) return;
+      yield* visit(next.value);
     }
   }
   const iterator = replay[Symbol.iterator];
   if (iterator) {
-    const entries: ReplayEntry[] = [];
     const source = iterator.call(replay);
     let next = source.next();
     while (!next.done) {
-      entries.push(next.value);
+      yield* visit(next.value);
       next = source.next();
     }
-    return entries;
+    return;
   }
   throw protocol("Replay source is not iterable");
 }

@@ -11,7 +11,8 @@
         "build:image": "./scripts/build-image.sh",
         "deploy:agentcore": "tsx scripts/deploy-agentcore-runtime.ts",
         "smoke:websocket": "tsx scripts/smoke-websocket.ts",
-        "certify:live": "tsx scripts/certify-live.ts"
+        "certify:live": "tsx scripts/certify-live.ts",
+        "certify:program-runtime": "tsx scripts/certify-program-runtime.ts"
     },
     "dependencies": {
         "@aws-sdk/client-bedrock-agentcore": "^3.996.0",
