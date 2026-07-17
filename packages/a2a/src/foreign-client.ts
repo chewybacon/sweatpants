@@ -314,6 +314,7 @@ function wireMessage(message: ForeignA2AMessage): Json {
     ...(message.contextId ? { contextId: message.contextId } : {}),
     ...(message.metadata !== undefined ? { metadata: message.metadata } : {}),
     ...(message.extensions ? { extensions: [...message.extensions] } : {}),
+    ...(message.referenceTaskIds ? { referenceTaskIds: [...message.referenceTaskIds] } : {}),
   };
 }
 function extensionMetadata(pin: ForeignA2AInvocationPin, message: ForeignA2AMessage): Json {

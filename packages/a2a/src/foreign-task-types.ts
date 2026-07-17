@@ -40,6 +40,8 @@ export type ForeignA2AMessage = {
   readonly contextId?: string;
   readonly metadata?: Json;
   readonly extensions?: string[];
+  /** Explicit causal lineage for a new task. Order is significant. */
+  readonly referenceTaskIds?: string[];
 };
 export type ForeignA2AArtifact = {
   readonly artifactId: string;

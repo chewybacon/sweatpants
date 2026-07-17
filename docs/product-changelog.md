@@ -12,6 +12,16 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-07-19 — journal-backed standard A2A host
+
+### Summary
+
+Added a production-bound `standardA2A()` host compiler with authenticated HTTP+JSON Agent Card discovery, task-generating message sends, task-scoped retrieval, exact-task cancellation, streaming snapshots, immutable terminal turns, explicit ordered `referenceTaskIds`, journal-derived projection, and bounded context acceptance. Added immutable digest-addressed content custody primitives to `@sweatpants/a2a` and a real-loopback `startAgentHarness()` under `@sweatpants/framework/server/testing`.
+
+### Migration note
+
+A standard profile is ready only when it is bound to a real host created by `createStandardA2AHost()` (or an equivalent bound host port). Production interfaces must use HTTPS. Loopback HTTP requires `insecureLoopbackDevelopment: true`; non-loopback HTTP requires the separate unsafe override. Authentication and authorization are deployment callbacks, and payload metadata never establishes principal or tenant identity.
+
 ## 2026-07-18 — durable chat and agent authoring facade
 
 ### Summary

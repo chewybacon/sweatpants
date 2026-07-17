@@ -32,6 +32,7 @@ import {
   type AgentProgramBinding,
   type AdvertisedCapabilityV1,
 } from "@sweatpants/core";
+import type { BoundStandardA2AHost, StandardA2AHostPort } from "./standard-a2a-host.ts";
 
 export type AgentProfileKind = "remote-executor" | "standard-a2a" | "sweatpants-peer";
 export type AgentFacadeErrorCode =
@@ -54,6 +55,10 @@ export interface PublicAgentDeployment {
   readonly securityRequirements?: Json[];
   readonly defaultInputModes?: readonly string[];
   readonly defaultOutputModes?: readonly string[];
+  /** Explicit loopback-only HTTP development mode. Production remains HTTPS-only. */
+  readonly insecureLoopbackDevelopment?: boolean;
+  /** Conspicuous escape hatch for isolated test infrastructure; never inferred. */
+  readonly unsafeAllowNonLoopbackHttp?: boolean;
 }
 export interface RemoteExecutorProfile {
   readonly kind: "remote-executor";
@@ -63,10 +68,6 @@ export interface RemoteExecutorProfile {
   };
   readonly bindings: Readonly<Record<string, string>>;
   readonly streamedRestore: boolean;
-}
-export interface StandardA2AHostPort {
-  readonly kind: "standard-a2a-task-host.v1";
-  readonly services: Json;
 }
 export interface StandardA2AProfile {
   readonly kind: "standard-a2a";
@@ -112,7 +113,7 @@ export interface RemoteExecutorServedAgent extends AgentProjectionBase<"remote-e
 }
 export interface StandardA2AServedAgent extends AgentProjectionBase<"standard-a2a"> {
   readonly descriptor: StandardA2AProfile;
-  readonly host?: StandardA2AHostPort;
+  readonly host?: StandardA2AHostPort | BoundStandardA2AHost;
 }
 export interface SweatpantsPeerServedAgent extends AgentProjectionBase<"sweatpants-peer"> {
   readonly requirements: Readonly<Record<string, PeerEffectRequirementManifest>>;
@@ -259,10 +260,23 @@ function compileStandard(
   if (!conversation) {
     fail("profile_incompatible", "standardA2A requires one conversation program");
   }
-  preflightLocalEffects([conversation], profile.handlers);
+  preflightLocalEffects(uniqueProgramBindings([conversation]), profile.handlers);
   validateOptionalCapabilityBindings(definition, profile.capabilityBindings);
   const card = agentCard(definition, profile.deployment, []);
-  const readiness = Boolean(profile.host);
+  const host = profile.host?.bind
+    ? profile.host.bind({
+        definition,
+        card,
+        deployment: profile.deployment,
+        handlers: profile.handlers,
+      })
+    : profile.host;
+  const readiness = Boolean(
+    host &&
+    "handle" in host &&
+    typeof host.handle === "function" &&
+    (!("readiness" in host) || host.readiness),
+  );
   return Object.freeze({
     posture: "standard-a2a" as const,
     readiness,
@@ -271,7 +285,7 @@ function compileStandard(
     extensions: Object.freeze([]),
     definition,
     descriptor: profile,
-    ...(profile.host ? { host: profile.host } : {}),
+    ...(host ? { host } : {}),
     selfCheck() {
       return Object.freeze({
         ok: readiness,
@@ -392,6 +406,11 @@ function agentCard(
     name: manifest.identity.name,
     description: manifest.description,
     version: manifest.identity.version,
+    // A2A SDK 0.3 compatibility fields retained for the pinned Inspector. The
+    // current interface list below remains authoritative for 1.0 clients.
+    url: deployment.interfaceUrl,
+    preferredTransport: deployment.protocolBinding ?? "HTTP+JSON",
+    protocolVersion: "0.3.0",
     supportedInterfaces: [
       {
         url: deployment.interfaceUrl,
@@ -407,7 +426,10 @@ function agentCard(
       ? { securitySchemes: deployment.securitySchemes }
       : {}),
     ...(deployment.securityRequirements !== undefined
-      ? { securityRequirements: deployment.securityRequirements }
+      ? {
+          securityRequirements: deployment.securityRequirements,
+          security: deployment.securityRequirements,
+        }
       : {}),
   } as unknown as Json).value;
 }
@@ -536,3 +558,4 @@ function fail(code: AgentFacadeErrorCode, message: string): never {
 
 // Documented server-lane re-export without creating another implementation.
 export { defineAgent };
+export type { BoundStandardA2AHost, StandardA2AHostPort } from "./standard-a2a-host.ts";

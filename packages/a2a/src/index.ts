@@ -1,4 +1,14 @@
 export {
+  ContentStoreError,
+  createInMemoryImmutableContentStore,
+  putVerifiedContent,
+  type A2AContentReference,
+  type A2AContentRetentionClass,
+  type ContentRetrievalResult,
+  type ImmutableContentObject,
+  type ImmutableContentStore,
+} from "./content-store.ts";
+export {
   A2A_EXTENSIONS_HEADER,
   A2A_MAX_ERROR_TEXT_BYTES,
   A2A_MAX_FRAME_BYTES,

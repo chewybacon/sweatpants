@@ -1,21 +1,22 @@
-import { defineConfig } from 'tsup'
+import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
-    index: 'src/lib/chat/index.ts',
-    server: 'src/server/index.ts',
-    chat: 'src/lib/chat/index.ts',
-    'chat/durable-streams': 'src/lib/chat/durable-streams/index.ts',
-    'chat/browser-rendering': 'src/lib/chat/browser-rendering/index.ts',
-    'chat/mcp-tools': 'src/lib/chat/mcp-tools/index.ts',
+    index: "src/lib/chat/index.ts",
+    server: "src/server/index.ts",
+    "server/testing": "src/server/testing.ts",
+    chat: "src/lib/chat/index.ts",
+    "chat/durable-streams": "src/lib/chat/durable-streams/index.ts",
+    "chat/browser-rendering": "src/lib/chat/browser-rendering/index.ts",
+    "chat/mcp-tools": "src/lib/chat/mcp-tools/index.ts",
   },
-  tsconfig: '../ts-config/tsconfig.tsup.json',
-  format: ['cjs', 'esm'],
+  tsconfig: "../ts-config/tsconfig.tsup.json",
+  format: ["cjs", "esm"],
   dts: false,
   clean: true,
   sourcemap: true,
   minify: false,
-  external: ['vite', 'effection', 'zod'],
+  external: ["vite", "effection", "zod"],
   treeshake: true,
   skipNodeModulesBundle: true,
-})
+});

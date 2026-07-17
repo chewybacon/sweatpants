@@ -92,8 +92,43 @@ There is no default posture. `remoteExecutor()` retains caller-owned journals an
 
 Model providers, routes, credentials, endpoints, quotas, journals, effect handlers, and grants are deployment bindings and do not enter chat or agent identity. Use `createChatModelEffectRegistration` to authorize the classification union attached to each exact `model.sample` payload before provider invocation.
 
-## Frontier ownership and deferred host certification
+## Journal-backed standard serving
+
+```ts
+import {
+  createStandardA2AHost,
+  serveAgent,
+  standardA2A,
+} from "@sweatpants/framework/server";
+
+const served = serveAgent(
+  agent,
+  standardA2A({
+    deployment: { interfaceUrl: "https://agent.example/a2a" },
+    handlers: [modelSampleHandler, ...localEffectHandlers],
+    capabilityBindings: {},
+    host: createStandardA2AHost({
+      authenticate: authenticateHttpRequest,
+      authorize: authorizeAgentAction,
+    }),
+  }),
+);
+```
+
+The bound host exposes Agent Card discovery, task-generating HTTP+JSON send,
+task-scoped retrieval, exact-task cancellation, and SSE snapshots. A context is
+scoped to the authenticated principal/tenant journal, each ordinary turn gets a
+new immutable task, and explicit ordered `referenceTaskIds` are preserved.
+Production card/interface URLs must use HTTPS. Local HTTP requires
+`insecureLoopbackDevelopment: true` on the deployment.
+
+Use `startAgentHarness` from `@sweatpants/framework/server/testing` for a real
+loopback HTTP server and discovery in tests. The evidence API exposes IDs,
+digests, journal event kinds, lineage, and state without credentials or content
+bodies.
+
+## Frontier ownership and host certification
 
 `selectChatContext` is a pure selector over a host-supplied projection. The accepting journal host must capture a pre-open frontier, read all candidate messages and referenced-task summaries at that frontier, and persist the selected view once in `TaskOpened`. The selector cannot prove that an opaque frontier string and candidate array came from the same journal snapshot.
 
-The fixed-frontier concurrency case from Durable Chat test-plan TC-004 is therefore carried forward as a required Journal-Backed Standard A2A Host/Spec-3 integration test. It is not certified by the authoring-layer unit tests.
+The standard host captures this frontier before opening each root task and commits the selected bounded view in the exact accepted `TaskOpened` input. Host integration tests certify that replay reads the accepted input rather than rerunning context selection.

@@ -28,6 +28,7 @@ describe("framework package boundaries", () => {
       "./chat/durable-streams",
       "./chat/mcp-tools",
       "./server",
+      "./server/testing",
     ]);
     const removedSubpath = `${"./chat/"}${[String.fromCharCode(105, 115, 111, 109, 111, 114, 112, 104, 105, 99), "tools"].join("-")}`;
     expect(Object.keys(pkg.exports)).not.toContain(removedSubpath);

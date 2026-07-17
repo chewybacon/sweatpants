@@ -4,6 +4,7 @@
     "@sweatpants/react-chat",
     "@sweatpants/react-chat/pipeline",
     "@sweatpants/framework/server",
+    "@sweatpants/framework/server/testing",
     "@sweatpants/framework/chat",
     "@sweatpants/framework/chat/browser-rendering",
     "@sweatpants/framework/chat/mcp-tools",
