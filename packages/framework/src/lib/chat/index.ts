@@ -1,5 +1,8 @@
 // Types
 export * from "./types.ts";
+
+// Digest-covered protocol-neutral durable chat authoring.
+export * from "./authoring/index.ts";
 export * from "./types/index.ts";
 export * from "./frame.ts";
 export type { PersonaResolver, ResolvedPersona } from "./setup-types.ts";

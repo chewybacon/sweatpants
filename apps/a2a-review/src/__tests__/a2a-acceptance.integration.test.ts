@@ -2,7 +2,6 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   DurableEffectRegistryContext,
-  FOREIGN_MODEL_SAMPLE_EFFECT,
   JournalAuthorityContext,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
@@ -17,7 +16,6 @@ import {
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
   createProgramDriverRegistry,
-  foreignToolSchemaEntries,
   sha256,
   type Json,
 } from "@sweatpants/session-contract";
@@ -25,19 +23,30 @@ import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   createA2AProgramDriver,
   createA2AProgramExecutor,
-  createRemoteProgramManifestDocument,
   preflightRemoteEffectHandlers,
 } from "@sweatpants/a2a";
 import { createInProcessA2AConnector } from "@sweatpants/a2a/testing";
 import {
   ASK_PARENT_EFFECT,
-  REFERENCE_REVIEWER_TOOL,
-  REFERENCE_REVIEW_SCHEMA_ENTRIES,
+  CHAT_MODEL_SAMPLE_EFFECT,
+  REFERENCE_ASK_PARENT_TOOL,
+  REFERENCE_REVIEWER_CHAT,
+  REFERENCE_REVIEWER_GUIDANCE,
+  REFERENCE_REVIEWER_REMOTE,
   createAskParentRegistration,
+  createReviewChatInput,
   type AskParentOutput,
   type ConsultationStore,
   type ReviewInput,
 } from "../index.ts";
+
+function assistantMessage(id: string, value: Json) {
+  return {
+    id,
+    role: "assistant" as const,
+    parts: [{ value, provenance: { classifications: [], sourceDigests: [] } }],
+  };
+}
 
 function consultationStore(content: string): ConsultationStore {
   const outcomes = new Map<string, AskParentOutput>();
@@ -47,8 +56,12 @@ function consultationStore(content: string): ConsultationStore {
       return { content, source: "pinned-parent-context" };
     },
     *claimQuestion(pullId, budget) {
-      if (claims.has(pullId)) return "duplicate";
-      if (claims.size >= budget) return "exhausted";
+      if (claims.has(pullId)) {
+        return "duplicate";
+      }
+      if (claims.size >= budget) {
+        return "exhausted";
+      }
       claims.add(pullId);
       return "allowed";
     },
@@ -57,51 +70,83 @@ function consultationStore(content: string): ConsultationStore {
     },
     *commit(pullId, outcome) {
       const existing = outcomes.get(pullId);
-      if (existing) return existing;
+      if (existing) {
+        return existing;
+      }
       outcomes.set(pullId, structuredClone(outcome));
       return outcome;
     },
   };
 }
 
-describe("clean-context reviewer composed through caller-authoritative A2A", () => {
-  it("runs a joined remote reviewer through the real authority and caller effect registry", async () => {
-    const input: ReviewInput = {
+describe("authored chat reviewer composed through caller-authoritative A2A", () => {
+  it("certifies guidance-capable chat, ask_parent, and final answer under caller authority", async () => {
+    const reviewInput: ReviewInput = {
       design: "DESIGN_ARTIFACT_ONLY",
       rubric: "RUBRIC_ONLY",
       instructions: "Form an independent review and ask one narrow question.",
     };
+    const acceptedInput = createReviewChatInput(reviewInput, "acceptance-frontier");
     const contextText =
       "The caller journal is sole authority because duplicate accepted progress is forbidden.";
     const contextRef = { contextId: "parent-context-v1", digest: sha256(contextText) };
     let modelExecutions = 0;
     let consultationExecutions = 0;
     const modelOutcomes = new Map<string, Json>();
-    const foreignSchemas = foreignToolSchemaEntries();
-    const modelInput = foreignSchemas.find(
-      (entry) => entry.descriptor.digest === FOREIGN_MODEL_SAMPLE_EFFECT.inputSchema.digest,
+    const modelInputSchema = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
+      (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.inputSchema.digest,
     )!;
-    const modelOutput = foreignSchemas.find(
-      (entry) => entry.descriptor.digest === FOREIGN_MODEL_SAMPLE_EFFECT.outputSchema.digest,
+    const modelOutputSchema = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
+      (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.outputSchema.digest,
     )!;
     const modelRegistration = createDurableEffectRegistration(
-      FOREIGN_MODEL_SAMPLE_EFFECT,
+      CHAT_MODEL_SAMPLE_EFFECT,
       { mode: "idempotent", mechanism: "pull_id_key" },
       function* (_request, effect) {
         const recorded = modelOutcomes.get(effect.pullId);
-        if (recorded !== undefined) return { status: "ok", value: recorded };
+        if (recorded !== undefined) {
+          return { status: "ok", value: recorded };
+        }
         modelExecutions += 1;
         const value: Json =
           modelExecutions === 1
             ? {
-                question: "Why must the caller journal remain authoritative?",
-                rationale: "durability",
+                message: assistantMessage("guidance", "Loading review guidance."),
+                calls: [
+                  {
+                    id: "guidance-read-1",
+                    target: "resources.read",
+                    input: { uri: REFERENCE_REVIEWER_GUIDANCE.entryUri },
+                  },
+                ],
+                artifacts: [],
               }
-            : { verdict: "pass", summary: "The authority split is coherent." };
+            : modelExecutions === 2
+              ? {
+                  message: assistantMessage("question", "I need one clarification."),
+                  calls: [
+                    {
+                      id: "ask-parent-1",
+                      target: "ask_parent",
+                      input: {
+                        question: "Why must the caller journal remain authoritative?",
+                        rationale: "durability",
+                      },
+                    },
+                  ],
+                  artifacts: [],
+                }
+              : {
+                  message: assistantMessage("final", {
+                    review: { verdict: "pass", summary: "The authority split is coherent." },
+                  }),
+                  calls: [],
+                  artifacts: [],
+                };
         modelOutcomes.set(effect.pullId, value);
         return { status: "ok", value };
       },
-      { input: modelInput.schema, output: modelOutput.schema },
+      { input: modelInputSchema.schema, output: modelOutputSchema.schema },
     );
     const askRegistration = createAskParentRegistration({
       context: contextRef,
@@ -120,12 +165,12 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
       version: "1.0.0",
       digest: sha256(
         canonicalJson({
-          artifact: "reference.review-parent/v1",
-          child: REFERENCE_REVIEWER_TOOL.manifest.digest,
+          artifact: "reference.review-parent/v2",
+          child: REFERENCE_REVIEWER_CHAT.manifest.digest,
         }),
       ),
-      inputSchema: REFERENCE_REVIEWER_TOOL.manifest.inputSchema,
-      outputSchema: REFERENCE_REVIEWER_TOOL.manifest.outputSchema,
+      inputSchema: REFERENCE_REVIEWER_CHAT.manifest.inputSchema,
+      outputSchema: REFERENCE_REVIEWER_CHAT.manifest.outputSchema,
       elicits: {},
       effects: {},
       capabilities: {
@@ -134,27 +179,30 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
         replay: "strict" as const,
       },
     };
-    const parentTool = createDurableTool(parentManifest, function* (reviewInput, context) {
+    const parentTool = createDurableTool(parentManifest, function* (input, context) {
       return yield* context.invoke({
-        id: REFERENCE_REVIEWER_TOOL.manifest.programId,
-        version: REFERENCE_REVIEWER_TOOL.manifest.version,
-        digest: REFERENCE_REVIEWER_TOOL.manifest.digest,
-        input: reviewInput,
+        id: REFERENCE_REVIEWER_CHAT.manifest.programId,
+        version: REFERENCE_REVIEWER_CHAT.manifest.version,
+        digest: REFERENCE_REVIEWER_CHAT.manifest.digest,
+        input,
       });
     });
-    const remoteRegistry = createDurableToolRegistry([REFERENCE_REVIEWER_TOOL]);
     const executor = createA2AProgramExecutor({
       executorId: "acceptance-executor",
       computeGeneration: "acceptance-generation-1",
-      registry: remoteRegistry,
+      registry: REFERENCE_REVIEWER_REMOTE.registry,
     });
     const a2aDriver = createA2AProgramDriver({
       connector: createInProcessA2AConnector(executor),
       manifest: async (program) => {
-        if (program.digest !== REFERENCE_REVIEWER_TOOL.manifest.digest)
+        const document = Object.values(REFERENCE_REVIEWER_REMOTE.manifests).find(
+          (candidate) => candidate.program.digest === program.digest,
+        );
+        if (!document) {
           throw new Error("unexpected program");
-        preflightRemoteEffectHandlers(REFERENCE_REVIEWER_TOOL.manifest, effects);
-        return createRemoteProgramManifestDocument(REFERENCE_REVIEWER_TOOL.manifest);
+        }
+        preflightRemoteEffectHandlers(document.manifest, effects);
+        return document;
       },
     });
     const drivers = createProgramDriverRegistry([
@@ -167,10 +215,7 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
       keyring: createCapabilityKeyring("a2a-review-acceptance", [
         { keyId: "acceptance-key", secret: "acceptance-secret-at-least-32-bytes!!" },
       ]),
-      schemaRegistry: createDurableSchemaRegistry([
-        ...REFERENCE_REVIEW_SCHEMA_ENTRIES,
-        ...foreignSchemas,
-      ]),
+      schemaRegistry: createDurableSchemaRegistry([...REFERENCE_REVIEWER_CHAT.schemaCatalog]),
     });
     const rootAttach = {
       sessionId: "acceptance-session",
@@ -180,7 +225,7 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
         version: parentManifest.version,
         digest: parentManifest.digest,
       },
-      input,
+      input: acceptedInput,
       route: { driverKind: "generator" },
       executionEpoch: 1,
     };
@@ -190,7 +235,7 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
         turnId: "turn-0",
         taskId: rootAttach.taskId,
         manifest: parentManifest,
-        input,
+        input: acceptedInput,
         executionEpoch: 1,
         attachmentId: "unattached",
         audience: "parent-runtime",
@@ -200,12 +245,14 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
           return yield* DurableEffectRegistryContext.with(effects, function* () {
             return yield* ProgramRouteResolverContext.with(
               function* (program) {
-                return program.id === REFERENCE_REVIEWER_TOOL.manifest.programId
+                return Object.values(REFERENCE_REVIEWER_REMOTE.manifests).some(
+                  (document) => document.program.digest === program.digest,
+                )
                   ? {
                       driverKind: "a2a",
                       protocolVersion: 1,
                       extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
-                      executionId: "remote-review-child",
+                      executionId: `remote-${program.digest.slice(0, 12)}`,
                       driverEndpoint: "wss://review.example/programs",
                       cardOrigin: "https://review.example",
                     }
@@ -219,7 +266,11 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
                 expect(result).toEqual({
                   state: "completed",
                   value: {
-                    review: { verdict: "pass", summary: "The authority split is coherent." },
+                    format: "sweatpants.chat-turn-result.v1",
+                    message: assistantMessage("final", {
+                      review: { verdict: "pass", summary: "The authority split is coherent." },
+                    }),
+                    artifacts: [],
                   },
                 });
               },
@@ -228,10 +279,18 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
         });
       });
     });
-    expect(modelExecutions).toBe(2);
+    expect(modelExecutions).toBe(3);
     expect(consultationExecutions).toBe(1);
     const journal = authority.readJournal(rootAttach.sessionId);
-    expect(journal.filter((record) => record.payload.type === "TaskOpened")).toHaveLength(2);
+    expect(journal.filter((record) => record.payload.type === "TaskOpened")).toHaveLength(4);
+    expect(
+      journal.some(
+        (record) =>
+          record.payload.type === "TaskOpened" &&
+          record.payload.programDigest ===
+            REFERENCE_REVIEWER_CHAT.resourceReaders.read.manifest.digest,
+      ),
+    ).toBe(true);
     expect(
       journal.filter(
         (record) =>
@@ -243,9 +302,11 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
   });
 
   it("fails manifest preflight before execution for missing handlers or runtime validators", () => {
-    const effects = createDurableEffectRegistry([]);
     expect(() =>
-      preflightRemoteEffectHandlers(REFERENCE_REVIEWER_TOOL.manifest, effects),
+      preflightRemoteEffectHandlers(
+        REFERENCE_REVIEWER_CHAT.manifest,
+        createDurableEffectRegistry([]),
+      ),
     ).toThrowError(expect.objectContaining({ code: "effect_handler_missing" }));
 
     const registrationWithoutSchemas = createDurableEffectRegistration(
@@ -255,13 +316,9 @@ describe("clean-context reviewer composed through caller-authoritative A2A", () 
         return { status: "ok", value: { status: "unknown" as const } };
       },
     );
-    const askOnlyManifest = {
-      ...REFERENCE_REVIEWER_TOOL.manifest,
-      effects: { [ASK_PARENT_EFFECT.name]: ASK_PARENT_EFFECT },
-    };
     expect(() =>
       preflightRemoteEffectHandlers(
-        askOnlyManifest,
+        REFERENCE_ASK_PARENT_TOOL.manifest,
         createDurableEffectRegistry([registrationWithoutSchemas]),
       ),
     ).toThrowError(expect.objectContaining({ code: "effect_contract_mismatch" }));

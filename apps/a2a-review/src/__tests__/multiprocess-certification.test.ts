@@ -63,16 +63,28 @@ describe("caller-authoritative A2A multi-process certification", () => {
         outcome: {
           status: "ok",
           value: {
-            review: {
-              verdict: "pass",
-              summary: "Fresh-process replay preserved the independent review.",
+            format: "sweatpants.chat-turn-result.v1",
+            message: {
+              id: "final",
+              role: "assistant",
+              parts: [
+                {
+                  value: {
+                    review: {
+                      verdict: "pass",
+                      summary: "Fresh-process replay preserved the independent review.",
+                    },
+                  },
+                },
+              ],
             },
+            artifacts: [],
           },
         },
-        modelExecutions: 2,
+        modelExecutions: 3,
         elicitExecutions: 1,
         consultationPulls: 1,
-        taskClosures: 2,
+        taskClosures: 4,
       });
 
       healthyExecutor.kill("SIGTERM");

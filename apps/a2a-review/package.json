@@ -12,6 +12,8 @@
     },
     "dependencies": {
         "@sweatpants/a2a": "workspace:*",
+        "@sweatpants/core": "workspace:*",
+        "@sweatpants/framework": "workspace:*",
         "@sweatpants/session-contract": "workspace:*",
         "effection": "catalog:",
         "ws": "catalog:"

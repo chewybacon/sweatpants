@@ -136,9 +136,15 @@ export function createGeneratedPinnedDurableProgram<I extends Json = Json, O ext
   return createPinnedDurableProgramWithIdentity(manifest, program, checked);
 }
 
+interface ProgramIdentityBindingEvidence {
+  readonly manifest: { readonly digest: string };
+  readonly identityProvenance: ProgramIdentityProvenanceV1;
+  readonly identityArtifact?: GeneratedProgramArtifactIdentityV1;
+}
+
 /** Validates binding provenance, optionally enforcing generated-only release policy. */
 export function validateProgramIdentityProvenance(
-  binding: Pick<DurableTool, "manifest" | "identityProvenance" | "identityArtifact">,
+  binding: ProgramIdentityBindingEvidence,
   options: { readonly releaseStrict?: boolean } = {},
 ): void {
   const provenance = binding.identityProvenance;
@@ -167,7 +173,7 @@ export function validateProgramIdentityProvenance(
 
 /** Enforces release policy over an authored program inventory. */
 export function validateProgramBindingsForRelease(
-  bindings: Iterable<Pick<DurableTool, "manifest" | "identityProvenance" | "identityArtifact">>,
+  bindings: Iterable<ProgramIdentityBindingEvidence>,
   options: { readonly releaseStrict?: boolean } = { releaseStrict: true },
 ): void {
   for (const binding of bindings) {

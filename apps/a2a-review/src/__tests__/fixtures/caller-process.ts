@@ -2,7 +2,6 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { run, type Operation } from "effection";
 import {
   DurableEffectRegistryContext,
-  FOREIGN_MODEL_SAMPLE_EFFECT,
   JournalAuthorityContext,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
@@ -17,7 +16,6 @@ import {
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
   createProgramDriverRegistry,
-  foreignToolSchemaEntries,
   sha256,
   type DurableJournalAuthorityService,
   type DurableSemanticRecord,
@@ -27,14 +25,16 @@ import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   createA2AProgramDriver,
   createNodeA2AWebSocketConnector,
-  createRemoteProgramManifestDocument,
   preflightRemoteEffectHandlers,
 } from "@sweatpants/a2a";
 import {
   ASK_PARENT_EFFECT,
-  REFERENCE_REVIEWER_TOOL,
-  REFERENCE_REVIEW_SCHEMA_ENTRIES,
+  CHAT_MODEL_SAMPLE_EFFECT,
+  REFERENCE_REVIEWER_CHAT,
+  REFERENCE_REVIEWER_GUIDANCE,
+  REFERENCE_REVIEWER_REMOTE,
   createAskParentRegistration,
+  createReviewChatInput,
   type AskParentOutput,
   type ReviewInput,
 } from "../../index.ts";
@@ -63,16 +63,13 @@ const effectState: EffectState = readJson(effectStatePath, {
   elicitExecutions: 0,
   crashed: [],
 });
-const input: ReviewInput = {
+const reviewInput: ReviewInput = {
   design: "MULTIPROCESS_DESIGN_ARTIFACT",
   rubric: "MULTIPROCESS_REVIEW_RUBRIC",
   instructions: "Review independently, ask one narrow question, then return a verdict.",
 };
-const foreignSchemas = foreignToolSchemaEntries();
-const schemaRegistry = createDurableSchemaRegistry([
-  ...REFERENCE_REVIEW_SCHEMA_ENTRIES,
-  ...foreignSchemas,
-]);
+const input = createReviewChatInput(reviewInput, "multiprocess-frontier");
+const schemaRegistry = createDurableSchemaRegistry([...REFERENCE_REVIEWER_CHAT.schemaCatalog]);
 const keyring = createCapabilityKeyring("a2a-multiprocess-certification", [
   { keyId: "certification-key", secret: "certification-secret-at-least-32-bytes" },
 ]);
@@ -95,31 +92,31 @@ const parentManifest = {
   digest: sha256(
     canonicalJson({
       artifact: "reference.multiprocess-review-parent/v1",
-      child: REFERENCE_REVIEWER_TOOL.manifest.digest,
+      child: REFERENCE_REVIEWER_CHAT.manifest.digest,
     }),
   ),
-  inputSchema: REFERENCE_REVIEWER_TOOL.manifest.inputSchema,
-  outputSchema: REFERENCE_REVIEWER_TOOL.manifest.outputSchema,
+  inputSchema: REFERENCE_REVIEWER_CHAT.manifest.inputSchema,
+  outputSchema: REFERENCE_REVIEWER_CHAT.manifest.outputSchema,
   elicits: {},
   effects: {},
   capabilities: { durableEmissions: false, structuredChildren: true, replay: "strict" as const },
 };
 const parentTool = createDurableTool(parentManifest, function* (reviewInput, context) {
   return yield* context.invoke({
-    id: REFERENCE_REVIEWER_TOOL.manifest.programId,
-    version: REFERENCE_REVIEWER_TOOL.manifest.version,
-    digest: REFERENCE_REVIEWER_TOOL.manifest.digest,
+    id: REFERENCE_REVIEWER_CHAT.manifest.programId,
+    version: REFERENCE_REVIEWER_CHAT.manifest.version,
+    digest: REFERENCE_REVIEWER_CHAT.manifest.digest,
     input: reviewInput,
   });
 });
-const modelInput = foreignSchemas.find(
-  (entry) => entry.descriptor.digest === FOREIGN_MODEL_SAMPLE_EFFECT.inputSchema.digest,
+const modelInput = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
+  (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.inputSchema.digest,
 )!;
-const modelOutput = foreignSchemas.find(
-  (entry) => entry.descriptor.digest === FOREIGN_MODEL_SAMPLE_EFFECT.outputSchema.digest,
+const modelOutput = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
+  (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.outputSchema.digest,
 )!;
 const modelRegistration = createDurableEffectRegistration(
-  FOREIGN_MODEL_SAMPLE_EFFECT,
+  CHAT_MODEL_SAMPLE_EFFECT,
   { mode: "idempotent", mechanism: "pull_id_key" },
   function* (_request, context) {
     const existing = effectState.model[context.pullId];
@@ -127,8 +124,42 @@ const modelRegistration = createDurableEffectRegistration(
     effectState.modelExecutions += 1;
     const value: Json =
       effectState.modelExecutions === 1
-        ? { question: "Which authority owns accepted progress?", rationale: "durability" }
-        : { verdict: "pass", summary: "Fresh-process replay preserved the independent review." };
+        ? {
+            message: assistantMessage("guidance", "Loading review guidance."),
+            calls: [
+              {
+                id: "guidance-read-1",
+                target: "resources.read",
+                input: { uri: REFERENCE_REVIEWER_GUIDANCE.entryUri },
+              },
+            ],
+            artifacts: [],
+          }
+        : effectState.modelExecutions === 2
+          ? {
+              message: assistantMessage("question", "I need one clarification."),
+              calls: [
+                {
+                  id: "ask-parent-1",
+                  target: "ask_parent",
+                  input: {
+                    question: "Which authority owns accepted progress?",
+                    rationale: "durability",
+                  },
+                },
+              ],
+              artifacts: [],
+            }
+          : {
+              message: assistantMessage("final", {
+                review: {
+                  verdict: "pass",
+                  summary: "Fresh-process replay preserved the independent review.",
+                },
+              }),
+              calls: [],
+              artifacts: [],
+            };
     effectState.model[context.pullId] = value;
     persistEffects();
     crashOnce("model_after_provider_commit");
@@ -185,9 +216,15 @@ const askRegistration = createAskParentRegistration({
 const effects = createDurableEffectRegistry([modelRegistration, askRegistration]);
 const a2aDriver = createA2AProgramDriver({
   connector: createNodeA2AWebSocketConnector({ urlPolicy: { allowLocalhostTests: true } }),
-  manifest: async () => {
-    preflightRemoteEffectHandlers(REFERENCE_REVIEWER_TOOL.manifest, effects);
-    return createRemoteProgramManifestDocument(REFERENCE_REVIEWER_TOOL.manifest);
+  manifest: async (program) => {
+    const document = Object.values(REFERENCE_REVIEWER_REMOTE.manifests).find(
+      (candidate) => candidate.program.digest === program.digest,
+    );
+    if (!document) {
+      throw new Error("unexpected program");
+    }
+    preflightRemoteEffectHandlers(document.manifest, effects);
+    return document;
   },
   deadlines: { handshakeMs: 2_000, attachMs: 2_000, stepMs: 2_000, restoreProgressMs: 2_000 },
 });
@@ -233,12 +270,14 @@ await run(function* () {
         return yield* DurableEffectRegistryContext.with(effects, function* () {
           return yield* ProgramRouteResolverContext.with(
             function* (program) {
-              return program.id === REFERENCE_REVIEWER_TOOL.manifest.programId
+              return Object.values(REFERENCE_REVIEWER_REMOTE.manifests).some(
+                (document) => document.program.digest === program.digest,
+              )
                 ? {
                     driverKind: "a2a",
                     protocolVersion: 1,
                     extensionUri: CALLER_AUTHORITATIVE_EXTENSION_URI,
-                    executionId: "multiprocess-review-child",
+                    executionId: `multiprocess-${program.digest.slice(0, 12)}`,
                     driverEndpoint: endpoint,
                     cardOrigin: endpoint.replace("ws:", "http:"),
                   }
@@ -323,6 +362,14 @@ function atomicJson(path: string, value: Json): void {
 function readJson<T>(path: string, fallback: T): T {
   return existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as T) : fallback;
 }
+function assistantMessage(id: string, value: Json) {
+  return {
+    id,
+    role: "assistant" as const,
+    parts: [{ value, provenance: { classifications: [], sourceDigests: [] } }],
+  };
+}
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is required`);

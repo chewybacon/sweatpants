@@ -56,6 +56,7 @@ export {
   RESOURCE_SEARCH_MAX_QUERY_BYTES,
   RESOURCE_VIEW_FORMAT,
   ResourceError,
+  sortedResourceValues,
   type DataClassification,
   type GuidanceDefinition,
   type GuidanceIndexEntry,

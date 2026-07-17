@@ -3,6 +3,9 @@ export * from "./types/index.ts";
 
 // Content-addressed resources, guidance, readers, and build-time identity generation.
 export * from "./resource/index.ts";
+
+// Portable agent manifests paired with explicit local runtime bindings.
+export * from "./agent/index.ts";
 export {
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_DOMAIN,

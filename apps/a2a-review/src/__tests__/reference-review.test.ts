@@ -8,7 +8,11 @@ import {
 } from "@sweatpants/session-contract";
 import {
   ASK_PARENT_EFFECT,
+  REFERENCE_ASK_PARENT_TOOL,
+  REFERENCE_REVIEWER_AGENT,
   REFERENCE_REVIEWER_ARTIFACT_DIGEST,
+  REFERENCE_REVIEWER_CHAT,
+  REFERENCE_REVIEWER_REMOTE,
   REFERENCE_REVIEWER_TOOL,
   createAskParentRegistration,
   type AskParentOutput,
@@ -26,8 +30,12 @@ function memoryStore(contextRef?: ConsultationContextRef, content?: string): Con
         : undefined;
     },
     *claimQuestion(pullId, budget) {
-      if (claims.has(pullId)) return "duplicate";
-      if (claims.size >= budget) return "exhausted";
+      if (claims.has(pullId)) {
+        return "duplicate";
+      }
+      if (claims.size >= budget) {
+        return "exhausted";
+      }
       claims.add(pullId);
       return "allowed";
     },
@@ -36,7 +44,9 @@ function memoryStore(contextRef?: ConsultationContextRef, content?: string): Con
     },
     *commit(pullId, outcome) {
       const existing = outcomes.get(pullId);
-      if (existing) return existing;
+      if (existing) {
+        return existing;
+      }
       outcomes.set(pullId, structuredClone(outcome));
       return outcome;
     },
@@ -48,6 +58,21 @@ describe("reference authored consultation application", () => {
     expect(REFERENCE_REVIEWER_ARTIFACT_DIGEST).toMatch(/^[0-9a-f]{64}$/);
     expect(new Set(REFERENCE_REVIEWER_ARTIFACT_DIGEST).size).toBeGreaterThan(8);
     expect(REFERENCE_REVIEWER_TOOL.manifest.digest).toBe(REFERENCE_REVIEWER_ARTIFACT_DIGEST);
+  });
+
+  it("projects the acceptance entrypoint through the product caller-authoritative facade", () => {
+    expect(REFERENCE_REVIEWER_CHAT.identityProvenance.kind).toBe("generated-artifact");
+    expect(REFERENCE_REVIEWER_REMOTE.posture).toBe("remote-executor");
+    expect(REFERENCE_REVIEWER_REMOTE.selfCheck().ok).toBe(true);
+    expect(REFERENCE_REVIEWER_AGENT.manifest.programs.review?.digest).toBe(
+      REFERENCE_REVIEWER_CHAT.manifest.digest,
+    );
+    expect(
+      Object.values(REFERENCE_REVIEWER_REMOTE.manifests).some(
+        (document) => document.program.digest === REFERENCE_ASK_PARENT_TOOL.manifest.digest,
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(REFERENCE_REVIEWER_REMOTE.card)).not.toContain("Ask one narrow");
   });
 
   it("uses the effect pull ID for answer idempotency", async () => {
@@ -178,8 +203,9 @@ describe("reference authored consultation application", () => {
     const evidence = await run(function* () {
       const attachment: ProgramAttachment = yield* driver.attach(request);
       const first = yield* driver.step(attachment, { type: "start", input: request.input });
-      if (first.type !== "operation" || first.descriptor.kind !== "effect")
+      if (first.type !== "operation" || first.descriptor.kind !== "effect") {
         throw new Error("first sample missing");
+      }
       const second = yield* driver.step(attachment, {
         type: "resume",
         actionIndex: first.actionIndex,
@@ -187,8 +213,9 @@ describe("reference authored consultation application", () => {
         receipt: receipt(first.actionIndex),
         replayed: false,
       });
-      if (second.type !== "operation" || second.descriptor.kind !== "effect")
+      if (second.type !== "operation" || second.descriptor.kind !== "effect") {
         throw new Error("consultation missing");
+      }
       const third = yield* driver.step(attachment, {
         type: "resume",
         actionIndex: second.actionIndex,
