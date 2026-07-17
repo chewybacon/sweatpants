@@ -57,7 +57,16 @@ const terminal = journal.find(
   (record) => record.payload.type === "TaskClosed" && record.payload.taskId === resolverTaskId(),
 );
 if (terminal?.payload.type === "TaskClosed") {
-  process.stdout.write(`OUTCOME ${canonicalJson(terminal.payload.outcome)}\n`);
+  const outcome = terminal.payload.outcome;
+  const resolverOutcome =
+    outcome.status === "ok" &&
+    outcome.value &&
+    typeof outcome.value === "object" &&
+    !Array.isArray(outcome.value) &&
+    typeof outcome.value["status"] === "string"
+      ? outcome.value
+      : outcome;
+  process.stdout.write(`OUTCOME ${canonicalJson(resolverOutcome)}\n`);
   process.exit(0);
 }
 

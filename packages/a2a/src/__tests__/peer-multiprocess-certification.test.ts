@@ -165,9 +165,11 @@ describe("three-process Sweatpants peer certification", () => {
         resolveCalls: number;
         status: { status: string };
         calleeJournalRecords: number;
+        calleeTaskClosures: number;
       };
       expect(stats).toMatchObject({ resolveCalls: 1, status: { status: "resolved" } });
       expect(stats.calleeJournalRecords).toBeGreaterThan(0);
+      expect(stats.calleeTaskClosures).toBe(1);
       expect(callee.spawnargs.join(" ")).not.toContain("CALLER_SECRET_TOKEN");
       callee.kill("SIGTERM");
       await exited(callee);
