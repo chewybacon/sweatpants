@@ -1,3 +1,4 @@
+import { generateKeyPairSync, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { advertiseCapability, defineAgent } from "@sweatpants/core";
 import {
@@ -23,6 +24,8 @@ import {
   connectPeerAgent,
   connectRemoteExecutor,
   connectStandardAgent,
+  agentCardSigningProjection,
+  createAgentCardJwsSigner,
   createDurableRemoteReference,
   createStandardA2AHost,
   remoteExecutor,
@@ -151,6 +154,56 @@ describe("agent serving facade", () => {
     expect(() =>
       serveAgent(definition, standardA2A({ deployment, handlers: [], capabilityBindings: {} })),
     ).toThrowError(expect.objectContaining({ code: "effect_route_missing" }));
+  });
+
+  it("signs the canonical Agent Card without putting keys in agent identity", () => {
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const signed = serveAgent(
+      definition,
+      standardA2A({
+        deployment: {
+          ...deployment,
+          cardSigner: createAgentCardJwsSigner({
+            algorithm: "EdDSA",
+            keyId: "fixture-key",
+            privateKey,
+          }),
+        },
+        handlers: [modelHandler],
+        capabilityBindings: {},
+        host: createStandardA2AHost({ allowAnonymousDevelopment: true }),
+      }),
+    );
+    const card = signed.card as Record<string, Json>;
+    const signature = (card["signatures"] as Array<Record<string, Json>>)[0]!;
+    const { signatures: _signatures, ...unsigned } = card;
+    const payload = Buffer.from(
+      canonicalJson(agentCardSigningProjection(unsigned as Json)),
+      "utf8",
+    ).toString("base64url");
+    const signingInput = Buffer.from(`${signature["protected"]}.${payload}`, "ascii");
+    expect(
+      verify(
+        null,
+        signingInput,
+        publicKey,
+        Buffer.from(String(signature["signature"]), "base64url"),
+      ),
+    ).toBe(true);
+    const tampered = { ...unsigned, description: "tampered" } as Json;
+    const tamperedPayload = Buffer.from(
+      canonicalJson(agentCardSigningProjection(tampered)),
+      "utf8",
+    ).toString("base64url");
+    expect(
+      verify(
+        null,
+        Buffer.from(`${signature["protected"]}.${tamperedPayload}`, "ascii"),
+        publicKey,
+        Buffer.from(String(signature["signature"]), "base64url"),
+      ),
+    ).toBe(false);
+    expect(JSON.stringify(definition.manifest)).not.toContain("fixture-key");
   });
 
   it("validates typed and dynamic posture-specific connection evidence", async () => {

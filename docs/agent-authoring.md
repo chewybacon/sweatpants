@@ -107,6 +107,7 @@ const served = serveAgent(
     deployment: { interfaceUrl: "https://agent.example/a2a" },
     handlers: [modelSampleHandler, ...localEffectHandlers],
     capabilityBindings: {},
+    historyProjection: "accepted-context",
     host: createStandardA2AHost({
       authenticate: authenticateHttpRequest,
       authorize: authorizeAgentAction,
@@ -121,6 +122,13 @@ scoped to the authenticated principal/tenant journal, each ordinary turn gets a
 new immutable task, and explicit ordered `referenceTaskIds` are preserved.
 Production card/interface URLs must use HTTPS. Local HTTP requires
 `insecureLoopbackDevelopment: true` on the deployment.
+
+`historyProjection` controls only the public A2A Task history. The
+`accepted-context` default prepends the immutable bounded context snapshot that
+was accepted with the task; `task-only` exposes only the current turn,
+elicitation prompts/responses, and final result. Model memory always follows the
+chat program's pinned context policy. A live, growing conversation is never
+projected into an already-terminal task.
 
 Use `startAgentHarness` from `@sweatpants/framework/server/testing` for a real
 loopback HTTP server and discovery in tests. The evidence API exposes IDs,

@@ -315,7 +315,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     ...CHAT_CONTRACT_SCHEMA_ENTRIES,
     ...effectSchemas,
   ]);
-  const toolInventory = buildToolInventory(toolBindings, readers);
+  const toolInventory = buildToolInventory(toolBindings, readers, resourceView.mounts.length > 0);
   const index = guidanceIndex(guidance);
   const resourcePackages = sortedValues(
     new Map(mounts.map((mount) => [mount.package.manifest.digest, mount.package])).values(),
@@ -614,23 +614,26 @@ function normalizeElicitations(
 function buildToolInventory(
   bindings: Record<string, AgentProgramBinding>,
   readers: ResourceReaderPrograms,
+  includeResourceReaders: boolean,
 ): Json[] {
   const inventory: Json[] = Object.entries(bindings).map(([name, binding]) => ({
     name,
     description: `Durable program ${name}`,
     inputSchema: binding.program.manifest.inputSchema.inputProjection,
   }));
-  for (const [name, reader] of Object.entries({
-    "resources.stat": readers.stat,
-    "resources.list": readers.list,
-    "resources.read": readers.read,
-    "resources.search": readers.search,
-  })) {
-    inventory.push({
-      name,
-      description: `Deterministic ${name}`,
-      inputSchema: reader.manifest.inputSchema.inputProjection,
-    });
+  if (includeResourceReaders) {
+    for (const [name, reader] of Object.entries({
+      "resources.stat": readers.stat,
+      "resources.list": readers.list,
+      "resources.read": readers.read,
+      "resources.search": readers.search,
+    })) {
+      inventory.push({
+        name,
+        description: `Deterministic ${name}`,
+        inputSchema: reader.manifest.inputSchema.inputProjection,
+      });
+    }
   }
   return sortedValues(inventory, (a, b) =>
     String((a as Record<string, Json>)["name"]).localeCompare(

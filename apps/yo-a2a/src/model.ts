@@ -1,0 +1,152 @@
+import {
+  createPiAiModelProviderDriver,
+  resolvePiAiModel,
+  type AssistantMessage,
+  type Context,
+  type Message,
+  type Tool,
+} from "@sweatpants/model-provider-pi-ai";
+import {
+  createChatModelEffectRegistration,
+  type ChatMessageV1,
+  type ChatModelSampleInputV2,
+  type ChatModelSampleOutputV2,
+} from "@sweatpants/framework/chat";
+import { assertJson, canonicalJson, type Json } from "@sweatpants/session-contract";
+
+const selection = {
+  provider: process.env["DEFAULT_CHAT_MODEL_PROVIDER"] ?? "github-copilot",
+  id: process.env["DEFAULT_CHAT_MODEL_ID"] ?? "gpt-5.5",
+};
+const model = resolvePiAiModel(selection);
+const driver = createPiAiModelProviderDriver();
+
+/** Real deployment binding for the authored chat program's model.sample effect. */
+export const realModelRegistration = createChatModelEffectRegistration({
+  allowedClassifications: ["public", "internal"],
+  *sample(request, effect) {
+    const sampling =
+      request.sampling && typeof request.sampling === "object" && !Array.isArray(request.sampling)
+        ? request.sampling
+        : {};
+    const assistant = yield* driver.sample({
+      model,
+      context: modelContext(request),
+      options: {
+        signal: effect.cancellation,
+        sessionId: effect.pullId,
+        toolChoice:
+          sampling["toolChoice"] === "required"
+            ? "required"
+            : sampling["toolChoice"] === "none"
+              ? "none"
+              : "auto",
+        ...(typeof sampling["maxTokens"] === "number" ? { maxTokens: sampling["maxTokens"] } : {}),
+      },
+    });
+    if (process.env["YO_A2A_DEBUG_MODEL"] === "1") {
+      console.error("[yo-a2a:model]", JSON.stringify(assistant));
+    }
+    if (assistant.stopReason === "error" || assistant.errorMessage) {
+      throw new Error("Configured model provider failed to sample");
+    }
+    return modelOutput(assistant, effect.pullId);
+  },
+});
+
+export const selectedModel = Object.freeze(selection);
+
+function modelContext(request: ChatModelSampleInputV2): Context {
+  return {
+    systemPrompt: String(request.systemPrompt.value),
+    messages: request.messages.flatMap(toProviderMessages),
+    tools: request.tools.map(toProviderTool),
+  };
+}
+function toProviderMessages(message: ChatMessageV1): Message[] {
+  const text = message.parts.map((part) => valueText(part.value)).join("\n");
+  if (message.role === "user") {return [{ role: "user", content: text }];}
+  if (message.role === "system") {return [{ role: "system", content: text }];}
+  if (message.role === "assistant") {
+    return [{ role: "assistant", content: [{ type: "text", text: text || "Continuing." }] }];
+  }
+  const tool = message.parts[0]?.value;
+  if (!tool || typeof tool !== "object" || Array.isArray(tool)) {
+    return [
+      {
+        role: "toolResult",
+        toolCallId: message.id,
+        toolName: "unknown",
+        content: [{ type: "text", text }],
+        isError: false,
+      },
+    ];
+  }
+  const callId = String(tool["callId"] ?? message.id);
+  const target = String(tool["target"] ?? "unknown");
+  return [
+    {
+      role: "assistant",
+      content: [{ type: "toolCall", id: callId, name: providerToolName(target), arguments: {} }],
+      stopReason: "toolUse",
+    },
+    {
+      role: "toolResult",
+      toolCallId: callId,
+      toolName: providerToolName(target),
+      content: [{ type: "text", text: valueText(tool["result"] as Json) }],
+      isError: false,
+    },
+  ];
+}
+function toProviderTool(value: Json): Tool {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Authored model tool inventory is invalid");
+  }
+  return {
+    name: providerToolName(String(value["name"])),
+    description: String(value["description"] ?? value["name"]),
+    parameters:
+      value["inputSchema"] && typeof value["inputSchema"] === "object"
+        ? (value["inputSchema"] as Record<string, unknown>)
+        : {},
+  };
+}
+function modelOutput(assistant: AssistantMessage, pullId: string): ChatModelSampleOutputV2 {
+  const text = assistant.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("\n");
+  const calls = assistant.content
+    .filter((block) => block.type === "toolCall")
+    .map((block) => ({
+      id: block.id,
+      target: authoredToolName(block.name),
+      input: assertJson(block.arguments),
+    }));
+  return {
+    message: {
+      id: assistant.responseId ?? `model-${pullId}`,
+      role: "assistant",
+      parts: [
+        {
+          value:
+            text ||
+            (calls.length > 0 ? `Calling ${calls.map((call) => call.target).join(", ")}` : "Done."),
+          provenance: { classifications: [], sourceDigests: [] },
+        },
+      ],
+    },
+    calls,
+    artifacts: [],
+  };
+}
+function providerToolName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+function authoredToolName(value: string): string {
+  return value.startsWith("resources_") ? value.replace(/^resources_/, "resources.") : value;
+}
+function valueText(value: Json): string {
+  return typeof value === "string" ? value : canonicalJson(value);
+}
