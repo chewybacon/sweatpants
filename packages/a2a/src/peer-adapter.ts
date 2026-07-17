@@ -2,7 +2,7 @@ import {
   CrankError,
   assertJson,
   canonicalJson,
-  createDurableTool,
+  createPinnedDurableProgram,
   createPortableSchemaDescriptor,
   sha256,
   type DurableSchemaRegistryEntry,
@@ -31,7 +31,7 @@ export const PEER_ADAPTER_PROGRAM = Object.freeze({
   ),
 });
 
-export const peerTaskAdapter = createDurableTool(
+export const peerTaskAdapter = createPinnedDurableProgram(
   {
     programId: PEER_ADAPTER_PROGRAM.id,
     version: PEER_ADAPTER_PROGRAM.version,

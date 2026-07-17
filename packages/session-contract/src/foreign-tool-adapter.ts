@@ -1,7 +1,7 @@
 import type { Operation } from "effection";
 
 import { createDurableEffectRegistration } from "./durable-apis.ts";
-import { createDurableTool, defineDurableProgramManifest } from "./authoring.ts";
+import { createPinnedDurableProgram, defineDurableProgramManifest } from "./authoring.ts";
 import {
   FOREIGN_INPUT_CONTEXT_DESCRIPTOR,
   FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
@@ -42,7 +42,7 @@ export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<Foreig
   },
 );
 
-const adapterTool = createDurableTool(FOREIGN_TOOL_ADAPTER_MANIFEST, function* (request, context) {
+const adapterTool = createPinnedDurableProgram(FOREIGN_TOOL_ADAPTER_MANIFEST, function* (request, context) {
   const audience = `foreign:${request.driver}`;
   let disposition = yield* context.effect(FOREIGN_TOOL_START_EFFECT, request, {
     audience,

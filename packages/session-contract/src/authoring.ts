@@ -47,16 +47,16 @@ export function defineDurableProgramManifest<I extends Json = Json, O extends Js
   return deepFreeze(structuredClone(manifest));
 }
 
-/** Creates a synchronous crank-native tool after validating its manifest and factory. */
-export function createDurableTool<I extends Json = Json, O extends Json = Json>(
+/** Creates a synchronous crank-native program after validating its manifest and factory. */
+export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
   program: DurableProgramFactory<I, O>,
 ): DurableTool<I, O>;
-export function createDurableTool<I extends Json = Json, O extends Json = Json>(options: {
+export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(options: {
   manifest: DurableProgramManifest<I, O>;
   program: DurableProgramFactory<I, O>;
 }): DurableTool<I, O>;
-export function createDurableTool<I extends Json = Json, O extends Json = Json>(
+export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(
   manifestOrOptions:
     | DurableProgramManifest<I, O>
     | { manifest: DurableProgramManifest<I, O>; program: DurableProgramFactory<I, O> },
@@ -72,9 +72,20 @@ export function createDurableTool<I extends Json = Json, O extends Json = Json>(
     );
   }
   const snapshot = deepFreeze(structuredClone(manifest));
-  const tool: DurableTool<I, O> = { durability: "crank_native", manifest: snapshot, program };
+  const tool: DurableTool<I, O> = {
+    durability: "crank_native",
+    manifest: snapshot,
+    program,
+    identityProvenance: Object.freeze({ kind: "asserted" }),
+  };
   return Object.freeze(tool);
 }
+
+/**
+ * @deprecated Use createPinnedDurableProgram for low-level manifest-plus-generator authoring.
+ * The product-level @sweatpants/core createDurableTool staged builder is unchanged.
+ */
+export const createDurableTool: typeof createPinnedDurableProgram = createPinnedDurableProgram;
 
 /** Rejects malformed manifests, schemas, retry policies, and noncanonical values. */
 export function validateDurableManifest(manifest: DurableProgramManifest): void {

@@ -14,7 +14,7 @@ import {
   standardSchemaOf,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createLocalGeneratorDriver,
   createProgramDriverRegistry,
@@ -380,7 +380,7 @@ export function programDriverChatEngineSchemaEntries(): readonly DurableSchemaRe
   return [...chatEngineSchemaEntries];
 }
 
-const rootTool = createDurableTool(manifest, function* (input, context) {
+const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
   const messages = [...input.messages];
   const hasPriorAssistantOrTool = messages.some((message) => {
     const value = jsonRecord(message);

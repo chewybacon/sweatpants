@@ -12,6 +12,18 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-07-17 — content-addressed resources and generated program identity
+
+### Summary
+
+Added immutable resource packages, guidance metadata, exact package registries, scoped mounts, deterministic resource-reader programs, build-time directory generation/verification, and generated durable-program artifact identity to `@sweatpants/core`.
+
+The low-level session-contract manifest-plus-generator constructor is now named `createPinnedDurableProgram`. Its previous `createDurableTool` name remains as a deprecated compatibility alias; the staged `@sweatpants/core` `createDurableTool("name")` product builder is unchanged.
+
+### Migration note
+
+Low-level `@sweatpants/session-contract` consumers should replace `createDurableTool(manifest, program)` with `createPinnedDurableProgram(manifest, program)`. Existing asserted pins continue to load in compatibility mode, while release-strict validation requires generated artifact provenance.
+
 ## 2026-07-09 — v0.1 facade freeze (initial)
 
 ### Summary

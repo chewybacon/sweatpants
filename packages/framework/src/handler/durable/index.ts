@@ -32,6 +32,7 @@ export {
   createCapabilityKeyring,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
+  createPinnedDurableProgram,
   createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,

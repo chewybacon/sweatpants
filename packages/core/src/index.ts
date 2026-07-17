@@ -1,6 +1,23 @@
 // Re-export all types
 export * from "./types/index.ts";
 
+// Content-addressed resources, guidance, readers, and build-time identity generation.
+export * from "./resource/index.ts";
+export {
+  PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  PROGRAM_ARTIFACT_IDENTITY_DOMAIN,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  createGeneratedPinnedDurableProgram,
+  deriveProgramArtifactDigest,
+  generateProgramArtifactIdentity,
+  normalizeProgramArtifactIdentityInput,
+  validateProgramBindingsForRelease,
+  validateProgramIdentityProvenance,
+  type GeneratedProgramArtifactIdentityV1,
+  type ProgramArtifactIdentityInputV1,
+  type ProgramIdentityProvenanceV1,
+} from "@sweatpants/session-contract";
+
 // Re-export transport utilities and types
 export {
   createTransportPair,

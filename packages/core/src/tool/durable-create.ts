@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z, type ZodSchema } from "zod";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
-  createDurableTool as createLowLevelDurableTool,
+  createPinnedDurableProgram as createLowLevelDurableTool,
   type DurableProgramContext,
   type DurableProgramGenerator,
   type DurableProgramManifest,

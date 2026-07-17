@@ -3,7 +3,7 @@ import {
   PullApplicationError,
   assertJson,
   canonicalJson,
-  createDurableTool,
+  createPinnedDurableProgram,
   createPortableSchemaDescriptor,
   sha256,
   type DurableSchemaRegistryEntry,
@@ -45,7 +45,7 @@ export function compilePeerResolverBundle(grant: PeerGrant): PeerResolverBundle 
       protocolVersion: PEER_RESOLVER_PROTOCOL_VERSION,
     }),
   );
-  const tool = createDurableTool<PeerResolverInput, PeerResolverOutput>(
+  const tool = createPinnedDurableProgram<PeerResolverInput, PeerResolverOutput>(
     {
       programId: `sweatpants.peer-resolver.${grant.contract.name}`,
       version: `1.0.0+${grant.contract.contractDigest.slice(0, 12)}`,

@@ -23,7 +23,12 @@ export function canonicalSnapshot<T>(value: T): { value: T; canonical: string; s
 
 /** Returns lowercase SHA-256 hex for a UTF-8 string. */
 export function sha256(value: string): string {
-  return bytesToHex(hashSha256(new TextEncoder().encode(value)));
+  return sha256Bytes(new TextEncoder().encode(value));
+}
+
+/** Returns lowercase SHA-256 hex for exact bytes without text transcoding. */
+export function sha256Bytes(value: Uint8Array): string {
+  return bytesToHex(hashSha256(value));
 }
 
 /** Derives a stable, payload-hiding identifier from canonical JSON. */
