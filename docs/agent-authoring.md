@@ -1,0 +1,99 @@
+# Durable chat and agent authoring
+
+Sweatpants separates portable authoring from deployment authority:
+
+- `@sweatpants/core` exports `defineAgent`, `advertiseCapability`, portable `AgentManifestV1`, and local `AgentDefinition` bindings.
+- `@sweatpants/framework/chat` exports `defineChatProgram`, the protocol-neutral chat turn contracts, bounded context selection, resource mount helpers, and classified model-effect registration.
+- `@sweatpants/framework/server` exports explicit `remoteExecutor`, `standardA2A`, and `sweatpantsPeer` profiles, `serveAgent`, and posture-specific connection APIs.
+
+An `AgentDefinition` is runtime-only. Serialize `definition.manifest` explicitly; direct definition serialization throws rather than silently dropping executable, schema, or resource bindings.
+
+## Minimal authoring
+
+```ts
+import {
+  advertiseCapability,
+  defineAgent,
+  defineGuidance,
+  defineResourcePackage,
+  textResource,
+} from "@sweatpants/core";
+import {
+  defineChatProgram,
+  latestContextWindow,
+  modelReadable,
+} from "@sweatpants/framework/chat";
+
+const resources = defineResourcePackage({
+  id: "review-guidance",
+  version: "1",
+  files: { "SKILL.md": textResource("Review authority and recovery boundaries.") },
+});
+const guidance = defineGuidance({
+  id: "reviewing",
+  summary: "Use for technical design reviews.",
+  package: resources,
+  entryPath: "SKILL.md",
+});
+const conversation = defineChatProgram({
+  identity: { name: "review.chat", version: "1" },
+  systemPrompt: { text: "You are a technical reviewer.", classification: "internal" },
+  guidance: [guidance],
+  resources: {
+    reviewing: modelReadable(resources, { classification: "internal" }),
+  },
+  contextPolicy: latestContextWindow(),
+});
+const agent = defineAgent({
+  identity: { name: "reviewer", version: "1" },
+  description: "Reviews technical designs.",
+  conversation,
+  programs: { review: conversation },
+  advertisedCapabilities: {
+    review: advertiseCapability({
+      id: "review",
+      name: "Technical review",
+      description: "Reviews RFCs and architecture proposals.",
+      tags: ["architecture", "review"],
+      examples: ["Review this design"],
+      inputModes: ["text/plain"],
+      outputModes: ["text/plain"],
+      authorization: "review-designs",
+    }),
+  },
+});
+```
+
+Guidance, model tools, exact entrypoints, and advertised capabilities are independent declarations. Guidance is advisory and only its bounded index enters initial model context. Full content is loaded through exact durable resource-reader children.
+
+Model-visible durable tools should be wrapped with `modelTool(binding, { resultClassification })`. The declared classification ceiling taints every returned value independently of payload shape; direct legacy tool declarations conservatively default to `restricted`. A tool may raise, but never lower, that ceiling with the explicit `classifiedToolResult` envelope. Ordinary output fields named `classifications` or `sources` have no provenance meaning. The `resources.*` namespace is reserved for generated readers.
+
+Authored-chat v1 rejects non-empty `elicitations` because the v1 model output algebra cannot trigger an elicitation. This prevents publishing dead manifest declarations; model-triggered elicitation requires a future explicit call type.
+
+## Explicit authority posture
+
+```ts
+import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
+
+const served = serveAgent(
+  agent,
+  remoteExecutor({
+    deployment: {
+      interfaceUrl: "https://agent.example/a2a",
+      manifestEndpoint: "https://agent.example/manifests",
+      driverEndpoint: "wss://agent.example/driver",
+    },
+    bindings: { review: "review" },
+  }),
+);
+```
+
+There is no default posture. `remoteExecutor()` retains caller-owned journals and effects. `standardA2A()` requires callee-local effect handlers and does not report readiness until a conforming standard task host is installed. `sweatpantsPeer()` compiles exact effect requirements and explicit local/caller routes; grants remain per-invocation state.
+
+Model providers, routes, credentials, endpoints, quotas, journals, effect handlers, and grants are deployment bindings and do not enter chat or agent identity. Use `createChatModelEffectRegistration` to authorize the classification union attached to each exact `model.sample` payload before provider invocation.
+
+## Frontier ownership and deferred host certification
+
+`selectChatContext` is a pure selector over a host-supplied projection. The accepting journal host must capture a pre-open frontier, read all candidate messages and referenced-task summaries at that frontier, and persist the selected view once in `TaskOpened`. The selector cannot prove that an opaque frontier string and candidate array came from the same journal snapshot.
+
+The fixed-frontier concurrency case from Durable Chat test-plan TC-004 is therefore carried forward as a required Journal-Backed Standard A2A Host/Spec-3 integration test. It is not certified by the authoring-layer unit tests.

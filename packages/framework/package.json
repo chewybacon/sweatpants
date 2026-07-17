@@ -2,6 +2,18 @@
     "name": "@sweatpants/framework",
     "version": "0.1.0",
     "description": "Framework utilities for TanStack-based AI apps - tool discovery, codegen, and more",
+    "keywords": [
+        "codegen",
+        "framework",
+        "tanstack",
+        "tools",
+        "vite"
+    ],
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
     "type": "module",
     "exports": {
         ".": {
@@ -89,13 +101,6 @@
             }
         }
     },
-    "files": [
-        "dist",
-        "src"
-    ],
-    "engines": {
-        "node": ">=22.19.0"
-    },
     "scripts": {
         "build": "tsup && pnpm build:types",
         "dev": "tsup --watch",
@@ -104,18 +109,9 @@
         "test:acceptance": "vitest run acceptance",
         "build:types": "tsc -b tsconfig.lib.json --force"
     },
-    "peerDependencies": {
-        "@effectionx/context-api": "^0.2.1",
-        "effection": ">=4.1.0-alpha.9 <5.0.0",
-        "zod": "^3.24.0 || ^4.0.0"
-    },
-    "peerDependenciesMeta": {
-        "vite": {
-            "optional": true
-        }
-    },
     "dependencies": {
         "@standard-schema/spec": "catalog:",
+        "@sweatpants/a2a": "workspace:*",
         "@sweatpants/core": "workspace:*",
         "@sweatpants/durable-streams": "workspace:*",
         "@sweatpants/elicit-context": "workspace:*",
@@ -141,7 +137,9 @@
         "@types/react": "catalog:",
         "clsx": "^2.1.1",
         "effection": "catalog:",
+        "fast-glob": "^3.3.2",
         "katex": "^0.16.27",
+        "magic-string": "catalog:",
         "marked": "^17.0.1",
         "mermaid": "^11.12.2",
         "react": "catalog:",
@@ -151,16 +149,19 @@
         "typescript": "catalog:",
         "vite": "catalog:",
         "vitest": "catalog:",
-        "zod": "catalog:",
-        "fast-glob": "^3.3.2",
-        "magic-string": "catalog:"
+        "zod": "catalog:"
     },
-    "keywords": [
-        "vite",
-        "tanstack",
-        "framework",
-        "tools",
-        "codegen"
-    ],
-    "license": "MIT"
+    "peerDependencies": {
+        "@effectionx/context-api": "^0.2.1",
+        "effection": ">=4.1.0-alpha.9 <5.0.0",
+        "zod": "^3.24.0 || ^4.0.0"
+    },
+    "peerDependenciesMeta": {
+        "vite": {
+            "optional": true
+        }
+    },
+    "engines": {
+        "node": ">=22.19.0"
+    }
 }

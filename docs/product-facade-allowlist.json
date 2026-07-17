@@ -38,6 +38,7 @@
       "@sweatpants/model-provider-pi-ai",
       "@sweatpants/vite-plugin"
     ],
-    "changelog": "docs/product-changelog.md"
+    "changelog": "docs/product-changelog.md",
+    "agentAuthoring": "docs/agent-authoring.md"
   }
 }

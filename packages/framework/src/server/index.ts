@@ -9,6 +9,46 @@ import {
 } from "effection";
 import type { FetchHandler, ScopedFetchHandler } from "../handler/streaming.ts";
 
+export {
+  AgentFacadeError,
+  defineAgent,
+  remoteExecutor,
+  serveAgent,
+  standardA2A,
+  sweatpantsPeer,
+  type AgentFacadeErrorCode,
+  type AgentProfileKind,
+  type AgentProjectionBase,
+  type AgentServingProfile,
+  type PeerEffectRoutePolicy,
+  type PublicAgentDeployment,
+  type RemoteExecutorProfile,
+  type RemoteExecutorServedAgent,
+  type ServedAgent,
+  type StandardA2AHostPort,
+  type StandardA2AProfile,
+  type StandardA2AServedAgent,
+  type SweatpantsPeerProfile,
+  type SweatpantsPeerServedAgent,
+} from "./agent-profiles.ts";
+export {
+  assertRemoteReferenceUsable,
+  connectPeerAgent,
+  connectRemoteExecutor,
+  connectStandardAgent,
+  createDurableRemoteReference,
+  requirePeerAgentHandle,
+  requireRemoteExecutorHandle,
+  requireStandardAgentHandle,
+  type DurableRemoteReferenceV1,
+  type DynamicRemoteExecutorHandle,
+  type DynamicStandardAgentHandle,
+  type ExpectedRemoteProgramContract,
+  type PeerAgentHandle,
+  type RemoteExecutorHandle,
+  type StandardAgentHandle,
+} from "./agent-connections.ts";
+
 /** Scoped setup context cancelled when the application closes. */
 export interface ChatApplicationSetupContext {
   signal: AbortSignal;

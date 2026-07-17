@@ -12,6 +12,24 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-07-18 — durable chat and agent authoring facade
+
+### Summary
+
+Added protocol-neutral bounded chat turns, deterministic accepted context views, digest-covered `defineChatProgram`, portable `AgentManifestV1` plus runtime `AgentDefinition`, descriptive advertised capabilities, exact entrypoints, explicit serving profiles, and posture-specific connection APIs.
+
+Portable agent authoring is exported from `@sweatpants/core`, chat authoring from `@sweatpants/framework/chat`, and serving/connectivity from `@sweatpants/framework/server`. No `@sweatpants/agent` package was introduced. The `a2a-review` acceptance vertical now publishes its clean-context reviewer through the caller-authoritative facade while retaining caller-owned `model.sample`, `ask_parent`, credentials, and journal authority.
+
+### Migration note
+
+Choose `remoteExecutor()`, `standardA2A()`, or `sweatpantsPeer()` explicitly when calling `serveAgent()`. Serialize `definition.manifest`, never the runtime definition. Provider routes, handlers, credentials, journals, grants, and endpoints remain deployment bindings.
+
+Model-visible durable tools now carry a binding-owned result-classification ceiling through `modelTool()`. Arbitrary payload fields are not trusted as provenance, while the explicit `classifiedToolResult()` envelope may only raise the ceiling. Authored-chat v1 rejects reserved `resources.*` aliases and non-empty elicitation declarations.
+
+The `a2a-review` process certification now executes the generated `REFERENCE_REVIEWER_CHAT` itself: deterministic samples load pinned guidance through a reader child, invoke the durable `ask_parent` child, and return the terminal chat result. The legacy reviewer remains only as a low-level compatibility fixture and now lives in `src/legacy.ts`, separate from the Spec-3-facing facade composition.
+
+The generated acceptance artifact intentionally hashes the complete reviewer source set (`src/index.ts` and `src/legacy.ts`). `REFERENCE_ASK_PARENT_TOOL` reuses that coarse application artifact digest as its implementation artifact input, so any reviewer source edit deliberately repins the child.
+
 ## 2026-07-17 — content-addressed resources and generated program identity
 
 ### Summary

@@ -1,14 +1,13 @@
 import { createServer } from "node:http";
 import { existsSync, writeFileSync } from "node:fs";
 import { WebSocketServer } from "ws";
-import { createDurableToolRegistry } from "@sweatpants/session-contract";
 import {
   A2A_EXTENSIONS_HEADER,
   bindA2AExecutorWebSocket,
   createA2AProgramExecutor,
   parseActivatedA2AExtensions,
 } from "@sweatpants/a2a";
-import { REFERENCE_REVIEWER_TOOL } from "../../index.ts";
+import { REFERENCE_REVIEWER_REMOTE } from "../../index.ts";
 
 const port = Number(process.env["A2A_CERT_PORT"]);
 const crashMarker = process.env["A2A_EXECUTOR_CRASH_MARKER"];
@@ -17,7 +16,7 @@ if (!Number.isSafeInteger(port) || port <= 0) throw new Error("A2A_CERT_PORT is 
 const executor = createA2AProgramExecutor({
   executorId: `cert-executor-${process.pid}`,
   computeGeneration: `generation-${process.pid}`,
-  registry: createDurableToolRegistry([REFERENCE_REVIEWER_TOOL]),
+  registry: REFERENCE_REVIEWER_REMOTE.registry,
   observe(event) {
     if (event.event === "step" && crashMarker && !existsSync(crashMarker)) {
       writeFileSync(crashMarker, "killed-after-step\n");

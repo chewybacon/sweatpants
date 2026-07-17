@@ -1,25 +1,42 @@
 import type { Operation } from "effection";
 import {
-  FOREIGN_MODEL_SAMPLE_EFFECT,
-  canonicalSnapshot,
+  advertiseCapability,
+  defineAgent,
+  defineGuidance,
+  defineResourcePackage,
+  textResource,
+} from "@sweatpants/core";
+import {
+  CHAT_MODEL_SAMPLE_EFFECT,
+  acceptChatTurn,
+  defineChatProgram,
+  modelReadable,
+  modelTool,
+  type ChatMessageV1,
+  type ChatTurnInputV1,
+} from "@sweatpants/framework/chat";
+import { remoteExecutor, serveAgent } from "@sweatpants/framework/server";
+import {
+  PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createDurableEffectRegistration,
-  createPinnedDurableProgram,
+  createGeneratedPinnedDurableProgram,
   createPortableSchemaDescriptor,
   defineDurableEffect,
+  generateProgramArtifactIdentity,
   sha256,
   type DurableEffectContext,
   type DurableEffectDisposition,
   type DurableEffectRegistration,
-  type DurableProgramContext,
   type DurableSchemaRegistryEntry,
   type Json,
-  type ProgramResume,
-  type ProgramStepProposal,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
+import { defineLegacyReviewer, type ReviewInput } from "./legacy.ts";
 import { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
 
 export { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
+export { CHAT_MODEL_SAMPLE_EFFECT };
 
 export type AskParentInput = { question: string; rationale?: string };
 export type AskParentOutput =
@@ -28,53 +45,37 @@ export type AskParentOutput =
   | { status: "declined"; reason?: string };
 export type AskParentCancellationPartial = { reason?: string };
 export type ConsultationContextRef = { contextId: string; digest: string };
-export type ReviewInput = { design: string; rubric: string; instructions: string };
-export type ReviewOutput = { review: Json };
+export type { ReviewInput, ReviewOutput } from "./legacy.ts";
 
 const askInputSchema = standardSchema((value) => {
-  if (!record(value) || !onlyKeys(value, ["question"], ["rationale"]))
+  if (!record(value) || !onlyKeys(value, ["question"], ["rationale"])) {
     return "invalid ask_parent input";
+  }
   if (
     typeof value["question"] !== "string" ||
     value["question"].length < 1 ||
     value["question"].length > 8_192
-  )
+  ) {
     return "invalid question";
+  }
   if (
     value["rationale"] !== undefined &&
     (typeof value["rationale"] !== "string" || value["rationale"].length > 8_192)
-  )
+  ) {
     return "invalid rationale";
+  }
   return undefined;
 });
 const askOutputSchema = standardSchema((value) => validateAskOutput(value));
 const askPartialSchema = standardSchema((value) => {
-  if (!record(value) || !onlyKeys(value, [], ["reason"])) return "invalid cancellation partial";
-  if (value["reason"] !== undefined && typeof value["reason"] !== "string")
+  if (!record(value) || !onlyKeys(value, [], ["reason"])) {
+    return "invalid cancellation partial";
+  }
+  if (value["reason"] !== undefined && typeof value["reason"] !== "string") {
     return "invalid cancellation reason";
-  return undefined;
-});
-const reviewInputSchema = standardSchema((value) => {
-  if (!record(value) || !onlyKeys(value, ["design", "rubric", "instructions"], []))
-    return "invalid review input";
-  if (
-    [value["design"], value["rubric"], value["instructions"]].some(
-      (field) => typeof field !== "string" || field.length === 0,
-    )
-  )
-    return "review input fields must be nonempty strings";
-  return undefined;
-});
-const reviewOutputSchema = standardSchema((value) => {
-  if (!record(value) || !onlyKeys(value, ["review"], [])) return "invalid review output";
-  try {
-    canonicalSnapshot(value["review"]);
-  } catch {
-    return "review must be canonical JSON";
   }
   return undefined;
 });
-
 const ASK_INPUT_DESCRIPTOR = descriptor("reference-review/ask-parent-input", "effect_input", {
   type: "object",
   properties: { question: { type: "string" }, rationale: { type: "string" } },
@@ -110,23 +111,16 @@ const ASK_PARTIAL_DESCRIPTOR = descriptor(
     additionalProperties: false,
   },
 );
-const REVIEW_INPUT_DESCRIPTOR = descriptor("reference-review/reviewer-input", "program_input", {
-  type: "object",
-  properties: {
-    design: { type: "string" },
-    rubric: { type: "string" },
-    instructions: { type: "string" },
-  },
-  required: ["design", "rubric", "instructions"],
-  additionalProperties: false,
-});
-const REVIEW_OUTPUT_DESCRIPTOR = descriptor("reference-review/reviewer-output", "program_output", {
-  type: "object",
-  properties: { review: {} },
-  required: ["review"],
-  additionalProperties: false,
-});
-
+const ASK_PROGRAM_INPUT_DESCRIPTOR = descriptor(
+  "reference-review/ask-parent-program-input",
+  "program_input",
+  ASK_INPUT_DESCRIPTOR.inputProjection,
+);
+const ASK_PROGRAM_OUTPUT_DESCRIPTOR = descriptor(
+  "reference-review/ask-parent-program-output",
+  "program_output",
+  ASK_OUTPUT_DESCRIPTOR.outputProjection,
+);
 /** Application-owned consultation contract; this name and shape are not A2A protocol data. */
 export const ASK_PARENT_EFFECT = defineDurableEffect<
   AskParentInput,
@@ -179,8 +173,9 @@ export function createAskParentRegistration(options: {
   store: ConsultationStore;
   provider: ConsultationAnswerProvider;
 }): DurableEffectRegistration {
-  if (!Number.isSafeInteger(options.policy.questionBudget) || options.policy.questionBudget < 0)
+  if (!Number.isSafeInteger(options.policy.questionBudget) || options.policy.questionBudget < 0) {
     throw new Error("questionBudget must be a nonnegative integer");
+  }
   return createDurableEffectRegistration(
     ASK_PARENT_EFFECT,
     { mode: "idempotent", mechanism: "pull_id_key" },
@@ -189,7 +184,9 @@ export function createAskParentRegistration(options: {
       effect: DurableEffectContext,
     ): Operation<DurableEffectDisposition<AskParentOutput, AskParentCancellationPartial>> {
       const recorded = yield* options.store.outcome(effect.pullId);
-      if (recorded) return { status: "ok", value: recorded };
+      if (recorded) {
+        return { status: "ok", value: recorded };
+      }
       if (!options.policy.allowQuestion(input)) {
         return {
           status: "ok",
@@ -205,7 +202,9 @@ export function createAskParentRegistration(options: {
       );
       if (claim === "duplicate") {
         const duplicate = yield* options.store.outcome(effect.pullId);
-        if (duplicate) return { status: "ok", value: duplicate };
+        if (duplicate) {
+          return { status: "ok", value: duplicate };
+        }
       }
       if (claim === "exhausted") {
         return {
@@ -244,96 +243,151 @@ export function createAskParentRegistration(options: {
       } else {
         outcome = { status: "unknown", reason: "pinned consultation context is unavailable" };
       }
-      if (validateAskOutput(outcome))
+      if (validateAskOutput(outcome)) {
         throw new Error("consultation provider returned an invalid outcome");
+      }
       return { status: "ok", value: yield* options.store.commit(effect.pullId, outcome) };
     },
     { input: askInputSchema, output: askOutputSchema },
   );
 }
 
-/**
- * Clean-context reviewer. Its first model request receives only explicit design,
- * rubric, and instructions. Parent information appears only after ask_parent's
- * recorded effect outcome.
- */
-export const REFERENCE_REVIEWER_TOOL = createPinnedDurableProgram(
-  {
-    programId: "reference.clean-context-reviewer",
-    version: "1.0.0",
-    digest: REFERENCE_REVIEWER_ARTIFACT_DIGEST,
-    inputSchema: REVIEW_INPUT_DESCRIPTOR,
-    outputSchema: REVIEW_OUTPUT_DESCRIPTOR,
-    elicits: {},
-    effects: {
-      [FOREIGN_MODEL_SAMPLE_EFFECT.name]: FOREIGN_MODEL_SAMPLE_EFFECT,
-      [ASK_PARENT_EFFECT.name]: ASK_PARENT_EFFECT,
-    },
-    capabilities: { durableEmissions: true, structuredChildren: false, replay: "strict" },
-  },
-  function* (input: ReviewInput, context) {
-    return yield* reviewerGenerator(input, context);
-  },
-);
-
-function* reviewerGenerator(
-  input: ReviewInput,
-  context: DurableProgramContext,
-): Generator<ProgramStepProposal, ReviewOutput, ProgramResume> {
-  const questionSample = yield* context.effect(
-    FOREIGN_MODEL_SAMPLE_EFFECT,
-    {
-      messages: [
-        { role: "system", content: input.instructions },
-        { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
-      ],
-      task: "Return one narrow factual question for the design author as {question, rationale?}.",
-    },
-    { audience: "caller:model" },
-  );
-  const question = extractQuestion(questionSample);
-  const answer = yield* context.effect(ASK_PARENT_EFFECT, question, {
-    audience: "caller:reference-review",
-  });
-  const review = yield* context.effect(
-    FOREIGN_MODEL_SAMPLE_EFFECT,
-    {
-      messages: [
-        { role: "system", content: input.instructions },
-        { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
-        { role: "assistant", content: `Question: ${question.question}` },
-        { role: "tool", name: "ask_parent", content: canonicalSnapshot(answer).canonical },
-      ],
-      task: "Return an independent review. Use only the supplied design and narrow recorded answer.",
-    },
-    { audience: "caller:model" },
-  );
-  return { review };
-}
-
-export const REFERENCE_REVIEW_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze(
-  [
+export const REFERENCE_ASK_PARENT_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] =
+  Object.freeze([
+    { descriptor: ASK_PROGRAM_INPUT_DESCRIPTOR, schema: askInputSchema },
+    { descriptor: ASK_PROGRAM_OUTPUT_DESCRIPTOR, schema: askOutputSchema },
     { descriptor: ASK_INPUT_DESCRIPTOR, schema: askInputSchema },
     { descriptor: ASK_OUTPUT_DESCRIPTOR, schema: askOutputSchema },
     { descriptor: ASK_PARTIAL_DESCRIPTOR, schema: askPartialSchema },
-    { descriptor: REVIEW_INPUT_DESCRIPTOR, schema: reviewInputSchema },
-    { descriptor: REVIEW_OUTPUT_DESCRIPTOR, schema: reviewOutputSchema },
-  ],
+  ]);
+
+const askParentProgramManifest = {
+  programId: "reference.review.ask-parent-tool",
+  version: "1.0.0",
+  inputSchema: ASK_PROGRAM_INPUT_DESCRIPTOR,
+  outputSchema: ASK_PROGRAM_OUTPUT_DESCRIPTOR,
+  elicits: {},
+  effects: { [ASK_PARENT_EFFECT.name]: ASK_PARENT_EFFECT },
+  capabilities: { durableEmissions: false, structuredChildren: false, replay: "strict" as const },
+};
+const askParentProgramIdentity = generateProgramArtifactIdentity({
+  format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  generatorVersion: PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  manifest: askParentProgramManifest,
+  // Intentionally coarse for this acceptance app: one digest covers the
+  // complete reviewer source set, so unrelated reviewer edits repin this child.
+  implementationArtifactDigest: REFERENCE_REVIEWER_ARTIFACT_DIGEST,
+  resourcePackageDigests: [],
+});
+export const REFERENCE_ASK_PARENT_TOOL = createGeneratedPinnedDurableProgram(
+  askParentProgramIdentity,
+  function* (input: AskParentInput, context) {
+    return yield* context.effect(ASK_PARENT_EFFECT, input, {
+      audience: "caller:reference-review",
+    });
+  },
 );
 
-function extractQuestion(value: Json): AskParentInput {
-  if (value && typeof value === "object" && !Array.isArray(value)) {
-    const question = value["question"];
-    const rationale = value["rationale"];
-    if (typeof question === "string" && question.length > 0) {
-      return {
-        question,
-        ...(typeof rationale === "string" ? { rationale } : {}),
-      };
-    }
-  }
-  return { question: "Which explicit design constraint most influenced this choice?" };
+const legacyReviewer = defineLegacyReviewer({
+  artifactDigest: REFERENCE_REVIEWER_ARTIFACT_DIGEST,
+  askParentEffect: ASK_PARENT_EFFECT,
+  askParentSchemas: REFERENCE_ASK_PARENT_SCHEMA_ENTRIES,
+});
+/** Low-level compatibility fixture; production acceptance executes REFERENCE_REVIEWER_CHAT. */
+export const REFERENCE_REVIEWER_TOOL = legacyReviewer.tool;
+export const REFERENCE_REVIEW_SCHEMA_ENTRIES = legacyReviewer.schemaEntries;
+
+/**
+ * Product-facade definition used by the caller-authoritative acceptance vertical.
+ * Guidance is pinned and advisory; certification executes this generated chat
+ * program and its exact ask_parent child with caller-owned effects.
+ */
+export const REFERENCE_REVIEWER_RESOURCES = defineResourcePackage({
+  id: "reference-reviewer-guidance",
+  version: "1.0.0",
+  files: {
+    "SKILL.md": textResource(
+      "Review only the supplied design and rubric. Ask one narrow factual question through ask_parent before finalizing the review.",
+    ),
+  },
+});
+export const REFERENCE_REVIEWER_GUIDANCE = defineGuidance({
+  id: "technical-review",
+  summary: "Use when reviewing technical designs for authority and recovery risks.",
+  package: REFERENCE_REVIEWER_RESOURCES,
+  entryPath: "SKILL.md",
+});
+export const REFERENCE_REVIEWER_CHAT = defineChatProgram({
+  identity: { name: "reference.reviewer.chat", version: "1.0.0" },
+  systemPrompt: {
+    text: "You are an independent technical design reviewer operating in a clean context.",
+    classification: "internal",
+  },
+  guidance: [REFERENCE_REVIEWER_GUIDANCE],
+  resources: {
+    reviewing: modelReadable(REFERENCE_REVIEWER_RESOURCES, { classification: "internal" }),
+  },
+  tools: {
+    ask_parent: modelTool(
+      {
+        program: REFERENCE_ASK_PARENT_TOOL,
+        schemas: REFERENCE_ASK_PARENT_SCHEMA_ENTRIES,
+        resources: [],
+      },
+      { resultClassification: "internal" },
+    ),
+  },
+  maxIterations: 12,
+});
+
+export function createReviewChatInput(
+  input: ReviewInput,
+  frontier = "reference-review/accepted-frontier",
+): ChatTurnInputV1 {
+  const message: ChatMessageV1 = {
+    id: "reference-review/current-design",
+    role: "user",
+    parts: [
+      {
+        value: input,
+        provenance: { classifications: ["internal"], sourceDigests: [] },
+      },
+    ],
+  };
+  return acceptChatTurn(REFERENCE_REVIEWER_CHAT.contextPolicy, message, { frontier });
 }
+
+export const REFERENCE_REVIEWER_AGENT = defineAgent({
+  identity: { name: "reference-reviewer", version: "1.0.0" },
+  description: "Reviews technical designs in an isolated caller-authoritative context.",
+  conversation: REFERENCE_REVIEWER_CHAT,
+  programs: { review: REFERENCE_REVIEWER_CHAT },
+  advertisedCapabilities: {
+    technicalReview: advertiseCapability({
+      id: "technicalReview",
+      name: "Technical design review",
+      description: "Reviews RFCs and architecture proposals.",
+      tags: ["architecture", "review"],
+      examples: ["Review this design for authority-boundary risks"],
+      inputModes: ["application/json", "text/plain"],
+      outputModes: ["application/json", "text/plain"],
+      authorization: "review-designs",
+    }),
+  },
+});
+/** Compatibility alias for callers that imported the staged chat-only definition. */
+export const REFERENCE_REVIEWER_CHAT_AGENT = REFERENCE_REVIEWER_AGENT;
+export const REFERENCE_REVIEWER_REMOTE = serveAgent(
+  REFERENCE_REVIEWER_AGENT,
+  remoteExecutor({
+    deployment: {
+      interfaceUrl: "https://127.0.0.1/reference-reviewer/a2a",
+      manifestEndpoint: "https://127.0.0.1/reference-reviewer/manifests",
+      driverEndpoint: "wss://127.0.0.1/reference-reviewer/driver",
+    },
+    bindings: { technicalReview: "review" },
+  }),
+);
 
 function standardSchema(validateValue: (value: unknown) => string | undefined): StandardSchemaV1 {
   return {
@@ -349,18 +403,25 @@ function standardSchema(validateValue: (value: unknown) => string | undefined): 
 }
 
 function validateAskOutput(value: unknown): string | undefined {
-  if (!record(value) || typeof value["status"] !== "string") return "invalid ask_parent output";
+  if (!record(value) || typeof value["status"] !== "string") {
+    return "invalid ask_parent output";
+  }
   if (value["status"] === "answered") {
-    if (!onlyKeys(value, ["status", "answer"], ["source"]) || typeof value["answer"] !== "string")
+    if (!onlyKeys(value, ["status", "answer"], ["source"]) || typeof value["answer"] !== "string") {
       return "invalid answered outcome";
-    if (value["source"] !== undefined && typeof value["source"] !== "string")
+    }
+    if (value["source"] !== undefined && typeof value["source"] !== "string") {
       return "invalid answer source";
+    }
     return;
   }
   if (value["status"] === "unknown" || value["status"] === "declined") {
-    if (!onlyKeys(value, ["status"], ["reason"])) return "invalid non-answer outcome";
-    if (value["reason"] !== undefined && typeof value["reason"] !== "string")
+    if (!onlyKeys(value, ["status"], ["reason"])) {
+      return "invalid non-answer outcome";
+    }
+    if (value["reason"] !== undefined && typeof value["reason"] !== "string") {
       return "invalid non-answer reason";
+    }
     return;
   }
   return "unknown ask_parent status";
