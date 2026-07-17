@@ -134,6 +134,12 @@ export function parseForeignA2AMessage(
   const extensions = bounded["extensions"];
   if (extensions !== undefined && (!Array.isArray(extensions) || !extensions.every(nonempty)))
     throw protocol("Invalid A2A message extensions");
+  const references = bounded["referenceTaskIds"];
+  if (
+    references !== undefined &&
+    (!Array.isArray(references) || references.length > 256 || !references.every(id))
+  )
+    throw protocol("Invalid A2A task references");
   return Object.freeze({
     messageId: bounded["messageId"],
     role,
@@ -142,6 +148,7 @@ export function parseForeignA2AMessage(
     ...(typeof bounded["contextId"] === "string" ? { contextId: bounded["contextId"] } : {}),
     ...(bounded["metadata"] !== undefined ? { metadata: bounded["metadata"] } : {}),
     ...(Array.isArray(extensions) ? { extensions: [...extensions] as string[] } : {}),
+    ...(Array.isArray(references) ? { referenceTaskIds: [...references] as string[] } : {}),
   });
 }
 

@@ -32,6 +32,19 @@ export {
   type SweatpantsPeerServedAgent,
 } from "./agent-profiles.ts";
 export {
+  StandardA2AHostError,
+  createStandardA2AHost,
+  type BoundStandardA2AHost,
+  type CreateStandardA2AHostOptions,
+  type StandardA2AAuthorizationAction,
+  type StandardA2AEvidence,
+  type StandardA2AHostBinding,
+  type StandardA2AHostErrorCode,
+  type StandardA2AHostLimits,
+  type StandardA2ARequestContext,
+  type StandardA2ARetentionPolicy,
+} from "./standard-a2a-host.ts";
+export {
   assertRemoteReferenceUsable,
   connectPeerAgent,
   connectRemoteExecutor,

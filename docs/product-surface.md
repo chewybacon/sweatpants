@@ -57,7 +57,8 @@ Three lanes classify every workspace package:
 `@sweatpants/framework` is **dual-natured**:
 
 - **Product entries** (import these):
-  - `@sweatpants/framework/server` — `createChatApplication`, `createChatHandler` / `createDurableChatHandler`, `serveAgent`, explicit profiles, and posture-specific connections
+  - `@sweatpants/framework/server` — `createChatApplication`, `createChatHandler` / `createDurableChatHandler`, `serveAgent`, `createStandardA2AHost`, explicit profiles, and posture-specific connections
+  - `@sweatpants/framework/server/testing` — real-transport agent harness utilities for tests/development only
   - `@sweatpants/framework/chat` — `defineChatProgram`, bounded protocol-neutral turn contracts, resource mount policy, `makePlugin`, plugin helpers, and chat types
   - `@sweatpants/framework/chat/browser-rendering` — plugin UI `RenderableProps` and rendering helpers
   - `@sweatpants/framework/chat/mcp-tools` — plugin registry helpers for MCP tool authoring
@@ -79,7 +80,8 @@ Three lanes classify every workspace package:
 | `makePlugin` | `@sweatpants/framework/chat` |
 | `defineAgent` / `advertiseCapability` | `@sweatpants/core` |
 | `defineChatProgram` / `latestContextWindow` | `@sweatpants/framework/chat` |
-| `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` | `@sweatpants/framework/server` |
+| `serveAgent` / `remoteExecutor` / `standardA2A` / `sweatpantsPeer` / `createStandardA2AHost` | `@sweatpants/framework/server` |
+| `startAgentHarness` | `@sweatpants/framework/server/testing` |
 
 Durable reconnect/resume behavior is documented via product session hooks (`useChat` / `useChatSession`) and the durable handler protocol (session/conversation id + offset/LSN).
 
@@ -189,6 +191,7 @@ Deviations from this baseline MUST be recorded here with date and reason (and re
 
 | Date | Change | Reason |
 |---|---|---|
+| 2026-07-19 | Added the journal-backed standard A2A host and testing-only real-transport harness | Standard clients can invoke callee-authoritative durable chat without a new product target |
 | 2026-07-18 | Added agent/chat authoring and explicit serving profiles to existing core/chat/server targets | Durable authoring without adding a fifth product target |
 | 2026-07-09 | Initial baseline classification | Phase 0 product surface program |
 

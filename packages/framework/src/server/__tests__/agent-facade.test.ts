@@ -24,6 +24,7 @@ import {
   connectRemoteExecutor,
   connectStandardAgent,
   createDurableRemoteReference,
+  createStandardA2AHost,
   remoteExecutor,
   requireRemoteExecutorHandle,
   serveAgent,
@@ -142,7 +143,7 @@ describe("agent serving facade", () => {
         deployment,
         handlers: [modelHandler],
         capabilityBindings: {},
-        host: { kind: "standard-a2a-task-host.v1", services: { send: true } },
+        host: createStandardA2AHost({ allowAnonymousDevelopment: true }),
       }),
     );
     expect(hosted.readiness).toBe(true);

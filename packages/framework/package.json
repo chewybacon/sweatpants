@@ -44,6 +44,20 @@
                 "default": "./dist/server.cjs"
             }
         },
+        "./server/testing": {
+            "development": {
+                "import": "./src/server/testing.ts",
+                "types": "./src/server/testing.ts"
+            },
+            "import": {
+                "types": "./dist/server/testing.d.ts",
+                "default": "./dist/server/testing.js"
+            },
+            "require": {
+                "types": "./dist/server/testing.d.ts",
+                "default": "./dist/server/testing.cjs"
+            }
+        },
         "./chat": {
             "development": {
                 "import": "./src/lib/chat/index.ts",
