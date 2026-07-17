@@ -1,0 +1,76 @@
+name: A2A Inspector interoperability
+
+on:
+  pull_request:
+    paths:
+      - "apps/yo-a2a/**"
+      - "apps/a2a-review/src/**"
+      - "interop/a2a-inspector/**"
+      - "packages/a2a/src/**"
+      - "packages/core/src/agent/**"
+      - "packages/core/src/resource/**"
+      - "packages/framework/src/lib/chat/authoring/**"
+      - "packages/framework/src/server/**"
+      - "scripts/verify-a2a-inspector-pin.ts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/a2a-inspector-interop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/yo-a2a/**"
+      - "apps/a2a-review/src/**"
+      - "interop/a2a-inspector/**"
+      - "packages/a2a/src/**"
+      - "packages/core/src/agent/**"
+      - "packages/core/src/resource/**"
+      - "packages/framework/src/lib/chat/authoring/**"
+      - "packages/framework/src/server/**"
+      - "scripts/verify-a2a-inspector-pin.ts"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/a2a-inspector-interop.yml"
+
+jobs:
+  inspector-playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.22"
+          enable-cache: true
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Fetch immutable Inspector source
+        shell: bash
+        run: |
+          INSPECTOR="$RUNNER_TEMP/a2a-inspector"
+          git init -q "$INSPECTOR"
+          git -C "$INSPECTOR" remote add origin https://github.com/a2aproject/a2a-inspector.git
+          git -C "$INSPECTOR" fetch --depth 1 origin 8098818f97c6b8554f1f83636508a9608842f5a0
+          git -C "$INSPECTOR" checkout -q --detach FETCH_HEAD
+          echo "A2A_INSPECTOR_DIR=$INSPECTOR" >> "$GITHUB_ENV"
+      - name: Verify Inspector and lock pins
+        run: pnpm verify:a2a-inspector-pin
+      - name: Run independent process-replacement certification
+        run: pnpm -C apps/yo-a2a test:process
+      - name: Install Chromium
+        run: pnpm -C apps/yo-a2a exec playwright install --with-deps chromium
+      - name: Run browser-to-Python-SDK-to-agent scenarios
+        run: pnpm -C apps/yo-a2a test
+      - name: Upload Playwright evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2a-inspector-playwright
+          path: |
+            apps/yo-a2a/test-results
+            apps/yo-a2a/playwright-report
+          if-no-files-found: ignore

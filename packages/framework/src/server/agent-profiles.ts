@@ -32,7 +32,12 @@ import {
   type AgentProgramBinding,
   type AdvertisedCapabilityV1,
 } from "@sweatpants/core";
-import type { BoundStandardA2AHost, StandardA2AHostPort } from "./standard-a2a-host.ts";
+import type { AgentCardSigner } from "./agent-card-signing.ts";
+import type {
+  BoundStandardA2AHost,
+  StandardA2AHistoryProjection,
+  StandardA2AHostPort,
+} from "./standard-a2a-host.ts";
 
 export type AgentProfileKind = "remote-executor" | "standard-a2a" | "sweatpants-peer";
 export type AgentFacadeErrorCode =
@@ -59,6 +64,8 @@ export interface PublicAgentDeployment {
   readonly insecureLoopbackDevelopment?: boolean;
   /** Conspicuous escape hatch for isolated test infrastructure; never inferred. */
   readonly unsafeAllowNonLoopbackHttp?: boolean;
+  /** Optional deployment-owned JWS signer; private key material never enters manifests. */
+  readonly cardSigner?: AgentCardSigner;
 }
 export interface RemoteExecutorProfile {
   readonly kind: "remote-executor";
@@ -74,6 +81,7 @@ export interface StandardA2AProfile {
   readonly deployment: PublicAgentDeployment;
   readonly handlers: readonly DurableEffectRegistration[];
   readonly capabilityBindings: Readonly<Record<string, string>>;
+  readonly historyProjection?: StandardA2AHistoryProjection;
   readonly host?: StandardA2AHostPort;
 }
 export interface PeerEffectRoutePolicy {
@@ -142,6 +150,7 @@ export function standardA2A(options: Omit<StandardA2AProfile, "kind">): Standard
     deployment: Object.freeze({ ...options.deployment }),
     handlers: Object.freeze([...options.handlers]),
     capabilityBindings: Object.freeze({ ...options.capabilityBindings }),
+    historyProjection: options.historyProjection ?? "accepted-context",
     ...(options.host ? { host: options.host } : {}),
   });
 }
@@ -269,6 +278,7 @@ function compileStandard(
         card,
         deployment: profile.deployment,
         handlers: profile.handlers,
+        historyProjection: profile.historyProjection ?? "accepted-context",
       })
     : profile.host;
   const readiness = Boolean(
@@ -402,7 +412,7 @@ function agentCard(
 ): Json {
   const manifest = definition.manifest;
   const skills = Object.values(manifest.advertisedCapabilities).map(capabilitySkill);
-  return canonicalSnapshot({
+  const unsigned = canonicalSnapshot({
     name: manifest.identity.name,
     description: manifest.description,
     version: manifest.identity.version,
@@ -431,6 +441,20 @@ function agentCard(
           security: deployment.securityRequirements,
         }
       : {}),
+  } as unknown as Json).value;
+  if (!deployment.cardSigner) {return unsigned;}
+  const signature = deployment.cardSigner.sign(unsigned);
+  if (
+    !signature.protected ||
+    !signature.signature ||
+    signature.protected.length > 16_384 ||
+    signature.signature.length > 16_384
+  ) {
+    fail("profile_incompatible", "Agent Card signer returned an invalid JWS signature");
+  }
+  return canonicalSnapshot({
+    ...(unsigned as Record<string, Json>),
+    signatures: [signature],
   } as unknown as Json).value;
 }
 function capabilitySkill(capability: AdvertisedCapabilityV1): Json {

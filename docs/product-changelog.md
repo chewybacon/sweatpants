@@ -16,11 +16,13 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ### Summary
 
-Added a production-bound `standardA2A()` host compiler with authenticated HTTP+JSON Agent Card discovery, task-generating message sends, task-scoped retrieval, exact-task cancellation, streaming snapshots, immutable terminal turns, explicit ordered `referenceTaskIds`, journal-derived projection, and bounded context acceptance. Added immutable digest-addressed content custody primitives to `@sweatpants/a2a` and a real-loopback `startAgentHarness()` under `@sweatpants/framework/server/testing`.
+Added a production-bound `standardA2A()` host compiler with authenticated HTTP+JSON Agent Card discovery, task-generating message sends, exact-task cancellation, pull-based Task/artifact/status streaming, immutable terminal turns, explicit ordered `referenceTaskIds`, journal-derived projection, and bounded context acceptance. Public history is configurable as `task-only` or immutable `accepted-context`, including in-task elicitation prompts and responses. Added immutable digest-addressed content custody primitives to `@sweatpants/a2a` and a real-loopback `startAgentHarness()` under `@sweatpants/framework/server/testing`.
+
+Added `apps/yo-a2a` as the real standard-agent vertical: a model-driven authored chat program loads guidance, invokes crank-native card/echo tools, parks on elicitation, resumes through task-directed A2A messages, and preserves conversation memory across immutable tasks. The pinned Inspector Playwright job drives this app through its Python SDK backend; the former standalone Inspector fixture app was removed.
 
 ### Migration note
 
-A standard profile is ready only when it is bound to a real host created by `createStandardA2AHost()` (or an equivalent bound host port). Production interfaces must use HTTPS. Loopback HTTP requires `insecureLoopbackDevelopment: true`; non-loopback HTTP requires the separate unsafe override. Authentication and authorization are deployment callbacks, and payload metadata never establishes principal or tenant identity.
+A standard profile is ready only when it is bound to a real host created by `createStandardA2AHost()` (or an equivalent bound host port). Production interfaces must use HTTPS. Loopback HTTP requires `insecureLoopbackDevelopment: true`; non-loopback HTTP requires the separate unsafe override. Authentication and authorization are deployment `Operation` callbacks, and payload metadata never establishes principal or tenant identity. `accepted-context` is the conversational default; use `task-only` for orchestration surfaces that should expose only one work item's exchange.
 
 ## 2026-07-18 — durable chat and agent authoring facade
 

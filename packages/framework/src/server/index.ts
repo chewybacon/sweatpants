@@ -32,17 +32,42 @@ export {
   type SweatpantsPeerServedAgent,
 } from "./agent-profiles.ts";
 export {
+  agentCardSigningProjection,
+  createAgentCardJwsSigner,
+  type AgentCardSignatureV1,
+  type AgentCardSigner,
+} from "./agent-card-signing.ts";
+export {
+  parseTraceContext,
+  projectTrustedHttpRequest,
+  type TrustedHttpProjection,
+  type TrustedProxyPolicy,
+} from "./enterprise-http.ts";
+export {
+  createStandardA2AMetrics,
+  type StandardA2AMetricsSnapshot,
+} from "./standard-a2a-metrics.ts";
+export {
   StandardA2AHostError,
+  StandardA2ATraceContext,
+  createInMemoryStandardA2ATaskDirectory,
   createStandardA2AHost,
   type BoundStandardA2AHost,
   type CreateStandardA2AHostOptions,
   type StandardA2AAuthorizationAction,
+  type StandardA2AContinuationBinding,
   type StandardA2AEvidence,
+  type StandardA2AExternalContentBinding,
+  type StandardA2AHistoryProjection,
   type StandardA2AHostBinding,
   type StandardA2AHostErrorCode,
   type StandardA2AHostLimits,
   type StandardA2ARequestContext,
   type StandardA2ARetentionPolicy,
+  type StandardA2AStreamEvent,
+  type StandardA2ATaskDirectory,
+  type StandardA2ATaskDirectoryEntry,
+  type StandardA2ATelemetryEvent,
 } from "./standard-a2a-host.ts";
 export {
   assertRemoteReferenceUsable,

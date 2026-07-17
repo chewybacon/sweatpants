@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { run, type Operation } from "effection";
+import {
+  call,
+  createContext,
+  createScope,
+  resource,
+  sleep,
+  type Operation,
+  type Scope,
+  type Stream,
+  type Subscription,
+} from "effection";
 import {
   CrankError,
   DurableEffectRegistryContext,
@@ -17,6 +27,7 @@ import {
   sha256,
   stableProgramAttachmentId,
   type DurableEffectRegistration,
+  type DurableOperationDescriptor,
   type DurableSemanticRecord,
   type DurableTool,
   type Json,
@@ -26,6 +37,8 @@ import {
 import {
   createInMemoryImmutableContentStore,
   parseForeignA2AMessage,
+  putVerifiedContent,
+  type A2AContentReference,
   type ForeignA2AArtifact,
   type ForeignA2AMessage,
   type ForeignA2ANormalizedState,
@@ -51,6 +64,10 @@ import {
 } from "../handler/durable/program-driver-journal.ts";
 import type { PublicAgentDeployment } from "./agent-profiles.ts";
 
+export const StandardA2ATraceContext = createContext<
+  { readonly traceparent: string; readonly tracestate?: string } | undefined
+>("standard-a2a:trace-context", undefined);
+
 export type StandardA2AHostErrorCode =
   | "standard_profile_incompatible"
   | "authentication_failed"
@@ -62,6 +79,7 @@ export type StandardA2AHostErrorCode =
   | "message_idempotency_conflict"
   | "task_reference_invalid"
   | "task_input_too_large"
+  | "request_invalid"
   | "content_digest_conflict"
   | "content_unavailable"
   | "content_expired"
@@ -85,6 +103,7 @@ export interface StandardA2ARequestContext {
   readonly tenantId?: string;
   readonly clientId?: string;
   readonly traceparent?: string;
+  readonly tracestate?: string;
 }
 
 export type StandardA2AAuthorizationAction =
@@ -110,11 +129,14 @@ export interface StandardA2AHostLimits {
   readonly maxRequestBytes: number;
 }
 
+export type StandardA2AHistoryProjection = "task-only" | "accepted-context";
+
 export interface StandardA2AHostBinding {
   readonly definition: AgentDefinition;
   readonly card: Json;
   readonly deployment: PublicAgentDeployment;
   readonly handlers: readonly DurableEffectRegistration[];
+  readonly historyProjection: StandardA2AHistoryProjection;
 }
 
 export interface StandardA2AHostPort {
@@ -124,6 +146,25 @@ export interface StandardA2AHostPort {
   check?(): Promise<void>;
 }
 
+export type StandardA2AStreamEvent =
+  | { readonly kind: "task"; readonly task: ForeignA2ATask }
+  | {
+      readonly kind: "artifact-update";
+      readonly taskId: string;
+      readonly contextId: string;
+      readonly artifact: ForeignA2AArtifact;
+      readonly append: boolean;
+      readonly lastChunk: boolean;
+    }
+  | {
+      readonly kind: "status-update";
+      readonly taskId: string;
+      readonly contextId: string;
+      readonly state: ForeignA2ANormalizedState;
+      readonly message?: ForeignA2AMessage;
+      readonly final: boolean;
+    };
+
 export interface BoundStandardA2AHost extends StandardA2AHostPort {
   readonly readiness: boolean;
   readonly card: Json;
@@ -131,14 +172,22 @@ export interface BoundStandardA2AHost extends StandardA2AHostPort {
   sendMessage(
     message: ForeignA2AMessage,
     context: StandardA2ARequestContext,
-  ): Promise<ForeignA2ATask>;
+  ): Operation<ForeignA2ATask>;
+  streamMessage(
+    message: ForeignA2AMessage,
+    context: StandardA2ARequestContext,
+  ): Stream<StandardA2AStreamEvent, void>;
   getTask(
     taskId: string,
     context: StandardA2ARequestContext,
     historyLength?: number,
-  ): Promise<ForeignA2ATask>;
-  cancelTask(taskId: string, context: StandardA2ARequestContext): Promise<ForeignA2ATask>;
-  evidence(contextId: string, context: StandardA2ARequestContext): Promise<StandardA2AEvidence>;
+  ): Operation<ForeignA2ATask>;
+  cancelTask(taskId: string, context: StandardA2ARequestContext): Operation<ForeignA2ATask>;
+  subscribeTask(
+    taskId: string,
+    context: StandardA2ARequestContext,
+  ): Stream<StandardA2AStreamEvent, void>;
+  evidence(contextId: string, context: StandardA2ARequestContext): Operation<StandardA2AEvidence>;
 }
 
 export interface StandardA2AEvidence {
@@ -154,10 +203,123 @@ export interface StandardA2AEvidence {
     readonly type: DurableSemanticRecord["payload"]["type"];
     readonly taskId?: string;
   }[];
+  readonly contentReferences: readonly StandardA2AExternalContentBinding[];
+  readonly operations: readonly {
+    readonly taskId: string;
+    readonly pullId: string;
+    readonly kind: "effect" | "invoke" | "elicit" | "wait" | "all" | "race" | "spawn" | "join";
+    readonly target: string;
+    readonly state: "pending" | "resolved";
+  }[];
+}
+
+export interface StandardA2ATaskDirectoryEntry {
+  readonly taskId: string;
+  readonly contextId: string;
+  readonly ownerScope: string;
+}
+export interface StandardA2AExternalContentBinding {
+  readonly taskId: string;
+  readonly artifactId: string;
+  readonly partIndex: number;
+  readonly reference: A2AContentReference;
+}
+export interface StandardA2AContinuationBinding {
+  readonly taskId: string;
+  readonly messageId: string;
+  readonly messageDigest: string;
+  readonly pullId: string;
+}
+
+/** Routing index only; every lookup is verified against the context journal. */
+export interface StandardA2ATaskDirectory {
+  bind(entry: StandardA2ATaskDirectoryEntry): Operation<"bound" | "duplicate">;
+  lookup(taskId: string): Operation<StandardA2ATaskDirectoryEntry | undefined>;
+  bindContinuation(binding: StandardA2AContinuationBinding): Operation<"bound" | "duplicate">;
+  lookupContinuation(
+    taskId: string,
+    messageId: string,
+  ): Operation<StandardA2AContinuationBinding | undefined>;
+  continuationsForTask(taskId: string): Operation<readonly StandardA2AContinuationBinding[]>;
+  bindContent(binding: StandardA2AExternalContentBinding): Operation<"bound" | "duplicate">;
+  contentForTask(taskId: string): Operation<readonly StandardA2AExternalContentBinding[]>;
+  lookupContent(digest: string): Operation<StandardA2AExternalContentBinding | undefined>;
+  check?(): Operation<void>;
+}
+
+export function createInMemoryStandardA2ATaskDirectory(): StandardA2ATaskDirectory {
+  const entries = new Map<string, StandardA2ATaskDirectoryEntry>();
+  const continuations = new Map<string, StandardA2AContinuationBinding>();
+  const content = new Map<string, StandardA2AExternalContentBinding>();
+  return {
+    *bind(entry) {
+      const existing = entries.get(entry.taskId);
+      if (existing) {
+        if (canonicalJson(existing) !== canonicalJson(entry)) {
+          throw hostError("standard_profile_incompatible", "Task directory identity conflict");
+        }
+        return "duplicate";
+      }
+      entries.set(entry.taskId, Object.freeze({ ...entry }));
+      return "bound";
+    },
+    *lookup(taskId) {
+      const entry = entries.get(taskId);
+      return entry ? Object.freeze({ ...entry }) : undefined;
+    },
+    *bindContinuation(binding) {
+      const key = `${binding.taskId}\0${binding.messageId}`;
+      const existing = continuations.get(key);
+      if (existing) {
+        if (canonicalJson(existing) !== canonicalJson(binding)) {
+          throw hostError("message_idempotency_conflict", "Continuation identity was reused");
+        }
+        return "duplicate";
+      }
+      continuations.set(key, Object.freeze({ ...binding }));
+      return "bound";
+    },
+    *lookupContinuation(taskId, messageId) {
+      const binding = continuations.get(`${taskId}\0${messageId}`);
+      return binding ? Object.freeze({ ...binding }) : undefined;
+    },
+    *continuationsForTask(taskId) {
+      return [...continuations.values()].filter((binding) => binding.taskId === taskId);
+    },
+    *bindContent(binding) {
+      const key = `${binding.taskId}\0${binding.artifactId}\0${binding.partIndex}`;
+      const existing = content.get(key);
+      if (existing) {
+        if (canonicalJson(existing) !== canonicalJson(binding)) {
+          throw hostError("content_digest_conflict", "Content association identity conflict");
+        }
+        return "duplicate";
+      }
+      content.set(key, Object.freeze(structuredClone(binding)));
+      return "bound";
+    },
+    *contentForTask(taskId) {
+      return [...content.values()].filter((binding) => binding.taskId === taskId);
+    },
+    *lookupContent(digest) {
+      return [...content.values()].find((binding) => binding.reference.digest === digest);
+    },
+    *check() {},
+  };
+}
+
+export interface StandardA2ATelemetryEvent {
+  readonly type: "request" | "state" | "error";
+  readonly action?: StandardA2AAuthorizationAction;
+  readonly taskId?: string;
+  readonly contextId?: string;
+  readonly state?: ForeignA2ANormalizedState;
+  readonly code?: string;
 }
 
 export interface CreateStandardA2AHostOptions {
   readonly journalStore?: ProgramDriverJournalStore;
+  readonly taskDirectory?: StandardA2ATaskDirectory;
   readonly contentStore?: ImmutableContentStore;
   readonly retention?: Partial<StandardA2ARetentionPolicy>;
   readonly limits?: Partial<StandardA2AHostLimits>;
@@ -166,25 +328,18 @@ export interface CreateStandardA2AHostOptions {
   readonly generateTaskNonce?: () => string;
   readonly allowClientContextIds?: boolean;
   readonly allowAnonymousDevelopment?: boolean;
-  readonly authenticate?: (
-    request: Request,
-  ) => Promise<StandardA2ARequestContext | undefined> | StandardA2ARequestContext | undefined;
+  readonly authenticate?: (request: Request) => Operation<StandardA2ARequestContext | undefined>;
   readonly authorize?: (input: {
     readonly context: StandardA2ARequestContext;
     readonly action: StandardA2AAuthorizationAction;
     readonly contextId?: string;
     readonly taskId?: string;
-  }) => Promise<boolean> | boolean;
+  }) => Operation<boolean>;
   readonly challenge?: string;
   readonly inputClassification?: "public" | "internal" | "confidential" | "restricted";
-  readonly onTelemetry?: (event: {
-    readonly type: "request" | "state" | "error";
-    readonly action?: StandardA2AAuthorizationAction;
-    readonly taskId?: string;
-    readonly contextId?: string;
-    readonly state?: ForeignA2ANormalizedState;
-    readonly code?: string;
-  }) => void;
+  /** Artifact parts at or above this byte size are served from immutable custody. */
+  readonly externalContentThresholdBytes?: number;
+  readonly onTelemetry?: (event: StandardA2ATelemetryEvent) => void;
 }
 
 const DEFAULT_RETENTION: StandardA2ARetentionPolicy = Object.freeze({
@@ -213,6 +368,7 @@ export function createStandardA2AHost(
   const retention = normalizeRetention(options.retention);
   const limits = normalizeLimits(options.limits);
   const contentStore = options.contentStore ?? createInMemoryImmutableContentStore(options.now);
+  const taskDirectory = options.taskDirectory ?? createInMemoryStandardA2ATaskDirectory();
   return Object.freeze({
     kind: "standard-a2a-task-host.v1" as const,
     services: Object.freeze({
@@ -233,21 +389,25 @@ export function createStandardA2AHost(
         retention,
         limits,
         contentStore,
+        taskDirectory,
       });
     },
     async check() {
-      await contentStore.check?.();
+      await Promise.all([contentStore.check?.(), checkTaskDirectory(taskDirectory)]);
     },
   });
 }
 
+type BoundHostOptions = CreateStandardA2AHostOptions & {
+  retention: StandardA2ARetentionPolicy;
+  limits: StandardA2AHostLimits;
+  contentStore: ImmutableContentStore;
+  taskDirectory: StandardA2ATaskDirectory;
+};
+
 function bindStandardHost(
   binding: StandardA2AHostBinding,
-  options: CreateStandardA2AHostOptions & {
-    retention: StandardA2ARetentionPolicy;
-    limits: StandardA2AHostLimits;
-    contentStore: ImmutableContentStore;
-  },
+  options: BoundHostOptions,
 ): BoundStandardA2AHost {
   const conversation = requireConversation(binding.definition);
   const authored = conversation.program as ChatProgramDefinition;
@@ -276,7 +436,28 @@ function bindStandardHost(
       schemaRegistry: programDriverSchemaRegistry(binding.definition.bindings.schemas),
     });
   const locks = new Map<string, Promise<void>>();
-  const continuationIds = new Map<string, string>();
+
+  function* hostedProjection(
+    records: readonly DurableSemanticRecord[],
+    taskId: string,
+    contextId: string,
+    historyLength: number,
+  ): Operation<ForeignA2ATask> {
+    const bindings = yield* custodyTaskArtifacts(records, taskId, options);
+    const continuations = yield* options.taskDirectory.continuationsForTask(taskId);
+    return externalizeTask(
+      projectTask(
+        records,
+        taskId,
+        contextId,
+        historyLength,
+        binding.historyProjection,
+        continuations,
+      ),
+      bindings,
+      binding.deployment.interfaceUrl,
+    );
+  }
 
   const host: BoundStandardA2AHost = {
     kind: "standard-a2a-task-host.v1",
@@ -298,34 +479,49 @@ function bindStandardHost(
       return host;
     },
     async check() {
-      await options.contentStore.check?.();
+      await Promise.all([
+        options.contentStore.check?.(),
+        checkTaskDirectory(options.taskDirectory),
+      ]);
     },
-    async sendMessage(messageValue, requestContext) {
+    *sendMessage(messageValue, requestContext): Operation<ForeignA2ATask> {
       const message = parseForeignA2AMessage(messageValue);
       if (message.role !== "user") {
         throw hostError("standard_profile_incompatible", "Only user messages may be sent");
       }
-      const targetContext = message.taskId ? taskContextId(message.taskId) : message.contextId;
-      await authorize(options, requestContext, message.taskId ? "task:continue" : "message:send", {
+      const targetEntry = message.taskId
+        ? yield* lookupAuthorizedTask(options.taskDirectory, message.taskId, requestContext)
+        : undefined;
+      const targetContext = targetEntry?.contextId ?? message.contextId;
+      yield* authorize(options, requestContext, message.taskId ? "task:continue" : "message:send", {
         ...(targetContext ? { contextId: targetContext } : {}),
         ...(message.taskId ? { taskId: message.taskId } : {}),
       });
-      if (message.taskId) {
-        return withLock(locks, scopedSession(requestContext, targetContext!), async () =>
-          continueTask(message, requestContext),
+      if (message.taskId && targetEntry) {
+        return yield* withLock(
+          locks,
+          scopedSession(requestContext, targetEntry.contextId),
+          function* () {
+            return yield* continueTask(message, requestContext, targetEntry.contextId);
+          },
         );
       }
-      const contextId = await resolveContextId(message.contextId, options);
-      return withLock(locks, scopedSession(requestContext, contextId), async () => {
-        const journal = await openJournal(journalStore, requestContext, contextId);
-        const before = await readJournal(journal, scopedSession(requestContext, contextId));
+      const contextId = resolveContextId(message.contextId, options);
+      return yield* withLock(locks, scopedSession(requestContext, contextId), function* () {
+        const journal = yield* openJournal(journalStore, requestContext, contextId);
+        const before = yield* readJournal(journal, scopedSession(requestContext, contextId));
         if (message.contextId && before.length === 0 && !options.allowClientContextIds) {
           throw hostError("context_not_found", "Client context identities are not accepted");
         }
         const existing = findRootByMessageId(before, message.messageId);
         if (existing) {
           assertIdempotentMessage(existing, message, contextId);
-          return projectTask(before, existing.taskId, options.limits.maxHistoryLength);
+          return yield* hostedProjection(
+            before,
+            existing.taskId,
+            contextId,
+            options.limits.maxHistoryLength,
+          );
         }
         const references = stableReferences(message.referenceTaskIds ?? [], options.limits);
         const roots = rootOpenings(before);
@@ -345,18 +541,30 @@ function bindStandardHost(
           referencedTasks,
           messages: contextMessages(before),
         });
-        const taskId = `${contextId}.${safeNonce(options.generateTaskNonce?.() ?? randomUUID())}`;
-        await openAndRun({
-          journal,
-          sessionId: scopedSession(requestContext, contextId),
+        const taskId = `task_${safeNonce(options.generateTaskNonce?.() ?? randomUUID())}`;
+        yield* options.taskDirectory.bind({
           taskId,
-          input,
-          conversation,
-          drivers,
-          effects,
+          contextId,
+          ownerScope: requestOwnerScope(requestContext),
         });
-        const after = await readJournal(journal, scopedSession(requestContext, contextId));
-        const task = projectTask(after, taskId, options.limits.maxHistoryLength);
+        yield* withRequestTrace(requestContext, function* () {
+          return yield* openAndRun({
+            journal,
+            sessionId: scopedSession(requestContext, contextId),
+            taskId,
+            input,
+            conversation,
+            drivers,
+            effects,
+          });
+        });
+        const after = yield* readJournal(journal, scopedSession(requestContext, contextId));
+        const task = yield* hostedProjection(
+          after,
+          taskId,
+          contextId,
+          options.limits.maxHistoryLength,
+        );
         options.onTelemetry?.({
           type: "state",
           contextId,
@@ -366,20 +574,41 @@ function bindStandardHost(
         return task;
       });
     },
-    async getTask(taskId, requestContext, historyLength) {
-      const contextId = taskContextId(taskId);
-      await authorize(options, requestContext, "task:read", { contextId, taskId });
-      const journal = await openJournal(journalStore, requestContext, contextId);
-      const records = await readJournal(journal, scopedSession(requestContext, contextId));
-      return projectTask(records, taskId, normalizeHistoryLength(historyLength, options.limits));
+    streamMessage(message, requestContext) {
+      return taskUpdateStream(() => host.sendMessage(message, requestContext));
     },
-    async cancelTask(taskId, requestContext) {
-      const contextId = taskContextId(taskId);
-      await authorize(options, requestContext, "task:cancel", { contextId, taskId });
+    *getTask(taskId, requestContext, historyLength): Operation<ForeignA2ATask> {
+      const { contextId } = yield* lookupAuthorizedTask(
+        options.taskDirectory,
+        taskId,
+        requestContext,
+      );
+      yield* authorize(options, requestContext, "task:read", { contextId, taskId });
+      const journal = yield* openJournal(journalStore, requestContext, contextId);
+      const records = yield* readJournal(journal, scopedSession(requestContext, contextId));
+      return yield* hostedProjection(
+        records,
+        taskId,
+        contextId,
+        normalizeHistoryLength(historyLength, options.limits),
+      );
+    },
+    *cancelTask(taskId, requestContext): Operation<ForeignA2ATask> {
+      const { contextId } = yield* lookupAuthorizedTask(
+        options.taskDirectory,
+        taskId,
+        requestContext,
+      );
+      yield* authorize(options, requestContext, "task:cancel", { contextId, taskId });
       const sessionId = scopedSession(requestContext, contextId);
-      const journal = await openJournal(journalStore, requestContext, contextId);
-      const before = await readJournal(journal, sessionId);
-      const current = projectTask(before, taskId, options.limits.maxHistoryLength);
+      const journal = yield* openJournal(journalStore, requestContext, contextId);
+      const before = yield* readJournal(journal, sessionId);
+      const current = yield* hostedProjection(
+        before,
+        taskId,
+        contextId,
+        options.limits.maxHistoryLength,
+      );
       if (TERMINAL.has(current.status.state)) {
         if (current.status.state === "canceled") {
           return current;
@@ -389,47 +618,83 @@ function bindStandardHost(
       // Cancellation deliberately bypasses the per-context new-turn lock: the
       // journal authority records the exact-task frontier first and signals a
       // live local effect without waiting for the request that owns it.
-      await run(function* () {
-        yield* journal.requestCancellation(sessionId, taskId, "A2A cancellation requested");
-      });
+      yield* journal.requestCancellation(sessionId, taskId, "A2A cancellation requested");
       for (let attempt = 0; attempt < 100; attempt += 1) {
-        const after = await readJournal(journal, sessionId);
-        const projected = projectTask(after, taskId, options.limits.maxHistoryLength);
+        const after = yield* readJournal(journal, sessionId);
+        const projected = yield* hostedProjection(
+          after,
+          taskId,
+          contextId,
+          options.limits.maxHistoryLength,
+        );
         if (TERMINAL.has(projected.status.state)) {
           return projected;
         }
-        await delay(5);
+        yield* sleep(5);
       }
       // Parked work has no live executor to observe the cancellation. Drive its
       // exact accepted input through recovery after the live grace interval.
-      await runExisting({
-        journal,
-        sessionId,
-        taskId,
-        input: taskInput(before, taskId),
-        conversation,
-        drivers,
-        effects,
+      yield* withRequestTrace(requestContext, function* () {
+        return yield* runExisting({
+          journal,
+          sessionId,
+          taskId,
+          input: taskInput(before, taskId),
+          conversation,
+          drivers,
+          effects,
+        });
       });
-      return projectTask(
-        await readJournal(journal, sessionId),
+      return yield* hostedProjection(
+        yield* readJournal(journal, sessionId),
         taskId,
+        contextId,
         options.limits.maxHistoryLength,
       );
     },
-    async evidence(contextId, requestContext) {
-      await authorize(options, requestContext, "task:read", { contextId });
+    subscribeTask(taskId, requestContext) {
+      return taskUpdateStream(() => host.getTask(taskId, requestContext));
+    },
+    *evidence(contextId, requestContext): Operation<StandardA2AEvidence> {
+      yield* authorize(options, requestContext, "task:read", { contextId });
       const sessionId = scopedSession(requestContext, contextId);
-      const journal = await openJournal(journalStore, requestContext, contextId);
-      const records = await readJournal(journal, sessionId);
+      const journal = yield* openJournal(journalStore, requestContext, contextId);
+      const records = yield* readJournal(journal, sessionId);
       const tasks = rootOpenings(records).map((opened) => {
-        const projected = projectTask(records, opened.taskId, 0);
+        const projected = projectTask(records, opened.taskId, contextId, 0, "task-only", []);
         const input = opened.input as unknown as ChatTurnInputV1;
         return Object.freeze({
           taskId: opened.taskId,
           state: projected.status.state,
           referenceTaskIds: Object.freeze([...(input.context?.referenceTaskIds ?? [])]),
         });
+      });
+      const contentReferences: StandardA2AExternalContentBinding[] = [];
+      for (const opened of rootOpenings(records)) {
+        contentReferences.push(...(yield* options.taskDirectory.contentForTask(opened.taskId)));
+      }
+      const operations = records.flatMap((record) => {
+        const payload = record.payload;
+        if (payload.type !== "PullRequested") {
+          return [];
+        }
+        const descriptor = payload.descriptor;
+        const target = descriptorTarget(descriptor);
+        const resolved = records.some(
+          (candidate) =>
+            candidate.payload.type === "PullResolved" &&
+            candidate.payload.taskId === payload.taskId &&
+            candidate.payload.pullId === payload.pullId,
+        );
+        return [
+          Object.freeze({
+            taskId: payload.taskId,
+            pullId: payload.pullId,
+            kind: descriptor.kind,
+            target,
+            state: resolved ? ("resolved" as const) : ("pending" as const),
+          }),
+        ];
       });
       return Object.freeze({
         contextId,
@@ -445,60 +710,113 @@ function bindStandardHost(
             });
           }),
         ),
+        contentReferences: Object.freeze(contentReferences),
+        operations: Object.freeze(operations),
       });
     },
     async handle(request, suppliedContext) {
+      const [requestScope, destroyRequestScope] = createScope();
+      let requestScopeTransferred = false;
       try {
         const url = new URL(request.url);
         const cardPath = url.pathname.endsWith("/.well-known/agent-card.json");
-        const context = suppliedContext ?? (await authenticate(options, request));
+        const context =
+          suppliedContext ??
+          (await requestScope.run(function* () {
+            return yield* authenticate(options, request);
+          }));
         if (cardPath) {
-          await authorize(options, context, "card:read", {});
+          await requestScope.run(function* () {
+            yield* authorize(options, context, "card:read", {});
+          });
           return jsonResponse(binding.card);
         }
         const relative = relativeInterfacePath(binding.deployment.interfaceUrl, url);
         const sdk03 = isSdk03Path(binding.deployment.interfaceUrl, url);
         options.onTelemetry?.({ type: "request" });
+        const contentMatch = /^content\/([0-9a-f]{64})$/.exec(relative);
+        if (request.method === "GET" && contentMatch) {
+          const digest = contentMatch[1]!;
+          const contentBinding = await requestScope.run(function* () {
+            return yield* options.taskDirectory.lookupContent(digest);
+          });
+          if (!contentBinding) {
+            throw hostError("content_unavailable", "Content is unavailable");
+          }
+          await requestScope.run(function* () {
+            const task = yield* lookupAuthorizedTask(
+              options.taskDirectory,
+              contentBinding.taskId,
+              context,
+            );
+            yield* authorize(options, context, "content:read", {
+              contextId: task.contextId,
+              taskId: task.taskId,
+            });
+          });
+          const content = await options.contentStore.get(digest);
+          if (content.status === "content_expired") {
+            throw hostError("content_expired", "Content retention has expired");
+          }
+          if (content.status !== "available") {
+            throw hostError("content_unavailable", "Content is unavailable");
+          }
+          return new Response(Buffer.from(content.object.bytes), {
+            status: 200,
+            headers: {
+              "content-type": contentBinding.reference.mediaType,
+              "content-length": String(contentBinding.reference.size),
+              etag: `"${digest}"`,
+            },
+          });
+        }
         if (request.method === "POST" && relative === "message:send") {
           const body = await boundedBody(request, options.limits.maxRequestBytes);
           const bodyValue = bodyRecord(body);
           const message = bodyValue["message"] ?? bodyValue["request"];
-          const task = await host.sendMessage(parseIncomingMessage(message, sdk03), context);
+          const task = await requestScope.run(function* () {
+            return yield* host.sendMessage(parseIncomingMessage(message, sdk03), context);
+          });
           return jsonResponse({ task: wireTask(task, sdk03) });
         }
         if (request.method === "POST" && relative === "message:stream") {
           const body = await boundedBody(request, options.limits.maxRequestBytes);
           const bodyValue = bodyRecord(body);
-          const task = await host.sendMessage(
-            parseIncomingMessage(bodyValue["message"] ?? bodyValue["request"], sdk03),
-            context,
-          );
-          return sseResponse(task, sdk03);
+          const subscription = await requestScope.run(function* () {
+            return yield* host.streamMessage(
+              parseIncomingMessage(bodyValue["message"] ?? bodyValue["request"], sdk03),
+              context,
+            );
+          });
+          requestScopeTransferred = true;
+          return pullSseResponse(requestScope, destroyRequestScope, subscription, sdk03);
         }
         const getMatch = /^tasks\/([^/:]+)$/.exec(relative);
         if (request.method === "GET" && getMatch) {
           const history = url.searchParams.has("historyLength")
             ? Number(url.searchParams.get("historyLength"))
             : undefined;
-          return jsonResponse(
-            wireTask(await host.getTask(decodeURIComponent(getMatch[1]!), context, history), sdk03),
-          );
+          const task = await requestScope.run(function* () {
+            return yield* host.getTask(decodeURIComponent(getMatch[1]!), context, history);
+          });
+          return jsonResponse(wireTask(task, sdk03));
         }
         const cancelMatch = /^tasks\/([^/:]+):cancel$/.exec(relative);
         if (request.method === "POST" && cancelMatch) {
-          return jsonResponse(
-            wireTask(await host.cancelTask(decodeURIComponent(cancelMatch[1]!), context), sdk03),
-          );
+          const task = await requestScope.run(function* () {
+            return yield* host.cancelTask(decodeURIComponent(cancelMatch[1]!), context);
+          });
+          return jsonResponse(wireTask(task, sdk03));
         }
         const subscribeMatch = /^tasks\/([^/:]+):subscribe$/.exec(relative);
         if (request.method === "GET" && subscribeMatch) {
-          await authorize(options, context, "task:subscribe", {
-            taskId: decodeURIComponent(subscribeMatch[1]!),
+          const taskId = decodeURIComponent(subscribeMatch[1]!);
+          const subscription = await requestScope.run(function* () {
+            yield* authorize(options, context, "task:subscribe", { taskId });
+            return yield* host.subscribeTask(taskId, context);
           });
-          return sseResponse(
-            await host.getTask(decodeURIComponent(subscribeMatch[1]!), context),
-            sdk03,
-          );
+          requestScopeTransferred = true;
+          return pullSseResponse(requestScope, destroyRequestScope, subscription, sdk03);
         }
         return safeErrorResponse(
           new StandardA2AHostError("task_not_found", "A2A operation is unavailable", 404),
@@ -508,31 +826,63 @@ function bindStandardHost(
         const safe = asHostError(error);
         options.onTelemetry?.({ type: "error", code: safe.code });
         return safeErrorResponse(safe, options.challenge);
+      } finally {
+        if (!requestScopeTransferred) {
+          await destroyRequestScope();
+        }
       }
     },
   };
 
-  async function continueTask(
+  function* continueTask(
     message: ForeignA2AMessage,
     requestContext: StandardA2ARequestContext,
-  ): Promise<ForeignA2ATask> {
+    contextId: string,
+  ): Operation<ForeignA2ATask> {
     const taskId = message.taskId!;
-    const contextId = taskContextId(taskId);
     if (message.contextId && message.contextId !== contextId) {
       throw hostError("task_context_mismatch", "Task and context identities differ");
     }
     const sessionId = scopedSession(requestContext, contextId);
-    const journal = await openJournal(journalStore, requestContext, contextId);
-    const before = await readJournal(journal, sessionId);
-    const current = projectTask(before, taskId, options.limits.maxHistoryLength);
-    const continuationKey = `${sessionId}\0${taskId}\0${message.messageId}`;
+    const journal = yield* openJournal(journalStore, requestContext, contextId);
+    const before = yield* readJournal(journal, sessionId);
+    const current = yield* hostedProjection(
+      before,
+      taskId,
+      contextId,
+      options.limits.maxHistoryLength,
+    );
     const digest = canonicalSnapshot(message as unknown as Json).sha;
-    const prior = continuationIds.get(continuationKey);
-    if (prior) {
-      if (prior !== digest) {
-        throw hostError("message_idempotency_conflict", "Message identity was reused");
+    const prior = yield* options.taskDirectory.lookupContinuation(taskId, message.messageId);
+    if (prior && prior.messageDigest !== digest) {
+      throw hostError("message_idempotency_conflict", "Message identity was reused");
+    }
+    const priorResolved =
+      prior !== undefined &&
+      before.some(
+        (record) =>
+          record.payload.type === "PullResolved" && record.payload.pullId === prior.pullId,
+      );
+    if (priorResolved) {
+      if (!TERMINAL.has(current.status.state)) {
+        yield* withRequestTrace(requestContext, function* () {
+          return yield* runExisting({
+            journal,
+            sessionId,
+            taskId,
+            input: taskInput(before, taskId),
+            conversation,
+            drivers,
+            effects,
+          });
+        });
       }
-      return current;
+      return yield* hostedProjection(
+        yield* readJournal(journal, sessionId),
+        taskId,
+        contextId,
+        options.limits.maxHistoryLength,
+      );
     }
     if (TERMINAL.has(current.status.state)) {
       throw hostError("task_not_modifiable", "Terminal task cannot be resumed");
@@ -541,32 +891,41 @@ function bindStandardHost(
     if (!pending) {
       throw hostError("task_not_modifiable", "Task has no pending client input");
     }
+    if (prior && prior.pullId !== pending.pullId) {
+      throw hostError("message_idempotency_conflict", "Continuation pull identity changed");
+    }
+    yield* options.taskDirectory.bindContinuation({
+      taskId,
+      messageId: message.messageId,
+      messageDigest: digest,
+      pullId: pending.pullId,
+    });
     const outcomeValue = continuationValue(message);
-    await run(function* () {
-      const result = yield* journal.resolvePending({
-        sessionId,
-        taskId: pending.taskId,
-        pullId: pending.pullId,
-        audience: pending.audience,
-        outcome: { status: "ok", value: outcomeValue },
-      });
-      if (result.status === "rejected") {
-        throw new CrankError(result.code);
-      }
-    });
-    continuationIds.set(continuationKey, digest);
-    await runExisting({
-      journal,
+    const resolution = yield* journal.resolvePending({
       sessionId,
-      taskId,
-      input: taskInput(before, taskId),
-      conversation,
-      drivers,
-      effects,
+      taskId: pending.taskId,
+      pullId: pending.pullId,
+      audience: pending.audience,
+      outcome: { status: "ok", value: { action: "accept", content: outcomeValue } },
     });
-    return projectTask(
-      await readJournal(journal, sessionId),
+    if (resolution.status === "rejected") {
+      throw new CrankError(resolution.code);
+    }
+    yield* withRequestTrace(requestContext, function* () {
+      return yield* runExisting({
+        journal,
+        sessionId,
+        taskId,
+        input: taskInput(before, taskId),
+        conversation,
+        drivers,
+        effects,
+      });
+    });
+    return yield* hostedProjection(
+      yield* readJournal(journal, sessionId),
       taskId,
+      contextId,
       options.limits.maxHistoryLength,
     );
   }
@@ -574,23 +933,77 @@ function bindStandardHost(
   return Object.freeze(host);
 }
 
-async function openAndRun(input: RuntimeInput): Promise<ProgramRunResult> {
-  const attach = attachment(input);
-  await run(function* () {
-    yield* input.journal.openTask({
-      sessionId: input.sessionId,
-      // ProgramRuntime's current root turn convention is "turn-0" for IDs
-      // without an internal child-path slash. A2A task identity remains opaque.
-      turnId: "turn-0",
-      taskId: input.taskId,
-      manifest: input.conversation.program.manifest,
-      input: input.input as unknown as Json,
-      executionEpoch: 1,
-      attachmentId: stableProgramAttachmentId(attach),
-      audience: "program-runtime",
+function taskUpdateStream(
+  resolveTask: () => Operation<ForeignA2ATask>,
+): Stream<StandardA2AStreamEvent, void> {
+  return resource(function* (provide) {
+    let events: StandardA2AStreamEvent[] | undefined;
+    let cursor = 0;
+    yield* provide({
+      *next(): Operation<IteratorResult<StandardA2AStreamEvent, void>> {
+        if (!events) {
+          const terminal = yield* resolveTask();
+          events = [
+            {
+              kind: "task",
+              task: {
+                ...terminal,
+                status: { state: "submitted" },
+                artifacts: [],
+                history: terminal.history?.slice(0, 1) ?? [],
+              },
+            },
+            ...terminal.artifacts.map(
+              (artifact): StandardA2AStreamEvent => ({
+                kind: "artifact-update",
+                taskId: terminal.id,
+                contextId: terminal.contextId!,
+                artifact,
+                append: false,
+                lastChunk: true,
+              }),
+            ),
+            {
+              kind: "status-update",
+              taskId: terminal.id,
+              contextId: terminal.contextId!,
+              state: terminal.status.state,
+              ...(terminal.status.message ? { message: terminal.status.message } : {}),
+              // `final` closes this streaming response, not necessarily the task.
+              // Interrupted tasks end the stream at a durable client-action boundary.
+              final:
+                TERMINAL.has(terminal.status.state) ||
+                terminal.status.state === "input_required" ||
+                terminal.status.state === "auth_required",
+            },
+          ];
+        }
+        const event = events[cursor];
+        if (!event) {
+          return { done: true, value: undefined };
+        }
+        cursor += 1;
+        return { done: false, value: event };
+      },
     });
   });
-  return runExisting(input);
+}
+
+function* openAndRun(input: RuntimeInput): Operation<ProgramRunResult> {
+  const attach = attachment(input);
+  yield* input.journal.openTask({
+    sessionId: input.sessionId,
+    // ProgramRuntime's current root turn convention is "turn-0" for IDs
+    // without an internal child-path slash. A2A task identity remains opaque.
+    turnId: "turn-0",
+    taskId: input.taskId,
+    manifest: input.conversation.program.manifest,
+    input: input.input as unknown as Json,
+    executionEpoch: 1,
+    attachmentId: stableProgramAttachmentId(attach),
+    audience: "program-runtime",
+  });
+  return yield* runExisting(input);
 }
 
 interface RuntimeInput {
@@ -603,23 +1016,21 @@ interface RuntimeInput {
   readonly effects: ReturnType<typeof createDurableEffectRegistry>;
 }
 
-async function runExisting(input: RuntimeInput): Promise<ProgramRunResult> {
-  return run(function* () {
-    return yield* ProgramDriverRegistryContext.with(input.drivers, function* () {
-      return yield* JournalAuthorityContext.with(input.journal.authority, function* () {
-        return yield* DurableEffectRegistryContext.with(input.effects, function* () {
-          return yield* ProgramRouteResolverContext.with(
-            function* (_program, parentRoute): Operation<Json> {
-              return parentRoute;
-            },
-            function* () {
-              return yield* ProgramRuntime.operations.run({
-                attach: attachment(input),
-                executeHostEffects: true,
-              });
-            },
-          );
-        });
+function* runExisting(input: RuntimeInput): Operation<ProgramRunResult> {
+  return yield* ProgramDriverRegistryContext.with(input.drivers, function* () {
+    return yield* JournalAuthorityContext.with(input.journal.authority, function* () {
+      return yield* DurableEffectRegistryContext.with(input.effects, function* () {
+        return yield* ProgramRouteResolverContext.with(
+          function* (_program, parentRoute): Operation<Json> {
+            return parentRoute;
+          },
+          function* () {
+            return yield* ProgramRuntime.operations.run({
+              attach: attachment(input),
+              executeHostEffects: true,
+            });
+          },
+        );
       });
     });
   });
@@ -721,13 +1132,13 @@ function canonicalIncomingMessageDigest(message: ForeignA2AMessage): string {
 
 function chatToWireMessage(
   message: ChatMessageV1,
-  taskId: string,
+  taskId: string | undefined,
   contextId: string,
 ): ForeignA2AMessage {
   return {
     messageId: message.id,
     role: message.role === "assistant" ? "agent" : "user",
-    taskId,
+    ...(taskId ? { taskId } : {}),
     contextId,
     parts: message.parts.map((part) =>
       typeof part.value === "string" ? { text: part.value } : { data: part.value },
@@ -828,24 +1239,109 @@ function completedResult(
   }
 }
 
+function* custodyTaskArtifacts(
+  records: readonly DurableSemanticRecord[],
+  taskId: string,
+  options: BoundHostOptions,
+): Operation<readonly StandardA2AExternalContentBinding[]> {
+  const threshold = options.externalContentThresholdBytes ?? 64 * 1024;
+  if (!Number.isSafeInteger(threshold) || threshold <= 0) {
+    throw hostError("standard_profile_incompatible", "External content threshold is invalid");
+  }
+  const existing = yield* options.taskDirectory.contentForTask(taskId);
+  const known = new Set(existing.map((binding) => `${binding.artifactId}\0${binding.partIndex}`));
+  const result = completedResult(taskClose(records, taskId));
+  if (!result) {
+    return existing;
+  }
+  for (const artifact of result.artifacts) {
+    for (let partIndex = 0; partIndex < artifact.parts.length; partIndex += 1) {
+      const key = `${artifact.id}\0${partIndex}`;
+      if (known.has(key)) {
+        continue;
+      }
+      const value = artifact.parts[partIndex]!.value;
+      const mediaType =
+        typeof value === "string" ? "text/plain; charset=utf-8" : "application/json";
+      const bytes = new TextEncoder().encode(
+        typeof value === "string" ? value : canonicalJson(value),
+      );
+      if (bytes.byteLength < threshold) {
+        continue;
+      }
+      const reference = yield* call(() =>
+        putVerifiedContent(options.contentStore, {
+          bytes,
+          mediaType,
+          association: { kind: "artifact", id: artifact.id },
+          retentionClass: "task",
+          retainUntil: (options.now ?? Date.now)() + options.retention.contentSeconds * 1_000,
+        }),
+      );
+      yield* options.taskDirectory.bindContent({
+        taskId,
+        artifactId: artifact.id,
+        partIndex,
+        reference,
+      });
+      known.add(key);
+    }
+  }
+  return yield* options.taskDirectory.contentForTask(taskId);
+}
+
+function externalizeTask(
+  task: ForeignA2ATask,
+  bindings: readonly StandardA2AExternalContentBinding[],
+  interfaceUrl: string,
+): ForeignA2ATask {
+  if (bindings.length === 0) {
+    return task;
+  }
+  const byPart = new Map(
+    bindings.map((binding) => [`${binding.artifactId}\0${binding.partIndex}`, binding]),
+  );
+  return {
+    ...task,
+    artifacts: task.artifacts.map((artifact) => ({
+      ...artifact,
+      parts: artifact.parts.map((part, partIndex) => {
+        const binding = byPart.get(`${artifact.artifactId}\0${partIndex}`);
+        if (!binding) {
+          return part;
+        }
+        return {
+          url: `${interfaceUrl.replace(/\/$/, "")}/content/${binding.reference.digest}`,
+          mediaType: binding.reference.mediaType,
+          metadata: {
+            digest: binding.reference.digest,
+            size: binding.reference.size,
+            retentionClass: binding.reference.retentionClass,
+          },
+        };
+      }),
+    })),
+  };
+}
+
 function projectTask(
   records: readonly DurableSemanticRecord[],
   taskId: string,
+  contextId: string,
   historyLength: number,
+  historyProjection: StandardA2AHistoryProjection,
+  continuations: readonly StandardA2AContinuationBinding[],
 ): ForeignA2ATask {
   const opened = rootOpenings(records).find((candidate) => candidate.taskId === taskId);
   if (!opened) {
     throw hostError("task_not_found", "Task is unavailable");
   }
-  const contextId = taskContextId(taskId);
   const input = opened.input as unknown as ChatTurnInputV1;
   const close = taskClose(records, taskId);
   const result = completedResult(close);
   const state = projectedState(records, taskId, close);
   const userMessage = chatToWireMessage(input.message, taskId, contextId);
   const agentMessage = result ? chatToWireMessage(result.message, taskId, contextId) : undefined;
-  const allHistory = [userMessage, ...(agentMessage ? [agentMessage] : [])];
-  const history = historyLength === 0 ? [] : allHistory.slice(-historyLength);
   const artifacts: ForeignA2AArtifact[] = (result?.artifacts ?? []).map((artifact) => ({
     artifactId: artifact.id,
     ...(artifact.name ? { name: artifact.name } : {}),
@@ -855,6 +1351,7 @@ function projectTask(
     ),
   }));
   const failure = terminalError(close);
+  const pending = pendingElicitation(records, taskId);
   const statusMessage =
     agentMessage ??
     (failure
@@ -865,7 +1362,44 @@ function projectTask(
           contextId,
           parts: [{ text: failure.message }],
         }
-      : undefined);
+      : pending
+        ? {
+            messageId: `input-required:${pending.pullId}`,
+            role: "agent" as const,
+            taskId,
+            contextId,
+            parts: [
+              {
+                text: pending.message,
+                metadata: {
+                  elicitationKey: pending.key,
+                  responseSchema: pending.responseSchema,
+                } as Json,
+              },
+            ],
+          }
+        : undefined);
+  const taskHistory = taskInteractionHistory(
+    records,
+    taskId,
+    contextId,
+    userMessage,
+    agentMessage,
+    continuations,
+  );
+  const acceptedContextHistory =
+    historyProjection === "accepted-context"
+      ? [
+          ...input.context.messages.map((message) =>
+            chatToWireMessage(message, undefined, contextId),
+          ),
+          ...input.context.referencedTasks.map((referenced) =>
+            chatToWireMessage(referenced.summary, undefined, contextId),
+          ),
+        ]
+      : [];
+  const historyCandidates = deduplicateWireMessages([...acceptedContextHistory, ...taskHistory]);
+  const history = historyLength === 0 ? [] : historyCandidates.slice(-historyLength);
   return Object.freeze({
     id: taskId,
     contextId,
@@ -876,6 +1410,79 @@ function projectTask(
       referenceTaskIds: Object.freeze([...(input.context?.referenceTaskIds ?? [])]),
       frontier: input.context?.frontier ?? "0",
     }) as unknown as Json,
+  });
+}
+
+function taskInteractionHistory(
+  records: readonly DurableSemanticRecord[],
+  rootTaskId: string,
+  contextId: string,
+  userMessage: ForeignA2AMessage,
+  agentMessage: ForeignA2AMessage | undefined,
+  continuations: readonly StandardA2AContinuationBinding[],
+): ForeignA2AMessage[] {
+  const taskIds = descendantTaskIds(records, rootTaskId);
+  const continuationByPull = new Map(continuations.map((binding) => [binding.pullId, binding]));
+  const history: ForeignA2AMessage[] = [userMessage];
+  for (const record of records) {
+    const payload = record.payload;
+    if (
+      payload.type !== "PullRequested" ||
+      payload.descriptor.kind !== "elicit" ||
+      !taskIds.has(payload.taskId)
+    ) {
+      continue;
+    }
+    history.push({
+      messageId: `input-required:${payload.pullId}`,
+      role: "agent",
+      taskId: rootTaskId,
+      contextId,
+      parts: [
+        {
+          text: payload.descriptor.message,
+          metadata: {
+            elicitationKey: payload.descriptor.key,
+            responseSchema: payload.descriptor.response.inputProjection,
+          },
+        },
+      ],
+    });
+    const resolved = records.find(
+      (candidate) =>
+        candidate.payload.type === "PullResolved" &&
+        candidate.payload.taskId === payload.taskId &&
+        candidate.payload.pullId === payload.pullId,
+    )?.payload;
+    const continuation = continuationByPull.get(payload.pullId);
+    if (resolved?.type === "PullResolved" && resolved.outcome.status === "ok" && continuation) {
+      const value = resolved.outcome.value;
+      const content =
+        value && typeof value === "object" && !Array.isArray(value) && value["action"] === "accept"
+          ? (value["content"] ?? null)
+          : value;
+      history.push({
+        messageId: continuation.messageId,
+        role: "user",
+        taskId: rootTaskId,
+        contextId,
+        parts: [typeof content === "string" ? { text: content } : { data: content }],
+      });
+    }
+  }
+  if (agentMessage) {
+    history.push(agentMessage);
+  }
+  return history;
+}
+function deduplicateWireMessages(messages: readonly ForeignA2AMessage[]): ForeignA2AMessage[] {
+  const seen = new Set<string>();
+  return messages.filter((message) => {
+    if (seen.has(message.messageId)) {
+      return false;
+    }
+    seen.add(message.messageId);
+    return true;
   });
 }
 
@@ -976,7 +1583,10 @@ function pendingElicitation(records: readonly DurableSemanticRecord[], rootTaskI
       return {
         taskId: payload.taskId,
         pullId: payload.pullId,
-        audience: "program-runtime",
+        audience: `user:${payload.descriptor.key}`,
+        key: payload.descriptor.key,
+        message: payload.descriptor.message,
+        responseSchema: payload.descriptor.response.inputProjection,
       };
     }
   }
@@ -999,10 +1609,10 @@ function continuationValue(message: ForeignA2AMessage): Json {
   return part.url!;
 }
 
-async function resolveContextId(
+function resolveContextId(
   supplied: string | undefined,
   options: CreateStandardA2AHostOptions,
-): Promise<string> {
+): string {
   if (supplied) {
     if (!validPublicId(supplied)) {
       throw hostError("context_not_found", "Context identity is invalid");
@@ -1010,20 +1620,47 @@ async function resolveContextId(
     return supplied;
   }
   const generated = options.generateContextId?.() ?? `ctx_${randomUUID().replaceAll("-", "")}`;
-  if (!validPublicId(generated) || generated.includes(".")) {
+  if (!validPublicId(generated)) {
     throw hostError("standard_profile_incompatible", "Generated context identity is invalid");
   }
   return generated;
 }
-function taskContextId(taskId: string): string {
+function* lookupAuthorizedTask(
+  directory: StandardA2ATaskDirectory,
+  taskId: string,
+  context: StandardA2ARequestContext,
+): Operation<StandardA2ATaskDirectoryEntry> {
   if (!validPublicId(taskId)) {
     throw hostError("task_not_found", "Task is unavailable");
   }
-  const split = taskId.lastIndexOf(".");
-  if (split <= 0) {
+  const entry = yield* directory.lookup(taskId);
+  if (!entry || entry.ownerScope !== requestOwnerScope(context)) {
     throw hostError("task_not_found", "Task is unavailable");
   }
-  return taskId.slice(0, split);
+  return entry;
+}
+function* withRequestTrace<T>(
+  context: StandardA2ARequestContext,
+  operation: () => Operation<T>,
+): Operation<T> {
+  if (!context.traceparent) {
+    return yield* operation();
+  }
+  return yield* StandardA2ATraceContext.with(
+    {
+      traceparent: context.traceparent,
+      ...(context.tracestate ? { tracestate: context.tracestate } : {}),
+    },
+    operation,
+  );
+}
+function requestOwnerScope(context: StandardA2ARequestContext): string {
+  return sha256(
+    canonicalJson({
+      principalId: context.principalId,
+      tenantId: context.tenantId ?? null,
+    }),
+  );
 }
 function safeNonce(value: string): string {
   const safe = value.replaceAll("-", "");
@@ -1049,19 +1686,18 @@ function scopedSession(context: StandardA2ARequestContext, contextId: string): s
     }),
   ).slice(0, 48)}`;
 }
-async function openJournal(
+function* openJournal(
   store: ProgramDriverJournalStore,
   context: StandardA2ARequestContext,
   contextId: string,
-): Promise<ProgramDriverJournal> {
-  return run(function* () {
-    return yield* store.open(scopedSession(context, contextId));
-  });
+): Operation<ProgramDriverJournal> {
+  return yield* store.open(scopedSession(context, contextId));
 }
-async function readJournal(journal: ProgramDriverJournal, sessionId: string) {
-  return run(function* () {
-    return yield* journal.readJournal(sessionId);
-  });
+function* readJournal(
+  journal: ProgramDriverJournal,
+  sessionId: string,
+): Operation<DurableSemanticRecord[]> {
+  return yield* journal.readJournal(sessionId);
 }
 
 function stableReferences(values: readonly string[], limits: StandardA2AHostLimits): string[] {
@@ -1091,11 +1727,11 @@ function normalizeHistoryLength(value: number | undefined, limits: StandardA2AHo
   return value;
 }
 
-async function authenticate(
+function* authenticate(
   options: CreateStandardA2AHostOptions,
   request: Request,
-): Promise<StandardA2ARequestContext> {
-  const authenticated = await options.authenticate?.(request);
+): Operation<StandardA2ARequestContext> {
+  const authenticated = options.authenticate ? yield* options.authenticate(request) : undefined;
   if (authenticated) {
     return validateRequestContext(authenticated);
   }
@@ -1108,18 +1744,29 @@ function validateRequestContext(value: StandardA2ARequestContext): StandardA2ARe
   if (!value.principalId || value.principalId.length > 512) {
     throw hostError("authentication_failed", "Authentication is invalid");
   }
-  return Object.freeze({ ...value });
+  const traceparent = value.traceparent?.toLowerCase();
+  const validTrace =
+    traceparent && /^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(traceparent)
+      ? traceparent
+      : undefined;
+  return Object.freeze({
+    principalId: value.principalId,
+    ...(value.tenantId ? { tenantId: value.tenantId } : {}),
+    ...(value.clientId ? { clientId: value.clientId } : {}),
+    ...(validTrace ? { traceparent: validTrace } : {}),
+    ...(validTrace && value.tracestate ? { tracestate: value.tracestate.slice(0, 512) } : {}),
+  });
 }
-async function authorize(
+function* authorize(
   options: CreateStandardA2AHostOptions,
   context: StandardA2ARequestContext,
   action: StandardA2AAuthorizationAction,
-  resource: { readonly contextId?: string; readonly taskId?: string },
-): Promise<void> {
-  if (options.authorize && !(await options.authorize({ context, action, ...resource }))) {
+  boundary: { readonly contextId?: string; readonly taskId?: string },
+): Operation<void> {
+  if (options.authorize && !(yield* options.authorize({ context, action, ...boundary }))) {
     throw hostError("authorization_denied", "The requested operation is not authorized");
   }
-  options.onTelemetry?.({ type: "request", action, ...resource });
+  options.onTelemetry?.({ type: "request", action, ...boundary });
 }
 
 function validateTransport(deployment: PublicAgentDeployment): void {
@@ -1164,7 +1811,7 @@ async function boundedBody(request: Request, maxBytes: number): Promise<Json> {
   try {
     return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as Json;
   } catch {
-    throw hostError("task_input_too_large", "A2A request body is invalid JSON");
+    throw hostError("request_invalid", "A2A request body is invalid JSON");
   }
 }
 function parseIncomingMessage(value: unknown, sdk03: boolean): ForeignA2AMessage {
@@ -1187,17 +1834,88 @@ function jsonResponse(value: Json, status = 200, headers?: HeadersInit): Respons
     headers: { "content-type": "application/a2a+json", ...headers },
   });
 }
-function sseResponse(task: ForeignA2ATask, sdk03 = false): Response {
-  return new Response(`event: task\ndata: ${canonicalJson({ task: wireTask(task, sdk03) })}\n\n`, {
+function pullSseResponse(
+  scope: Scope,
+  destroyScope: () => Promise<void>,
+  subscription: Subscription<StandardA2AStreamEvent, void>,
+  sdk03: boolean,
+): Response {
+  const encoder = new TextEncoder();
+  let closed = false;
+  const cleanup = async () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    await destroyScope();
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (closed) {
+        controller.close();
+        return;
+      }
+      try {
+        const result = await scope.run(function* () {
+          return yield* subscription.next();
+        });
+        if (result.done) {
+          controller.close();
+          await cleanup();
+          return;
+        }
+        controller.enqueue(
+          encoder.encode(
+            `event: ${result.value.kind}\ndata: ${canonicalJson(wireStreamEvent(result.value, sdk03))}\n\n`,
+          ),
+        );
+      } catch (error) {
+        controller.error(error);
+        await cleanup();
+      }
+    },
+    async cancel() {
+      await cleanup();
+    },
+  });
+  return new Response(stream, {
     status: 200,
     headers: {
       "content-type": "text/event-stream",
       "cache-control": "no-cache",
+      connection: "keep-alive",
     },
   });
 }
-function wireTask(task: ForeignA2ATask, sdk03 = false): Json {
-  const state = {
+function wireStreamEvent(event: StandardA2AStreamEvent, sdk03: boolean): Json {
+  if (event.kind === "task") {
+    return { task: wireTask(event.task, sdk03) };
+  }
+  if (event.kind === "artifact-update") {
+    return {
+      artifactUpdate: {
+        taskId: event.taskId,
+        contextId: event.contextId,
+        artifact: event.artifact,
+        append: event.append,
+        lastChunk: event.lastChunk,
+      },
+    };
+  }
+  return {
+    statusUpdate: {
+      taskId: event.taskId,
+      contextId: event.contextId,
+      status: {
+        state: wireState(event.state),
+        ...(event.message ? { message: wireMessage(event.message, sdk03) } : {}),
+      },
+      final: event.final,
+    },
+  };
+}
+function wireState(state: ForeignA2ANormalizedState): string {
+  return {
     submitted: "TASK_STATE_SUBMITTED",
     working: "TASK_STATE_WORKING",
     input_required: "TASK_STATE_INPUT_REQUIRED",
@@ -1206,26 +1924,31 @@ function wireTask(task: ForeignA2ATask, sdk03 = false): Json {
     failed: "TASK_STATE_FAILED",
     canceled: "TASK_STATE_CANCELED",
     rejected: "TASK_STATE_REJECTED",
-  }[task.status.state];
-  const message = (value: ForeignA2AMessage): Json => {
-    const projection = {
-      ...value,
-      role: value.role === "user" ? "ROLE_USER" : "ROLE_AGENT",
-    };
-    if (!sdk03) {
-      return projection;
-    }
-    const { parts, ...withoutParts } = projection;
-    return { ...withoutParts, content: parts };
+  }[state];
+}
+function wireMessage(value: ForeignA2AMessage, sdk03: boolean): Json {
+  const projection = {
+    ...value,
+    role: value.role === "user" ? "ROLE_USER" : "ROLE_AGENT",
   };
+  if (!sdk03) {
+    return projection;
+  }
+  const { parts, ...withoutParts } = projection;
+  return { ...withoutParts, content: parts };
+}
+function wireTask(task: ForeignA2ATask, sdk03 = false): Json {
+  const state = wireState(task.status.state);
   return {
     ...task,
     status: {
       ...task.status,
       state,
-      ...(task.status.message ? { message: message(task.status.message) } : {}),
+      ...(task.status.message ? { message: wireMessage(task.status.message, sdk03) } : {}),
     },
-    ...(task.history ? { history: task.history.map(message) } : {}),
+    ...(task.history
+      ? { history: task.history.map((message) => wireMessage(message, sdk03)) }
+      : {}),
   } as unknown as Json;
 }
 function safeErrorResponse(error: StandardA2AHostError, challenge = "Bearer"): Response {
@@ -1280,6 +2003,20 @@ function hostStatus(code: StandardA2AHostErrorCode): number {
   }
   return 400;
 }
+async function checkTaskDirectory(directory: StandardA2ATaskDirectory): Promise<void> {
+  if (!directory.check) {
+    return;
+  }
+  const [scope, destroyScope] = createScope();
+  try {
+    await scope.run(function* () {
+      yield* directory.check!();
+    });
+  } finally {
+    await destroyScope();
+  }
+}
+
 function normalizeRetention(
   input: Partial<StandardA2ARetentionPolicy> | undefined,
 ): StandardA2ARetentionPolicy {
@@ -1312,30 +2049,44 @@ function normalizeLimits(input: Partial<StandardA2AHostLimits> | undefined): Sta
   }
   return Object.freeze(value);
 }
-function delay(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-async function withLock<T>(
+function* withLock<T>(
   locks: Map<string, Promise<void>>,
   key: string,
-  operation: () => Promise<T>,
-): Promise<T> {
+  operation: () => Operation<T>,
+): Operation<T> {
+  const release = yield* call(() => acquireLock(locks, key));
+  try {
+    return yield* operation();
+  } finally {
+    release();
+  }
+}
+function acquireLock(locks: Map<string, Promise<void>>, key: string): Promise<() => void> {
   const previous = locks.get(key) ?? Promise.resolve();
-  let release!: () => void;
+  let releaseCurrent!: () => void;
   const current = new Promise<void>((resolve) => {
-    release = resolve;
+    releaseCurrent = resolve;
   });
   const queued = previous.then(() => current);
   locks.set(key, queued);
-  await previous;
-  try {
-    return await operation();
-  } finally {
-    release();
+  return previous.then(() => () => {
+    releaseCurrent();
     if (locks.get(key) === queued) {
       locks.delete(key);
     }
+  });
+}
+function descriptorTarget(descriptor: DurableOperationDescriptor): string {
+  if (descriptor.kind === "effect") {
+    return descriptor.name;
   }
+  if (descriptor.kind === "invoke") {
+    return descriptor.child.id;
+  }
+  if (descriptor.kind === "elicit" || descriptor.kind === "wait") {
+    return descriptor.key;
+  }
+  return descriptor.kind;
 }
 function payloadTaskId(payload: DurableSemanticRecord["payload"]): string | undefined {
   return "taskId" in payload ? payload.taskId : undefined;

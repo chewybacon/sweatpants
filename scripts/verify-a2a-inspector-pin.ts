@@ -10,6 +10,7 @@ const pin = JSON.parse(
 ) as {
   repository: string;
   commit: string;
+  compatibilityPatch: { path: string; sha256: string };
   locks: { uvLockSha256: string; frontendPackageLockSha256: string };
 };
 const inspector = process.env["A2A_INSPECTOR_DIR"];
@@ -23,6 +24,7 @@ const head = execFileSync("git", ["-C", checkout, "rev-parse", "HEAD"], {
 if (head !== pin.commit) {
   throw new Error(`Inspector commit mismatch: expected ${pin.commit}, received ${head}`);
 }
+assertDigest(resolve(root, pin.compatibilityPatch.path), pin.compatibilityPatch.sha256);
 assertDigest(resolve(checkout, "uv.lock"), pin.locks.uvLockSha256);
 assertDigest(resolve(checkout, "frontend/package-lock.json"), pin.locks.frontendPackageLockSha256);
 console.log(`Verified A2A Inspector ${pin.commit} from ${pin.repository}`);
