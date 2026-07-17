@@ -4,7 +4,7 @@ import {
   assertJson,
   canonicalJson,
   createDurableEffectRegistration,
-  createDurableTool,
+  createPinnedDurableProgram,
   createPortableSchemaDescriptor,
   defineDurableEffect,
   sha256,
@@ -201,7 +201,7 @@ export const FOREIGN_A2A_ADAPTER_PROGRAM = Object.freeze({
   ),
 });
 
-export const foreignA2ATaskAdapter = createDurableTool(
+export const foreignA2ATaskAdapter = createPinnedDurableProgram(
   {
     programId: FOREIGN_A2A_ADAPTER_PROGRAM.id,
     version: FOREIGN_A2A_ADAPTER_PROGRAM.version,

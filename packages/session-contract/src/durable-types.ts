@@ -1,6 +1,10 @@
 import type { Operation } from "effection";
 
 import type { PortableSchemaDescriptor } from "./schema-descriptor.ts";
+import type {
+  GeneratedProgramArtifactIdentityV1,
+  ProgramIdentityProvenanceV1,
+} from "./program-identity.ts";
 import type { Json, SerializedApplicationError } from "./types.ts";
 
 /** Portable JSON Schema projection carried on wire/browser transports. */
@@ -663,11 +667,15 @@ export type DurableProgramFactory<I extends Json = Json, O extends Json = Json> 
   context: DurableProgramContext,
 ) => DurableProgramGenerator<O>;
 
-/** Crank-native tool pairing a pinned manifest with its synchronous program. */
+/** Crank-native program pairing a pinned manifest with its synchronous implementation. */
 export interface DurableTool<I extends Json = Json, O extends Json = Json> {
   readonly durability: "crank_native";
   readonly manifest: DurableProgramManifest<I, O>;
   readonly program: DurableProgramFactory<I, O>;
+  /** Explicit evidence describing whether the digest was generated or legacy-asserted. */
+  readonly identityProvenance: ProgramIdentityProvenanceV1;
+  /** Local verification evidence retained only for generated bindings. */
+  readonly identityArtifact?: GeneratedProgramArtifactIdentityV1;
 }
 
 /** Exact authenticated claims authorizing program proposal and completion. */

@@ -7,6 +7,7 @@ import {
   DurableProgramCancellation,
 } from "./authoring.ts";
 import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
+import { validateProgramIdentityProvenance } from "./program-identity.ts";
 import { CrankError, type Json } from "./types.ts";
 import type {
   AttachProgramRequest,
@@ -44,6 +45,7 @@ export function createDurableToolRegistry(
 ): DurableToolRegistry {
   const registry = new Map<string, DurableTool<any, any>>();
   for (const tool of tools) {
+    validateProgramIdentityProvenance(tool);
     const key = programKey(tool.manifest.programId, tool.manifest.version, tool.manifest.digest);
     if (registry.has(key)) {
       throw new CrankError("invalid_manifest", `Duplicate durable program ${key}`);

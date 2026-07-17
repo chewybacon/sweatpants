@@ -3,7 +3,7 @@ import {
   FOREIGN_MODEL_SAMPLE_EFFECT,
   canonicalSnapshot,
   createDurableEffectRegistration,
-  createDurableTool,
+  createPinnedDurableProgram,
   createPortableSchemaDescriptor,
   defineDurableEffect,
   sha256,
@@ -257,7 +257,7 @@ export function createAskParentRegistration(options: {
  * rubric, and instructions. Parent information appears only after ask_parent's
  * recorded effect outcome.
  */
-export const REFERENCE_REVIEWER_TOOL = createDurableTool(
+export const REFERENCE_REVIEWER_TOOL = createPinnedDurableProgram(
   {
     programId: "reference.clean-context-reviewer",
     version: "1.0.0",

@@ -7,6 +7,7 @@ export {
   canonicalJson,
   canonicalSnapshot,
   sha256,
+  sha256Bytes,
   stableOpaqueId,
 } from "./canonical.ts";
 
@@ -139,6 +140,7 @@ export {
   assertInlineSize,
   assertReplayedCanonicalValue,
   createDurableProgramContext,
+  createPinnedDurableProgram,
   createDurableTool,
   defineDurableProgramManifest,
   defineDurableEffect,
@@ -146,6 +148,20 @@ export {
   validateDurableManifest,
   validateEffectDefinition,
 } from "./authoring.ts";
+export {
+  PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  PROGRAM_ARTIFACT_IDENTITY_DOMAIN,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  createGeneratedPinnedDurableProgram,
+  deriveProgramArtifactDigest,
+  generateProgramArtifactIdentity,
+  normalizeProgramArtifactIdentityInput,
+  validateProgramBindingsForRelease,
+  validateProgramIdentityProvenance,
+  type GeneratedProgramArtifactIdentityV1,
+  type ProgramArtifactIdentityInputV1,
+  type ProgramIdentityProvenanceV1,
+} from "./program-identity.ts";
 export {
   createCapabilityKeyring,
   isProgramClaims,
