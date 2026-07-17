@@ -1,0 +1,66 @@
+{
+    "name": "@sweatpants/a2a",
+    "version": "0.1.0",
+    "description": "Caller-authoritative programs and durable foreign A2A task integration for Sweatpants",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src",
+        "README.md"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "require": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.cjs"
+            }
+        },
+        "./testing": {
+            "development": {
+                "import": "./src/testing.ts",
+                "types": "./src/testing.ts"
+            },
+            "import": {
+                "types": "./dist/testing.d.ts",
+                "default": "./dist/testing.js"
+            },
+            "require": {
+                "types": "./dist/testing.d.ts",
+                "default": "./dist/testing.cjs"
+            }
+        }
+    },
+    "scripts": {
+        "build": "tsup && pnpm build:types",
+        "build:types": "tsc -b tsconfig.json --force",
+        "check": "tsc -b",
+        "test": "vitest run src",
+        "test:interop": "vitest run src/__tests__/third-party-interop.live.test.ts --reporter=verbose"
+    },
+    "dependencies": {
+        "@sweatpants/session-contract": "workspace:*",
+        "ws": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/ws": "catalog:",
+        "effection": "catalog:",
+        "tsup": "catalog:",
+        "tsx": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    },
+    "peerDependencies": {
+        "effection": ">=4.1.0-alpha.9 <5.0.0"
+    }
+}

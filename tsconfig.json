@@ -6,6 +6,9 @@
     },
     "references": [
         {
+            "path": "./packages/a2a"
+        },
+        {
             "path": "./packages/core"
         },
         {
