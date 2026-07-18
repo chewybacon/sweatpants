@@ -2,7 +2,7 @@
 
 > **Source of truth** for Sweatpants package lanes, product facade allowlist, and product-app import policy.
 >
-> Related: [product changelog](./product-changelog.md) · [product facade allowlist (machine-readable)](./product-facade-allowlist.json) · [demos](./demos/) · [cutover report](./cutover-yo-chat.md)
+> Related: [product changelog](./product-changelog.md) · [product facade allowlist (machine-readable)](./product-facade-allowlist.json) · [demos](./demos/)
 
 ## Purpose
 
@@ -139,7 +139,7 @@ New yo-chat features MUST target **Product** and **Canonical substrate** lanes o
 
 ### Cutover app (Phase 5)
 
-Default cutover target: **`apps/yo-chat`**. See [cutover-yo-chat.md](./cutover-yo-chat.md).
+Default cutover target: **`apps/yo-chat`**.
 
 ### Experimental import prohibition
 
@@ -197,4 +197,4 @@ Deviations from this baseline MUST be recorded here with date and reason (and re
 
 ## Tombstones / default path hygiene
 
-Superseded APIs (isomorphic tools as public authoring, retired `@sweatpants/agent`, durable-conversations spike as active API) are tombstoned at the top of affected docs and MUST NOT appear as the root README happy path. Archive under `docs/archive/` is acceptable retention.
+Superseded APIs (isomorphic tools as public authoring, retired `@sweatpants/agent`, durable-conversations spike as active API) MUST NOT appear as the root README happy path. Superseded docs are deleted, not archived in-tree; source control history is the archive (`git log --follow --diff-filter=D -- docs/`).

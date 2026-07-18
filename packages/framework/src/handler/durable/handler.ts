@@ -15,8 +15,6 @@
  * - threadId: AG-UI wire alias of conversationId (always equal on the wire)
  * - runId: ephemeral AG-UI turn correlator (never keys crank state)
  * - sessionId (X-Session-Id): response-stream / reconnect buffer id only
- *
- * @see ../docs/durable-chat-handler-plan.md for architecture details
  */
 import { call, resource, type Operation, type Stream, type Subscription } from "effection";
 import {
