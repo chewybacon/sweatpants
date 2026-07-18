@@ -144,7 +144,7 @@ Lab index: `/lab/durability` in yo-chat.
 | --- | --- |
 | `apps/yo-chat` | Reference + production-candidate cutover app |
 
-Ops: [`apps/yo-chat/docs/ops.md`](./apps/yo-chat/docs/ops.md) · Cutover: [`docs/cutover-yo-chat.md`](./docs/cutover-yo-chat.md)
+Ops: [`apps/yo-chat/docs/ops.md`](./apps/yo-chat/docs/ops.md)
 
 ## Development
 
@@ -177,7 +177,7 @@ Canonical substrate packages (not the default shopping list):
 | `@sweatpants/vite-plugin` | App Vite plugin |
 | `@sweatpants/cli` | MCP/codegen CLI tooling |
 
-See [`docs/product-surface.md`](./docs/product-surface.md) for lane classification. Historical / superseded docs are tombstoned or under [`docs/archive/`](./docs/archive/).
+See [`docs/product-surface.md`](./docs/product-surface.md) for lane classification. Historical and superseded docs are deleted, not archived; recover them with `git log --follow --diff-filter=D -- docs/`.
 
 ## License
 
