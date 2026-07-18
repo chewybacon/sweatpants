@@ -66,7 +66,36 @@ const agent = defineAgent({
 
 Guidance, model tools, exact entrypoints, and advertised capabilities are independent declarations. Guidance is advisory and only its bounded index enters initial model context. Full content is loaded through exact durable resource-reader children.
 
-Model-visible durable tools should be wrapped with `modelTool(binding, { resultClassification })`. The declared classification ceiling taints every returned value independently of payload shape; direct legacy tool declarations conservatively default to `restricted`. A tool may raise, but never lower, that ceiling with the explicit `classifiedToolResult` envelope. Ordinary output fields named `classifications` or `sources` have no provenance meaning. The `resources.*` namespace is reserved for generated readers.
+## Durable tools without binding ceremony
+
+```ts
+const lookup = createDurableTool("lookup", { version: "1.0.0" })
+  .description("Look up one record")
+  .parameters(z.object({ id: z.string() }))
+  .output(z.object({ name: z.string() }))
+  .effects({ lookupRecord })
+  .execute(function* ({ id }, context) {
+    return yield* context.effect(lookupRecord, { id });
+  });
+
+const conversation = defineChatProgram({
+  // ...
+  tools: {
+    lookup: modelTool(lookup, { resultClassification: "internal" }),
+  },
+});
+
+const agent = defineAgent({
+  // ...
+  programs: { lookup },
+});
+```
+
+A fluent durable tool is itself an `AgentProgramInput`. `defineChatProgram()` and `defineAgent()` derive its runtime schema catalog and empty resource list; authors do not construct `AgentProgramBinding` objects or cast tools to low-level types.
+
+Omitting a digest creates deterministic `generated-interface` provenance from the complete durable manifest: program name and version, schemas, effects, elicitations, and capabilities. This identity deliberately does **not** claim to cover executor source and is rejected by `releaseStrict`. Build tooling can instead supply `implementationArtifactDigest` in the `createDurableTool` options to use the existing validated `generated-artifact` path. Explicit `.identity({ version, digest })` remains the asserted low-level escape hatch. Runtime correctness never depends on a build plugin.
+
+Model-visible durable tools should be wrapped with `modelTool(tool, { resultClassification })`. The declared classification ceiling taints every returned value independently of payload shape; direct legacy tool declarations conservatively default to `restricted`. A tool may raise, but never lower, that ceiling with the explicit `classifiedToolResult` envelope. Ordinary output fields named `classifications` or `sources` have no provenance meaning. The `resources.*` namespace is reserved for generated readers.
 
 Authored-chat v1 rejects non-empty `elicitations` because the v1 model output algebra cannot trigger an elicitation. This prevents publishing dead manifest declarations; model-triggered elicitation requires a future explicit call type.
 
@@ -133,7 +162,19 @@ projected into an already-terminal task.
 Use `startAgentHarness` from `@sweatpants/framework/server/testing` for a real
 loopback HTTP server and discovery in tests. The evidence API exposes IDs,
 digests, journal event kinds, lineage, and state without credentials or content
-bodies.
+bodies. Its persistent reference journal accepts `agent` and derives the complete
+schema registry automatically:
+
+```ts
+const journalStore = createFileProgramDriverJournalStore({
+  directory: ".state/journals",
+  keyring,
+  agent,
+});
+```
+
+`schemaRegistry` remains available only as a low-level escape hatch for stores
+that are not associated with one authored agent.
 
 ## Frontier ownership and host certification
 

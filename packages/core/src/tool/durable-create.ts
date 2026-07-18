@@ -1,8 +1,13 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { z, type ZodSchema } from "zod";
+import type { z, ZodSchema } from "zod";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
+  PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  createGeneratedPinnedDurableProgram,
+  createInterfaceDerivedPinnedDurableProgram,
   createPinnedDurableProgram as createLowLevelDurableTool,
+  generateProgramArtifactIdentity,
   type DurableProgramContext,
   type DurableProgramGenerator,
   type DurableProgramManifest,
@@ -40,10 +45,10 @@ type ElicitRequestFor<E> =
     : { message: string; context: ExtractElicitContext<E> };
 
 /** Typed durable program context bound to declared effects and elicitations. */
-export type DurableProgramContextFor<
-  E extends EffectMap,
-  TElicits extends ElicitsMap = {},
-> = Omit<DurableProgramContext, "effect" | "elicit"> & {
+export type DurableProgramContextFor<E extends EffectMap, TElicits extends ElicitsMap = {}> = Omit<
+  DurableProgramContext,
+  "effect" | "elicit"
+> & {
   effect<D extends EffectFromMap<E>>(
     definition: D,
     input: EffectInput<D>,
@@ -68,12 +73,12 @@ export type DurableProgramContextFor<
  * Crank-native durable tool definition satisfying the execution-neutral
  * `ToolContract` while adding the pinned manifest and pure program.
  */
-export interface DurableToolDefinition<
+export type DurableToolDefinition<
   N extends string = string,
   I extends Json = Json,
   O extends Json = Json,
   TElicits extends ElicitsMap = {},
-> {
+> = DurableTool<I, O> & {
   readonly execution: "crank_native";
   readonly durability: "crank_native";
   readonly name: N;
@@ -88,7 +93,7 @@ export interface DurableToolDefinition<
   readonly extensions: readonly ToolExtensionMetadata[];
   readonly manifest: DurableProgramManifest<I, O>;
   readonly program: DurableTool<I, O>["program"];
-}
+};
 
 /** Compatibility alias for the previous fluent durable tool name. */
 export type FluentDurableTool<
@@ -97,8 +102,19 @@ export type FluentDurableTool<
   O extends Json,
 > = DurableToolDefinition<N, I, O>;
 
+export interface CreateDurableToolOptions {
+  readonly version: string;
+  /** Build-generated source-closure digest. Omit for an interface-only identity. */
+  readonly implementationArtifactDigest?: string;
+  readonly resourcePackageDigests?: readonly string[];
+}
+
 export interface CreateDurableToolBuilderBase<N extends string> {
   description(description: string): CreateDurableToolBuilderWithDescription<N>;
+}
+
+export interface CreateVersionedDurableToolBuilderBase<N extends string> {
+  description(description: string): CreateDurableToolBuilderWithIdentity<N>;
 }
 
 export interface CreateDurableToolBuilderWithDescription<N extends string> {
@@ -147,6 +163,9 @@ type BuilderState = {
   name: string;
   description?: string;
   identity?: { version: string; digest: string };
+  version?: string;
+  implementationArtifactDigest?: string;
+  resourcePackageDigests?: readonly string[];
   parameters?: ZodSchema;
   output?: ZodSchema;
   elicits?: ElicitsMap;
@@ -154,8 +173,50 @@ type BuilderState = {
 };
 
 /** Creates a type-staged Zod authoring adapter over the low-level durable manifest API. */
-export function createDurableTool<N extends string>(name: N): CreateDurableToolBuilderBase<N> {
-  return builder({ name }) as CreateDurableToolBuilderBase<N>;
+export function createDurableTool<N extends string>(name: N): CreateDurableToolBuilderBase<N>;
+export function createDurableTool<N extends string>(
+  name: N,
+  options: CreateDurableToolOptions,
+): CreateVersionedDurableToolBuilderBase<N>;
+export function createDurableTool<N extends string>(
+  name: N,
+  options?: CreateDurableToolOptions,
+): CreateDurableToolBuilderBase<N> | CreateVersionedDurableToolBuilderBase<N> {
+  requireNonEmpty(name, "name");
+  if (!options) {
+    return builder({ name }) as CreateDurableToolBuilderBase<N>;
+  }
+  requireNonEmpty(options.version, "version");
+  if (
+    options.implementationArtifactDigest &&
+    !/^[0-9a-f]{64}$/.test(options.implementationArtifactDigest)
+  ) {
+    throw new Error(
+      `Durable tool "${name}": implementationArtifactDigest must be lowercase SHA-256 hex`,
+    );
+  }
+  if (options.resourcePackageDigests?.length && !options.implementationArtifactDigest) {
+    throw new Error(
+      `Durable tool "${name}": resourcePackageDigests require implementationArtifactDigest`,
+    );
+  }
+  for (const digest of options.resourcePackageDigests ?? []) {
+    if (!/^[0-9a-f]{64}$/.test(digest)) {
+      throw new Error(
+        `Durable tool "${name}": resourcePackageDigests must be lowercase SHA-256 hex`,
+      );
+    }
+  }
+  return builder({
+    name,
+    version: options.version,
+    ...(options.implementationArtifactDigest
+      ? { implementationArtifactDigest: options.implementationArtifactDigest }
+      : {}),
+    ...(options.resourcePackageDigests
+      ? { resourcePackageDigests: [...options.resourcePackageDigests] }
+      : {}),
+  }) as CreateVersionedDurableToolBuilderBase<N>;
 }
 
 function builder(state: BuilderState): unknown {
@@ -175,7 +236,11 @@ function builder(state: BuilderState): unknown {
       return builder({ ...state, identity: { ...identity } });
     },
     parameters(parameters: ZodSchema) {
-      requireStage(state.identity, ".identity()", ".parameters()");
+      requireStage(
+        state.identity ?? state.version,
+        ".identity() or a version option",
+        ".parameters()",
+      );
       return builder({ ...state, parameters });
     },
     output(output: ZodSchema) {
@@ -192,10 +257,14 @@ function builder(state: BuilderState): unknown {
     },
     execute(program: (input: Json, context: DurableProgramContext) => DurableProgramGenerator) {
       requireStage(state.description, ".description()", ".execute()");
-      requireStage(state.identity, ".identity()", ".execute()");
+      requireStage(
+        state.identity ?? state.version,
+        ".identity() or a version option",
+        ".execute()",
+      );
       requireStage(state.parameters, ".parameters()", ".execute()");
       requireStage(state.effects, ".effects()", ".execute()");
-      const identity = state.identity!;
+      const version = state.identity?.version ?? state.version!;
       const description = state.description!;
       const normalizedElicits = normalizeElicits(state.elicits ?? {});
       const catalog: DurableSchemaRegistryEntry[] = [];
@@ -204,7 +273,7 @@ function builder(state: BuilderState): unknown {
       const input = toPortableSchema(state.parameters as unknown as StandardSchemaV1, {
         identity: `${identityPrefix}/input`,
         role: "program_input",
-        version: identity.version,
+        version,
       });
       catalog.push(input.entry);
       let outputDescriptor: PortableSchemaDescriptor;
@@ -212,7 +281,7 @@ function builder(state: BuilderState): unknown {
         const output = toPortableSchema(state.output as unknown as StandardSchemaV1, {
           identity: `${identityPrefix}/output`,
           role: "program_output",
-          version: identity.version,
+          version,
         });
         catalog.push(output.entry);
         outputDescriptor = output.descriptor;
@@ -234,7 +303,7 @@ function builder(state: BuilderState): unknown {
         const response = toPortableSchema(definition.response as unknown as StandardSchemaV1, {
           identity: `${identityPrefix}/elicits/${key}/response`,
           role: "elicit_response",
-          version: identity.version,
+          version,
         });
         catalog.push(response.entry);
         let context;
@@ -242,7 +311,7 @@ function builder(state: BuilderState): unknown {
           context = toPortableSchema(definition.context as unknown as StandardSchemaV1, {
             identity: `${identityPrefix}/elicits/${key}/context`,
             role: "elicit_context",
-            version: identity.version,
+            version,
           });
           catalog.push(context.entry);
         }
@@ -261,8 +330,7 @@ function builder(state: BuilderState): unknown {
       }
       const manifest = {
         programId: state.name,
-        version: identity.version,
-        digest: identity.digest,
+        version,
         inputSchema: input.descriptor,
         outputSchema: outputDescriptor,
         elicits: manifestElicits,
@@ -273,9 +341,22 @@ function builder(state: BuilderState): unknown {
           replay: "strict" as const,
         },
       };
-      const tool = createLowLevelDurableTool(manifest, (rawInput: Json, context) =>
-        program(rawInput, contextForDeclarations(context, manifestElicits)),
-      );
+      const factory = (rawInput: Json, context: DurableProgramContext) =>
+        program(rawInput, contextForDeclarations(context, manifestElicits));
+      const tool = state.identity
+        ? createLowLevelDurableTool({ ...manifest, digest: state.identity.digest }, factory)
+        : state.implementationArtifactDigest
+          ? createGeneratedPinnedDurableProgram(
+              generateProgramArtifactIdentity({
+                format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+                generatorVersion: PROGRAM_ARTIFACT_GENERATOR_VERSION,
+                manifest,
+                implementationArtifactDigest: state.implementationArtifactDigest,
+                resourcePackageDigests: [...(state.resourcePackageDigests ?? [])],
+              }),
+              factory,
+            )
+          : createInterfaceDerivedPinnedDurableProgram(manifest, factory);
       const artifacts: ToolSchemaArtifacts = Object.freeze({
         parameters: input.descriptor,
         output: outputDescriptor,
@@ -305,7 +386,10 @@ function builder(state: BuilderState): unknown {
 
 function contextForDeclarations(
   context: DurableProgramContext,
-  elicits: Record<string, { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }>,
+  elicits: Record<
+    string,
+    { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
+  >,
 ): DurableProgramContext {
   const adapted = Object.freeze({
     ...context,

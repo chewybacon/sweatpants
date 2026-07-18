@@ -5,9 +5,11 @@ import {
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createDurableTool,
   createGeneratedPinnedDurableProgram,
+  createInterfaceDerivedPinnedDurableProgram,
   createPinnedDurableProgram,
   deriveProgramArtifactDigest,
   generateProgramArtifactIdentity,
+  generateProgramInterfaceIdentity,
   normalizeProgramArtifactIdentityInput,
   validateProgramBindingsForRelease,
   validateProgramIdentityProvenance,
@@ -74,6 +76,24 @@ describe("program artifact identity", () => {
         manifest: { ...binding.manifest, digest: "f".repeat(64) },
       }),
     ).toThrow(/disagree/);
+  });
+
+  it("derives an honest interface-only identity without claiming executor coverage", () => {
+    const identity = generateProgramInterfaceIdentity(manifest);
+    const duplicate = generateProgramInterfaceIdentity({ ...manifest });
+    const changed = generateProgramInterfaceIdentity({ ...manifest, version: "2" });
+    const binding = createInterfaceDerivedPinnedDurableProgram(manifest, function* () {
+      return null;
+    });
+
+    expect(identity).toEqual(duplicate);
+    expect(identity.digest).not.toBe(changed.digest);
+    expect(binding.manifest.digest).toBe(identity.digest);
+    expect(binding.identityProvenance).toEqual(identity.provenance);
+    expect(() => validateProgramIdentityProvenance(binding)).not.toThrow();
+    expect(() => validateProgramIdentityProvenance(binding, { releaseStrict: true })).toThrowError(
+      expect.objectContaining({ code: "interface_program_identity_forbidden" }),
+    );
   });
 
   it("keeps the old constructor as an asserted deprecated alias", () => {

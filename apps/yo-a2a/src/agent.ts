@@ -6,8 +6,8 @@ import {
   textResource,
 } from "@sweatpants/core";
 import { defineChatProgram, modelReadable, modelTool } from "@sweatpants/framework/chat";
-import { echoMessageBinding } from "./echo-message.ts";
-import { pickCardBinding } from "./pick-card.ts";
+import { echoMessage } from "./echo-message.ts";
+import { pickCard } from "./pick-card.ts";
 
 const cardResources = defineResourcePackage({
   id: "yo-a2a-card-guidance",
@@ -43,8 +43,8 @@ export const cardChat = defineChatProgram({
     cards: modelReadable(cardResources, { classification: "internal" }),
   },
   tools: {
-    pick_card: modelTool(pickCardBinding, { resultClassification: "internal" }),
-    echo_message: modelTool(echoMessageBinding, { resultClassification: "internal" }),
+    pick_card: modelTool(pickCard, { resultClassification: "internal" }),
+    echo_message: modelTool(echoMessage, { resultClassification: "internal" }),
   },
   sampling: { toolChoice: "auto", maxTokens: 1_024 },
   maxIterations: 8,
@@ -56,8 +56,8 @@ export const cardAgent = defineAgent({
   conversation: cardChat,
   programs: {
     conversation: cardChat,
-    pickCard: pickCardBinding,
-    echoMessage: echoMessageBinding,
+    pickCard,
+    echoMessage,
   },
   advertisedCapabilities: {
     cards: advertiseCapability({

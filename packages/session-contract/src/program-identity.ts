@@ -10,6 +10,10 @@ import { CrankError, type Json } from "./types.ts";
 export const PROGRAM_ARTIFACT_IDENTITY_FORMAT = "sweatpants.program-artifact-identity.v1" as const;
 export const PROGRAM_ARTIFACT_IDENTITY_DOMAIN = `${PROGRAM_ARTIFACT_IDENTITY_FORMAT}\n`;
 export const PROGRAM_ARTIFACT_GENERATOR_VERSION = 1;
+export const PROGRAM_INTERFACE_IDENTITY_FORMAT =
+  "sweatpants.program-interface-identity.v1" as const;
+export const PROGRAM_INTERFACE_IDENTITY_DOMAIN = `${PROGRAM_INTERFACE_IDENTITY_FORMAT}\n`;
+export const PROGRAM_INTERFACE_GENERATOR_VERSION = 1;
 
 export interface ProgramArtifactIdentityInputV1 {
   readonly format: typeof PROGRAM_ARTIFACT_IDENTITY_FORMAT;
@@ -21,12 +25,25 @@ export interface ProgramArtifactIdentityInputV1 {
 
 export type ProgramIdentityProvenanceV1 =
   | {
+      /** Covers declared schemas, effects, elicitations, capabilities, name, and version. */
+      readonly kind: "generated-interface";
+      readonly format: typeof PROGRAM_INTERFACE_IDENTITY_FORMAT;
+      readonly generatorVersion: number;
+      readonly identityInputDigest: string;
+    }
+  | {
+      /** Covers the declared interface plus a separately generated implementation artifact. */
       readonly kind: "generated-artifact";
       readonly format: typeof PROGRAM_ARTIFACT_IDENTITY_FORMAT;
       readonly generatorVersion: number;
       readonly identityInputDigest: string;
     }
   | { readonly kind: "asserted" };
+
+export interface GeneratedProgramInterfaceIdentityV1 {
+  readonly digest: string;
+  readonly provenance: Extract<ProgramIdentityProvenanceV1, { kind: "generated-interface" }>;
+}
 
 export interface GeneratedProgramArtifactIdentityV1 {
   readonly digest: string;
@@ -98,6 +115,28 @@ export function deriveProgramArtifactDigest(input: ProgramArtifactIdentityInputV
   return sha256(PROGRAM_ARTIFACT_IDENTITY_DOMAIN + canonicalJson(normalized));
 }
 
+/** Derives an honest interface-only identity from the complete durable manifest contract. */
+export function generateProgramInterfaceIdentity(
+  manifest: Omit<DurableProgramManifest, "digest">,
+): GeneratedProgramInterfaceIdentityV1 {
+  validateDurableManifest({ ...manifest, digest: "0".repeat(64) });
+  const input = canonicalSnapshot({
+    format: PROGRAM_INTERFACE_IDENTITY_FORMAT,
+    generatorVersion: PROGRAM_INTERFACE_GENERATOR_VERSION,
+    manifest,
+  }).value;
+  const serialized = canonicalJson(input);
+  return deepFreeze({
+    digest: sha256(PROGRAM_INTERFACE_IDENTITY_DOMAIN + serialized),
+    provenance: {
+      kind: "generated-interface",
+      format: PROGRAM_INTERFACE_IDENTITY_FORMAT,
+      generatorVersion: PROGRAM_INTERFACE_GENERATOR_VERSION,
+      identityInputDigest: sha256(serialized),
+    },
+  });
+}
+
 /** Creates immutable generated identity and provenance evidence. */
 export function generateProgramArtifactIdentity(
   input: ProgramArtifactIdentityInputV1,
@@ -137,7 +176,7 @@ export function createGeneratedPinnedDurableProgram<I extends Json = Json, O ext
 }
 
 interface ProgramIdentityBindingEvidence {
-  readonly manifest: { readonly digest: string };
+  readonly manifest: DurableProgramManifest;
   readonly identityProvenance: ProgramIdentityProvenanceV1;
   readonly identityArtifact?: GeneratedProgramArtifactIdentityV1;
 }
@@ -152,7 +191,26 @@ export function validateProgramIdentityProvenance(
     if (options.releaseStrict) {
       throw new CrankError(
         "asserted_program_identity_forbidden",
-        "Release-strict validation requires generated program identity",
+        "Release-strict validation requires generated artifact identity",
+      );
+    }
+    return;
+  }
+  if (provenance.kind === "generated-interface") {
+    const { digest: _digest, ...manifest } = binding.manifest;
+    const checked = generateProgramInterfaceIdentity(
+      manifest as Omit<DurableProgramManifest, "digest">,
+    );
+    if (
+      checked.digest !== binding.manifest.digest ||
+      canonicalJson(checked.provenance) !== canonicalJson(provenance)
+    ) {
+      invalidIdentity("program digest and generated interface provenance disagree");
+    }
+    if (options.releaseStrict) {
+      throw new CrankError(
+        "interface_program_identity_forbidden",
+        "Release-strict validation requires an implementation artifact identity",
       );
     }
     return;
@@ -171,7 +229,7 @@ export function validateProgramIdentityProvenance(
   }
 }
 
-/** Enforces release policy over an authored program inventory. */
+/** Enforces implementation-artifact identity policy over an authored program inventory. */
 export function validateProgramBindingsForRelease(
   bindings: Iterable<ProgramIdentityBindingEvidence>,
   options: { readonly releaseStrict?: boolean } = { releaseStrict: true },
@@ -179,6 +237,19 @@ export function validateProgramBindingsForRelease(
   for (const binding of bindings) {
     validateProgramIdentityProvenance(binding, options);
   }
+}
+
+/** Creates a runnable program pinned only to its declared interface, never its executor source. */
+export function createInterfaceDerivedPinnedDurableProgram<
+  I extends Json = Json,
+  O extends Json = Json,
+>(
+  manifest: Omit<DurableProgramManifest<I, O>, "digest">,
+  program: DurableProgramFactory<I, O>,
+): DurableTool<I, O> {
+  const identity = generateProgramInterfaceIdentity(manifest);
+  const tool = createPinnedDurableProgram({ ...manifest, digest: identity.digest }, program);
+  return Object.freeze({ ...tool, identityProvenance: identity.provenance });
 }
 
 /** @internal constructor used to retain independently re-verifiable generated evidence. */
