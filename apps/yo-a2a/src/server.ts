@@ -6,6 +6,7 @@ import {
 } from "@sweatpants/framework/server/testing";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
 import { cardAgent } from "./agent.ts";
+import { reserveSeatRegistration, searchFlightsRegistration } from "./book-flight.ts";
 import { realModelRegistration, selectedModel } from "./model.ts";
 import { drawCardsRegistration } from "./pick-card.ts";
 import { scriptedModelRegistration } from "./scripted-model.ts";
@@ -45,7 +46,7 @@ const served = serveAgent(
           }
         : {}),
     },
-    handlers: [modelRegistration, drawCardsRegistration],
+    handlers: [modelRegistration, drawCardsRegistration, searchFlightsRegistration, reserveSeatRegistration],
     capabilityBindings: {},
     host: createStandardA2AHost({
       ...(persistentJournal ? { journalStore: persistentJournal } : {}),

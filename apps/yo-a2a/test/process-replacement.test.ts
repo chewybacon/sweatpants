@@ -136,3 +136,75 @@ type TaskWire = {
   status: { state: string };
   [key: string]: unknown;
 };
+
+describe("multi-elicit workflow across two process replacements (validation-matrix G2)", () => {
+  it("parks at each elicitation, survives SIGKILL at both seams, and reserves exactly once", async () => {
+    const state = await mkdtemp(join(tmpdir(), "a2a-book-flight-replacement-"));
+    const port = 45_800 + Math.floor(Math.random() * 100);
+    try {
+      // Turn 1: model routes to book_flight; the tool runs the search effect
+      // and parks on the pickFlight elicitation.
+      let process = await startFixture(state, port);
+      const parked = await send(port, {
+        messageId: "bf-root",
+        role: "ROLE_USER",
+        parts: [{ text: "book a flight from AUS to JFK" }],
+      });
+      expect(parked.status.state).toBe("TASK_STATE_INPUT_REQUIRED");
+
+      // Seam 1: death while parked before flight selection.
+      killProcessTree(process);
+      await exited(process);
+      children.delete(process);
+      process = await startFixture(state, port);
+
+      const recovered = await getTask(port, parked.id);
+      expect(recovered.status.state).toBe("TASK_STATE_INPUT_REQUIRED");
+
+      // Continuation resolves pickFlight; the tool advances and parks on pickSeat.
+      const afterFlight = await send(port, {
+        messageId: "bf-flight",
+        role: "ROLE_USER",
+        taskId: parked.id,
+        contextId: parked.contextId,
+        parts: [{ text: "1" }],
+      });
+      expect(afterFlight.id).toBe(parked.id);
+      expect(afterFlight.status.state).toBe("TASK_STATE_INPUT_REQUIRED");
+
+      // Seam 2: death while parked between the two elicitations. This is the
+      // exact suspension point the degenerate case exists to certify.
+      killProcessTree(process);
+      await exited(process);
+      children.delete(process);
+      process = await startFixture(state, port);
+
+      const completed = await send(port, {
+        messageId: "bf-seat",
+        role: "ROLE_USER",
+        taskId: parked.id,
+        contextId: parked.contextId,
+        parts: [{ text: "3C" }],
+      });
+      expect(completed.id).toBe(parked.id);
+      expect(completed.status.state).toBe("TASK_STATE_COMPLETED");
+      const text = JSON.stringify(completed);
+      // Reservation ran exactly once with the choices accepted before each death.
+      expect(text).toContain("TK-FL001-3C");
+
+      // Retrying the final continuation after completion reconciles, not re-reserves.
+      const retried = await send(port, {
+        messageId: "bf-seat",
+        role: "ROLE_USER",
+        taskId: parked.id,
+        contextId: parked.contextId,
+        parts: [{ text: "3C" }],
+      });
+      expect(retried).toEqual(completed);
+    } finally {
+      if (process.env["KEEP_A2A_PROCESS_STATE"] !== "1") {
+        await rm(state, { recursive: true, force: true });
+      }
+    }
+  }, 45_000);
+});

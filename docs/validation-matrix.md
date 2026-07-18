@@ -63,7 +63,7 @@ Both populations are maintained on purpose.
 | | Journal-native | Foreign (MCP/ordinary) |
 | --- | --- | --- |
 | E2E | ✅ `apps/yo-chat/acceptance/book-flight-program-driver.acceptance.test.ts`, `book-flight-program-driver-http.acceptance.test.ts` (unchanged authored tool through ProgramRuntime) | ✅ `apps/yo-chat/e2e/book-flight.spec.ts` (501 lines: full flow, decline/cancel, repeat booking in one session) · `book-flight-full.spec.ts` · `src/outside-in/flows/book-flight.flow.test.ts` |
-| Process replacement | ⬜ **Gap G2** — no SIGKILL between flight and seat elicitations | ⬜ **Gap G1** (same as pick_card; this is the sharpest instance) |
+| Process replacement | ✅ `apps/yo-a2a/test/process-replacement.test.ts` ("multi-elicit workflow across two process replacements": SIGKILL while parked before flight selection *and* between the two elicitations; exactly-once reservation; post-completion continuation retry reconciles) | ⬜ **Gap G1** (same as pick_card; this is the sharpest instance) |
 | Local model | ⬜ | ⬜ (frontier/scripted models only today) |
 | Third-party interop | ⬜ | ⬜ |
 
@@ -101,9 +101,10 @@ tolerant); `play_ttt` uses structured agentic strategy.
   *A2A* adapter answered this class of question normatively (`onIndeterminate`); the foreign
   *tool* layer has no equivalent. Requires: a normative statement in this document (or a short
   spec) plus one SIGKILL test — book_flight between elicitations is the sharpest instance.
-- **G2 — Journal-native book_flight process replacement.** Park between flight and seat
-  selection, SIGKILL, resume in a fresh process. This is the missing certification for
-  multi-elicit park/resume, the primitive book_flight exists to represent.
+- **G2 — Journal-native book_flight process replacement.** ✅ Closed. The certification
+  immediately found a real defect: the agent harness checkpointed journal state *after*
+  sending HTTP responses, so a process death after acknowledging a parked task lost it.
+  Persistence now precedes acknowledgement (`packages/framework/src/server/testing.ts`).
 - **G3 — Pinned local-model CI gate.** The Ollama evidence is dev-machine-only with an
   unpinned model tag. Convert to a pinned artifact (model name + digest, mirroring
   `interop/a2a-inspector/inspector.pin.json`) driving tictactoe in CI, pass/fail decided by
