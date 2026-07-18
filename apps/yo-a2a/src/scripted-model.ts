@@ -34,6 +34,13 @@ export const scriptedModelRegistration = createChatModelEffectRegistration({
     if (/echo/i.test(userText)) {
       return call(effect.pullId, "echo_message", {});
     }
+    const flightMatch = /book\s+a?\s*flight\s+from\s+(\S+)\s+to\s+(\S+)/i.exec(userText);
+    if (flightMatch) {
+      return call(effect.pullId, "book_flight", {
+        from: flightMatch[1]!,
+        destination: flightMatch[2]!,
+      });
+    }
     if (/draw|pick\s+(?:a\s+)?card/i.test(userText)) {
       const requested = Number(userText.match(/\b(\d+)\b/)?.[1] ?? 2);
       return call(effect.pullId, "pick_card", {

@@ -402,8 +402,10 @@ async function handleNodeRequest(
       }
       outgoing.statusCode = 200;
       outgoing.setHeader("content-type", "application/json");
-      outgoing.end(JSON.stringify(evidence));
+      // Persist before acknowledging: a response must never claim state that
+      // a process replacement could lose.
       await checkpoint?.();
+      outgoing.end(JSON.stringify(evidence));
       return;
     }
     const address = incoming.socket.localAddress ?? "127.0.0.1";
@@ -429,8 +431,10 @@ async function handleNodeRequest(
         ...(!["GET", "HEAD"].includes(method) && body.byteLength > 0 ? { body } : {}),
       }),
     );
-    await sendWebResponse(outgoing, response);
+    // Persist before acknowledging: a response must never claim state that a
+    // process replacement could lose (e.g. a parked input_required task).
     await checkpoint?.();
+    await sendWebResponse(outgoing, response);
   } catch {
     if (!outgoing.headersSent) {
       outgoing.statusCode = 500;
