@@ -12,6 +12,16 @@ See also: [product-surface.md](./product-surface.md) · [product-facade-allowlis
 
 ---
 
+## 2026-07-20 — durable-tool authoring DX
+
+### Summary
+
+Fluent `createDurableTool()` results now satisfy `AgentProgramInput` directly. `defineChatProgram()` and `defineAgent()` infer tool schemas and resources, eliminating handwritten `AgentProgramBinding` objects and unsafe casts. Versioned tools can omit `.identity()` and receive deterministic `generated-interface` provenance over their complete durable manifest. Persistent reference journal stores can derive their schema registry from an authored `agent`.
+
+### Migration note
+
+Prefer `createDurableTool(name, { version })`, pass the resulting tool directly to `modelTool()` and `defineAgent()`, and pass `agent` rather than `programDriverSchemaRegistry(agent.bindings.schemas)` to `createFileProgramDriverJournalStore()`. Interface-derived identity does not cover executor source and therefore does not satisfy `releaseStrict`; generated builds should provide `implementationArtifactDigest`. Explicit asserted identities and explicit schema registries remain low-level escape hatches.
+
 ## 2026-07-19 — journal-backed standard A2A host
 
 ### Summary

@@ -1,16 +1,11 @@
-import {
-  createStandardA2AHost,
-  programDriverSchemaRegistry,
-  serveAgent,
-  standardA2A,
-} from "@sweatpants/framework/server";
+import { createStandardA2AHost, serveAgent, standardA2A } from "@sweatpants/framework/server";
 import {
   createFileProgramDriverJournalStore,
   createFileStandardA2ATaskDirectory,
   startAgentHarness,
 } from "@sweatpants/framework/server/testing";
 import { createCapabilityKeyring } from "@sweatpants/session-contract";
-import { cardAgent, cardChat } from "./agent.ts";
+import { cardAgent } from "./agent.ts";
 import { realModelRegistration, selectedModel } from "./model.ts";
 import { drawCardsRegistration } from "./pick-card.ts";
 import { scriptedModelRegistration } from "./scripted-model.ts";
@@ -31,7 +26,7 @@ const persistentJournal = stateDirectory
           secret: process.env["YO_A2A_CAPABILITY_SECRET"] ?? "yo-a2a-stable-capability-secret-key",
         },
       ]),
-      schemaRegistry: programDriverSchemaRegistry(cardChat.schemaCatalog),
+      agent: cardAgent,
     })
   : undefined;
 const persistentTaskDirectory = stateDirectory

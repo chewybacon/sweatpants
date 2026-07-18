@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { call, createScope, type Operation } from "effection";
+import type { AgentDefinition } from "@sweatpants/core";
 import { sendWebResponse } from "@sweatpants/stream-bridge";
 import type { AddressInfo } from "node:net";
 import {
@@ -17,9 +18,10 @@ import {
   type ResolveOperationResult,
   type Json,
 } from "@sweatpants/session-contract";
-import type {
-  ProgramDriverJournal,
-  ProgramDriverJournalStore,
+import {
+  programDriverSchemaRegistry,
+  type ProgramDriverJournal,
+  type ProgramDriverJournalStore,
 } from "../handler/durable/program-driver-journal.ts";
 import type {
   BoundStandardA2AHost,
@@ -66,27 +68,43 @@ export interface FileProgramDriverJournalStore extends ProgramDriverJournalStore
 export function createFileProgramDriverJournalStore(options: {
   readonly directory: string;
   readonly keyring: CapabilityKeyring;
-  readonly schemaRegistry: DurableSchemaRegistry;
+  /** Prefer the authored agent; its complete schema inventory is derived automatically. */
+  readonly agent?: AgentDefinition;
+  /** Low-level escape hatch for stores not associated with one authored agent. */
+  readonly schemaRegistry?: DurableSchemaRegistry;
   readonly journalPrefix?: string;
   readonly now?: () => number;
 }): FileProgramDriverJournalStore {
+  if (options.agent && options.schemaRegistry) {
+    throw new Error("Specify agent or schemaRegistry, not both");
+  }
+  const schemaRegistry = options.agent
+    ? programDriverSchemaRegistry(options.agent.bindings.schemas)
+    : options.schemaRegistry;
+  if (!schemaRegistry) {
+    throw new Error("A file journal store requires an agent or schemaRegistry");
+  }
   const authorities = new Map<string, ReturnType<typeof createInMemoryDurableJournalAuthority>>();
   const fileFor = (conversationId: string) =>
     `${options.directory}/${sha256(conversationId)}.journal.json`;
   const load = async (conversationId: string) => {
     const existing = authorities.get(conversationId);
-    if (existing) {return existing;}
+    if (existing) {
+      return existing;
+    }
     let snapshot: DurableAuthoritySnapshot | undefined;
     try {
       snapshot = parseDurableAuthoritySnapshot(await readFile(fileFor(conversationId), "utf8"));
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {throw error;}
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
     }
     const authority = createInMemoryDurableJournalAuthority({
       journalId: `${options.journalPrefix ?? "standard-a2a-file"}:${conversationId}`,
       journalIncarnation: "1",
       keyring: options.keyring,
-      schemaRegistry: options.schemaRegistry,
+      schemaRegistry,
       ...(options.now ? { now: options.now } : {}),
       ...(snapshot ? { snapshot } : {}),
     });
@@ -150,7 +168,9 @@ export function createFileStandardA2ATaskDirectory(path: string): StandardA2ATas
   let state: State | undefined;
   let mutation = Promise.resolve();
   const load = async (): Promise<State> => {
-    if (state) {return state;}
+    if (state) {
+      return state;
+    }
     try {
       const parsed = JSON.parse(await readFile(path, "utf8")) as State;
       if (parsed.version !== 1 || !parsed.tasks || !parsed.continuations || !parsed.content) {
@@ -330,7 +350,9 @@ export async function startAgentHarness(options: StartAgentHarnessOptions): Prom
       stopped = false;
     },
     async stop() {
-      if (stopped) {return;}
+      if (stopped) {
+        return;
+      }
       stopped = true;
       await closeServer(server, options.teardownTimeoutMs ?? 5_000);
     },
@@ -428,7 +450,9 @@ async function waitForHarnessReady(
       const response = await fetch(cardUrl, {
         headers: { ...headers, connection: "close" },
       });
-      if (response.ok) {return;}
+      if (response.ok) {
+        return;
+      }
       lastError = new Error(`Harness readiness returned ${response.status}`);
     } catch (error) {
       lastError = error;

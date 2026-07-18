@@ -1,12 +1,6 @@
 import { randomInt } from "node:crypto";
-import {
-  createDurableTool,
-  defineEffect,
-  effectRuntimeValidators,
-  type AgentProgramBinding,
-} from "@sweatpants/core";
+import { createDurableTool, defineEffect, effectRuntimeValidators } from "@sweatpants/core";
 import { createDurableEffectRegistration } from "@sweatpants/framework/server";
-import { sha256, type DurableTool } from "@sweatpants/session-contract";
 import { z } from "zod";
 
 const SUITS = ["hearts", "diamonds", "clubs", "spades"] as const;
@@ -26,12 +20,8 @@ const drawCards = defineEffect({
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
-export const pickCard = createDurableTool("pick_card")
+export const pickCard = createDurableTool("pick_card", { version: "1.1.0" })
   .description("Draw cards, show the exact choices to the user, and durably wait for a selection")
-  .identity({
-    version: "1.1.0",
-    digest: sha256("yo-a2a.pick-card@1.1.0:text-card-number"),
-  })
   .parameters(
     z.object({
       count: z.number().int().min(2).max(10).describe("Number of cards to draw"),
@@ -65,15 +55,11 @@ export const pickCard = createDurableTool("pick_card")
     }
     const selectedIndex = Number.parseInt(response.content.trim().replace(/\.$/, ""), 10) - 1;
     const selected = cards[selectedIndex];
-    if (!selected) {throw new Error("The selected card number was not one of the offered cards");}
+    if (!selected) {
+      throw new Error("The selected card number was not one of the offered cards");
+    }
     return { selected, message: `You selected ${selected.display}.` };
   });
-
-export const pickCardBinding: AgentProgramBinding = Object.freeze({
-  program: pickCard as unknown as DurableTool,
-  schemas: pickCard.artifacts.catalog,
-  resources: Object.freeze([]),
-});
 
 const drawValidators = effectRuntimeValidators(drawCards)!;
 export const drawCardsRegistration = createDurableEffectRegistration(

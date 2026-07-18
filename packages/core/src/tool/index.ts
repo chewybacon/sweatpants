@@ -6,6 +6,8 @@ export type {
   CreateDurableToolBuilderWithDescription,
   CreateDurableToolBuilderWithIdentity,
   CreateDurableToolBuilderWithParameters,
+  CreateDurableToolOptions,
+  CreateVersionedDurableToolBuilderBase,
   DurableProgramContextFor,
   DurableToolDefinition,
   FluentDurableTool,

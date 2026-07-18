@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { ANY_JSON_SCHEMA_DESCRIPTOR } from "@sweatpants/session-contract";
 
+import { defineAgent, parseAgentManifest } from "../../agent/index.ts";
 import { createDurableTool } from "../durable-create.ts";
 import { defineEffect, effectCatalogEntries } from "../durable-effect.ts";
 
@@ -30,6 +31,50 @@ describe("createDurableTool fluent builder", () => {
     expect(tool.manifest.outputSchema).toEqual(ANY_JSON_SCHEMA_DESCRIPTOR);
     expect(tool.manifest.effects).toEqual({ echo });
     expect(Object.isFrozen(tool)).toBe(true);
+  });
+
+  it("derives interface identity and binds directly without casts or binding objects", () => {
+    const tool = createDurableTool("durable.direct", { version: "1.0.0" })
+      .description("Directly bound")
+      .parameters(z.object({ message: z.string() }))
+      .output(z.object({ echoed: z.string() }))
+      .effects({ echo })
+      .execute(function* ({ message }) {
+        return { echoed: message };
+      });
+    const agent = defineAgent({
+      identity: { name: "direct-agent", version: "1.0.0" },
+      description: "Direct binding test",
+      programs: { direct: tool },
+    });
+
+    expect(tool.identityProvenance.kind).toBe("generated-interface");
+    expect(agent.bindings.programs.direct?.program).toBe(tool);
+    expect(agent.bindings.programs.direct?.schemas).toEqual(tool.artifacts.catalog);
+    expect(parseAgentManifest(agent.manifest)).toEqual(agent.manifest);
+  });
+
+  it("accepts a build-generated implementation digest through the same validated identity path", () => {
+    const tool = createDurableTool("durable.generated", {
+      version: "1.0.0",
+      implementationArtifactDigest: "c".repeat(64),
+    })
+      .description("Generated implementation")
+      .parameters(z.object({}))
+      .effects({})
+      .execute(function* () {
+        return null;
+      });
+
+    expect(tool.identityProvenance.kind).toBe("generated-artifact");
+    expect(() =>
+      defineAgent({
+        identity: { name: "generated-agent", version: "1.0.0" },
+        description: "Generated binding test",
+        programs: { generated: tool },
+        releaseStrict: true,
+      }),
+    ).not.toThrow();
   });
 
   it("lowers Zod output and elicit content schemas to portable descriptors in the manifest", () => {

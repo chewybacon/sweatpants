@@ -363,7 +363,10 @@ function parsePinned(value: unknown): PinnedAgentProgramV1 {
 }
 
 function parseProvenance(value: unknown): ProgramIdentityProvenanceV1 {
-  if (!record(value) || (value["kind"] !== "asserted" && value["kind"] !== "generated-artifact")) {
+  if (
+    !record(value) ||
+    !["asserted", "generated-interface", "generated-artifact"].includes(String(value["kind"]))
+  ) {
     invalidAgent("invalid program identity provenance");
   }
   if (value["kind"] === "asserted") {
@@ -371,19 +374,23 @@ function parseProvenance(value: unknown): ProgramIdentityProvenanceV1 {
     return Object.freeze({ kind: "asserted" });
   }
   assertExactKeys(value, ["kind", "format", "generatorVersion", "identityInputDigest"]);
+  const format =
+    value["kind"] === "generated-interface"
+      ? "sweatpants.program-interface-identity.v1"
+      : "sweatpants.program-artifact-identity.v1";
   if (
-    value["format"] !== "sweatpants.program-artifact-identity.v1" ||
+    value["format"] !== format ||
     !Number.isSafeInteger(value["generatorVersion"]) ||
     Number(value["generatorVersion"]) <= 0
   ) {
     invalidAgent("invalid generated provenance");
   }
   return Object.freeze({
-    kind: "generated-artifact",
-    format: "sweatpants.program-artifact-identity.v1",
+    kind: value["kind"],
+    format,
     generatorVersion: Number(value["generatorVersion"]),
     identityInputDigest: requireDigest(value["identityInputDigest"], "identity input digest"),
-  });
+  }) as ProgramIdentityProvenanceV1;
 }
 
 function isProgramBinding(value: AgentProgramInput): value is AgentProgramBinding {
