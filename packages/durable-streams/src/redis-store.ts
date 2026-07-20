@@ -10,6 +10,13 @@ interface StreamEntry {
   message: Record<string, string>
 }
 
+function luaFencedWriterGuard(keyIndex: 1 | 2, failureCode: 0 | -1): string {
+  return `
+if redis.call('HGET', KEYS[${keyIndex}], 'writerOwner') ~= ARGV[1] or
+   redis.call('HGET', KEYS[${keyIndex}], 'writerEpoch') ~= ARGV[2] then return ${failureCode} end
+`
+}
+
 export type RedisTokenBufferStore<T> = TokenBufferStore<T>
 
 export interface RedisBufferOptions {
@@ -177,8 +184,7 @@ function createRedisBuffer<T>(
         const serialized = tokens.map(serializeToken)
         const result = yield* call(() =>
           client.eval(
-            `if redis.call('HGET', KEYS[2], 'writerOwner') ~= ARGV[1] or
-                redis.call('HGET', KEYS[2], 'writerEpoch') ~= ARGV[2] then return -1 end
+            `${luaFencedWriterGuard(2, -1)}
              if redis.call('HGET', KEYS[2], 'completed') == 'true' then return -2 end
              for i = 3, #ARGV do redis.call('XADD', KEYS[1], '*', 'token', ARGV[i]) end
              return redis.call('XLEN', KEYS[1])`,
@@ -196,21 +202,21 @@ function createRedisBuffer<T>(
       *complete(): Operation<void> {
         const result = yield* call(() =>
           client.eval(
-            `if redis.call('HGET', KEYS[1], 'writerOwner') ~= ARGV[1] or
-                redis.call('HGET', KEYS[1], 'writerEpoch') ~= ARGV[2] then return 0 end
+            `${luaFencedWriterGuard(1, 0)}
+             if redis.call('HGET', KEYS[1], 'completed') == 'true' then return 2 end
              redis.call('HSET', KEYS[1], 'completed', 'true')
              return 1`,
             { keys: [metaKey(id)], arguments: [ownerId, String(activationEpoch)] },
           ),
         )
-        if (Number(result) !== 1) throw new StaleTokenWriterError()
-        yield* notifyChange()
+        if (Number(result) === 0) throw new StaleTokenWriterError()
+        if (Number(result) === 1) yield* notifyChange()
       },
       *fail(error): Operation<void> {
         const result = yield* call(() =>
           client.eval(
-            `if redis.call('HGET', KEYS[1], 'writerOwner') ~= ARGV[1] or
-                redis.call('HGET', KEYS[1], 'writerEpoch') ~= ARGV[2] then return 0 end
+            `${luaFencedWriterGuard(1, 0)}
+             if redis.call('HGET', KEYS[1], 'completed') == 'true' then return 2 end
              redis.call('HSET', KEYS[1], 'completed', 'true', 'error', ARGV[3])
              return 1`,
             {
@@ -219,8 +225,8 @@ function createRedisBuffer<T>(
             },
           ),
         )
-        if (Number(result) !== 1) throw new StaleTokenWriterError()
-        yield* notifyChange()
+        if (Number(result) === 0) throw new StaleTokenWriterError()
+        if (Number(result) === 1) yield* notifyChange()
       },
     }
   }
@@ -255,26 +261,28 @@ function createRedisBuffer<T>(
       const result = yield* call(() =>
         client.eval(
           `if redis.call('HEXISTS', KEYS[1], 'writerOwner') == 1 then return 0 end
+           if redis.call('HGET', KEYS[1], 'completed') == 'true' then return 2 end
            redis.call('HSET', KEYS[1], 'completed', 'true')
            return 1`,
           { keys: [metaKey(id)], arguments: [] },
         ),
       )
-      if (Number(result) !== 1) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      yield* notifyChange()
+      if (Number(result) === 0) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      if (Number(result) === 1) yield* notifyChange()
     },
 
     *fail(error) {
       const result = yield* call(() =>
         client.eval(
           `if redis.call('HEXISTS', KEYS[1], 'writerOwner') == 1 then return 0 end
+           if redis.call('HGET', KEYS[1], 'completed') == 'true' then return 2 end
            redis.call('HSET', KEYS[1], 'completed', 'true', 'error', ARGV[1])
            return 1`,
           { keys: [metaKey(id)], arguments: [error.message.slice(0, 1024)] },
         ),
       )
-      if (Number(result) !== 1) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      yield* notifyChange()
+      if (Number(result) === 0) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      if (Number(result) === 1) yield* notifyChange()
     },
 
     *read(afterLSN = 0) {

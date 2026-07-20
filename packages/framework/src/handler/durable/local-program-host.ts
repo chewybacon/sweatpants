@@ -9,6 +9,8 @@ import {
   ModelSamplingOutcomeAcknowledgerContext,
   ProgramDeliveryWriterContext,
   canonicalSnapshot,
+  exactProgramKey,
+  FOREIGN_TOOL_ADAPTER_PROGRAM,
   stableProgramAttachmentId,
   validateDurableEffectBindings,
   type DurableEffectRegistry,
@@ -61,6 +63,7 @@ export interface NormalizedProgramTaskTrace {
   parentPullId?: string;
   program: PinnedProgram;
   acceptedInput: Json;
+  catalogDigest?: string;
   operations: NormalizedProgramOperationTrace[];
   semanticEmissions: Json[];
   cancellations: Json[];
@@ -114,9 +117,10 @@ export interface LocalProgramHost {
   trace(sessionId: string): Operation<NormalizedProgramTrace>;
 }
 
-type Execution = {
+type AcceptedExecution = {
   route: ProgramRoute;
   executionEpoch: number;
+  catalog: PinnedProgramCatalog;
 };
 
 export interface LocalProgramActivationScope {
@@ -158,15 +162,13 @@ export function runLocalProgramActivation<T>(
  * exact registries, user responses, cancellation, and trace projection.
  */
 export function createLocalProgramHost(options: LocalProgramHostOptions): LocalProgramHost {
-  const executions = new Map<string, Execution>();
-  let nextSession = 0;
-
-  function executionKey(sessionId: string, taskId: string): string {
-    return `${sessionId}\u0000${taskId}`;
-  }
+  // Process-local ownership is only a churn-avoidance hint. Every reuse is
+  // checked against authority state; a replacement Host has an empty map and
+  // therefore claims newer fences for the complete active task tree.
+  const ownedSessionEpochs = new Map<string, number>();
 
   function findTool(program: PinnedProgram) {
-    return options.programs.get(`${program.id}@${program.version}#${program.digest}`);
+    return options.programs.get(exactProgramKey(program));
   }
 
   function validateProgram(request: OpenLocalProgramRequest): void {
@@ -186,6 +188,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       throw new CrankError("invalid_manifest", "Program pin and manifest differ");
     }
     validateCatalog(request.catalog);
+    assertCatalogDispatch(request.catalog, request.program);
     validateDurableEffectBindings(Object.values(request.manifest.effects), options.effects);
   }
 
@@ -195,14 +198,21 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     taskId: string,
     program: PinnedProgram,
     input: Json,
-    execution: Execution,
+    execution: AcceptedExecution,
   ): Operation<ProgramRunResult> {
     return yield* runLocalProgramActivation(
       {
         authority: journal.authority,
         drivers: options.drivers,
         effects: options.effects,
-        ...(options.routeResolver ? { routeResolver: options.routeResolver } : {}),
+        // Always install this wrapper: the no-policy case still has to enforce
+        // the accepted catalog before returning the inherited parent route.
+        routeResolver: function* (child, parentRoute) {
+          assertCatalogDispatch(execution.catalog, child);
+          return options.routeResolver
+            ? yield* options.routeResolver(child, parentRoute)
+            : parentRoute;
+        },
         ...(options.modelSamplingRouter
           ? { modelSamplingRouter: options.modelSamplingRouter }
           : {}),
@@ -246,17 +256,59 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     if (!findTool(program)) {
       throw new CrankError("program_version_unavailable", "Accepted program is unavailable");
     }
-    const execution = executions.get(executionKey(sessionId, opened.taskId)) ?? {
-      route: { driverKind: "generator" },
-      executionEpoch: 1,
-    };
-    return yield* runTask(journal, sessionId, opened.taskId, program, opened.input, execution);
+    const accepted = yield* acceptedExecution(journal, sessionId, opened);
+    const closed = new Set(
+      records.flatMap((record) =>
+        record.payload.type === "TaskClosed" ? [record.payload.taskId] : [],
+      ),
+    );
+    const activeTasks = records.flatMap((record) =>
+      record.payload.type === "TaskOpened" && !closed.has(record.payload.taskId)
+        ? [record.payload]
+        : [],
+    );
+    const states = new Map<string, number>();
+    for (const task of activeTasks) {
+      states.set(
+        task.taskId,
+        (yield* journal.executionState(sessionId, task.taskId)).executionEpoch,
+      );
+    }
+    const ownedEpoch = ownedSessionEpochs.get(sessionId);
+    const canReuseOwnedEpoch =
+      ownedEpoch !== undefined && [...states.values()].every((epoch) => epoch === ownedEpoch);
+
+    let rootExecutionEpoch = canReuseOwnedEpoch ? ownedEpoch : undefined;
+    if (!canReuseOwnedEpoch) {
+      const targetEpoch = Math.max(0, ...states.values()) + 1;
+      for (const task of activeTasks) {
+        let taskEpoch = states.get(task.taskId)!;
+        while (taskEpoch < targetEpoch) {
+          taskEpoch = (
+            yield* journal.replaceAttachment(
+              sessionId,
+              task.taskId,
+              `local-host-resume:${crypto.randomUUID()}`,
+            )
+          ).executionEpoch;
+        }
+        if (task.taskId === opened.taskId) rootExecutionEpoch = taskEpoch;
+      }
+    }
+    if (rootExecutionEpoch === undefined) {
+      throw new CrankError("invalid_journal", "Runnable root was not fenced for recovery");
+    }
+    ownedSessionEpochs.set(sessionId, rootExecutionEpoch);
+    return yield* runTask(journal, sessionId, opened.taskId, program, opened.input, {
+      ...accepted,
+      executionEpoch: rootExecutionEpoch,
+    });
   }
 
   return {
     *open(request): Operation<LocalProgramRun> {
       validateProgram(request);
-      const sessionId = request.sessionId ?? `local-session-${++nextSession}`;
+      const sessionId = request.sessionId ?? `local-session:${crypto.randomUUID()}`;
       const journal = yield* options.journalStore.open(sessionId);
       const existing = yield* journal.readJournal(sessionId);
       const rootCount = existing.filter(
@@ -265,7 +317,11 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       const turnId = request.turnId ?? `turn-${rootCount}`;
       const taskId = request.taskId ?? `${turnId}/root`;
       const route = request.route ?? { driverKind: "generator" };
-      const execution = { route, executionEpoch: 1 };
+      const execution: AcceptedExecution = {
+        route,
+        executionEpoch: 1,
+        catalog: request.catalog,
+      };
       const attach = {
         sessionId,
         taskId,
@@ -283,8 +339,11 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         executionEpoch: execution.executionEpoch,
         attachmentId: stableProgramAttachmentId(attach),
         audience: "program-runtime",
+        catalog: canonicalSnapshot(request.catalog as unknown as Json).value,
+        catalogDigest: request.catalog.digest,
+        route,
       });
-      executions.set(executionKey(sessionId, taskId), execution);
+      ownedSessionEpochs.set(sessionId, execution.executionEpoch);
       return {
         sessionId,
         turnId,
@@ -307,7 +366,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     *respond(request): Operation<ProgramRunResult> {
       const journal = yield* options.journalStore.open(request.sessionId);
       const records = yield* journal.readJournal(request.sessionId);
-      const pending = records.find(
+      const pending = [...records].reverse().find(
         (record) =>
           record.payload.type === "PullRequested" &&
           record.payload.taskId === request.taskId &&
@@ -321,6 +380,21 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         request.response.action === "cancel"
           ? { status: "cancelled" }
           : { status: "ok", value: canonicalSnapshot(request.response).value };
+      const alreadyResolved = [...records].reverse().find(
+        (record) =>
+          record.payload.type === "PullResolved" &&
+          record.payload.taskId === request.taskId &&
+          record.payload.pullId === request.pullId,
+      );
+      if (alreadyResolved?.payload.type === "PullResolved") {
+        if (
+          canonicalSnapshot(alreadyResolved.payload.outcome).sha !==
+          canonicalSnapshot(outcome).sha
+        ) {
+          throw new CrankError("resolution_conflict", "Elicitation response conflicts");
+        }
+        return yield* resumeTask(request.sessionId);
+      }
       const resolution = yield* journal.resolvePending({
         sessionId: request.sessionId,
         taskId: request.taskId,
@@ -371,6 +445,61 @@ export function validateCatalog(catalog: PinnedProgramCatalog): void {
   }
 }
 
+function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedProgram): void {
+  const entries = Object.values(catalog.entries);
+  const exact = entries.some(
+    (entry) =>
+      entry.kind === "program" &&
+      exactProgramKey(entry.program) === exactProgramKey(program),
+  );
+  if (exact) return;
+
+  const foreignAdapter =
+    exactProgramKey(program) === exactProgramKey(FOREIGN_TOOL_ADAPTER_PROGRAM) &&
+    entries.some((entry) => entry.kind === "foreign-tool");
+  if (foreignAdapter) return;
+
+  const targetExists = entries.some(
+    (entry) =>
+      entry.target === program.id ||
+      (entry.kind === "program" && entry.program.id === program.id),
+  );
+  throw new CrankError(
+    targetExists ? "invalid_descriptor" : "unknown_target",
+    targetExists
+      ? `Program pin for target ${program.id} differs from the accepted catalog`
+      : `Program target ${program.id} is outside the accepted catalog`,
+  );
+}
+
+function* acceptedExecution(
+  journal: ProgramDriverJournal,
+  sessionId: string,
+  opened: Extract<DurableSemanticRecord["payload"], { type: "TaskOpened" }>,
+): Operation<AcceptedExecution> {
+  if (opened.catalog === undefined || opened.catalogDigest === undefined) {
+    throw new CrankError("invalid_journal", "Task has no accepted catalog");
+  }
+  const state = yield* journal.executionState(sessionId, opened.taskId);
+  if (state.route === undefined) {
+    throw new CrankError("invalid_journal", "Task has no authority-owned execution route");
+  }
+  const catalog = opened.catalog as unknown as PinnedProgramCatalog;
+  validateCatalog(catalog);
+  if (
+    catalog.digest !== opened.catalogDigest ||
+    state.catalogDigest !== opened.catalogDigest ||
+    canonicalSnapshot(state.catalog).sha !== canonicalSnapshot(opened.catalog).sha
+  ) {
+    throw new CrankError("invalid_journal", "Task catalog differs from authority state");
+  }
+  return {
+    catalog,
+    route: structuredClone(state.route),
+    executionEpoch: state.executionEpoch,
+  };
+}
+
 export function normalizeProgramTrace(
   records: readonly DurableSemanticRecord[],
 ): NormalizedProgramTrace {
@@ -390,6 +519,7 @@ export function normalizeProgramTrace(
           digest: payload.programDigest,
         },
         acceptedInput: structuredClone(payload.input),
+        ...(payload.catalogDigest ? { catalogDigest: payload.catalogDigest } : {}),
         operations: [],
         semanticEmissions: [],
         cancellations: [],
@@ -418,7 +548,10 @@ export function normalizeProgramTrace(
       continue;
     }
     if (payload.type === "CancellationRequested") {
-      tasks.get(payload.taskId)?.cancellations.push(structuredClone(payload) as unknown as Json);
+      tasks.get(payload.taskId)?.cancellations.push({
+        taskId: payload.taskId,
+        ...(payload.reason !== undefined ? { reason: payload.reason } : {}),
+      });
       continue;
     }
     if (payload.type === "TaskClosed") {
@@ -436,13 +569,20 @@ function selectRunnableTask(records: readonly DurableSemanticRecord[], requested
     ),
   );
   const opened = records.flatMap((record) =>
-    record.payload.type === "TaskOpened" &&
-    !closed.has(record.payload.taskId) &&
-    (!requestedTaskId || record.payload.taskId === requestedTaskId)
+    record.payload.type === "TaskOpened" && !closed.has(record.payload.taskId)
       ? [record.payload]
       : [],
   );
-  return opened.at(-1);
+  if (opened.length === 0) return undefined;
+  if (!requestedTaskId) {
+    return opened.filter((task) => !task.parentTaskId).at(-1);
+  }
+  const byId = new Map(opened.map((task) => [task.taskId, task]));
+  let selected = byId.get(requestedTaskId);
+  while (selected?.parentTaskId) {
+    selected = byId.get(selected.parentTaskId);
+  }
+  return selected;
 }
 
 function terminalOutcome(records: readonly DurableSemanticRecord[], taskId: string) {

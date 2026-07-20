@@ -7,6 +7,7 @@ import {
   type DurableJournalAuthorityService,
   type DurableSchemaRegistry,
   type DurableSemanticRecord,
+  type DurableTaskExecutionState,
   type OpenDurableTaskRequest,
   type OperationOutcome,
   type ResolveOperationResult,
@@ -31,6 +32,14 @@ export interface ProgramDriverJournal {
   readonly authority: DurableJournalAuthorityService;
   /** Opens one pinned root task exactly once. */
   openTask(request: OpenDurableTaskRequest): Operation<void>;
+  /** Reads authority-owned route/catalog state for process replacement. */
+  executionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
+  /** Atomically fences the previous attachment and returns the next authority epoch. */
+  replaceAttachment(
+    sessionId: string,
+    taskId: string,
+    attachmentId: string,
+  ): Operation<{ executionEpoch: number }>;
   /** Reads a parsed defensive semantic journal snapshot. */
   readJournal(sessionId: string): Operation<DurableSemanticRecord[]>;
   /** Idempotently records logical cancellation before pending work is resolved. */
@@ -92,6 +101,18 @@ export function createInMemoryProgramDriverJournalStore(
         authority: selected,
         *openTask(request): Operation<void> {
           yield* selected.openTask(request);
+        },
+        *executionState(sessionId, taskId) {
+          return yield* selected.taskExecutionState(sessionId, taskId);
+        },
+        *replaceAttachment(sessionId, taskId, attachmentId) {
+          const replaced = yield* selected.replaceAttachment(
+            sessionId,
+            taskId,
+            attachmentId,
+            "program-runtime",
+          );
+          return { executionEpoch: replaced.executionEpoch };
         },
         *readJournal(sessionId): Operation<DurableSemanticRecord[]> {
           return selected.readJournal(sessionId);

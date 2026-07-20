@@ -56,6 +56,34 @@ export function defineTokenBufferStoreConformance(
       expect(await run(() => buffer.read(0))).toEqual({ tokens: ['a', 'b'], lsn: 2 })
     })
 
+    it('keeps the first terminal state immutable', async ({ skip }) => {
+      beforeTest(skip)
+      const store = createStore()
+      const completed = await run(() => store.create(`${name}-terminal-complete`))
+      const completedWriter = await run(() =>
+        completed.claimWriter({ ownerId: 'owner', activationEpoch: 1 }),
+      )
+      await run(() => completedWriter.complete())
+      await run(() => completedWriter.fail(new Error('must-not-replace-completion')))
+      expect(await run(() => completed.isComplete())).toBe(true)
+      expect(await run(() => completed.getError())).toBeNull()
+
+      const failed = await run(() => store.create(`${name}-terminal-failed`))
+      const failedWriter = await run(() =>
+        failed.claimWriter({ ownerId: 'owner', activationEpoch: 1 }),
+      )
+      await run(() => failedWriter.fail(new Error('first-failure')))
+      await run(() => failedWriter.complete())
+      expect((await run(() => failed.getError()))?.message).toBe('first-failure')
+
+      const bounded = await run(() => store.create(`${name}-bounded-error`))
+      const boundedWriter = await run(() =>
+        bounded.claimWriter({ ownerId: 'owner', activationEpoch: 1 }),
+      )
+      await run(() => boundedWriter.fail(new Error('x'.repeat(2_000))))
+      expect((await run(() => bounded.getError()))?.message).toHaveLength(1_024)
+    })
+
     it('returns from waitForChange when the tail is already ahead of afterLSN', async ({ skip }) => {
       beforeTest(skip)
       const store = createStore()

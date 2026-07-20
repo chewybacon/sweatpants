@@ -65,6 +65,18 @@ export function createRedisProgramDriverJournalStore(
         *openTask(request): Operation<void> {
           yield* authority.openTask(request);
         },
+        *executionState(sessionId, taskId) {
+          return yield* authority.taskExecutionState(sessionId, taskId);
+        },
+        *replaceAttachment(sessionId, taskId, attachmentId) {
+          const replaced = yield* authority.replaceAttachment(
+            sessionId,
+            taskId,
+            attachmentId,
+            "program-runtime",
+          );
+          return { executionEpoch: replaced.executionEpoch };
+        },
         *readJournal(sessionId): Operation<DurableSemanticRecord[]> {
           return yield* authority.readJournal(sessionId);
         },

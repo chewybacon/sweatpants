@@ -496,6 +496,16 @@ describe('Session Registry', () => {
         source: stalled,
         writer: { ownerId: 'host-a', activationEpoch: 1 },
       })
+      let ordinarySourceFactories = 0
+      yield* registry.acquire('recover-source', {
+        source: () => {
+          ordinarySourceFactories += 1
+          return createMockLLMStream('must-not-start')
+        },
+        writer: { ownerId: 'plain-acquire', activationEpoch: 99 },
+      })
+      expect(ordinarySourceFactories).toBe(0)
+
       let factories = 0
       const recovered = yield* registry.recover('recover-source', {
         writer: { ownerId: 'host-b', activationEpoch: 2 },

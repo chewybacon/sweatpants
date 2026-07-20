@@ -17,6 +17,7 @@ import {
   type DurableAuthoritySnapshot,
   type DurableCancellationState,
   type DurableSemanticRecord,
+  type DurableTaskExecutionState,
   type EmissionReceipt,
   type EnsureChildTaskRequest,
   type EnsureChildTaskResult,
@@ -59,6 +60,8 @@ export interface RedisDurableJournalAuthorityOptions {
 
 /** CAS-backed durable authority port with processless journal reads and recovery operations. */
 export interface RedisDurableJournalAuthority {
+  /** Returns authority-owned placement and catalog recovery state. */
+  taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   /** Returns the canonical parsed input accepted for one task. */
   taskInput(sessionId: string, taskId: string): Operation<Json>;
   /** Lists exact schema digests referenced by nonterminal tasks. */
@@ -236,6 +239,10 @@ export function createRedisDurableJournalAuthority(
   }
 
   return {
+    *taskExecutionState(sessionId, taskId) {
+      const loaded = yield* call(load);
+      return yield* authority(loaded.snapshot).taskExecutionState(sessionId, taskId);
+    },
     *taskInput(sessionId, taskId) {
       const loaded = yield* call(load);
       return yield* authority(loaded.snapshot).taskInput(sessionId, taskId);
