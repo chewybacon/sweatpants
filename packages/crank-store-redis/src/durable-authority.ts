@@ -60,6 +60,7 @@ export interface RedisDurableJournalAuthorityOptions {
 
 /** CAS-backed durable authority port with processless journal reads and recovery operations. */
 export interface RedisDurableJournalAuthority {
+  journalIdentity(): { readonly id: string; readonly incarnation: string };
   /** Returns authority-owned placement and catalog recovery state. */
   taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   /** Returns the canonical parsed input accepted for one task. */
@@ -67,7 +68,7 @@ export interface RedisDurableJournalAuthority {
   /** Lists exact schema digests referenced by nonterminal tasks. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Clears the runnable marker when a legacy structured activation starts. */
-  markActivated(sessionId: string): Operation<void>;
+  markActivationStarted(sessionId: string): Operation<void>;
   recoverableSessions(): Operation<RecoverableSession[]>;
   claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;
   renewActivation(request: RenewActivationRequest): Operation<RenewActivationResult>;
@@ -239,6 +240,12 @@ export function createRedisDurableJournalAuthority(
   }
 
   return {
+    journalIdentity() {
+      return {
+        id: options.journalId,
+        incarnation: options.journalIncarnation ?? "1",
+      };
+    },
     *taskExecutionState(sessionId, taskId) {
       const loaded = yield* call(load);
       return yield* authority(loaded.snapshot).taskExecutionState(sessionId, taskId);
@@ -251,8 +258,8 @@ export function createRedisDurableJournalAuthority(
       const loaded = yield* call(load);
       return yield* authority(loaded.snapshot).nonterminalSchemaDigests();
     },
-    *markActivated(sessionId) {
-      yield* mutate((value) => value.markActivated(sessionId));
+    *markActivationStarted(sessionId) {
+      yield* mutate((value) => value.markActivationStarted(sessionId));
     },
     *recoverableSessions() {
       const loaded = yield* call(load);

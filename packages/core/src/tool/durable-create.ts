@@ -130,13 +130,6 @@ export type DurableToolDefinition<
   readonly program: DurableTool<I, O>["program"];
 };
 
-/** Compatibility alias for the previous fluent durable tool name. */
-export type FluentDurableTool<
-  N extends string,
-  I extends Json,
-  O extends Json,
-> = DurableToolDefinition<N, I, O>;
-
 export interface CreateDurableToolOptions {
   readonly version: string;
   /** Build-generated source-closure digest. Omit for an interface-only identity. */

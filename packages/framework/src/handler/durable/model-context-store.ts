@@ -19,7 +19,12 @@ export function* recordThreadSystemPrompt(
   }
 
   const buffer = yield* bufferStore.create(storeId)
-  yield* buffer.append([systemPrompt])
+  const writer = yield* buffer.claimWriter({
+    ownerId: `thread-model-context:${threadId}`,
+    activationEpoch: 1,
+  })
+  yield* writer.append([systemPrompt])
+  yield* writer.complete()
 }
 
 export function* readLatestThreadSystemPrompt(

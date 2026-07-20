@@ -222,7 +222,7 @@ export {
   createDurableChatHandler,
   createPluginSessionManager,
   createCapabilityKeyring,
-  createDurableTool,
+  createPinnedDurableProgram,
   defineDurableEffect,
   defineDurableProgramManifest,
   createDurableEffectRegistration,

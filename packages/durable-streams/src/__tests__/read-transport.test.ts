@@ -1,6 +1,7 @@
 import type { Operation, Subscription } from "effection";
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
+import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
 
 import { createInMemoryBufferStore } from "../in-memory-store.ts";
 import type { ProtocolHandlerContext, ProtocolSetupResult } from "../http-types.ts";
@@ -55,8 +56,8 @@ describe("read-transport", () => {
     await run(function* () {
       const bufferStore = createInMemoryBufferStore<string>();
       const buffer = yield* bufferStore.create("session-1");
-      yield* buffer.append(["one"]);
-      yield* buffer.complete();
+      yield* appendTestTokens(buffer, ["one"]);
+      yield* completeTestBuffer(buffer);
 
       let releaseCount = 0;
       const session: SessionHandle<string> = {
@@ -98,7 +99,7 @@ describe("read-transport", () => {
     await run(function* () {
       const bufferStore = createInMemoryBufferStore<string>();
       const buffer = yield* bufferStore.create("session-2");
-      yield* buffer.append(["one"]);
+      yield* appendTestTokens(buffer, ["one"]);
 
       let releaseCount = 0;
       const session: SessionHandle<string> = {
@@ -155,7 +156,7 @@ describe("read-transport", () => {
     await run(function* () {
       const bufferStore = createInMemoryBufferStore<string>();
       const buffer = yield* bufferStore.create("session-3");
-      yield* buffer.append(["one"]);
+      yield* appendTestTokens(buffer, ["one"]);
 
       const etag = createStreamETag("session-3", 1, { tailOffset: 1, closed: false });
       let releaseCount = 0;
@@ -264,7 +265,7 @@ describe("read-transport", () => {
     await run(function* () {
       const bufferStore = createInMemoryBufferStore<string>();
       const buffer = yield* bufferStore.create("session-5");
-      yield* buffer.append(["hello"]);
+      yield* appendTestTokens(buffer, ["hello"]);
 
       let releaseCount = 0;
       const session: SessionHandle<string> = {

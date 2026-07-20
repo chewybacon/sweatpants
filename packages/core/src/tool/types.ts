@@ -221,8 +221,7 @@ export interface SampleResultWithToolCalls {
   readonly exchange: SampleExchange<undefined>;
 }
 
-/** @deprecated Prefer SampleResultBase / SampleResultWithParsed */
-export type SampleResult<TParsed = unknown> = SampleResultBase & {
+export type NamedSampleResult<TParsed = unknown> = SampleResultBase & {
   readonly content?: string;
   readonly parsed?: TParsed;
   readonly raw?: unknown;
@@ -393,8 +392,8 @@ export interface ToolGenericSampleCtx {
   sampleSchema<T>(
     config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
   ): Operation<SampleSchemaResult<T>>;
-  /** Keyed sample request form used by some tools / tests */
-  sample(request: SampleRequest): Operation<SampleResult>;
+  /** Generic request form used by named sample declarations. */
+  sample(request: SampleRequest): Operation<NamedSampleResult>;
 }
 
 type SampleParsed<TSamples extends SamplesMap, K extends keyof TSamples> =
@@ -415,11 +414,11 @@ export interface ToolNamedSampleCtx<TSamples extends SamplesMap> {
   sample(
     config: ToolSampleConfig,
   ): Operation<SampleResultBase | SampleResultWithParsed<unknown> | SampleResultWithToolCalls>;
-  sample(request: SampleRequest): Operation<SampleResult>;
+  sample(request: SampleRequest): Operation<NamedSampleResult>;
   sample<K extends keyof TSamples & string>(
     key: K,
     request: SampleRequest,
-  ): Operation<SampleResult<SampleParsed<TSamples, K>>>;
+  ): Operation<NamedSampleResult<SampleParsed<TSamples, K>>>;
   sampleTools(config: SampleToolsConfig | SampleToolsConfigMessages): Operation<SampleToolsResult>;
   sampleSchema<T>(
     config: SampleSchemaConfig<T> | SampleSchemaConfigMessages<T>,
@@ -552,10 +551,3 @@ export interface CreateToolBuilderWithParams<
     TSamples
   >;
 }
-
-/** Compatibility alias for older type names. */
-export type CreateToolBuilderWithElicits<
-  TName extends string,
-  TInput,
-  TElicits extends ElicitsMap,
-> = CreateToolBuilderWithParams<TName, TInput, undefined, TElicits, undefined>;

@@ -10,7 +10,7 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
@@ -216,7 +216,7 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
 
 describe("crank-native durable runtime", () => {
   it("validates manifests and drives a disposable local generator with ordered actions", async () => {
-    const tool = createDurableTool(manifest, function* (input, context) {
+    const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       yield* context.emit("progress", { input });
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
@@ -257,7 +257,7 @@ describe("crank-native durable runtime", () => {
     });
 
     expect(() =>
-      createDurableTool({ ...manifest, digest: "not-a-digest" }, function* () {
+      createPinnedDurableProgram({ ...manifest, digest: "not-a-digest" }, function* () {
         return "bad";
       }),
     ).toThrow(/digest/);
@@ -599,7 +599,7 @@ describe("crank-native durable runtime", () => {
   });
 
   it("uses native createApi max/min middleware and runs host effects through durable receipt gating", async () => {
-    const tool = createDurableTool(manifest, function* (input, context) {
+    const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       yield* context.emit("progress", { stage: "before" });
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });

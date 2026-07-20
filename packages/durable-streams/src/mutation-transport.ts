@@ -3,8 +3,11 @@ import { call, type Operation } from 'effection'
 import type { ProtocolHandlerContext, ProtocolSetupResult } from './http-types.ts'
 import { toOffsetString } from './protocol-headers.ts'
 import { createEmptyStream } from './read-transport.ts'
-import { StaleTokenWriterError } from './types.ts'
-import type { SessionRegistryStore, TokenBufferStore } from './types.ts'
+import {
+  StaleTokenWriterError,
+  type SessionRegistryStore,
+  type TokenBufferStore,
+} from './types.ts'
 
 interface LoggerLike {
   debug(data: unknown, message?: string): void
@@ -72,10 +75,16 @@ export function* createProtocolMutationResponse(
     if (existingBuffer && !(yield* existingBuffer.isComplete())) {
       try {
         // Externally authored streams retain protocol close semantics. A
-        // Host-owned fenced response ignores this attempted writer mutation.
-        yield* existingBuffer.complete()
+        // Host-owned response rejects this protocol writer claim.
+        const writer = yield* existingBuffer.claimWriter({
+          ownerId: `protocol:${sessionId}`,
+          activationEpoch: 1,
+        })
+        yield* writer.complete()
       } catch (error) {
-        if (!(error instanceof StaleTokenWriterError)) throw error
+        if (!(error instanceof StaleTokenWriterError)) {
+          throw error
+        }
       }
     }
     yield* registryStore.delete(sessionId)
@@ -104,12 +113,16 @@ export function* createProtocolMutationResponse(
     }
   }
 
+  const writer = yield* buffer.claimWriter({
+    ownerId: `protocol:${sessionId}`,
+    activationEpoch: 1,
+  })
   if (body.length > 0) {
-    yield* buffer.append([body])
+    yield* writer.append([body])
   }
 
   if (close) {
-    yield* buffer.complete()
+    yield* writer.complete()
   }
 
   const { lsn } = yield* buffer.read(Number.MAX_SAFE_INTEGER)

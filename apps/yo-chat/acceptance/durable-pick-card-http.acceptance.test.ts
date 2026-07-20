@@ -28,7 +28,7 @@ import {
 } from "@sweatpants/tool-runtime-local";
 
 import type { Card } from "../src/tools/pick-card/cards";
-import { durablePickCard, drawPickCards, pickCard } from "../src/tools/pick-card/durable";
+import { pickCard, drawPickCards } from "../src/tools/pick-card/durable";
 import { installYoChatToolRuntime } from "../src/server/tool-runtime-installation";
 import { yoChatToolSessionWorkerConfig } from "../src/server/tool-worker-config";
 
@@ -165,7 +165,7 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
         journal.some(
           (record) =>
             record.payload.type === "TaskOpened" &&
-            record.payload.programId === durablePickCard.manifest.programId,
+            record.payload.programId === pickCard.manifest.programId,
         ),
       ).toBe(true);
       expect(

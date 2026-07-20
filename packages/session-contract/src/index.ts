@@ -174,7 +174,6 @@ export {
   assertReplayedCanonicalValue,
   createDurableProgramContext,
   createPinnedDurableProgram,
-  createDurableTool,
   defineDurableProgramManifest,
   defineDurableEffect,
   serializeDurableError,

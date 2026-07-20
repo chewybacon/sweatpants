@@ -2,6 +2,7 @@ import { run } from 'effection'
 import { describe, expect, it } from 'vitest'
 
 import type { TokenBufferStore } from '../types.ts'
+import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
 
 export function defineTokenBufferStoreConformance(
   name: string,
@@ -14,7 +15,7 @@ export function defineTokenBufferStoreConformance(
       const store = createStore()
       const buffer = await run(() => store.create(`${name}-tail-semantics`))
 
-      expect(await run(() => buffer.append(['a', 'b', 'c']))).toBe(3)
+      expect(await run(() => appendTestTokens(buffer, ['a', 'b', 'c']))).toBe(3)
 
       const all = await run(() => buffer.read(0))
       expect(all.tokens).toEqual(['a', 'b', 'c'])
@@ -36,9 +37,6 @@ export function defineTokenBufferStoreConformance(
       const first = await run(() => buffer.claimWriter({ ownerId: 'owner-a', activationEpoch: 1 }))
 
       expect(await run(() => first.append(['a']))).toBe(1)
-      await expect(run(() => buffer.append(['unfenced']))).rejects.toMatchObject({
-        code: 'stale_token_writer',
-      })
       const replacement = await run(() =>
         buffer.claimWriter({ ownerId: 'owner-b', activationEpoch: 2 }),
       )
@@ -89,7 +87,7 @@ export function defineTokenBufferStoreConformance(
       const store = createStore()
       const buffer = await run(() => store.create(`${name}-wait-already-ahead`))
 
-      await run(() => buffer.append(['a']))
+      await run(() => appendTestTokens(buffer, ['a']))
 
       await run(() => buffer.waitForChange(0))
     })
@@ -99,11 +97,11 @@ export function defineTokenBufferStoreConformance(
       const store = createStore()
       const buffer = await run(() => store.create(`${name}-wait-new-data`))
 
-      await run(() => buffer.append(['a']))
+      await run(() => appendTestTokens(buffer, ['a']))
       const waitForChangePromise = run(() => buffer.waitForChange(1))
 
       await new Promise((resolve) => setTimeout(resolve, 20))
-      await run(() => buffer.append(['b']))
+      await run(() => appendTestTokens(buffer, ['b']))
 
       await waitForChangePromise
       const result = await run(() => buffer.read(1))
@@ -119,7 +117,7 @@ export function defineTokenBufferStoreConformance(
       const waitForChangePromise = run(() => buffer.waitForChange(0))
 
       await new Promise((resolve) => setTimeout(resolve, 20))
-      await run(() => buffer.complete())
+      await run(() => completeTestBuffer(buffer))
 
       await waitForChangePromise
       expect(await run(() => buffer.isComplete())).toBe(true)

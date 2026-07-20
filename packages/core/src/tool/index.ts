@@ -10,7 +10,6 @@ export type {
   CreateVersionedDurableToolBuilderBase,
   DurableProgramContextFor,
   DurableToolDefinition,
-  FluentDurableTool,
 } from "./durable-create.ts";
 export {
   defineEffect,
@@ -59,7 +58,7 @@ export type {
   SamplesMap,
   NormalizedSamplesMap,
   SampleRequest,
-  SampleResult,
+  NamedSampleResult,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,
@@ -84,7 +83,6 @@ export type {
   CreateToolBuilderBase,
   CreateToolBuilderWithDescription,
   CreateToolBuilderWithParams,
-  CreateToolBuilderWithElicits,
   PerCallInterruptOptions,
   ToolSampleConfig,
   SamplingToolDefinition,

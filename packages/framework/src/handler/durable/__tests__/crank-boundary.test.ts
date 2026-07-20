@@ -61,9 +61,13 @@ describe("single crank-turner architecture", () => {
     expect(contracts).not.toContain("CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR");
   });
 
-  it("marks unfenced TokenBuffer mutations as compatibility-only", () => {
+  it("has no unfenced TokenBuffer mutation surface", () => {
     const contracts = source("../durable-streams/src/types.ts");
-    expect(contracts.match(/@deprecated Claim a `TokenBufferWriter`/g)).toHaveLength(3);
+    const tokenBuffer = contracts.slice(
+      contracts.indexOf("export interface TokenBuffer<T>"),
+      contracts.indexOf("export interface TokenBufferStore<T>"),
+    );
+    expect(tokenBuffer).not.toMatch(/^\s+(append|complete|fail)\(/m);
 
     const registry = source("src/lib/chat/durable-streams/session-registry.ts");
     expect(registry).not.toContain("buffer.append(");

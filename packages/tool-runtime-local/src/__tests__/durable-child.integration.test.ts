@@ -10,7 +10,7 @@ import {
   createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -157,7 +157,7 @@ describe("automatic local durable parent/child recovery", () => {
     let attachmentCount = 0;
     let shutdownCount = 0;
 
-    const child = createDurableTool(childManifest, function* (input, context) {
+    const child = createPinnedDurableProgram(childManifest, function* (input, context) {
       childFactories += 1;
       const answers: string[] = [];
       for (let round = 0; round < 3; round += 1) {
@@ -184,7 +184,7 @@ describe("automatic local durable parent/child recovery", () => {
       }
       return { rounds: answers.length, answers };
     });
-    const parent = createDurableTool(parentManifest, function* (_input, context) {
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       parentFactories += 1;
       return yield* context.invoke<ChildOutput>({
         id: childManifest.programId,
@@ -322,7 +322,7 @@ describe("automatic local durable parent/child recovery", () => {
     let cleanupExecutions = 0;
     let childCancellationCatches = 0;
 
-    const child = createDurableTool(childManifest, function* (input, context) {
+    const child = createPinnedDurableProgram(childManifest, function* (input, context) {
       try {
         const sampled = yield* context.effect(
           sampleDefinition,
@@ -353,7 +353,7 @@ describe("automatic local durable parent/child recovery", () => {
         yield* context.emit("child_cleanup_complete", { cleaned: true });
       }
     });
-    const parent = createDurableTool(parentManifest, function* (_input, context) {
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       return yield* context.invoke<ChildOutput>({
         id: childManifest.programId,
         version: childManifest.version,

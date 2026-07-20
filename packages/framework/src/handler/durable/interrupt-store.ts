@@ -21,7 +21,12 @@ export function* recordThreadInterruptState(
   }
 
   const buffer = yield* bufferStore.create(storeId)
-  yield* buffer.append([JSON.stringify(records)])
+  const writer = yield* buffer.claimWriter({
+    ownerId: `thread-interrupts:${threadId}`,
+    activationEpoch: 1,
+  })
+  yield* writer.append([JSON.stringify(records)])
+  yield* writer.complete()
 }
 
 export function* readLatestThreadInterruptState(

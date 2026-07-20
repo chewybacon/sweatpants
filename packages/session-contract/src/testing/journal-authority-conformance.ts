@@ -36,7 +36,7 @@ import type {
  */
 export interface JournalAuthorityConformancePort {
   /** Clears a runnable marker at the start of a structured activation. */
-  markActivated(sessionId: string): Operation<void>;
+  markActivationStarted(sessionId: string): Operation<void>;
   /** Opens one exact pinned task and returns its attachment-bound program capability. */
   openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }>;
   /** Reserves or replays one action through the production authority boundary. */
@@ -215,8 +215,8 @@ export function adaptInMemoryAuthorityForConformance(
   authority: InMemoryDurableJournalAuthority,
 ): JournalAuthorityConformancePort {
   return {
-    *markActivated(selectedSessionId) {
-      yield* authority.markActivated(selectedSessionId);
+    *markActivationStarted(selectedSessionId) {
+      yield* authority.markActivationStarted(selectedSessionId);
     },
     *openTask(request) {
       return yield* authority.openTask(request);
@@ -368,7 +368,7 @@ function* atomicResolution(
     (yield* independent.runnableSessions()).includes(sessionId),
     "ownerless resolution must mark the session runnable",
   );
-  yield* independent.markActivated(sessionId);
+  yield* independent.markActivationStarted(sessionId);
   assert(
     caseName,
     !(yield* independent.runnableSessions()).includes(sessionId),

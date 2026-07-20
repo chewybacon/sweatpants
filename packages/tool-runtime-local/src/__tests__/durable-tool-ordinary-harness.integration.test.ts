@@ -9,7 +9,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -116,7 +116,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     let innerFactories = 0;
     let innerActivations = 0;
     let outerModelSamples = 0;
-    const innerTool = createDurableTool(innerManifest, function* ({ topic }, context) {
+    const innerTool = createPinnedDurableProgram(innerManifest, function* ({ topic }, context) {
       innerFactories += 1;
       const answers: string[] = [];
       for (let round = 0; round < 2; round += 1) {

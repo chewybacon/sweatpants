@@ -195,21 +195,6 @@ function createSharedBuffer<T>(
       }
     },
 
-    *append(newTokens: T[]): Operation<number> {
-      if (state.writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      return appendTokens(newTokens)
-    },
-
-    *complete(): Operation<void> {
-      if (state.writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      completeBuffer()
-    },
-
-    *fail(err: Error): Operation<void> {
-      if (state.writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      failBuffer(err)
-    },
-
     *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
       return {
         tokens: state.tokens.slice(afterLSN),

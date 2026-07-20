@@ -44,11 +44,11 @@ function createToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
   };
 }
 
-/** Complete AgentCore inventory; durable pick_card appears only after exact readiness. */
-export function activeAgentCoreToolNames(durablePickCardReady = false): string[] {
+/** Complete AgentCore inventory; pick_card appears only after exact program readiness. */
+export function activeAgentCoreToolNames(pickCardProgramReady = false): string[] {
   return [
     ...Object.values(ordinaryTools).map((tool) => tool.name),
-    ...(durablePickCardReady ? [pickCard.name] : []),
+    ...(pickCardProgramReady ? [pickCard.name] : []),
   ];
 }
 

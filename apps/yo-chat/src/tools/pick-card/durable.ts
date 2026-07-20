@@ -74,6 +74,3 @@ export const pickCard = createDurableTool("pick_card")
       "Acknowledge the specific selected card to the user now.",
     ].join(" ");
   });
-
-/** @deprecated Migration alias; both names reference the one durable contract. */
-export const durablePickCard = pickCard;

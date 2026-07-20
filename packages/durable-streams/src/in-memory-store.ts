@@ -82,18 +82,6 @@ export function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
         },
       }
     },
-    *append(newTokens: T[]): Operation<number> {
-      if (writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      return append(newTokens)
-    },
-    *complete(): Operation<void> {
-      if (writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      complete()
-    },
-    *fail(err: Error): Operation<void> {
-      if (writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      fail(err)
-    },
     *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
       return {
         tokens: tokens.slice(afterLSN),

@@ -12,7 +12,7 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -82,7 +82,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
       durability: "ephemeral_handle",
       route: "call-abort-aware",
     };
-    const parent = createDurableTool(parentManifest, function* (_input, context) {
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       return yield* context.foreignTool<Json>(foreignRequest);
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);

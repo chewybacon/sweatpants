@@ -1,3 +1,4 @@
+import { appendTestTokens, completeTestBuffer, failTestBuffer } from './test-writer.ts'
 /**
  * Durable Streams Tests
  *
@@ -92,7 +93,7 @@ function* createActiveSession<T>(
           timedOut = true
           const err = new Error('Session timeout')
           sessionError = err
-          yield* buffer.fail(err)
+          yield* failTestBuffer(buffer, err)
           status = 'timeout'
         }
       })
@@ -104,20 +105,20 @@ function* createActiveSession<T>(
       let result = yield* subscription.next()
 
       while (!result.done && !aborted && !timedOut) {
-        yield* buffer.append([result.value])
+        yield* appendTestTokens(buffer, [result.value])
         result = yield* subscription.next()
       }
 
       if (aborted) {
-        yield* buffer.complete()
+        yield* completeTestBuffer(buffer)
         status = 'aborted'
       } else if (!timedOut) {
-        yield* buffer.complete()
+        yield* completeTestBuffer(buffer)
         status = 'complete'
       }
     } catch (err) {
       sessionError = err as Error
-      yield* buffer.fail(sessionError)
+      yield* failTestBuffer(buffer, sessionError)
       status = 'error'
     }
   })
@@ -170,7 +171,7 @@ function* createRehydratedSession<T>(
       // Just mark buffer complete if not already
       const complete = yield* buffer.isComplete()
       if (!complete) {
-        yield* buffer.complete()
+        yield* completeTestBuffer(buffer)
       }
     },
   }
@@ -305,7 +306,7 @@ describe('Durable Streams', () => {
     it('should append and read tokens', function* () {
       const buffer = createInMemoryBuffer<string>('test-1')
 
-      yield* buffer.append(['hello', 'world'])
+      yield* appendTestTokens(buffer, ['hello', 'world'])
       const { tokens, lsn } = yield* buffer.read()
 
       expect(tokens).toEqual(['hello', 'world'])
@@ -315,7 +316,7 @@ describe('Durable Streams', () => {
     it('should read tokens after a specific LSN', function* () {
       const buffer = createInMemoryBuffer<string>('test-2')
 
-      yield* buffer.append(['a', 'b', 'c', 'd'])
+      yield* appendTestTokens(buffer, ['a', 'b', 'c', 'd'])
       const { tokens, lsn } = yield* buffer.read(2)
 
       expect(tokens).toEqual(['c', 'd'])
@@ -327,7 +328,7 @@ describe('Durable Streams', () => {
 
       expect(yield* buffer.isComplete()).toBe(false)
 
-      yield* buffer.complete()
+      yield* completeTestBuffer(buffer)
 
       expect(yield* buffer.isComplete()).toBe(true)
     })
@@ -338,7 +339,7 @@ describe('Durable Streams', () => {
       expect(yield* buffer.getError()).toBe(null)
 
       const error = new Error('test error')
-      yield* buffer.fail(error)
+      yield* failTestBuffer(buffer, error)
 
       expect(yield* buffer.getError()).toBe(error)
     })
@@ -346,11 +347,11 @@ describe('Durable Streams', () => {
     it('should not allow appending after completion', function* () {
       const buffer = createInMemoryBuffer<string>('test-5')
 
-      yield* buffer.complete()
+      yield* completeTestBuffer(buffer)
 
       let threw = false
       try {
-        yield* buffer.append(['too late'])
+        yield* appendTestTokens(buffer, ['too late'])
       } catch {
         threw = true
       }
@@ -364,7 +365,7 @@ describe('Durable Streams', () => {
       const store = createInMemoryBufferStore<string>()
 
       const buffer = yield* store.create('session-1')
-      yield* buffer.append(['test'])
+      yield* appendTestTokens(buffer, ['test'])
 
       const retrieved = yield* store.get('session-1')
       expect(retrieved).not.toBe(null)
@@ -397,7 +398,7 @@ describe('Durable Streams', () => {
       const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
 
       // Append some tokens
-      yield* buffer.append(['one', 'two'])
+      yield* appendTestTokens(buffer, ['one', 'two'])
 
       // Read them
       const result1 = yield* pullStream.next()
@@ -409,7 +410,7 @@ describe('Durable Streams', () => {
       expect((result2.value as TokenFrame<string>).token).toBe('two')
 
       // Complete the buffer
-      yield* buffer.complete()
+      yield* completeTestBuffer(buffer)
 
       // Should get done
       const result3 = yield* pullStream.next()
@@ -419,8 +420,8 @@ describe('Durable Streams', () => {
     it('should start from a specific LSN', function* () {
       const buffer = createInMemoryBuffer<string>('pull-2')
 
-      yield* buffer.append(['a', 'b', 'c', 'd'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['a', 'b', 'c', 'd'])
+      yield* completeTestBuffer(buffer)
 
       // Start from LSN 2 (skip 'a', 'b')
       const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 2)
@@ -438,8 +439,8 @@ describe('Durable Streams', () => {
     it('should return correct LSN with each token', function* () {
       const buffer = createInMemoryBuffer<string>('pull-lsn')
 
-      yield* buffer.append(['a', 'b', 'c'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['a', 'b', 'c'])
+      yield* completeTestBuffer(buffer)
 
       const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
 
@@ -462,8 +463,8 @@ describe('Durable Streams', () => {
     it('should return correct LSN when starting from offset', function* () {
       const buffer = createInMemoryBuffer<string>('pull-lsn-offset')
 
-      yield* buffer.append(['a', 'b', 'c', 'd', 'e'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['a', 'b', 'c', 'd', 'e'])
+      yield* completeTestBuffer(buffer)
 
       // Start from LSN 3 (skip 'a', 'b', 'c')
       const pullStream: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 3)
@@ -513,7 +514,7 @@ describe('Durable Streams', () => {
 
       // Manually create a buffer (simulating previous session)
       const buffer = yield* bufferStore.create('orphan-session')
-      yield* buffer.append(['previous', 'data'])
+      yield* appendTestTokens(buffer, ['previous', 'data'])
       // Note: NOT completing it - simulating orphaned state
 
       // Create session manager and get the session
@@ -531,8 +532,8 @@ describe('Durable Streams', () => {
 
       // Create a completed buffer
       const buffer = yield* bufferStore.create('complete-session')
-      yield* buffer.append(['done', 'data'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['done', 'data'])
+      yield* completeTestBuffer(buffer)
 
       const sessionManager = createSessionManager(bufferStore)
       const session = yield* sessionManager.getOrCreate('complete-session')
@@ -590,8 +591,8 @@ describe('Durable Streams', () => {
       const client2: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer)
 
       // Add tokens
-      yield* buffer.append(['shared', 'data'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['shared', 'data'])
+      yield* completeTestBuffer(buffer)
 
       // Both clients should get same data
       const c1r1 = yield* client1.next()
@@ -610,8 +611,8 @@ describe('Durable Streams', () => {
     it('should allow clients to read at different positions', function* () {
       const buffer = createInMemoryBuffer<string>('multi-position')
 
-      yield* buffer.append(['a', 'b', 'c', 'd'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['a', 'b', 'c', 'd'])
+      yield* completeTestBuffer(buffer)
 
       // Client 1 starts from beginning
       const client1: Subscription<TokenFrame<string>, void> = yield* createPullStream(buffer, 0)

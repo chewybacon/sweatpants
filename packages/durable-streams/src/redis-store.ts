@@ -238,53 +238,6 @@ function createRedisBuffer<T>(
       return yield* claimWriter(request.ownerId, request.activationEpoch)
     },
 
-    *append(tokens) {
-      const result = yield* call(() =>
-        client.eval(
-          `if redis.call('HEXISTS', KEYS[2], 'writerOwner') == 1 then return -1 end
-           if redis.call('HGET', KEYS[2], 'completed') == 'true' then return -2 end
-           for i = 1, #ARGV do redis.call('XADD', KEYS[1], '*', 'token', ARGV[i]) end
-           return redis.call('XLEN', KEYS[1])`,
-          {
-            keys: [streamKey(id), metaKey(id)],
-            arguments: tokens.map(serializeToken),
-          },
-        ),
-      )
-      if (Number(result) === -1) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      if (Number(result) === -2) throw new Error('Buffer is closed')
-      yield* notifyChange()
-      return Number(result)
-    },
-
-    *complete() {
-      const result = yield* call(() =>
-        client.eval(
-          `if redis.call('HEXISTS', KEYS[1], 'writerOwner') == 1 then return 0 end
-           if redis.call('HGET', KEYS[1], 'completed') == 'true' then return 2 end
-           redis.call('HSET', KEYS[1], 'completed', 'true')
-           return 1`,
-          { keys: [metaKey(id)], arguments: [] },
-        ),
-      )
-      if (Number(result) === 0) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      if (Number(result) === 1) yield* notifyChange()
-    },
-
-    *fail(error) {
-      const result = yield* call(() =>
-        client.eval(
-          `if redis.call('HEXISTS', KEYS[1], 'writerOwner') == 1 then return 0 end
-           if redis.call('HGET', KEYS[1], 'completed') == 'true' then return 2 end
-           redis.call('HSET', KEYS[1], 'completed', 'true', 'error', ARGV[1])
-           return 1`,
-          { keys: [metaKey(id)], arguments: [error.message.slice(0, 1024)] },
-        ),
-      )
-      if (Number(result) === 0) throw new StaleTokenWriterError('A fenced writer owns this buffer')
-      if (Number(result) === 1) yield* notifyChange()
-    },
-
     *read(afterLSN = 0) {
       const key = streamKey(id)
       const entries = yield* call(() => client.xRange(key, '-', '+'))

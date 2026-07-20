@@ -419,7 +419,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           input: acceptedInput,
         });
       }
-      yield* authority.markActivated(request.attach.sessionId);
+      yield* authority.markActivationStarted(request.attach.sessionId);
       programCapability ??= (yield* authority.bindProgramAttachment(
         request.attach.sessionId,
         request.attach.taskId,
@@ -655,10 +655,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           step.descriptor.kind === "effect" &&
           request.executeHostEffects
         ) {
-          const journal = authority.journalIdentity?.() ?? {
-            id: request.attach.sessionId,
-            incarnation: "legacy",
-          };
+          const journal = authority.journalIdentity();
           const effectResolver = step.descriptor.resolver;
           const resolution = yield* ProgramPlacementContext.with(
             {

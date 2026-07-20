@@ -12,7 +12,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
@@ -308,7 +308,7 @@ describe("semantic emission policy", () => {
 
   it("turns an uncaught quota error into a journaled runtime failure", async () => {
     const runtimeManifest = { ...manifest("quota.runtime"), effects: {} };
-    const tool = createDurableTool(runtimeManifest, function* (_input, context) {
+    const tool = createPinnedDurableProgram(runtimeManifest, function* (_input, context) {
       yield* context.emit("semantic", { ordinal: 1 });
       yield* context.emit("semantic", { ordinal: 2 });
       return null;

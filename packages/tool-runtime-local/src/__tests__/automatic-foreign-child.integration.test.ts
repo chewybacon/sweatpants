@@ -10,7 +10,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -129,7 +129,7 @@ describe("automatic foreign adapter child orchestration", () => {
       input: { topic: "durability" },
       durability: "ephemeral_handle",
     };
-    const parent = createDurableTool(parentManifest, function* (_input, context) {
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       return yield* context.foreignTool<Result>(request);
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
@@ -257,7 +257,7 @@ describe("automatic foreign adapter child orchestration", () => {
       input: { message: "done" },
       durability: "ephemeral_handle",
     };
-    const parent = createDurableTool(parentManifest, function* (_input, context) {
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       yield* context.emit("tool_started", { tool: tool.name });
       const foreignResult = yield* context.foreignTool<Json>(request);
       const value =

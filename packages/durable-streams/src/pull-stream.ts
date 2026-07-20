@@ -41,15 +41,15 @@ export function createPullStream<T>(
 
 export function* writeFromStreamToBuffer<T>(
   source: Stream<T, void>,
-  buffer: TokenBuffer<T> | TokenBufferWriter<T>
+  writer: TokenBufferWriter<T>
 ): Operation<void> {
   const subscription: Subscription<T, void> = yield* source
 
   let result = yield* subscription.next()
   while (!result.done) {
-    yield* buffer.append([result.value])
+    yield* writer.append([result.value])
     result = yield* subscription.next()
   }
 
-  yield* buffer.complete()
+  yield* writer.complete()
 }
