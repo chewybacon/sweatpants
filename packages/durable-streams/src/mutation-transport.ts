@@ -3,6 +3,7 @@ import { call, type Operation } from 'effection'
 import type { ProtocolHandlerContext, ProtocolSetupResult } from './http-types.ts'
 import { toOffsetString } from './protocol-headers.ts'
 import { createEmptyStream } from './read-transport.ts'
+import { StaleTokenWriterError } from './types.ts'
 import type { SessionRegistryStore, TokenBufferStore } from './types.ts'
 
 interface LoggerLike {
@@ -68,13 +69,15 @@ export function* createProtocolMutationResponse(
 
   if (method === 'DELETE') {
     const existingBuffer = yield* bufferStore.get(sessionId)
-    if (existingBuffer) {
-      const complete = yield* existingBuffer.isComplete()
-      if (!complete) {
+    if (existingBuffer && !(yield* existingBuffer.isComplete())) {
+      try {
+        // Externally authored streams retain protocol close semantics. A
+        // Host-owned fenced response ignores this attempted writer mutation.
         yield* existingBuffer.complete()
+      } catch (error) {
+        if (!(error instanceof StaleTokenWriterError)) throw error
       }
     }
-
     yield* registryStore.delete(sessionId)
     yield* bufferStore.delete(sessionId)
     ctx.status = 204

@@ -21,7 +21,7 @@
  * yield* setupDurableStreams({ bufferStore, registryStore })
  * ```
  */
-import { type Operation, sleep } from 'effection'
+import { call, type Operation } from 'effection'
 import { EventEmitter } from 'events'
 import type {
   TokenBuffer,
@@ -29,7 +29,9 @@ import type {
   SessionRegistryStore,
   SessionEntry,
   SessionStatus,
+  TokenBufferWriter,
 } from '@sweatpants/durable-streams'
+import { StaleTokenWriterError } from '@sweatpants/durable-streams'
 import type { Logger } from '../../logger/index.ts'
 
 // Use a simple console-based logger at module level
@@ -67,6 +69,7 @@ export interface SharedBufferState<T> {
   tokens: T[]
   completed: boolean
   error: Error | null
+  writerFence?: { ownerId: string; activationEpoch: number }
   /** EventEmitter for cross-scope notifications */
   emitter: EventEmitter
 }
@@ -122,32 +125,86 @@ function createSharedBuffer<T>(
   id: string,
   state: SharedBufferState<T>
 ): TokenBuffer<T> {
+  function assertFence(ownerId: string, activationEpoch: number): void {
+    if (
+      !state.writerFence ||
+      state.writerFence.ownerId !== ownerId ||
+      state.writerFence.activationEpoch !== activationEpoch
+    ) {
+      throw new StaleTokenWriterError()
+    }
+  }
+
+  function appendTokens(newTokens: T[]): number {
+    if (state.completed || state.error) throw new Error('Buffer is closed')
+    state.tokens.push(...newTokens)
+    state.emitter.emit('change')
+    if (state.tokens.length % 50 === 0) {
+      log.debug({ bufferId: id, tokenCount: state.tokens.length }, 'buffer append progress')
+    }
+    return state.tokens.length
+  }
+
+  function completeBuffer(): void {
+    log.debug({ bufferId: id, totalTokens: state.tokens.length }, 'buffer complete')
+    state.completed = true
+    state.emitter.emit('change')
+  }
+
+  function failBuffer(err: Error): void {
+    log.error({ bufferId: id, error: err.message }, 'buffer failed')
+    state.completed = true
+    state.error = err
+    state.emitter.emit('change')
+  }
+
   const buffer: TokenBuffer<T> = {
     id,
 
+    *claimWriter(request): Operation<TokenBufferWriter<T>> {
+      if (!request.ownerId || !Number.isSafeInteger(request.activationEpoch) || request.activationEpoch < 0) {
+        throw new Error('Writer owner and nonnegative activation epoch are required')
+      }
+      if (
+        state.writerFence &&
+        (request.activationEpoch < state.writerFence.activationEpoch ||
+          (request.activationEpoch === state.writerFence.activationEpoch &&
+            request.ownerId !== state.writerFence.ownerId))
+      ) {
+        throw new StaleTokenWriterError()
+      }
+      state.writerFence = { ...request }
+      const fence = { streamId: id, ...request }
+      return {
+        fence,
+        *append(tokens): Operation<number> {
+          assertFence(request.ownerId, request.activationEpoch)
+          return appendTokens(tokens)
+        },
+        *complete(): Operation<void> {
+          assertFence(request.ownerId, request.activationEpoch)
+          completeBuffer()
+        },
+        *fail(error): Operation<void> {
+          assertFence(request.ownerId, request.activationEpoch)
+          failBuffer(error)
+        },
+      }
+    },
+
     *append(newTokens: T[]): Operation<number> {
-      if (state.completed || state.error) {
-        throw new Error('Buffer is closed')
-      }
-      state.tokens.push(...newTokens)
-      state.emitter.emit('change')
-      // Only log every 50 tokens to reduce noise
-      if (state.tokens.length % 50 === 0) {
-        log.debug({ bufferId: id, tokenCount: state.tokens.length }, 'buffer append progress')
-      }
-      return state.tokens.length
+      if (state.writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      return appendTokens(newTokens)
     },
 
     *complete(): Operation<void> {
-      log.debug({ bufferId: id, totalTokens: state.tokens.length }, 'buffer complete')
-      state.completed = true
-      state.emitter.emit('change')
+      if (state.writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      completeBuffer()
     },
 
     *fail(err: Error): Operation<void> {
-      log.error({ bufferId: id, error: err.message }, 'buffer failed')
-      state.error = err
-      state.emitter.emit('change')
+      if (state.writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      failBuffer(err)
     },
 
     *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
@@ -172,13 +229,19 @@ function createSharedBuffer<T>(
         return
       }
 
-      // Poll-based waiting with yield to allow other tasks to run
-      // Note: EventEmitter-based waiting doesn't work in Vite dev mode
-      // due to how the async context interacts with Effection's call()
-      log.debug({ bufferId: id, afterLSN }, 'waitForChange: polling for change')
-      while (state.tokens.length <= afterLSN && !state.completed && !state.error) {
-        yield* sleep(1) // Yield to allow writer task to run
-      }
+      log.debug({ bufferId: id, afterLSN }, 'waitForChange: waiting for notification')
+      yield* call(
+        () =>
+          new Promise<void>((resolve) => {
+            const changed = () => resolve()
+            state.emitter.once('change', changed)
+            // Subscribe before re-checking to close the dropped-wakeup race.
+            if (state.tokens.length > afterLSN || state.completed || state.error) {
+              state.emitter.off('change', changed)
+              resolve()
+            }
+          }),
+      )
       log.debug({ bufferId: id, afterLSN, newLength: state.tokens.length }, 'waitForChange: change detected')
     },
   }
@@ -186,9 +249,6 @@ function createSharedBuffer<T>(
   return buffer
 }
 
-// Note: We previously used EventEmitter-based waiting here, but it doesn't work
-// in Vite dev mode due to how the async context interacts with Effection's call().
-// We now use polling with sleep() which properly yields to the Effection scheduler.
 
 // =============================================================================
 // SHARED TOKEN BUFFER STORE

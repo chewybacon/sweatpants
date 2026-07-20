@@ -35,7 +35,7 @@ describe("yo-chat tool wiring", () => {
 
     const { activePluginTools, pluginRegistry, mcpToolRegistry } = await import("../server/tools");
     const pluginNames = ["ask_question", "book_flight", "pick_card", "play_ttt", "tictactoe"];
-    const ordinaryNames = ["ask_question", "book_flight", "play_ttt", "tictactoe"];
+    const ordinaryNames = ["ask_question", "book_flight", "tictactoe"]; 
 
     const activeNames = activePluginTools.map((tool) => tool.name).sort();
     expect(activeNames).toEqual(ordinaryNames);
@@ -52,7 +52,7 @@ describe("yo-chat tool wiring", () => {
     expect(workerEntry).toContain("name: 'ask_question'");
     expect(workerEntry).not.toContain("name: 'pick_card'");
     expect(workerEntry).toContain("name: 'book_flight'");
-    expect(workerEntry).toContain("name: 'play_ttt'");
+    expect(workerEntry).not.toContain("name: 'play_ttt'");
     expect(workerEntry).toContain("name: 'tictactoe'");
   });
 });

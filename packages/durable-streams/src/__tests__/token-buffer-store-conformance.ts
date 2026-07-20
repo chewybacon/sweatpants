@@ -29,6 +29,33 @@ export function defineTokenBufferStoreConformance(
       expect(pastTail.lsn).toBe(3)
     })
 
+    it('rejects stale writer mutations after an activation replacement', async ({ skip }) => {
+      beforeTest(skip)
+      const store = createStore()
+      const buffer = await run(() => store.create(`${name}-writer-fence`))
+      const first = await run(() => buffer.claimWriter({ ownerId: 'owner-a', activationEpoch: 1 }))
+
+      expect(await run(() => first.append(['a']))).toBe(1)
+      await expect(run(() => buffer.append(['unfenced']))).rejects.toMatchObject({
+        code: 'stale_token_writer',
+      })
+      const replacement = await run(() =>
+        buffer.claimWriter({ ownerId: 'owner-b', activationEpoch: 2 }),
+      )
+
+      await expect(run(() => first.append(['stale']))).rejects.toMatchObject({
+        code: 'stale_token_writer',
+      })
+      await expect(run(() => first.complete())).rejects.toMatchObject({
+        code: 'stale_token_writer',
+      })
+      await expect(run(() => first.fail(new Error('stale')))).rejects.toMatchObject({
+        code: 'stale_token_writer',
+      })
+      expect(await run(() => replacement.append(['b']))).toBe(2)
+      expect(await run(() => buffer.read(0))).toEqual({ tokens: ['a', 'b'], lsn: 2 })
+    })
+
     it('returns from waitForChange when the tail is already ahead of afterLSN', async ({ skip }) => {
       beforeTest(skip)
       const store = createStore()

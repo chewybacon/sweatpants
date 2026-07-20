@@ -1,7 +1,7 @@
 import { resource } from 'effection'
 import type { Operation, Stream, Subscription } from 'effection'
 
-import type { TokenBuffer, TokenFrame } from './types.ts'
+import type { TokenBuffer, TokenBufferWriter, TokenFrame } from './types.ts'
 
 export function createPullStream<T>(
   buffer: TokenBuffer<T>,
@@ -41,7 +41,7 @@ export function createPullStream<T>(
 
 export function* writeFromStreamToBuffer<T>(
   source: Stream<T, void>,
-  buffer: TokenBuffer<T>
+  buffer: TokenBuffer<T> | TokenBufferWriter<T>
 ): Operation<void> {
   const subscription: Subscription<T, void> = yield* source
 

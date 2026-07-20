@@ -1,9 +1,5 @@
 import type { RuntimeTool } from "@sweatpants/core";
-import { bookFlightTool } from "../../yo-chat/src/tools/book-flight/tool.ts";
-import { calculator } from "../../yo-chat/src/tools/calculator.ts";
-import { askQuestion } from "../../yo-chat/src/tools/general/ask-question/tool.ts";
-import { playTttTool } from "../../yo-chat/src/tools/play-ttt/tool.ts";
-import { tictactoeTool } from "../../yo-chat/src/tools/tictactoe/tool.ts";
+import { ordinaryTools } from "../../yo-chat/src/__generated__/tool-registry.gen.ts";
 
 type RuntimeMcpTool = RuntimeTool;
 
@@ -20,20 +16,13 @@ function assertRuntimeMcpTool(name: string, tool: unknown): RuntimeMcpTool {
       `Generated AgentCore tool "${name}" is not MCP bridge-compatible: expected canonical core ToolDefinition or execute`,
     );
   }
-  return tool as RuntimeMcpTool;
+  return tool;
 }
 
-const ALL_RUNTIME_TOOLS = [
-  askQuestion,
-  bookFlightTool,
-  calculator,
-  playTttTool,
-  tictactoeTool,
-] as const;
-
+/** ToolSession projection consumes only the generated ordinary partition. */
 const runtimeTools = new Map<string, RuntimeMcpTool>();
-for (const tool of ALL_RUNTIME_TOOLS) {
-  runtimeTools.set(tool.name, assertRuntimeMcpTool(tool.name, tool));
+for (const [name, tool] of Object.entries(ordinaryTools)) {
+  runtimeTools.set(name, assertRuntimeMcpTool(name, tool));
 }
 
 export function getRuntimeMcpTool(name: string): RuntimeMcpTool | undefined {

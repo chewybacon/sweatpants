@@ -1,12 +1,10 @@
 import { resource, run, type Operation, type Stream } from "effection";
 import { describe, expect, it } from "vitest";
 import { createClient } from "redis";
-import type { RuntimeTool } from "@sweatpants/core";
 import {
   ModelProviderContext,
   ModelProviderModelContext,
   ToolInventoryContext,
-  ToolRuntimeContext,
   createToolInventory,
   createToolInventoryEntry,
   type AssistantMessage,
@@ -14,7 +12,6 @@ import {
   type ModelProviderDriver,
   type ModelProviderStreamRequest,
   type StreamEvent,
-  type ToolRuntime,
 } from "@sweatpants/framework/chat";
 import {
   createInMemoryBufferStore,
@@ -22,24 +19,15 @@ import {
   setupDurableStreams,
 } from "@sweatpants/framework/chat/durable-streams";
 import {
-  ProgramDriverForeignEffectsContext,
+  ProgramDriverNativeToolsContext,
   createCapabilityKeyring,
   createChatApplication,
   createDurableChatHandler,
   createInMemoryProgramDriverJournalStore,
+  programDriverSchemaRegistry,
   type ProgramDriverJournalStore,
 } from "@sweatpants/framework/server";
 import type { DurableSemanticRecord, Json } from "@sweatpants/session-contract";
-import {
-  createInMemoryToolSessionStore,
-  createToolSessionForeignEffectRegistrations,
-  createToolSessionRegistry,
-} from "@sweatpants/tool-runtime-local";
-
-import {
-  setupAgentCoreProgramDriverToolRuntime,
-  useAgentCoreProgramDriverAcceptance,
-} from "./program-driver-agentcore-setup.ts";
 import { createRedisProgramDriverJournalStore } from "../src/server/program-driver-journal.ts";
 import { playTttTool } from "../src/tools/play-ttt/tool.ts";
 
@@ -54,8 +42,8 @@ const model: Model = {
   maxTokens: 1_000,
 };
 
-describe("unchanged play_ttt through the HTTP ProgramRuntime", () => {
-  it("journals tool-calling and structured samples through game completion", async () => {
+describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
+  it("journals native child sampling and elicitations through game completion", async () => {
     let sampleCount = 0;
     const driver: ModelProviderDriver = {
       stream(request): Stream<StreamEvent, AssistantMessage> {
@@ -78,7 +66,10 @@ describe("unchanged play_ttt through the HTTP ProgramRuntime", () => {
     }
     const journalStore = redisClient
       ? createRedisProgramDriverJournalStore(redisClient, keyring)
-      : createInMemoryProgramDriverJournalStore({ keyring });
+      : createInMemoryProgramDriverJournalStore({
+          keyring,
+          schemaRegistry: programDriverSchemaRegistry(playTttTool.artifacts.catalog),
+        });
     const application = createApplication(driver, journalStore);
     const conversationId = "play-ttt-program-driver-http";
     const messages = [{ id: "user:http-ttt", role: "user", content: "Play tic-tac-toe" }];
@@ -98,7 +89,7 @@ describe("unchanged play_ttt through the HTTP ProgramRuntime", () => {
         });
       }
 
-      expect(events.some((event) => event.type === "TOOL_CALL_RESULT")).toBe(true);
+      expect(events.some((event) => event.type === "TOOL_CALL_RESULT"), JSON.stringify(events)).toBe(true);
       expect(
         events.some(
           (event) => event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Game complete.",
@@ -111,8 +102,8 @@ describe("unchanged play_ttt through the HTTP ProgramRuntime", () => {
           ? [entry.payload.descriptor.name]
           : [],
       );
-      expect(effectNames).toContain("foreign.tool.start");
-      expect(effectNames).toContain("foreign.tool.continue");
+      expect(effectNames).not.toContain("foreign.tool.start");
+      expect(effectNames).not.toContain("foreign.tool.continue");
       expect(effectNames.filter((name) => name === "model.sample").length).toBeGreaterThan(2);
       expect(effectNames).not.toContain("tool.execute");
       expect(effectNames).not.toContain("tool.resume");
@@ -128,16 +119,6 @@ describe("unchanged play_ttt through the HTTP ProgramRuntime", () => {
 });
 
 function createApplication(driver: ModelProviderDriver, journalStore: ProgramDriverJournalStore) {
-  const runtime: ToolRuntime = {
-    id: "foreign-context-only",
-    *execute(): Operation<never> {
-      throw new Error("ToolRuntime fallback must not execute play_ttt");
-    },
-    *resume(): Operation<never> {
-      throw new Error("ToolRuntime fallback must not resume play_ttt");
-    },
-    *abort(): Operation<void> {},
-  };
   const handler = createDurableChatHandler({
     programDriverJournalStore: journalStore,
     maxToolIterations: 5,
@@ -153,25 +134,21 @@ function createApplication(driver: ModelProviderDriver, journalStore: ProgramDri
         bufferStore: createInMemoryBufferStore<string>(),
         registryStore: createInMemoryRegistryStore(),
       });
-      if (useAgentCoreProgramDriverAcceptance()) {
-        yield* setupAgentCoreProgramDriverToolRuntime(playTttTool);
-        return;
-      }
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("ToolSession sampling must be lifted into ProgramRuntime");
-          },
-        },
-      });
       yield* ToolInventoryContext.set(createToolInventory([createToolInventoryEntry(playTttTool)]));
-      yield* ToolRuntimeContext.set(runtime);
-      yield* ProgramDriverForeignEffectsContext.set(
-        createToolSessionForeignEffectRegistrations({
-          registry,
-          tools: new Map<string, RuntimeTool>([[playTttTool.name, playTttTool]]),
-        }),
-      );
+      yield* ProgramDriverNativeToolsContext.set({
+        bindings: new Map([
+          [
+            playTttTool.name,
+            {
+              publicName: playTttTool.name,
+              tool: playTttTool,
+              route: { driverKind: "generator" },
+            },
+          ],
+        ]),
+        drivers: [],
+        effects: [],
+      });
     },
   });
 }
@@ -193,7 +170,8 @@ function sampleMessage(request: ModelProviderStreamRequest, sequence: number): A
     };
   }
   if (request.options?.responseFormat) {
-    const parsed = { cell: firstEmptyPosition(request) };
+    const isAssignment = JSON.stringify(request.options.responseFormat).includes('"symbol"');
+    const parsed = isAssignment ? { symbol: "X" } : { cell: firstEmptyPosition(request) };
     return {
       role: "assistant",
       content: [{ type: "text", text: JSON.stringify(parsed) }],

@@ -40,6 +40,7 @@ import {
 
 import { pickCard } from "../tools/pick-card/durable";
 import { createDrawPickCardsRegistration } from "../tools/pick-card/durable-effects";
+import { playTttTool } from "../tools/play-ttt/tool";
 import { yoChatDurableProgramWorkerUrl } from "./tool-worker-config";
 
 /** Explicit dependencies for installing one complete yo-chat tool runtime. */
@@ -69,47 +70,59 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   const ordinaryTools = ordinaryContracts.filter(
     (tool): tool is RuntimeTool => typeof tool === "function",
   );
-  const schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog);
-  const programIdentity = exactProgramKey({
-    id: pickCard.manifest.programId,
-    version: pickCard.manifest.version,
-    digest: pickCard.manifest.digest,
-  });
-  const agentReadiness =
-    options.mode === "agentcore" && options.agentCoreDurable
-      ? reconcileAgentCoreDurableReadiness({
-          release: options.agentCoreDurable.release,
-          program: {
-            id: pickCard.manifest.programId,
-            version: pickCard.manifest.version,
-            digest: pickCard.manifest.digest,
-          },
-          registry: new Map(
-            options.agentCoreDurable.availablePrograms.has(programIdentity)
-              ? [[programIdentity, pickCard.manifest]]
-              : [],
-          ),
-          driverAvailable: true,
-          effectKeys: options.agentCoreDurable.availableEffects,
-          schemaDigests: options.agentCoreDurable.availableSchemaDigests,
-          manifest: pickCard.manifest,
-        })
-      : { ready: false, missing: ["release"] as const };
-  const durableReady = options.mode === "local" || agentReadiness.ready;
+  const durablePrograms = [pickCard, playTttTool] as const;
+  const schemaRegistry = programDriverSchemaRegistry(
+    durablePrograms.flatMap((tool) => [...tool.artifacts.catalog]),
+  );
+  const programIdentities = new Map(
+    durablePrograms.map((tool) => [
+      tool.name,
+      exactProgramKey({
+        id: tool.manifest.programId,
+        version: tool.manifest.version,
+        digest: tool.manifest.digest,
+      }),
+    ]),
+  );
+  const readyDurableNames = new Set<string>();
+  if (options.mode === "local") {
+    for (const tool of durablePrograms) readyDurableNames.add(tool.name);
+  } else if (options.agentCoreDurable) {
+    for (const tool of durablePrograms) {
+      const identity = programIdentities.get(tool.name)!;
+      const readiness = reconcileAgentCoreDurableReadiness({
+        release: options.agentCoreDurable.release,
+        program: {
+          id: tool.manifest.programId,
+          version: tool.manifest.version,
+          digest: tool.manifest.digest,
+        },
+        registry: new Map(
+          options.agentCoreDurable.availablePrograms.has(identity)
+            ? [[identity, tool.manifest]]
+            : [],
+        ),
+        driverAvailable: true,
+        effectKeys: options.agentCoreDurable.availableEffects,
+        schemaDigests: options.agentCoreDurable.availableSchemaDigests,
+        manifest: tool.manifest,
+      });
+      if (readiness.ready) readyDurableNames.add(tool.name);
+    }
+  }
   const driverKind = options.mode === "local" ? "worker" : "agentcore";
+  const readyPrograms = durablePrograms.filter((tool) => readyDurableNames.has(tool.name));
   const availableContracts = projectAvailableToolContracts(options.tools, {
     ordinaryTools: new Set(ordinaryContracts.map((tool) => tool.name)),
-    drivers: new Set(durableReady ? [driverKind] : []),
-    programs: new Set(durableReady ? [programIdentity] : []),
+    drivers: new Set(readyPrograms.length > 0 ? [driverKind] : []),
+    programs: new Set(readyPrograms.map((tool) => programIdentities.get(tool.name)!)),
     effects: new Set(
-      durableReady
-        ? Object.values(pickCard.manifest.effects).map(
-            (effect) => `${effect.name}@${effect.version}`,
-          )
-        : [],
+      readyPrograms.flatMap((tool) =>
+        Object.values(tool.manifest.effects).map((effect) => `${effect.name}@${effect.version}`),
+      ),
     ),
     schemas: schemaRegistry,
-    durableDrivers: new Map(durableReady ? [[pickCard.name, driverKind]] : []),
+    durableDrivers: new Map(readyPrograms.map((tool) => [tool.name, driverKind])),
   });
   yield* ToolSessionSamplingProviderContext.set(options.samplingProvider);
   yield* PluginSessionRegistryContext.set(options.registry);
@@ -125,18 +138,18 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   );
 
   if (options.mode === "local") {
-    const durableRegistry = createDurableToolRegistry([pickCard]);
+    const durableRegistry = createDurableToolRegistry(durablePrograms);
     yield* ProgramDriverNativeToolsContext.set({
-      bindings: new Map([
-        [
-          pickCard.name,
+      bindings: new Map(
+        durablePrograms.map((tool) => [
+          tool.name,
           {
-            publicName: pickCard.name,
-            tool: pickCard,
+            publicName: tool.name,
+            tool,
             route: { driverKind: "worker", profile: "yo-chat-durable-tools" },
           },
-        ],
-      ]),
+        ]),
+      ),
       drivers: [
         [
           "worker",
@@ -152,23 +165,24 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   }
 
   if (options.mode === "agentcore") {
-    if (agentReadiness.ready && options.agentCoreDurable) {
+    if (readyPrograms.length > 0 && options.agentCoreDurable) {
+      const agentCoreDurable = options.agentCoreDurable;
       yield* ProgramDriverNativeToolsContext.set({
-        bindings: new Map([
-          [
-            pickCard.name,
+        bindings: new Map(
+          readyPrograms.map((tool) => [
+            tool.name,
             {
-              publicName: pickCard.name,
-              tool: pickCard,
+              publicName: tool.name,
+              tool,
               route: {
                 driverKind: "agentcore",
-                journalId: options.agentCoreDurable.journalId,
-                release: options.agentCoreDurable.release,
+                journalId: agentCoreDurable.journalId,
+                release: agentCoreDurable.release,
               } as unknown as ProgramRoute,
             },
-          ],
-        ]),
-        drivers: [["agentcore", options.agentCoreDurable.driver]],
+          ]),
+        ),
+        drivers: [["agentcore", agentCoreDurable.driver]],
         effects: [createDrawPickCardsRegistration()],
       });
     }

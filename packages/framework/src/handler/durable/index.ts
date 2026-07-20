@@ -59,6 +59,33 @@ export {
   programDriverSchemaRegistry,
 } from "./program-driver-journal.ts";
 export { programDriverChatEngineSchemaEntries } from "./program-driver-chat-engine.ts";
+export {
+  firstTraceDivergence,
+  runProgramDriverConformance,
+} from "./program-driver-conformance.ts";
+export type {
+  ProgramDriverConformanceCase,
+  ProgramDriverConformanceEvidence,
+} from "./program-driver-conformance.ts";
+export {
+  createLocalProgramHost,
+  createPinnedProgramCatalog,
+  normalizeProgramTrace,
+  runLocalProgramActivation,
+  validateCatalog,
+} from "./local-program-host.ts";
+export type {
+  LocalProgramHost,
+  LocalProgramActivationScope,
+  LocalProgramHostOptions,
+  LocalProgramRun,
+  NormalizedProgramOperationTrace,
+  NormalizedProgramTaskTrace,
+  NormalizedProgramTrace,
+  OpenLocalProgramRequest,
+  PinnedProgramCatalog,
+  ProgramCatalogEntry,
+} from "./local-program-host.ts";
 export { ProgramDriverForeignEffectsContext } from "./program-driver-effects.ts";
 export {
   ProgramDriverNativeToolsContext,

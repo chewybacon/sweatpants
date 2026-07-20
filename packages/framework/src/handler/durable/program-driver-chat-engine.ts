@@ -2,12 +2,8 @@ import { resource, type Operation, type Stream } from "effection";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   CrankError,
-  DurableEffectRegistryContext,
-  JournalAuthorityContext,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
-  ProgramDriverRegistryContext,
-  ProgramRouteResolverContext,
   ProgramRuntime,
   assertJson,
   assertReplayedCanonicalValue,
@@ -54,6 +50,7 @@ import {
   type ProgramDriverNativeToolComposition,
 } from "./program-driver-native-tools.ts";
 import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-driver-journal.ts";
+import { runLocalProgramActivation } from "./local-program-host.ts";
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
 
@@ -453,41 +450,40 @@ function* activateProgramDriverChatEngine(
     ],
     Object.values(manifest.effects),
   );
-  const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
-    return yield* JournalAuthorityContext.with(journal.authority, function* () {
-      return yield* DurableEffectRegistryContext.with(effects, function* () {
-        return yield* ProgramRouteResolverContext.with(
-          function* (program, parentRoute) {
-            const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
-              (candidate) =>
-                candidate.tool.manifest.programId === program.id &&
-                candidate.tool.manifest.version === program.version &&
-                candidate.tool.manifest.digest === program.digest,
-            );
-            return binding?.route ?? parentRoute;
-          },
-          function* () {
-            const agentCorePlaced = [...(params.nativeTools?.bindings.values() ?? [])].some(
-              (binding) => isAgentCoreRoute(binding.route),
-            );
-            return yield* runFencedActivation(
-              journal.authority,
-              params.conversationId,
-              attach.executionEpoch,
-              agentCorePlaced,
-              function* (executionEpoch, activationOwnerId) {
-                return yield* ProgramRuntime.operations.run({
-                  attach: { ...attach, executionEpoch },
-                  executeHostEffects: true,
-                  ...(activationOwnerId ? { activationOwnerId } : {}),
-                });
-              },
-            );
-          },
+  const outcome = yield* runLocalProgramActivation(
+    {
+      authority: journal.authority,
+      drivers,
+      effects,
+      routeResolver: function* (program, parentRoute) {
+        const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
+          (candidate) =>
+            candidate.tool.manifest.programId === program.id &&
+            candidate.tool.manifest.version === program.version &&
+            candidate.tool.manifest.digest === program.digest,
         );
-      });
-    });
-  });
+        return binding?.route ?? parentRoute;
+      },
+    },
+    function* () {
+      const agentCorePlaced = [...(params.nativeTools?.bindings.values() ?? [])].some(
+        (binding) => isAgentCoreRoute(binding.route),
+      );
+      return yield* runFencedActivation(
+        journal.authority,
+        params.conversationId,
+        attach.executionEpoch,
+        agentCorePlaced,
+        function* (executionEpoch, activationOwnerId) {
+          return yield* ProgramRuntime.operations.run({
+            attach: { ...attach, executionEpoch },
+            executeHostEffects: true,
+            ...(activationOwnerId ? { activationOwnerId } : {}),
+          });
+        },
+      );
+    },
+  );
   const after = yield* journal.readJournal(params.conversationId);
   const events: StreamEvent[] = (params.elicitResponses ?? []).flatMap((response) => {
     if (!response.trace || !response.toolName) {

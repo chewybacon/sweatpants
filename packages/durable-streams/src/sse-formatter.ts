@@ -8,8 +8,8 @@ function formatSSEData(payload: string, id: number): string {
   return `id: ${toOffsetString(id)}\ndata: ${payload}\n\n`;
 }
 
-export function createSSEEventStream(
-  buffer: TokenBuffer<string>,
+export function createSSEEventStream<T>(
+  buffer: TokenBuffer<T>,
   startLSN: number,
 ): Stream<string, void> {
   return resource(function* (provide) {
@@ -32,7 +32,13 @@ export function createSSEEventStream(
         const frame = result.value;
         cursor = frame.lsn;
 
-        return { done: false, value: formatSSEData(frame.token, cursor) };
+        return {
+          done: false,
+          value: formatSSEData(
+            typeof frame.token === "string" ? frame.token : JSON.stringify(frame.token),
+            cursor,
+          ),
+        };
       },
     });
   });

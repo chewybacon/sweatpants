@@ -35,13 +35,13 @@ export const ordinaryTools = {
   'ask_question': askQuestion,
   'book_flight': bookFlightTool,
   'calculator': calculator,
-  'play_ttt': playTttTool,
   'tictactoe': tictactoeTool,
 } as const
 
 /** Crank-native definitions only; consumed by host ProgramDriver placement. */
 export const durablePrograms = {
   'pick_card': pickCard,
+  'play_ttt': playTttTool,
 } as const
 
 /**

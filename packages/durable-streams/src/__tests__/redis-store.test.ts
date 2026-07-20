@@ -190,11 +190,11 @@ describe('RedisTokenBufferStore', () => {
   it('uses XLEN for append count, not xRange (REQ-064)', () => {
     const source = readFileSync(resolve(packageRoot, 'src/redis-store.ts'), 'utf8')
     // Extract the append method body
-    const appendMatch = source.match(/\*append\(tokens\)[\s\S]*?return count/)
-    expect(appendMatch, 'append method should be found in source').not.toBeNull()
-    const appendBody = appendMatch![0]
-    // XLEN should be used for counting
-    expect(appendBody).toContain('xLen')
+    const appendMatches = [...source.matchAll(/\*append\(tokens\)[\s\S]*?(?=\n\s*\*complete\(\))/g)]
+    expect(appendMatches.length, 'append methods should be found in source').toBeGreaterThan(0)
+    const appendBody = appendMatches.map((match) => match[0]).join('\n')
+    // XLEN should be used for counting, either through the client or an atomic Lua mutation.
+    expect(appendBody.toLowerCase()).toContain('xlen')
     // xRange should NOT be called in the append method body
     expect(appendBody).not.toContain('xRange')
   })

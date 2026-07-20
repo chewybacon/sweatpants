@@ -15,12 +15,18 @@ import type {
 
 import { getSharedRedisClient } from "@/lib/shared-redis";
 import { pickCard } from "../tools/pick-card/durable";
+import { playTttTool } from "../tools/play-ttt/tool";
+
+const yoChatProgramSchemaEntries = [
+  ...pickCard.artifacts.catalog,
+  ...playTttTool.artifacts.catalog,
+];
 
 /** Creates the yo-chat ProgramRuntime journal adapter over shared Redis or development memory. */
 export function createYoChatProgramDriverJournalStore(
   keyring: CapabilityKeyring,
 ): ProgramDriverJournalStore {
-  const schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog);
+  const schemaRegistry = programDriverSchemaRegistry(yoChatProgramSchemaEntries);
   const fallback = createInMemoryProgramDriverJournalStore({
     keyring,
     journalPrefix: "yo-chat-program-driver",
@@ -44,7 +50,7 @@ export function createYoChatProgramDriverJournalStore(
 export function createRedisProgramDriverJournalStore(
   client: RedisClientType,
   keyring: CapabilityKeyring,
-  schemaRegistry = programDriverSchemaRegistry(pickCard.artifacts.catalog),
+  schemaRegistry = programDriverSchemaRegistry(yoChatProgramSchemaEntries),
 ): ProgramDriverJournalStore {
   return {
     *open(conversationId): Operation<ProgramDriverJournal> {

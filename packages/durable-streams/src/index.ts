@@ -14,10 +14,12 @@ export type {
   SessionStore,
   TokenBuffer,
   TokenBufferStore,
+  TokenBufferWriter,
+  TokenWriterFence,
   TokenFrame,
 } from "./types.ts";
 
-export { DEFAULT_RETENTION_POLICY } from "./types.ts";
+export { DEFAULT_RETENTION_POLICY, StaleTokenWriterError } from "./types.ts";
 
 export {
   createInMemoryBuffer,
