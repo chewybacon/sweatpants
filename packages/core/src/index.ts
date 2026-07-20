@@ -75,7 +75,6 @@ export {
   type CreateDurableToolBuilderWithIdentity,
   type CreateDurableToolBuilderWithParameters,
   type DurableProgramContextFor,
-  type FluentDurableTool,
   type LogLevel,
   type ToolCtx,
   type BaseToolCtx,
@@ -93,6 +92,7 @@ export {
   type SampleDefinition,
   type SamplesMap,
   type SampleRequest,
+  type NamedSampleResult,
   type SampleResultBase,
   type SampleResultWithParsed,
   type SampleResultWithToolCalls,
@@ -107,7 +107,6 @@ export {
   type CreateToolBuilderBase,
   type CreateToolBuilderWithDescription,
   type CreateToolBuilderWithParams,
-  type CreateToolBuilderWithElicits,
   type PerCallInterruptOptions,
 } from "./tool/index.ts";
 

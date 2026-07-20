@@ -3,10 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-  createDurableTool,
+  createPinnedDurableProgram,
   createGeneratedPinnedDurableProgram,
   createInterfaceDerivedPinnedDurableProgram,
-  createPinnedDurableProgram,
   deriveProgramArtifactDigest,
   generateProgramArtifactIdentity,
   generateProgramInterfaceIdentity,
@@ -102,7 +101,7 @@ describe("program artifact identity", () => {
       return null;
     };
     const canonical = createPinnedDurableProgram(pinnedManifest, factory);
-    const alias = createDurableTool({ manifest: pinnedManifest, program: factory });
+    const alias = createPinnedDurableProgram({ manifest: pinnedManifest, program: factory });
     expect(alias.manifest).toEqual(canonical.manifest);
     expect(alias.identityProvenance).toEqual({ kind: "asserted" });
     expect(() => validateProgramBindingsForRelease([alias])).toThrowError(

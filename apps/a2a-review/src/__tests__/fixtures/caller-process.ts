@@ -10,7 +10,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
@@ -104,7 +104,7 @@ const parentManifest = {
   effects: {},
   capabilities: { durableEmissions: false, structuredChildren: true, replay: "strict" as const },
 };
-const parentTool = createDurableTool(parentManifest, function* (reviewInput, context) {
+const parentTool = createPinnedDurableProgram(parentManifest, function* (reviewInput, context) {
   return yield* context.invoke({
     id: REFERENCE_REVIEWER_CHAT.manifest.programId,
     version: REFERENCE_REVIEWER_CHAT.manifest.version,

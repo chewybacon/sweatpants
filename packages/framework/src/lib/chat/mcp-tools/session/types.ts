@@ -42,7 +42,6 @@ import type { ToolDefinition } from "@sweatpants/core";
 
 // Re-export result types for convenience
 export type {
-  SampleResult,
   SampleResultBase,
   SampleResultWithParsed,
   SampleResultWithToolCalls,

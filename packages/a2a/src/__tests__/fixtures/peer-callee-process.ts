@@ -7,7 +7,7 @@ import {
   assertJson,
   createCapabilityKeyring,
   createDurableSchemaRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
@@ -34,7 +34,7 @@ const grant = grants.grants[0]!;
 const definition = peerContractAsEffectDefinition(grant.contract);
 const programInput = portable("peer-cert/callee-input", "program_input");
 const programOutput = portable("peer-cert/callee-output", "program_output");
-const calleeTool = createDurableTool(
+const calleeTool = createPinnedDurableProgram(
   {
     programId: "peer-cert.callee-task",
     version: "1.0.0",

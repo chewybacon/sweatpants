@@ -29,7 +29,11 @@ export function* recordConversationSession(
     return
   }
 
-  yield* buffer.append([sessionId])
+  const writer = yield* buffer.claimWriter({
+    ownerId: `conversation-index:${conversationId}`,
+    activationEpoch: 1,
+  })
+  yield* writer.append([sessionId])
 }
 
 export function* recordConversationCheckpoint(
@@ -44,7 +48,12 @@ export function* recordConversationCheckpoint(
   }
 
   const buffer = yield* bufferStore.create(checkpointId)
-  yield* buffer.append([checkpointToken])
+  const writer = yield* buffer.claimWriter({
+    ownerId: `conversation-checkpoint:${conversationId}`,
+    activationEpoch: 1,
+  })
+  yield* writer.append([checkpointToken])
+  yield* writer.complete()
 }
 
 export function* readLatestConversationCheckpoint(

@@ -1,3 +1,4 @@
+import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
 /**
  * Effection ↔ Web Stream Bridge Tests
  *
@@ -117,8 +118,8 @@ describe('Effection ↔ Web Stream Bridge', () => {
       const scope: Scope = yield* useScope()
 
       // Populate buffer
-      yield* buffer.append(['Hello', ' ', 'world'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['Hello', ' ', 'world'])
+      yield* completeTestBuffer(buffer)
 
       // Create web stream using library implementation
       const webStream = createWebStreamFromBuffer(scope, buffer)
@@ -158,11 +159,11 @@ describe('Effection ↔ Web Stream Bridge', () => {
       // Spawn a task to populate buffer with delays
       yield* spawn(function* () {
         yield* sleep(10)
-        yield* buffer.append(['Hello'])
+        yield* appendTestTokens(buffer, ['Hello'])
         yield* sleep(10)
-        yield* buffer.append([' world'])
+        yield* appendTestTokens(buffer, [' world'])
         yield* sleep(10)
-        yield* buffer.complete()
+        yield* completeTestBuffer(buffer)
       })
 
       // Read from web stream
@@ -185,8 +186,8 @@ describe('Effection ↔ Web Stream Bridge', () => {
       const buffer = createInMemoryBuffer<string>('bridge-v1-3')
       const scope: Scope = yield* useScope()
 
-      yield* buffer.append(['test', 'response'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['test', 'response'])
+      yield* completeTestBuffer(buffer)
 
       const webStream = createWebStreamFromBuffer(scope, buffer)
       const response = new Response(webStream, {
@@ -209,8 +210,8 @@ describe('Effection ↔ Web Stream Bridge', () => {
       const buffer = createInMemoryBuffer<string>('bridge-v2-1')
 
       // Populate buffer
-      yield* buffer.append(['Hello', ' ', 'world'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['Hello', ' ', 'world'])
+      yield* completeTestBuffer(buffer)
 
       // Create web stream (this spawns the pumper)
       const webStream = yield* createWebStreamFromBuffer_v2(buffer)
@@ -246,11 +247,11 @@ describe('Effection ↔ Web Stream Bridge', () => {
       // Spawn a task to populate buffer with delays
       yield* spawn(function* () {
         yield* sleep(10)
-        yield* buffer.append(['Hello'])
+        yield* appendTestTokens(buffer, ['Hello'])
         yield* sleep(10)
-        yield* buffer.append([' world'])
+        yield* appendTestTokens(buffer, [' world'])
         yield* sleep(10)
-        yield* buffer.complete()
+        yield* completeTestBuffer(buffer)
       })
 
       // Read from web stream
@@ -275,8 +276,8 @@ describe('Effection ↔ Web Stream Bridge', () => {
       const buffer = createInMemoryBuffer<string>('client-sim-1')
       const scope: Scope = yield* useScope()
 
-      yield* buffer.append(['Hello', 'world'])
-      yield* buffer.complete()
+      yield* appendTestTokens(buffer, ['Hello', 'world'])
+      yield* completeTestBuffer(buffer)
 
       const webStream = createWebStreamFromBuffer(scope, buffer)
       const response = new Response(webStream)

@@ -10,7 +10,7 @@ import {
   ProgramRuntime,
   createCapabilityKeyring,
   createDurableEffectRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -55,7 +55,7 @@ describe("unchanged book_flight through ProgramRuntime", () => {
       input: { from: "NYC", destination: "LAX" },
       durability: "ephemeral_handle",
     };
-    const parent = createDurableTool(parentManifest, function* (_input, context) {
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
       return yield* context.foreignTool<Json>(foreignRequest);
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);

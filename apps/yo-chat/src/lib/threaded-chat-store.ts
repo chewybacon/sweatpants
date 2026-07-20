@@ -230,7 +230,11 @@ function createThreadStore(bufferStore: TokenBufferStore<ThreadEvent>): ThreadSt
         id: `${threadId}:${lsn + 1}`,
         timestamp: Date.now(),
       }
-      yield* buffer.append([next])
+      const writer = yield* buffer.claimWriter({
+        ownerId: `thread-events:${threadId}`,
+        activationEpoch: 1,
+      })
+      yield* writer.append([next])
       return next
     },
 

@@ -43,9 +43,6 @@ export type {
   McpToolLimits,
   // Sample types
   McpToolSampleConfig,
-  SampleConfigPrompt,
-  SampleConfigMessages,
-  SampleResult,
   // Sample result types (for schema/tools)
   SampleResultBase,
   SampleResultWithParsed,

@@ -33,7 +33,6 @@ export {
   createDurableEffectRegistration,
   createDurableEffectRegistry,
   createPinnedDurableProgram,
-  createDurableTool,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   defineDurableEffect,

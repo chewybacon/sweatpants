@@ -675,13 +675,6 @@ export type SampleConfigToolsPrompt = SampleConfigWithTools & SampleConfigPrompt
 export type SampleConfigToolsMessages = SampleConfigWithTools & SampleConfigMessagesMode;
 
 /**
- * Legacy type for backwards compatibility.
- * @deprecated Use specific sample config types for type safety
- */
-export type SampleConfigPrompt = SampleConfigPlainPrompt;
-export type SampleConfigMessages = SampleConfigPlainMessages;
-
-/**
  * Configuration for a sampling request.
  * Supports two modes for message input:
  * - `prompt`: Simple prompt string, auto-tracked in tool-local conversation state
@@ -769,12 +762,6 @@ export interface SampleResultWithToolCalls extends SampleResultBase {
    */
   toolCalls: SamplingToolCall[];
 }
-
-/**
- * Legacy type alias for backwards compatibility.
- * @deprecated Use SampleResultBase for plain results
- */
-export type SampleResult = SampleResultBase;
 
 // -----------------------------------------------------------------------------
 // RAW SAMPLE RESULT TYPES (for decoder/handler layers without exchange)

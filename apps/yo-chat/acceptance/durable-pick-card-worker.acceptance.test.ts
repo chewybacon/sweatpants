@@ -19,7 +19,7 @@ import {
 import { createLocalWorkerDurableProgramDriver } from "@sweatpants/tool-runtime-local";
 
 import type { Card } from "../src/tools/pick-card/cards";
-import { durablePickCard, drawPickCards } from "../src/tools/pick-card/durable";
+import { pickCard, drawPickCards } from "../src/tools/pick-card/durable";
 import { createDrawPickCardsRegistration } from "../src/tools/pick-card/durable-effects";
 
 const workerUrl = new URL("./fixtures/durable-pick-card-worker-bootstrap.mjs", import.meta.url);
@@ -33,7 +33,7 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
       journalId: "durable-pick-card-worker",
       journalIncarnation: "1",
       keyring,
-      schemaRegistry: createDurableSchemaRegistry(durablePickCard.artifacts.catalog),
+      schemaRegistry: createDurableSchemaRegistry(pickCard.artifacts.catalog),
     });
     const concrete = createLocalWorkerDurableProgramDriver({
       workerUrl,
@@ -69,9 +69,9 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
       sessionId,
       taskId,
       program: {
-        id: durablePickCard.manifest.programId,
-        version: durablePickCard.manifest.version,
-        digest: durablePickCard.manifest.digest,
+        id: pickCard.manifest.programId,
+        version: pickCard.manifest.version,
+        digest: pickCard.manifest.digest,
       },
       input: { count: 3 },
       route: { driverKind: "worker", profile: "yo-chat-durable-tools" },
@@ -83,7 +83,7 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
         sessionId,
         turnId: "turn-0",
         taskId,
-        manifest: durablePickCard.manifest,
+        manifest: pickCard.manifest,
         input: attach.input,
         executionEpoch: 1,
         attachmentId: "unattached-pick-card",
@@ -123,7 +123,7 @@ describe("durable pick_card through the local worker ProgramDriver", () => {
         journalIncarnation: "1",
         keyring,
         snapshot: authority.exportSnapshot(),
-        schemaRegistry: createDurableSchemaRegistry(durablePickCard.artifacts.catalog),
+        schemaRegistry: createDurableSchemaRegistry(pickCard.artifacts.catalog),
       });
       expect(yield* runProgram(attach, authority, drivers, effects)).toEqual({
         state: "completed",

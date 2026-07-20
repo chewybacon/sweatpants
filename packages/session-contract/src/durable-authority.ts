@@ -1392,8 +1392,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return sortedStrings(this.#runnable);
   }
 
-  /** Clears a session's runnable marker after a legacy process-local activation starts. */
-  *markActivated(sessionId: string): Operation<void> {
+  /** Clears a session's runnable marker when an accepted activation starts. */
+  *markActivationStarted(sessionId: string): Operation<void> {
     this.#runnable.delete(sessionId);
   }
 

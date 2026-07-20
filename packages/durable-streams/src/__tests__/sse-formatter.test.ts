@@ -1,5 +1,6 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
+import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
 
 import { createInMemoryBuffer } from "../in-memory-store.ts";
 import { toOffsetString } from "../protocol-headers.ts";
@@ -9,7 +10,7 @@ describe("sse-formatter", () => {
   it("formats pure AG-UI-compatible data events for stream tokens", async () => {
     await run(function* () {
       const buffer = createInMemoryBuffer<string>("session-1");
-      yield* buffer.append(['{"type":"RUN_STARTED","threadId":"t","runId":"r"}']);
+      yield* appendTestTokens(buffer, ['{"type":"RUN_STARTED","threadId":"t","runId":"r"}']);
 
       const stream = createSSEEventStream(buffer, 0);
       const subscription = yield* stream;
@@ -26,7 +27,7 @@ describe("sse-formatter", () => {
   it("ends without emitting control data when buffer completes", async () => {
     await run(function* () {
       const buffer = createInMemoryBuffer<string>("session-2");
-      yield* buffer.append(['{"type":"RUN_STARTED","threadId":"t","runId":"r"}']);
+      yield* appendTestTokens(buffer, ['{"type":"RUN_STARTED","threadId":"t","runId":"r"}']);
 
       const stream = createSSEEventStream(buffer, 0);
       const subscription = yield* stream;
@@ -34,7 +35,7 @@ describe("sse-formatter", () => {
       const first = yield* subscription.next();
       expect(first.done).toBe(false);
 
-      yield* buffer.complete();
+      yield* completeTestBuffer(buffer);
 
       const second = yield* subscription.next();
       expect(second.done).toBe(true);

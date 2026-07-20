@@ -1,5 +1,6 @@
 import { run } from 'effection'
 import { describe, expect, it } from 'vitest'
+import { appendTestTokens, completeTestBuffer } from './test-writer.ts'
 
 import { createInMemoryBufferStore, createInMemoryRegistryStore } from '../in-memory-store.ts'
 import { defineTokenBufferStoreConformance } from './token-buffer-store-conformance.ts'
@@ -12,12 +13,12 @@ describe('in-memory-store', () => {
       const store = createInMemoryBufferStore<string>()
       const buffer = yield* store.create('b1')
 
-      yield* buffer.append(['a', 'b'])
+      yield* appendTestTokens(buffer, ['a', 'b'])
       const first = yield* buffer.read(0)
       expect(first.tokens).toEqual(['a', 'b'])
       expect(first.lsn).toBe(2)
 
-      yield* buffer.complete()
+      yield* completeTestBuffer(buffer)
       expect(yield* buffer.isComplete()).toBe(true)
       expect(yield* store.get('b1')).toBeTruthy()
 

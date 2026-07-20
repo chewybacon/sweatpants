@@ -10,7 +10,7 @@ import {
   createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createProgramDriverRegistry,
@@ -163,7 +163,7 @@ const cancellationManifest: DurableProgramManifest = {
 };
 
 /** Static fixture program loadable by in-process and isolated worker registries. */
-export const durableDriverRecoveryFixtureTool = createDurableTool(
+export const durableDriverRecoveryFixtureTool = createPinnedDurableProgram(
   fixtureManifest,
   function* (input, context) {
     const echoed = yield* context.effect(echoDefinition, input, {
@@ -181,7 +181,7 @@ export const durableDriverRecoveryFixtureTool = createDurableTool(
 );
 
 /** Static cancellation fixture whose catch evidence crosses a durable emission boundary. */
-export const durableDriverCancellationFixtureTool = createDurableTool(
+export const durableDriverCancellationFixtureTool = createPinnedDurableProgram(
   cancellationManifest,
   function* (input, context) {
     const echoed = yield* context.effect(echoDefinition, input, {

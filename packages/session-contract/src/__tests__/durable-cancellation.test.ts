@@ -10,7 +10,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistration,
   createDurableEffectRegistry,
-  createDurableTool,
+  createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createDurableSchemaRegistry,
@@ -263,7 +263,7 @@ describe("durable cancellation and partial results", () => {
   it("replays a parked program, throws typed cancellation once, and runs durable finally cleanup", async () => {
     let catches = 0;
     let cleanupRuns = 0;
-    const tool = createDurableTool(manifest, function* (_input, context) {
+    const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
       try {
         yield* context.elicit<boolean>("approval", "Approve?", approvalResponse.descriptor);
         return "approved";

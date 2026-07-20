@@ -81,12 +81,6 @@ export function createPinnedDurableProgram<I extends Json = Json, O extends Json
   return Object.freeze(tool);
 }
 
-/**
- * @deprecated Use createPinnedDurableProgram for low-level manifest-plus-generator authoring.
- * The product-level @sweatpants/core createDurableTool staged builder is unchanged.
- */
-export const createDurableTool: typeof createPinnedDurableProgram = createPinnedDurableProgram;
-
 /** Rejects malformed manifests, schemas, retry policies, and noncanonical values. */
 export function validateDurableManifest(manifest: DurableProgramManifest): void {
   if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {

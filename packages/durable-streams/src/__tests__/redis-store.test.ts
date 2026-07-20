@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { run } from 'effection'
 import { createClient, type RedisClientType } from 'redis'
+import { appendTestTokens, completeTestBuffer, failTestBuffer } from './test-writer.ts'
 
 import { createRedisTokenBufferStore } from '../redis-store.ts'
 import { defineTokenBufferStoreConformance } from './token-buffer-store-conformance.ts'
@@ -77,7 +78,7 @@ describe('RedisTokenBufferStore', () => {
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('append-read'))
 
-    const lsn = await run(() => buffer.append(['a', 'b', 'c']))
+    const lsn = await run(() => appendTestTokens(buffer, ['a', 'b', 'c']))
     expect(lsn).toBe(3)
 
     const result = await run(() => buffer.read(0))
@@ -91,7 +92,7 @@ describe('RedisTokenBufferStore', () => {
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('offset-read'))
 
-    await run(() => buffer.append(['a', 'b', 'c', 'd']))
+    await run(() => appendTestTokens(buffer, ['a', 'b', 'c', 'd']))
 
     const result = await run(() => buffer.read(2))
     expect(result.tokens).toEqual(['c', 'd'])
@@ -104,7 +105,7 @@ describe('RedisTokenBufferStore', () => {
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('past-tail'))
 
-    await run(() => buffer.append(['a']))
+    await run(() => appendTestTokens(buffer, ['a']))
 
     const result = await run(() => buffer.read(10))
     expect(result.tokens).toEqual([])
@@ -117,7 +118,7 @@ describe('RedisTokenBufferStore', () => {
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('complete'))
 
-    await run(() => buffer.complete())
+    await run(() => completeTestBuffer(buffer))
     const isComplete = await run(() => buffer.isComplete())
     expect(isComplete).toBe(true)
   })
@@ -129,7 +130,7 @@ describe('RedisTokenBufferStore', () => {
     const buffer = await run(() => store.create('fail'))
 
     const err = new Error('boom')
-    await run(() => buffer.fail(err))
+    await run(() => failTestBuffer(buffer, err))
     const error = await run(() => buffer.getError())
     expect(error?.message).toBe('boom')
   })
@@ -170,13 +171,13 @@ describe('RedisTokenBufferStore', () => {
     const store = createRedisTokenBufferStore<string>(client)
     const buffer = await run(() => store.create('wait-change'))
 
-    await run(() => buffer.append(['a']))
+    await run(() => appendTestTokens(buffer, ['a']))
 
     const waitForChangePromise = run(() => buffer.waitForChange(1))
 
     await new Promise((resolve) => setTimeout(resolve, 50))
 
-    await run(() => buffer.append(['b']))
+    await run(() => appendTestTokens(buffer, ['b']))
 
     await waitForChangePromise
 

@@ -18,7 +18,7 @@ import { run } from "effection";
 import {
   createMcpHandler,
   type ToolSessionSamplingProvider,
-  type SampleResult,
+  type SampleResultBase,
 } from "@sweatpants/framework/chat/mcp-tools";
 import {
   createInMemoryToolSessionStore,
@@ -45,7 +45,7 @@ function createMockSamplingProvider(): ToolSessionSamplingProvider {
         text: `[Mock LLM response - would generate up to ${maxTokens} tokens]`,
         model: "mock-model",
         stopReason: "endTurn",
-      } as SampleResult;
+      } as SampleResultBase;
     },
   };
 }

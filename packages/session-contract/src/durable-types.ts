@@ -50,7 +50,7 @@ declare const programOutputType: unique symbol;
 
 /** Pinned program contract defining schemas, declared operations, and replay capabilities. */
 export interface DurableProgramManifest<I extends Json = Json, O extends Json = Json> {
-  /** Compile-time-only carriers for createDurableTool input/output inference. */
+  /** Compile-time-only carriers for createPinnedDurableProgram input/output inference. */
   readonly [programInputType]?: I;
   readonly [programOutputType]?: O;
   programId: string;
@@ -853,7 +853,7 @@ export interface DurableTaskExecutionState {
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
   /** Host-private stable journal identity used by placement effect services. */
-  journalIdentity?(): { readonly id: string; readonly incarnation: string };
+  journalIdentity(): { readonly id: string; readonly incarnation: string };
   /** Reads authority-owned placement/catalog state without exposing capabilities. */
   taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   /** Returns the canonical parsed input accepted for a task; replay never reruns schema code. */
@@ -861,7 +861,7 @@ export interface DurableJournalAuthorityService {
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */
   nonterminalSchemaDigests(): Operation<string[]>;
   /** Legacy local activation marker. Distributed coordinators use claimActivation. */
-  markActivated(sessionId: string): Operation<void>;
+  markActivationStarted(sessionId: string): Operation<void>;
   /** Lists runnable work plus expired in-flight ownership for restart recovery. */
   recoverableSessions(): Operation<RecoverableSession[]>;
   /** Claims absent/expired runnable work under an authority-minted epoch. */
