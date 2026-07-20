@@ -1,5 +1,14 @@
 import type { Operation, Stream } from 'effection'
 
+export class StaleTokenWriterError extends Error {
+  readonly code = 'stale_token_writer'
+
+  constructor(message = 'TokenBuffer writer fence is stale') {
+    super(message)
+    this.name = 'StaleTokenWriterError'
+  }
+}
+
 export type SessionStatus =
   | 'streaming'
   | 'complete'
@@ -8,8 +17,31 @@ export type SessionStatus =
   | 'timeout'
   | 'orphaned'
 
+export interface TokenWriterFence {
+  readonly streamId: string
+  readonly ownerId: string
+  readonly activationEpoch: number
+}
+
+/** A mutation-only view bound to one claimed activation epoch. */
+export interface TokenBufferWriter<T> {
+  readonly fence: TokenWriterFence
+  append(tokens: T[]): Operation<number>
+  complete(): Operation<void>
+  fail(error: Error): Operation<void>
+}
+
 export interface TokenBuffer<T> {
   readonly id: string
+  /**
+   * Claims the mutation lane. A higher epoch permanently fences every older
+   * writer, including writers held by another process.
+   */
+  claimWriter(request: {
+    ownerId: string
+    activationEpoch: number
+  }): Operation<TokenBufferWriter<T>>
+  /** Compatibility mutation surface for unfenced, process-local consumers. */
   append(tokens: T[]): Operation<number>
   complete(): Operation<void>
   fail(error: Error): Operation<void>
@@ -45,7 +77,11 @@ export interface CreateSessionOptions<T> {
    * the Host-owned response buffer so crank-scoped activity can be appended
    * directly without an intermediate queue.
    */
-  source?: Stream<T, void> | ((buffer: TokenBuffer<T>) => Stream<T, void>)
+  source?:
+    | Stream<T, void>
+    | ((buffer: TokenBuffer<T>, writer: TokenBufferWriter<T>) => Stream<T, void>)
+  /** Host activation identity used to fence the sole source writer. */
+  writer?: { ownerId: string; activationEpoch: number }
   timeoutMs?: number
 }
 

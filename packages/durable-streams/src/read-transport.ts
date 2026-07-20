@@ -17,10 +17,10 @@ interface LoggerLike {
   debug(data: unknown, message?: string): void
 }
 
-interface ReadTransportParams {
+interface ReadTransportParams<T> {
   ctx: ProtocolHandlerContext
-  registry: SessionRegistry<string>
-  session: SessionHandle<string>
+  registry: SessionRegistry<T>
+  session: SessionHandle<T>
   sessionId: string
   startLSN: number
   isReconnect: boolean
@@ -63,16 +63,16 @@ function wantsJsonSnapshot(request: Request): boolean {
   return accept.toLowerCase().includes('application/json')
 }
 
-function* readStreamMetadata(
-  session: SessionHandle<string>,
+function* readStreamMetadata<T>(
+  session: SessionHandle<T>,
 ): Operation<{ tailOffset: number; closed: boolean }> {
   const { lsn } = yield* session.buffer.read(Number.MAX_SAFE_INTEGER)
   const closed = yield* session.buffer.isComplete()
   return { tailOffset: lsn, closed }
 }
 
-function createDurableEventStream(
-  buffer: TokenBuffer<string>,
+function createDurableEventStream<T>(
+  buffer: TokenBuffer<T>,
   startLSN: number,
 ): Stream<string, void> {
   return resource(function* (provide) {
@@ -95,7 +95,7 @@ function createDurableEventStream(
           lastLSN = frame.lsn
           const durableEvent = {
             lsn: frame.lsn,
-            event: JSON.parse(frame.token),
+            event: typeof frame.token === 'string' ? JSON.parse(frame.token) : frame.token,
           }
           return { done: false, value: JSON.stringify(durableEvent) }
         } catch (error) {
@@ -115,13 +115,13 @@ function createDurableEventStream(
   })
 }
 
-export function* createHeadMetadataResponse(
+export function* createHeadMetadataResponse<T>(
   ctx: ProtocolHandlerContext,
-  registry: SessionRegistry<string>,
+  registry: SessionRegistry<T>,
   sessionId: string,
   startLSN: number,
 ): Operation<ProtocolSetupResult> {
-  let session: SessionHandle<string>
+  let session: SessionHandle<T>
 
   try {
     session = yield* registry.acquire(sessionId)
@@ -150,8 +150,8 @@ export function* createHeadMetadataResponse(
   }
 }
 
-export function* createProtocolReadResponse(
-  params: ReadTransportParams,
+export function* createProtocolReadResponse<T>(
+  params: ReadTransportParams<T>,
 ): Operation<ProtocolSetupResult> {
   const {
     ctx,

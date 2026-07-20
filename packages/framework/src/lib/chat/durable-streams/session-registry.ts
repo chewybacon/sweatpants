@@ -232,10 +232,15 @@ export function* createSessionRegistry<T>(
       // Create handle that reads status from mutable state
       const handle = createHandle(sessionId, buffer)
 
+      // Claim the sole mutation lane before constructing the crank-backed source.
+      const writer = yield* buffer.claimWriter(
+        options.writer ?? { ownerId: `session-writer:${sessionId}`, activationEpoch: 1 },
+      )
+
       // Get logger factory for context transfer to background task
       const loggerFactory = yield* LoggerFactoryContext.get()
       const source =
-        typeof options.source === 'function' ? options.source(buffer) : options.source
+        typeof options.source === 'function' ? options.source(buffer, writer) : options.source
       
       log.debug({ sessionId }, 'starting writer task via useBackgroundTask')
       
@@ -245,13 +250,13 @@ export function* createSessionRegistry<T>(
           const writerLog = yield* useLogger('durable-streams:writer')
           writerLog.debug({ sessionId }, 'writer task started')
           try {
-            yield* writeFromStreamToBuffer(source, buffer)
+            yield* writeFromStreamToBuffer(source, writer)
             state.status = 'complete'
             writerLog.debug({ sessionId }, 'writer task completed')
           } catch (err) {
             state.status = 'error'
             writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
-            yield* buffer.fail(err as Error)
+            yield* writer.fail(err as Error)
           }
         },
         {

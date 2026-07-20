@@ -67,7 +67,8 @@ describe("single crank-turner architecture", () => {
     expect(registry).toContain("useBackgroundTask");
 
     const handler = source("src/handler/durable/handler.ts");
-    expect(handler).toContain("source: (responseTokenBuffer)");
+    expect(handler).toContain("source: (_responseTokenBuffer, responseTokenWriter)");
     expect(handler).toContain("responseTokenBuffer.append");
+    expect(registry).toContain("buffer.claimWriter");
   });
 });

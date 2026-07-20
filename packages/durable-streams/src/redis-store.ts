@@ -2,7 +2,8 @@ import { createSignal, spawn, call, type Signal } from 'effection'
 import type { Operation } from 'effection'
 import type { RedisClientType } from 'redis'
 
-import type { TokenBuffer, TokenBufferStore } from './types.ts'
+import { StaleTokenWriterError } from './types.ts'
+import type { TokenBuffer, TokenBufferStore, TokenBufferWriter } from './types.ts'
 
 interface StreamEntry {
   id: string
@@ -138,39 +139,142 @@ function createRedisBuffer<T>(
     yield* call(() => client.publish(changeChannel(id), '1'))
   }
 
+  function* notifyChange(): Operation<void> {
+    const signal = getSignal(id)
+    signal.send()
+    yield* publishChange()
+  }
+
+  function* claimWriter(
+    ownerId: string,
+    activationEpoch: number,
+  ): Operation<TokenBufferWriter<T>> {
+    if (!ownerId || !Number.isSafeInteger(activationEpoch) || activationEpoch < 0) {
+      throw new Error('Writer owner and nonnegative activation epoch are required')
+    }
+    const claimed = yield* call(() =>
+      client.eval(
+        `local currentEpoch = redis.call('HGET', KEYS[1], 'writerEpoch')
+         local currentOwner = redis.call('HGET', KEYS[1], 'writerOwner')
+         local requestedEpoch = tonumber(ARGV[2])
+         if currentEpoch then
+           local epoch = tonumber(currentEpoch)
+           if requestedEpoch < epoch then return 0 end
+           if requestedEpoch == epoch and currentOwner ~= ARGV[1] then return 0 end
+         end
+         redis.call('HSET', KEYS[1], 'writerOwner', ARGV[1], 'writerEpoch', ARGV[2])
+         return 1`,
+        { keys: [metaKey(id)], arguments: [ownerId, String(activationEpoch)] },
+      ),
+    )
+    if (Number(claimed) !== 1) {
+      throw new StaleTokenWriterError()
+    }
+    const fence = { streamId: id, ownerId, activationEpoch }
+    return {
+      fence,
+      *append(tokens): Operation<number> {
+        const serialized = tokens.map(serializeToken)
+        const result = yield* call(() =>
+          client.eval(
+            `if redis.call('HGET', KEYS[2], 'writerOwner') ~= ARGV[1] or
+                redis.call('HGET', KEYS[2], 'writerEpoch') ~= ARGV[2] then return -1 end
+             if redis.call('HGET', KEYS[2], 'completed') == 'true' then return -2 end
+             for i = 3, #ARGV do redis.call('XADD', KEYS[1], '*', 'token', ARGV[i]) end
+             return redis.call('XLEN', KEYS[1])`,
+            {
+              keys: [streamKey(id), metaKey(id)],
+              arguments: [ownerId, String(activationEpoch), ...serialized],
+            },
+          ),
+        )
+        if (Number(result) === -1) throw new StaleTokenWriterError()
+        if (Number(result) === -2) throw new Error('Buffer is closed')
+        yield* notifyChange()
+        return Number(result)
+      },
+      *complete(): Operation<void> {
+        const result = yield* call(() =>
+          client.eval(
+            `if redis.call('HGET', KEYS[1], 'writerOwner') ~= ARGV[1] or
+                redis.call('HGET', KEYS[1], 'writerEpoch') ~= ARGV[2] then return 0 end
+             redis.call('HSET', KEYS[1], 'completed', 'true')
+             return 1`,
+            { keys: [metaKey(id)], arguments: [ownerId, String(activationEpoch)] },
+          ),
+        )
+        if (Number(result) !== 1) throw new StaleTokenWriterError()
+        yield* notifyChange()
+      },
+      *fail(error): Operation<void> {
+        const result = yield* call(() =>
+          client.eval(
+            `if redis.call('HGET', KEYS[1], 'writerOwner') ~= ARGV[1] or
+                redis.call('HGET', KEYS[1], 'writerEpoch') ~= ARGV[2] then return 0 end
+             redis.call('HSET', KEYS[1], 'completed', 'true', 'error', ARGV[3])
+             return 1`,
+            {
+              keys: [metaKey(id)],
+              arguments: [ownerId, String(activationEpoch), error.message.slice(0, 1024)],
+            },
+          ),
+        )
+        if (Number(result) !== 1) throw new StaleTokenWriterError()
+        yield* notifyChange()
+      },
+    }
+  }
+
   return {
     id,
 
+    *claimWriter(request) {
+      return yield* claimWriter(request.ownerId, request.activationEpoch)
+    },
+
     *append(tokens) {
-      const key = streamKey(id)
-      for (const token of tokens) {
-        yield* call(() => client.xAdd(key, '*', { token: serializeToken(token) }))
-      }
-      // REQ-064: use XLEN (O(1)) instead of reading the full stream for counting.
-      const count = yield* call(() => client.xLen(key))
-      const signal = getSignal(id)
-      signal.send()
-      yield* publishChange()
-      return count
+      const result = yield* call(() =>
+        client.eval(
+          `if redis.call('HEXISTS', KEYS[2], 'writerOwner') == 1 then return -1 end
+           if redis.call('HGET', KEYS[2], 'completed') == 'true' then return -2 end
+           for i = 1, #ARGV do redis.call('XADD', KEYS[1], '*', 'token', ARGV[i]) end
+           return redis.call('XLEN', KEYS[1])`,
+          {
+            keys: [streamKey(id), metaKey(id)],
+            arguments: tokens.map(serializeToken),
+          },
+        ),
+      )
+      if (Number(result) === -1) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      if (Number(result) === -2) throw new Error('Buffer is closed')
+      yield* notifyChange()
+      return Number(result)
     },
 
     *complete() {
-      yield* call(() => client.hSet(metaKey(id), { completed: 'true' }))
-      const signal = getSignal(id)
-      signal.send()
-      yield* publishChange()
+      const result = yield* call(() =>
+        client.eval(
+          `if redis.call('HEXISTS', KEYS[1], 'writerOwner') == 1 then return 0 end
+           redis.call('HSET', KEYS[1], 'completed', 'true')
+           return 1`,
+          { keys: [metaKey(id)], arguments: [] },
+        ),
+      )
+      if (Number(result) !== 1) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      yield* notifyChange()
     },
 
     *fail(error) {
-      yield* call(() =>
-        client.hSet(metaKey(id), {
-          completed: 'true',
-          error: error.message,
-        }),
+      const result = yield* call(() =>
+        client.eval(
+          `if redis.call('HEXISTS', KEYS[1], 'writerOwner') == 1 then return 0 end
+           redis.call('HSET', KEYS[1], 'completed', 'true', 'error', ARGV[1])
+           return 1`,
+          { keys: [metaKey(id)], arguments: [error.message.slice(0, 1024)] },
+        ),
       )
-      const signal = getSignal(id)
-      signal.send()
-      yield* publishChange()
+      if (Number(result) !== 1) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      yield* notifyChange()
     },
 
     *read(afterLSN = 0) {

@@ -6,31 +6,90 @@ import type {
   SessionRegistryStore,
   TokenBuffer,
   TokenBufferStore,
+  TokenBufferWriter,
 } from './types.ts'
+import { StaleTokenWriterError } from './types.ts'
 
 export function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
   const tokens: T[] = []
   let completed = false
   let error: Error | null = null
+  let writerFence: { ownerId: string; activationEpoch: number } | undefined
   const changeSignal: Signal<void, void> = createSignal<void, void>()
+
+  function assertFence(ownerId: string, activationEpoch: number): void {
+    if (
+      !writerFence ||
+      writerFence.ownerId !== ownerId ||
+      writerFence.activationEpoch !== activationEpoch
+    ) {
+      throw new StaleTokenWriterError()
+    }
+  }
+
+  function append(newTokens: T[]): number {
+    if (completed || error) {
+      throw new Error('Buffer is closed')
+    }
+    tokens.push(...newTokens)
+    changeSignal.send()
+    return tokens.length
+  }
+
+  function complete(): void {
+    completed = true
+    changeSignal.send()
+  }
+
+  function fail(err: Error): void {
+    completed = true
+    error = err
+    changeSignal.send()
+  }
 
   return {
     id,
-    *append(newTokens: T[]): Operation<number> {
-      if (completed || error) {
-        throw new Error('Buffer is closed')
+    *claimWriter(request): Operation<TokenBufferWriter<T>> {
+      if (!request.ownerId || !Number.isSafeInteger(request.activationEpoch) || request.activationEpoch < 0) {
+        throw new Error('Writer owner and nonnegative activation epoch are required')
       }
-      tokens.push(...newTokens)
-      changeSignal.send()
-      return tokens.length
+      if (
+        writerFence &&
+        (request.activationEpoch < writerFence.activationEpoch ||
+          (request.activationEpoch === writerFence.activationEpoch &&
+            request.ownerId !== writerFence.ownerId))
+      ) {
+        throw new StaleTokenWriterError()
+      }
+      writerFence = { ...request }
+      const fence = { streamId: id, ...request }
+      return {
+        fence,
+        *append(newTokens): Operation<number> {
+          assertFence(request.ownerId, request.activationEpoch)
+          return append(newTokens)
+        },
+        *complete(): Operation<void> {
+          assertFence(request.ownerId, request.activationEpoch)
+          complete()
+        },
+        *fail(err): Operation<void> {
+          assertFence(request.ownerId, request.activationEpoch)
+          fail(err)
+        },
+      }
+    },
+    *append(newTokens: T[]): Operation<number> {
+      if (writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      return append(newTokens)
     },
     *complete(): Operation<void> {
-      completed = true
-      changeSignal.send()
+      if (writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      complete()
     },
     *fail(err: Error): Operation<void> {
-      error = err
-      changeSignal.send()
+      if (writerFence) throw new StaleTokenWriterError('A fenced writer owns this buffer')
+      fail(err)
     },
     *read(afterLSN = 0): Operation<{ tokens: T[]; lsn: number }> {
       return {

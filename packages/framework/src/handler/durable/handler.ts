@@ -23,8 +23,8 @@ import {
   useTokenBufferStore,
   type SessionHandle,
   type SessionRegistry,
-  type TokenBuffer,
   type TokenBufferStore,
+  type TokenBufferWriter,
 } from "../../lib/chat/durable-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
 import {
@@ -200,9 +200,9 @@ function createSerializedEventStream(
   options?: {
     conversationId?: string;
     checkpointStore?: TokenBufferStore<string>;
-    responseTokenBuffer?: TokenBuffer<string>;
+    responseTokenBuffer?: TokenBufferWriter<StreamEvent | string>;
   },
-): Stream<string, void> {
+): Stream<StreamEvent, void> {
   return resource(function* (provide) {
     let initialIndex = 0;
     let emittedCount = 0;
@@ -249,7 +249,7 @@ function createSerializedEventStream(
       yield* persistInterruptStateIfNeeded(rawEvent);
       const event = toStrictPublicEvent(rawEvent);
       if (!event) return;
-      const lsn = yield* options.responseTokenBuffer.append([JSON.stringify(event)]);
+      const lsn = yield* options.responseTokenBuffer.append([event]);
       emittedCount = Math.max(emittedCount, lsn);
       emittedFrames.push({ lsn, event });
     };
@@ -257,7 +257,7 @@ function createSerializedEventStream(
     const subscription = yield* selectedEngine;
 
     yield* provide({
-      *next(): Operation<IteratorResult<string, void>> {
+      *next(): Operation<IteratorResult<StreamEvent, void>> {
         while (initialIndex < initialEvents.length) {
           const rawEvent = initialEvents[initialIndex++]!;
           registerInterruptsFromRunFinished(rawEvent);
@@ -267,7 +267,7 @@ function createSerializedEventStream(
             continue;
           }
           emittedFrames.push({ lsn: ++emittedCount, event });
-          return { done: false, value: JSON.stringify(event) };
+          return { done: false, value: event };
         }
 
         while (true) {
@@ -283,7 +283,7 @@ function createSerializedEventStream(
             continue;
           }
           emittedFrames.push({ lsn: ++emittedCount, event });
-          return { done: false, value: JSON.stringify(event) };
+          return { done: false, value: event };
         }
       },
     });
@@ -568,11 +568,15 @@ function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void
   });
 }
 
-function parseBufferedFrames(tokens: string[]): DurableFrame[] {
+function parseBufferedFrames(tokens: Array<StreamEvent | string>): DurableFrame[] {
   const frames: DurableFrame[] = [];
   for (let index = 0; index < tokens.length; index++) {
     try {
-      frames.push({ lsn: index + 1, event: JSON.parse(tokens[index]!) as StreamEvent });
+      const token = tokens[index]!;
+      frames.push({
+        lsn: index + 1,
+        event: typeof token === "string" ? (JSON.parse(token) as StreamEvent) : token,
+      });
     } catch {
       // Ignore malformed buffered tokens during hydrate synthesis.
     }
@@ -731,8 +735,8 @@ function* restoreThreadInterruptStateIfNeeded(
 
 function* createConversationHydrateResponse(params: {
   ctx: { request: Request; headers: Headers };
-  registry: SessionRegistry<string>;
-  session: SessionHandle<string>;
+  registry: SessionRegistry<StreamEvent | string>;
+  session: SessionHandle<StreamEvent | string>;
   sessionId: string;
   conversationId: string;
   parsedOffset: ReturnType<typeof parseOffsetParam>;
@@ -1066,16 +1070,18 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Get session registry from durable streams context
       log.debug("getting session registry");
-      const registry: SessionRegistry<string> = yield* useSessionRegistry<string>();
+      const registry: SessionRegistry<StreamEvent | string> =
+        yield* useSessionRegistry<StreamEvent | string>();
       log.debug("session registry acquired");
 
       const activeToolRuntime = yield* ToolRuntimeContext.get();
-      if (!activeToolRuntime) {
-        throw new Error("Tool runtime not configured. Install a ToolRuntime in scope.");
-      }
 
       const publicResumeResponses = resumeValidation?.ok
-        ? mapResumeEntriesToElicitResponses(body, resumeValidation.records, activeToolRuntime.id)
+        ? mapResumeEntriesToElicitResponses(
+            body,
+            resumeValidation.records,
+            activeToolRuntime?.id ?? "program-runtime",
+          )
         : [];
       const effectiveElicitResponses =
         directElicitResponses.length > 0 ? directElicitResponses : publicResumeResponses;
@@ -1155,7 +1161,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         }
       }
 
-      let session: SessionHandle<string>;
+      let session: SessionHandle<StreamEvent | string>;
 
       // Debug: log which path we're taking and if we have elicit responses
       log.debug(
@@ -1205,7 +1211,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(streamOptions ? { streamOptions } : {}),
           ...(initialToolChoice ? { initialToolChoice } : {}),
           toolInventoryEntries: inventoryEntries,
-          toolRuntime: activeToolRuntime,
+          ...(activeToolRuntime ? { toolRuntime: activeToolRuntime } : {}),
           maxIterations,
           conversationId: requestedConversationId,
           agUiRun,
@@ -1289,11 +1295,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         // to the same reconnectable buffer from inside that crank turn.
         log.debug({ sessionId }, "new session path: acquiring session with source");
         session = yield* registry.acquire(sessionId, {
-          source: (responseTokenBuffer) =>
+          source: (_responseTokenBuffer, responseTokenWriter) =>
             createSerializedEventStream(engineSource, initialEvents, {
               ...(clientConversationId ? { conversationId: durableConversationId } : {}),
               checkpointStore: bufferStore,
-              responseTokenBuffer,
+              responseTokenBuffer: responseTokenWriter,
             }),
         });
         log.debug({ sessionId }, "new session path: session acquired");

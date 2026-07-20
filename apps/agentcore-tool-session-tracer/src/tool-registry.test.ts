@@ -7,7 +7,6 @@ const expectedTools = [
   "ask_question",
   "book_flight",
   "calculator",
-  "play_ttt",
   "tictactoe",
 ];
 
@@ -23,7 +22,8 @@ describe("AgentCore ordinary tool registry", () => {
     expect(tool?.parameters).toBeDefined();
   });
 
-  it("omits pick_card until a crank-native AgentCore ProgramDriver is installed", () => {
+  it("omits crank-native programs from the ToolSession projection", () => {
     expect(getRuntimeMcpTool("pick_card")).toBeUndefined();
+    expect(getRuntimeMcpTool("play_ttt")).toBeUndefined();
   });
 });
