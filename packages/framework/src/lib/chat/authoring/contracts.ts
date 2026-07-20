@@ -12,7 +12,6 @@ import { sortedResourceValues, type DataClassification } from "@sweatpants/core"
 export const CHAT_TURN_INPUT_FORMAT = "sweatpants.chat-turn-input.v1" as const;
 export const CHAT_TURN_RESULT_FORMAT = "sweatpants.chat-turn-result.v1" as const;
 export const CHAT_CONTEXT_POLICY_FORMAT = "sweatpants.chat-context-policy.v1" as const;
-export const CHAT_MODEL_SAMPLE_VERSION = "2" as const;
 
 export interface ChatContentPartV1 {
   value: Json;
@@ -97,35 +96,12 @@ const resultDescriptor = descriptor("sweatpants.chat-turn/result", "program_outp
   },
   additionalProperties: false,
 });
-const sampleInputDescriptor = descriptor(
-  "sweatpants.chat-turn/model-sample-input",
-  "effect_input",
-  {
-    type: "object",
-    required: ["messages", "systemPrompt", "tools", "classifications", "sampling"],
-    additionalProperties: false,
-  },
-);
-const sampleOutputDescriptor = descriptor(
-  "sweatpants.chat-turn/model-sample-output",
-  "effect_output",
-  {
-    type: "object",
-    required: ["message", "calls", "artifacts"],
-    additionalProperties: false,
-  },
-);
-
 export const CHAT_TURN_INPUT_DESCRIPTOR = inputDescriptor;
 export const CHAT_TURN_RESULT_DESCRIPTOR = resultDescriptor;
-export const CHAT_MODEL_SAMPLE_INPUT_DESCRIPTOR = sampleInputDescriptor;
-export const CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = sampleOutputDescriptor;
 
 export const CHAT_CONTRACT_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze([
   entry(inputDescriptor, (value) => normalizeChatTurnInput(value) as unknown as Json),
   entry(resultDescriptor, (value) => normalizeChatTurnResult(value) as unknown as Json),
-  entry(sampleInputDescriptor, (value) => normalizeModelSampleInput(value) as unknown as Json),
-  entry(sampleOutputDescriptor, (value) => normalizeModelSampleOutput(value) as unknown as Json),
 ]);
 
 export function normalizeChatTurnInput(value: unknown): ChatTurnInputV1 {
@@ -283,28 +259,6 @@ function normalizePart(value: unknown): ChatContentPartV1 {
   });
 }
 
-function normalizeModelSampleInput(value: unknown): ChatModelSampleInputV2 {
-  const input = exactRecord(
-    value,
-    ["messages", "systemPrompt", "tools", "classifications", "sampling"],
-    "model sample input",
-  );
-  if (
-    !Array.isArray(input["messages"]) ||
-    !Array.isArray(input["tools"]) ||
-    !Array.isArray(input["classifications"])
-  ) {
-    invalid("invalid model sample input");
-  }
-  const classifications = uniqueSorted(input["classifications"].map(classification));
-  return snapshot({
-    messages: input["messages"].map(normalizeChatMessage),
-    systemPrompt: normalizePart(input["systemPrompt"]),
-    tools: input["tools"].map((tool) => canonicalSnapshot(tool as Json).value),
-    classifications,
-    sampling: canonicalSnapshot(input["sampling"] as Json).value,
-  });
-}
 export function normalizeModelSampleOutput(value: unknown): ChatModelSampleOutputV2 {
   const output = exactRecord(value, ["message", "calls", "artifacts"], "model sample output");
   if (!Array.isArray(output["calls"]) || !Array.isArray(output["artifacts"])) {

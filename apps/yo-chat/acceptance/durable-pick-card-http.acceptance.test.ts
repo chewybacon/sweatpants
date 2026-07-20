@@ -50,11 +50,12 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
     const driver: ModelProviderDriver = {
       stream(): Stream<StreamEvent, AssistantMessage> {
         samples += 1;
-        return completed(
-          samples === 1
-            ? {
+        return samples === 1
+          ? streamedToolCall(
+              {
                 role: "assistant",
                 content: [
+                  { type: "text", text: "Considering available cards." },
                   {
                     type: "toolCall",
                     id: callId,
@@ -63,13 +64,14 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
                   },
                 ],
                 stopReason: "toolUse",
-              }
-            : {
-                role: "assistant",
-                content: [{ type: "text", text: "Your durable card was recorded." }],
-                stopReason: "stop",
               },
-        );
+              "Considering available cards.",
+            )
+          : completed({
+              role: "assistant",
+              content: [{ type: "text", text: "Your durable card was recorded." }],
+              stopReason: "stop",
+            });
       },
       *sample(): Operation<never> {
         throw new Error("ProgramRuntime must use the streaming model seam");
@@ -122,6 +124,13 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
       const first = await post(application.handle, conversationId, messages);
       const pending = interrupt(first);
       expect(pending.toolCallId).toBe(callId);
+      expect(
+        first.filter(
+          (event) =>
+            event.type === "TEXT_MESSAGE_CONTENT" &&
+            event["delta"] === "Considering available cards.",
+        ),
+      ).toHaveLength(1);
       const cards = modelContextCards(pending.responseSchema);
       expect(cards).toHaveLength(3);
       const selected = cards[0]!;
@@ -140,12 +149,13 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
         ),
       ).toBe(true);
       expect(
-        second.some(
+        second.filter(
           (event) =>
             event.type === "TEXT_MESSAGE_CONTENT" &&
             event["delta"] === "Your durable card was recorded.",
         ),
-      ).toBe(true);
+      ).toHaveLength(1);
+      expect(second.some((event) => event["delta"] === "Considering available cards.")).toBe(false);
 
       const journal = await run(function* () {
         const opened = yield* journalStore.open(conversationId);
@@ -188,6 +198,32 @@ type Resume = {
   callId: string;
   result: { action: "accept"; content: { picked: Card } };
 };
+
+function streamedToolCall(
+  message: AssistantMessage,
+  delta: string,
+): Stream<StreamEvent, AssistantMessage> {
+  return resource(function* (provide) {
+    let emitted = false;
+    yield* provide({
+      *next(): Operation<IteratorResult<StreamEvent, AssistantMessage>> {
+        if (!emitted) {
+          emitted = true;
+          return {
+            done: false,
+            value: {
+              type: "text_delta",
+              contentIndex: 0,
+              delta,
+              partial: { role: "assistant", content: [{ type: "text", text: delta }] },
+            },
+          };
+        }
+        return { done: true, value: message };
+      },
+    });
+  });
+}
 
 function completed(message: AssistantMessage): Stream<StreamEvent, AssistantMessage> {
   return resource(function* (provide) {

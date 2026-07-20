@@ -103,10 +103,12 @@ function* reviewerGenerator(
     FOREIGN_MODEL_SAMPLE_EFFECT,
     {
       messages: [
-        { role: "system", content: input.instructions },
+        {
+          role: "system",
+          content: `${input.instructions}\n\nReturn one narrow factual question for the design author as {question, rationale?}.`,
+        },
         { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
       ],
-      task: "Return one narrow factual question for the design author as {question, rationale?}.",
     },
     { audience: "caller:model" },
   );
@@ -118,12 +120,14 @@ function* reviewerGenerator(
     FOREIGN_MODEL_SAMPLE_EFFECT,
     {
       messages: [
-        { role: "system", content: input.instructions },
+        {
+          role: "system",
+          content: `${input.instructions}\n\nReturn an independent review. Use only the supplied design and narrow recorded answer.`,
+        },
         { role: "user", content: `Rubric:\n${input.rubric}\n\nDesign:\n${input.design}` },
         { role: "assistant", content: `Question: ${question.question}` },
         { role: "tool", name: "ask_parent", content: canonicalSnapshot(answer).canonical },
       ],
-      task: "Return an independent review. Use only the supplied design and narrow recorded answer.",
     },
     { audience: "caller:model" },
   );

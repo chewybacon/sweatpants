@@ -1,5 +1,4 @@
-import { createSignal, resource, spawn, type Operation, type Stream } from "effection";
-import { createInMemoryActivityStreamStore } from "@sweatpants/durable-streams";
+import { resource, type Operation, type Stream } from "effection";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   CrankError,
@@ -24,7 +23,6 @@ import {
   createProgramDriverRegistry,
   defineDurableProgramManifest,
   foreignToolAdapter,
-  sha256,
   stableOpaqueId,
   stableProgramAttachmentId,
   type DurableEffectRegistration,
@@ -89,6 +87,8 @@ type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
   foreignEffects?: readonly [DurableEffectRegistration, DurableEffectRegistration];
   nativeTools?: ProgramDriverNativeToolComposition;
   continueAfterCancellation?: boolean;
+  /** Host-owned delivery projection invoked only inside the active crank turn. */
+  liveEvent?: (event: StreamEvent) => Operation<void>;
 };
 
 const chatEngineSchemaEntries: DurableSchemaRegistryEntry[] = [];
@@ -196,8 +196,8 @@ const chatRootOutputDescriptor = chatEngineSchema(
 
 const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
   programId: "sweatpants.chat-root",
-  version: "1.1.0",
-  digest: sha256("sweatpants.chat-root@1.1.0:native-child-tool-routing-v1"),
+  version: "1.2.0",
+  digest: "cd46d11a63f7e556a52b9fc467253bf8b557aa35ac923b8700d2dae557064985",
   inputSchema: chatRootInputDescriptor,
   outputSchema: chatRootOutputDescriptor,
   elicits: {},
@@ -295,73 +295,24 @@ export function createProgramDriverChatEngine(
   params: ProgramDriverChatEngineParams,
 ): Stream<StreamEvent, void> {
   return resource(function* (provide) {
-    const queue: StreamEvent[] = [];
-    const changed = createSignal<void, void>();
-    const changes = yield* changed;
-    let done = false;
-    let failure: unknown;
-    const activity = createInMemoryActivityStreamStore<string>({
-      codec: {
-        digest: sha256,
-        byteLength: (value) => new TextEncoder().encode(value).byteLength,
-      },
-    });
-    const activityStreamId = `model:${params.conversationId}:${params.agUiRun.runId}`;
-
-    yield* spawn(function* () {
-      try {
-        yield* activity.create({
-          streamId: activityStreamId,
-          retention: { mode: "retain_until_ttl", ttlMs: 5 * 60_000 },
-        });
-        const fence = yield* activity.claimWriter({
-          streamId: activityStreamId,
-          writer: {
-            kind: "activation",
-            taskId: params.conversationId,
-            activationId: params.agUiRun.runId,
-          },
-        });
-        let cursor = 0;
-        const events = yield* activateProgramDriverChatEngine(params, function* (event) {
-          if (event.type === "TEXT_MESSAGE_CONTENT") {
-            yield* activity.append({
-              fence,
-              cursor: ++cursor,
-              payload: event.delta,
-            });
-          }
-          queue.push(event);
-          changed.send();
-        });
-        for (const event of events) queue.push(event);
-        yield* activity.close({ fence, close: { status: "complete" } });
-      } catch (error) {
-        failure = error;
-      } finally {
-        done = true;
-        changed.send();
-      }
-    });
-
+    let events: StreamEvent[] | undefined;
+    let cursor = 0;
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
-        while (queue.length === 0 && !done) yield* changes.next();
-        const event = queue.shift();
-        if (event) return { done: false, value: event };
-        if (failure) throw failure;
-        return { done: true, value: undefined };
+        events ??= yield* activateProgramDriverChatEngine(params);
+        const event = events[cursor];
+        if (!event) return { done: true, value: undefined };
+        cursor += 1;
+        return { done: false, value: event };
       },
     });
   });
 }
 
-type LiveEventSink = (event: StreamEvent) => Operation<void>;
-
 function* activateProgramDriverChatEngine(
   params: ProgramDriverChatEngineParams,
-  liveEvent?: LiveEventSink,
 ): Operation<StreamEvent[]> {
+  const liveEvent = params.liveEvent;
   const journal = yield* params.journalStore.open(params.conversationId);
   const scopedForeignEffects = params.foreignEffects;
   let before = yield* journal.readJournal(params.conversationId);
@@ -445,12 +396,14 @@ function* activateProgramDriverChatEngine(
   const foreignEffects =
     boundForeignDriver === "tool-session"
       ? requireScopedForeignEffects(scopedForeignEffects)
-      : createToolRuntimeForeignEffectRegistrations({
-          runtime: requireToolRuntime(params),
-          entries: params.toolInventoryEntries ?? [],
-          threadId: params.agUiRun.threadId,
-          runId: params.agUiRun.runId,
-        });
+      : boundForeignDriver === "framework-tool-runtime"
+        ? createToolRuntimeForeignEffectRegistrations({
+            runtime: requireToolRuntime(params),
+            entries: params.toolInventoryEntries ?? [],
+            threadId: params.agUiRun.threadId,
+            runId: params.agUiRun.runId,
+          })
+        : [];
   const effects = createDurableEffectRegistry(
     [
       createDurableEffectRegistration(
@@ -617,7 +570,9 @@ function* sampleModel(
     request.tools !== undefined ||
     request.schema !== undefined;
   const runtimeContext: RuntimeContext = {
-    ...(request.systemPrompt !== undefined ? { systemPrompt: request.systemPrompt } : {}),
+    ...(request.systemPrompt !== undefined
+      ? { systemPrompt: modelSystemPromptText(request.systemPrompt) }
+      : {}),
     messages: request.messages.map(toRuntimeMessage),
     ...(request.tools !== undefined
       ? { tools: sampleTools(request.tools) }
@@ -1226,13 +1181,30 @@ function foreignElicitId(
   return typeof context?.["foreignKey"] === "string" ? context["foreignKey"] : undefined;
 }
 
+function modelSystemPromptText(value: Json): string {
+  if (typeof value === "string") return value;
+  const part = jsonRecord(value);
+  return typeof part?.["value"] === "string"
+    ? part["value"]
+    : JSON.stringify(part?.["value"] ?? value);
+}
+
 function toRuntimeMessage(value: Json): RuntimeMessage {
   const message = jsonRecord(value) ?? {};
   const role = message["role"];
+  const parts = Array.isArray(message["parts"]) ? message["parts"] : undefined;
+  const partContent = parts
+    ?.map((partValue) => {
+      const part = jsonRecord(partValue);
+      const content = part?.["value"];
+      return typeof content === "string" ? content : JSON.stringify(content ?? null);
+    })
+    .join("");
   const content =
-    typeof message["content"] === "string"
+    partContent ??
+    (typeof message["content"] === "string"
       ? message["content"]
-      : JSON.stringify(message["content"] ?? null);
+      : JSON.stringify(message["content"] ?? null));
   if (role === "assistant") {
     const runtimeContent = Array.isArray(message["runtime_content"])
       ? message["runtime_content"].flatMap((block) => {

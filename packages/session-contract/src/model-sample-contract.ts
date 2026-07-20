@@ -18,7 +18,7 @@ export type ModelSampleCall = {
 
 export type ModelSampleRequest = {
   messages: Json[];
-  systemPrompt?: string;
+  systemPrompt?: Json;
   maxTokens?: number;
   modelPreferences?: Json;
   classifications?: Json[];
@@ -87,14 +87,14 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 export const MODEL_SAMPLE_INPUT_DESCRIPTOR = schema(
-  "sweatpants.chat-root/model-sample-input",
+  "sweatpants.model-sample/input",
   "effect_input",
   {
     type: "object",
     required: ["messages"],
     properties: {
       messages: { type: "array", items: true },
-      systemPrompt: { type: "string" },
+      systemPrompt: true,
       maxTokens: { type: "integer", minimum: 1 },
       modelPreferences: true,
       classifications: { type: "array", items: true },
@@ -123,9 +123,6 @@ export const MODEL_SAMPLE_INPUT_DESCRIPTOR = schema(
     if (!Object.keys(value).every((key) => allowed.has(key))) {
       return "model sample request has unexpected keys";
     }
-    if (value["systemPrompt"] !== undefined && typeof value["systemPrompt"] !== "string") {
-      return "systemPrompt must be a string";
-    }
     if (
       value["maxTokens"] !== undefined &&
       (!Number.isSafeInteger(value["maxTokens"]) || (value["maxTokens"] as number) < 1)
@@ -140,7 +137,7 @@ export const MODEL_SAMPLE_INPUT_DESCRIPTOR = schema(
 );
 
 export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = schema(
-  "sweatpants.chat-root/model-sample-output",
+  "sweatpants.model-sample/output",
   "effect_output",
   {
     type: "object",
@@ -198,7 +195,7 @@ export const MODEL_SAMPLE_OUTPUT_DESCRIPTOR = schema(
 );
 
 export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = schema(
-  "sweatpants.chat-root/model-sample-partial",
+  "sweatpants.model-sample/cancellation-partial",
   "effect_cancellation_partial",
   {
     type: "object",

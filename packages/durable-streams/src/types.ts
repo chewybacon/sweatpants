@@ -40,7 +40,12 @@ export interface SessionStore<T> {
 }
 
 export interface CreateSessionOptions<T> {
-  source?: Stream<T, void>
+  /**
+   * The sole eager source consumed by the session writer. A factory receives
+   * the Host-owned response buffer so crank-scoped activity can be appended
+   * directly without an intermediate queue.
+   */
+  source?: Stream<T, void> | ((buffer: TokenBuffer<T>) => Stream<T, void>)
   timeoutMs?: number
 }
 

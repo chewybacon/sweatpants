@@ -18,8 +18,8 @@ import type { Json } from "./types.ts";
 /** Pinned identity of the built-in foreign-tool adapter program. */
 export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
   id: "sweatpants.foreign-tool-adapter",
-  version: "1.0.0",
-  digest: "664eb30db1cb9cff506e842d4aaa35ece6c5afb0179e98841a2a27fe1f2d97b2",
+  version: "1.1.0",
+  digest: "28ea3a22d821c2aea30e906d9bb7adb2f3bf002b478db3b79bb87322fbe1b2cc",
 });
 
 const FOREIGN_DURABILITIES = [
