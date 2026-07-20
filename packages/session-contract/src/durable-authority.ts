@@ -346,6 +346,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
   }
 
+  journalIdentity(): { readonly id: string; readonly incarnation: string } {
+    return { id: this.#options.journalId, incarnation: this.#options.journalIncarnation };
+  }
+
   /** Opens one pinned task exactly once and returns attachment-bound authority. */
   *openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }> {
     const key = taskKey(request.sessionId, request.taskId);

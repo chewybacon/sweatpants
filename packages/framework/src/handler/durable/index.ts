@@ -86,6 +86,11 @@ export type {
   PinnedProgramCatalog,
   ProgramCatalogEntry,
 } from "./local-program-host.ts";
+export {
+  createProgramDeliveryWriter,
+  highestRemoteOriginLsn,
+  projectProgramDeliveryEnvelope,
+} from "./model-sampling-relay.ts";
 export { ProgramDriverForeignEffectsContext } from "./program-driver-effects.ts";
 export {
   ProgramDriverNativeToolsContext,

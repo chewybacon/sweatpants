@@ -11,8 +11,9 @@ import {
   canonicalSnapshot,
   createPortableSchemaDescriptor,
   standardSchemaOf,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
+  createModelSamplingEffectRegistration,
+  createModelSamplingRouter,
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createLocalGeneratorDriver,
@@ -401,50 +402,50 @@ function* activateProgramDriverChatEngine(
             runId: params.agUiRun.runId,
           })
         : [];
+  const modelSamplingRouter = createModelSamplingRouter({
+    policy: () => ({ ownership: "host" }),
+    host: {
+      *sample(request, context) {
+        let partialText = "";
+        let streamStarted = false;
+        const messageId = `assistant:stream:${taskId}:${context.pullId}`;
+        try {
+          const value = yield* sampleModel(
+            params,
+            request,
+            context.cancellation,
+            context.pullId,
+            function* (text, delta) {
+              partialText = text.slice(-32_768);
+              if (!liveEvent) return;
+              if (!streamStarted) {
+                streamStarted = true;
+                yield* liveEvent({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
+              }
+              yield* liveEvent({ type: "TEXT_MESSAGE_CONTENT", messageId, delta });
+            },
+          );
+          if (streamStarted && liveEvent) {
+            yield* liveEvent({ type: "TEXT_MESSAGE_END", messageId });
+            if (value.calls.length === 0) streamedTerminal = true;
+          }
+          return { status: "ok" as const, value };
+        } catch (error) {
+          if (context.cancellation.aborted) {
+            return {
+              status: "cancelled" as const,
+              partial: { text: partialText, interrupted: true as const },
+            };
+          }
+          if (error instanceof CrankError) throw error;
+          throw new CrankError("model_runtime_failed", "Provider error");
+        }
+      },
+    },
+  });
   const effects = createDurableEffectRegistry(
     [
-      createDurableEffectRegistration(
-        modelSample,
-        { mode: "idempotent", mechanism: "pull_id_key" },
-        function* (request, context) {
-          let partialText = "";
-          let streamStarted = false;
-          const messageId = `assistant:stream:${taskId}:${context.pullId}`;
-          try {
-            const value = yield* sampleModel(
-              params,
-              request,
-              context.cancellation,
-              context.pullId,
-              function* (text, delta) {
-                partialText = text.slice(-32_768);
-                if (!liveEvent) return;
-                if (!streamStarted) {
-                  streamStarted = true;
-                  yield* liveEvent({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
-                }
-                yield* liveEvent({ type: "TEXT_MESSAGE_CONTENT", messageId, delta });
-              },
-            );
-            if (streamStarted && liveEvent) {
-              yield* liveEvent({ type: "TEXT_MESSAGE_END", messageId });
-              if (value.calls.length === 0) streamedTerminal = true;
-            }
-            return { status: "ok" as const, value };
-          } catch (error) {
-            if (context.cancellation.aborted) {
-              return {
-                status: "cancelled" as const,
-                partial: { text: partialText, interrupted: true as const },
-              };
-            }
-            if (error instanceof CrankError) {
-              throw error;
-            }
-            throw new CrankError("model_runtime_failed", "Provider error");
-          }
-        },
-      ),
+      createModelSamplingEffectRegistration(),
       ...foreignEffects,
       ...(params.nativeTools?.effects ?? []),
     ],
@@ -455,6 +456,7 @@ function* activateProgramDriverChatEngine(
       authority: journal.authority,
       drivers,
       effects,
+      modelSamplingRouter,
       routeResolver: function* (program, parentRoute) {
         const binding = [...(params.nativeTools?.bindings.values() ?? [])].find(
           (candidate) =>

@@ -1,11 +1,6 @@
 /** Journal-native tic-tac-toe program and public tool contract. */
 import { createDurableTool } from '@sweatpants/core'
-import {
-  MODEL_SAMPLE_EFFECT,
-  CrankError,
-  sha256,
-  type ModelSampleResult,
-} from '@sweatpants/session-contract'
+import { sha256 } from '@sweatpants/session-contract'
 import { z } from 'zod'
 
 import {
@@ -35,6 +30,8 @@ const PickMoveResponseSchema = z.object({
   // -1 acknowledges the terminal board.
   position: z.number().int().min(-1).max(8),
 })
+const ModelSymbolSchema = z.object({ symbol: z.enum(['X', 'O']) })
+const ModelCellSchema = z.object({ cell: z.number().int().min(0).max(8) })
 const PickMoveContextSchema = z.object({
   board: BoardSchema,
   moveHistory: z.array(GameMoveSchema),
@@ -88,23 +85,13 @@ The program chooses symbols, alternates model and user moves, and returns the fi
       context: PickMoveContextSchema,
     },
   })
-  .effects({ [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT })
+  .samples()
   .execute(function* (_input, context) {
-    const assignment = yield* context.effect(MODEL_SAMPLE_EFFECT, {
-      messages: [
-        {
-          role: 'user',
-          content: 'Choose which symbol you will play in tic-tac-toe. Return X or O.',
-        },
-      ],
-      schema: {
-        type: 'object',
-        required: ['symbol'],
-        properties: { symbol: { enum: ['X', 'O'] } },
-        additionalProperties: false,
-      },
+    const assignment = yield* context.sampleSchema({
+      prompt: 'Choose which symbol you will play in tic-tac-toe. Return X or O.',
+      schema: ModelSymbolSchema,
     })
-    const modelSymbol = modelSymbolFrom(assignment)
+    const modelSymbol: Player = assignment.parsed.symbol
     const userSymbol: Player = modelSymbol === 'X' ? 'O' : 'X'
     let board: Board = [...EMPTY_BOARD]
     let currentPlayer: Player = 'X'
@@ -115,25 +102,16 @@ The program chooses symbols, alternates model and user moves, and returns the fi
         const emptyPositions = board
           .map((cell, index) => (cell === null ? index : null))
           .filter((index): index is number => index !== null)
-        const sampled = yield* context.effect(MODEL_SAMPLE_EFFECT, {
-          messages: [
-            {
-              role: 'user',
-              content: [
-                `You are ${modelSymbol}. Pick one legal tic-tac-toe move.`,
-                formatBoard(board),
-                `Empty positions: ${emptyPositions.join(', ')}`,
-              ].join('\n'),
-            },
-          ],
-          schema: {
-            type: 'object',
-            required: ['cell'],
-            properties: { cell: { type: 'integer', minimum: 0, maximum: 8 } },
-            additionalProperties: false,
-          },
+        const sampled = yield* context.sampleSchema({
+          prompt: [
+            `You are ${modelSymbol}. Pick one legal tic-tac-toe move.`,
+            formatBoard(board),
+            `Empty positions: ${emptyPositions.join(', ')}`,
+          ].join('\n'),
+          schema: ModelCellSchema,
+          retries: 2,
         })
-        const requested = sampledCell(sampled)
+        const requested = sampled.parsed.cell
         const position = emptyPositions.includes(requested) ? requested : emptyPositions[0]!
         board = applyMove(board, position, modelSymbol)
         moveHistory.push({
@@ -228,24 +206,5 @@ The program chooses symbols, alternates model and user moves, and returns the fi
       currentPlayer = currentPlayer === 'X' ? 'O' : 'X'
     }
   })
-
-function modelSymbolFrom(result: ModelSampleResult): Player {
-  const parsed = result.parsed
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    const symbol = parsed['symbol']
-    if (symbol === 'X' || symbol === 'O') return symbol
-  }
-  const match = /\b([XO])\b/i.exec(result.text)
-  return match?.[1]?.toUpperCase() === 'O' ? 'O' : 'X'
-}
-
-function sampledCell(result: ModelSampleResult): number {
-  const parsed = result.parsed
-  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-    const cell = parsed['cell']
-    if (Number.isInteger(cell) && Number(cell) >= 0 && Number(cell) <= 8) return Number(cell)
-  }
-  throw new CrankError('schema_validation_failed', 'Model sample did not contain a legal cell')
-}
 
 export type PlayTttResult = z.infer<typeof PlayTttResultSchema>

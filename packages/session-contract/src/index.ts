@@ -22,6 +22,26 @@ export {
   type ModelSampleRequest,
   type ModelSampleResult,
 } from "./model-sample-contract.ts";
+export {
+  ModelSamplingRouterContext,
+  ProgramDeliveryWriterContext,
+  ProgramPlacementContext,
+  createModelSamplingEffectRegistration,
+  createModelSamplingRouter,
+  type ModelSampleDisposition,
+  type ModelSamplingExecutionContext,
+  type ModelSamplingPlacementPolicy,
+  type ModelSamplingRouter,
+  type ModelSamplingService,
+  type ProgramDeliveryEnvelope,
+  type ProgramDeliveryWriter,
+  type ProgramPlacementContextValue,
+} from "./model-sampling-placement.ts";
+export {
+  ModelSamplingOutcomeAcknowledgerContext,
+  type ModelSamplingOutcomeAcknowledgement,
+  type ModelSamplingOutcomeAcknowledger,
+} from "./model-sampling-acknowledgement.ts";
 
 /** ProgramDriver durable runtime contracts. */
 export type {

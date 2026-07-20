@@ -136,7 +136,21 @@ export interface SessionRegistryStore {
   updateRefCount(sessionId: string, delta: number): Operation<number>
 }
 
+export interface RecoverSessionOptions<T> {
+  /** Newer Host activation identity required to reclaim the source writer. */
+  writer: { ownerId: string; activationEpoch: number }
+  /** Constructed only after the writer fence is successfully claimed. */
+  recoverSource: (
+    buffer: TokenBuffer<T>,
+    writer: TokenBufferWriter<T>,
+  ) => Stream<T, void>
+}
+
 export interface SessionRegistry<T> {
   acquire(sessionId: string, options?: CreateSessionOptions<T>): Operation<SessionHandle<T>>
   release(sessionId: string): Operation<void>
+}
+
+export interface RecoverableSessionRegistry<T> extends SessionRegistry<T> {
+  recover(sessionId: string, options: RecoverSessionOptions<T>): Operation<SessionHandle<T>>
 }
