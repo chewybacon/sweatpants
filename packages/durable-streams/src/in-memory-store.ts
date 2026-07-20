@@ -37,13 +37,16 @@ export function createInMemoryBuffer<T>(id: string): TokenBuffer<T> {
   }
 
   function complete(): void {
+    if (completed) return
     completed = true
     changeSignal.send()
   }
 
   function fail(err: Error): void {
+    if (completed) return
     completed = true
-    error = err
+    error = err.message.length <= 1024 ? err : new Error(err.message.slice(0, 1024))
+    error.name = err.name
     changeSignal.send()
   }
 

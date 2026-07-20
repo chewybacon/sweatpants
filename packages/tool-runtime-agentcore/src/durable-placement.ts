@@ -2,6 +2,7 @@ import {
   CrankError,
   canonicalSnapshot,
   effectContractDigest,
+  exactProgramKey,
   stableOpaqueId,
   type AgentCoreRuntimeRelease,
   type AgentCoreTaskPlacement,
@@ -120,10 +121,6 @@ export interface AgentCoreDurableReadiness {
     | "sampling_delivery"
     | "sampling_classification"
   )[];
-}
-
-export function exactProgramKey(program: PinnedProgram): string {
-  return `${program.id}@${program.version}#${program.digest}`;
 }
 
 /** Reconciles every exact artifact needed before exposing a durable contract. */

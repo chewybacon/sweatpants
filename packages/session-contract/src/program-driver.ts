@@ -15,6 +15,7 @@ import type {
   DurableProgramManifest,
   DurableTool,
   OperationOutcome,
+  PinnedProgram,
   ProgramAttachment,
   ProgramCommand,
   ProgramDriver,
@@ -46,7 +47,11 @@ export function createDurableToolRegistry(
   const registry = new Map<string, DurableTool<any, any>>();
   for (const tool of tools) {
     validateProgramIdentityProvenance(tool);
-    const key = programKey(tool.manifest.programId, tool.manifest.version, tool.manifest.digest);
+    const key = exactProgramKey({
+      id: tool.manifest.programId,
+      version: tool.manifest.version,
+      digest: tool.manifest.digest,
+    });
     if (registry.has(key)) {
       throw new CrankError("invalid_manifest", `Duplicate durable program ${key}`);
     }
@@ -103,7 +108,7 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
   return {
     *attach(request: AttachProgramRequest): Operation<ProgramAttachment> {
       const tools = registry ?? (yield* useDurableToolRegistry());
-      const key = programKey(request.program.id, request.program.version, request.program.digest);
+      const key = exactProgramKey(request.program);
       const tool = tools.get(key);
       if (!tool) {
         throw new CrankError("program_version_unavailable", `No exact program bundle for ${key}`);
@@ -217,7 +222,7 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
 
     *manifest(program): Operation<DurableProgramManifest> {
       const tools = registry ?? (yield* useDurableToolRegistry());
-      const tool = tools.get(programKey(program.id, program.version, program.digest));
+      const tool = tools.get(exactProgramKey(program));
       if (!tool) {
         throw new CrankError(
           "program_version_unavailable",
@@ -305,8 +310,9 @@ function protocol(message: string): CrankError {
   return new CrankError("program_protocol_error", message);
 }
 
-function programKey(id: string, version: string, digest: string): string {
-  return `${id}@${version}#${digest}`;
+/** Canonical exact-key format shared by program registries and Hosts. */
+export function exactProgramKey(program: PinnedProgram): string {
+  return `${program.id}@${program.version}#${program.digest}`;
 }
 
 /** Derives a stable attachment identifier from pinned program and task identity. */

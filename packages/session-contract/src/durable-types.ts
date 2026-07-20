@@ -833,6 +833,8 @@ export interface EnsureChildTaskRequest {
   manifest: DurableProgramManifest;
   executionEpoch: number;
   audience: string;
+  /** Authority-accepted child route retained for process-replacement recovery. */
+  route?: ProgramRoute;
 }
 
 /** Child allocation result, including an already-recorded terminal outcome when present. */
@@ -841,10 +843,19 @@ export interface EnsureChildTaskResult {
   outcome?: OperationOutcome;
 }
 
+export interface DurableTaskExecutionState {
+  readonly route?: ProgramRoute;
+  readonly executionEpoch: number;
+  readonly catalog?: Json;
+  readonly catalogDigest?: string;
+}
+
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
   /** Host-private stable journal identity used by placement effect services. */
   journalIdentity?(): { readonly id: string; readonly incarnation: string };
+  /** Reads authority-owned placement/catalog state without exposing capabilities. */
+  taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState>;
   /** Returns the canonical parsed input accepted for a task; replay never reruns schema code. */
   taskInput(sessionId: string, taskId: string): Operation<Json>;
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */

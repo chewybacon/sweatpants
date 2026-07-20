@@ -146,15 +146,18 @@ function createSharedBuffer<T>(
   }
 
   function completeBuffer(): void {
+    if (state.completed) return
     log.debug({ bufferId: id, totalTokens: state.tokens.length }, 'buffer complete')
     state.completed = true
     state.emitter.emit('change')
   }
 
   function failBuffer(err: Error): void {
+    if (state.completed) return
     log.error({ bufferId: id, error: err.message }, 'buffer failed')
     state.completed = true
-    state.error = err
+    state.error = err.message.length <= 1024 ? err : new Error(err.message.slice(0, 1024))
+    state.error.name = err.name
     state.emitter.emit('change')
   }
 

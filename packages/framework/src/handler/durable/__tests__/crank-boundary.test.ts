@@ -61,6 +61,16 @@ describe("single crank-turner architecture", () => {
     expect(contracts).not.toContain("CHAT_MODEL_SAMPLE_OUTPUT_DESCRIPTOR");
   });
 
+  it("marks unfenced TokenBuffer mutations as compatibility-only", () => {
+    const contracts = source("../durable-streams/src/types.ts");
+    expect(contracts.match(/@deprecated Claim a `TokenBufferWriter`/g)).toHaveLength(3);
+
+    const registry = source("src/lib/chat/durable-streams/session-registry.ts");
+    expect(registry).not.toContain("buffer.append(");
+    expect(registry).not.toContain("buffer.complete(");
+    expect(registry).not.toContain("buffer.fail(");
+  });
+
   it("has exactly one response-buffer source writer in session orchestration", () => {
     const registry = source("src/lib/chat/durable-streams/session-registry.ts");
     expect(registry.match(/writeFromStreamToBuffer\(/g)).toHaveLength(1);

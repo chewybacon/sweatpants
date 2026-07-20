@@ -200,7 +200,7 @@ function createSerializedEventStream(
   options?: {
     conversationId?: string;
     checkpointStore?: TokenBufferStore<string>;
-    responseTokenBuffer?: TokenBufferWriter<StreamEvent | string>;
+    responseTokenBuffer?: TokenBufferWriter<StreamEvent>;
   },
 ): Stream<StreamEvent, void> {
   return resource(function* (provide) {
@@ -568,20 +568,8 @@ function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void
   });
 }
 
-function parseBufferedFrames(tokens: Array<StreamEvent | string>): DurableFrame[] {
-  const frames: DurableFrame[] = [];
-  for (let index = 0; index < tokens.length; index++) {
-    try {
-      const token = tokens[index]!;
-      frames.push({
-        lsn: index + 1,
-        event: typeof token === "string" ? (JSON.parse(token) as StreamEvent) : token,
-      });
-    } catch {
-      // Ignore malformed buffered tokens during hydrate synthesis.
-    }
-  }
-  return frames;
+function parseBufferedFrames(tokens: StreamEvent[]): DurableFrame[] {
+  return tokens.map((event, index) => ({ lsn: index + 1, event }));
 }
 
 function initialSnapshotBoundary(frames: DurableFrame[]): {
@@ -735,8 +723,8 @@ function* restoreThreadInterruptStateIfNeeded(
 
 function* createConversationHydrateResponse(params: {
   ctx: { request: Request; headers: Headers };
-  registry: SessionRegistry<StreamEvent | string>;
-  session: SessionHandle<StreamEvent | string>;
+  registry: SessionRegistry<StreamEvent>;
+  session: SessionHandle<StreamEvent>;
   sessionId: string;
   conversationId: string;
   parsedOffset: ReturnType<typeof parseOffsetParam>;
@@ -1070,8 +1058,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Get session registry from durable streams context
       log.debug("getting session registry");
-      const registry: SessionRegistry<StreamEvent | string> =
-        yield* useSessionRegistry<StreamEvent | string>();
+      const registry: SessionRegistry<StreamEvent> =
+        yield* useSessionRegistry<StreamEvent>();
       log.debug("session registry acquired");
 
       const activeToolRuntime = yield* ToolRuntimeContext.get();
@@ -1161,7 +1149,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         }
       }
 
-      let session: SessionHandle<StreamEvent | string>;
+      let session: SessionHandle<StreamEvent>;
 
       // Debug: log which path we're taking and if we have elicit responses
       log.debug(

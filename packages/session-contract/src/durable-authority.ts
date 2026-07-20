@@ -47,6 +47,7 @@ import type {
   DurableJournalAuthorityService,
   DurableOperationDescriptor,
   DurableProgramManifest,
+  DurableTaskExecutionState,
   EmissionReceipt,
   EnsureChildTaskRequest,
   EnsureChildTaskResult,
@@ -55,6 +56,7 @@ import type {
   OperationOutcome,
   PrepareProgramRestoreRequest,
   PreparedProgramRestore,
+  ProgramRoute,
   ProgramStep,
   ReplayEmissionEntry,
   ReplayEntry,
@@ -94,6 +96,9 @@ export type DurableSemanticRecord = {
         programDigest: string;
         input: Json;
         inputDigest: string;
+        /** Exact Host-bound catalog accepted before first driver execution. */
+        catalog?: Json;
+        catalogDigest?: string;
         parentTaskId?: string;
         parentPullId?: string;
       }
@@ -238,6 +243,9 @@ type Task = {
   cumulativeEmissionBytes?: number;
   status: "active" | "closed" | "cancelled" | "orphaned";
   cancellation: DurableCancellationState;
+  catalog?: Json;
+  catalogDigest?: string;
+  route?: ProgramRoute;
   close?: { digest: string; receipt: TaskCloseReceipt };
   parentTaskId?: string;
   parentPullId?: string;
@@ -294,6 +302,10 @@ export interface OpenDurableTaskRequest {
   executionEpoch: number;
   attachmentId: string;
   audience: string;
+  /** Exact Host-bound catalog and route retained independently of process memory. */
+  catalog?: Json;
+  catalogDigest?: string;
+  route?: ProgramRoute;
   parentTaskId?: string;
   parentPullId?: string;
 }
@@ -350,6 +362,20 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { id: this.#options.journalId, incarnation: this.#options.journalIncarnation };
   }
 
+  *taskExecutionState(
+    sessionId: string,
+    taskId: string,
+  ): Operation<DurableTaskExecutionState> {
+    const task = this.#task(sessionId, taskId);
+    return {
+      executionEpoch: task.executionEpoch,
+      ...(task.route !== undefined ? { route: structuredClone(task.route) } : {}),
+      ...(task.catalog
+        ? { catalog: structuredClone(task.catalog), catalogDigest: task.catalogDigest! }
+        : {}),
+    };
+  }
+
   /** Opens one pinned task exactly once and returns attachment-bound authority. */
   *openTask(request: OpenDurableTaskRequest): Operation<{ programCapability: string }> {
     const key = taskKey(request.sessionId, request.taskId);
@@ -368,12 +394,30 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     this.#assertEffectContractsCompatible(request.manifest);
     assertInlineSize(input, this.#options.maxOutcomeBytes);
+    if ((request.catalog === undefined) !== (request.catalogDigest === undefined)) {
+      throw new CrankError("invalid_manifest", "Catalog and catalog digest must be supplied together");
+    }
+    const catalog = request.catalog === undefined
+      ? undefined
+      : canonicalSnapshot(request.catalog).value;
+    if (
+      catalog &&
+      (!isJsonRecord(catalog) || catalog["digest"] !== request.catalogDigest)
+    ) {
+      throw new CrankError("invalid_manifest", "Accepted catalog digest differs");
+    }
+    if (catalog) assertInlineSize(catalog, this.#options.maxOutcomeBytes);
+    const route = request.route === undefined
+      ? undefined
+      : canonicalSnapshot(request.route).value;
     const emissionPolicy = this.#options.emissionPolicy
       ? structuredClone(this.#options.emissionPolicy)
       : undefined;
     const task: Task = {
       ...request,
       input,
+      ...(catalog ? { catalog, catalogDigest: request.catalogDigest! } : {}),
+      ...(route !== undefined ? { route } : {}),
       nextActionIndex: 0,
       nextPullIndex: 0,
       nextEmissionIndex: 0,
@@ -399,6 +443,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       programDigest: request.manifest.digest,
       input,
       inputDigest: canonicalSnapshot(input).sha,
+      ...(catalog ? { catalog, catalogDigest: request.catalogDigest! } : {}),
       ...(request.parentTaskId ? { parentTaskId: request.parentTaskId } : {}),
       ...(request.parentPullId ? { parentPullId: request.parentPullId } : {}),
     });
@@ -477,6 +522,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       executionEpoch: request.executionEpoch,
       attachmentId: "unattached-child",
       audience: request.audience,
+      ...(parent.catalog
+        ? { catalog: parent.catalog, catalogDigest: parent.catalogDigest! }
+        : {}),
+      ...(request.route !== undefined ? { route: request.route } : {}),
       parentTaskId: request.parentTaskId,
       parentPullId: request.parentPullId,
     });
@@ -2513,6 +2562,9 @@ function isTaskSnapshot(value: Json): boolean {
     "emissionPolicy",
     "acceptedEmissionCount",
     "cumulativeEmissionBytes",
+    "catalog",
+    "catalogDigest",
+    "route",
   ];
   if (!hasOnlyKeys(value, required, optional)) {
     return false;
@@ -2530,6 +2582,8 @@ function isTaskSnapshot(value: Json): boolean {
     Array.isArray(value["emissionsByAction"]) &&
     value["emissionsByAction"].every(isIndexedEmissionTuple) &&
     isTaskEmissionPolicySnapshot(value) &&
+    ((value["catalog"] === undefined && value["catalogDigest"] === undefined) ||
+      (isJsonRecord(value["catalog"]) && typeof value["catalogDigest"] === "string")) &&
     ["active", "closed", "cancelled", "orphaned"].includes(String(value["status"])) &&
     isCancellationStateSnapshot(value["cancellation"]) &&
     ["closed", "cancelled"].includes(String(value["status"])) ===
@@ -2877,11 +2931,18 @@ function isSemanticPayload(value: unknown): boolean {
             "input",
             "inputDigest",
           ],
-          ["parentTaskId", "parentPullId"],
+          [
+            "parentTaskId",
+            "parentPullId",
+            "catalog",
+            "catalogDigest",
+          ],
         ) &&
         ["turnId", "programId", "programVersion", "programDigest", "inputDigest"].every(
           (key) => typeof value[key] === "string",
-        )
+        ) &&
+        ((value["catalog"] === undefined && value["catalogDigest"] === undefined) ||
+          (isJsonRecord(value["catalog"]) && typeof value["catalogDigest"] === "string"))
       );
     case "PullRequested":
       return (

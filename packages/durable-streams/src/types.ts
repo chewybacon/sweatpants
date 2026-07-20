@@ -41,9 +41,11 @@ export interface TokenBuffer<T> {
     ownerId: string
     activationEpoch: number
   }): Operation<TokenBufferWriter<T>>
-  /** Compatibility mutation surface for unfenced, process-local consumers. */
+  /** @deprecated Claim a `TokenBufferWriter`; production source paths require fencing. */
   append(tokens: T[]): Operation<number>
+  /** @deprecated Claim a `TokenBufferWriter`; production source paths require fencing. */
   complete(): Operation<void>
+  /** @deprecated Claim a `TokenBufferWriter`; production source paths require fencing. */
   fail(error: Error): Operation<void>
   read(afterLSN?: number): Operation<{ tokens: T[]; lsn: number }>
   isComplete(): Operation<boolean>

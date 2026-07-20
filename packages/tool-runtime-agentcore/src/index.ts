@@ -76,6 +76,8 @@ export {
 
 export { FakeAgentCoreRemoteToolRuntimeClient } from "./agentcore-fake-runtime.ts";
 
+export { exactProgramKey } from "@sweatpants/session-contract";
+
 export {
   createAgentCoreDurableProgramDriver,
   type AgentCoreDurableProgramTransport,
@@ -87,7 +89,6 @@ export {
   DEFAULT_AGENTCORE_MAX_LIFETIME_SECONDS,
   DEFAULT_AGENTCORE_WORKSPACE_MOUNT,
   createInvocationAgentCorePlacement,
-  exactProgramKey,
   reconcileAgentCoreDurableReadiness,
   validateAgentCoreRuntimeRelease,
   validateSandboxAffinity,

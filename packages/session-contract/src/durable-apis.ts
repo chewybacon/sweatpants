@@ -598,6 +598,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             manifest,
             executionEpoch: request.attach.executionEpoch,
             audience: "program-runtime",
+            route: childRoute,
           });
           let childOutcome = childTask.outcome;
           if (!childOutcome) {
