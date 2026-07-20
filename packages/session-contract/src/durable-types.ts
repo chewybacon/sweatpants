@@ -746,6 +746,8 @@ export type ReserveOperationResult =
       attemptId: string;
       /** Canonical parsed effect descriptor accepted by the authority. */
       descriptor: EffectDescriptor;
+      /** Authority-derived whole-contract digest for handler compatibility checks. */
+      effectContractDigest: string;
       resolutionCapability: string;
       notBefore?: string;
       restoredFrontierConsumed?: true;
@@ -897,6 +899,8 @@ export interface DurableEffectAuthorization {
   pullId: string;
   attemptId: string;
   descriptor: EffectDescriptor;
+  /** Authority-derived whole-contract digest for handler compatibility checks. */
+  effectContractDigest: string;
   resolutionCapability: string;
   resolver: { audience: string; route?: string };
 }

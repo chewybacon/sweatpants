@@ -4,12 +4,15 @@ test("threaded chat reconstructs a completed durable tool turn after refresh", a
   await page.goto("/chat/threaded/?scriptedRendering=1", { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: "Threaded Chat" })).toBeVisible();
   await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10_000 });
+  const activeThread = page.locator('[data-testid="thread-item"][aria-pressed="true"]');
+  const previousThreadId = await activeThread.getAttribute("data-thread-id");
   await page.getByTestId("thread-create").click();
-  await expect(page.getByText("Active")).toBeVisible();
+  await expect.poll(() => activeThread.getAttribute("data-thread-id")).not.toBe(previousThreadId);
   await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 10_000 });
 
   const prompt = "deterministic pick card";
   const input = page.getByPlaceholder("Ask this thread to draw a card...");
+  await expect(input).toBeEnabled();
   const send = page.getByRole("button", { name: "Send" });
   await input.fill(prompt);
   await expect(send).toBeEnabled({ timeout: 10_000 });

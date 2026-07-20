@@ -101,7 +101,7 @@ describe("unchanged book_flight through ProgramRuntime", () => {
         }),
         foreignToolAdapter.modelSampleRegistration(function* () {
           modelSamples += 1;
-          return { text: "Travel light and arrive early." };
+          return { text: "Travel light and arrive early.", calls: [], content: [] };
         }),
       ]);
       yield* authority.openTask({

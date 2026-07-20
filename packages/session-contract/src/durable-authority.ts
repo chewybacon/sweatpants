@@ -29,6 +29,7 @@ import {
   stableOpaqueId,
 } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
+import { effectContractDigest } from "./effect-contract.ts";
 import { hasLiveDurableEffect, signalLiveDurableEffect } from "./durable-cancellation-live.ts";
 import type {
   ActivationLeaseState,
@@ -213,6 +214,11 @@ type Pull = {
   revoked: boolean;
 };
 
+export interface SemanticEmissionPolicy {
+  maxEmissionsPerTask?: number;
+  maxCumulativeEmissionBytes?: number;
+}
+
 type Task = {
   sessionId: string;
   turnId: string;
@@ -227,6 +233,9 @@ type Task = {
   nextEmissionIndex: number;
   pullsByAction: Map<number, Pull>;
   emissionsByAction: Map<number, { digest: string; receipt: EmissionReceipt }>;
+  emissionPolicy?: SemanticEmissionPolicy;
+  acceptedEmissionCount?: number;
+  cumulativeEmissionBytes?: number;
   status: "active" | "closed" | "cancelled" | "orphaned";
   cancellation: DurableCancellationState;
   close?: { digest: string; receipt: TaskCloseReceipt };
@@ -263,6 +272,8 @@ export interface InMemoryDurableJournalOptions {
   keyring: CapabilityKeyring;
   now?: () => number;
   maxOutcomeBytes?: number;
+  /** Optional defaults copied into each newly opened task. */
+  emissionPolicy?: SemanticEmissionPolicy;
   snapshot?: DurableAuthoritySnapshot;
   /**
    * Digest-keyed Standard Schema validator registry used for every ownerless
@@ -304,9 +315,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   readonly #activationNotBeforeMs = new Map<string, number>();
   readonly #placements = new Map<string, AgentCoreTaskPlacement>();
   readonly #options: Required<
-    Omit<InMemoryDurableJournalOptions, "keyring" | "snapshot" | "schemaRegistry">
+    Omit<
+      InMemoryDurableJournalOptions,
+      "keyring" | "snapshot" | "schemaRegistry" | "emissionPolicy"
+    >
   > & {
     keyring: CapabilityKeyring;
+    emissionPolicy?: SemanticEmissionPolicy;
   };
   readonly #schemas: DurableSchemaRegistry;
   #nonce = 0;
@@ -316,12 +331,14 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (!options.journalId) {
       throw new CrankError("invalid_manifest", "journalId is required");
     }
-    const { schemaRegistry, ...rest } = options;
+    const { schemaRegistry, emissionPolicy, ...rest } = options;
+    const normalizedEmissionPolicy = normalizeEmissionPolicy(emissionPolicy);
     this.#options = {
       ...rest,
       journalIncarnation: options.journalIncarnation ?? "1",
       now: options.now ?? Date.now,
       maxOutcomeBytes: options.maxOutcomeBytes ?? DEFAULT_MAX_INLINE_BYTES,
+      ...(normalizedEmissionPolicy ? { emissionPolicy: normalizedEmissionPolicy } : {}),
     };
     this.#schemas = schemaRegistry ?? createDurableSchemaRegistry();
     if (options.snapshot) {
@@ -345,7 +362,11 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     if (this.#tasks.has(key)) {
       throw new CrankError("invalid_journal", "Task already exists");
     }
+    this.#assertEffectContractsCompatible(request.manifest);
     assertInlineSize(input, this.#options.maxOutcomeBytes);
+    const emissionPolicy = this.#options.emissionPolicy
+      ? structuredClone(this.#options.emissionPolicy)
+      : undefined;
     const task: Task = {
       ...request,
       input,
@@ -354,6 +375,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       nextEmissionIndex: 0,
       pullsByAction: new Map(),
       emissionsByAction: new Map(),
+      ...(emissionPolicy
+        ? {
+            emissionPolicy,
+            acceptedEmissionCount: 0,
+            cumulativeEmissionBytes: 0,
+          }
+        : {}),
       status: "active",
       cancellation: { type: "none" },
     };
@@ -915,6 +943,19 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       throw new CrankError("nondeterminism_detected", "Emission action cursor mismatch");
     }
     assertInlineSize(descriptor.payload, this.#options.maxOutcomeBytes);
+    const payloadBytes = canonicalByteLength(descriptor.payload);
+    const acceptedCount = task.acceptedEmissionCount ?? task.emissionsByAction.size;
+    const cumulativeBytes = task.cumulativeEmissionBytes ?? 0;
+    const nextCount = acceptedCount + 1;
+    const nextCumulativeBytes = cumulativeBytes + payloadBytes;
+    if (
+      (task.emissionPolicy?.maxEmissionsPerTask !== undefined &&
+        nextCount > task.emissionPolicy.maxEmissionsPerTask) ||
+      (task.emissionPolicy?.maxCumulativeEmissionBytes !== undefined &&
+        nextCumulativeBytes > task.emissionPolicy.maxCumulativeEmissionBytes)
+    ) {
+      throw new CrankError("emission_quota_exceeded", "Semantic emission quota exceeded");
+    }
     if (request.restoredFrontier) {
       yield* this.#consumeRestoredFrontier(
         request.restoredFrontier,
@@ -922,11 +963,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         task,
       );
     }
+    const emissionIndex = task.nextEmissionIndex;
     const offset = this.#append(task.sessionId, task.executionEpoch, {
       type: "DurableEmission",
       taskId: task.taskId,
       actionIndex: request.actionIndex,
-      emissionIndex: task.nextEmissionIndex++,
+      emissionIndex,
       descriptor,
       descriptorDigest: digest,
     });
@@ -937,7 +979,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       ...(request.restoredFrontier ? { restoredFrontierConsumed: true } : {}),
     };
     task.emissionsByAction.set(request.actionIndex, { digest, receipt });
+    task.nextEmissionIndex += 1;
     task.nextActionIndex += 1;
+    if (task.emissionPolicy) {
+      task.acceptedEmissionCount = nextCount;
+      task.cumulativeEmissionBytes = nextCumulativeBytes;
+    }
     return receipt;
   }
 
@@ -1233,6 +1280,13 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       nextEmissionIndex: task.nextEmissionIndex,
       pullsByAction: [...task.pullsByAction.entries()],
       emissionsByAction: [...task.emissionsByAction.entries()],
+      ...(task.emissionPolicy
+        ? {
+            emissionPolicy: task.emissionPolicy,
+            acceptedEmissionCount: task.acceptedEmissionCount ?? 0,
+            cumulativeEmissionBytes: task.cumulativeEmissionBytes ?? 0,
+          }
+        : {}),
       status: task.status,
       cancellation: task.cancellation,
       ...(task.close ? { close: task.close } : {}),
@@ -1681,6 +1735,36 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return structuredClone(task.cancellation);
   }
 
+  #assertEffectContractsCompatible(manifest: DurableProgramManifest): void {
+    const retained = new Map<string, string>();
+    for (const task of this.#tasks.values()) {
+      for (const definition of Object.values(task.manifest.effects)) {
+        const key = effectContractKey(definition.name, definition.version);
+        const digest = effectContractDigest(definition);
+        const existing = retained.get(key);
+        if (existing !== undefined && existing !== digest) {
+          throw new CrankError(
+            "invalid_manifest",
+            `Retained effect contract differs for ${definition.name}@${definition.version}`,
+          );
+        }
+        retained.set(key, digest);
+      }
+    }
+    for (const definition of Object.values(manifest.effects)) {
+      const key = effectContractKey(definition.name, definition.version);
+      const digest = effectContractDigest(definition);
+      const existing = retained.get(key);
+      if (existing !== undefined && existing !== digest) {
+        throw new CrankError(
+          "invalid_manifest",
+          `Effect contract differs for ${definition.name}@${definition.version}`,
+        );
+      }
+      retained.set(key, digest);
+    }
+  }
+
   #restore(snapshot: DurableAuthoritySnapshot): void {
     if (
       snapshot.version !== 4 ||
@@ -1710,6 +1794,27 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     for (const [sessionId, records] of snapshot.records) {
       this.#records.set(sessionId, structuredClone(records));
+    }
+    for (const task of this.#tasks.values()) {
+      if (!task.emissionPolicy) continue;
+      const emissions = (this.#records.get(task.sessionId) ?? []).filter(
+        (record) =>
+          record.payload.type === "DurableEmission" && record.payload.taskId === task.taskId,
+      );
+      const cumulativeBytes = emissions.reduce(
+        (total, record) =>
+          total +
+          (record.payload.type === "DurableEmission"
+            ? canonicalByteLength(record.payload.descriptor.payload)
+            : 0),
+        0,
+      );
+      if (
+        task.acceptedEmissionCount !== emissions.length ||
+        task.cumulativeEmissionBytes !== cumulativeBytes
+      ) {
+        throw new CrankError("invalid_journal", "Semantic emission counters differ from records");
+      }
     }
     for (const sessionId of snapshot.runnable) {
       this.#runnable.add(sessionId);
@@ -1744,6 +1849,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         pullId: pull.pullId,
         attemptId: active.attemptId,
         descriptor: effectDescriptor(pull.effectiveDescriptor),
+        effectContractDigest: effectDigestForPull(task, pull),
         resolutionCapability: active.capability,
       };
     }
@@ -1768,6 +1874,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       pullId: pull.pullId,
       attemptId,
       descriptor: effectDescriptor(pull.effectiveDescriptor),
+      effectContractDigest: effectDigestForPull(task, pull),
       resolutionCapability: capability,
     };
   }
@@ -2395,7 +2502,14 @@ function isTaskSnapshot(value: Json): boolean {
     "status",
     "cancellation",
   ];
-  const optional = ["close", "parentTaskId", "parentPullId"];
+  const optional = [
+    "close",
+    "parentTaskId",
+    "parentPullId",
+    "emissionPolicy",
+    "acceptedEmissionCount",
+    "cumulativeEmissionBytes",
+  ];
   if (!hasOnlyKeys(value, required, optional)) {
     return false;
   }
@@ -2411,15 +2525,38 @@ function isTaskSnapshot(value: Json): boolean {
     value["pullsByAction"].every(isIndexedPullTuple) &&
     Array.isArray(value["emissionsByAction"]) &&
     value["emissionsByAction"].every(isIndexedEmissionTuple) &&
+    isTaskEmissionPolicySnapshot(value) &&
     ["active", "closed", "cancelled", "orphaned"].includes(String(value["status"])) &&
     isCancellationStateSnapshot(value["cancellation"]) &&
     ["closed", "cancelled"].includes(String(value["status"])) ===
       isTaskCloseSnapshot(value["close"]) &&
     (value["parentTaskId"] === undefined) === (value["parentPullId"] === undefined) &&
-    optional.every(
+    ["close", "parentTaskId", "parentPullId"].every(
       (key) =>
         value[key] === undefined || typeof value[key] === "string" || isJsonRecord(value[key]),
     )
+  );
+}
+
+function isTaskEmissionPolicySnapshot(value: Record<string, Json>): boolean {
+  const policy = value["emissionPolicy"];
+  const count = value["acceptedEmissionCount"];
+  const bytes = value["cumulativeEmissionBytes"];
+  if (policy === undefined) {
+    return count === undefined && bytes === undefined;
+  }
+  if (
+    !isJsonRecord(policy) ||
+    !isEmissionPolicyValue(policy) ||
+    (policy["maxEmissionsPerTask"] === undefined &&
+      policy["maxCumulativeEmissionBytes"] === undefined)
+  ) {
+    return false;
+  }
+  return (
+    isNonNegativeInteger(count) &&
+    isNonNegativeInteger(bytes) &&
+    count === (value["emissionsByAction"] as Json[]).length
   );
 }
 
@@ -3051,6 +3188,46 @@ function invalidSnapshot(cause?: unknown): CrankError {
   return new CrankError("invalid_journal", "Invalid durable authority snapshot", undefined, {
     cause,
   });
+}
+
+function effectContractKey(name: string, version: string): string {
+  return `${name}\u0000${version}`;
+}
+
+function effectDigestForPull(task: Task, pull: Pull): string {
+  const descriptor = effectDescriptor(pull.effectiveDescriptor);
+  const definition = task.manifest.effects[descriptor.name];
+  if (!definition || definition.version !== descriptor.version) {
+    throw new CrankError("invalid_manifest", "Authorized effect contract is unavailable");
+  }
+  return effectContractDigest(definition);
+}
+
+function canonicalByteLength(value: Json): number {
+  return new TextEncoder().encode(canonicalSnapshot(value).canonical).byteLength;
+}
+
+function normalizeEmissionPolicy(
+  policy: SemanticEmissionPolicy | undefined,
+): SemanticEmissionPolicy | undefined {
+  if (policy === undefined) return undefined;
+  if (!isEmissionPolicyValue(policy)) {
+    throw new CrankError("invalid_manifest", "Invalid semantic emission policy");
+  }
+  if (policy.maxEmissionsPerTask === undefined && policy.maxCumulativeEmissionBytes === undefined) {
+    return undefined;
+  }
+  return structuredClone(policy);
+}
+
+function isEmissionPolicyValue(value: unknown): value is SemanticEmissionPolicy {
+  if (!isJsonRecord(value)) return false;
+  if (!hasOnlyKeys(value, [], ["maxEmissionsPerTask", "maxCumulativeEmissionBytes"])) {
+    return false;
+  }
+  return [value["maxEmissionsPerTask"], value["maxCumulativeEmissionBytes"]].every(
+    (limit) => limit === undefined || isNonNegativeInteger(limit),
+  );
 }
 
 function operationPolicy(

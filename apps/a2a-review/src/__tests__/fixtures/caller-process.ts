@@ -8,7 +8,6 @@ import {
   ProgramRuntime,
   canonicalJson,
   createCapabilityKeyring,
-  createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableSchemaRegistry,
   createDurableTool,
@@ -21,6 +20,10 @@ import {
   type DurableSemanticRecord,
   type Json,
 } from "@sweatpants/session-contract";
+import {
+  createChatModelEffectRegistration,
+  type ChatModelSampleOutputV2,
+} from "@sweatpants/framework/chat";
 import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   createA2AProgramDriver,
@@ -109,20 +112,13 @@ const parentTool = createDurableTool(parentManifest, function* (reviewInput, con
     input: reviewInput,
   });
 });
-const modelInput = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
-  (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.inputSchema.digest,
-)!;
-const modelOutput = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
-  (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.outputSchema.digest,
-)!;
-const modelRegistration = createDurableEffectRegistration(
-  CHAT_MODEL_SAMPLE_EFFECT,
-  { mode: "idempotent", mechanism: "pull_id_key" },
-  function* (_request, context) {
+const modelRegistration = createChatModelEffectRegistration({
+  allowedClassifications: ["internal", "restricted"],
+  *sample(_request, context) {
     const existing = effectState.model[context.pullId];
-    if (existing !== undefined) return { status: "ok", value: existing };
+    if (existing !== undefined) return existing as unknown as ChatModelSampleOutputV2;
     effectState.modelExecutions += 1;
-    const value: Json =
+    const value: ChatModelSampleOutputV2 =
       effectState.modelExecutions === 1
         ? {
             message: assistantMessage("guidance", "Loading review guidance."),
@@ -163,10 +159,9 @@ const modelRegistration = createDurableEffectRegistration(
     effectState.model[context.pullId] = value;
     persistEffects();
     crashOnce("model_after_provider_commit");
-    return { status: "ok", value };
+    return value;
   },
-  { input: modelInput.schema, output: modelOutput.schema },
-);
+});
 const askRegistration = createAskParentRegistration({
   context: { contextId: "intentionally-unavailable", digest: "0".repeat(64) },
   store: {

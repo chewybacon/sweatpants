@@ -125,7 +125,7 @@ describe("durable chat authoring", () => {
       throw new Error("expected effect");
     }
     expect(first.value.descriptor.name).toBe("model.sample");
-    expect(first.value.descriptor.version).toBe("2");
+    expect(first.value.descriptor.version).toBe("1");
     expect((first.value.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
       "internal",
     ]);
@@ -394,7 +394,7 @@ describe("durable chat authoring", () => {
 
   it("matches the independently frozen chat-program digest vector", () => {
     expect(chat().manifest.digest).toBe(
-      "4ffe3af2ac06e326b7cf0cafee55849b5df58574a6425a7f0cadfc2bbc7f70b8",
+      "e84eed1ab5d5e4baf638d743b11bedc7ce3568cbbac0cfabe58e5c9943de9fcd",
     );
   });
 

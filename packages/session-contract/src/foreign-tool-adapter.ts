@@ -12,6 +12,7 @@ import {
   FOREIGN_TOOL_CONTINUE_EFFECT,
   FOREIGN_TOOL_START_EFFECT,
 } from "./foreign-tool-contract.ts";
+import type { ModelSampleRequest, ModelSampleResult } from "./model-sample-contract.ts";
 import { CrankError, type Json } from "./types.ts";
 import type { DurableEffectRegistration, ForeignToolRequest } from "./durable-types.ts";
 
@@ -42,81 +43,86 @@ export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<Foreig
   },
 );
 
-const adapterTool = createPinnedDurableProgram(FOREIGN_TOOL_ADAPTER_MANIFEST, function* (request, context) {
-  const audience = `foreign:${request.driver}`;
-  let disposition = yield* context.effect(FOREIGN_TOOL_START_EFFECT, request, {
-    audience,
-    ...(request.route ? { route: request.route } : {}),
-  });
+const adapterTool = createPinnedDurableProgram(
+  FOREIGN_TOOL_ADAPTER_MANIFEST,
+  function* (request, context) {
+    const audience = `foreign:${request.driver}`;
+    let disposition = yield* context.effect(FOREIGN_TOOL_START_EFFECT, request, {
+      audience,
+      ...(request.route ? { route: request.route } : {}),
+    });
 
-  let terminal = false;
-  try {
-    while (disposition.type === "input_required") {
-      const response =
-        disposition.request.kind === "sample"
-          ? yield* context.effect(FOREIGN_MODEL_SAMPLE_EFFECT, disposition.request.payload, {
-              audience: "model-runtime",
-            })
-          : yield* context.elicit<Json>(
-              "foreign_input",
-              disposition.request.message,
-              FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
-              {
-                foreignDriver: request.driver,
-                foreignTool: request.tool,
-                foreignKey: disposition.request.key,
-                ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
-                responseSchema: disposition.request.responseSchema,
-                ...(disposition.request.context !== undefined
-                  ? { context: disposition.request.context }
-                  : {}),
-              },
-            );
+    let terminal = false;
+    try {
+      while (disposition.type === "input_required") {
+        const response =
+          disposition.request.kind === "sample"
+            ? yield* context.effect(FOREIGN_MODEL_SAMPLE_EFFECT, disposition.request.payload, {
+                audience: "model-runtime",
+              })
+            : yield* context.elicit<Json>(
+                "foreign_input",
+                disposition.request.message,
+                FOREIGN_INPUT_RESPONSE_DESCRIPTOR,
+                {
+                  foreignDriver: request.driver,
+                  foreignTool: request.tool,
+                  foreignKey: disposition.request.key,
+                  ...(request.route !== undefined ? { foreignRoute: request.route } : {}),
+                  responseSchema: disposition.request.responseSchema,
+                  ...(disposition.request.context !== undefined
+                    ? { context: disposition.request.context }
+                    : {}),
+                },
+              );
 
-      disposition = yield* context.effect(
-        FOREIGN_TOOL_CONTINUE_EFFECT,
-        {
-          continuation: disposition.continuation,
-          response: { kind: disposition.request.kind, value: response },
-        },
-        {
-          audience,
-          ...(request.route ? { route: request.route } : {}),
-        },
-      );
-    }
+        disposition = yield* context.effect(
+          FOREIGN_TOOL_CONTINUE_EFFECT,
+          {
+            continuation: disposition.continuation,
+            response: { kind: disposition.request.kind, value: response },
+          },
+          {
+            audience,
+            ...(request.route ? { route: request.route } : {}),
+          },
+        );
+      }
 
-    terminal = true;
-    if (disposition.type === "completed") {
-      return disposition.result;
+      terminal = true;
+      if (disposition.type === "completed") {
+        return disposition.result;
+      }
+      throw new CrankError(disposition.error.code, disposition.error.message, disposition.error);
+    } finally {
+      if (!terminal && disposition.type === "input_required") {
+        yield* context.effect(
+          FOREIGN_TOOL_CONTINUE_EFFECT,
+          {
+            continuation: disposition.continuation,
+            response: { kind: "cancel", value: null },
+          },
+          {
+            audience,
+            ...(request.route ? { route: request.route } : {}),
+          },
+        );
+      }
     }
-    throw new CrankError(disposition.error.code, disposition.error.message, disposition.error);
-  } finally {
-    if (!terminal && disposition.type === "input_required") {
-      yield* context.effect(
-        FOREIGN_TOOL_CONTINUE_EFFECT,
-        {
-          continuation: disposition.continuation,
-          response: { kind: "cancel", value: null },
-        },
-        {
-          audience,
-          ...(request.route ? { route: request.route } : {}),
-        },
-      );
-    }
-  }
-});
+  },
+);
 
 /** Durable adapter tool plus helper registration for lifted model sampling. */
 export type ForeignToolAdapter = typeof adapterTool & {
-  modelSampleRegistration(handler: (request: Json) => Operation<Json>): DurableEffectRegistration;
+  modelSampleRegistration(
+    handler: (request: ModelSampleRequest) => Operation<ModelSampleResult>,
+  ): DurableEffectRegistration;
 };
 
 /** Frozen built-in adapter that journals start, continuation, and sampling boundaries. */
 export const foreignToolAdapter: ForeignToolAdapter = Object.freeze({
   ...adapterTool,
-  modelSampleRegistration(handler: (request: Json) => Operation<Json>) {
+  modelSampleRegistration(handler: (request: ModelSampleRequest) => Operation<ModelSampleResult>) {
     return createDurableEffectRegistration(
       FOREIGN_MODEL_SAMPLE_EFFECT,
       { mode: "idempotent", mechanism: "pull_id_key" },

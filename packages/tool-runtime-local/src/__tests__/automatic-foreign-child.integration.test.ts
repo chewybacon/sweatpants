@@ -35,12 +35,7 @@ import {
 type Result = { answers: string[] };
 type Choice = { answer: string; continue: boolean };
 
-const afterInput = createSchemaFixture(
-  "fixture.after-child/input",
-  "effect_input",
-  true,
-  anyGuard,
-);
+const afterInput = createSchemaFixture("fixture.after-child/input", "effect_input", true, anyGuard);
 const afterOutput = createSchemaFixture(
   "fixture.after-child/output",
   "effect_output",
@@ -182,7 +177,7 @@ describe("automatic foreign adapter child orchestration", () => {
         foreignToolAdapter.modelSampleRegistration(function* () {
           const round = durableSamples;
           durableSamples += 1;
-          return { text: `suggestion-${round}` };
+          return { text: `suggestion-${round}`, calls: [], content: [] };
         }),
       ]);
       yield* authority.openTask({
