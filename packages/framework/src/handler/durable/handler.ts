@@ -23,6 +23,7 @@ import {
   useTokenBufferStore,
   type SessionHandle,
   type SessionRegistry,
+  type TokenBuffer,
   type TokenBufferStore,
 } from "../../lib/chat/durable-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
@@ -188,16 +189,21 @@ function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
  * Create a serialized event stream from the chat engine.
  * Each event is JSON-serialized for storage in the buffer.
  */
+type LiveEventSink = (event: StreamEvent) => Operation<void>;
+type ChatEngineSource =
+  | Stream<StreamEvent, void>
+  | ((liveEvent: LiveEventSink) => Stream<StreamEvent, void>);
+
 function createSerializedEventStream(
-  engine: Stream<StreamEvent, void>,
+  engine: ChatEngineSource,
   initialEvents: StreamEvent[] = [],
   options?: {
     conversationId?: string;
     checkpointStore?: TokenBufferStore<string>;
+    responseTokenBuffer?: TokenBuffer<string>;
   },
 ): Stream<string, void> {
   return resource(function* (provide) {
-    const subscription = yield* engine;
     let initialIndex = 0;
     let emittedCount = 0;
     let checkpointPersisted = false;
@@ -234,6 +240,21 @@ function createSerializedEventStream(
         interruptRecordsForThread(options.conversationId),
       );
     }
+
+    const liveEvent: LiveEventSink = function* (rawEvent) {
+      if (!options?.responseTokenBuffer) {
+        throw new Error("Live event delivery requires the Host-owned token buffer");
+      }
+      registerInterruptsFromRunFinished(rawEvent);
+      yield* persistInterruptStateIfNeeded(rawEvent);
+      const event = toStrictPublicEvent(rawEvent);
+      if (!event) return;
+      const lsn = yield* options.responseTokenBuffer.append([JSON.stringify(event)]);
+      emittedCount = Math.max(emittedCount, lsn);
+      emittedFrames.push({ lsn, event });
+    };
+    const selectedEngine = typeof engine === "function" ? engine(liveEvent) : engine;
+    const subscription = yield* selectedEngine;
 
     yield* provide({
       *next(): Operation<IteratorResult<string, void>> {
@@ -1205,17 +1226,19 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
             : {}),
           ...(effectivePluginAbort && { pluginAbort: effectivePluginAbort }),
         };
-        const engine = resumePreflightError
+        const engineSource: ChatEngineSource = resumePreflightError
           ? createEmptyChatEngine()
-          : createProgramDriverChatEngine({
-              ...engineParams,
-              journalStore: config.programDriverJournalStore,
-              ...(programDriverForeignEffects
-                ? { foreignEffects: programDriverForeignEffects }
-                : {}),
-              ...(programDriverNativeTools ? { nativeTools: programDriverNativeTools } : {}),
-              ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
-            });
+          : (liveEvent) =>
+              createProgramDriverChatEngine({
+                ...engineParams,
+                journalStore: config.programDriverJournalStore,
+                liveEvent,
+                ...(programDriverForeignEffects
+                  ? { foreignEffects: programDriverForeignEffects }
+                  : {}),
+                ...(programDriverNativeTools ? { nativeTools: programDriverNativeTools } : {}),
+                ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
+              });
         log.debug({ sessionId }, "new session path: chat engine created");
 
         // Wrap engine to serialize events
@@ -1260,17 +1283,18 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 snapshot: buildAgUiCustomState({}),
               },
             ];
-        const serializedStream = createSerializedEventStream(engine, initialEvents, {
-          ...(clientConversationId ? { conversationId: durableConversationId } : {}),
-          checkpointStore: bufferStore,
-        });
-        log.debug({ sessionId }, "new session path: serialized stream created");
-
-        // Acquire session with the engine as source
-        // The registry manages the writer task lifecycle internally via useBackgroundTask
+        // Acquire the one Host-owned response buffer before constructing the
+        // pull source. ProgramRuntime is turned only when this sole writer asks
+        // the engine for its next event; live model activity appends directly
+        // to the same reconnectable buffer from inside that crank turn.
         log.debug({ sessionId }, "new session path: acquiring session with source");
         session = yield* registry.acquire(sessionId, {
-          source: serializedStream,
+          source: (responseTokenBuffer) =>
+            createSerializedEventStream(engineSource, initialEvents, {
+              ...(clientConversationId ? { conversationId: durableConversationId } : {}),
+              checkpointStore: bufferStore,
+              responseTokenBuffer,
+            }),
         });
         log.debug({ sessionId }, "new session path: session acquired");
       }

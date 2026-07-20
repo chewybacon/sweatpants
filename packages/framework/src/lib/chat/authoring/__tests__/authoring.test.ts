@@ -1,12 +1,17 @@
 import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { createDurableProgramContext, type Json } from "@sweatpants/session-contract";
+import {
+  MODEL_SAMPLE_EFFECT,
+  createDurableProgramContext,
+  type Json,
+} from "@sweatpants/session-contract";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
   DURABLE_DRIVER_FIXTURE_TOOLS,
 } from "@sweatpants/session-contract/testing";
 import { defineGuidance, defineResourcePackage, textResource } from "@sweatpants/core";
 import {
+  CHAT_MODEL_SAMPLE_EFFECT,
   acceptChatTurn,
   classifiedToolResult,
   createChatModelEffectRegistration,
@@ -62,6 +67,9 @@ function chat(
 }
 
 describe("durable chat authoring", () => {
+  it("uses the one canonical model sampling contract without a bridge contract", () => {
+    expect(CHAT_MODEL_SAMPLE_EFFECT).toBe(MODEL_SAMPLE_EFFECT);
+  });
   it("selects one bounded explicit-first context snapshot", () => {
     const policy = latestContextWindow({
       maxMessages: 2,
@@ -394,7 +402,7 @@ describe("durable chat authoring", () => {
 
   it("matches the independently frozen chat-program digest vector", () => {
     expect(chat().manifest.digest).toBe(
-      "e84eed1ab5d5e4baf638d743b11bedc7ce3568cbbac0cfabe58e5c9943de9fcd",
+      "c8ea3a4a14afedc0e5abca92fd58e5c695e2ac346206c35d8e0005e15353797a",
     );
   });
 

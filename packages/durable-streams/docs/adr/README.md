@@ -1,5 +1,13 @@
 # Architecture Decision Records
 
+> **Current authority:** The repository-wide decisions in
+> [`docs/adr/001-one-crank-turner.md`](../../../../docs/adr/001-one-crank-turner.md) and
+> [`docs/adr/002-one-host-owned-reconnect-log.md`](../../../../docs/adr/002-one-host-owned-reconnect-log.md)
+> refine these early Durable Streams decisions. The early split between an
+> ephemeral TokenBuffer and persistent Durable Stream remains a valid optional
+> implementation strategy, but current stores may combine both roles behind one
+> ref-counted TokenBuffer path. There must still be only one write path.
+
 ## ADR-001: TokenBuffer is Ephemeral, Durable Stream is Persistent
 
 **Status:** Accepted
@@ -8,10 +16,12 @@
 We needed to clarify the role of the TokenBuffer vs the Durable Stream storage. Initially the TokenBuffer was acting as both the ephemeral bridge and the persistent store, which conflated two distinct concerns.
 
 **Decision:**
+
 - **TokenBuffer** is ephemeral. It accumulates tokens from the LLM stream and flushes them to the durable store on read. It is ref-counted and destroyed when: (1) LLM stream is closed, (2) buffer is fully flushed, (3) ref count reaches 0, (4) tokens are committed to the durable stream.
 - **Durable Stream** is persistent. It owns the LSN sequence and is the source of truth. All clients read from the same durable stream at their own offsets.
 
 **Consequences:**
+
 - TokenBuffer is no longer the source of truth; the durable stream is.
 - Multiple clients can read from the same durable stream at different offsets without per-session complexity.
 - Reconnect is trivial: client reads from durable stream at their last known offset.
@@ -28,6 +38,7 @@ We needed a mechanism to coalesce individual LLM tokens into batches before pers
 The TokenBuffer flushes its accumulated tokens to the durable stream when a client calls `read()`. The flush returns all accumulated tokens since the last flush (or since stream start). The buffer is emptied after flush.
 
 **Consequences:**
+
 - Fast readers get smaller batches; slow readers get larger batches.
 - The durable store records coalesced batches, not individual tokens.
 - Clients can control their effective read speed by how frequently they call `read()`.
@@ -42,12 +53,14 @@ We needed a persistent backend for the durable stream that supports append-only 
 
 **Decision:**
 Use Redis Streams as the primary durable store backend:
+
 - `XADD` for `append()` — stores batch entries with metadata
 - `XRANGE` for `read()` — retrieves batches from a given offset
 - `XREAD BLOCK` for `waitForChange()` — blocks until new data arrives
 - `XLEN` for `nextOffset()` — returns current stream length
 
 **Consequences:**
+
 - Natural fit for append-only log semantics.
 - Built-in blocking read eliminates polling.
 - Multi-instance coordination via shared Redis.
@@ -62,11 +75,13 @@ Use Redis Streams as the primary durable store backend:
 We needed to decide whether to default to Redis or keep in-memory as the default for development.
 
 **Decision:**
+
 - In-memory store remains the default for development and testing.
 - Redis is opt-in via configuration and becomes the production default.
 - Both stores implement the same `TokenBufferStore<T>` interface.
 
 **Consequences:**
+
 - Zero dependency for local development.
 - Easy testing without Docker.
 - Production deployments require Redis.
@@ -81,12 +96,14 @@ We needed a clear lifecycle for when the TokenBuffer should be destroyed to prev
 
 **Decision:**
 The TokenBuffer is ref-counted and destroyed when ALL conditions are met:
+
 1. LLM stream is closed (no more tokens arriving)
 2. Buffer is fully flushed (all tokens committed to durable stream)
 3. Ref count reaches 0 (no active readers)
 4. Tokens are committed (durable store acknowledges the write)
 
 **Consequences:**
+
 - Predictable memory management.
 - No data loss: tokens are persisted before buffer destruction.
 - Late readers can still read from the durable stream even after buffer is destroyed.

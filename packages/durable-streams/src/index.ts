@@ -1,21 +1,4 @@
 export type {
-  ActivityChunk,
-  ActivityClose,
-  ActivityCursor,
-  ActivityPayloadCodec,
-  ActivityReadResult,
-  ActivityRetentionPolicy,
-  ActivityStreamErrorCode,
-  ActivityStreamId,
-  ActivityStreamStore,
-  ActivityWriterFence,
-  ActivityWriterIdentity,
-  InMemoryActivityStreamOptions,
-} from "./activity-stream.ts";
-
-export { ActivityStreamError, createInMemoryActivityStreamStore } from "./activity-stream.ts";
-
-export type {
   CreatePullStream,
   CreateSessionOptions,
   PullStreamOptions,

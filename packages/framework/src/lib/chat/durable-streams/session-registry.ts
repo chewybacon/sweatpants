@@ -234,7 +234,8 @@ export function* createSessionRegistry<T>(
 
       // Get logger factory for context transfer to background task
       const loggerFactory = yield* LoggerFactoryContext.get()
-      const source = options.source
+      const source =
+        typeof options.source === 'function' ? options.source(buffer) : options.source
       
       log.debug({ sessionId }, 'starting writer task via useBackgroundTask')
       

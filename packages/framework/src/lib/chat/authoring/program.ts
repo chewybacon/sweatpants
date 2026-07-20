@@ -484,44 +484,28 @@ export function createChatModelEffectRegistration(options: {
 
 function encodeAuthoredModelRequest(value: ChatModelSampleInputV2): ModelSampleRequest {
   return assertJson({
-    messages: value.messages.map((message) => ({
-      role: message.role,
-      content: message.parts
-        .map((part) => (typeof part.value === "string" ? part.value : canonicalJson(part.value)))
-        .join(""),
-    })),
-    systemPrompt: typeof value.systemPrompt.value === "string" ? value.systemPrompt.value : "",
+    messages: value.messages,
+    systemPrompt: value.systemPrompt,
     tools: value.tools,
     classifications: value.classifications,
     sampling: value.sampling,
-    modelPreferences: {
-      format: "sweatpants.authored-model-bridge.v1",
-      systemPrompt: value.systemPrompt,
-      messages: value.messages,
-    },
   }) as ModelSampleRequest;
 }
 
 function decodeAuthoredModelRequest(value: ModelSampleRequest): ChatModelSampleInputV2 {
-  const direct = value as unknown as Partial<ChatModelSampleInputV2>;
   if (
-    Array.isArray(direct.classifications) &&
-    direct.systemPrompt !== null &&
-    typeof direct.systemPrompt === "object" &&
-    direct.sampling
+    !Array.isArray(value.classifications) ||
+    value.systemPrompt === undefined ||
+    value.sampling === undefined
   ) {
-    return direct as ChatModelSampleInputV2;
-  }
-  const bridge = value.modelPreferences;
-  if (!bridge || typeof bridge !== "object" || Array.isArray(bridge)) {
-    throw new CrankError("invalid_manifest", "Authored model bridge metadata is missing");
+    throw new CrankError("invalid_manifest", "Authored model sampling metadata is missing");
   }
   return {
-    messages: bridge["messages"] as unknown as ChatMessageV1[],
-    systemPrompt: bridge["systemPrompt"] as unknown as ChatContentPartV1,
+    messages: value.messages as unknown as ChatMessageV1[],
+    systemPrompt: value.systemPrompt as unknown as ChatContentPartV1,
     tools: value.tools ?? [],
     classifications: value.classifications as DataClassification[],
-    sampling: value.sampling as Json,
+    sampling: value.sampling,
   };
 }
 
