@@ -9,6 +9,8 @@ import { CrankError, type Json } from "./types.ts";
 import { effectContractDigest } from "./effect-contract.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
+import { ProgramPlacementContext } from "./program-placement-context.ts";
+import { ModelSamplingOutcomeAcknowledgerContext } from "./model-sampling-acknowledgement.ts";
 import type {
   AppendEmissionRequest,
   CancellationFrontier,
@@ -314,11 +316,33 @@ export const DurableEffects = createApi("crank-durable-effects", {
         controller.abort();
       }
     }
-    return yield* JournalAuthority.operations.resolve({
+    const resolution = yield* JournalAuthority.operations.resolve({
       capability: authorization.resolutionCapability,
       audience: authorization.resolver.audience,
       outcome,
     });
+    if (
+      resolution.status !== "rejected" &&
+      authorization.descriptor.name === "model.sample" &&
+      authorization.descriptor.version === "1"
+    ) {
+      const acknowledge = yield* ModelSamplingOutcomeAcknowledgerContext.get();
+      if (acknowledge) {
+        try {
+          yield* acknowledge({
+            sessionId: authorization.sessionId,
+            taskId: authorization.taskId,
+            pullId: authorization.pullId,
+            attemptId: authorization.attemptId,
+            outcomeDigest: canonicalSnapshot(outcome).sha,
+          });
+        } catch {
+          // Journal acceptance is authoritative. Remote retention remains
+          // unacknowledged and recoverable for a later cleanup/retry path.
+        }
+      }
+    }
+    return resolution;
   },
 });
 
@@ -630,16 +654,31 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           step.descriptor.kind === "effect" &&
           request.executeHostEffects
         ) {
-          const resolution = yield* DurableEffects.operations.execute({
-            sessionId: request.attach.sessionId,
-            taskId: request.attach.taskId,
-            pullId: reservation.pullId,
-            attemptId: reservation.attemptId,
-            descriptor: reservation.descriptor,
-            effectContractDigest: reservation.effectContractDigest,
-            resolutionCapability: reservation.resolutionCapability,
-            resolver: step.descriptor.resolver,
-          });
+          const journal = authority.journalIdentity?.() ?? {
+            id: request.attach.sessionId,
+            incarnation: "legacy",
+          };
+          const effectResolver = step.descriptor.resolver;
+          const resolution = yield* ProgramPlacementContext.with(
+            {
+              journal,
+              program: request.attach.program,
+              route: request.attach.route,
+              driverKind: driverKind(request.attach.route),
+            },
+            function* () {
+              return yield* DurableEffects.operations.execute({
+                sessionId: request.attach.sessionId,
+                taskId: request.attach.taskId,
+                pullId: reservation.pullId,
+                attemptId: reservation.attemptId,
+                descriptor: reservation.descriptor,
+                effectContractDigest: reservation.effectContractDigest,
+                resolutionCapability: reservation.resolutionCapability,
+                resolver: effectResolver,
+              });
+            },
+          );
           if (resolution.status === "rejected") {
             throw new CrankError(resolution.code);
           }

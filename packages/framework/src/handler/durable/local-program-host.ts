@@ -5,6 +5,9 @@ import {
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
+  ModelSamplingRouterContext,
+  ModelSamplingOutcomeAcknowledgerContext,
+  ProgramDeliveryWriterContext,
   canonicalSnapshot,
   stableProgramAttachmentId,
   validateDurableEffectBindings,
@@ -15,6 +18,9 @@ import {
   type ForeignDurability,
   type Json,
   type OperationOutcome,
+  type ModelSamplingRouter,
+  type ModelSamplingOutcomeAcknowledger,
+  type ProgramDeliveryWriter,
   type PinnedProgram,
   type ProgramDriverRegistry,
   type ProgramRoute,
@@ -72,6 +78,9 @@ export interface LocalProgramHostOptions {
   effects: DurableEffectRegistry;
   drivers: ProgramDriverRegistry;
   routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
+  modelSamplingRouter?: ModelSamplingRouter;
+  modelSamplingOutcomeAcknowledger?: ModelSamplingOutcomeAcknowledger;
+  deliveryWriter?: ProgramDeliveryWriter;
 }
 
 export interface OpenLocalProgramRequest {
@@ -115,6 +124,9 @@ export interface LocalProgramActivationScope {
   effects: DurableEffectRegistry;
   drivers: ProgramDriverRegistry;
   routeResolver?: (program: PinnedProgram, parentRoute: ProgramRoute) => Operation<ProgramRoute>;
+  modelSamplingRouter?: ModelSamplingRouter;
+  modelSamplingOutcomeAcknowledger?: ModelSamplingOutcomeAcknowledger;
+  deliveryWriter?: ProgramDeliveryWriter;
 }
 
 /** Installs the protocol-neutral authority scope shared by LocalProgramHost and applications. */
@@ -125,7 +137,16 @@ export function runLocalProgramActivation<T>(
   return ProgramDriverRegistryContext.with(scope.drivers, function* () {
     return yield* JournalAuthorityContext.with(scope.authority, function* () {
       return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
-        return yield* ProgramRouteResolverContext.with(scope.routeResolver, operation);
+        return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
+          return yield* ModelSamplingRouterContext.with(scope.modelSamplingRouter, function* () {
+            return yield* ModelSamplingOutcomeAcknowledgerContext.with(
+              scope.modelSamplingOutcomeAcknowledger,
+              function* () {
+                return yield* ProgramDeliveryWriterContext.with(scope.deliveryWriter, operation);
+              },
+            );
+          });
+        });
       });
     });
   });
@@ -182,6 +203,13 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         drivers: options.drivers,
         effects: options.effects,
         ...(options.routeResolver ? { routeResolver: options.routeResolver } : {}),
+        ...(options.modelSamplingRouter
+          ? { modelSamplingRouter: options.modelSamplingRouter }
+          : {}),
+        ...(options.modelSamplingOutcomeAcknowledger
+          ? { modelSamplingOutcomeAcknowledger: options.modelSamplingOutcomeAcknowledger }
+          : {}),
+        ...(options.deliveryWriter ? { deliveryWriter: options.deliveryWriter } : {}),
       },
       function* () {
         return yield* ProgramRuntime.operations.run({

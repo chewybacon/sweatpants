@@ -1,6 +1,7 @@
 import {
   CrankError,
   canonicalSnapshot,
+  effectContractDigest,
   stableOpaqueId,
   type AgentCoreRuntimeRelease,
   type AgentCoreTaskPlacement,
@@ -86,6 +87,15 @@ export function createInvocationAgentCorePlacement(
   };
 }
 
+export interface AgentCoreSamplingReadinessInput {
+  readonly required: boolean;
+  readonly protocolVersion?: number;
+  readonly effectContractDigest?: string;
+  readonly deliveryAvailable?: boolean;
+  readonly requestedClassifications?: readonly string[];
+  readonly allowedClassifications?: ReadonlySet<string>;
+}
+
 export interface AgentCoreDurableReadinessInput {
   readonly release?: AgentCoreRuntimeRelease;
   readonly program: PinnedProgram;
@@ -94,11 +104,22 @@ export interface AgentCoreDurableReadinessInput {
   readonly effectKeys: ReadonlySet<string>;
   readonly schemaDigests: ReadonlySet<string>;
   readonly manifest: DurableProgramManifest;
+  readonly sampling?: AgentCoreSamplingReadinessInput;
 }
 
 export interface AgentCoreDurableReadiness {
   readonly ready: boolean;
-  readonly missing: readonly ("release" | "program" | "driver" | "effect" | "schema")[];
+  readonly missing: readonly (
+    | "release"
+    | "program"
+    | "driver"
+    | "effect"
+    | "schema"
+    | "sampling_protocol"
+    | "sampling_effect"
+    | "sampling_delivery"
+    | "sampling_classification"
+  )[];
 }
 
 export function exactProgramKey(program: PinnedProgram): string {
@@ -136,5 +157,25 @@ export function reconcileAgentCoreDurableReadiness(
     ]),
   ];
   if (schemaDigests.some((digest) => !input.schemaDigests.has(digest))) missing.add("schema");
+  if (input.sampling?.required) {
+    const modelSample = Object.values(input.manifest.effects).find(
+      (effect) => effect.name === "model.sample" && effect.version === "1",
+    );
+    if (input.sampling.protocolVersion !== 1) missing.add("sampling_protocol");
+    if (
+      !modelSample ||
+      input.sampling.effectContractDigest !== effectContractDigest(modelSample)
+    ) {
+      missing.add("sampling_effect");
+    }
+    if (!input.sampling.deliveryAvailable) missing.add("sampling_delivery");
+    if (
+      (input.sampling.requestedClassifications ?? []).some(
+        (classification) => !input.sampling?.allowedClassifications?.has(classification),
+      )
+    ) {
+      missing.add("sampling_classification");
+    }
+  }
   return { ready: missing.size === 0, missing: [...missing] };
 }

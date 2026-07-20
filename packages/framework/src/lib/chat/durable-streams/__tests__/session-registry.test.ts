@@ -482,6 +482,47 @@ describe('Session Registry', () => {
       expect(events[events.length - 1]).toBe('deleted:complete')
     })
 
+    it('explicitly recovers an incomplete existing source only under a newer writer fence', function* () {
+      const { registry } = yield* useTestRegistry({ mode: 'retain_forever' })
+      const stalled = resource<string, void>(function* (provide) {
+        yield* provide({
+          *next() {
+            yield* sleep(10_000)
+            return { done: true, value: undefined }
+          },
+        })
+      })
+      const opened = yield* registry.acquire('recover-source', {
+        source: stalled,
+        writer: { ownerId: 'host-a', activationEpoch: 1 },
+      })
+      let factories = 0
+      const recovered = yield* registry.recover('recover-source', {
+        writer: { ownerId: 'host-b', activationEpoch: 2 },
+        recoverSource: () => {
+          factories += 1
+          return createMockLLMStream('recovered')
+        },
+      })
+      yield* waitForSessionStatus(recovered, 'complete')
+      expect(factories).toBe(1)
+      expect((yield* opened.buffer.read(0)).tokens.join('')).toBe('recovered')
+
+      let staleFactoryCalled = false
+      try {
+        yield* registry.recover('recover-source', {
+          writer: { ownerId: 'host-c', activationEpoch: 1 },
+          recoverSource: () => {
+            staleFactoryCalled = true
+            return createMockLLMStream('wrong')
+          },
+        })
+      } catch {
+        // Completed sessions and stale fences both reject before construction.
+      }
+      expect(staleFactoryCalled).toBe(false)
+    })
+
     it('should retain complete sessions with retain_forever policy', function* () {
       const { registry, bufferStore, registryStore } = yield* useTestRegistry({
         mode: 'retain_forever',

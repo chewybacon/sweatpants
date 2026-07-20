@@ -843,6 +843,8 @@ export interface EnsureChildTaskResult {
 
 /** Narrow authority port mediating every durable state transition. */
 export interface DurableJournalAuthorityService {
+  /** Host-private stable journal identity used by placement effect services. */
+  journalIdentity?(): { readonly id: string; readonly incarnation: string };
   /** Returns the canonical parsed input accepted for a task; replay never reruns schema code. */
   taskInput(sessionId: string, taskId: string): Operation<Json>;
   /** Lists exact schema digests referenced by nonterminal durable tasks for readiness/retirement. */

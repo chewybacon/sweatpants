@@ -24,6 +24,7 @@ import type { Operation } from 'effection'
 import type {
   RetentionPolicy,
   SessionRegistry,
+  RecoverableSessionRegistry,
   SessionRegistryStore,
   TokenBufferStore,
 } from '@sweatpants/durable-streams'
@@ -56,7 +57,7 @@ export interface DurableStreamsConfig<T> {
  */
 export interface DurableStreamsSetup<T> {
   /** The session registry for acquire/release operations */
-  registry: SessionRegistry<T>
+  registry: RecoverableSessionRegistry<T>
   /** The buffer store (also available via useTokenBufferStore) */
   bufferStore: TokenBufferStore<T>
   /** The registry store (also available via useSessionRegistryStore) */

@@ -15,7 +15,7 @@ import { sleep, type Operation } from 'effection'
 import type {
   TokenBufferStore,
   TokenBuffer,
-  SessionRegistry,
+  RecoverableSessionRegistry,
   SessionRegistryStore,
   SessionEntry,
   SessionHandle,
@@ -71,7 +71,7 @@ export function* createSessionRegistry<T>(
   bufferStore: TokenBufferStore<T>,
   registryStore: SessionRegistryStore,
   config: { retentionPolicy?: RetentionPolicy } = {}
-): Operation<SessionRegistry<T>> {
+): Operation<RecoverableSessionRegistry<T>> {
   const log = yield* useLogger('durable-streams:registry')
   const retentionPolicy = config.retentionPolicy ?? DEFAULT_RETENTION_POLICY
   
@@ -82,6 +82,44 @@ export function* createSessionRegistry<T>(
   // Map<sessionId, Map<taskKey, BackgroundTaskHandle>>
   const sessionTasks = new Map<string, Map<string, BackgroundTaskHandle<void>>>()
   const retentionTasks = new Map<string, BackgroundTaskHandle<void>>()
+
+  function* startWriterTask(
+    sessionId: string,
+    source: import('effection').Stream<T, void>,
+    writer: import('@sweatpants/durable-streams').TokenBufferWriter<T>,
+    state: MutableSessionState,
+    taskName: string,
+  ): Operation<BackgroundTaskHandle<void>> {
+    const loggerFactory = yield* LoggerFactoryContext.get()
+    return yield* useBackgroundTask(
+      function* () {
+        const writerLog = yield* useLogger('durable-streams:writer')
+        writerLog.debug({ sessionId }, 'writer task started')
+        try {
+          yield* writeFromStreamToBuffer(source, writer)
+          state.status = 'complete'
+          writerLog.debug({ sessionId }, 'writer task completed')
+        } catch (err) {
+          state.status = 'error'
+          writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
+          try {
+            yield* writer.fail(err as Error)
+          } catch (fenceError) {
+            writerLog.debug(
+              { sessionId, error: (fenceError as Error).message },
+              'writer was fenced while unwinding',
+            )
+          }
+        }
+      },
+      {
+        name: taskName,
+        contexts: loggerFactory
+          ? [{ context: LoggerFactoryContext, value: loggerFactory }]
+          : [],
+      },
+    )
+  }
 
   function createHandle(
     sessionId: string,
@@ -189,7 +227,7 @@ export function* createSessionRegistry<T>(
     }
   }
 
-  const registry: SessionRegistry<T> = {
+  const registry: RecoverableSessionRegistry<T> = {
     *acquire(
       sessionId: string,
       options?: CreateSessionOptions<T>
@@ -237,35 +275,16 @@ export function* createSessionRegistry<T>(
         options.writer ?? { ownerId: `session-writer:${sessionId}`, activationEpoch: 1 },
       )
 
-      // Get logger factory for context transfer to background task
-      const loggerFactory = yield* LoggerFactoryContext.get()
       const source =
         typeof options.source === 'function' ? options.source(buffer, writer) : options.source
       
       log.debug({ sessionId }, 'starting writer task via useBackgroundTask')
-      
-      // Start writer as background task - runs independently, doesn't block parent scope
-      const writerTask = yield* useBackgroundTask(
-        function* () {
-          const writerLog = yield* useLogger('durable-streams:writer')
-          writerLog.debug({ sessionId }, 'writer task started')
-          try {
-            yield* writeFromStreamToBuffer(source, writer)
-            state.status = 'complete'
-            writerLog.debug({ sessionId }, 'writer task completed')
-          } catch (err) {
-            state.status = 'error'
-            writerLog.error({ sessionId, error: (err as Error).message }, 'writer task failed')
-            yield* writer.fail(err as Error)
-          }
-        },
-        {
-          name: `writer:${sessionId}`,
-          // Pass logger factory context so useLogger works in background task
-          contexts: loggerFactory
-            ? [{ context: LoggerFactoryContext, value: loggerFactory }]
-            : [],
-        }
+      const writerTask = yield* startWriterTask(
+        sessionId,
+        source,
+        writer,
+        state,
+        `writer:${sessionId}`,
       )
       
       // Store task handle in internal map (not in SessionEntry - keep it serializable)
@@ -284,6 +303,49 @@ export function* createSessionRegistry<T>(
       log.debug({ sessionId }, 'session entry stored, acquire complete')
 
       return handle
+    },
+
+    *recover(sessionId, options): Operation<SessionHandle<T>> {
+      log.debug(
+        { sessionId, ownerId: options.writer.ownerId, epoch: options.writer.activationEpoch },
+        'recover called',
+      )
+      const entry = yield* registryStore.get(sessionId)
+      if (!entry) {
+        throw new Error(`Session ${sessionId} not found`)
+      }
+      const buffer = yield* bufferStore.get(sessionId)
+      if (!buffer) {
+        throw new Error(`Session ${sessionId} metadata exists but buffer missing`)
+      }
+      if (yield* buffer.isComplete()) {
+        throw new Error(`Session ${sessionId} is already complete`)
+      }
+
+      // Claim before constructing the source. A stale/equal conflicting
+      // activation therefore cannot turn ProgramRuntime or create a task.
+      const writer = yield* buffer.claimWriter(options.writer)
+      const priorWriter = sessionTasks.get(sessionId)?.get(TASK_KEYS.WRITER)
+      if (priorWriter && !priorWriter.isDone()) {
+        yield* priorWriter.halt()
+      }
+      yield* clearRetentionTask(sessionId)
+
+      const state: MutableSessionState = { status: 'streaming' }
+      sessionStates.set(sessionId, state)
+      const source = options.recoverSource(buffer, writer)
+      const writerTask = yield* startWriterTask(
+        sessionId,
+        source,
+        writer,
+        state,
+        `writer-recovery:${sessionId}:${options.writer.activationEpoch}`,
+      )
+      const tasks = new Map<string, BackgroundTaskHandle<void>>()
+      tasks.set(TASK_KEYS.WRITER, writerTask)
+      sessionTasks.set(sessionId, tasks)
+      yield* registryStore.updateRefCount(sessionId, 1)
+      return createHandle(sessionId, buffer)
     },
 
     *release(sessionId: string): Operation<void> {

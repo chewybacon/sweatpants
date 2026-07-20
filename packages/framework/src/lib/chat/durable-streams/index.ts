@@ -64,6 +64,8 @@ export type {
   SessionEntry,
   SessionRegistryStore,
   SessionRegistry,
+  RecoverableSessionRegistry,
+  RecoverSessionOptions,
   RetentionPolicy,
   PullStreamOptions,
 } from '@sweatpants/durable-streams'

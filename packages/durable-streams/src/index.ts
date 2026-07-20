@@ -2,6 +2,8 @@ export type {
   CreatePullStream,
   CreateSessionOptions,
   PullStreamOptions,
+  RecoverSessionOptions,
+  RecoverableSessionRegistry,
   RetentionPolicy,
   Session,
   SessionEntry,

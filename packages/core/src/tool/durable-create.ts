@@ -1,11 +1,14 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { z, ZodSchema } from "zod";
+import { z, type ZodSchema } from "zod";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
   PROGRAM_ARTIFACT_IDENTITY_FORMAT,
   createGeneratedPinnedDurableProgram,
   createInterfaceDerivedPinnedDurableProgram,
+  effectContractDigest,
   createPinnedDurableProgram as createLowLevelDurableTool,
   generateProgramArtifactIdentity,
   type DurableProgramContext,
@@ -15,6 +18,8 @@ import {
   type DurableTool,
   type EffectDefinition,
   type Json,
+  type ModelSampleRequest,
+  type ModelSampleResult,
   type PortableSchemaDescriptor,
   type ProgramResume,
   type ProgramStepProposal,
@@ -38,6 +43,35 @@ type EffectInput<D> = D extends EffectDefinition<infer I, Json, Json> ? I : neve
 type EffectOutput<D> = D extends EffectDefinition<Json, infer O, Json> ? O : never;
 type EffectMap = Record<string, EffectDefinition<Json, Json, Json>>;
 type EffectFromMap<E extends EffectMap> = E[keyof E];
+type SamplingTool = {
+  readonly name: string;
+  readonly description?: string;
+  readonly inputSchema: ZodSchema | Readonly<Record<string, unknown>>;
+};
+type SamplingRequestBase = {
+  readonly prompt?: string;
+  readonly messages?: readonly Json[];
+  readonly systemPrompt?: Json;
+  readonly maxTokens?: number;
+  readonly modelPreferences?: Json;
+  readonly classifications?: readonly Json[];
+  readonly sampling?: Json;
+  readonly retries?: number;
+};
+type DurableSamplingContext = {
+  sample(
+    request: SamplingRequestBase,
+  ): Generator<ProgramStepProposal, ModelSampleResult, ProgramResume>;
+  sampleTools(
+    request: SamplingRequestBase & {
+      readonly tools: readonly SamplingTool[];
+      readonly toolChoice?: Json;
+    },
+  ): Generator<ProgramStepProposal, ModelSampleResult, ProgramResume>;
+  sampleSchema<T>(
+    request: SamplingRequestBase & { readonly schema: StandardSchemaV1<unknown, T> },
+  ): Generator<ProgramStepProposal, ModelSampleResult & { parsed: T }, ProgramResume>;
+};
 
 type ElicitRequestFor<E> =
   ExtractElicitContext<E> extends undefined
@@ -45,10 +79,11 @@ type ElicitRequestFor<E> =
     : { message: string; context: ExtractElicitContext<E> };
 
 /** Typed durable program context bound to declared effects and elicitations. */
-export type DurableProgramContextFor<E extends EffectMap, TElicits extends ElicitsMap = {}> = Omit<
-  DurableProgramContext,
-  "effect" | "elicit"
-> & {
+export type DurableProgramContextFor<
+  E extends EffectMap,
+  TElicits extends ElicitsMap = {},
+  TSamples extends boolean = false,
+> = Omit<DurableProgramContext, "effect" | "elicit"> & {
   effect<D extends EffectFromMap<E>>(
     definition: D,
     input: EffectInput<D>,
@@ -67,7 +102,7 @@ export type DurableProgramContextFor<E extends EffectMap, TElicits extends Elici
     WireElicitResultJson<JsonOutput<ExtractElicitResponse<TElicits[K]>>>,
     ProgramResume
   >;
-};
+} & (TSamples extends true ? DurableSamplingContext : {});
 
 /**
  * Crank-native durable tool definition satisfying the execution-neutral
@@ -141,7 +176,8 @@ export interface CreateDurableToolBuilderWithParameters<
   ): CreateDurableToolBuilderWithParameters<N, I, O, Next>;
   effects<Effects extends EffectMap>(
     effects: Effects,
-  ): CreateDurableToolBuilderReady<N, I, O, E, Effects>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, false>;
+  samples(): CreateDurableToolBuilderReady<N, I, O, E, {}, true>;
 }
 
 export interface CreateDurableToolBuilderReady<
@@ -150,11 +186,16 @@ export interface CreateDurableToolBuilderReady<
   O extends Json | undefined,
   E extends ElicitsMap,
   Effects extends EffectMap,
+  Samples extends boolean = false,
 > {
+  effects<Next extends EffectMap>(
+    effects: Next,
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects & Next, Samples>;
+  samples(): CreateDurableToolBuilderReady<N, I, O, E, Effects, true>;
   execute<Result extends O extends Json ? O : Json>(
     program: (
       input: I,
-      context: DurableProgramContextFor<Effects, E>,
+      context: DurableProgramContextFor<Effects, E, Samples>,
     ) => DurableProgramGenerator<Result>,
   ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
@@ -170,6 +211,7 @@ type BuilderState = {
   output?: ZodSchema;
   elicits?: ElicitsMap;
   effects?: EffectMap;
+  samples?: boolean;
 };
 
 /** Creates a type-staged Zod authoring adapter over the low-level durable manifest API. */
@@ -253,7 +295,26 @@ function builder(state: BuilderState): unknown {
     },
     effects(effects: EffectMap) {
       requireStage(state.parameters, ".parameters()", ".effects()");
-      return builder({ ...state, effects: { ...effects } });
+      const samplingDefinition = effects[MODEL_SAMPLE_EFFECT.name];
+      if (
+        state.samples &&
+        samplingDefinition &&
+        effectContractDigest(samplingDefinition) !== effectContractDigest(MODEL_SAMPLE_EFFECT)
+      ) {
+        throw new Error("Durable tool model.sample declaration differs from the canonical contract");
+      }
+      return builder({ ...state, effects: { ...(state.effects ?? {}), ...effects } });
+    },
+    samples() {
+      requireStage(state.parameters, ".parameters()", ".samples()");
+      const samplingDefinition = state.effects?.[MODEL_SAMPLE_EFFECT.name];
+      if (
+        samplingDefinition &&
+        effectContractDigest(samplingDefinition) !== effectContractDigest(MODEL_SAMPLE_EFFECT)
+      ) {
+        throw new Error("Durable tool model.sample declaration differs from the canonical contract");
+      }
+      return builder({ ...state, samples: true });
     },
     execute(program: (input: Json, context: DurableProgramContext) => DurableProgramGenerator) {
       requireStage(state.description, ".description()", ".execute()");
@@ -263,7 +324,11 @@ function builder(state: BuilderState): unknown {
         ".execute()",
       );
       requireStage(state.parameters, ".parameters()", ".execute()");
-      requireStage(state.effects, ".effects()", ".execute()");
+      if (!state.effects && !state.samples) {
+        throw new Error(
+          `Durable tool "${state.name}": .effects() or .samples() must be called before .execute()`,
+        );
+      }
       const version = state.identity?.version ?? state.version!;
       const description = state.description!;
       const normalizedElicits = normalizeElicits(state.elicits ?? {});
@@ -324,9 +389,18 @@ function builder(state: BuilderState): unknown {
       }
 
       // Effect schema catalog entries travel with their authored definitions;
-      // the manifest embeds only their descriptors.
-      for (const definition of Object.values(state.effects!)) {
-        catalog.push(...effectCatalogEntries(definition));
+      // the manifest embeds only their descriptors. Sampling always adds the
+      // one canonical contract and its built-in validators.
+      const declaredEffects: EffectMap = {
+        ...(state.effects ?? {}),
+        ...(state.samples ? { [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT } : {}),
+      };
+      for (const definition of Object.values(declaredEffects)) {
+        if (definition === MODEL_SAMPLE_EFFECT) {
+          catalog.push(...MODEL_SAMPLE_SCHEMA_ENTRIES);
+        } else {
+          catalog.push(...effectCatalogEntries(definition));
+        }
       }
       const manifest = {
         programId: state.name,
@@ -334,7 +408,7 @@ function builder(state: BuilderState): unknown {
         inputSchema: input.descriptor,
         outputSchema: outputDescriptor,
         elicits: manifestElicits,
-        effects: state.effects!,
+        effects: declaredEffects,
         capabilities: {
           durableEmissions: true,
           structuredChildren: true,
@@ -342,7 +416,7 @@ function builder(state: BuilderState): unknown {
         },
       };
       const factory = (rawInput: Json, context: DurableProgramContext) =>
-        program(rawInput, contextForDeclarations(context, manifestElicits));
+        program(rawInput, contextForDeclarations(context, manifestElicits, state.samples === true));
       const tool = state.identity
         ? createLowLevelDurableTool({ ...manifest, digest: state.identity.digest }, factory)
         : state.implementationArtifactDigest
@@ -375,7 +449,7 @@ function builder(state: BuilderState): unknown {
         artifacts,
         capabilities: Object.freeze({
           elicitation: Object.keys(normalizedElicits).length > 0,
-          sampling: false,
+          sampling: state.samples === true,
         }),
         annotations: Object.freeze({}),
         extensions: Object.freeze([]),
@@ -390,6 +464,7 @@ function contextForDeclarations(
     string,
     { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
   >,
+  sampling: boolean,
 ): DurableProgramContext {
   const adapted = Object.freeze({
     ...context,
@@ -414,6 +489,33 @@ function contextForDeclarations(
         resolver ?? { audience: `effect:${definitionOrName.name}` },
       );
     },
+    ...(sampling
+      ? {
+          sample(request: SamplingRequestBase) {
+            return sampleModel(context, request);
+          },
+          sampleTools(
+            request: SamplingRequestBase & {
+              tools: readonly SamplingTool[];
+              toolChoice?: Json;
+            },
+          ) {
+            return sampleModel(context, {
+              ...request,
+              tools: request.tools.map((tool) => ({
+                name: tool.name,
+                ...(tool.description ? { description: tool.description } : {}),
+                inputSchema: portableSamplingSchema(tool.inputSchema),
+              })),
+            });
+          },
+          sampleSchema<T>(
+            request: SamplingRequestBase & { schema: StandardSchemaV1<unknown, T> },
+          ) {
+            return sampleStructured(context, request);
+          },
+        }
+      : {}),
     elicit(
       key: string,
       requestOrMessage: { message: string; context?: Json } | string,
@@ -439,6 +541,89 @@ function contextForDeclarations(
   // SAFETY: the adapter preserves the low-level overloads while routing the
   // fluent keyed forms through declared descriptors and default resolvers.
   return adapted as DurableProgramContext;
+}
+
+function* sampleModel(
+  context: DurableProgramContext,
+  request: SamplingRequestBase & { tools?: Json[]; toolChoice?: Json; schema?: Json },
+): Generator<ProgramStepProposal, ModelSampleResult, ProgramResume> {
+  const { retries: _retries, prompt, messages, ...options } = request;
+  assertSamplingRequest(prompt, messages, request.retries);
+  const canonicalRequest = {
+    messages: prompt === undefined ? [...messages!] : [{ role: "user", content: prompt }],
+    ...options,
+    ...(options.classifications ? { classifications: [...options.classifications] } : {}),
+  } as ModelSampleRequest;
+  return yield* context.effect(MODEL_SAMPLE_EFFECT, canonicalRequest, {
+    audience: "model-runtime",
+  });
+}
+
+function* sampleStructured<T>(
+  context: DurableProgramContext,
+  request: SamplingRequestBase & { schema: StandardSchemaV1<unknown, T> },
+): Generator<ProgramStepProposal, ModelSampleResult & { parsed: T }, ProgramResume> {
+  const { schema, retries = 0, ...base } = request;
+  assertSamplingRequest(base.prompt, base.messages, retries);
+  let lastMessage = "model sample did not satisfy schema";
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const result = yield* sampleModel(context, {
+      ...base,
+      schema: portableSamplingSchema(schema),
+    });
+    const candidate = result.parsed ?? parseSampleText(result.text);
+    const validated = schema["~standard"].validate(candidate);
+    if (validated instanceof Promise) {
+      throw new Error("Durable sampleSchema requires a synchronous Standard Schema validator");
+    }
+    if (validated.issues === undefined) {
+      return Object.assign({}, result, { parsed: validated.value }) as ModelSampleResult & {
+        parsed: T;
+      };
+    }
+    lastMessage = validated.issues
+      .slice(0, 4)
+      .map((issue) => issue.message)
+      .join("; ")
+      .slice(0, 512);
+  }
+  const error = new Error(`Model sample schema validation failed: ${lastMessage}`) as Error & {
+    code: string;
+  };
+  error.code = "schema_validation_failed";
+  throw error;
+}
+
+function assertSamplingRequest(
+  prompt: string | undefined,
+  messages: readonly Json[] | undefined,
+  retries = 0,
+): void {
+  if ((prompt === undefined) === (messages === undefined)) {
+    throw new Error("Durable sampling requires exactly one of prompt or messages");
+  }
+  if (!Number.isSafeInteger(retries) || retries < 0 || retries > 10) {
+    throw new Error("Durable sampling retries must be an integer between 0 and 10");
+  }
+}
+
+function portableSamplingSchema(schema: StandardSchemaV1 | Readonly<Record<string, unknown>>): Json {
+  if ("~standard" in schema) {
+    try {
+      return z.toJSONSchema(schema as z.ZodType) as Json;
+    } catch {
+      throw new Error("Durable sampling schema must provide a portable JSON Schema projection");
+    }
+  }
+  return schema as Json;
+}
+
+function parseSampleText(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function normalizeElicits(

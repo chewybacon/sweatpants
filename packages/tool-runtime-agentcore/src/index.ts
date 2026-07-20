@@ -93,6 +93,7 @@ export {
   validateSandboxAffinity,
   type AgentCoreDurableReadiness,
   type AgentCoreDurableReadinessInput,
+  type AgentCoreSamplingReadinessInput,
   type InvocationPlacementRequest,
 } from "./durable-placement.ts";
 
@@ -131,6 +132,42 @@ export {
   createAgentCoreDurableEvaluator,
   type AgentCoreDurableEvaluatorOptions,
 } from "./durable-evaluator.ts";
+
+export {
+  runPlacementModelSampleProducer,
+  type PlacementModelProvider,
+} from "./placement-model-producer.ts";
+
+export {
+  createRedisPlacementModelSampler,
+  type RedisPlacementModelSampler,
+} from "./redis-placement-model-sampler.ts";
+
+export {
+  createPlacementSamplingAuthorizationIssuer,
+  verifyPlacementSamplingAuthorization,
+  type PlacementSamplingAuthorizationClaims,
+} from "./placement-sampling-authorization.ts";
+
+export {
+  createInMemoryPlacementModelSampler,
+  type InMemoryPlacementModelSampler,
+} from "./in-memory-placement-model-sampler.ts";
+
+export {
+  AGENTCORE_MODEL_SAMPLING_PROTOCOL_VERSION,
+  createPlacementModelSamplingService,
+  type PlacementModelSampler,
+  type PlacementModelSampleProducerStore,
+  type PlacementModelSamplingService,
+  type PlacementSamplingAuthorizationIssuer,
+  type RemoteModelDeliveryEvent,
+  type RemoteProducerFence,
+  type RemoteSampleAttachment,
+  type RemoteSampleIdentity,
+  type RemoteSampleRecord,
+  type RemoteSampleState,
+} from "./placement-model-sampler.ts";
 
 export {
   createAgentCoreActivationCoordinator,
