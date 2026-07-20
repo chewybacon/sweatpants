@@ -308,7 +308,7 @@ describe("strict AG-UI public conformance", () => {
       events
         .filter((event) => event.type === "TEXT_MESSAGE_CONTENT")
         .map((event) => event["delta"]),
-    ).toEqual(["Hello from ProgramRuntime"]);
+    ).toEqual(["Hello", " from", " ProgramRuntime"]);
     expect(records).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

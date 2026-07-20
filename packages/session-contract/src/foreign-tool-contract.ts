@@ -12,13 +12,14 @@ import type {
   ForeignToolRequest,
   ForeignToolDisposition,
 } from "./durable-types.ts";
+import { MODEL_SAMPLE_EFFECT, MODEL_SAMPLE_SCHEMA_ENTRIES } from "./model-sample-contract.ts";
 import type { Json } from "./types.ts";
 
 /** Pinned identity of the built-in foreign-tool adapter program. */
 export const FOREIGN_TOOL_ADAPTER_PROGRAM = Object.freeze({
   id: "sweatpants.foreign-tool-adapter",
   version: "1.0.0",
-  digest: "7e589ef471bf10722d6a236e52c4bd93f948a60cd73823bb7a85e53c7b2790f5",
+  digest: "664eb30db1cb9cff506e842d4aaa35ece6c5afb0179e98841a2a27fe1f2d97b2",
 });
 
 const FOREIGN_DURABILITIES = [
@@ -45,18 +46,14 @@ function builtinDescriptor(
   });
 }
 
-function guardSchema(
-  guard: (value: unknown) => string | undefined,
-): StandardSchemaV1 {
+function guardSchema(guard: (value: unknown) => string | undefined): StandardSchemaV1 {
   return {
     "~standard": {
       version: 1,
       vendor: "sweatpants",
       validate(value: unknown) {
         const message = guard(value);
-        return message === undefined
-          ? { value: assertJson(value) }
-          : { issues: [{ message }] };
+        return message === undefined ? { value: assertJson(value) } : { issues: [{ message }] };
       },
     },
   };
@@ -120,18 +117,6 @@ const FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR = builtinDescriptor(
 
 const FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR = builtinDescriptor(
   "sweatpants.foreign-tool-adapter/continue-output",
-  "effect_output",
-  true,
-);
-
-const FOREIGN_MODEL_SAMPLE_INPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/model-sample-input",
-  "effect_input",
-  true,
-);
-
-const FOREIGN_MODEL_SAMPLE_OUTPUT_DESCRIPTOR = builtinDescriptor(
-  "sweatpants.foreign-tool-adapter/model-sample-output",
   "effect_output",
   true,
 );
@@ -250,8 +235,7 @@ export function foreignToolSchemaEntries(): Array<{
       schema: guardSchema(foreignContinueGuard),
     },
     { descriptor: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
-    { descriptor: FOREIGN_MODEL_SAMPLE_INPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
-    { descriptor: FOREIGN_MODEL_SAMPLE_OUTPUT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
+    ...MODEL_SAMPLE_SCHEMA_ENTRIES,
     { descriptor: FOREIGN_INPUT_RESPONSE_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
     { descriptor: FOREIGN_INPUT_CONTEXT_DESCRIPTOR, schema: guardSchema(anyJsonGuard) },
     { descriptor: FOREIGN_TOOL_ADAPTER_INPUT_DESCRIPTOR, schema: guardSchema(foreignStartGuard) },
@@ -279,15 +263,8 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
 /** Effect contract for applying one response to foreign continuation state. */
 export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);
 
-const modelSampleDefinition: EffectDefinition<Json, Json> = {
-  name: "model.sample",
-  version: "1",
-  inputSchema: FOREIGN_MODEL_SAMPLE_INPUT_DESCRIPTOR,
-  outputSchema: FOREIGN_MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-};
 /** Canonical model-sampling effect used by foreign ToolSession lifting. */
-export const FOREIGN_MODEL_SAMPLE_EFFECT = Object.freeze(modelSampleDefinition);
+export const FOREIGN_MODEL_SAMPLE_EFFECT = MODEL_SAMPLE_EFFECT;
 
 /** Projects a foreign request into the pinned adapter child descriptor. */
 export function foreignToolAdapterChild(request: ForeignToolRequest): DurableChildDescriptor {

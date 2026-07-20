@@ -177,7 +177,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
         },
         ...registrations.slice(1),
         foreignToolAdapter.modelSampleRegistration(function* () {
-          return { text: "suggestion-0" };
+          return { text: "suggestion-0", calls: [], content: [] };
         }),
       ]);
       yield* authority.openTask({

@@ -20,6 +20,10 @@ import {
   type Json,
 } from "@sweatpants/session-contract";
 import {
+  createChatModelEffectRegistration,
+  type ChatModelSampleOutputV2,
+} from "@sweatpants/framework/chat";
+import {
   CALLER_AUTHORITATIVE_EXTENSION_URI,
   createA2AProgramDriver,
   createA2AProgramExecutor,
@@ -93,22 +97,15 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
     let modelExecutions = 0;
     let consultationExecutions = 0;
     const modelOutcomes = new Map<string, Json>();
-    const modelInputSchema = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
-      (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.inputSchema.digest,
-    )!;
-    const modelOutputSchema = REFERENCE_REVIEWER_CHAT.schemaCatalog.find(
-      (entry) => entry.descriptor.digest === CHAT_MODEL_SAMPLE_EFFECT.outputSchema.digest,
-    )!;
-    const modelRegistration = createDurableEffectRegistration(
-      CHAT_MODEL_SAMPLE_EFFECT,
-      { mode: "idempotent", mechanism: "pull_id_key" },
-      function* (_request, effect) {
+    const modelRegistration = createChatModelEffectRegistration({
+      allowedClassifications: ["internal", "restricted"],
+      *sample(_request, effect) {
         const recorded = modelOutcomes.get(effect.pullId);
         if (recorded !== undefined) {
-          return { status: "ok", value: recorded };
+          return recorded as unknown as ChatModelSampleOutputV2;
         }
         modelExecutions += 1;
-        const value: Json =
+        const value: ChatModelSampleOutputV2 =
           modelExecutions === 1
             ? {
                 message: assistantMessage("guidance", "Loading review guidance."),
@@ -144,10 +141,9 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
                   artifacts: [],
                 };
         modelOutcomes.set(effect.pullId, value);
-        return { status: "ok", value };
+        return value;
       },
-      { input: modelInputSchema.schema, output: modelOutputSchema.schema },
-    );
+    });
     const askRegistration = createAskParentRegistration({
       context: contextRef,
       store: consultationStore(contextText),

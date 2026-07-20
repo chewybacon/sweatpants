@@ -39,8 +39,18 @@ type SampleInput = { prompt: string; round: number };
 type SampleOutput = { text: string };
 type Choice = { answer: string; continue: boolean };
 
-const sampleInput = createSchemaFixture("ordinary-harness/sample-input", "effect_input", true, anyGuard);
-const sampleOutput = createSchemaFixture("ordinary-harness/sample-output", "effect_output", true, anyGuard);
+const sampleInput = createSchemaFixture(
+  "ordinary-harness/sample-input",
+  "effect_input",
+  true,
+  anyGuard,
+);
+const sampleOutput = createSchemaFixture(
+  "ordinary-harness/sample-output",
+  "effect_output",
+  true,
+  anyGuard,
+);
 const choiceSchema = createSchemaFixture(
   "ordinary-harness/choice",
   "elicit_response",
@@ -55,8 +65,18 @@ const choiceSchema = createSchemaFixture(
   },
   anyGuard,
 );
-const innerInput = createSchemaFixture("ordinary-harness/inner-input", "program_input", true, anyGuard);
-const innerOutput = createSchemaFixture("ordinary-harness/inner-output", "program_output", true, anyGuard);
+const innerInput = createSchemaFixture(
+  "ordinary-harness/inner-input",
+  "program_input",
+  true,
+  anyGuard,
+);
+const innerOutput = createSchemaFixture(
+  "ordinary-harness/inner-output",
+  "program_output",
+  true,
+  anyGuard,
+);
 const innerSchemas = () =>
   createDurableSchemaRegistry([
     sampleInput.entry,
@@ -171,7 +191,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
         foreignToolAdapter.modelSampleRegistration(function* () {
           const round = outerModelSamples;
           outerModelSamples += 1;
-          return { text: `suggestion-${round}` };
+          return { text: `suggestion-${round}`, calls: [], content: [] };
         }),
       ]);
       yield* authority.openTask({

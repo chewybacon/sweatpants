@@ -1,4 +1,4 @@
-import { resource, type Operation, type Stream } from "effection";
+import { resource, sleep, type Operation, type Stream } from "effection";
 import {
   ModelProviderContext,
   ModelProviderModelContext,
@@ -41,6 +41,8 @@ $$
 $$
 `;
 
+const deltaFixture = "Delta chunk one. Delta chunk two. Delta chunk three.";
+
 const mermaidFixture = `# Mermaid fixture
 
 \`\`\`mermaid
@@ -73,6 +75,7 @@ function latestToolResultText(context: RuntimeContext): string | undefined {
 
 function fixtureFor(context: RuntimeContext): string {
   const prompt = latestUserText(context).toLowerCase();
+  if (prompt.includes("delta arrival")) return deltaFixture;
   if (prompt.includes("mermaid")) return mermaidFixture;
   if (prompt.includes("math")) return mathFixture;
   if (prompt.includes("markdown")) return markdownFixture;
@@ -142,11 +145,15 @@ export function createScriptedRenderingModelProvider(): ModelProviderDriver {
       const final = assistantMessage(text);
       return resource(function* (provide) {
         let emitted = 0;
-        const parts = chunks(text);
+        const delayedDeltas = prompt.includes("delta arrival");
+        const parts = delayedDeltas
+          ? ["Delta chunk one. ", "Delta chunk two. ", "Delta chunk three."]
+          : chunks(text);
 
         yield* provide({
           *next(): Operation<IteratorResult<RuntimeStreamEvent, AssistantMessage>> {
             if (emitted < parts.length) {
+              if (delayedDeltas) yield* sleep(250);
               const delta = parts[emitted++]!;
               const partialText = text.slice(0, parts.slice(0, emitted).join("").length);
               return {

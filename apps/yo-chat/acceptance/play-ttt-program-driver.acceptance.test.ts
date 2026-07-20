@@ -167,11 +167,21 @@ function sampleResponse(request: Json, sequence: number): Json {
     const parsed = { cell: firstEmptyPosition(request) };
     return {
       text: JSON.stringify(parsed),
+      calls: [],
+      content: [],
       parsed,
     };
   }
   return {
     text: "",
+    calls: [
+      {
+        id: `strategy-${sequence}`,
+        target: "play_offensive",
+        input: { reasoning: "Use the first available position" },
+      },
+    ],
+    content: [],
     stopReason: "toolUse",
     toolCalls: [
       {

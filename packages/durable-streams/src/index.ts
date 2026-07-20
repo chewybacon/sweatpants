@@ -1,4 +1,21 @@
 export type {
+  ActivityChunk,
+  ActivityClose,
+  ActivityCursor,
+  ActivityPayloadCodec,
+  ActivityReadResult,
+  ActivityRetentionPolicy,
+  ActivityStreamErrorCode,
+  ActivityStreamId,
+  ActivityStreamStore,
+  ActivityWriterFence,
+  ActivityWriterIdentity,
+  InMemoryActivityStreamOptions,
+} from "./activity-stream.ts";
+
+export { ActivityStreamError, createInMemoryActivityStreamStore } from "./activity-stream.ts";
+
+export type {
   CreatePullStream,
   CreateSessionOptions,
   PullStreamOptions,
@@ -15,17 +32,17 @@ export type {
   TokenBuffer,
   TokenBufferStore,
   TokenFrame,
-} from './types.ts'
+} from "./types.ts";
 
-export { DEFAULT_RETENTION_POLICY } from './types.ts'
+export { DEFAULT_RETENTION_POLICY } from "./types.ts";
 
 export {
   createInMemoryBuffer,
   createInMemoryBufferStore,
   createInMemoryRegistryStore,
-} from './in-memory-store.ts'
+} from "./in-memory-store.ts";
 
-export { createPullStream, writeFromStreamToBuffer } from './pull-stream.ts'
+export { createPullStream, writeFromStreamToBuffer } from "./pull-stream.ts";
 
 export {
   applySnapshotHeaders,
@@ -39,20 +56,20 @@ export {
   type LiveMode,
   type ParsedOffset,
   type StreamMetadata,
-} from './protocol-headers.ts'
+} from "./protocol-headers.ts";
 
 export {
   createHeadMetadataResponse,
   createProtocolReadResponse,
   createEmptyStream,
-} from './read-transport.ts'
+} from "./read-transport.ts";
 
-export { createProtocolMutationResponse } from './mutation-transport.ts'
-export { createSSEEventStream } from './sse-formatter.ts'
+export { createProtocolMutationResponse } from "./mutation-transport.ts";
+export { createSSEEventStream } from "./sse-formatter.ts";
 
 // Redis store is exported from the `/redis` subpath only, not the root.
 // This keeps `redis` out of the install graph of packages that only need
 // `/types` or `/in-memory-store` (e.g. @sweatpants/session-contract,
 // @sweatpants/react-chat). See REQ-060 / NFR-012.
 
-export type { ProtocolHandlerContext, ProtocolSetupResult } from './http-types.ts'
+export type { ProtocolHandlerContext, ProtocolSetupResult } from "./http-types.ts";

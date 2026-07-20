@@ -1,15 +1,19 @@
-import { resource, type Operation, type Stream } from "effection";
+import { createSignal, resource, spawn, type Operation, type Stream } from "effection";
+import { createInMemoryActivityStreamStore } from "@sweatpants/durable-streams";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   CrankError,
   DurableEffectRegistryContext,
   JournalAuthorityContext,
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
   assertJson,
   assertReplayedCanonicalValue,
   canonicalJson,
+  canonicalSnapshot,
   createPortableSchemaDescriptor,
   standardSchemaOf,
   createDurableEffectRegistration,
@@ -18,7 +22,6 @@ import {
   createDurableToolRegistry,
   createLocalGeneratorDriver,
   createProgramDriverRegistry,
-  defineDurableEffect,
   defineDurableProgramManifest,
   foreignToolAdapter,
   sha256,
@@ -30,6 +33,9 @@ import {
   type DurableSemanticRecord,
   type DurableTool,
   type Json,
+  type ModelSampleCall,
+  type ModelSampleRequest,
+  type ModelSampleResult,
   type ProgramRunResult,
   type PortableSchemaDescriptor,
   type PortableSchemaRole,
@@ -53,32 +59,29 @@ import type { ProgramDriverJournal, ProgramDriverJournalStore } from "./program-
 import { createToolRuntimeForeignEffectRegistrations } from "./program-driver-tool-runtime.ts";
 import type { ElicitResponse, ProgramRuntimeChatEngineParams } from "./types.ts";
 
-type ChatCall = { id: string; target: string; input: Json; thoughtSignature?: string };
-type ChatSampleRequest = {
-  messages: Json[];
-  systemPrompt?: string;
-  maxTokens?: number;
-  modelPreferences?: Json;
-  tools?: Json[];
-  toolChoice?: Json;
-  schema?: Json;
+type ChatCall = ModelSampleCall;
+type ChatSampleRequest = ModelSampleRequest;
+type ChatSampleResult = ModelSampleResult;
+
+type ThinCatalogEntry =
+  | { kind: "program"; target: string; program: NativeProgramIdentity }
+  | {
+      kind: "foreign-tool";
+      target: string;
+      driver: "tool-session" | "framework-tool-runtime";
+      tool: string;
+      durability: "ephemeral_handle";
+    };
+
+type ThinProgramCatalog = {
+  version: 1;
+  digest: string;
+  entries: Record<string, ThinCatalogEntry>;
 };
-type ChatSampleResult = {
-  text: string;
-  calls: ChatCall[];
-  content: Json[];
-  model?: string;
-  stopReason?: string;
-  toolCalls?: Array<{ id: string; name: string; arguments: Json }>;
-  parsed?: Json;
-  parseError?: { message: string; rawText: string };
-};
-type ChatSampleCancellationPartial = { text: string; interrupted: true };
 
 type ChatProgramInput = ChatSampleRequest & {
   maxIterations: number;
-  foreignDriver: "tool-session" | "framework-tool-runtime";
-  durablePrograms: Record<string, NativeProgramIdentity>;
+  catalog: ThinProgramCatalog;
 };
 
 type ProgramDriverChatEngineParams = ProgramRuntimeChatEngineParams & {
@@ -126,176 +129,28 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-const modelSampleInputDescriptor = chatEngineSchema(
-  "sweatpants.chat-root/model-sample-input",
-  "effect_input",
-  {
-    type: "object",
-    required: ["messages"],
-    properties: {
-      messages: { type: "array", items: true },
-      systemPrompt: { type: "string" },
-      maxTokens: { type: "integer", minimum: 1 },
-      modelPreferences: true,
-      tools: { type: "array", items: true },
-      toolChoice: true,
-      schema: true,
-    },
-    additionalProperties: false,
-  },
-  (value) => {
-    if (!isJsonObject(value) || !Array.isArray(value["messages"])) {
-      return "model sample request requires messages";
-    }
-    const allowed = new Set([
-      "messages",
-      "systemPrompt",
-      "maxTokens",
-      "modelPreferences",
-      "tools",
-      "toolChoice",
-      "schema",
-    ]);
-    if (!Object.keys(value).every((key) => allowed.has(key))) {
-      return "model sample request has unexpected keys";
-    }
-    if (value["systemPrompt"] !== undefined && typeof value["systemPrompt"] !== "string") {
-      return "systemPrompt must be a string";
-    }
-    if (
-      value["maxTokens"] !== undefined &&
-      (!Number.isSafeInteger(value["maxTokens"]) || (value["maxTokens"] as number) < 1)
-    ) {
-      return "maxTokens must be a positive integer";
-    }
-    if (value["tools"] !== undefined && !Array.isArray(value["tools"])) {
-      return "tools must be an array";
-    }
-    return undefined;
-  },
-);
-
-const modelSampleOutputDescriptor = chatEngineSchema(
-  "sweatpants.chat-root/model-sample-output",
-  "effect_output",
-  {
-    type: "object",
-    required: ["text", "calls", "content"],
-    properties: {
-      text: { type: "string" },
-      calls: {
-        type: "array",
-        items: {
-          type: "object",
-          required: ["id", "target", "input"],
-          properties: {
-            id: { type: "string", minLength: 1 },
-            target: { type: "string", minLength: 1 },
-            input: true,
-            thoughtSignature: { type: "string" },
-          },
-          additionalProperties: false,
-        },
-      },
-      content: { type: "array", items: true },
-      model: { type: "string" },
-      stopReason: { type: "string" },
-      toolCalls: { type: "array", items: true },
-      parsed: true,
-      parseError: {
-        type: "object",
-        required: ["message", "rawText"],
-        properties: { message: { type: "string" }, rawText: { type: "string" } },
-        additionalProperties: false,
-      },
-    },
-    additionalProperties: false,
-  },
-  (value) => {
-    if (!isJsonObject(value)) {
-      return "model sample result must be an object";
-    }
-    if (typeof value["text"] !== "string") {
-      return "text must be a string";
-    }
-    if (!Array.isArray(value["calls"]) || !Array.isArray(value["content"])) {
-      return "calls and content must be arrays";
-    }
-    for (const call of value["calls"]) {
-      if (
-        !isJsonObject(call) ||
-        typeof call["id"] !== "string" ||
-        call["id"].length === 0 ||
-        typeof call["target"] !== "string" ||
-        call["target"].length === 0 ||
-        !("input" in call)
-      ) {
-        return "calls entries must be {id, target, input}";
-      }
-    }
-    return undefined;
-  },
-);
-
-const modelSamplePartialDescriptor = chatEngineSchema(
-  "sweatpants.chat-root/model-sample-partial",
-  "effect_cancellation_partial",
-  {
-    type: "object",
-    required: ["text", "interrupted"],
-    properties: {
-      text: { type: "string", maxLength: 32_768 },
-      interrupted: { const: true },
-    },
-    additionalProperties: false,
-  },
-  (value) =>
-    isJsonObject(value) &&
-    typeof value["text"] === "string" &&
-    value["text"].length <= 32_768 &&
-    value["interrupted"] === true &&
-    Object.keys(value).length === 2
-      ? undefined
-      : "cancellation partial must be { text, interrupted: true }",
-);
-
-const modelSample = defineDurableEffect<
-  ChatSampleRequest,
-  ChatSampleResult,
-  ChatSampleCancellationPartial
->({
-  name: "model.sample",
-  version: "1",
-  inputSchema: modelSampleInputDescriptor,
-  outputSchema: modelSampleOutputDescriptor,
-  cancellation: { partialSchema: modelSamplePartialDescriptor },
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-});
+const modelSample = MODEL_SAMPLE_EFFECT;
 
 const chatRootInputDescriptor = chatEngineSchema(
   "sweatpants.chat-root/input",
   "program_input",
   {
     type: "object",
-    required: ["messages", "maxIterations", "foreignDriver", "durablePrograms"],
+    required: ["messages", "maxIterations", "catalog"],
     properties: {
       messages: { type: "array", items: true },
       systemPrompt: { type: "string" },
       toolChoice: { enum: ["auto", "none", "required"] },
       maxIterations: { type: "integer", minimum: 1, maximum: 100 },
-      foreignDriver: { enum: ["tool-session", "framework-tool-runtime"] },
-      durablePrograms: {
+      catalog: {
         type: "object",
-        additionalProperties: {
-          type: "object",
-          required: ["id", "version", "digest"],
-          properties: {
-            id: { type: "string" },
-            version: { type: "string" },
-            digest: { type: "string", pattern: "^[0-9a-f]{64}$" },
-          },
-          additionalProperties: false,
+        required: ["version", "digest", "entries"],
+        properties: {
+          version: { const: 1 },
+          digest: { type: "string", pattern: "^[0-9a-f]{64}$" },
+          entries: { type: "object", additionalProperties: true },
         },
+        additionalProperties: false,
       },
     },
     additionalProperties: false,
@@ -312,40 +167,19 @@ const chatRootInputDescriptor = chatEngineSchema(
       return "maxIterations must be an integer between 1 and 100";
     }
     if (
-      value["foreignDriver"] !== "tool-session" &&
-      value["foreignDriver"] !== "framework-tool-runtime"
-    ) {
-      return "foreignDriver is invalid";
-    }
-    if (
       value["toolChoice"] !== undefined &&
       !["auto", "none", "required"].includes(String(value["toolChoice"]))
     ) {
       return "toolChoice is invalid";
     }
-    const programs = value["durablePrograms"];
-    if (!isJsonObject(programs)) {
-      return "durablePrograms must be an object";
+    const catalog = value["catalog"];
+    if (!isJsonObject(catalog) || catalog["version"] !== 1 || !isJsonObject(catalog["entries"])) {
+      return "catalog must be a versioned entry map";
     }
-    for (const identity of Object.values(programs)) {
-      if (
-        !isJsonObject(identity) ||
-        typeof identity["id"] !== "string" ||
-        typeof identity["version"] !== "string" ||
-        typeof identity["digest"] !== "string" ||
-        !/^[0-9a-f]{64}$/.test(identity["digest"])
-      ) {
-        return "durablePrograms entries must be pinned identities";
-      }
+    if (catalog["digest"] !== canonicalSnapshot({ version: 1, entries: catalog["entries"] }).sha) {
+      return "catalog digest differs from entries";
     }
-    const allowed = new Set([
-      "messages",
-      "systemPrompt",
-      "toolChoice",
-      "maxIterations",
-      "foreignDriver",
-      "durablePrograms",
-    ]);
+    const allowed = new Set(["messages", "systemPrompt", "toolChoice", "maxIterations", "catalog"]);
     if (!Object.keys(value).every((key) => allowed.has(key))) {
       return "chat program input has unexpected keys";
     }
@@ -377,7 +211,7 @@ const manifest = defineDurableProgramManifest<ChatProgramInput, string>({
  * catalogs into the journal authority's schema registry.
  */
 export function programDriverChatEngineSchemaEntries(): readonly DurableSchemaRegistryEntry[] {
-  return [...chatEngineSchemaEntries];
+  return [...MODEL_SAMPLE_SCHEMA_ENTRIES, ...chatEngineSchemaEntries];
 }
 
 const rootTool = createPinnedDurableProgram(manifest, function* (input, context) {
@@ -423,19 +257,23 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
         tool: call.target,
         input: call.input,
       });
-      const nativeProgram = input.durablePrograms[call.target];
-      const result = nativeProgram
-        ? yield* context.invoke<Json>({
-            ...nativeProgram,
-            input: durableToolInput(call),
-          })
-        : yield* context.foreignTool<Json>({
-            driver: input.foreignDriver,
-            tool: call.target,
-            input: call.input,
-            durability: "ephemeral_handle",
-            route: call.id,
-          });
+      const catalogEntry = input.catalog.entries[call.target];
+      if (!catalogEntry) {
+        throw new CrankError("unknown_target", `Tool ${call.target} is outside the bound catalog`);
+      }
+      const result =
+        catalogEntry.kind === "program"
+          ? yield* context.invoke<Json>({
+              ...catalogEntry.program,
+              input: durableToolInput(call),
+            })
+          : yield* context.foreignTool<Json>({
+              driver: catalogEntry.driver,
+              tool: catalogEntry.tool,
+              input: call.input,
+              durability: catalogEntry.durability,
+              route: call.id,
+            });
       yield* context.emit("tool_completed", {
         callId: call.id,
         tool: call.target,
@@ -457,24 +295,72 @@ export function createProgramDriverChatEngine(
   params: ProgramDriverChatEngineParams,
 ): Stream<StreamEvent, void> {
   return resource(function* (provide) {
-    let events: StreamEvent[] | undefined;
-    let cursor = 0;
+    const queue: StreamEvent[] = [];
+    const changed = createSignal<void, void>();
+    const changes = yield* changed;
+    let done = false;
+    let failure: unknown;
+    const activity = createInMemoryActivityStreamStore<string>({
+      codec: {
+        digest: sha256,
+        byteLength: (value) => new TextEncoder().encode(value).byteLength,
+      },
+    });
+    const activityStreamId = `model:${params.conversationId}:${params.agUiRun.runId}`;
+
+    yield* spawn(function* () {
+      try {
+        yield* activity.create({
+          streamId: activityStreamId,
+          retention: { mode: "retain_until_ttl", ttlMs: 5 * 60_000 },
+        });
+        const fence = yield* activity.claimWriter({
+          streamId: activityStreamId,
+          writer: {
+            kind: "activation",
+            taskId: params.conversationId,
+            activationId: params.agUiRun.runId,
+          },
+        });
+        let cursor = 0;
+        const events = yield* activateProgramDriverChatEngine(params, function* (event) {
+          if (event.type === "TEXT_MESSAGE_CONTENT") {
+            yield* activity.append({
+              fence,
+              cursor: ++cursor,
+              payload: event.delta,
+            });
+          }
+          queue.push(event);
+          changed.send();
+        });
+        for (const event of events) queue.push(event);
+        yield* activity.close({ fence, close: { status: "complete" } });
+      } catch (error) {
+        failure = error;
+      } finally {
+        done = true;
+        changed.send();
+      }
+    });
+
     yield* provide({
       *next(): Operation<IteratorResult<StreamEvent, void>> {
-        events ??= yield* activateProgramDriverChatEngine(params);
-        const event = events[cursor];
-        if (!event) {
-          return { done: true, value: undefined };
-        }
-        cursor += 1;
-        return { done: false, value: event };
+        while (queue.length === 0 && !done) yield* changes.next();
+        const event = queue.shift();
+        if (event) return { done: false, value: event };
+        if (failure) throw failure;
+        return { done: true, value: undefined };
       },
     });
   });
 }
 
+type LiveEventSink = (event: StreamEvent) => Operation<void>;
+
 function* activateProgramDriverChatEngine(
   params: ProgramDriverChatEngineParams,
+  liveEvent?: LiveEventSink,
 ): Operation<StreamEvent[]> {
   const journal = yield* params.journalStore.open(params.conversationId);
   const scopedForeignEffects = params.foreignEffects;
@@ -483,11 +369,11 @@ function* activateProgramDriverChatEngine(
   const turnNumber = rootTaskCount(before);
   const taskId = active?.taskId ?? `turn-${turnNumber}/root`;
   const turnId = active?.turnId ?? `turn-${turnNumber}`;
+  const foreignDriver = scopedForeignEffects ? "tool-session" : "framework-tool-runtime";
   const requestedInput: ChatProgramInput = {
     messages: params.messages.map((message) => assertJson(message)),
     maxIterations: params.maxIterations,
-    foreignDriver: scopedForeignEffects ? "tool-session" : "framework-tool-runtime",
-    durablePrograms: nativeProgramIdentities(params.nativeTools),
+    catalog: createThinCatalog(params, foreignDriver),
     ...(params.systemPrompt !== undefined ? { systemPrompt: params.systemPrompt } : {}),
     ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
   };
@@ -551,8 +437,13 @@ function* activateProgramDriverChatEngine(
     ["generator", createLocalGeneratorDriver(tools)],
     ...(params.nativeTools?.drivers ?? []),
   ]);
+  let streamedTerminal = false;
+  const boundForeignDriver = Object.values(input.catalog.entries).find(
+    (entry): entry is Extract<ThinCatalogEntry, { kind: "foreign-tool" }> =>
+      entry.kind === "foreign-tool",
+  )?.driver;
   const foreignEffects =
-    input.foreignDriver === "tool-session"
+    boundForeignDriver === "tool-session"
       ? requireScopedForeignEffects(scopedForeignEffects)
       : createToolRuntimeForeignEffectRegistrations({
           runtime: requireToolRuntime(params),
@@ -560,42 +451,55 @@ function* activateProgramDriverChatEngine(
           threadId: params.agUiRun.threadId,
           runId: params.agUiRun.runId,
         });
-  const effects = createDurableEffectRegistry([
-    createDurableEffectRegistration(
-      modelSample,
-      { mode: "idempotent", mechanism: "pull_id_key" },
-      function* (request, context) {
-        let partialText = "";
-        try {
-          return {
-            status: "ok" as const,
-            value: yield* sampleModel(
+  const effects = createDurableEffectRegistry(
+    [
+      createDurableEffectRegistration(
+        modelSample,
+        { mode: "idempotent", mechanism: "pull_id_key" },
+        function* (request, context) {
+          let partialText = "";
+          let streamStarted = false;
+          const messageId = `assistant:stream:${taskId}:${context.pullId}`;
+          try {
+            const value = yield* sampleModel(
               params,
               request,
               context.cancellation,
               context.pullId,
-              (text) => {
+              function* (text, delta) {
                 partialText = text.slice(-32_768);
+                if (!liveEvent) return;
+                if (!streamStarted) {
+                  streamStarted = true;
+                  yield* liveEvent({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
+                }
+                yield* liveEvent({ type: "TEXT_MESSAGE_CONTENT", messageId, delta });
               },
-            ),
-          };
-        } catch (error) {
-          if (context.cancellation.aborted) {
-            return {
-              status: "cancelled" as const,
-              partial: { text: partialText, interrupted: true as const },
-            };
+            );
+            if (streamStarted && liveEvent) {
+              yield* liveEvent({ type: "TEXT_MESSAGE_END", messageId });
+              if (value.calls.length === 0) streamedTerminal = true;
+            }
+            return { status: "ok" as const, value };
+          } catch (error) {
+            if (context.cancellation.aborted) {
+              return {
+                status: "cancelled" as const,
+                partial: { text: partialText, interrupted: true as const },
+              };
+            }
+            if (error instanceof CrankError) {
+              throw error;
+            }
+            throw new CrankError("model_runtime_failed", "Provider error");
           }
-          if (error instanceof CrankError) {
-            throw error;
-          }
-          throw new CrankError("model_runtime_failed", "Provider error");
-        }
-      },
-    ),
-    ...foreignEffects,
-    ...(params.nativeTools?.effects ?? []),
-  ]);
+        },
+      ),
+      ...foreignEffects,
+      ...(params.nativeTools?.effects ?? []),
+    ],
+    Object.values(manifest.effects),
+  );
   const outcome = yield* ProgramDriverRegistryContext.with(drivers, function* () {
     return yield* JournalAuthorityContext.with(journal.authority, function* () {
       return yield* DurableEffectRegistryContext.with(effects, function* () {
@@ -643,7 +547,17 @@ function* activateProgramDriverChatEngine(
     });
     return activity ? [activity] : [];
   });
-  events.push(...projectRecords(after.slice(before.length), after));
+  const projected = projectRecords(after.slice(before.length), after);
+  events.push(
+    ...(streamedTerminal
+      ? projected.filter(
+          (event) =>
+            event.type !== "TEXT_MESSAGE_START" &&
+            event.type !== "TEXT_MESSAGE_CONTENT" &&
+            event.type !== "TEXT_MESSAGE_END",
+        )
+      : projected),
+  );
   if (outcome.state === "completed") {
     events.push({ type: "RUN_FINISHED", ...params.agUiRun, outcome: { type: "success" } });
   } else if (outcome.state === "parked") {
@@ -695,7 +609,7 @@ function* sampleModel(
   request: ChatSampleRequest,
   cancellation: AbortSignal,
   pullId: string,
-  onText?: (text: string) => void,
+  onText?: (text: string, delta: string) => Operation<void>,
 ): Operation<ChatSampleResult> {
   const foreignSamplingRequest =
     request.maxTokens !== undefined ||
@@ -800,7 +714,7 @@ function* sampleModel(
     }
     if (next.value.type === "text_delta") {
       text += next.value.delta;
-      onText?.(text);
+      if (onText) yield* onText(text, next.value.delta);
     }
     if (next.value.type === "toolcall_end") {
       const block = next.value.toolCall;
@@ -1546,6 +1460,33 @@ function requireToolRuntime(params: ProgramRuntimeChatEngineParams) {
     throw new CrankError("tool_runtime_not_installed", "Tool runtime is not installed");
   }
   return params.toolRuntime;
+}
+
+function createThinCatalog(
+  params: ProgramDriverChatEngineParams,
+  foreignDriver: "tool-session" | "framework-tool-runtime",
+): ThinProgramCatalog {
+  const nativePrograms = nativeProgramIdentities(params.nativeTools);
+  const entries: Record<string, ThinCatalogEntry> = {};
+  for (const tool of [...params.toolSchemas].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )) {
+    const program = nativePrograms[tool.name];
+    entries[tool.name] = program
+      ? { kind: "program", target: tool.name, program }
+      : {
+          kind: "foreign-tool",
+          target: tool.name,
+          driver: foreignDriver,
+          tool: tool.name,
+          durability: "ephemeral_handle",
+        };
+  }
+  return {
+    version: 1,
+    digest: canonicalSnapshot({ version: 1, entries }).sha,
+    entries,
+  };
 }
 
 function durableToolInput(call: ChatCall): Json {

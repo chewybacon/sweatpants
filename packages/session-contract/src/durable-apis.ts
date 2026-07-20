@@ -6,6 +6,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertInlineSize, serializeDurableError } from "./authoring.ts";
 import { assertJson, canonicalSnapshot } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
+import { effectContractDigest } from "./effect-contract.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
 import type {
@@ -99,9 +100,33 @@ export function createDurableEffectRegistration<
   return registration;
 }
 
-/** Creates an immutable registry and rejects duplicate symbolic effect names. */
+/** Validates exact manifest contracts against the handlers selected by an assembly. */
+export function validateDurableEffectBindings(
+  requiredDefinitions: Iterable<EffectDefinition<Json, Json, Json>>,
+  registry: DurableEffectRegistry,
+): void {
+  for (const required of requiredDefinitions) {
+    const key = effectKey(required.name, required.version);
+    const registration = registry.get(key);
+    if (!registration) {
+      throw new CrankError(
+        "unknown_target",
+        `No durable effect handler for ${required.name}@${required.version}`,
+      );
+    }
+    if (effectContractDigest(registration.definition) !== effectContractDigest(required)) {
+      throw new CrankError(
+        "invalid_manifest",
+        `Effect contract differs for ${required.name}@${required.version}`,
+      );
+    }
+  }
+}
+
+/** Creates an immutable registry and optionally preflights required contracts. */
 export function createDurableEffectRegistry(
   registrations: Iterable<DurableEffectRegistration>,
+  requiredDefinitions: Iterable<EffectDefinition<Json, Json, Json>> = [],
 ): DurableEffectRegistry {
   const registry = new Map<string, DurableEffectRegistration>();
   for (const registration of registrations) {
@@ -131,6 +156,7 @@ export function createDurableEffectRegistry(
     }
     registry.set(effectKey(definition.name, definition.version), registration);
   }
+  validateDurableEffectBindings(requiredDefinitions, registry);
   return registry;
 }
 
@@ -224,6 +250,12 @@ export const DurableEffects = createApi("crank-durable-effects", {
       throw new CrankError(
         "unknown_target",
         `No durable effect handler for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
+      );
+    }
+    if (effectContractDigest(registration.definition) !== authorization.effectContractDigest) {
+      throw new CrankError(
+        "invalid_manifest",
+        `Effect contract differs for ${authorization.descriptor.name}@${authorization.descriptor.version}`,
       );
     }
     // The authority already ran defaults/transforms exactly once and returned
@@ -450,14 +482,32 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
         }
         if (step.type === "emission") {
           const proof = frontierProof;
-          const receipt = yield* JournalAuthority.operations.emit({
-            sessionId: request.attach.sessionId,
-            taskId: request.attach.taskId,
-            actionIndex: step.actionIndex,
-            descriptor: step.descriptor,
-            programCapability,
-            ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
-          });
+          let receipt: EmissionReceipt;
+          try {
+            receipt = yield* JournalAuthority.operations.emit({
+              sessionId: request.attach.sessionId,
+              taskId: request.attach.taskId,
+              actionIndex: step.actionIndex,
+              descriptor: step.descriptor,
+              programCapability,
+              ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
+            });
+          } catch (error) {
+            if (!(error instanceof CrankError) || error.code !== "emission_quota_exceeded") {
+              throw error;
+            }
+            const serialized = serializeDurableError(error);
+            yield* JournalAuthority.operations.complete({
+              sessionId: request.attach.sessionId,
+              taskId: request.attach.taskId,
+              actionIndex: step.actionIndex,
+              outcome: { status: "error", error: serialized },
+              programCapability,
+              ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
+            });
+            shutdownReason = "failed";
+            return { state: "failed", error: serialized };
+          }
           if (receipt.restoredFrontierConsumed) {
             frontierProof = undefined;
           }
@@ -586,6 +636,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             pullId: reservation.pullId,
             attemptId: reservation.attemptId,
             descriptor: reservation.descriptor,
+            effectContractDigest: reservation.effectContractDigest,
             resolutionCapability: reservation.resolutionCapability,
             resolver: step.descriptor.resolver,
           });

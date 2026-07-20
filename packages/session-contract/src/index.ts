@@ -10,6 +10,18 @@ export {
   sha256Bytes,
   stableOpaqueId,
 } from "./canonical.ts";
+export { effectContractDigest, type EffectContractDigestDocumentV1 } from "./effect-contract.ts";
+export {
+  MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
+  MODEL_SAMPLE_PARTIAL_DESCRIPTOR,
+  MODEL_SAMPLE_SCHEMA_ENTRIES,
+  type ModelSampleCall,
+  type ModelSampleCancellationPartial,
+  type ModelSampleRequest,
+  type ModelSampleResult,
+} from "./model-sample-contract.ts";
 
 /** ProgramDriver durable runtime contracts. */
 export type {
@@ -202,6 +214,7 @@ export {
   type DurableSemanticRecord,
   type InMemoryDurableJournalOptions,
   type OpenDurableTaskRequest,
+  type SemanticEmissionPolicy,
 } from "./durable-authority.ts";
 export {
   DurableEffectRegistryContext,
@@ -217,6 +230,7 @@ export {
   createDurableEffectRegistration,
   createDurableEffectRegistry,
   durableEffectRuntimeSchemas,
+  validateDurableEffectBindings,
   executeDurableEffect,
   type DurableEffectRuntimeSchemas,
   reserveOperation,
