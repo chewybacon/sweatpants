@@ -5,7 +5,7 @@
  */
 
 import type { Operation, Channel } from "effection";
-import type { ChatPatch } from "../patches/index.ts";
+import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../types.ts";
 import type { StreamEvent, StreamResult } from "./streaming.ts";
 import type { ConversationReplayState } from "./streaming.ts";
@@ -79,7 +79,7 @@ export interface ElicitResponseData {
  */
 export type Streamer = (
   messages: Message[],
-  patches: Channel<ChatPatch, void>,
+  events: Channel<ChatStateEvent, void>,
   options: Omit<StreamChatOptions, "streamer">,
 ) => Operation<StreamResult>;
 
@@ -99,16 +99,16 @@ export type Streamer = (
 export type MessageRenderer = (content: string) => string | undefined;
 
 // =============================================================================
-// PATCH TRANSFORM
+// EVENT TRANSFORM
 // =============================================================================
 
 /**
- * A patch transform is an Effection operation that reads patches from
- * an input channel, transforms them, and writes to an output channel.
+ * A client event transform observes canonical AG-UI events and may add
+ * explicitly local rendering actions. It MUST NOT rename wire events.
  */
-export type PatchTransform = (
-  input: Channel<ChatPatch, void>,
-  output: Channel<ChatPatch, void>,
+export type ChatEventTransform = (
+  input: Channel<ChatStateEvent, void>,
+  output: Channel<ChatStateEvent, void>,
 ) => Operation<void>;
 
 // =============================================================================
@@ -201,9 +201,9 @@ export interface SessionOptions {
   initialToolChoice?: StreamOptions["toolChoice"];
 
   /**
-   * Stream transforms - process patches before they reach React state.
+   * Event transforms - observe AG-UI events and add local rendering actions.
    */
-  transforms?: PatchTransform[];
+  transforms?: ChatEventTransform[];
 
   /**
    * Renderer for completed messages.

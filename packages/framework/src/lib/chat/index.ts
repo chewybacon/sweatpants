@@ -69,15 +69,12 @@ export type {
   StreamResult,
   StreamCompleteResult,
   StreamElicitResult,
-  ConversationStateStreamEvent,
   ElicitRequestStreamEvent,
-  ToolSessionStatusStreamEvent,
-  ToolSessionErrorStreamEvent,
   StreamEvent as ChatSessionStreamEvent,
   StreamEventEntry,
   Streamer,
   MessageRenderer,
-  PatchTransform,
+  ChatEventTransform,
   SessionOptions,
   ChatCommand,
 } from "./session/index.ts";
@@ -90,38 +87,20 @@ export {
 } from "./state/index.ts";
 export type {
   ChatState,
-  PendingClientToolState,
+  ChatStateEvent,
+  LocalChatAction,
+  LocalEmissionAction,
   StreamingPartsState,
   ToolEmissionState,
   ToolEmissionTrackingState,
   ElicitState,
   ElicitTrackingState,
 } from "./state/index.ts";
-export { isEmissionPatch, isElicitPatch } from "./patches/index.ts";
-export type {
-  ChatPatch,
-  ContentPartType,
-  PartFramePatch,
-  PartEndPatch,
-  EmissionPatch,
-  ToolEmissionStartPatch,
-  ToolEmissionPatch,
-  ToolEmissionResponsePatch,
-  ToolEmissionCompletePatch,
-  ElicitStartPatch,
-  ElicitPatch,
-  ElicitResponsePatch,
-  ElicitCompletePatch,
-  ElicitPatchUnion,
-} from "./patches/index.ts";
 export { createPluginRegistry, createPluginRegistryFrom } from "./mcp-tools/plugin-registry.ts";
 export type { PluginRegistry } from "./mcp-tools/plugin-registry.ts";
 export { executeElicitHandlerFromRequest } from "./mcp-tools/plugin-executor.ts";
 // Model context utilities (browser-safe subset of mcp-tools)
-export {
-  getElicitContext,
-  MODEL_CONTEXT_SCHEMA_KEY,
-} from "./mcp-tools/model-context.ts";
+export { getElicitContext, MODEL_CONTEXT_SCHEMA_KEY } from "./mcp-tools/model-context.ts";
 
 // Canonical core tool types. Author tools with createTool from @sweatpants/core.
 export type {

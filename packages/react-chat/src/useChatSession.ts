@@ -21,7 +21,7 @@ import {
   type ChatSession,
   type ClientToolSessionOptions,
   type ElicitTrackingState,
-  type EmissionPatch,
+  type LocalEmissionAction as FrameworkLocalEmissionAction,
   type PluginHandleInput,
   type ReasoningPart,
   type TextPart,
@@ -29,7 +29,6 @@ import {
 import { createPipelineTransform, markdown } from "./pipeline/index.ts";
 import type {
   ChatState,
-  PendingClientToolState,
   ToolEmissionTrackingState,
   ToolEmissionState,
   SessionOptions,
@@ -44,14 +43,14 @@ import { useElicitExecutor } from "./useElicitExecutor.ts";
 
 type LocalEmissionState = Record<string, ToolEmissionTrackingState>;
 
-type LocalEmissionAction = EmissionPatch & { respond?: (response: unknown) => void };
+type LocalEmissionAction = FrameworkLocalEmissionAction;
 
 function localEmissionReducer(
   state: LocalEmissionState,
   action: LocalEmissionAction,
 ): LocalEmissionState {
   switch (action.type) {
-    case "tool_emission_start": {
+    case "EMISSION_STARTED": {
       const existing = state[action.callId];
       return {
         ...state,
@@ -65,10 +64,10 @@ function localEmissionReducer(
         },
       };
     }
-    case "tool_emission": {
+    case "EMISSION_ADDED": {
       let tracking = state[action.callId];
 
-      // Auto-create tracking if tool_emission_start hasn't been processed yet
+      // Auto-create tracking if EMISSION_STARTED has not been processed yet
       // This handles React batching race conditions where emissions arrive
       // before the start event is reflected in state
       if (!tracking) {
@@ -105,7 +104,7 @@ function localEmissionReducer(
         },
       };
     }
-    case "tool_emission_response": {
+    case "EMISSION_RESPONDED": {
       const tracking = state[action.callId];
       if (!tracking) {
         return state;
@@ -133,7 +132,7 @@ function localEmissionReducer(
         },
       };
     }
-    case "tool_emission_complete": {
+    case "EMISSION_COMPLETED": {
       const tracking = state[action.callId];
       if (!tracking) {
         return state;
@@ -243,34 +242,6 @@ export interface UseChatSessionReturn {
   abort: () => void;
   /** Reset the session */
   reset: () => void;
-  /** Current session capabilities */
-  capabilities: ChatState["capabilities"];
-
-  // --- Client Tool Approval API ---
-
-  /**
-   * Pending client tools awaiting approval.
-   *
-   * Array of tools that need user approval before execution.
-   * Use `approve()` or `deny()` to respond.
-   */
-  pendingApprovals: PendingClientToolState[];
-
-  /**
-   * Approve a pending client tool.
-   *
-   * @param callId - The tool call ID to approve
-   */
-  approve: (callId: string) => void;
-
-  /**
-   * Deny a pending client tool.
-   *
-   * @param callId - The tool call ID to deny
-   * @param reason - Optional reason for denial
-   */
-  deny: (callId: string, reason?: string) => void;
-
   // --- Tool Emissions API (ctx.render() pattern) ---
 
   /**
@@ -461,16 +432,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     dispatchCommand({ type: "reset" });
   }, [dispatchCommand]);
 
-  // Client tool approval callbacks are retained as no-ops for older callers.
-  const approve = useCallback((_callId: string) => {}, []);
-
-  const deny = useCallback((_callId: string, _reason?: string) => {}, []);
-
-  // Get pending approvals from state
-  const pendingApprovals = Object.values(state.pendingClientTools).filter(
-    (tool) => tool.state === "awaiting_approval",
-  );
-
   // Tool emissions come from both:
   // 1. state.toolEmissions - replay/projection from the stream
   // 2. localEmissions - plugin handlers via ctx.render() (client-side, via useElicitExecutor)
@@ -525,7 +486,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     );
     if (stateEmission?.respond) {
       stateEmission.respond(response);
-      // The respond callback sends tool_emission_response patch to update state
+      // The respond callback applies EMISSION_RESPONDED to ephemeral browser state
     }
   }, []);
 
@@ -562,11 +523,11 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     [options.plugins],
   );
 
-  // Dispatch emission patches (for plugin executor to forward handler emissions)
+  // Apply ephemeral emission actions from the browser plugin executor.
   // These go to local React state, not through the session
-  const dispatchEmissionPatch = useCallback(
-    (patch: EmissionPatch & { respond?: (response: unknown) => void }) => {
-      dispatchLocalEmission(patch);
+  const dispatchLocalEmissionAction = useCallback(
+    (action: LocalEmissionAction & { respond?: (response: unknown) => void }) => {
+      dispatchLocalEmission(action);
     },
     [dispatchLocalEmission],
   );
@@ -575,7 +536,7 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
   useElicitExecutor({
     pendingElicits: pendingElicits,
     registry: pluginRegistry,
-    dispatchEmissionPatch,
+    dispatchLocalEmissionAction,
     respondToElicit,
   });
 
@@ -584,10 +545,6 @@ export function useChatSession(options: UseChatSessionOptions = {}): UseChatSess
     send,
     abort,
     reset,
-    capabilities: state.capabilities,
-    pendingApprovals,
-    approve,
-    deny,
     toolEmissions,
     respondToEmission,
   };

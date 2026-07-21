@@ -23,7 +23,6 @@ export type {
 } from "./core-types.ts";
 import type { ConversationReplayToolTrace } from "./session/streaming.ts";
 
-// Re-export from session
 export type {
   AgUiCheckpoint,
   AgUiCustomState,
@@ -32,16 +31,14 @@ export type {
   ConversationReplayToolTrace,
   StreamResult,
   StreamCompleteResult,
-  ConversationStateStreamEvent,
   StreamEvent,
   Streamer,
   MessageRenderer,
-  PatchTransform,
+  ChatEventTransform,
   SessionOptions,
   ChatCommand,
 } from "./session/index.ts";
 
-// Re-export from state
 export type {
   TimelineUserMessage,
   TimelineAssistantText,
@@ -51,51 +48,15 @@ export type {
   TimelineItem,
   TimelineToolCallGroup,
   GroupedTimelineItem,
-  PendingClientToolState,
   ChatState,
+  ChatStateEvent,
+  LocalChatAction,
+  LocalEmissionAction,
   ToolEmissionState,
   ToolEmissionTrackingState,
 } from "./state/index.ts";
 
 export { groupTimelineByToolCall, initialChatState } from "./state/index.ts";
-
-// Re-export from patches
-export type {
-  // Core patches
-  SessionInfoPatch,
-  UserMessagePatch,
-  AssistantMessagePatch,
-  StreamingStartPatch,
-  StreamingTextPatch,
-  StreamingReasoningPatch,
-  StreamingEndPatch,
-  ToolCallStartPatch,
-  ToolCallResultPatch,
-  ToolCallErrorPatch,
-  AbortCompletePatch,
-  ErrorPatch,
-  ResetPatch,
-  CorePatch,
-  // Buffer patches
-  BufferSettledPatch,
-  BufferPendingPatch,
-  BufferRawPatch,
-  BufferRenderablePatch,
-  BufferPatch,
-  // Client tool patches
-  ClientToolAwaitingApprovalPatch,
-  ClientToolExecutingPatch,
-  ClientToolCompletePatch,
-  ClientToolErrorPatch,
-  ClientToolDeniedPatch,
-  ClientToolProgressPatch,
-  ClientToolPermissionRequestPatch,
-  ClientToolPatch,
-  // Union
-  ChatPatch,
-} from "./patches/index.ts";
-
-export { isCorePatch, isBufferPatch, isClientToolPatch } from "./patches/index.ts";
 
 // =============================================================================
 // MESSAGE TYPES (defined here - core to the chat protocol)

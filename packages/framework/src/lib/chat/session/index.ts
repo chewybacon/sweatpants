@@ -46,10 +46,7 @@ export type {
   StreamResult,
   StreamCompleteResult,
   StreamElicitResult,
-  ConversationStateStreamEvent,
   ElicitRequestStreamEvent,
-  ToolSessionStatusStreamEvent,
-  ToolSessionErrorStreamEvent,
   StreamEvent,
 } from "./streaming.ts";
 
@@ -58,7 +55,7 @@ export type {
   StreamEventEntry,
   Streamer,
   MessageRenderer,
-  PatchTransform,
+  ChatEventTransform,
   SessionOptions,
   ChatCommand,
 } from "./options.ts";

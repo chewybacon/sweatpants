@@ -149,22 +149,7 @@ function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(
 }
 
 function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
-  switch ((event as { type: string }).type) {
-    case "tool_session_error":
-      return {
-        type: "RUN_ERROR",
-        message: (event as { message?: string }).message ?? "Tool session failed",
-        code: "TOOL_RESUME_FAILED",
-      };
-    case "tool_session_status":
-      return (event as { status?: string }).status === "aborted"
-        ? { type: "RUN_ERROR", message: "Tool execution aborted", code: "RUN_ABORTED" }
-        : null;
-    case "session_info":
-    case "elicit_request":
-    case "conversation_state":
-    case "ag_ui_checkpoint":
-      return null;
+  switch (event.type) {
     case "RUN_FINISHED": {
       const runFinished = event as Extract<StreamEvent, { type: "RUN_FINISHED" }>;
       if (runFinished.outcome?.type !== "interrupt") {
@@ -1058,8 +1043,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
 
       // Get session registry from durable streams context
       log.debug("getting session registry");
-      const registry: SessionRegistry<StreamEvent> =
-        yield* useSessionRegistry<StreamEvent>();
+      const registry: SessionRegistry<StreamEvent> = yield* useSessionRegistry<StreamEvent>();
       log.debug("session registry acquired");
 
       const activeToolRuntime = yield* ToolRuntimeContext.get();

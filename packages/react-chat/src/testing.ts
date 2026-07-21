@@ -1,107 +1,88 @@
-import type { Operation } from 'effection'
-import { createSignal, each } from 'effection'
-import type { StreamEvent, Streamer, StreamResult } from './types.ts'
+import type { Operation } from "effection";
+import { createSignal, each } from "effection";
+import type { ChatSessionStreamEvent, Streamer, StreamResult } from "./types.ts";
 
 export interface TestStreamerControls {
-  emit(event: StreamEvent): Operation<void>
-  complete(finalText: string): Operation<void>
-  error(message: string, recoverable?: boolean): Operation<void>
-  waitForStart(): Promise<void>
+  emit(event: ChatSessionStreamEvent): Operation<void>;
+  complete(finalText: string): Operation<void>;
+  error(message: string): Operation<void>;
+  waitForStart(): Promise<void>;
 }
-
 export interface TestStreamer {
-  streamer: Streamer
-  controls: TestStreamerControls
+  streamer: Streamer;
+  controls: TestStreamerControls;
 }
 
 export function createTestStreamer(): TestStreamer {
-  type InternalEvent = StreamEvent | { type: '__complete__'; text: string }
-  const eventSignal = createSignal<InternalEvent, void>()
-
-  let resolveStart: () => void
+  type InternalEvent = ChatSessionStreamEvent | { type: "__complete__"; text: string };
+  const signal = createSignal<InternalEvent, void>();
+  let resolveStart!: () => void;
   const startPromise = new Promise<void>((resolve) => {
-    resolveStart = resolve
-  })
+    resolveStart = resolve;
+  });
 
-  let finalText = ''
+  const streamer: Streamer = function* (_messages, events): Operation<StreamResult> {
+    const threadId = "test-thread";
+    const runId = crypto.randomUUID();
+    let finalText = "";
+    resolveStart();
+    yield* events.send({ type: "RUN_STARTED", threadId, runId });
 
-  const streamer: Streamer = function* (_messages, patches, _options): Operation<StreamResult> {
-    resolveStart()
-
-    for (const event of yield* each(eventSignal)) {
-      if (event.type === '__complete__') {
-        finalText = event.text
-        break
+    for (const event of yield* each(signal)) {
+      if (event.type === "__complete__") {
+        finalText = event.text || finalText;
+        if (event.text) {
+          const messageId = `assistant:${runId}`;
+          yield* events.send({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
+          yield* events.send({ type: "TEXT_MESSAGE_CONTENT", messageId, delta: event.text });
+          yield* events.send({ type: "TEXT_MESSAGE_END", messageId });
+        }
+        yield* events.send({ type: "RUN_FINISHED", threadId, runId, outcome: { type: "success" } });
+        break;
       }
-
-      switch (event.type) {
-        case 'session_info':
-          yield* patches.send({
-            type: 'session_info',
-            capabilities: event.capabilities,
-            persona: event.persona,
-          })
-          break
-        case 'ag_ui_text_message_content':
-          finalText += event.delta
-          yield* patches.send({ type: 'streaming_text', content: event.delta })
-          break
-        case 'thinking':
-          yield* patches.send({ type: 'streaming_reasoning', content: event.content })
-          break
-        case 'ag_ui_tool_call_result':
-          yield* patches.send({ type: 'tool_call_result', id: event.toolCallId, result: event.content })
-          break
-        case 'ag_ui_tool_call_error':
-          yield* patches.send({ type: 'tool_call_error', id: event.toolCallId, error: event.message })
-          break
-        case 'error':
-          yield* patches.send({ type: 'error', message: event.message })
-          if (!event.recoverable) throw new Error(event.message)
-          break
-        default:
-          break
-      }
-
-      yield* each.next()
+      if (event.type === "TEXT_MESSAGE_CONTENT") finalText += event.delta;
+      yield* events.send(event);
+      if (event.type === "RUN_ERROR") throw new Error(event.message);
+      yield* each.next();
     }
+    return { type: "complete", text: finalText };
+  };
 
-    return { type: 'complete', text: finalText }
-  }
-
-  const controls: TestStreamerControls = {
-    *emit(event: StreamEvent) {
-      eventSignal.send(event)
+  return {
+    streamer,
+    controls: {
+      *emit(event) {
+        signal.send(event);
+      },
+      *complete(text) {
+        signal.send({ type: "__complete__", text });
+      },
+      *error(message) {
+        signal.send({ type: "RUN_ERROR", message });
+      },
+      waitForStart() {
+        return startPromise;
+      },
     },
-    *complete(text: string) {
-      eventSignal.send({ type: '__complete__', text })
-    },
-    *error(message: string, recoverable = false) {
-      eventSignal.send({ type: 'error', message, recoverable })
-      if (!recoverable) eventSignal.send({ type: '__complete__', text: '' })
-    },
-    waitForStart() {
-      return startPromise
-    },
-  }
-
-  return { streamer, controls }
+  };
 }
 
-export function createImmediateStreamer(events: StreamEvent[], finalText: string): Streamer {
-  return function* (_messages, patches, _options) {
-    for (const event of events) {
-      switch (event.type) {
-        case 'ag_ui_text_message_content':
-          yield* patches.send({ type: 'streaming_text', content: event.delta })
-          break
-        case 'thinking':
-          yield* patches.send({ type: 'streaming_reasoning', content: event.content })
-          break
-        default:
-          break
-      }
+export function createImmediateStreamer(
+  sourceEvents: ChatSessionStreamEvent[],
+  finalText: string,
+): Streamer {
+  return function* (_messages, events) {
+    const threadId = "test-thread";
+    const runId = crypto.randomUUID();
+    yield* events.send({ type: "RUN_STARTED", threadId, runId });
+    for (const event of sourceEvents) yield* events.send(event);
+    if (finalText) {
+      const messageId = `assistant:${runId}`;
+      yield* events.send({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
+      yield* events.send({ type: "TEXT_MESSAGE_CONTENT", messageId, delta: finalText });
+      yield* events.send({ type: "TEXT_MESSAGE_END", messageId });
     }
-    return { type: 'complete', text: finalText }
-  }
+    yield* events.send({ type: "RUN_FINISHED", threadId, runId, outcome: { type: "success" } });
+    return { type: "complete", text: finalText };
+  };
 }
