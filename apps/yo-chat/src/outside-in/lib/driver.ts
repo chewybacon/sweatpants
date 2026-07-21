@@ -10,7 +10,7 @@
  * No browser, no DOM, no `networkidle`. The driver never fakes model responses;
  * it only supplies the elicit answers a human would click.
  */
-import { run, sleep, spawn, each, type Operation } from "effection";
+import { call, run, sleep, spawn, each, type Operation } from "effection";
 import {
   createChatSession,
   type ChatState,
@@ -28,7 +28,7 @@ export type ElicitReply =
   | null;
 
 /** Given a pending elicit (with its context), decide how to answer. */
-export type ElicitResponder = (elicit: ElicitState) => ElicitReply;
+export type ElicitResponder = (elicit: ElicitState) => ElicitReply | Promise<ElicitReply>;
 
 export interface ChatTurn {
   /** User message content for this turn. */
@@ -38,10 +38,12 @@ export interface ChatTurn {
    * declining every elicit, which keeps flows that expect no elicits honest.
    */
   respondToElicit?: ElicitResponder;
+  /** Test-driver lifecycle hook invoked after this turn reaches a quiet boundary. */
+  onSettled?: (transcript: Transcript) => void;
 }
 
 export interface RunChatFlowOptions {
-  turns: ChatTurn[];
+  turns: Iterable<ChatTurn> | AsyncIterable<ChatTurn>;
   /**
    * Optional conversation ID. When omitted, the driver generates one so the
    * fold session persists across turns. The server also mints one when absent
@@ -88,6 +90,22 @@ function hasUnresolvedElicit(state: ChatState): boolean {
     }
   }
   return false;
+}
+
+function asyncTurnIterator(
+  turns: Iterable<ChatTurn> | AsyncIterable<ChatTurn>,
+): AsyncIterator<ChatTurn> {
+  const asyncFactory = (turns as AsyncIterable<ChatTurn>)[Symbol.asyncIterator];
+  if (typeof asyncFactory === "function") {
+    return asyncFactory.call(turns);
+  }
+  const iterator = (turns as Iterable<ChatTurn>)[Symbol.iterator]();
+  return {
+    next: async () => iterator.next(),
+    ...(iterator.return
+      ? { return: async () => iterator.return!() as IteratorResult<ChatTurn> }
+      : {}),
+  };
 }
 
 /**
@@ -164,8 +182,27 @@ export async function runChatFlow(
 
       const deadline = Date.now() + timeoutMs;
       const respondedElicits = new Set<string>();
+      const turns = asyncTurnIterator(options.turns);
 
-      for (const turn of options.turns) {
+      function currentTranscript(): Transcript {
+        const finalState = stateRef.current;
+        const hadError = collector
+          .build("success")
+          .events.some((event) => event.type === "run_error");
+        const outcome: Transcript["outcome"] = hadError
+          ? "error"
+          : finalState && hasUnresolvedElicit(finalState)
+            ? "interrupt"
+            : "success";
+        return collector.build(outcome);
+      }
+
+      while (true) {
+        const nextTurn = yield* call(() => turns.next());
+        if (nextTurn.done) {
+          break;
+        }
+        const turn = nextTurn.value;
         const respond = turn.respondToElicit ?? (() => ({ action: "decline" }));
         session.dispatch({ type: "send", content: turn.message });
         // Give the send a beat to flip isStreaming before we poll for settle.
@@ -197,7 +234,7 @@ export async function runChatFlow(
               elicitId: pending.elicitId,
               toolName: pending.toolName,
             });
-            const reply = respond(pending);
+            const reply = yield* call(() => Promise.resolve(respond(pending)));
             if (reply === null) {
               // Caller chose to leave this interrupt unanswered; end the turn
               // immediately. The next free-form send is expected to cancel it
@@ -229,19 +266,10 @@ export async function runChatFlow(
           }
           yield* sleep(pollMs);
         }
+        turn.onSettled?.(currentTranscript());
       }
 
-      const finalState = stateRef.current;
-      const hadError = collector
-        .build("success")
-        .events.some((event) => event.type === "run_error");
-      const outcome: Transcript["outcome"] = hadError
-        ? "error"
-        : finalState && hasUnresolvedElicit(finalState)
-          ? "interrupt"
-          : "success";
-
-      return collector.build(outcome);
+      return currentTranscript();
     }),
   );
 }
