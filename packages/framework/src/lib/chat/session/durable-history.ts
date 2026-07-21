@@ -10,6 +10,7 @@ import type { Message } from "../types.ts";
 import type { ChatEventTransform, StreamEventEntry } from "./options.ts";
 import type { ConversationReplayState, StreamEvent } from "./streaming.ts";
 import { activitySnapshotToPluginReplayTrace } from "./plugin-replay.ts";
+import { renderReplayMessageParts } from "./replay-render.ts";
 
 export interface DurableFrame {
   lsn: number;
@@ -37,19 +38,29 @@ function replayableTool(value: unknown): value is ReplayableTool {
 }
 
 export function deduplicateMessages(messages: Message[]): Message[] {
-  const keys = new Map<string, number>();
+  const positions = new Map<string, number>();
   const result: Message[] = [];
   for (const message of messages) {
-    const key = message.id
-      ? `id:${message.id}`
-      : message.role === "tool" && message.tool_call_id
+    const key =
+      message.role === "tool" && message.tool_call_id
         ? `tool:${message.tool_call_id}`
-        : undefined;
-    if (key && keys.has(key)) {
-      result[keys.get(key)!] = message;
-    } else {
-      if (key) keys.set(key, result.length);
+        : message.role === "assistant" && message.tool_calls?.length
+          ? `assistant-tools:${message.tool_calls
+              .map((call) => call.id)
+              .sort()
+              .join(",")}`
+          : message.id
+            ? `id:${message.id}`
+            : undefined;
+    const existingIndex = key ? positions.get(key) : undefined;
+    if (existingIndex === undefined) {
+      if (key) positions.set(key, result.length);
       result.push(message);
+      continue;
+    }
+    const existing = result[existingIndex]!;
+    if (message.role === "tool" && message.replay && !existing.replay) {
+      result[existingIndex] = message;
     }
   }
   return result;
@@ -58,7 +69,7 @@ export function deduplicateMessages(messages: Message[]): Message[] {
 export function* replayFramesToConversation(
   frames: DurableFrame[],
   tools?: unknown[],
-  _transforms?: ChatEventTransform[],
+  transforms?: ChatEventTransform[],
   onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<DurableHistoryReplay> {
   const events: ChatStateEvent[] = [];
@@ -109,6 +120,24 @@ export function* replayFramesToConversation(
     const action: ChatStateEvent = { type: "LOCAL_REPLAY_EMISSIONS", tracking };
     events.push(action);
     state = chatReducer(state, action);
+  }
+
+  if (transforms?.length) {
+    for (const message of state.messages) {
+      if (message.role !== "assistant" || !message.content) continue;
+      const rendered = yield* renderReplayMessageParts(message.id, message.content, transforms);
+      if (!rendered) continue;
+      const toolParts = (state.finalizedParts[message.id] ?? []).filter(
+        (part) => part.type === "tool-call",
+      );
+      const action: ChatStateEvent = {
+        type: "LOCAL_FINALIZED_PARTS",
+        messageId: message.id,
+        parts: [...rendered, ...toolParts],
+      };
+      events.push(action);
+      state = chatReducer(state, action);
+    }
   }
 
   return {

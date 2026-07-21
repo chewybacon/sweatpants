@@ -13,7 +13,7 @@ This document describes the post-migration framework architecture. The framework
 @sweatpants/framework/chat
   durable chat/session runtime
   tool inventory and runtime contracts
-  AG-UI/session event projection
+  canonical AG-UI client fold
 
 @sweatpants/framework/chat/mcp-tools
   plugin registry
@@ -35,6 +35,8 @@ runtime packages
 Canonical AG-UI events are the durable wire format and the direct input to the client chat-state fold. Live streaming and durable hydration both call the same pure `chatReducer(state, event)` function; there is no intermediate framework patch vocabulary or replay-specific event mapper.
 
 Browser-only concerns use explicitly local actions (`LOCAL_*`) and never enter the durable log. These actions cover optimistic user messages, rendering frames, abort/reset state, and hydrated component attachments. Interactive component callbacks remain ephemeral React state keyed by durable tool-call and interrupt identifiers.
+
+`ChatState.messageDrafts` and `ChatState.toolCallDrafts` are reducer bookkeeping for assembling AG-UI lifecycle events. They are serializable so the fold remains pure, but UI code should treat them as internal and consume `messages`, `streaming`, and the message derivation helpers instead.
 
 AG-UI interrupts are the single mechanism for elicitation, approval, and permission requests. The framework does not maintain a separate client-tool approval protocol.
 
