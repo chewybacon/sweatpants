@@ -5,6 +5,7 @@ import {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   ProgramRuntime,
+  TOOL_OWNED_SAMPLE_CLASSIFICATION,
   assertJson,
   assertReplayedCanonicalValue,
   canonicalJson,
@@ -47,6 +48,7 @@ import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
 import {
   nativeProgramIdentities,
+  requiresFencedActivation,
   type NativeProgramIdentity,
   type ProgramDriverNativeToolComposition,
 } from "./program-driver-native-tools.ts";
@@ -410,20 +412,27 @@ function* activateProgramDriverChatEngine(
         let streamStarted = false;
         const messageId = `assistant:stream:${taskId}:${context.pullId}`;
         try {
+          const streamToOuterClient = !isToolOwnedSampleRequest(request);
           const value = yield* sampleModel(
             params,
             request,
             context.cancellation,
             context.pullId,
-            function* (text, delta) {
-              partialText = text.slice(-32_768);
-              if (!liveEvent) return;
-              if (!streamStarted) {
-                streamStarted = true;
-                yield* liveEvent({ type: "TEXT_MESSAGE_START", messageId, role: "assistant" });
-              }
-              yield* liveEvent({ type: "TEXT_MESSAGE_CONTENT", messageId, delta });
-            },
+            streamToOuterClient
+              ? function* (text, delta) {
+                  partialText = text.slice(-32_768);
+                  if (!liveEvent) return;
+                  if (!streamStarted) {
+                    streamStarted = true;
+                    yield* liveEvent({
+                      type: "TEXT_MESSAGE_START",
+                      messageId,
+                      role: "assistant",
+                    });
+                  }
+                  yield* liveEvent({ type: "TEXT_MESSAGE_CONTENT", messageId, delta });
+                }
+              : undefined,
           );
           if (streamStarted && liveEvent) {
             yield* liveEvent({ type: "TEXT_MESSAGE_END", messageId });
@@ -468,14 +477,11 @@ function* activateProgramDriverChatEngine(
       },
     },
     function* () {
-      const agentCorePlaced = [...(params.nativeTools?.bindings.values() ?? [])].some(
-        (binding) => isAgentCoreRoute(binding.route),
-      );
       return yield* runFencedActivation(
         journal.authority,
         params.conversationId,
         attach.executionEpoch,
-        agentCorePlaced,
+        requiresFencedActivation(params.nativeTools),
         function* (executionEpoch, activationOwnerId) {
           return yield* ProgramRuntime.operations.run({
             attach: { ...attach, executionEpoch },
@@ -555,6 +561,28 @@ function* activateProgramDriverChatEngine(
   return events;
 }
 
+/**
+ * Tool-owned nested samples carry an explicit provenance classification set by
+ * the foreign-tool adapter. They must never stream into the outer chat or
+ * default to the outer chat toolset.
+ */
+function isToolOwnedSampleRequest(request: ChatSampleRequest): boolean {
+  return (
+    Array.isArray(request.classifications) &&
+    request.classifications.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)
+  );
+}
+
+function isForeignSamplingRequest(request: ChatSampleRequest): boolean {
+  return (
+    isToolOwnedSampleRequest(request) ||
+    request.maxTokens !== undefined ||
+    request.modelPreferences !== undefined ||
+    request.tools !== undefined ||
+    request.schema !== undefined
+  );
+}
+
 function* sampleModel(
   params: ProgramRuntimeChatEngineParams,
   request: ChatSampleRequest,
@@ -562,11 +590,7 @@ function* sampleModel(
   pullId: string,
   onText?: (text: string, delta: string) => Operation<void>,
 ): Operation<ChatSampleResult> {
-  const foreignSamplingRequest =
-    request.maxTokens !== undefined ||
-    request.modelPreferences !== undefined ||
-    request.tools !== undefined ||
-    request.schema !== undefined;
+  const foreignSamplingRequest = isForeignSamplingRequest(request);
   const runtimeContext: RuntimeContext = {
     ...(request.systemPrompt !== undefined
       ? { systemPrompt: modelSystemPromptText(request.systemPrompt) }
@@ -1352,16 +1376,7 @@ function snapshotAssistantContent(content: AssistantMessage["content"]): Json[] 
 
 let activationOwnerCounter = 0;
 
-function isAgentCoreRoute(route: Json): boolean {
-  return Boolean(
-    route &&
-    typeof route === "object" &&
-    !Array.isArray(route) &&
-    route["driverKind"] === "agentcore",
-  );
-}
-
-/** Fences only deployments that actually install an AgentCore native driver. */
+/** Fences only deployments whose native bindings declare fenced activation. */
 function* runFencedActivation(
   authority: DurableJournalAuthorityService,
   sessionId: string,

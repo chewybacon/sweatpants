@@ -53,6 +53,7 @@ export type {
 // Options and configuration
 export type {
   StreamEventEntry,
+  ChatFetch,
   Streamer,
   MessageRenderer,
   ChatEventTransform,

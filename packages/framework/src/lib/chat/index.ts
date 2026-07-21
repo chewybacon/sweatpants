@@ -72,6 +72,7 @@ export type {
   ElicitRequestStreamEvent,
   StreamEvent as ChatSessionStreamEvent,
   StreamEventEntry,
+  ChatFetch,
   Streamer,
   MessageRenderer,
   ChatEventTransform,

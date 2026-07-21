@@ -174,6 +174,9 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
             {
               publicName: tool.name,
               tool,
+              // AgentCore evaluates programs in a remote substrate; declare the
+              // activation-safety capability instead of relying on driverKind.
+              activation: "fenced",
               route: {
                 driverKind: "agentcore",
                 journalId: agentCoreDurable.journalId,

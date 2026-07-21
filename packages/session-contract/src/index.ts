@@ -305,6 +305,7 @@ export {
 } from "./foreign-tool-contract.ts";
 export {
   FOREIGN_TOOL_ADAPTER_MANIFEST,
+  TOOL_OWNED_SAMPLE_CLASSIFICATION,
   foreignToolAdapter,
   type ForeignToolAdapter,
 } from "./foreign-tool-adapter.ts";

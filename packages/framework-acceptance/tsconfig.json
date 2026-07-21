@@ -1,0 +1,5 @@
+{
+    "extends": "@sweatpants/ts-config/tsconfig.package.json",
+    "compilerOptions": { "noEmit": true, "customConditions": ["development"] },
+    "include": ["src/**/*.ts"]
+}
