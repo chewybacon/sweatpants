@@ -63,6 +63,7 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
         return yield* registry.get(`foreign:${conversation.conversationId}:turn-0/root.0`);
       });
       expect(leaked).toBeNull();
+      expect(inspection.toolSessionIds).toEqual([]);
     },
   );
 }
@@ -136,14 +137,14 @@ async function cancelDurableNestedSample(binding: Binding): Promise<void> {
       ]);
       const nested = await nestedPromise;
       const providerAborted = nested.respond.awaitAbort();
-      await turn.cancel();
+      const cancellation = turn.cancel();
       await providerAborted;
+      await cancellation;
       await expect(turn.complete()).rejects.toThrow();
 
+      const recoveryConversation = await conversation.reopen();
+      expect(recoveryConversation.conversationId).toBe(conversation.conversationId);
       const recoveryPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const recoveryConversation = rig.chat.conversation({
-        conversationId: `post-durable-cancel-${binding}`,
-      });
       const recovery = recoveryConversation.send("RECOVER_AFTER_DURABLE_CANCEL_V1");
       await (await recoveryPromise).respond.text("DURABLE_CANCEL_RECOVERED_V1");
       expect((await recovery.complete()).text).toBe("DURABLE_CANCEL_RECOVERED_V1");

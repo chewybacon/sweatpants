@@ -269,11 +269,19 @@ export interface SessionOptions {
    */
   onTurnSettled?: (result: StreamResult) => void;
 
-  /** Called after a request task terminates with an error, after stream cleanup. */
+  /**
+   * Called after a request task terminates with an error, after stream cleanup.
+   * Request errors intentionally do not terminate the long-lived chat session;
+   * consumers observe them through RUN_ERROR/state.error and optionally this
+   * callback when they need imperative error handling.
+   */
   onRequestError?: (error: unknown) => void;
 
-  /** Called after a request task has released session ownership in its finally block. */
+  /** Called after a request task has released session ownership. */
   onRequestFinished?: () => void;
+
+  /** Called only after an explicit plugin-abort request task has fully joined. */
+  onCancellationSettled?: () => void;
 }
 
 // =============================================================================
@@ -286,7 +294,7 @@ export interface SessionOptions {
 export interface StreamChatOptions extends SessionOptions {
   replayState?: ConversationReplayState;
   /** Explicit server-side cancellation of the active Program Runtime task tree. */
-  pluginAbort?: { sessionId: string; reason?: string };
+  pluginAbort?: { sessionId?: string; reason?: string };
 
   /**
    * Elicit responses to pending elicitation requests.

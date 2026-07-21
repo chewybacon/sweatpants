@@ -35,7 +35,6 @@ import {
   type Subscription,
   type Queue,
   resource,
-  createChannel,
   action,
   spawn,
 } from "effection";
@@ -97,6 +96,8 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
 
     // State
     let status: ToolSessionStatus = "initializing";
+    let cancellationRequested = false;
+    let cancellationReason: string | undefined;
     let lsn = 0;
     const eventBuffer: ToolSessionEvent[] = [];
     const settledWaiters = new Set<(status: ToolSessionStatus) => void>();
@@ -105,11 +106,29 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
       settledWaiters.clear();
     };
 
-    // Channel for streaming events to subscribers
-    const eventChannel = createChannel<ToolSessionEvent, void>();
+    // Event-buffer waiters provide replay plus non-blocking publication. A
+    // parked session may have no live subscriber when cancellation arrives;
+    // terminal event publication must still complete synchronously.
+    const eventWaiters = new Set<() => void>();
+    let eventStreamClosed = false;
+    const notifyEventWaiters = (): void => {
+      for (const resolve of eventWaiters) resolve();
+      eventWaiters.clear();
+    };
 
     const pendingSamples = new Map<string, Queue<WireSampleResult, void>>();
     const pendingElicits = new Map<string, Queue<WireElicitResult<unknown>, void>>();
+
+    function closePendingResponses(): void {
+      for (const queue of pendingElicits.values()) {
+        queue.close(undefined);
+      }
+      for (const queue of pendingSamples.values()) {
+        queue.close(undefined);
+      }
+      pendingElicits.clear();
+      pendingSamples.clear();
+    }
 
     function nextLsn(): number {
       lsn += 1;
@@ -158,8 +177,7 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
           break;
       }
 
-      // Send to channel (for subscribers)
-      yield* eventChannel.send(fullEvent);
+      notifyEventWaiters();
     }
 
     const sessionState: WorkerSessionState = {
@@ -213,7 +231,12 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
       try {
         const result: WorkerResult<unknown> = yield* workerResult;
 
-        if (result.type === "success") {
+        if (cancellationRequested) {
+          yield* emitEvent({
+            type: "cancelled",
+            ...(cancellationReason !== undefined ? { reason: cancellationReason } : {}),
+          });
+        } else if (result.type === "success") {
           yield* emitEvent({
             type: "result",
             result: result.value,
@@ -240,7 +263,8 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
           ...(err.stack !== undefined && { stack: err.stack }),
         });
       } finally {
-        yield* eventChannel.close();
+        eventStreamClosed = true;
+        notifyEventWaiters();
       }
     });
 
@@ -262,30 +286,20 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
       },
 
       events(afterLSN?: number): Stream<ToolSessionEvent, void> {
-        // Return a stream that replays buffered events then subscribes to new ones
         return resource<Subscription<ToolSessionEvent, void>>(function* (provideStream) {
-          // Snapshot the buffer length at subscription time
-          // Events added after this point will come from the channel
-          const bufferSnapshotLength = eventBuffer.length;
-
-          // Subscribe to the channel for new events AFTER snapshotting
-          const channelSub = yield* eventChannel;
-
-          // Combine buffered events with live stream
           let bufferedIndex = afterLSN ?? 0;
-
           yield* provideStream({
-            *next() {
-              // First drain buffered events up to the snapshot point
-              if (bufferedIndex < bufferSnapshotLength) {
-                const event = eventBuffer[bufferedIndex]!;
-                bufferedIndex++;
-                return { done: false, value: event };
+            *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
+              while (bufferedIndex >= eventBuffer.length) {
+                if (eventStreamClosed) {
+                  return { done: true, value: undefined };
+                }
+                yield* action<void>((resolve) => {
+                  eventWaiters.add(resolve);
+                  return () => eventWaiters.delete(resolve);
+                });
               }
-
-              // Then read from live channel (no deduplication needed since we
-              // snapshotted the buffer before subscribing to the channel)
-              return yield* channelSub.next();
+              return { done: false, value: eventBuffer[bufferedIndex++]! };
             },
           });
         });
@@ -304,12 +318,15 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
       },
 
       *cancel(reason?: string): Operation<void> {
-        // Closing the resource will trigger worker shutdown
-        yield* emitEvent({
-          type: "cancelled",
-          ...(reason !== undefined && { reason }),
-        });
-        status = "cancelled";
+        if (isTerminalStatus(status) || cancellationRequested) {
+          return;
+        }
+        cancellationRequested = true;
+        cancellationReason = reason;
+        // Unblock the worker-side request handler. Terminal `cancelled` is
+        // published only after workerResult settles, so registry ownership
+        // cannot outrun actual worker termination.
+        closePendingResponses();
       },
 
       *emitWakeUp(): Operation<void> {
@@ -322,15 +339,9 @@ export function createWorkerToolSession(options: WorkerToolSessionOptions): Oper
     try {
       yield* provide(session);
     } finally {
-      for (const queue of pendingElicits.values()) {
-        queue.close(undefined);
-      }
-      for (const queue of pendingSamples.values()) {
-        queue.close(undefined);
-      }
-      pendingElicits.clear();
-      pendingSamples.clear();
-      yield* eventChannel.close();
+      closePendingResponses();
+      eventStreamClosed = true;
+      notifyEventWaiters();
     }
   });
 }

@@ -31,7 +31,7 @@ import {
 } from "@sweatpants/model-provider-pi-ai";
 import { createDurableToolRegistry, type ProgramDriver } from "@sweatpants/session-contract";
 import {
-  createInMemoryToolSessionStore,
+  createInMemoryToolSessionStoreWithDebug,
   createLocalWorkerDurableProgramDriver,
   createToolSessionRegistry,
   installLocalProgramToolRuntime,
@@ -178,6 +178,7 @@ export interface AcceptanceApplicationInspection {
   journalStore: ProgramDriverJournalStore;
   durableWorker: DurableWorkerMetrics;
   get toolSessionRegistry(): ToolSessionRegistry | undefined;
+  get toolSessionIds(): readonly string[];
 }
 
 export interface AcceptanceApplicationOptions {
@@ -202,6 +203,7 @@ export function createAcceptanceApplication(
     shutdownCount: 0,
   };
   let toolSessionRegistry: ToolSessionRegistry | undefined;
+  let toolSessionStore: ReturnType<typeof createInMemoryToolSessionStoreWithDebug> | undefined;
   const journalStore = createInMemoryProgramDriverJournalStore({
     keyring: createCapabilityKeyring("test-rig-acceptance", [
       {
@@ -217,6 +219,9 @@ export function createAcceptanceApplication(
     get toolSessionRegistry() {
       return toolSessionRegistry;
     },
+    get toolSessionIds() {
+      return toolSessionStore?.getSessionIds() ?? [];
+    },
   });
 
   return createChatApplication({
@@ -226,7 +231,8 @@ export function createAcceptanceApplication(
       );
       yield* ToolInventoryContext.set(inventory);
 
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+      toolSessionStore = createInMemoryToolSessionStoreWithDebug();
+      const registry = yield* createToolSessionRegistry(toolSessionStore, {
         worker: {
           workerUrl: resolveFixtureBootstrapUrl("acceptance-tool-worker-bootstrap.mjs"),
           isDev: false,

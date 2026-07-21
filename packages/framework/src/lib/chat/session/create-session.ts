@@ -1,13 +1,11 @@
 import {
   spawn,
   each,
-  createChannel,
   createSignal,
   resource,
   useScope,
   call,
   type Operation,
-  type Task,
   type Channel,
   type Signal,
   type Stream,
@@ -15,7 +13,7 @@ import {
 } from "effection";
 import { streamChatOnce } from "./stream-chat.ts";
 import type { ElicitResponseData } from "./options.ts";
-import { useTransformPipeline } from "./transforms.ts";
+import { useBufferedChannel, useTransformPipeline } from "./transforms.ts";
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ChatState } from "../state/chat-state.ts";
 import { StreamerContext, BaseUrlContext } from "./contexts.ts";
@@ -83,7 +81,7 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
   return resource(function* (provide) {
     const scope = yield* useScope();
     const commands = createSignal<ChatCommand, void>();
-    const events = createChannel<ChatStateEvent, void>();
+    const events = yield* useBufferedChannel<ChatStateEvent>();
     const stateSignal = createBufferedStateSignal<ChatState>();
 
     if (options.baseUrl) {
@@ -150,7 +148,9 @@ export function* runChatSession(
 ): Operation<void> {
   const history: Message[] = [];
   const transcriptState = createTranscriptState(history);
-  let currentRequestTask: Task<StreamResult | undefined> | null = null;
+  const currentRequest: {
+    owned: { token: symbol; halt: () => Operation<void> } | null;
+  } = { owned: null };
   const pendingElicitResponses: ElicitResponseData[] = [];
   const sentElicitResponseIds = new Set<string>();
   let pendingToolCalls: Array<{ id: string; name: string }> = [];
@@ -359,26 +359,60 @@ export function* runChatSession(
     return result!;
   }
 
-  function* monitorRequestTask(
-    task: Task<StreamResult | undefined>,
-    sessionOptions: ClientToolSessionOptions,
+  function* haltCurrentRequest(): Operation<void> {
+    const owned = currentRequest.owned;
+    if (!owned) {
+      return;
+    }
+    currentRequest.owned = null;
+    yield* owned.halt();
+  }
+
+  function* launchRequest(
+    requestOptions: Pick<StreamChatOptions, "pluginAbort"> = {},
+    lifecycle: "request" | "cancellation" = "request",
   ): Operation<void> {
-    yield* spawn(function* () {
+    // The request runs as a child task of this session so that destroying the
+    // session resource halts any in-flight request (structured teardown) and
+    // spawned work inherits session contexts (BaseUrlContext/StreamerContext).
+    const token = Symbol(lifecycle);
+    const task = yield* spawn(function* (): Operation<StreamResult | undefined> {
       try {
-        yield* task;
-      } catch {
-        // RUN_ERROR is observed by the request task; joining is the lifecycle
-        // barrier regardless of the task's success arm.
+        const result = yield* startRequest(requestOptions);
+        options.onTurnSettled?.(result);
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unknown error";
+        yield* sendEvent({ type: "LOCAL_ERROR", message });
+        options.onRequestError?.(error);
+        return undefined;
       } finally {
-        sessionOptions.onRequestFinished?.();
+        if (currentRequest.owned?.token === token) {
+          currentRequest.owned = null;
+        }
       }
     });
+    currentRequest.owned = { token, halt: () => task.halt() };
+    // Lifecycle callbacks observe task settlement (success, failure, or halt)
+    // without ever throwing back into the session command loop.
+    void Promise.resolve(task)
+      .catch(() => undefined)
+      .finally(() => {
+        try {
+          options.onRequestFinished?.();
+          if (lifecycle === "cancellation") {
+            options.onCancellationSettled?.();
+          }
+        } catch {
+          // Lifecycle callbacks must not surface as unhandled rejections.
+        }
+      });
   }
 
   for (const cmd of yield* each(commands)) {
     switch (cmd.type) {
       case "send": {
-        if (currentRequestTask) {
+        if (currentRequest.owned) {
           const partialContent = cmd.partialContent?.trim();
           if (partialContent) {
             const partialMessage = appendAssistantFinalMessage(
@@ -392,8 +426,7 @@ export function* runChatSession(
               partial: true,
             });
           }
-          yield* currentRequestTask.halt();
-          currentRequestTask = null;
+          yield* haltCurrentRequest();
         }
 
         if (pendingToolCalls.length > 0) {
@@ -431,54 +464,27 @@ export function* runChatSession(
         const userMessage = appendUserMessage(history, transcriptState, cmd.content);
         yield* sendEvent({ type: "LOCAL_USER_MESSAGE", message: userMessage });
 
-        const sendTask = yield* spawn(function* () {
-          try {
-            const result = yield* startRequest();
-            options.onTurnSettled?.(result);
-            return result;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Unknown error";
-            yield* sendEvent({ type: "LOCAL_ERROR", message });
-            options.onRequestError?.(error);
-            return undefined;
-          } finally {
-            currentRequestTask = null;
-          }
-        });
-        currentRequestTask = sendTask;
-        yield* monitorRequestTask(sendTask, options);
+        yield* launchRequest();
         break;
       }
 
       case "continue": {
-        if (currentRequestTask) {
-          yield* currentRequestTask.halt();
-          currentRequestTask = null;
+        if (currentRequest.owned) {
+          yield* haltCurrentRequest();
         }
 
-        const continueTask = yield* spawn(function* () {
-          try {
-            const result = yield* startRequest();
-            options.onTurnSettled?.(result);
-            return result;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Unknown error";
-            yield* sendEvent({ type: "LOCAL_ERROR", message });
-            options.onRequestError?.(error);
-            return undefined;
-          } finally {
-            currentRequestTask = null;
-          }
-        });
-        currentRequestTask = continueTask;
-        yield* monitorRequestTask(continueTask, options);
+        yield* launchRequest();
         break;
       }
 
       case "abort": {
-        if (currentRequestTask) {
-          yield* currentRequestTask.halt();
-          currentRequestTask = null;
+        // Request pipelines share one session event channel and must not run
+        // concurrently. Halt/join the client reader first; durable server work
+        // survives disconnect and is cancelled by the following plugin-abort
+        // request. The dedicated cancellation callback cannot be satisfied by
+        // this old request's generic monitor.
+        if (currentRequest.owned) {
+          yield* haltCurrentRequest();
         }
 
         const preservePartial = options.preservePartialOnAbort ?? true;
@@ -496,43 +502,15 @@ export function* runChatSession(
           yield* sendEvent({ type: "LOCAL_ABORT" });
         }
 
-        const cancellationTask = yield* spawn(function* () {
-          try {
-            const result = yield* startRequest({
-              pluginAbort: {
-                sessionId: conversationId ?? "active-chat-turn",
-                reason: "cancelled_by_user",
-              },
-            });
-            options.onTurnSettled?.(result);
-            return result;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : "Unknown error";
-            yield* sendEvent({ type: "LOCAL_ERROR", message });
-            options.onRequestError?.(error);
-            return undefined;
-          } finally {
-            currentRequestTask = null;
-          }
-        });
-        currentRequestTask = cancellationTask;
-        yield* spawn(function* () {
-          try {
-            yield* cancellationTask;
-          } catch {
-            // Cancellation commonly terminates with RUN_ERROR; the joined task
-            // completion, not its success arm, is the lifecycle barrier.
-          } finally {
-            options.onRequestFinished?.();
-          }
-        });
+        // Program Runtime cancellation targets the active durable root for the
+        // conversation; no fabricated ToolSession identifier crosses the wire.
+        yield* launchRequest({ pluginAbort: { reason: "cancelled_by_user" } }, "cancellation");
         break;
       }
 
       case "reset": {
-        if (currentRequestTask) {
-          yield* currentRequestTask.halt();
-          currentRequestTask = null;
+        if (currentRequest.owned) {
+          yield* haltCurrentRequest();
         }
         history.length = 0;
         pendingElicitResponses.length = 0;

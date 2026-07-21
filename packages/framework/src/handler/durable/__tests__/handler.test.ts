@@ -794,6 +794,32 @@ describe("Durable Chat Handler", () => {
       expect(result.toolResults?.[0]?.content).toContain("Mock result for: NYC to LAX");
     });
 
+    it("should reject ambiguous generated tool-name aliases with candidates", function* () {
+      const first = createMockTool("book-flight_first", "First flight tool");
+      const second = createMockTool("book-flight_second", "Second flight tool");
+      const provider = createMockProvider({
+        responses: "",
+        toolCalls: [{ id: "call-ambiguous", name: "book-flight", arguments: { input: "NYC" } }],
+      });
+      const handler = createTestDurableChatHandler({
+        setup: createTestHooks(provider, [first, second]),
+        maxToolIterations: 1,
+      });
+
+      const { result } = yield* call(() =>
+        makeRequest(handler, [{ id: "user:ambiguous", role: "user", content: "Book" }], {
+          enabledTools: true,
+        }),
+      );
+
+      expect(result.error).toMatchObject({
+        type: "RUN_ERROR",
+        code: "ambiguous_tool_alias",
+      });
+      expect(result.error?.message).toContain("book-flight_first");
+      expect(result.error?.message).toContain("book-flight_second");
+    });
+
     it("should fail with a stable code when the provider names an unsupported tool", function* () {
       const echoTool = createMockTool("echo", "Echoes input");
       const provider = createMockProvider({

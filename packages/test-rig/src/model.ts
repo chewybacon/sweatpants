@@ -278,12 +278,21 @@ export async function startModelSimulator(
             content_index: 0,
             part: { type: "output_text", text: "", annotations: [] },
           });
-          let index = 0,
-            text = "",
-            done = false;
-          const emit = () => {
+          let index = 0;
+          let text = "";
+          let terminal: "finished" | "failed" | "disconnected" | undefined;
+          const assertStreamOpen = (action: string) => {
+            if (terminal) {
+              throw poison(
+                new Error(
+                  `duplicate_barrier_resolution: cannot ${action}; stream already ${terminal}`,
+                ),
+              );
+            }
+          };
+          const emitUnchecked = () => {
             if (index >= chunks.length) {
-              throw new Error("duplicate_barrier_resolution: no text chunk remains");
+              throw poison(new Error("duplicate_barrier_resolution: no text chunk remains"));
             }
             const delta = chunks[index++]!;
             text += delta;
@@ -296,14 +305,16 @@ export async function startModelSimulator(
               delta,
             });
           };
+          const emit = () => {
+            assertStreamOpen("release a chunk");
+            emitUnchecked();
+          };
           const end = () => {
-            if (done) {
-              throw poison(new Error("duplicate_barrier_resolution: stream already finished"));
-            }
-            done = true;
+            assertStreamOpen("finish");
             while (index < chunks.length) {
-              emit();
+              emitUnchecked();
             }
+            terminal = "finished";
             sse(res, {
               type: "response.output_text.done",
               sequence_number: sequence++,
@@ -325,7 +336,17 @@ export async function startModelSimulator(
             });
             finish([item]);
           };
-          return { emit, end };
+          const fail = (error: SimulatedProviderError) => {
+            assertStreamOpen("fail");
+            terminal = "failed";
+            failResponse(error);
+          };
+          const disconnect = () => {
+            assertStreamOpen("disconnect");
+            terminal = "disconnected";
+            disconnectResponse();
+          };
+          return { emit, end, fail, disconnect };
         };
         const emitToolCalls = (
           calls: readonly {
@@ -465,11 +486,11 @@ export async function startModelSimulator(
                 },
                 async fail(error) {
                   assertActive();
-                  failResponse(error);
+                  stream.fail(error);
                 },
                 async disconnect() {
                   assertActive();
-                  disconnectResponse();
+                  stream.disconnect();
                 },
               };
             }) as PendingModelRequest["respond"]["text"],
@@ -516,7 +537,6 @@ export async function startModelSimulator(
                   pending.delete(handle);
                   resolve();
                 };
-                req.once("aborted", complete);
                 res.once("close", complete);
               });
             },
