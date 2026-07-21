@@ -18,7 +18,7 @@ import {
   createWorkerToolSession,
 } from "@sweatpants/tool-runtime-local";
 import { calculator } from "@/tools/calculator";
-import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
+import { yoChatGeneratedToolSessionWorkerConfig } from "@/server/tool-worker-config";
 import type { ToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
 
 const PROBE_WORKER_URL = new URL("./lib/worker-probe-bootstrap.mjs", import.meta.url);
@@ -64,7 +64,7 @@ describe("outside-in worker boundary (Tier A)", () => {
   it("executes the generated calculator tool in the real worker", async () => {
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        worker: yoChatToolSessionWorkerConfig,
+        worker: yoChatGeneratedToolSessionWorkerConfig,
       });
       const [start] = createToolSessionForeignEffectRegistrations({
         registry,
@@ -87,8 +87,11 @@ describe("outside-in worker boundary (Tier A)", () => {
         },
       );
       expect(disposition).toMatchObject({
-        type: "completed",
-        result: { result: 4, error: null },
+        status: "ok",
+        value: {
+          type: "completed",
+          result: { result: 4, error: null },
+        },
       });
     });
   }, 30_000);

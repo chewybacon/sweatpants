@@ -1075,6 +1075,9 @@ importers:
       '@sweatpants/model-provider-pi-ai':
         specifier: workspace:*
         version: link:../model-provider-pi-ai
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
       '@sweatpants/test-rig':
         specifier: workspace:*
         version: link:../test-rig

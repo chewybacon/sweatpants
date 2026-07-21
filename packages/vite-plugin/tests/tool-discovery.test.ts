@@ -826,7 +826,10 @@ describe("integration: toolDiscoveryPlugin", () => {
     try {
       await writeToolFile(
         "calculator.ts",
-        `export const calculator = createTool('calculator').build()`,
+        `export const calculator = createTool('calculator')
+          .description('Calculator')
+          .parameters({})
+          .execute(function* () { return { result: 4 } })`,
       );
 
       const plugin = toolDiscoveryPlugin({
@@ -847,12 +850,38 @@ describe("integration: toolDiscoveryPlugin", () => {
 
       const worker = await readWorker();
       expect(worker).toContain("import { calculator } from '../tools/calculator.ts'");
-      expect(worker).toContain("{ name: 'calculator', handler: function*");
-      expect(worker).toContain("typeof tool === 'function' && 'capabilities' in tool");
-      expect(worker).toContain("const invoke = yield* (tool as any)(ctx)");
-      expect(worker).toContain("return yield* invoke(params)");
-      expect(worker).toContain("createWorkerToolRegistry");
-      expect(worker).toContain("runWorker");
+      expect(worker).toContain("await runToolWorkerEntry([");
+      expect(worker).toContain("  calculator");
+      expect(worker).not.toContain("as any");
+      expect(worker).not.toContain("'capabilities' in tool");
+      expect(worker).not.toContain("createWorkerToolRegistry");
+      expect(worker).not.toContain("runWorker(registry)");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects legacy build-style tools when worker generation is enabled", async () => {
+    await setupTempProject();
+
+    try {
+      await writeToolFile("legacy.ts", `export const legacy = createTool('legacy').build()`);
+      const plugin = toolDiscoveryPlugin({
+        dir: "src/tools",
+        outFile: "src/__generated__/tool-registry.gen.ts",
+        workerOutFile: "src/__generated__/tool-worker.gen.ts",
+        generateWorker: true,
+        pattern: "**/*.{ts,tsx}",
+        logLevel: "silent",
+      });
+      if (plugin.configResolved) {
+        (plugin.configResolved as (config: { root: string }) => void)({ root: tempDir });
+      }
+
+      await expect((plugin.buildStart as () => Promise<void>)()).rejects.toThrow(
+        /Unsupported legacy worker tool.*\.build\(\).*\.description\(\.\.\.\)\.parameters\(\.\.\.\)\.execute/s,
+      );
+      await expect(readWorker()).rejects.toThrow();
     } finally {
       await cleanup();
     }

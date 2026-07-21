@@ -268,6 +268,12 @@ export interface SessionOptions {
    * test drivers that must not race the next turn against history projection.
    */
   onTurnSettled?: (result: StreamResult) => void;
+
+  /** Called after a request task terminates with an error, after stream cleanup. */
+  onRequestError?: (error: unknown) => void;
+
+  /** Called after a request task has released session ownership in its finally block. */
+  onRequestFinished?: () => void;
 }
 
 // =============================================================================
@@ -279,6 +285,8 @@ export interface SessionOptions {
  */
 export interface StreamChatOptions extends SessionOptions {
   replayState?: ConversationReplayState;
+  /** Explicit server-side cancellation of the active Program Runtime task tree. */
+  pluginAbort?: { sessionId: string; reason?: string };
 
   /**
    * Elicit responses to pending elicitation requests.

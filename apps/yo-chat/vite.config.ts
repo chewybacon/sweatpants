@@ -80,7 +80,13 @@ const config = defineConfig({
     // Exclude Playwright e2e tests from Vitest.
     // The outside-in HTTP tier is excluded from the default (hermetic) run and
     // is run selectively via vitest.outside-in.config.ts.
-    exclude: ["**/node_modules/**", "**/dist/**", "**/e2e/**", "**/outside-in/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/e2e/**",
+      "**/outside-in/**",
+      "**/*.external.acceptance.test.ts",
+    ],
   },
 });
 

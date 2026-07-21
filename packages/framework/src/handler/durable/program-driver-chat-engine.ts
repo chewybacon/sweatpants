@@ -259,7 +259,7 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
       });
       const catalogEntry = input.catalog.entries[call.target];
       if (!catalogEntry) {
-        throw new CrankError("unknown_target", `Tool ${call.target} is outside the bound catalog`);
+        throw new CrankError("foreign_tool_not_found", `Tool not found: ${call.target}`);
       }
       const result =
         catalogEntry.kind === "program"
@@ -412,7 +412,12 @@ function* activateProgramDriverChatEngine(
         let streamStarted = false;
         const messageId = `assistant:stream:${taskId}:${context.pullId}`;
         try {
-          const streamToOuterClient = !isToolOwnedSampleRequest(request);
+          // Runtime task identity is authoritative provenance for crank-native
+          // child sampling: only the root chat task may stream model deltas to
+          // the outer client. Foreign ToolSession samples retain their explicit
+          // classification because they cross a separate adapter boundary.
+          const streamToOuterClient =
+            context.taskId === taskId && !isToolOwnedSampleRequest(request);
           const value = yield* sampleModel(
             params,
             request,
@@ -989,6 +994,26 @@ function projectRecords(
       });
     }
   }
+  const errored = [...records]
+    .reverse()
+    .find(
+      (record) => record.payload.type === "TaskClosed" && record.payload.outcome.status === "error",
+    );
+  if (errored?.payload.type === "TaskClosed" && errored.payload.outcome.status === "error") {
+    for (const pending of unfinishedToolCalls(allRecords)) {
+      if (activeToolCalls.delete(pending.callId)) {
+        events.push({ type: "TOOL_CALL_END", toolCallId: pending.callId });
+      }
+      events.push({
+        type: "TOOL_CALL_RESULT",
+        messageId: `tool:${pending.callId}:error`,
+        toolCallId: pending.callId,
+        toolCallName: pending.tool,
+        content: JSON.stringify({ status: "error", error: errored.payload.outcome.error }),
+        role: "tool",
+      });
+    }
+  }
   return events;
 }
 
@@ -1407,7 +1432,10 @@ function resolveOuterToolTarget(requested: string, tools: ReadonlyArray<{ name: 
   if (aliases.length === 1) {
     return aliases[0]!.name;
   }
-  throw new CrankError("foreign_tool_not_found", `Tool not found: ${requested}`);
+  // Preserve the provider's requested target so the root program can emit a
+  // normal tool_started record before rejecting it at the bound catalog. That
+  // produces a causal call/error-result pair for follow-up history.
+  return requested;
 }
 
 function sampleTools(tools: Json[]) {

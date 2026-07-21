@@ -1,6 +1,7 @@
 export * from "./model.ts";
 export * from "./history.ts";
 export * from "./chat.ts";
+export * from "./transport.ts";
 
 import {
   createOpenAiResponsesModel,
@@ -12,6 +13,7 @@ import {
 import { call, createScope, type Operation } from "effection";
 import { createChatRuntime, type ChatFetch, type ChatHandle, type ChatRuntime } from "./chat.ts";
 import { startModelSimulator, type ModelHandle, type ModelSimulator } from "./model.ts";
+import { createStreamTransportHandle, type StreamTransportHandle } from "./transport.ts";
 
 export interface TestApplication {
   handle(request: Request): Promise<Response>;
@@ -49,6 +51,7 @@ export interface TestRigOptions {
 export interface TestRig {
   readonly model: ModelHandle;
   readonly chat: ChatHandle;
+  readonly streams: StreamTransportHandle;
   readonly fetch: ChatFetch;
   readonly state: "active" | "poisoned" | "cancelling" | "closed";
   verifyAndClose(): Promise<void>;
@@ -299,6 +302,12 @@ export async function withTestRig<T>(
           throw root;
         }
         return chatRuntime!.handle;
+      },
+      get streams() {
+        if (root) {
+          throw root;
+        }
+        return createStreamTransportHandle(binding!.fetch, barrierTimeoutMs);
       },
       get fetch() {
         if (root) {

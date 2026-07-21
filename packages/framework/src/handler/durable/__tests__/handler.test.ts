@@ -758,7 +758,13 @@ describe("Durable Chat Handler", () => {
       );
 
       expect(serverCalls).toBe(0);
-      expect(result.toolResults).toBeNull();
+      expect(result.toolResults).toEqual([
+        expect.objectContaining({
+          id: "call-missing-from",
+          name: "book_flight",
+          content: expect.stringMatching(/TOOL_PARAMETER_VALIDATION_FAILED/),
+        }),
+      ]);
       expect(result.error).toMatchObject({
         type: "RUN_ERROR",
         code: "TOOL_PARAMETER_VALIDATION_FAILED",
@@ -816,8 +822,16 @@ describe("Durable Chat Handler", () => {
         code: "foreign_tool_not_found",
       });
       expect(result.error?.message).toBe("Tool not found: unsupported_tool");
-      expect(result.toolCalls).toBeNull();
-      expect(result.toolResults).toBeNull();
+      expect(result.toolCalls).toEqual([
+        expect.objectContaining({ id: "call-unsupported", name: "unsupported_tool" }),
+      ]);
+      expect(result.toolResults).toEqual([
+        expect.objectContaining({
+          id: "call-unsupported",
+          name: "unsupported_tool",
+          content: expect.stringMatching(/error|foreign_tool_not_found/i),
+        }),
+      ]);
       expect(result.complete).toBeNull();
     });
 

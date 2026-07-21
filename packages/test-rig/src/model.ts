@@ -21,15 +21,29 @@ export interface SimulatedToolCall {
   name: string;
   arguments: Record<string, unknown>;
 }
+export interface SimulatedProviderError {
+  code: string;
+  message: string;
+  status?: number;
+}
 export interface TextStreamController {
   releaseNext(): Promise<void>;
   finish(): Promise<void>;
+  fail(error: SimulatedProviderError): Promise<void>;
+  disconnect(): Promise<void>;
 }
 export interface PendingModelRequest extends CapturedModelRequest {
   readonly respond: {
     text(text: string): Promise<void>;
     text(options: { chunks: readonly string[]; release: "manual" }): Promise<TextStreamController>;
-    toolCalls(calls: readonly SimulatedToolCall[]): Promise<void>;
+    toolCalls(
+      calls: readonly SimulatedToolCall[],
+      options?: { argumentChunkSize?: number },
+    ): Promise<void>;
+    textAndToolCalls(text: string, calls: readonly SimulatedToolCall[]): Promise<void>;
+    malformedToolCall(call: { id: string; name: string; arguments: string }): Promise<void>;
+    error(error: SimulatedProviderError): Promise<void>;
+    awaitAbort(): Promise<void>;
   };
 }
 export interface ModelHandle {
@@ -77,8 +91,9 @@ function sse(res: { write(chunk: string): unknown }, event: Record<string, unkno
 function envelope(
   id: string,
   model: string,
-  status: "in_progress" | "completed",
+  status: "in_progress" | "completed" | "failed",
   output: unknown[],
+  failure?: SimulatedProviderError,
 ) {
   return {
     id,
@@ -87,7 +102,9 @@ function envelope(
     status,
     model,
     output,
-    error: null,
+    error: failure
+      ? { code: failure.code, type: "simulator_error", message: failure.message.slice(0, 2000) }
+      : null,
     incomplete_details: null,
     instructions: null,
     metadata: {},
@@ -225,6 +242,19 @@ export async function startModelSimulator(
           res.end();
           pending.delete(handle);
         };
+        const failResponse = (error: SimulatedProviderError) => {
+          sse(res, {
+            type: "response.failed",
+            sequence_number: sequence++,
+            response: envelope(responseId, model, "failed", [], error),
+          });
+          res.end();
+          pending.delete(handle);
+        };
+        const disconnectResponse = () => {
+          pending.delete(handle);
+          res.destroy();
+        };
         const textSetup = (chunks: readonly string[]) => {
           const id = `msg_${crypto.randomUUID()}`;
           const base = {
@@ -297,6 +327,123 @@ export async function startModelSimulator(
           };
           return { emit, end };
         };
+        const emitToolCalls = (
+          calls: readonly {
+            id: string;
+            name: string;
+            argumentsJson: string;
+          }[],
+          argumentChunkSize?: number,
+          leadingText?: string,
+        ) => {
+          const output: unknown[] = [];
+          let outputOffset = 0;
+          if (leadingText !== undefined) {
+            const id = `msg_${crypto.randomUUID()}`;
+            const item = {
+              id,
+              type: "message",
+              role: "assistant",
+              status: "completed",
+              content: [{ type: "output_text", text: leadingText, annotations: [] }],
+            };
+            sse(res, {
+              type: "response.output_item.added",
+              sequence_number: sequence++,
+              output_index: 0,
+              item: { ...item, status: "in_progress", content: [] },
+            });
+            sse(res, {
+              type: "response.content_part.added",
+              sequence_number: sequence++,
+              item_id: id,
+              output_index: 0,
+              content_index: 0,
+              part: { type: "output_text", text: "", annotations: [] },
+            });
+            sse(res, {
+              type: "response.output_text.delta",
+              sequence_number: sequence++,
+              item_id: id,
+              output_index: 0,
+              content_index: 0,
+              delta: leadingText,
+            });
+            sse(res, {
+              type: "response.output_text.done",
+              sequence_number: sequence++,
+              item_id: id,
+              output_index: 0,
+              content_index: 0,
+              text: leadingText,
+            });
+            sse(res, {
+              type: "response.output_item.done",
+              sequence_number: sequence++,
+              output_index: 0,
+              item,
+            });
+            output.push(item);
+            outputOffset = 1;
+          }
+          for (const [i, call] of calls.entries()) {
+            const outputIndex = i + outputOffset;
+            const id = `fc_${crypto.randomUUID()}`;
+            const base = {
+              id,
+              type: "function_call",
+              call_id: call.id,
+              name: call.name,
+              arguments: "",
+              status: "in_progress",
+            };
+            sse(res, {
+              type: "response.output_item.added",
+              sequence_number: sequence++,
+              output_index: outputIndex,
+              item: base,
+            });
+            const chunks = argumentChunkSize
+              ? Array.from(
+                  { length: Math.ceil(call.argumentsJson.length / argumentChunkSize) },
+                  (_, index) =>
+                    call.argumentsJson.slice(
+                      index * argumentChunkSize,
+                      (index + 1) * argumentChunkSize,
+                    ),
+                )
+              : [call.argumentsJson];
+            for (const delta of chunks) {
+              sse(res, {
+                type: "response.function_call_arguments.delta",
+                sequence_number: sequence++,
+                item_id: id,
+                output_index: outputIndex,
+                delta,
+              });
+            }
+            sse(res, {
+              type: "response.function_call_arguments.done",
+              sequence_number: sequence++,
+              item_id: id,
+              output_index: outputIndex,
+              arguments: call.argumentsJson,
+            });
+            const item = {
+              ...base,
+              arguments: call.argumentsJson,
+              status: "completed",
+            };
+            output.push(item);
+            sse(res, {
+              type: "response.output_item.done",
+              sequence_number: sequence++,
+              output_index: outputIndex,
+              item,
+            });
+          }
+          finish(output);
+        };
         const handle: PendingModelRequest = {
           ...request,
           respond: {
@@ -316,52 +463,62 @@ export async function startModelSimulator(
                   assertActive();
                   stream.end();
                 },
+                async fail(error) {
+                  assertActive();
+                  failResponse(error);
+                },
+                async disconnect() {
+                  assertActive();
+                  disconnectResponse();
+                },
               };
             }) as PendingModelRequest["respond"]["text"],
-            async toolCalls(calls) {
+            async toolCalls(calls, options) {
               begin();
-              const output: unknown[] = [];
-              for (const [i, call] of calls.entries()) {
-                const id = `fc_${crypto.randomUUID()}`,
-                  json = JSON.stringify(call.arguments),
-                  base = {
-                    id,
-                    type: "function_call",
-                    call_id: call.id,
-                    name: call.name,
-                    arguments: "",
-                    status: "in_progress",
-                  };
-                sse(res, {
-                  type: "response.output_item.added",
-                  sequence_number: sequence++,
-                  output_index: i,
-                  item: base,
-                });
-                sse(res, {
-                  type: "response.function_call_arguments.delta",
-                  sequence_number: sequence++,
-                  item_id: id,
-                  output_index: i,
-                  delta: json,
-                });
-                sse(res, {
-                  type: "response.function_call_arguments.done",
-                  sequence_number: sequence++,
-                  item_id: id,
-                  output_index: i,
-                  arguments: json,
-                });
-                const item = { ...base, arguments: json, status: "completed" };
-                output.push(item);
-                sse(res, {
-                  type: "response.output_item.done",
-                  sequence_number: sequence++,
-                  output_index: i,
-                  item,
-                });
+              emitToolCalls(
+                calls.map((call) => ({ ...call, argumentsJson: JSON.stringify(call.arguments) })),
+                options?.argumentChunkSize,
+              );
+            },
+            async textAndToolCalls(text, calls) {
+              begin();
+              emitToolCalls(
+                calls.map((call) => ({ ...call, argumentsJson: JSON.stringify(call.arguments) })),
+                undefined,
+                text,
+              );
+            },
+            async malformedToolCall(call) {
+              begin();
+              emitToolCalls([{ ...call, argumentsJson: call.arguments }]);
+            },
+            async error(error) {
+              assertActive();
+              if (answered) {
+                throw poison(
+                  new Error("duplicate_barrier_resolution: model request already answered"),
+                );
               }
-              finish(output);
+              answered = true;
+              res.status(error.status ?? 500).json(errorEnvelope(error.code, error.message));
+              pending.delete(handle);
+            },
+            async awaitAbort() {
+              assertActive();
+              if (answered) {
+                throw poison(
+                  new Error("duplicate_barrier_resolution: model request already answered"),
+                );
+              }
+              answered = true;
+              await new Promise<void>((resolve) => {
+                const complete = () => {
+                  pending.delete(handle);
+                  resolve();
+                };
+                req.once("aborted", complete);
+                res.once("close", complete);
+              });
             },
           },
         };

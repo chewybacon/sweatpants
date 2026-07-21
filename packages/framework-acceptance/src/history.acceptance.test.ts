@@ -88,9 +88,21 @@ async function runHistoryScenario(binding: Binding): Promise<void> {
         { type: "user_text", text: "FOLLOW_UP_V1 What route did I book?" },
       ]);
 
-      await followUpRequest.respond.text("You booked NYC to LAX.");
+      const priorCall = history.find(
+        (record) => record.type === "assistant_tool_call" && record.callId === CALL_ID,
+      );
+      expect(priorCall).toMatchObject({ arguments: { from: "NYC", destination: "LAX" } });
+      if (!priorCall || priorCall.type !== "assistant_tool_call") {
+        throw new Error("missing prior route-bearing tool call");
+      }
+      expect({
+        from: priorCall.arguments["destination"],
+        destination: priorCall.arguments["from"],
+      }).toEqual({ from: "LAX", destination: "NYC" });
+
+      await followUpRequest.respond.text("You booked NYC to LAX; return is LAX to NYC.");
       const secondTranscript = await secondTurn.complete();
-      expect(secondTranscript.text).toBe("You booked NYC to LAX.");
+      expect(secondTranscript.text).toBe("You booked NYC to LAX; return is LAX to NYC.");
     },
   );
 }

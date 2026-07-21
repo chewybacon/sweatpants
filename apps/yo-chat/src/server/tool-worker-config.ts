@@ -11,15 +11,19 @@ export const YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL = pathToFileURL(
 
 const yoChatWorkerExecArgv = ["--conditions=development", "--import", "tsx"];
 
-export const yoChatToolSessionWorkerConfig: {
+export const yoChatGeneratedToolSessionWorkerConfig: {
   workerUrl: URL;
   isDev: false;
   execArgv: string[];
 } = {
+  // Source-mode loader shim; its only payload is the exact generated entry
+  // represented by YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL.
   workerUrl: pathToFileURL(resolve(serverDir, "./tool-worker-bootstrap.mjs")),
   isDev: false,
   execArgv: [...yoChatWorkerExecArgv],
 };
+
+export const yoChatToolSessionWorkerConfig = yoChatGeneratedToolSessionWorkerConfig;
 
 export const yoChatDurableProgramWorkerUrl =
   durableProgramWorkerUrl instanceof URL

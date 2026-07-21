@@ -85,6 +85,8 @@ export type {
   CreateToolBuilderWithParams,
   PerCallInterruptOptions,
   ToolSampleConfig,
+  SampleSchemaConfig,
+  SampleSchemaConfigMessages,
   SamplingToolDefinition,
   SamplingToolCall,
   SamplingToolChoice,

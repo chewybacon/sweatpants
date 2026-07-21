@@ -12,6 +12,7 @@
         "preview": "vite preview",
         "test": "vitest run",
         "test:acceptance": "vitest run acceptance",
+        "test:acceptance:external": "vitest run --config vitest.external-acceptance.config.ts",
         "test:e2e": "playwright test",
         "test:e2e:ui": "playwright test --ui",
         "test:outside-in": "RUN_LIVE=1 OUTSIDE_IN_TIER_B=1 OUTSIDE_IN_ATTEMPTS=1 OUTSIDE_IN_TIMEOUT_MS=80000 OUTSIDE_IN_TEST_TIMEOUT_MS=85000 vitest run --config vitest.outside-in.config.ts --bail=1",

@@ -98,6 +98,7 @@ export function* executeChatFetch(
         streamOptions: options.streamOptions,
         initialToolChoice: options.initialToolChoice,
         replayState: options.replayState,
+        pluginAbort: options.pluginAbort,
         ...resumeForwardedProps,
         ...(options.conversationId && { conversationId: options.conversationId }),
       }),

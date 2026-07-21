@@ -23,6 +23,7 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
     z.object({
       from: z.string(),
       destination: z.string(),
+      behavior: z.enum(["complete", "throw_after_resume"]).default("complete"),
     }),
   )
   .elicits({
@@ -36,7 +37,7 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
       }),
     },
   })
-  .samples()
+  .samples({ travelTip: { description: "One short deterministic travel tip" } })
   .execute(function* (params, ctx) {
     const flightResult = yield* ctx.elicit("pickFlight", {
       message: `Select a flight from ${params.from} to ${params.destination}`,
@@ -57,9 +58,15 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
       return { success: false, reason: "seat_not_selected" };
     }
 
-    const tip = yield* ctx.sample({
+    const messagesBeforeSample = ctx.messages.length;
+    if (params.behavior === "throw_after_resume") {
+      throw new Error("planned tool failure after elicitation resume");
+    }
+
+    const tip = yield* ctx.sample("travelTip", {
       prompt: `${NESTED_SAMPLE_PROMPT_MARKER} Give a brief travel tip for ${params.destination}`,
     });
+    const messagesAfterSample = ctx.messages.length;
 
     return {
       success: true,
@@ -69,6 +76,6 @@ export const acceptanceBookingTool = createTool(ACCEPTANCE_TOOL_NAME)
       seat: `${seatResult.content.row}${seatResult.content.seat}`,
       route: { from: params.from, to: params.destination },
       travelTip: tip.text,
-      worker: { isMainThread, threadId },
+      worker: { isMainThread, threadId, messagesBeforeSample, messagesAfterSample },
     };
   });
