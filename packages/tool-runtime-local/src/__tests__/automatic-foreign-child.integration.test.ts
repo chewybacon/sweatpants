@@ -163,11 +163,6 @@ describe("automatic foreign adapter child orchestration", () => {
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("ToolSession sampling must be lifted into the outer crank");
-          },
-        },
       });
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({
@@ -301,11 +296,6 @@ describe("automatic foreign adapter child orchestration", () => {
 
     const outcome = await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("Immediate tool must not sample");
-          },
-        },
         worker: {
           workerUrl: new URL("./fixtures/tool-worker-bootstrap.mjs", import.meta.url),
           isDev: false,

@@ -67,7 +67,7 @@ export interface RedisDurableJournalAuthority {
   taskInput(sessionId: string, taskId: string): Operation<Json>;
   /** Lists exact schema digests referenced by nonterminal tasks. */
   nonterminalSchemaDigests(): Operation<string[]>;
-  /** Clears the runnable marker when a legacy structured activation starts. */
+  /** Clears the runnable marker when an accepted activation starts. */
   markActivationStarted(sessionId: string): Operation<void>;
   recoverableSessions(): Operation<RecoverableSession[]>;
   claimActivation(request: ClaimActivationRequest): Operation<ClaimActivationResult>;

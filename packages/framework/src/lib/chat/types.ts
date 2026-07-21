@@ -120,11 +120,6 @@ export interface Message {
 }
 
 /**
- * Ollama-specific message format (alias for Message for backward compatibility).
- */
-export type OllamaMessage = Message;
-
-/**
  * Tool call structure — canonical nested (OpenAI-compatible) format.
  *
  * Used by Message.tool_calls, ChatEvent, ChatResult, and the durable engine.

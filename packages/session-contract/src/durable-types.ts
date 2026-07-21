@@ -655,7 +655,7 @@ export interface DurableProgramContext {
   join<T extends Json = Json>(
     handle: DurableTaskHandle,
   ): Generator<ProgramStepProposal, T, ProgramResume>;
-  /** Invokes a compatibility driver without upgrading its declared durability. */
+  /** Invokes a classified foreign driver without upgrading its declared durability. */
   foreignTool<T extends Json = Json>(
     request: ForeignToolRequest,
   ): Generator<ProgramStepProposal, T, ProgramResume>;
@@ -672,7 +672,7 @@ export interface DurableTool<I extends Json = Json, O extends Json = Json> {
   readonly durability: "crank_native";
   readonly manifest: DurableProgramManifest<I, O>;
   readonly program: DurableProgramFactory<I, O>;
-  /** Explicit evidence describing whether the digest was generated or legacy-asserted. */
+  /** Explicit evidence describing whether the digest was generated or manually asserted. */
   readonly identityProvenance: ProgramIdentityProvenanceV1;
   /** Local verification evidence retained only for generated bindings. */
   readonly identityArtifact?: GeneratedProgramArtifactIdentityV1;

@@ -36,7 +36,7 @@ export const playTttPlugin = makePlugin(playTttTool)
      * Renders the GameChatView component which shows move history and current board.
      */
     pickMove: function* (req, ctx) {
-      // Extract context from x-model-context
+      // Extract context from x-elicit-context
       const context = getElicitContext<PickMoveContext>(req)
       const {
         board,

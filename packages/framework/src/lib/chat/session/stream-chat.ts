@@ -22,10 +22,7 @@ import type { StreamResult } from './streaming.ts'
 import { executeChatFetch } from './api-transport.ts'
 import { mapStreamEventsToPatches } from './event-mapper.ts'
 
-/**
- * Re-export ElicitResponseData from options for backward compatibility.
- */
-export type { ElicitResponseData, StreamChatOptions } from './options.ts'
+export type { StreamChatOptions } from './options.ts'
 
 /**
  * Perform a single streaming chat request.

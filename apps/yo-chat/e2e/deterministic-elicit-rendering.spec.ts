@@ -115,7 +115,7 @@ test("canonical AG-UI interrupt renders plugin UI without LLM/provider involveme
                           flightId: { type: "string" },
                         },
                         required: ["flightId"],
-                        "x-model-context": { flights },
+                        "x-elicit-context": { flights },
                       },
                       metadata: {
                         "sweatpants/sessionId": "session-book-flight-1",

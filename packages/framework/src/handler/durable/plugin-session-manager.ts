@@ -23,7 +23,7 @@
  *
  * ```typescript
  * // At handler initialization
- * const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+ * const registry = yield* createToolSessionRegistry(store, {})
  * const sessionManager = yield* createPluginSessionManager({ registry, samplingProvider })
  *
  * // In chat-engine executing_tools phase
@@ -221,7 +221,7 @@ export interface PluginSessionManagerOptions {
    * ```typescript
    * const { registry } = await run(function* () {
    *   const store = createInMemoryToolSessionStore()
-   *   const registry = yield* createToolSessionRegistry(store, { samplingProvider })
+   *   const registry = yield* createToolSessionRegistry(store, {})
    *   return { registry }
    * })
    * // createInMemoryToolSessionStore/createToolSessionRegistry are provided by the local tool runtime package.

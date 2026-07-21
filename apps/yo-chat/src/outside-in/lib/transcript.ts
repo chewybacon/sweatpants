@@ -77,9 +77,8 @@ export function createTranscriptCollector(): {
 
 /**
  * Normalize a single raw AG-UI/SSE stream event into a `NormalizedEvent`, or
- * `null` when the event is not one the transcript tracks. Handles both the
- * canonical `SCREAMING_CASE` AG-UI names and the legacy `ag_ui_*` aliases, and
- * the durable/plugin variants observed in the existing e2e specs.
+ * `null` when the event is not one the transcript tracks. Only canonical
+ * `SCREAMING_CASE` AG-UI events are accepted.
  */
 function stringifyEventContent(value: unknown): string {
   if (value === undefined || value === null) {
@@ -104,28 +103,22 @@ export function normalizeStreamEvent(raw: unknown): NormalizedEvent | null {
 
   switch (type) {
     case "RUN_STARTED":
-    case "ag_ui_run_started":
       return { type: "run_started" };
 
     case "TEXT_MESSAGE_CONTENT":
-    case "ag_ui_text_message_content":
       return { type: "text", delta: String(e["delta"] ?? "") };
 
     case "REASONING_MESSAGE_CONTENT":
       return { type: "reasoning", delta: String(e["delta"] ?? "") };
-    case "thinking":
-      return { type: "reasoning", delta: String(e["content"] ?? "") };
 
     case "TOOL_CALL_START":
-    case "ag_ui_tool_call_start":
       return {
         type: "tool_call_start",
         callId: String(e["toolCallId"] ?? ""),
         name: String(e["toolCallName"] ?? ""),
       };
 
-    case "TOOL_CALL_ARGS":
-    case "ag_ui_tool_call_args": {
+    case "TOOL_CALL_ARGS": {
       const delta = e["delta"];
       let args: unknown = delta;
       if (typeof delta === "string") {
@@ -139,7 +132,6 @@ export function normalizeStreamEvent(raw: unknown): NormalizedEvent | null {
     }
 
     case "TOOL_CALL_RESULT":
-    case "ag_ui_tool_call_result":
       return {
         type: "tool_call_result",
         callId: String(e["toolCallId"] ?? ""),
@@ -148,11 +140,9 @@ export function normalizeStreamEvent(raw: unknown): NormalizedEvent | null {
       };
 
     case "RUN_FINISHED":
-    case "ag_ui_run_finished":
       return { type: "run_finished" };
 
     case "RUN_ERROR":
-    case "error":
       return { type: "run_error", message: String(e["message"] ?? "unknown error") };
 
     default:

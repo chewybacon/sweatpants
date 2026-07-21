@@ -134,11 +134,6 @@ describe("unchanged book_flight through the HTTP ProgramRuntime", () => {
             return;
           }
           const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-            samplingProvider: {
-              *sample(): Operation<never> {
-                throw new Error("ToolSession sampling must be lifted into ProgramRuntime");
-              },
-            },
           });
           yield* ToolInventoryContext.set(
             createToolInventory([createToolInventoryEntry(bookFlightTool)]),

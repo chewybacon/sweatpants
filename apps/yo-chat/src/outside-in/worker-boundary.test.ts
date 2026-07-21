@@ -18,7 +18,6 @@ import {
   createWorkerToolSession,
 } from "@sweatpants/tool-runtime-local";
 import { calculator } from "@/tools/calculator";
-import { pluginSamplingProvider } from "@/server/plugin-sampling-provider";
 import { yoChatToolSessionWorkerConfig } from "@/server/tool-worker-config";
 import type { ToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
 
@@ -65,7 +64,6 @@ describe("outside-in worker boundary (Tier A)", () => {
   it("executes the generated calculator tool in the real worker", async () => {
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: pluginSamplingProvider,
         worker: yoChatToolSessionWorkerConfig,
       });
       const [start] = createToolSessionForeignEffectRegistrations({

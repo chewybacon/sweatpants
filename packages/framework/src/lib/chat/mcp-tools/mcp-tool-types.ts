@@ -321,7 +321,7 @@ export interface ElicitId {
 /**
  * Request object passed to elicitation handlers.
  *
- * Context data (e.g., flights, seatMap) is transported via the `x-model-context`
+ * Context data (e.g., flights, seatMap) is transported via the `x-elicit-context`
  * extension in the schema and as a boundary-encoded section in the message.
  * Use `getElicitContext(req)` to extract it.
  *
@@ -357,7 +357,7 @@ export interface ElicitRequest<
   /**
    * Schema in both forms.
    *
-   * The `json` schema may contain `x-model-context` extension with context data.
+   * The `json` schema may contain `x-elicit-context` extension with context data.
    * Use `getElicitContext(req)` to extract it.
    */
   schema: {

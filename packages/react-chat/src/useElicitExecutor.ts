@@ -276,7 +276,7 @@ function* executePluginHandler(
   }
 
   // Build the elicit request with context embedded in schema
-  // Handlers use getElicitContext(req) which extracts from schema.json['x-model-context']
+  // Handlers use getElicitContext(req) which extracts from schema.json['x-elicit-context']
   const schemaWithContext = elicit.context
     ? {
         ...((elicit.schema as Record<string, unknown>) ?? {}),

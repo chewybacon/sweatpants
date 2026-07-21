@@ -287,14 +287,3 @@ export function createPluginSamplingProvider(): ToolSessionSamplingProvider {
     },
   };
 }
-
-/**
- * Compatibility provider that defers concrete model resolution until a sample
- * operation runs. Importing server composition modules performs no provider or
- * credential work.
- */
-export const pluginSamplingProvider: ToolSessionSamplingProvider = {
-  *sample(messages, options): Operation<WireSampleResult> {
-    return yield* createPluginSamplingProvider().sample(messages, options);
-  },
-};

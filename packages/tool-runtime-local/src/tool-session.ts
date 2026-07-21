@@ -30,7 +30,6 @@ import type {
   ToolSessionStatus,
   ToolSessionEvent,
   ToolSessionOptions,
-  ToolSessionSamplingProvider,
   ElicitRequestEvent,
   SampleRequestEvent,
   ProgressEvent,
@@ -103,20 +102,16 @@ interface SessionState<TResult> {
  *
  * @param tool - The tool to execute
  * @param params - Tool parameters
- * @param _samplingProvider - Not used (kept for API compatibility)
  * @param options - Session options
  */
 export function createToolSession<
   TName extends string,
   TParams,
-  _TInteraction,
-  _TClient,
   TResult,
   TElicits extends ElicitsMap,
 >(
   tool: ToolDefinition<TName, TParams, TResult, TElicits>,
   params: TParams,
-  _samplingProvider: ToolSessionSamplingProvider,
   options: ToolSessionOptions = {},
 ): Operation<ToolSession<TResult>> {
   return resource<ToolSession<TResult>>(function* (provide) {
@@ -185,7 +180,7 @@ export function createToolSession<
       for (const event of yield* each(host.events)) {
         switch (event.type) {
           case "elicit": {
-            const elicitId = `${sessionId}:elicit:${state.lsn}`;
+            const elicitId = `${sessionId}:req:${state.lsn + 1}`;
             state.status = "awaiting_elicit";
             state.pendingElicit = {
               id: elicitId,
@@ -206,7 +201,7 @@ export function createToolSession<
           }
 
           case "sample": {
-            const sampleId = `${sessionId}:sample:${state.lsn}`;
+            const sampleId = `${sessionId}:req:${state.lsn + 1}`;
             state.status = "awaiting_sample";
             state.pendingSample = { id: sampleId, signal: event.responseSignal };
 

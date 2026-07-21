@@ -88,11 +88,6 @@ describe("unchanged book_flight through ProgramRuntime", () => {
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("ToolSession sampling must be lifted into ProgramRuntime");
-          },
-        },
       });
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({

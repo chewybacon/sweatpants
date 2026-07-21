@@ -30,8 +30,21 @@ function createOptions(overrides = {}) {
   });
 }
 
+function canonicalToolSource(content: string): string {
+  if (/^\s*import\s/m.test(content)) return content;
+  if (/\bdefineTool\s*\(/.test(content)) {
+    return `import { defineTool } from "@sweatpants/core";\n${content}`;
+  }
+  return `import { createTool, createDurableTool } from "@sweatpants/core";\n${content}`;
+}
+
 function discoverTools(content: string, file = "/project/src/tools/my-tool.ts") {
-  return discoverToolsInContent(content, file, "/project/src/tools", createOptions());
+  return discoverToolsInContent(
+    canonicalToolSource(content),
+    file,
+    "/project/src/tools",
+    createOptions(),
+  );
 }
 
 // =============================================================================
@@ -325,7 +338,7 @@ describe("discoverToolsInContent", () => {
     it("sets correct file paths", () => {
       const content = `export const foo = createTool('foo')`;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/nested/my-tool.ts",
         "/project/src/tools",
         createOptions(),
@@ -338,7 +351,7 @@ describe("discoverToolsInContent", () => {
     it("sets correct file paths (island)", () => {
       const content = `export const foo = createTool('foo')`;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/feature/tools/my-tool.ts",
         "/project/src/feature/tools",
         createOptions(),
@@ -353,7 +366,7 @@ describe("discoverToolsInContent", () => {
     it("supports custom export function name", () => {
       const content = `export const foo = defineTool('my_tool')`;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/my-tool.ts",
         "/project/src/tools",
         resolveToolDiscoveryOptions({ exportFunctionName: "defineTool" }),
@@ -366,7 +379,7 @@ describe("discoverToolsInContent", () => {
     it("supports multiple export function names", () => {
       const content = `export const foo = createTool('my_tool')`;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/my-tool.ts",
         "/project/src/tools",
         resolveToolDiscoveryOptions({
@@ -390,7 +403,7 @@ describe("discoverToolsInContent", () => {
           .build()
       `;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/ask_question.tsx",
         "/project/src/tools",
         createOptions(),
@@ -409,7 +422,7 @@ describe("discoverToolsInContent", () => {
         export const askQuestion = createTool('ask_question').build()
       `;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/general/ask_question.tsx",
         "/project/src/tools",
         createOptions(),
@@ -425,7 +438,7 @@ describe("discoverToolsInContent", () => {
         export default createTool('ui_dialog').build()
       `;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/dialogs/ui-dialog.tsx",
         "/project/src/tools",
         createOptions(),
@@ -470,7 +483,7 @@ describe("discoverToolsInContent", () => {
     it("derives name from file basename for default export without name", () => {
       const content = `export default createTool().build()`;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/my_tool.ts",
         "/project/src/tools",
         createOptions(),
@@ -491,7 +504,7 @@ describe("discoverToolsInContent", () => {
     it("does not prefix nested tool names with directory path", () => {
       const content = `export const tictactoeTool = createTool().build()`;
       const tools = discoverToolsInContent(
-        content,
+        canonicalToolSource(content),
         "/project/src/tools/games/tic-tac-toe.ts",
         "/project/src/tools",
         createOptions(),
@@ -758,7 +771,7 @@ describe("integration: toolDiscoveryPlugin", () => {
   }
 
   async function writeToolFile(name: string, content: string) {
-    await writeFile(join(tempDir, "src/tools", name), content);
+    await writeFile(join(tempDir, "src/tools", name), canonicalToolSource(content));
   }
 
   async function runPlugin() {
@@ -874,7 +887,7 @@ describe("integration: toolDiscoveryPlugin", () => {
       await mkdir(join(tempDir, "src/tools/games"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/games/guess-card.ts"),
-        `export const guessCard = createTool('guess_card').build()`,
+        canonicalToolSource(`export const guessCard = createTool('guess_card').build()`),
       );
 
       await runPlugin();
@@ -1000,7 +1013,7 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/general"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/general/ask_question.tsx"),
-        `export const askQuestion = createTool('ask_question').build()`,
+        canonicalToolSource(`export const askQuestion = createTool('ask_question').build()`),
       );
 
       await runPlugin();
@@ -1026,7 +1039,7 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/general"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/general/ask_question.tsx"),
-        `export const askQuestion = createTool('ask_question').build()`,
+        canonicalToolSource(`export const askQuestion = createTool('ask_question').build()`),
       );
 
       await runPlugin();
@@ -1093,7 +1106,7 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/games"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/games/tic-tac-toe.ts"),
-        `export const tictactoeTool = createTool().build()`,
+        canonicalToolSource(`export const tictactoeTool = createTool().build()`),
       );
 
       await runPlugin();
@@ -1115,11 +1128,11 @@ export { varTool }`,
       await mkdir(join(tempDir, "src/tools/b"), { recursive: true });
       await writeFile(
         join(tempDir, "src/tools/a/tool.ts"),
-        `export const myTool = createTool().build()`,
+        canonicalToolSource(`export const myTool = createTool().build()`),
       );
       await writeFile(
         join(tempDir, "src/tools/b/tool.ts"),
-        `export const myTool = createTool().build()`,
+        canonicalToolSource(`export const myTool = createTool().build()`),
       );
 
       await expect(runPlugin()).rejects.toThrow(/Duplicate tool name detected: 'my'/);

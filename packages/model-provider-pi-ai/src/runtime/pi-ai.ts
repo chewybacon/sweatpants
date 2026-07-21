@@ -413,7 +413,7 @@ function toPiImageModel(model: ImageModel): PiImagesModel<string> {
 }
 
 function toPiReasoning(options: StreamOptions | undefined): ThinkingLevel | undefined {
-  const setting = options?.thinking ?? options?.reasoning
+  const setting = options?.thinking
   return setting === 'off' ? undefined : setting
 }
 

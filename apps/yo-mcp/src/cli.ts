@@ -64,7 +64,6 @@ async function main() {
     const store = createInMemoryToolSessionStore();
     const samplingProvider = createMockSamplingProvider();
     const registry = yield* createToolSessionRegistry(store, {
-      samplingProvider,
       worker: { workerUrl: TOOL_WORKER_URL, isDev: false, execArgv: TOOL_WORKER_EXEC_ARGV },
     });
     const tools = createToolsMap();

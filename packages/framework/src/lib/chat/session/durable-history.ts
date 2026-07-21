@@ -18,7 +18,7 @@ import {
   messageIdForTool,
 } from "./message-identity.ts";
 import { createTranscriptState, resetTranscriptState } from "./transcript.ts";
-import { agUiMessagesToInternalMessages } from "./ag-ui-compat.ts";
+import { agUiMessagesToInternalMessages } from "./ag-ui-messages.ts";
 import { providerHistoryMessages } from "./ag-ui-projection.ts";
 import {
   activitySnapshotToPluginReplayTrace,
@@ -297,7 +297,7 @@ export function* replayFramesToConversation(
         callId: replayTrace.callId,
         toolName: replayTrace.toolName,
         emission: {
-          id: entry.emissionId ?? `${replayTrace.callId}-replay-${entry.order + 1}`,
+          id: entry.emissionId,
           type: "__component__",
           payload: {
             componentKey: entry.componentKey,
@@ -509,7 +509,7 @@ export function* replayFramesToConversation(
                 callId: event.toolCallId,
                 toolName: event.toolCallName,
                 emission: {
-                  id: entry.emissionId ?? `${event.toolCallId}-replay-${entry.order + 1}`,
+                  id: entry.emissionId,
                   type: "__component__",
                   payload: {
                     componentKey: entry.componentKey,
@@ -634,8 +634,8 @@ export function* replayFramesToConversation(
                 message: interrupt.message ?? "Input required",
                 schema: interrupt.responseSchema ?? {},
                 context: (
-                  interrupt.responseSchema as { "x-model-context"?: unknown } | undefined
-                )?.["x-model-context"],
+                  interrupt.responseSchema as { "x-elicit-context"?: unknown } | undefined
+                )?.["x-elicit-context"],
                 status: "pending",
                 timestamp: Date.now(),
               },
@@ -839,7 +839,7 @@ export function* replayFramesToConversation(
                 key: action.key,
                 message: action.message,
                 schema: action.schema,
-                context: (action.schema as { "x-model-context"?: unknown })["x-model-context"],
+                context: (action.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
                 status: "pending",
                 timestamp: Date.now(),
               },
@@ -880,7 +880,7 @@ export function* replayFramesToConversation(
                 key: action.key,
                 message: action.message,
                 schema: action.schema,
-                context: (action.schema as { "x-model-context"?: unknown })["x-model-context"],
+                context: (action.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
                 status: "pending",
                 timestamp: Date.now(),
               },
@@ -921,7 +921,7 @@ export function* replayFramesToConversation(
             key: event.key,
             message: event.message,
             schema: event.schema,
-            context: (event.schema as { "x-model-context"?: unknown })["x-model-context"],
+            context: (event.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
             status: "pending",
             timestamp: Date.now(),
           },

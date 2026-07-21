@@ -4,9 +4,7 @@
  * Displays a list of available flights for the user to select.
  * Used by the book_flight tool's pickFlight elicitation.
  */
-import { useMemo } from 'react'
 import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import { stripMessageContext } from '@sweatpants/framework/chat'
 import type { Flight } from '../tool'
 
 // =============================================================================
@@ -104,8 +102,7 @@ function FlightCard({ flight, selected, onSelect, disabled }: FlightCardProps) {
 // =============================================================================
 
 export function FlightList({ flights, message, onRespond, disabled, response }: FlightListProps) {
-  // Strip any x-model-context boundary from the message
-  const cleanMessage = useMemo(() => stripMessageContext(message), [message])
+  const cleanMessage = message
 
   // If already responded, show the selection
   if (disabled && response) {

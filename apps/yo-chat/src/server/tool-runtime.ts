@@ -3,7 +3,10 @@ import {
   createPluginSessionManager,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
-import type { ToolSessionRegistry } from "@sweatpants/framework/chat/mcp-tools";
+import type {
+  ToolSessionRegistry,
+  ToolSessionSamplingProvider,
+} from "@sweatpants/framework/chat/mcp-tools";
 import type { AgentCoreRuntimeRelease } from "@sweatpants/session-contract";
 import {
   createInMemoryToolSessionStore,
@@ -29,7 +32,7 @@ import { env } from "@/env";
 import { getSharedRedisClient } from "@/lib/shared-redis";
 import { pickCard } from "../tools/pick-card/durable";
 import { allTools } from "./tools";
-import { pluginSamplingProvider } from "./plugin-sampling-provider";
+import { createPluginSamplingProvider } from "./plugin-sampling-provider";
 import { installYoChatToolRuntime } from "./tool-runtime-installation";
 
 // The Vite plugin resolves this to the generated worker module. It is used only
@@ -38,10 +41,10 @@ import toolWorkerUrl from "../__generated__/tool-worker.gen.ts?modulePath";
 
 let sharedRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;
+let sharedSamplingProvider: ToolSessionSamplingProvider | null = null;
 
 function* createLocalRegistry(): Operation<ToolSessionRegistry> {
   return yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-    samplingProvider: pluginSamplingProvider,
     worker: {
       workerUrl: toolWorkerUrl,
       isDev: process.env["NODE_ENV"] !== "production",
@@ -167,11 +170,12 @@ function durableAgentCoreInstallation() {
 
 /** Installs all discovered tools into the single selected runtime. */
 export function* setupYoChatPluginsAndRuntime(): Operation<void> {
-  if (!sharedRegistry || !sharedPluginSessionManager) {
+  if (!sharedRegistry || !sharedPluginSessionManager || !sharedSamplingProvider) {
+    sharedSamplingProvider = createPluginSamplingProvider();
     sharedRegistry = yield* createSelectedRegistry();
     sharedPluginSessionManager = yield* createPluginSessionManager({
       registry: sharedRegistry,
-      samplingProvider: pluginSamplingProvider,
+      samplingProvider: sharedSamplingProvider,
     });
   }
   const agentCoreDurable =
@@ -180,7 +184,7 @@ export function* setupYoChatPluginsAndRuntime(): Operation<void> {
     mode: env.MCP_TOOL_RUNTIME,
     registry: sharedRegistry,
     pluginManager: sharedPluginSessionManager,
-    samplingProvider: pluginSamplingProvider,
+    samplingProvider: sharedSamplingProvider,
     tools: [...allTools],
     ...(agentCoreDurable ? { agentCoreDurable } : {}),
   });

@@ -318,30 +318,10 @@ export type {
 } from "./protocol/index.ts";
 
 // =============================================================================
-// MODEL CONTEXT TRANSPORT (x-model-context for elicitation context data)
+// ELICIT CONTEXT SCHEMA EXTENSION
 // =============================================================================
 
-export {
-  // Encoding/decoding
-  encodeElicitContext,
-  extractModelContext,
-  parseMessageContext,
-  stripMessageContext,
-
-  // Helper for plugin authors
-  getElicitContext,
-
-  // Constants
-  MODEL_CONTEXT_SCHEMA_KEY,
-  MODEL_CONTEXT_BOUNDARY,
-  MODEL_CONTEXT_MIME_TYPE,
-} from "./model-context.ts";
-
-export type {
-  EncodeElicitContextOptions,
-  EncodedElicitContext,
-  ExtractedModelContext,
-} from "./model-context.ts";
+export { getElicitContext, MODEL_CONTEXT_SCHEMA_KEY } from "./model-context.ts";
 
 // =============================================================================
 // MCP HTTP HANDLER (Streamable HTTP transport)

@@ -29,34 +29,15 @@ import { runChatFlow } from "../lib/driver.ts";
 import { AssertionFailure, withFlakePolicy } from "../lib/flake.ts";
 import { liveReady, selectedTiers } from "./tiers.ts";
 
-function parseContextFromMessage(message: string): Record<string, unknown> | null {
-  const marker = "\n--x-elicit-context:";
-  const markerIndex = message.indexOf(marker);
-  if (markerIndex < 0) {
-    return null;
-  }
-  const payloadStart = message.indexOf("\n", markerIndex + marker.length);
-  if (payloadStart < 0) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(message.slice(payloadStart + 1).trim()) as unknown;
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-  } catch {
-    return null;
-  }
-}
-
 function elicitContext(elicit: ElicitState): Record<string, unknown> {
   if (elicit.context && typeof elicit.context === "object") {
     return elicit.context as Record<string, unknown>;
   }
-  const schemaContext =
-    elicit.schema["x-elicit-context"] ?? elicit.schema["x-model-context"] ?? null;
+  const schemaContext = elicit.schema["x-elicit-context"] ?? null;
   if (schemaContext && typeof schemaContext === "object") {
     return schemaContext as Record<string, unknown>;
   }
-  return parseContextFromMessage(elicit.message) ?? {};
+  return {};
 }
 
 function chooseDeterministicMove(elicit: ElicitState) {

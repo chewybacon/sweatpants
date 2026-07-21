@@ -400,7 +400,7 @@ describe("foreign A2A protocol and state machine", () => {
     expect(aborts).toBe(1);
   });
 
-  it("keeps the dedicated adapter identity separate from the legacy foreign adapter", () => {
+  it("keeps the dedicated adapter identity separate from the generic foreign adapter", () => {
     expect(FOREIGN_A2A_ADAPTER_PROGRAM.id).not.toBe(FOREIGN_TOOL_ADAPTER_PROGRAM.id);
     expect(FOREIGN_A2A_ADAPTER_PROGRAM.digest).not.toBe(FOREIGN_TOOL_ADAPTER_PROGRAM.digest);
   });

@@ -119,7 +119,6 @@ export type { PluginRegistry } from "./mcp-tools/plugin-registry.ts";
 export { executeElicitHandlerFromRequest } from "./mcp-tools/plugin-executor.ts";
 // Model context utilities (browser-safe subset of mcp-tools)
 export {
-  stripMessageContext,
   getElicitContext,
   MODEL_CONTEXT_SCHEMA_KEY,
 } from "./mcp-tools/model-context.ts";

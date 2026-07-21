@@ -95,16 +95,13 @@ describe("program artifact identity", () => {
     );
   });
 
-  it("keeps the old constructor as an asserted deprecated alias", () => {
+  it("keeps manually asserted low-level identities out of strict releases", () => {
     const pinnedManifest = { ...manifest, digest: "a".repeat(64) };
-    const factory = function* () {
+    const tool = createPinnedDurableProgram(pinnedManifest, function* () {
       return null;
-    };
-    const canonical = createPinnedDurableProgram(pinnedManifest, factory);
-    const alias = createPinnedDurableProgram({ manifest: pinnedManifest, program: factory });
-    expect(alias.manifest).toEqual(canonical.manifest);
-    expect(alias.identityProvenance).toEqual({ kind: "asserted" });
-    expect(() => validateProgramBindingsForRelease([alias])).toThrowError(
+    });
+    expect(tool.identityProvenance).toEqual({ kind: "asserted" });
+    expect(() => validateProgramBindingsForRelease([tool])).toThrowError(
       expect.objectContaining({ code: "asserted_program_identity_forbidden" }),
     );
   });

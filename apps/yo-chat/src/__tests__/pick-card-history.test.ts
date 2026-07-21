@@ -131,7 +131,6 @@ describe("pick_card session history", () => {
         };
 
         const registry = yield* createToolSessionRegistry(store, {
-          samplingProvider,
           worker: yoChatTestToolSessionWorkerConfig,
         });
         const manager = yield* createPluginSessionManager({ registry });
@@ -148,7 +147,6 @@ describe("pick_card session history", () => {
       const {
         registry: toolSessionRegistry,
         manager: pluginSessionManager,
-        samplingProvider,
       } = readyResult.value;
 
       const providerMessages: Message[][] = [];
@@ -247,7 +245,6 @@ describe("pick_card session history", () => {
         yield* installLocalToolRuntime({
           tools: [],
           registry: toolSessionRegistry,
-          samplingProvider,
         });
       };
 

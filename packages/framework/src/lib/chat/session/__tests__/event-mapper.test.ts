@@ -386,7 +386,7 @@ describe("mapStreamEventsToPatches", () => {
         message: "Select your seat",
         schema: {
           type: "object",
-          "x-model-context": {
+          "x-elicit-context": {
             seatMap: { rows: 1, seatsPerRow: ["A"], taken: [] },
           },
         },
@@ -408,7 +408,7 @@ describe("mapStreamEventsToPatches", () => {
         message: "Select your seat",
         schema: {
           type: "object",
-          "x-model-context": {
+          "x-elicit-context": {
             seatMap: { rows: 1, seatsPerRow: ["A"], taken: [] },
           },
         },

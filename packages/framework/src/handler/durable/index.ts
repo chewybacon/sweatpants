@@ -16,7 +16,7 @@ export { createDurableChatHandler } from "./handler.ts";
 export { createDurableChatHandler as createChatHandler } from "./handler.ts";
 
 // ProgramDriver authoring/runtime surface. Foreign ToolSession execution remains
-// available only through the explicit journaled compatibility boundary.
+// available only through the explicit journaled foreign boundary.
 export {
   DurableEffectRegistryContext,
   JournalAuthority,

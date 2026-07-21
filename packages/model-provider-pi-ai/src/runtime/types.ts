@@ -170,8 +170,6 @@ export interface StreamOptions {
   topK?: number
   /** User-facing thinking setting. `off` is normalized to no provider reasoning request. */
   thinking?: ThinkingSetting
-  /** Compatibility alias aligned with pi-ai's simple `reasoning` option. */
-  reasoning?: ThinkingLevel | 'off'
   thinkingBudgets?: ThinkingBudgets
   responseFormat?: { type: 'json_schema'; name?: string; schema: Record<string, unknown> }
   providerOptions?: Record<string, unknown>

@@ -10,7 +10,7 @@ import type {
 } from "./streaming.ts";
 import type { Message } from "../types.ts";
 import type { StreamEventEntry } from "./options.ts";
-import { agUiMessagesToInternalMessages } from "./ag-ui-compat.ts";
+import { agUiMessagesToInternalMessages } from "./ag-ui-messages.ts";
 import { providerHistoryMessages } from "./ag-ui-projection.ts";
 import {
   activityMessageToPluginReplayTrace,
@@ -294,7 +294,7 @@ export function* mapStreamEventsToPatches(
                 key: action.key,
                 message: action.message,
                 schema: action.schema,
-                context: (action.schema as { "x-model-context"?: unknown })["x-model-context"],
+                context: (action.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
                 status: "pending",
                 timestamp: Date.now(),
               },
@@ -344,7 +344,7 @@ export function* mapStreamEventsToPatches(
                 key: action.key,
                 message: action.message,
                 schema: action.schema,
-                context: (action.schema as { "x-model-context"?: unknown })["x-model-context"],
+                context: (action.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
                 status: "pending",
                 timestamp: Date.now(),
               },
@@ -375,7 +375,7 @@ export function* mapStreamEventsToPatches(
             key: event.key,
             message: event.message,
             schema: event.schema,
-            context: (event.schema as { "x-model-context"?: unknown })["x-model-context"],
+            context: (event.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
             status: "pending",
             timestamp: Date.now(),
           },
@@ -591,7 +591,7 @@ export function* mapStreamEventsToPatches(
                 key: elicitEvent.key,
                 message: elicitEvent.message,
                 schema: elicitEvent.schema,
-                context: (elicitEvent.schema as { "x-model-context"?: unknown })["x-model-context"],
+                context: (elicitEvent.schema as { "x-elicit-context"?: unknown })["x-elicit-context"],
                 status: "pending",
                 timestamp: Date.now(),
               },

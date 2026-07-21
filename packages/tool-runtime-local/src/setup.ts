@@ -114,7 +114,6 @@ export function* setupToolSessions(
 
   // Create registry
   const registryOptions: ToolSessionRegistryOptions = {
-    samplingProvider,
     ...(defaultTimeout !== undefined && { defaultTimeout }),
     ...(worker !== undefined && { worker }),
   }

@@ -157,15 +157,7 @@ function afterLsnFromPendingId(id: string | undefined): number | undefined {
   if (!id) return undefined;
 
   const requestMatch = /:req:(\d+)$/.exec(id);
-  if (requestMatch?.[1]) return Number(requestMatch[1]);
-
-  const elicitMatch = /:elicit:(\d+)$/.exec(id);
-  if (elicitMatch?.[1]) return Number(elicitMatch[1]) + 1;
-
-  const sampleMatch = /:sample:(\d+)$/.exec(id);
-  if (sampleMatch?.[1]) return Number(sampleMatch[1]) + 1;
-
-  return undefined;
+  return requestMatch?.[1] ? Number(requestMatch[1]) : undefined;
 }
 
 function* findPendingRequestLsn(

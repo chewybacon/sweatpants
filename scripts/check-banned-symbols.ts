@@ -41,6 +41,24 @@ const gates: Gate[] = [
     exclude: ["dist/", "node_modules/", "docs/", "unified-tool-types"],
   },
   {
+    name: "full-cutover-shims",
+    pattern:
+      "@deprecated|legacyMergeKey|x-model-context|--x-elicit-context|pluginSamplingProvider|REFERENCE_REVIEWER_CHAT_AGENT|:elicit:|:sample:",
+    paths: [
+      "packages/core/src",
+      "packages/session-contract/src",
+      "packages/durable-streams/src",
+      "packages/framework/src",
+      "packages/tool-runtime-local/src",
+      "packages/tool-runtime-agentcore/src",
+      "packages/elicit-context/src",
+      "apps/yo-chat/src",
+      "apps/a2a-review/src",
+      "apps/agentcore-tool-session-tracer/src",
+    ],
+    exclude: ["dist/", "node_modules/", "__tests__", "docs/", "archive/"],
+  },
+  {
     name: "as-never-welds",
     pattern: "as never",
     paths: [

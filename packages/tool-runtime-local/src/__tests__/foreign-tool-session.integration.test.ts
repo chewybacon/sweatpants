@@ -39,11 +39,6 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     const result = await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("Sampling must be returned as a foreign input request");
-          },
-        },
       });
       const [start, continueRegistration] = createToolSessionForeignEffectRegistrations({
         registry,
@@ -156,11 +151,6 @@ describe("ToolSession foreign-tool durability boundary", () => {
 
     const firstRun = await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("Sampling must be journaled by the durable adapter");
-          },
-        },
       });
       const registrations = createToolSessionForeignEffectRegistrations({
         registry,
@@ -202,11 +192,6 @@ describe("ToolSession foreign-tool durability boundary", () => {
       const replacementRegistry = yield* createToolSessionRegistry(
         createInMemoryToolSessionStore(),
         {
-          samplingProvider: {
-            *sample(): Operation<never> {
-              throw new Error("Sampling must not restart after host loss");
-            },
-          },
         },
       );
       const effects = createDurableEffectRegistry([

@@ -67,13 +67,8 @@ export function toolDiscoveryPlugin(userOptions: ToolDiscoveryOptions = {}): Plu
           CallExpression(path) {
             const { node } = path;
 
-            // Check import provenance before recognizing a builder. Legacy
-            // exportFunctionName configuration remains a bare-name fallback.
-            if (
-              !t.isIdentifier(node.callee) ||
-              (!localBuilders.has(node.callee.name) &&
-                !options.exportFunctionName.includes(node.callee.name))
-            ) {
+            // Recognize builders only through explicit import provenance.
+            if (!t.isIdentifier(node.callee) || !localBuilders.has(node.callee.name)) {
               return;
             }
 
@@ -384,13 +379,7 @@ export function discoverToolsInContent(
 ): DiscoveredTool[] {
   const tools: DiscoveredTool[] = [];
 
-  const imported = importedBuilderNamesFromContent(content, options);
-  // Preserve the pre-release custom-name fallback for import-free fixture and
-  // legacy sources, while imported aliases always take precedence.
-  const localBuilders =
-    imported.size > 0
-      ? imported
-      : new Map(options.exportFunctionName.map((name) => [name, "ordinary" as const]));
+  const localBuilders = importedBuilderNamesFromContent(content, options);
   const fnNames = [...localBuilders.keys()];
   if (fnNames.length === 0) {
     return [];

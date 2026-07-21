@@ -1,4 +1,4 @@
-import { getElicitContext, makePlugin, stripMessageContext } from '@sweatpants/framework/chat'
+import { getElicitContext, makePlugin } from '@sweatpants/framework/chat'
 
 import { CardPicker } from './components/CardPicker'
 import { pickCard } from './durable'
@@ -34,7 +34,7 @@ export const pickCardPlugin = makePlugin(pickCard)
     pickCard: function* (req, ctx) {
       const context = getElicitContext<PickCardContext>(req)
       const cards = context.cards ?? []
-      const prompt = context.prompt ?? stripMessageContext(req.message)
+      const prompt = context.prompt ?? req.message
       const result = yield* ctx.render(CardPicker, { cards, prompt })
       return { action: 'accept' as const, content: result }
     },

@@ -183,14 +183,14 @@ describe("plugin replay helper", () => {
     expect(duplicate.emissions[0]?.response).toEqual({ accepted: false });
   });
 
-  it("preserves legacy traces without stable ids as replayable activity content", () => {
-    const legacyTrace: ToolExecutionTrace = {
+  it("rejects traces without the closed version and stable emission ids", () => {
+    const invalidTrace = {
       startedAt: 1,
       completedAt: 2,
       emissions: [
         {
           order: 42,
-          componentKey: "LegacyCard",
+          componentKey: "OldCard",
           props: { ok: true },
           response: { picked: "A" },
           timestamp: 1000,
@@ -198,18 +198,13 @@ describe("plugin replay helper", () => {
       ],
     };
 
-    const activity = buildPluginReplayActivity({
-      toolCallId: "legacy-call",
-      toolName: "legacyTool",
-      trace: legacyTrace,
-    });
-
-    expect(activity?.content.trace.version).toBe(1);
-    expect(activity?.content.trace.emissions[0]).toMatchObject({
-      order: 0,
-      componentKey: "LegacyCard",
-      response: { picked: "A" },
-    });
+    expect(
+      buildPluginReplayActivity({
+        toolCallId: "old-call",
+        toolName: "oldTool",
+        trace: invalidTrace as ToolExecutionTrace,
+      }),
+    ).toBeNull();
   });
 
   it("enforces exact incoming emission and JSON-depth trace boundaries", () => {
