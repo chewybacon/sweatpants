@@ -1,6 +1,10 @@
-import { run } from "effection";
+import { race } from "effection";
 import { describe, expect, it } from "vitest";
-import { normalizeResponsesHistory, withTestRig, type TestRigOptions } from "@sweatpants/test-rig";
+import {
+  normalizeResponsesHistory,
+  withTestScenario,
+  type TestRigOptions,
+} from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_DURABLE_TOOL_NAME,
   ACCEPTANCE_MODEL_ID,
@@ -35,7 +39,7 @@ function record(value: unknown, label: string): Record<string, unknown> {
 
 async function runDurableToolScenario(binding: Binding): Promise<void> {
   let inspection: AcceptanceApplicationInspection | undefined;
-  await withTestRig(
+  await withTestScenario(
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
@@ -46,21 +50,15 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
         });
       },
     },
-    async (rig) => {
-      const outerRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const conversation = rig.chat.conversation({
+    function* (s) {
+      const conversation = s.conversation({
         tools: [acceptanceDurableTool],
         enabledTools: true,
         initialToolChoice: "required",
       });
-      const turn = conversation.send("Run the durable selection tool for trains.");
-      const choosePromise = turn.expectElicit("chooseOption");
-
-      const outerRequest = await outerRequestPromise;
-      const nestedSamplePromise = rig.model.expectRequest((request) => {
-        expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
-      });
-      await outerRequest.respond.toolCalls([
+      const turn = yield* conversation.send("Run the durable selection tool for trains.");
+      const outerRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      yield* outerRequest.respond.toolCalls([
         {
           id: DURABLE_CALL_ID,
           name: ACCEPTANCE_DURABLE_TOOL_NAME,
@@ -68,11 +66,13 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
         },
       ]);
 
-      const nestedSample = await nestedSamplePromise;
+      const nestedSample = yield* s.model.request((request) => {
+        expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
+      });
       expect(nestedSample.pullId).not.toBe(outerRequest.pullId);
-      await nestedSample.respond.text(`${DURABLE_SAMPLE_RESPONSE_MARKER} Prefer the express.`);
+      yield* nestedSample.respond.text(`${DURABLE_SAMPLE_RESPONSE_MARKER} Prefer the express.`);
 
-      const choose = await choosePromise;
+      const choose = yield* turn.elicit("chooseOption");
       const elicitContext = record(choose.context, "durable elicit context");
       expect(elicitContext["options"]).toEqual(["trains-alpha", "trains-beta"]);
       if (!inspection) {
@@ -83,11 +83,9 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
         attachmentCount: 1,
         shutdownCount: 1,
       });
+      yield* choose.accept({ selected: "trains-beta" });
 
-      const finalRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      await choose.accept({ selected: "trains-beta" });
-
-      const finalRequest = await finalRequestPromise;
+      const finalRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       const finalInput = records(finalRequest.body.input);
       const outputRecord = finalInput.find(
         (item) => item["type"] === "function_call_output" && item["call_id"] === DURABLE_CALL_ID,
@@ -109,16 +107,13 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
         shutdownCount: 2,
       });
 
-      await finalRequest.respond.text(DURABLE_TERMINAL_TEXT);
-      const transcript = await turn.complete();
+      yield* finalRequest.respond.text(DURABLE_TERMINAL_TEXT);
+      const transcript = yield* turn.settled();
       expect(transcript.outcome).toBe("success");
       expect(transcript.text).toBe(DURABLE_TERMINAL_TEXT);
 
-      const journalStore = inspection.journalStore;
-      const journal = await run(function* () {
-        const opened = yield* journalStore.open(conversation.conversationId);
-        return yield* opened.readJournal(conversation.conversationId);
-      });
+      const opened = yield* inspection.journalStore.open(conversation.conversationId);
+      const journal = yield* opened.readJournal(conversation.conversationId);
       expect(
         journal.some(
           (entry) =>
@@ -136,9 +131,8 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       ).toHaveLength(1);
       expect(JSON.stringify(journal)).not.toContain("foreign.tool.start");
 
-      const followUpRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const followUpTurn = conversation.send("DURABLE_FOLLOW_UP_V1 What did I select?");
-      const followUpRequest = await followUpRequestPromise;
+      const followUpTurn = yield* conversation.send("DURABLE_FOLLOW_UP_V1 What did I select?");
+      const followUpRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       const history = normalizeResponsesHistory(followUpRequest.body.input);
       expect(
         history.filter(
@@ -153,9 +147,8 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       );
       expect(outerHistory).not.toContain(DURABLE_SAMPLE_PROMPT_MARKER);
       expect(outerHistory).not.toContain(DURABLE_SAMPLE_RESPONSE_MARKER);
-
-      await followUpRequest.respond.text("You selected trains-beta.");
-      expect((await followUpTurn.complete()).text).toBe("You selected trains-beta.");
+      yield* followUpRequest.respond.text("You selected trains-beta.");
+      expect((yield* followUpTurn.settled()).text).toBe("You selected trains-beta.");
     },
   );
 }
@@ -165,7 +158,7 @@ async function runDurableElicitOutcome(
   action: "decline" | "cancel",
 ): Promise<void> {
   let inspection: AcceptanceApplicationInspection | undefined;
-  await withTestRig(
+  await withTestScenario(
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
@@ -175,28 +168,25 @@ async function runDurableElicitOutcome(
         });
       },
     },
-    async (rig) => {
-      const outerPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const conversation = rig.chat.conversation({ tools: [acceptanceDurableTool] });
-      const turn = conversation.send(`DURABLE_${action.toUpperCase()}_V1`);
-      const nestedPromise = rig.model.expectRequest((request) => {
-        expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
-      });
-      const elicitPromise = turn.expectElicit("chooseOption");
-      await (
-        await outerPromise
-      ).respond.toolCalls([
+    function* (s) {
+      const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+      const turn = yield* conversation.send(`DURABLE_${action.toUpperCase()}_V1`);
+      const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      yield* outer.respond.toolCalls([
         {
           id: `durable-${action}-call`,
           name: ACCEPTANCE_DURABLE_TOOL_NAME,
           arguments: { topic: action },
         },
       ]);
-      await (await nestedPromise).respond.text(`${action} nested sample`);
-      const elicit = await elicitPromise;
-      const finalPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      await elicit[action]();
-      const finalRequest = await finalPromise;
+      const nested = yield* s.model.request((request) => {
+        expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
+      });
+      yield* nested.respond.text(`${action} nested sample`);
+      const elicit = yield* turn.elicit("chooseOption");
+      yield* elicit[action]();
+
+      const finalRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       const output = records(finalRequest.body.input).find(
         (item) => item["type"] === "function_call_output",
       );
@@ -208,8 +198,8 @@ async function runDurableElicitOutcome(
           "durable outcome output",
         ),
       ).toMatchObject({ selected: "none" });
-      await finalRequest.respond.text(`DURABLE_${action.toUpperCase()}_TERMINAL_V1`);
-      expect((await turn.complete()).text).toBe(`DURABLE_${action.toUpperCase()}_TERMINAL_V1`);
+      yield* finalRequest.respond.text(`DURABLE_${action.toUpperCase()}_TERMINAL_V1`);
+      expect((yield* turn.settled()).text).toBe(`DURABLE_${action.toUpperCase()}_TERMINAL_V1`);
       expect(inspection?.durableWorker).toEqual({
         activeAttachments: 0,
         attachmentCount: 2,
@@ -220,45 +210,36 @@ async function runDurableElicitOutcome(
 }
 
 async function runDurableEffectFailure(binding: Binding): Promise<void> {
-  await withTestRig(
+  await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
-    async (rig) => {
-      const outerPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const conversation = rig.chat.conversation({ tools: [acceptanceDurableTool] });
-      const turn = conversation.send("DURABLE_EFFECT_FAILURE_V1");
-      await (
-        await outerPromise
-      ).respond.toolCalls([
+    function* (s) {
+      const conversation = s.conversation({ tools: [acceptanceDurableTool] });
+      const turn = yield* conversation.send("DURABLE_EFFECT_FAILURE_V1");
+      const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      yield* outer.respond.toolCalls([
         {
           id: "durable-effect-failure-call",
           name: ACCEPTANCE_DURABLE_TOOL_NAME,
           arguments: { topic: "effect-failure" },
         },
       ]);
-      await expect(turn.complete()).rejects.toThrow();
+      yield* turn.failure();
 
-      const recoveryPromise = rig.model.expectRequest((request) => {
-        const input = JSON.stringify(request.body.input);
-        expect(input).toContain("DURABLE_EFFECT_RECOVERY_V1");
-        expect(input).toContain("durable-effect-failure-call");
-        expect(input).toMatch(/error|fail/i);
-      });
-      const recovery = conversation.send("DURABLE_EFFECT_RECOVERY_V1");
-      const recoveryRequest = await Promise.race([
-        recoveryPromise,
-        recovery.complete().then(
-          (value) => {
-            throw new Error(`recovery completed before sampling: ${JSON.stringify(value)}`);
-          },
-          (error: unknown) => {
-            throw new Error(
-              `recovery failed before sampling: ${error instanceof Error ? error.message : String(error)}`,
-            );
-          },
-        ),
+      const recovery = yield* conversation.send("DURABLE_EFFECT_RECOVERY_V1");
+      const recoveryRequest = yield* race([
+        s.model.request((request) => {
+          const input = JSON.stringify(request.body.input);
+          expect(input).toContain("DURABLE_EFFECT_RECOVERY_V1");
+          expect(input).toContain("durable-effect-failure-call");
+          expect(input).toMatch(/error|fail/i);
+        }),
+        (function* () {
+          const failure = yield* recovery.failure();
+          throw new Error(`recovery failed before sampling: ${failure.message}`);
+        })(),
       ]);
-      await recoveryRequest.respond.text("DURABLE_EFFECT_RECOVERED_V1");
-      expect((await recovery.complete()).text).toBe("DURABLE_EFFECT_RECOVERED_V1");
+      yield* recoveryRequest.respond.text("DURABLE_EFFECT_RECOVERED_V1");
+      expect((yield* recovery.settled()).text).toBe("DURABLE_EFFECT_RECOVERED_V1");
     },
   );
 }

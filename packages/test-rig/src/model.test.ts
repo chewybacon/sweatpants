@@ -139,6 +139,42 @@ describe("model semantic barriers", () => {
     }
   });
 
+  it("buffers a request until a causal script consumes it", async () => {
+    const simulator = await startModelSimulator(undefined, { unmatchedRequests: "buffer" });
+    try {
+      const responsePromise = fetch(`${simulator.baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "buffered", stream: true }),
+      });
+      const pending = await simulator.model.nextRequest({ model: "buffered" });
+      await pending.respond.text("causal response");
+      expect(await responsePromise.then((response) => response.text())).toContain(
+        "causal response",
+      );
+      simulator.verify();
+    } finally {
+      await simulator.close();
+    }
+  });
+
+  it("validates buffered requests in FIFO order instead of searching past them", async () => {
+    const simulator = await startModelSimulator(undefined, { unmatchedRequests: "buffer" });
+    try {
+      void fetch(`${simulator.baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "first", stream: true }),
+      }).catch(() => undefined);
+      await expect(simulator.model.nextRequest({ model: "second" })).rejects.toThrow(
+        /Model request mismatch/,
+      );
+      expect(() => simulator.verify()).toThrow(/Model request mismatch/);
+    } finally {
+      await simulator.close();
+    }
+  });
+
   it("returns an immediate OpenAI-shaped error for an unexpected request", async () => {
     let poisoned: Error | undefined;
     const simulator = await startModelSimulator((error) => {

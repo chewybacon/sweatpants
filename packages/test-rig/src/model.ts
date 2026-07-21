@@ -48,6 +48,12 @@ export interface PendingModelRequest extends CapturedModelRequest {
 }
 export interface ModelHandle {
   expectRequest(expectation: RequestExpectation): Promise<PendingModelRequest>;
+  /**
+   * Consume the oldest buffered provider request, or wait for the next one.
+   * Requires the simulator to run with `unmatchedRequests: "buffer"`.
+   * An optional expectation validates (never skips) the consumed request.
+   */
+  nextRequest(expectation?: RequestExpectation): Promise<PendingModelRequest>;
   requests(): readonly CapturedModelRequest[];
 }
 
@@ -131,6 +137,15 @@ function envelope(
 function errorEnvelope(code: string, message: string) {
   return { error: { code, type: "simulator_error", message: message.slice(0, 2000) } };
 }
+function validateExpectation(expectation: RequestExpectation, request: CapturedModelRequest): void {
+  if (typeof expectation === "function") {
+    expectation(request);
+  } else if (!partial(request.body, expectation)) {
+    throw new Error(
+      `Model request mismatch; expected ${bounded(expectation)}, actual ${bounded(request.body)}`,
+    );
+  }
+}
 
 export interface ModelSimulator {
   readonly baseUrl: string;
@@ -139,12 +154,28 @@ export interface ModelSimulator {
   close(): Promise<void>;
 }
 
+export interface ModelSimulatorOptions {
+  /**
+   * "poison" (default): a request with no armed expectation fails the rig.
+   * "buffer": unmatched requests queue up until `nextRequest()` consumes them,
+   * enabling causal-order ("ask late") scenario scripts.
+   */
+  unmatchedRequests?: "poison" | "buffer";
+}
+
 export async function startModelSimulator(
   onPoison?: (error: Error) => void,
+  simulatorOptions?: ModelSimulatorOptions,
 ): Promise<ModelSimulator> {
+  const bufferUnmatched = simulatorOptions?.unmatchedRequests === "buffer";
   const captured: CapturedModelRequest[] = [];
   const expectations: Array<{
     expectation: RequestExpectation;
+    wait: Deferred<PendingModelRequest>;
+  }> = [];
+  const arrivals: PendingModelRequest[] = [];
+  const arrivalWaiters: Array<{
+    expectation?: RequestExpectation;
     wait: Deferred<PendingModelRequest>;
   }> = [];
   const pending = new Set<PendingModelRequest>();
@@ -157,6 +188,9 @@ export async function startModelSimulator(
     root = error;
     onPoison?.(error);
     for (const x of expectations.splice(0)) {
+      x.wait.reject(error);
+    }
+    for (const x of arrivalWaiters.splice(0)) {
       x.wait.reject(error);
     }
     return error;
@@ -192,20 +226,41 @@ export async function startModelSimulator(
           pullId,
         });
         captured.push(request);
-        const registered = expectations.shift();
+        let registered = expectations.shift();
+        if (!registered && bufferUnmatched) {
+          // Route the fully-constructed handle into the arrival buffer (or hand
+          // it to the oldest waiting nextRequest caller) instead of poisoning.
+          const wait = deferred<PendingModelRequest>();
+          void wait.promise.then(
+            (handle) => {
+              const waiter = arrivalWaiters.shift();
+              if (!waiter) {
+                arrivals.push(handle);
+                return undefined;
+              }
+              try {
+                if (waiter.expectation) {
+                  validateExpectation(waiter.expectation, handle);
+                }
+                waiter.wait.resolve(handle);
+              } catch (cause) {
+                waiter.wait.reject(
+                  poison(cause instanceof Error ? cause : new Error(String(cause))),
+                );
+              }
+              return undefined;
+            },
+            () => undefined,
+          );
+          registered = { expectation: () => {}, wait };
+        }
         if (!registered) {
           const e = poison(new Error(`Unexpected model request: ${bounded(body)}`));
           res.status(409).json(errorEnvelope("simulator_unexpected_request", e.message));
           return;
         }
         try {
-          if (typeof registered.expectation === "function") {
-            registered.expectation(request);
-          } else if (!partial(body, registered.expectation)) {
-            throw new Error(
-              `Model request mismatch; expected ${bounded(registered.expectation)}, actual ${bounded(body)}`,
-            );
-          }
+          validateExpectation(registered.expectation, request);
         } catch (cause) {
           const e = poison(cause instanceof Error ? cause : new Error(String(cause)));
           registered.wait.reject(e);
@@ -568,6 +623,30 @@ export async function startModelSimulator(
         return Promise.reject(e);
       }
     },
+    nextRequest(expectation) {
+      try {
+        assertActive();
+        if (!bufferUnmatched) {
+          throw new Error('nextRequest requires the simulator option unmatchedRequests: "buffer"');
+        }
+        const buffered = arrivals.shift();
+        if (buffered) {
+          if (expectation) {
+            try {
+              validateExpectation(expectation, buffered);
+            } catch (cause) {
+              throw poison(cause instanceof Error ? cause : new Error(String(cause)));
+            }
+          }
+          return Promise.resolve(buffered);
+        }
+        const wait = deferred<PendingModelRequest>();
+        arrivalWaiters.push({ ...(expectation !== undefined ? { expectation } : {}), wait });
+        return wait.promise;
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    },
     requests() {
       return Object.freeze(captured.map((x) => Object.freeze(structuredClone(x))));
     },
@@ -580,6 +659,12 @@ export async function startModelSimulator(
       if (expectations.length) {
         throw poison(new Error(`${expectations.length} unclaimed model expectation(s)`));
       }
+      if (arrivalWaiters.length) {
+        throw poison(new Error(`${arrivalWaiters.length} unclaimed nextRequest waiter(s)`));
+      }
+      if (arrivals.length) {
+        throw poison(new Error(`${arrivals.length} unconsumed buffered model request(s)`));
+      }
       if (pending.size) {
         throw poison(new Error(`${pending.size} unanswered model request(s)`));
       }
@@ -587,6 +672,9 @@ export async function startModelSimulator(
     async close() {
       closed = true;
       for (const x of expectations.splice(0)) {
+        x.wait.reject(root ?? new Error("Simulator closed"));
+      }
+      for (const x of arrivalWaiters.splice(0)) {
         x.wait.reject(root ?? new Error("Simulator closed"));
       }
       await listening.ensureClose();
