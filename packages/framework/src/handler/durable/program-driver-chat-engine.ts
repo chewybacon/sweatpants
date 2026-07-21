@@ -1488,6 +1488,6 @@ function schemaWithModelContext(
     ),
   );
   return Object.keys(modelContext).length > 0
-    ? { ...parsed, "x-model-context": modelContext }
+    ? { ...parsed, "x-elicit-context": modelContext }
     : parsed;
 }

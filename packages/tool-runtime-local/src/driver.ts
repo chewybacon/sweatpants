@@ -34,7 +34,7 @@ export interface LocalToolRuntimeDriverOptions {
   registry?: ToolSessionRegistry;
   store?: ToolSessionStore;
   samplingProvider?: ToolSessionSamplingProvider;
-  registryOptions?: Omit<ToolSessionRegistryOptions, "samplingProvider">;
+  registryOptions?: ToolSessionRegistryOptions;
 }
 
 function localRuntimeWorkerRequirementError(): ToolRuntimeError {
@@ -146,10 +146,7 @@ function* waitForAbort(signal: AbortSignal): Operation<void> {
 function afterLsnFromElicitId(elicitId: string | undefined): number | undefined {
   if (!elicitId) return undefined;
   const requestMatch = /:req:(\d+)$/.exec(elicitId);
-  if (requestMatch?.[1]) return Number(requestMatch[1]);
-  const legacyMatch = /:elicit:(\d+)$/.exec(elicitId);
-  if (legacyMatch?.[1]) return Number(legacyMatch[1]) + 1;
-  return undefined;
+  return requestMatch?.[1] ? Number(requestMatch[1]) : undefined;
 }
 
 function* nextMcpExecution(
@@ -300,10 +297,10 @@ export function* createLocalToolRuntimeDriver(
 
   const registry =
     options.registry ??
-    (yield* createToolSessionRegistry(options.store ?? createInMemoryToolSessionStore(), {
-      ...(options.registryOptions ?? {}),
-      samplingProvider,
-    }));
+    (yield* createToolSessionRegistry(
+      options.store ?? createInMemoryToolSessionStore(),
+      options.registryOptions ?? {},
+    ));
 
   return createStrategyToolRuntime({
     id: runtimeId,

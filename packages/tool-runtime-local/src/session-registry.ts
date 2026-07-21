@@ -20,7 +20,6 @@ import type {
   ToolSession,
   ToolSessionEntry,
   ToolSessionOptions,
-  ToolSessionSamplingProvider,
   ToolSessionStatus,
   ElicitsMap,
 } from "@sweatpants/framework/chat/mcp-tools";
@@ -84,11 +83,6 @@ function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | UR
  */
 export interface ToolSessionRegistryOptions {
   /**
-   * Provider for LLM sampling when tools use ctx.sample().
-   */
-  samplingProvider: ToolSessionSamplingProvider;
-
-  /**
    * Default timeout for sessions in milliseconds.
    * @default undefined (no timeout)
    */
@@ -133,7 +127,7 @@ export function createToolSessionRegistry(
   options: ToolSessionRegistryOptions,
 ): Operation<ToolSessionRegistry> {
   return resource<ToolSessionRegistry>(function* (provide) {
-    const { samplingProvider, defaultTimeout, worker } = options;
+    const { defaultTimeout, worker } = options;
 
     // Track active session resources and detached scopes for host teardown.
     const activeSessions = new Map<string, ToolSession>();
@@ -193,7 +187,7 @@ export function createToolSessionRegistry(
                     ? { execArgv: worker.execArgv }
                     : {}),
                 })
-              : yield* createToolSession(tool, validatedParams, samplingProvider, mergedOptions)
+              : yield* createToolSession(tool, validatedParams, mergedOptions)
           ) as ToolSession<TResult>;
 
           // Send session back to caller

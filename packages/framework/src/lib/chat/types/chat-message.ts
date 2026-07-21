@@ -100,7 +100,7 @@ export interface PluginElicit {
   key: string
   /** Human-readable message/prompt for the elicitation */
   message: string
-  /** Context data passed to the component (extracted from x-model-context) */
+  /** Context data passed to the component (extracted from x-elicit-context) */
   context?: unknown
   /** Current status */
   status: 'pending' | 'responded'
@@ -393,12 +393,3 @@ export function getMessageToolCalls<TComponent = unknown>(
     (part): part is ToolCallPart<TComponent> => part.type === 'tool-call'
   )
 }
-
-// =============================================================================
-// LEGACY TYPE ALIASES (for migration)
-// =============================================================================
-
-/**
- * @deprecated Use ToolCallPart instead. This alias exists for migration.
- */
-export type ChatToolCall<TComponent = unknown> = ToolCallPart<TComponent>

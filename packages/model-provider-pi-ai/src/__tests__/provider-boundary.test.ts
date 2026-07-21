@@ -353,7 +353,7 @@ describe('pi-ai provider boundary normalization', () => {
     }
   })
 
-  it('normalizes default, off, alias-only, and precedence reasoning cases', async () => {
+  it('normalizes default and explicit off thinking settings', async () => {
     const runtime = createPiAiRuntime()
 
     await run(function* () {
@@ -367,41 +367,13 @@ describe('pi-ai provider boundary normalization', () => {
     mockPiStream([])
     await run(function* () {
       const subscription = yield* runtime.stream(testModel, {
-        messages: [{ role: 'user', content: 'Alias' }],
-      }, { reasoning: 'medium' })
-      const next = yield* subscription.next()
-      expect(next.done).toBe(true)
-    })
-    expect(piAiMocks.streamSimple.mock.calls[0]![2]).toMatchObject({ reasoning: 'medium' })
-
-    piAiMocks.streamSimple.mockClear()
-    mockPiStream([])
-    await run(function* () {
-      const subscription = yield* runtime.stream(testModel, {
         messages: [{ role: 'user', content: 'No thinking' }],
-      }, {
-        thinking: 'off',
-        reasoning: 'high',
-      })
+      }, { thinking: 'off' })
       const next = yield* subscription.next()
       expect(next.done).toBe(true)
     })
     expect(piAiMocks.streamSimple.mock.calls[0]![2]).not.toHaveProperty('reasoning')
     expect(piAiMocks.streamSimple.mock.calls[0]![2]).not.toHaveProperty('reasoningEffort')
-
-    piAiMocks.streamSimple.mockClear()
-    mockPiStream([])
-    await run(function* () {
-      const subscription = yield* runtime.stream(testModel, {
-        messages: [{ role: 'user', content: 'Precedence' }],
-      }, {
-        thinking: 'low',
-        reasoning: 'high',
-      })
-      const next = yield* subscription.next()
-      expect(next.done).toBe(true)
-    })
-    expect(piAiMocks.streamSimple.mock.calls[0]![2]).toMatchObject({ reasoning: 'low' })
   })
 
   it('preserves thinkingLevelMap when converting Sweatpants models to pi-ai models', async () => {

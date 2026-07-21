@@ -32,7 +32,7 @@ import {
   type Json,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
-import { defineLegacyReviewer, type ReviewInput } from "./legacy.ts";
+import { defineReviewerProgram, type ReviewInput } from "./reviewer-program.ts";
 import { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
 
 export { REFERENCE_REVIEWER_ARTIFACT_DIGEST } from "./reviewer-artifact.generated.ts";
@@ -45,7 +45,7 @@ export type AskParentOutput =
   | { status: "declined"; reason?: string };
 export type AskParentCancellationPartial = { reason?: string };
 export type ConsultationContextRef = { contextId: string; digest: string };
-export type { ReviewInput, ReviewOutput } from "./legacy.ts";
+export type { ReviewInput, ReviewOutput } from "./reviewer-program.ts";
 
 const askInputSchema = standardSchema((value) => {
   if (!record(value) || !onlyKeys(value, ["question"], ["rationale"])) {
@@ -288,14 +288,13 @@ export const REFERENCE_ASK_PARENT_TOOL = createGeneratedPinnedDurableProgram(
   },
 );
 
-const legacyReviewer = defineLegacyReviewer({
+const reviewerProgram = defineReviewerProgram({
   artifactDigest: REFERENCE_REVIEWER_ARTIFACT_DIGEST,
   askParentEffect: ASK_PARENT_EFFECT,
   askParentSchemas: REFERENCE_ASK_PARENT_SCHEMA_ENTRIES,
 });
-/** Low-level compatibility fixture; production acceptance executes REFERENCE_REVIEWER_CHAT. */
-export const REFERENCE_REVIEWER_TOOL = legacyReviewer.tool;
-export const REFERENCE_REVIEW_SCHEMA_ENTRIES = legacyReviewer.schemaEntries;
+export const REFERENCE_REVIEWER_TOOL = reviewerProgram.tool;
+export const REFERENCE_REVIEW_SCHEMA_ENTRIES = reviewerProgram.schemaEntries;
 
 /**
  * Product-facade definition used by the caller-authoritative acceptance vertical.
@@ -375,8 +374,6 @@ export const REFERENCE_REVIEWER_AGENT = defineAgent({
     }),
   },
 });
-/** Compatibility alias for callers that imported the staged chat-only definition. */
-export const REFERENCE_REVIEWER_CHAT_AGENT = REFERENCE_REVIEWER_AGENT;
 export const REFERENCE_REVIEWER_REMOTE = serveAgent(
   REFERENCE_REVIEWER_AGENT,
   remoteExecutor({

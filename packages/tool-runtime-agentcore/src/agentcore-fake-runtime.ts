@@ -105,7 +105,7 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     responses.push(eventResponse(session, { type: 'progress', message: `started ${request.toolName}`, progress: 0 }))
 
     if (request.toolName.includes('elicit')) {
-      const elicitId = `${request.toolSessionId}:elicit:1`
+      const elicitId = `${request.toolSessionId}:req:1`
       session.status = 'awaiting_elicit'
       session.pending = { type: 'elicit', elicitId }
       responses.push(eventResponse(session, {
@@ -120,7 +120,7 @@ export class FakeAgentCoreRemoteToolRuntimeClient implements RemoteToolRuntimeCl
     }
 
     if (request.toolName.includes('sample')) {
-      const sampleId = `${request.toolSessionId}:sample:1`
+      const sampleId = `${request.toolSessionId}:req:1`
       session.status = 'awaiting_sample'
       session.pending = { type: 'sample', sampleId }
       responses.push(eventResponse(session, {

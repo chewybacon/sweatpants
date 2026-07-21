@@ -50,7 +50,7 @@ import {
   activitySnapshotsForMessages,
   toProviderHistorySnapshot,
 } from "../../lib/chat/session/ag-ui-projection.ts";
-import { agUiMessagesToInternalMessages } from "../../lib/chat/session/ag-ui-compat.ts";
+import { agUiMessagesToInternalMessages } from "../../lib/chat/session/ag-ui-messages.ts";
 import {
   replayFramesToConversation,
   type DurableFrame,

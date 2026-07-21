@@ -425,7 +425,7 @@ describe("strict AG-UI public conformance", () => {
       type: "object",
       required: ["approved"],
       properties: { approved: { type: "boolean" } },
-      "x-model-context": { prompt: "Approve the echo", choices: ["yes", "no"] },
+      "x-elicit-context": { prompt: "Approve the echo", choices: ["yes", "no"] },
     });
     const interruptId = interrupt?.["id"];
     expect(typeof interruptId).toBe("string");

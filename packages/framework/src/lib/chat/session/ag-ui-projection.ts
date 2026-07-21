@@ -1,5 +1,5 @@
 import type { Message } from "../types.ts";
-import { internalMessagesToAgUiMessages, type AgUiMessage } from "./ag-ui-compat.ts";
+import { internalMessagesToAgUiMessages, type AgUiMessage } from "./ag-ui-messages.ts";
 import {
   activityMessageToPluginReplayTrace,
   buildPluginReplayActivity,

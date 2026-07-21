@@ -51,19 +51,7 @@ export function defineDurableProgramManifest<I extends Json = Json, O extends Js
 export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(
   manifest: DurableProgramManifest<I, O>,
   program: DurableProgramFactory<I, O>,
-): DurableTool<I, O>;
-export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(options: {
-  manifest: DurableProgramManifest<I, O>;
-  program: DurableProgramFactory<I, O>;
-}): DurableTool<I, O>;
-export function createPinnedDurableProgram<I extends Json = Json, O extends Json = Json>(
-  manifestOrOptions:
-    | DurableProgramManifest<I, O>
-    | { manifest: DurableProgramManifest<I, O>; program: DurableProgramFactory<I, O> },
-  maybeProgram?: DurableProgramFactory<I, O>,
 ): DurableTool<I, O> {
-  const manifest = "manifest" in manifestOrOptions ? manifestOrOptions.manifest : manifestOrOptions;
-  const program = "manifest" in manifestOrOptions ? manifestOrOptions.program : maybeProgram;
   validateDurableManifest(manifest);
   if (typeof program !== "function" || isAsyncFunction(program)) {
     throw new CrankError(

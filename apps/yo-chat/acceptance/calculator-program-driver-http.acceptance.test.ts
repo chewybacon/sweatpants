@@ -92,11 +92,6 @@ describe("immediate worker tool through ProgramRuntime HTTP", () => {
           registryStore: createInMemoryRegistryStore(),
         });
         const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-          samplingProvider: {
-            *sample(): Operation<never> {
-              throw new Error("Calculator must not sample");
-            },
-          },
           worker: yoChatToolSessionWorkerConfig,
         });
         const samplingProvider = {
@@ -106,7 +101,6 @@ describe("immediate worker tool through ProgramRuntime HTTP", () => {
         };
         const pluginManager = yield* createPluginSessionManager({
           registry,
-          samplingProvider,
         });
         yield* installYoChatToolRuntime({
           mode: "local",

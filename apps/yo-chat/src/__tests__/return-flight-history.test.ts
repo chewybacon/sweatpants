@@ -132,7 +132,6 @@ describe("book_flight return history", () => {
           },
         };
         const registry = yield* createToolSessionRegistry(store, {
-          samplingProvider,
           worker: yoChatTestToolSessionWorkerConfig,
         });
         const manager = yield* createPluginSessionManager({ registry });
@@ -148,7 +147,6 @@ describe("book_flight return history", () => {
       const {
         registry: toolSessionRegistry,
         manager: pluginSessionManager,
-        samplingProvider,
       } = readyResult.value;
 
       const providerMessages: Message[][] = [];
@@ -244,7 +242,6 @@ describe("book_flight return history", () => {
         yield* installLocalToolRuntime({
           tools: [localBookFlightTool],
           registry: toolSessionRegistry,
-          samplingProvider,
         });
       };
 

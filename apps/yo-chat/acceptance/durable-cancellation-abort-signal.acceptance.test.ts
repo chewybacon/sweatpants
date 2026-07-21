@@ -115,11 +115,6 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("Abort-aware tool must not sample");
-          },
-        },
       });
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({

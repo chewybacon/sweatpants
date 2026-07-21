@@ -1,3 +1,3 @@
-/** Generated from src/index.ts, src/legacy.ts. Run pnpm generate:artifact after source changes. */
+/** Generated from src/index.ts, src/reviewer-program.ts. Run pnpm generate:artifact after source changes. */
 export const REFERENCE_REVIEWER_ARTIFACT_DIGEST =
-  "c50b0a2ff25a77807cfa638f5ac8ea85e18f8174b3262c020a3b1ac8473d812b";
+  "8caa827b45a78b159cbefdef03aa9f03e888e8a8aebd5a7c42bccd576f66dbe0";

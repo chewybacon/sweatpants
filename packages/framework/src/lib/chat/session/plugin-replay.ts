@@ -147,14 +147,10 @@ function cloneOptionalJsonValue(value: unknown, maxDepth: number): unknown | Inv
   });
 }
 
-function entryMergeKey(entry: EmissionTraceEntry): string | null {
-  if (entry.sourceInterruptId && entry.emissionId) {
-    return `${entry.sourceInterruptId}\u0000${entry.emissionId}`;
-  }
-  if (entry.sourceInterruptId) {
-    return `${entry.sourceInterruptId}\u0000legacy:${entry.legacyMergeKey ?? entry.order}`;
-  }
-  return null;
+function entryMergeKey(entry: EmissionTraceEntry): string {
+  return entry.sourceInterruptId
+    ? `${entry.sourceInterruptId}\u0000${entry.emissionId}`
+    : `emission\u0000${entry.emissionId}`;
 }
 
 function reindexTrace(trace: ToolExecutionTrace): ToolExecutionTrace & { version: 1 } {
@@ -181,8 +177,7 @@ export function normalizeClientReplayTrace(
   const limits = limitsWithDefaults(options.limits);
   if (!isRecord(input)) return null;
 
-  const version = input["version"];
-  if (version !== undefined && version !== 1) return null;
+  if (input["version"] !== 1) return null;
   if (!finiteNumber(input["startedAt"]) || !finiteNumber(input["completedAt"])) return null;
 
   const rawEmissions = input["emissions"];
@@ -210,13 +205,12 @@ export function normalizeClientReplayTrace(
     if (response === invalidJson) return null;
 
     const emissionId = rawEntry["emissionId"];
+    if (typeof emissionId !== "string" || emissionId.length === 0) return null;
     const sourceInterruptId = rawEntry["sourceInterruptId"] ?? options.interruptId;
 
     emissions.push({
       order: index,
-      ...(typeof emissionId === "string" && emissionId.length > 0
-        ? { emissionId }
-        : { legacyMergeKey: `order:${index}` }),
+      emissionId,
       ...(typeof sourceInterruptId === "string" && sourceInterruptId.length > 0
         ? { sourceInterruptId }
         : {}),
@@ -254,25 +248,22 @@ export function mergePluginReplayTrace(
 
   for (let index = 0; index < merged.length; index++) {
     const key = entryMergeKey(merged[index]!);
-    if (key) indexByKey.set(key, index);
+    indexByKey.set(key, index);
   }
 
   for (const entry of incoming.trace.emissions) {
     const normalizedEntry: EmissionTraceEntry = {
       ...entry,
-      ...(!entry.emissionId && !entry.legacyMergeKey
-        ? { legacyMergeKey: `order:${entry.order}` }
-        : {}),
       ...(incoming.interruptId && !entry.sourceInterruptId
         ? { sourceInterruptId: incoming.interruptId }
         : {}),
     };
     const key = entryMergeKey(normalizedEntry);
-    const existingIndex = key ? indexByKey.get(key) : undefined;
+    const existingIndex = indexByKey.get(key);
     if (existingIndex !== undefined) {
       merged[existingIndex] = normalizedEntry;
     } else if (merged.length < limits.maxMergedTraceEmissionsPerToolCall) {
-      if (key) indexByKey.set(key, merged.length);
+      indexByKey.set(key, merged.length);
       merged.push(normalizedEntry);
     }
   }
@@ -295,7 +286,9 @@ export function buildPluginReplayActivity(source: {
   toolName: string;
   trace: ToolExecutionTrace;
 }): PluginReplayActivitySnapshotEvent | null {
-  const trace = reindexTrace(source.trace);
+  const normalized = normalizeClientReplayTrace(source.trace);
+  if (!normalized) return null;
+  const trace = reindexTrace(normalized);
   const content: PluginReplayActivityContent = {
     version: 1,
     toolCallId: source.toolCallId,

@@ -113,11 +113,8 @@ export interface EmissionTraceEntry {
   /** Derived from array position after normalization/merge. */
   order: number;
 
-  /** Stable browser emission id, when available. */
-  emissionId?: string;
-
-  /** Stable fallback identity for legacy emissions lacking emissionId. */
-  legacyMergeKey?: string;
+  /** Stable browser emission id. */
+  emissionId: string;
 
   /** Source AG-UI interrupt id, when available. */
   sourceInterruptId?: string;
@@ -147,8 +144,8 @@ export interface HydratedEmissionTraceEntry extends EmissionTraceEntry {
  * Tool execution trace - included in completed tool messages.
  */
 export interface ToolExecutionTrace {
-  /** Version 1 for normalized replay traces; missing means legacy v0. */
-  version?: 1;
+  /** Closed normalized replay trace version. */
+  version: 1;
 
   /** All emissions in canonical array order */
   emissions: EmissionTraceEntry[];
@@ -164,6 +161,7 @@ export interface ToolExecutionTrace {
  * Tool execution trace with transient component references restored.
  */
 export interface HydratedToolExecutionTrace {
+  version: 1;
   emissions: HydratedEmissionTraceEntry[];
   startedAt: number;
   completedAt: number;

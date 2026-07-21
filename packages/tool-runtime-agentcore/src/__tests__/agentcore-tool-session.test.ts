@@ -130,7 +130,7 @@ describe('AgentCore ToolSession facade', () => {
       const awaitingStatus = yield* session.status()
       const stopsWhileAwaiting = [...runtime.stoppedRuntimeSessionIds]
 
-      yield* session.respondToElicit('call_idle_then_complete:elicit:1', {
+      yield* session.respondToElicit('call_idle_then_complete:req:1', {
         action: 'accept',
         content: { confirmed: true },
       })
@@ -194,9 +194,9 @@ describe('AgentCore ToolSession facade', () => {
       const session = yield* registry.create(elicitTool, {}, { sessionId: 'call_elicit' })
       expect(yield* session.status()).toBe('awaiting_elicit')
       const handleBefore = yield* stores.handles.get('call_elicit')
-      expect(handleBefore?.pendingRequest).toEqual({ type: 'elicit', elicitId: 'call_elicit:elicit:1' })
+      expect(handleBefore?.pendingRequest).toEqual({ type: 'elicit', elicitId: 'call_elicit:req:1' })
 
-      yield* session.respondToElicit('call_elicit:elicit:1', {
+      yield* session.respondToElicit('call_elicit:req:1', {
         action: 'accept',
         content: { confirmed: true },
       })
@@ -241,7 +241,7 @@ describe('AgentCore ToolSession facade', () => {
     const result = await run(function* () {
       const session = yield* registry.create(sampleTool, {}, { sessionId: 'call_sample' })
       expect(yield* session.status()).toBe('awaiting_sample')
-      yield* session.respondToSample('call_sample:sample:1', { text: 'hello model' })
+      yield* session.respondToSample('call_sample:req:1', { text: 'hello model' })
       return {
         status: yield* session.status(),
         events: yield* stores.events.readAfter('call_sample', 0),
@@ -291,7 +291,7 @@ describe('AgentCore ToolSession facade', () => {
     const result = await run(function* () {
       const session = yield* registry.create(elicitTool, {}, { sessionId: 'call_orphan' })
       runtime.sessions.clear()
-      yield* session.respondToElicit('call_orphan:elicit:1', { action: 'accept', content: {} })
+      yield* session.respondToElicit('call_orphan:req:1', { action: 'accept', content: {} })
       return {
         status: yield* session.status(),
         events: yield* stores.events.readAfter('call_orphan', 0),
@@ -342,12 +342,12 @@ describe('AgentCore ToolSession facade', () => {
 
     const result = await run(function* () {
       const elicit = yield* elicitRegistry.create(elicitTool, {}, { sessionId: 'stable_elicit' })
-      yield* elicit.respondToElicit('stable_elicit:elicit:1', { action: 'accept', content: {} })
-      yield* elicit.respondToElicit('stable_elicit:elicit:1', { action: 'accept', content: {} })
+      yield* elicit.respondToElicit('stable_elicit:req:1', { action: 'accept', content: {} })
+      yield* elicit.respondToElicit('stable_elicit:req:1', { action: 'accept', content: {} })
 
       const sample = yield* sampleRegistry.create(sampleTool, {}, { sessionId: 'stable_sample' })
-      yield* sample.respondToSample('stable_sample:sample:1', { text: 'hello' })
-      yield* sample.respondToSample('stable_sample:sample:1', { text: 'hello' })
+      yield* sample.respondToSample('stable_sample:req:1', { text: 'hello' })
+      yield* sample.respondToSample('stable_sample:req:1', { text: 'hello' })
 
       const cancellableStores = createStores()
       const cancellableRuntime = new FakeAgentCoreRemoteToolRuntimeClient()
@@ -417,9 +417,9 @@ describe('AgentCore ToolSession facade', () => {
       const request = {
         op: 'respond_to_elicit',
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: ['respond_to_elicit', 'duplicate_recover', 'duplicate_recover:elicit:1'].map(encodeURIComponent).join(':'),
+        commandId: ['respond_to_elicit', 'duplicate_recover', 'duplicate_recover:req:1'].map(encodeURIComponent).join(':'),
         toolSessionId: 'duplicate_recover',
-        elicitId: 'duplicate_recover:elicit:1',
+        elicitId: 'duplicate_recover:req:1',
         response: { action: 'accept', content: { ok: true } },
       }
       const fakeSession = [...runtime.sessions.values()][0] as any
@@ -429,7 +429,7 @@ describe('AgentCore ToolSession facade', () => {
       fakeSession.events.push({ seq: 3, id: 'duplicate_recover:3', event: { type: 'result', result: { ok: true } } })
       fakeSession.nextSeq = 4
 
-      yield* session.respondToElicit('duplicate_recover:elicit:1', { action: 'accept', content: { ok: true } })
+      yield* session.respondToElicit('duplicate_recover:req:1', { action: 'accept', content: { ok: true } })
       return {
         status: yield* session.status(),
         handle: yield* stores.handles.get('duplicate_recover'),

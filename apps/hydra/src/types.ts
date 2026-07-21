@@ -85,14 +85,3 @@ export interface AppServerConfig {
   hostname: string;
   port: number;
 }
-
-/**
- * Log event types (deprecated - use ServerEvent instead)
- * @deprecated Use ServerEvent instead
- */
-export type LogEvent = 
-  | { type: 'server:started'; hostname: string; port: number }
-  | { type: 'server:stopped'; hostname: string }
-  | { type: 'request:received'; hostname: string; method: string; path: string }
-  | { type: 'request:proxied'; hostname: string; port: number }
-  | { type: 'error'; message: string; error?: Error };

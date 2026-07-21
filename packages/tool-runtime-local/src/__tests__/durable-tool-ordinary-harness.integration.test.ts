@@ -177,11 +177,6 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
 
     await run(function* () {
       const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-        samplingProvider: {
-          *sample(): Operation<never> {
-            throw new Error("Ordinary harness sampling must flow through the foreign adapter");
-          },
-        },
       });
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({

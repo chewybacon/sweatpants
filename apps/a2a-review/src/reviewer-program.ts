@@ -58,11 +58,8 @@ const REVIEW_OUTPUT_DESCRIPTOR = descriptor("reference-review/reviewer-output", 
   additionalProperties: false,
 });
 
-/**
- * Builds the retired hand-authored reviewer for compatibility tests only.
- * Product acceptance and recovery execute the generated chat program instead.
- */
-export function defineLegacyReviewer(options: {
+/** Builds the low-level pinned reviewer used for driver conformance evidence. */
+export function defineReviewerProgram(options: {
   readonly artifactDigest: string;
   readonly askParentEffect: EffectDefinition<Json, Json, Json>;
   readonly askParentSchemas: readonly DurableSchemaRegistryEntry[];

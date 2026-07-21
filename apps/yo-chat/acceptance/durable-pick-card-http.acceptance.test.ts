@@ -104,7 +104,6 @@ describe("yo-chat routes pick_card to its crank-native worker program", () => {
           },
         };
         const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-          samplingProvider,
           worker: yoChatToolSessionWorkerConfig,
         });
         const pluginManager = yield* createPluginSessionManager({ registry, samplingProvider });

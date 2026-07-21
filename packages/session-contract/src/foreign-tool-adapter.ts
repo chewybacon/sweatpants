@@ -16,7 +16,7 @@ import type { ModelSampleRequest, ModelSampleResult } from "./model-sample-contr
 import { CrankError, type Json } from "./types.ts";
 import type { DurableEffectRegistration, ForeignToolRequest } from "./durable-types.ts";
 
-/** Validated manifest for the built-in foreign compatibility child program. */
+/** Validated manifest for the built-in foreign adapter child program. */
 export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<ForeignToolRequest, Json>(
   {
     programId: FOREIGN_TOOL_ADAPTER_PROGRAM.id,

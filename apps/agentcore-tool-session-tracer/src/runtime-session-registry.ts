@@ -118,32 +118,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function stripMessageContext(message: string): string {
-  const boundaryIndex = message.indexOf("\n--x-elicit-context:");
-  return boundaryIndex === -1 ? message : message.slice(0, boundaryIndex).trim();
-}
-
-function parseMessageContext(message: string): Record<string, unknown> | undefined {
-  const marker = "\n--x-elicit-context: application/json\n";
-  const markerIndex = message.indexOf(marker);
-  if (markerIndex === -1) return undefined;
-  try {
-    const parsed = JSON.parse(message.slice(markerIndex + marker.length));
-    return isRecord(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function decodeBridgeElicitContext(
   message: string,
   schema: Record<string, unknown>,
 ): { message: string; context?: Record<string, unknown> | undefined } {
   const schemaContext = schema["x-elicit-context"];
-  const context = isRecord(schemaContext) ? schemaContext : parseMessageContext(message);
   return {
-    message: stripMessageContext(message),
-    ...(context !== undefined ? { context } : {}),
+    message,
+    ...(isRecord(schemaContext) ? { context: schemaContext } : {}),
   };
 }
 
@@ -574,7 +556,7 @@ export class RuntimeSessionRegistry {
 
     if (request.toolName === "elicit_then_result") {
       const pending = deferred<{ action: "accept" | "decline" | "cancel"; content?: unknown }>();
-      const elicitId = `${request.toolSessionId}:elicit:1`;
+      const elicitId = `${request.toolSessionId}:req:1`;
       session.status = "awaiting_elicit";
       session.pending = { type: "elicit", elicitId, eventSeq: session.nextSeq, deferred: pending };
       immediate.push(
@@ -607,7 +589,7 @@ export class RuntimeSessionRegistry {
         parseError?: unknown;
         toolCalls?: unknown[] | undefined;
       }>();
-      const sampleId = `${request.toolSessionId}:sample:1`;
+      const sampleId = `${request.toolSessionId}:req:1`;
       session.status = "awaiting_sample";
       session.pending = { type: "sample", sampleId, eventSeq: session.nextSeq, deferred: pending };
       immediate.push(
@@ -675,7 +657,7 @@ export class RuntimeSessionRegistry {
         // invocation and may repeat for multi-turn tools that elicit the same key
         // more than once. Use the runtime session event sequence instead so each
         // remote elicitation has a stable, unique id within the tool session.
-        const elicitId = `${session.toolSessionId}:elicit:${session.nextSeq}`;
+        const elicitId = `${session.toolSessionId}:req:${session.nextSeq}`;
         const schema = event.request.schema.json as Record<string, unknown>;
         const decoded = decodeBridgeElicitContext(event.request.message, schema);
         session.status = "awaiting_elicit";
@@ -725,7 +707,7 @@ export class RuntimeSessionRegistry {
           return;
         }
 
-        const sampleId = `${session.toolSessionId}:sample:${session.nextSeq}`;
+        const sampleId = `${session.toolSessionId}:req:${session.nextSeq}`;
         session.status = "awaiting_sample";
         session.pending = {
           type: "sample",

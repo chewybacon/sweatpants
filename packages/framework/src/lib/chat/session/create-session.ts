@@ -13,7 +13,8 @@ import {
   type Stream,
   type Subscription,
 } from "effection";
-import { streamChatOnce, type ElicitResponseData } from "./stream-chat.ts";
+import { streamChatOnce } from "./stream-chat.ts";
+import type { ElicitResponseData } from "./options.ts";
 import { useTransformPipeline } from "./transforms.ts";
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ChatState } from "../state/chat-state.ts";

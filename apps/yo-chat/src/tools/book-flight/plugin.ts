@@ -5,7 +5,7 @@
  * Each elicitation key (pickFlight, pickSeat) has a handler that renders
  * a React component and returns the user's selection.
  */
-import { makePlugin, getElicitContext, stripMessageContext } from '@sweatpants/framework/chat'
+import { makePlugin, getElicitContext } from '@sweatpants/framework/chat'
 import { bookFlightTool, type Flight, type SeatMap } from './tool'
 import { FlightList } from './components/FlightList'
 import { SeatPicker } from './components/SeatPicker'
@@ -37,10 +37,9 @@ export const bookFlightPlugin = makePlugin(bookFlightTool)
      * Renders the FlightList component and returns the selected flight ID.
      */
     pickFlight: function* (req, ctx) {
-      // Extract context from x-model-context (schema or message fallback)
       const context = getElicitContext<PickFlightContext>(req)
       const flights = context.flights ?? []
-      const cleanMessage = stripMessageContext(req.message)
+      const cleanMessage = req.message
 
       // Render the FlightList component and wait for user selection
       const result = yield* ctx.render(FlightList, {
@@ -57,11 +56,10 @@ export const bookFlightPlugin = makePlugin(bookFlightTool)
      * Renders the SeatPicker component and returns the selected seat.
      */
     pickSeat: function* (req, ctx) {
-      // Extract context from x-model-context (schema or message fallback)
       const context = getElicitContext<PickSeatContext>(req)
       const seatMap = context.seatMap ?? { rows: 10, seatsPerRow: ['A', 'B', 'C', 'D', 'E', 'F'], taken: [] }
       const flightInfo = context.flightInfo
-      const cleanMessage = stripMessageContext(req.message)
+      const cleanMessage = req.message
 
       // Build props, only including flightInfo if it exists
       const seatPickerProps = flightInfo

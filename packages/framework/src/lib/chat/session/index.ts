@@ -12,7 +12,7 @@ export type { ChatSession, ClientToolSessionOptions } from "./create-session.ts"
 
 // Streaming
 export { streamChatOnce } from "./stream-chat.ts";
-export type { StreamChatOptions, ElicitResponseData } from "./stream-chat.ts";
+export type { StreamChatOptions, ElicitResponseData } from "./options.ts";
 export { readDurableHistory, replayFramesToConversation } from "./durable-history.ts";
 export type { DurableHistoryReplay } from "./durable-history.ts";
 export {

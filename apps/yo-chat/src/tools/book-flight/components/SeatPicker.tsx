@@ -4,9 +4,8 @@
  * Displays an airplane-style seat map for the user to select their seat.
  * Used by the book_flight tool's pickSeat elicitation.
  */
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import type { RenderableProps } from '@sweatpants/framework/chat/browser-rendering'
-import { stripMessageContext } from '@sweatpants/framework/chat'
 import type { SeatMap } from '../tool'
 
 // =============================================================================
@@ -74,8 +73,7 @@ function AirplaneNoseIcon({ className }: { className?: string }) {
 export function SeatPicker({ seatMap, message, flightInfo, onRespond, disabled, response }: SeatPickerProps) {
   const [selectedSeat, setSelectedSeat] = useState<{ row: number; seat: string } | null>(null)
 
-  // Strip any x-model-context boundary from the message
-  const cleanMessage = useMemo(() => stripMessageContext(message), [message])
+  const cleanMessage = message
 
   const handleSeatClick = (row: number, seat: string) => {
     if (disabled) return

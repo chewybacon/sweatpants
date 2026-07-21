@@ -53,7 +53,7 @@ import { useChatSession, type UseChatSessionOptions, type UseChatSessionReturn }
 import { deriveMessages, deriveStreamingMessage } from '@sweatpants/framework/chat'
 import type {
   ChatMessage as BaseChatMessage,
-  ChatToolCall as BaseChatToolCall,
+  ToolCallPart as BaseToolCallPart,
   ChatEmission as BaseChatEmission,
   StreamingMessage as BaseStreamingMessage,
 } from '@sweatpants/framework/chat'
@@ -84,7 +84,7 @@ export type ChatEmission = BaseChatEmission<React.ComponentType<any>>
 /**
  * A tool call with React component type for emissions.
  */
-export type ChatToolCall = BaseChatToolCall<React.ComponentType<any>>
+export type ChatToolCall = BaseToolCallPart<React.ComponentType<any>>
 
 /**
  * A chat message with React component type for emissions.

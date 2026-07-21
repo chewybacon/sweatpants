@@ -229,7 +229,7 @@ const definition: EffectDefinition<
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 };
 
-/** One canonical sampling contract shared by roots and compatibility children. */
+/** One canonical sampling contract shared by roots and foreign-adapter children. */
 export const MODEL_SAMPLE_EFFECT = Object.freeze(definition);
 export const MODEL_SAMPLE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze([
   ...schemaEntries,

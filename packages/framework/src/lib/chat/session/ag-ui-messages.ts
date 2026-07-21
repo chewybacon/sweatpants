@@ -68,11 +68,11 @@ function toolCallFromAgUi(toolCall: AgUiToolCall): ToolCall {
   };
 }
 
-export function internalMessageToAgUiMessage(
-  message: Message,
-  fallbackId = `${message.role}:missing-id`,
-): AgUiMessage {
-  const id = typeof message.id === "string" && message.id.length > 0 ? message.id : fallbackId;
+export function internalMessageToAgUiMessage(message: Message): AgUiMessage {
+  if (!message.id) {
+    throw new Error("AG-UI projection requires a message id");
+  }
+  const id = message.id;
 
   if (message.role === "tool") {
     return {
@@ -121,9 +121,7 @@ function parseActivityContent(content: string): Record<string, unknown> {
 }
 
 export function internalMessagesToAgUiMessages(messages: Message[]): AgUiMessage[] {
-  return messages.map((message, index) =>
-    internalMessageToAgUiMessage(message, `${message.role}:${index}`),
-  );
+  return messages.map(internalMessageToAgUiMessage);
 }
 
 export function agUiMessageToInternalMessage(message: AgUiMessage): Message | null {

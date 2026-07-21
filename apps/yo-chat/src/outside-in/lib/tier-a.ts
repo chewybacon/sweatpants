@@ -36,7 +36,7 @@ import { setupYoChatBaseContexts, allTools } from "@/server/tools";
 import { createYoChatHandler } from "@/server/chat-handler";
 import { installYoChatToolRuntime } from "@/server/tool-runtime-installation";
 import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
-import { pluginSamplingProvider } from "@/server/plugin-sampling-provider";
+import { createPluginSamplingProvider } from "@/server/plugin-sampling-provider";
 import {
   YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL,
   yoChatToolSessionWorkerConfig,
@@ -53,20 +53,19 @@ function* setupTierAWorkerRuntime(): Operation<void> {
   }
 
   const store = createInMemoryToolSessionStore();
+  const samplingProvider = createPluginSamplingProvider();
   const registry: ToolSessionRegistry = yield* createToolSessionRegistry(store, {
-    samplingProvider: pluginSamplingProvider,
     worker: yoChatToolSessionWorkerConfig,
   });
   const manager = yield* createPluginSessionManager({
     registry,
-    samplingProvider: pluginSamplingProvider,
   });
 
   yield* installYoChatToolRuntime({
     mode: "local",
     registry,
     pluginManager: manager,
-    samplingProvider: pluginSamplingProvider,
+    samplingProvider,
     tools: [...allTools],
   });
 }
