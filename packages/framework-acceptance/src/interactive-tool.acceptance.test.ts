@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withTestRig, type TestRigOptions } from "@sweatpants/test-rig";
+import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_MODEL_ID,
   ACCEPTANCE_TOOL_NAME,
@@ -24,45 +24,33 @@ function records(value: unknown): Record<string, unknown>[] {
 }
 
 async function runInteractiveToolScenario(binding: Binding): Promise<void> {
-  await withTestRig(
+  await withTestScenario(
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
       createApplication: createAcceptanceApplication,
       scenarioTimeoutMs: 30_000,
     },
-    async (rig) => {
-      const outerRequestPromise = rig.model.expectRequest({
-        model: ACCEPTANCE_MODEL_ID,
-        stream: true,
-      });
-
-      const conversation = rig.chat.conversation({
+    function* (s) {
+      const conversation = s.conversation({
         tools: [acceptanceBookingTool],
         enabledTools: true,
         initialToolChoice: "required",
       });
-      const turn = conversation.send("Book a flight from NYC to LAX using the available tool.");
-      const pickFlightPromise = turn.expectElicit("pickFlight");
-      const pickSeatPromise = turn.expectElicit("pickSeat");
-
-      const outerRequest = await outerRequestPromise;
+      const turn = yield* conversation.send(
+        "Book a flight from NYC to LAX using the available tool.",
+      );
+      const outerRequest = yield* s.model.request({
+        model: ACCEPTANCE_MODEL_ID,
+        stream: true,
+      });
       expect(outerRequest.pullId).not.toBe("");
       expect(records(outerRequest.body.tools)).toEqual(
         expect.arrayContaining([
-          expect.objectContaining({
-            type: "function",
-            name: ACCEPTANCE_TOOL_NAME,
-          }),
+          expect.objectContaining({ type: "function", name: ACCEPTANCE_TOOL_NAME }),
         ]),
       );
-
-      const nestedSamplePromise = rig.model.expectRequest((request) => {
-        const serialized = JSON.stringify(request.body.input ?? []);
-        expect(serialized).toContain(NESTED_SAMPLE_PROMPT_MARKER);
-      });
-
-      await outerRequest.respond.toolCalls([
+      yield* outerRequest.respond.toolCalls([
         {
           id: CALL_ID,
           name: ACCEPTANCE_TOOL_NAME,
@@ -70,24 +58,22 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
         },
       ]);
 
-      const pickFlight = await pickFlightPromise;
-      await pickFlight.accept({ flightId: "FL001" });
+      const pickFlight = yield* turn.elicit("pickFlight");
+      yield* pickFlight.accept({ flightId: "FL001" });
+      const pickSeat = yield* turn.elicit("pickSeat");
+      yield* pickSeat.accept({ row: 1, seat: "A" });
 
-      const pickSeat = await pickSeatPromise;
-      await pickSeat.accept({ row: 1, seat: "A" });
-
-      const nestedSample = await nestedSamplePromise;
+      const nestedSample = yield* s.model.request((request) => {
+        expect(JSON.stringify(request.body.input ?? [])).toContain(NESTED_SAMPLE_PROMPT_MARKER);
+      });
       expect(nestedSample.pullId).not.toBe("");
       expect(nestedSample.pullId).not.toBe(outerRequest.pullId);
+      yield* nestedSample.respond.text(`${NESTED_SAMPLE_RESPONSE_MARKER} Use the airport train.`);
 
-      const finalRequestPromise = rig.model.expectRequest({
+      const finalRequest = yield* s.model.request({
         model: ACCEPTANCE_MODEL_ID,
         stream: true,
       });
-
-      await nestedSample.respond.text(`${NESTED_SAMPLE_RESPONSE_MARKER} Use the airport train.`);
-
-      const finalRequest = await finalRequestPromise;
       const finalInput = records(finalRequest.body.input);
       expect(finalInput).toEqual(
         expect.arrayContaining([
@@ -96,10 +82,7 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
             call_id: CALL_ID,
             name: ACCEPTANCE_TOOL_NAME,
           }),
-          expect.objectContaining({
-            type: "function_call_output",
-            call_id: CALL_ID,
-          }),
+          expect.objectContaining({ type: "function_call_output", call_id: CALL_ID }),
         ]),
       );
       const toolOutput = finalInput.find(
@@ -114,9 +97,8 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
       expect(outputText).toContain('"messagesBeforeSample":4');
       expect(outputText).toContain('"messagesAfterSample":6');
 
-      await finalRequest.respond.text(OUTER_TERMINAL_TEXT);
-
-      const transcript = await turn.complete();
+      yield* finalRequest.respond.text(OUTER_TERMINAL_TEXT);
+      const transcript = yield* turn.settled();
       expect(transcript.outcome).toBe("success");
       expect(transcript.text).toContain("OUTER_TERMINAL_V1");
     },
@@ -124,29 +106,31 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
 }
 
 async function runDuplicateElicitScenario(binding: Binding): Promise<void> {
-  await withTestRig(
+  await withTestScenario(
     { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
-    async (rig) => {
-      const outerPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const conversation = rig.chat.conversation({ tools: [acceptanceBookingTool] });
-      const turn = conversation.send("DUPLICATE_ELICIT_V1");
-      const elicitPromise = turn.expectElicit("pickFlight");
-      await (
-        await outerPromise
-      ).respond.toolCalls([
+    function* (s) {
+      const conversation = s.conversation({ tools: [acceptanceBookingTool] });
+      const turn = yield* conversation.send("DUPLICATE_ELICIT_V1");
+      const outer = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      yield* outer.respond.toolCalls([
         {
           id: "duplicate-elicit-call",
           name: ACCEPTANCE_TOOL_NAME,
           arguments: { from: "NYC", destination: "LAX" },
         },
       ]);
-      const elicit = await elicitPromise;
-      await elicit.decline();
-      await expect(elicit.decline()).rejects.toThrow(/already answered/);
-      const finalRequest = await rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      await finalRequest.respond.text("DUPLICATE_ELICIT_TERMINAL_V1");
-      expect((await turn.complete()).text).toBe("DUPLICATE_ELICIT_TERMINAL_V1");
-      expect(rig.model.requests()).toHaveLength(2);
+      const elicit = yield* turn.elicit("pickFlight");
+      yield* elicit.decline();
+      try {
+        yield* elicit.decline();
+        throw new Error("duplicate elicitation response unexpectedly succeeded");
+      } catch (error) {
+        expect(error instanceof Error ? error.message : String(error)).toMatch(/already answered/);
+      }
+      const finalRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      yield* finalRequest.respond.text("DUPLICATE_ELICIT_TERMINAL_V1");
+      expect((yield* turn.settled()).text).toBe("DUPLICATE_ELICIT_TERMINAL_V1");
+      expect(s.model.requests()).toHaveLength(2);
     },
   );
 }
@@ -155,43 +139,33 @@ async function runElicitOutcomeScenario(
   binding: Binding,
   action: "decline" | "cancel",
 ): Promise<void> {
-  await withTestRig(
-    {
-      binding,
-      modelId: ACCEPTANCE_MODEL_ID,
-      createApplication: createAcceptanceApplication,
-    },
-    async (rig) => {
-      const outerRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      const conversation = rig.chat.conversation({
+  await withTestScenario(
+    { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
+    function* (s) {
+      const conversation = s.conversation({
         tools: [acceptanceBookingTool],
         enabledTools: true,
         initialToolChoice: "required",
       });
-      const turn = conversation.send(`ELICIT_${action.toUpperCase()}_V1`);
-      const pickFlightPromise = turn.expectElicit("pickFlight");
-
-      const outerRequest = await outerRequestPromise;
-      await outerRequest.respond.toolCalls([
+      const turn = yield* conversation.send(`ELICIT_${action.toUpperCase()}_V1`);
+      const outerRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
+      yield* outerRequest.respond.toolCalls([
         {
           id: CALL_ID,
           name: ACCEPTANCE_TOOL_NAME,
           arguments: { from: "NYC", destination: "LAX" },
         },
       ]);
+      const pickFlight = yield* turn.elicit("pickFlight");
+      yield* pickFlight[action]();
 
-      const pickFlight = await pickFlightPromise;
-      const finalRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
-      await pickFlight[action]();
-
-      const finalRequest = await finalRequestPromise;
+      const finalRequest = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID });
       const output = records(finalRequest.body.input).find(
         (item) => item["type"] === "function_call_output" && item["call_id"] === CALL_ID,
       );
       expect(JSON.stringify(output)).toContain("flight_not_selected");
-
-      await finalRequest.respond.text(`ELICIT_${action.toUpperCase()}_TERMINAL_V1`);
-      const transcript = await turn.complete();
+      yield* finalRequest.respond.text(`ELICIT_${action.toUpperCase()}_TERMINAL_V1`);
+      const transcript = yield* turn.settled();
       expect(transcript.outcome).toBe("success");
       expect(transcript.text).toBe(`ELICIT_${action.toUpperCase()}_TERMINAL_V1`);
     },

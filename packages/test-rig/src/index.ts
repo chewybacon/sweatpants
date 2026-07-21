@@ -2,6 +2,7 @@ export * from "./model.ts";
 export * from "./history.ts";
 export * from "./chat.ts";
 export * from "./transport.ts";
+export * from "./scenario.ts";
 
 import {
   createOpenAiResponsesModel,
@@ -12,8 +13,14 @@ import {
 } from "@sweatpants/model-provider-pi-ai";
 import { call, createScope, type Operation } from "effection";
 import { createChatRuntime, type ChatFetch, type ChatHandle, type ChatRuntime } from "./chat.ts";
-import { startModelSimulator, type ModelHandle, type ModelSimulator } from "./model.ts";
+import {
+  startModelSimulator,
+  type ModelHandle,
+  type ModelSimulator,
+  type PendingModelRequest,
+} from "./model.ts";
 import { createStreamTransportHandle, type StreamTransportHandle } from "./transport.ts";
+import { scenario, type ScenarioContext } from "./scenario.ts";
 
 export interface TestApplication {
   handle(request: Request): Promise<Response>;
@@ -46,6 +53,11 @@ export interface TestRigOptions {
   scenarioTimeoutMs?: number;
   cancellationTimeoutMs?: number;
   modelId?: string;
+  /**
+   * Low-level `withTestRig` defaults to "poison" for pre-armed promise barriers.
+   * `withTestScenario` always selects "buffer" for causal-order scripts.
+   */
+  unmatchedRequests?: "poison" | "buffer";
 }
 
 export interface TestRig {
@@ -151,6 +163,13 @@ async function createHttpBinding(
   };
 }
 
+export function withTestScenario<T>(
+  options: TestRigOptions,
+  script: (scenario: ScenarioContext) => Operation<T>,
+): Promise<T> {
+  return withTestRig({ ...options, unmatchedRequests: "buffer" }, (rig) => scenario(rig, script));
+}
+
 export async function withTestRig<T>(
   options: TestRigOptions,
   body: (rig: TestRig, context: TestRigBodyContext) => Promise<T>,
@@ -198,7 +217,9 @@ export async function withTestRig<T>(
   };
 
   try {
-    simulator = await startModelSimulator(poison);
+    simulator = await startModelSimulator(poison, {
+      unmatchedRequests: options.unmatchedRequests ?? "poison",
+    });
     const modelInstallation = createModelInstallation(
       simulator.baseUrl,
       options.modelId ?? "sweatpants-acceptance",
@@ -230,13 +251,21 @@ export async function withTestRig<T>(
       getRootFailure: () => root,
     });
 
+    const boundedModelBarrier = (promise: Promise<PendingModelRequest>, label: string) =>
+      bounded(label, promise, barrierTimeoutMs).catch((error) => {
+        throw poison(error instanceof Error ? error : new Error(String(error)));
+      });
     const modelHandle: ModelHandle = {
       expectRequest(expectation) {
-        const promise = simulator!.model.expectRequest(expectation);
-        return bounded("barrier_timeout: model request barrier", promise, barrierTimeoutMs).catch(
-          (error) => {
-            throw poison(error instanceof Error ? error : new Error(String(error)));
-          },
+        return boundedModelBarrier(
+          simulator!.model.expectRequest(expectation),
+          "barrier_timeout: model request barrier",
+        );
+      },
+      nextRequest(expectation) {
+        return boundedModelBarrier(
+          simulator!.model.nextRequest(expectation),
+          "barrier_timeout: next model request",
         );
       },
       requests: () => simulator!.model.requests(),

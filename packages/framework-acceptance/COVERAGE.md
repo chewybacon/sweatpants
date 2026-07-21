@@ -5,6 +5,10 @@ Every scenario crosses the public client/session and real provider parser; tool
 scenarios also cross Program Runtime and real worker threads. The HTTP-sensitive
 subset runs through a loopback server rather than a mocked fetch.
 
+All scenarios use the causal generator authoring model documented in
+[`AUTHORING.md`](./AUTHORING.md). Future coverage should extend that vocabulary
+rather than introduce pre-armed promise choreography.
+
 ## Covered behavior
 
 | Risk | Black-box evidence | Bindings |

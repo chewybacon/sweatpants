@@ -1,6 +1,5 @@
-import { run } from "effection";
 import { describe, expect, it } from "vitest";
-import { withTestRig, type TestRigOptions } from "@sweatpants/test-rig";
+import { withTestScenario, type TestRigOptions } from "@sweatpants/test-rig";
 import {
   ACCEPTANCE_MODEL_ID,
   createAcceptanceApplication,
@@ -11,7 +10,7 @@ type Binding = TestRigOptions["binding"];
 
 async function runStreamingScenario(binding: Binding): Promise<void> {
   let inspection: AcceptanceApplicationInspection | undefined;
-  await withTestRig(
+  await withTestScenario(
     {
       binding,
       modelId: ACCEPTANCE_MODEL_ID,
@@ -21,34 +20,22 @@ async function runStreamingScenario(binding: Binding): Promise<void> {
         });
       },
     },
-    async (rig) => {
+    function* (s) {
       const order: string[] = [];
-      const requestPromise = rig.model.expectRequest({
-        model: ACCEPTANCE_MODEL_ID,
-        stream: true,
-      });
-
-      const conversation = rig.chat.conversation();
-      const turn = conversation.send("Stream a deterministic greeting");
-      const deltaPromise = turn.expectTextDelta("hello");
-
-      const request = await requestPromise;
+      const conversation = s.conversation();
+      const turn = yield* conversation.send("Stream a deterministic greeting");
+      const request = yield* s.model.request({ model: ACCEPTANCE_MODEL_ID, stream: true });
       expect(request.pullId).not.toBe("");
-
-      const stream = await request.respond.text({
-        chunks: ["hello", " world"],
-        release: "manual",
-      });
+      const stream = yield* request.respond.textStream(["hello", " world"]);
 
       order.push("release");
-      await stream.releaseNext();
-      await expect(deltaPromise).resolves.toMatchObject({ delta: "hello" });
+      yield* stream.releaseNext();
+      expect(yield* turn.textDelta("hello")).toMatchObject({ delta: "hello" });
       order.push("delta");
 
       order.push("finish");
-      await stream.finish();
-
-      const transcript = await turn.complete();
+      yield* stream.finish();
+      const transcript = yield* turn.settled();
       order.push("complete");
 
       expect(transcript.outcome).toBe("success");
@@ -63,11 +50,8 @@ async function runStreamingScenario(binding: Binding): Promise<void> {
       if (!inspection) {
         throw new Error("acceptance application inspection was not installed");
       }
-      const journalStore = inspection.journalStore;
-      const journal = await run(function* () {
-        const opened = yield* journalStore.open(conversation.conversationId);
-        return yield* opened.readJournal(conversation.conversationId);
-      });
+      const opened = yield* inspection.journalStore.open(conversation.conversationId);
+      const journal = yield* opened.readJournal(conversation.conversationId);
       expect(JSON.stringify(journal)).not.toContain('"eventType":"model_token"');
       expect(
         journal.filter(
