@@ -1,4 +1,5 @@
 import type { Frame } from "../frame.ts";
+import type { MessagePart } from "../types/chat-message.ts";
 import type { Message } from "../types.ts";
 
 type ContentPartType = "text" | "reasoning";
@@ -16,6 +17,7 @@ export type LocalChatAction =
   | { type: "LOCAL_RENDER_END"; partType: ContentPartType; partId: string; frame: Frame }
   | { type: "LOCAL_ELICIT_RESPONSE"; callId: string; elicitId: string; response: unknown }
   | { type: "LOCAL_REPLAY_EMISSIONS"; tracking: ToolEmissionTrackingState }
+  | { type: "LOCAL_FINALIZED_PARTS"; messageId: string; parts: MessagePart[] }
   | { type: "LOCAL_ABORT"; message?: Message }
   | { type: "LOCAL_ERROR"; message: string }
   | { type: "LOCAL_RESET" };

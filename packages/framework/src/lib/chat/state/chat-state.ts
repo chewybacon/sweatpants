@@ -27,6 +27,7 @@ interface ToolCallDraft {
   name: string;
   arguments: string;
   parentMessageId: string;
+  ended: boolean;
 }
 
 /**
@@ -46,8 +47,8 @@ export interface ChatState {
   toolEmissions: Record<string, ToolEmissionTrackingState>;
   replay?: ConversationReplayState;
   activeRun: { threadId: string; runId: string } | null;
-  messageDrafts: Record<string, MessageDraft>;
-  toolCallDrafts: Record<string, ToolCallDraft>;
+  readonly messageDrafts: Readonly<Record<string, MessageDraft>>;
+  readonly toolCallDrafts: Readonly<Record<string, ToolCallDraft>>;
 }
 
 export const initialChatState: ChatState = {

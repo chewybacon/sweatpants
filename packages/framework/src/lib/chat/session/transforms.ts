@@ -34,8 +34,8 @@
  *
  * This guarantees no messages are dropped, regardless of subscription timing.
  */
-import type { Operation, Channel } from "effection";
-import { spawn, each, createChannel, resource, suspend, call } from "effection";
+import type { Operation, Channel, Task } from "effection";
+import { spawn, each, createChannel, resource, call } from "effection";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { ChatEventTransform } from "./options.ts";
 
@@ -52,6 +52,7 @@ export function useBufferedChannel<T>(): Operation<Channel<T, void>> {
     const queue: T[] = [];
     let closed = false;
     let closeResolve: (() => void) | null = null;
+    let closePromise: Promise<void> | null = null;
     let hasSubscriber = false;
     let subscriberResolve: (() => void) | null = null;
     let itemResolve: (() => void) | null = null;
@@ -109,18 +110,20 @@ export function useBufferedChannel<T>(): Operation<Channel<T, void>> {
         }
       },
       *close() {
-        closed = true;
-        if (itemResolve) {
-          itemResolve();
-          itemResolve = null;
+        if (!closePromise) {
+          // Install the completion waiter before waking the forwarder. Without
+          // this ordering, an empty channel can close between the wake-up and
+          // resolver assignment and leave close() waiting forever.
+          closePromise = new Promise<void>((resolve) => {
+            closeResolve = resolve;
+          });
+          closed = true;
+          if (itemResolve) {
+            itemResolve();
+            itemResolve = null;
+          }
         }
-        // Wait for forwarder to finish delivering all messages
-        yield* call(
-          () =>
-            new Promise<void>((resolve) => {
-              closeResolve = resolve;
-            }),
-        );
+        yield* call(() => closePromise!);
       },
       // Delegate subscription to underlying channel
       [Symbol.iterator]: function* () {
@@ -172,25 +175,32 @@ export function useTransformPipeline(
     // Create a buffered input channel - messages are queued until consumed
     const input = yield* useBufferedChannel<ChatStateEvent>();
 
-    if (transforms.length === 0) {
-      // No transforms - spawn a simple passthrough
-      yield* spawn(function* () {
+    const pipelineTask = yield* spawn(function* () {
+      if (transforms.length === 0) {
         yield* runPassthrough(input, output);
-      });
-    } else {
-      // Spawn the transform chain
-      yield* spawn(function* () {
+      } else {
         yield* runTransformChain(input, output, transforms);
-      });
-    }
+      }
+    });
+    let closed = false;
+    const pipeline: Channel<ChatStateEvent, void> = {
+      *send(event) {
+        yield* input.send(event);
+      },
+      *close() {
+        if (closed) return;
+        closed = true;
+        yield* input.close();
+        // A closed pipeline is drained: every transform has flushed and every
+        // resulting event has reached the output subscriber.
+        yield* pipelineTask;
+      },
+      [Symbol.iterator]: function* () {
+        return yield* input;
+      },
+    };
 
-    // No sleep(0) needed! The buffered channel queues messages until consumed.
-    // Transforms will receive all messages when they subscribe.
-
-    yield* provide(input);
-
-    // Resource stays alive (suspended) until parent scope ends.
-    // When it does, the spawned transform is automatically halted.
+    yield* provide(pipeline);
   });
 }
 
@@ -226,6 +236,7 @@ function* runTransformChain(
   // Build the chain of channels
   // input → t1 → ch1 → t2 → ch2 → ... → tn → output
   let current: Channel<ChatStateEvent, void> = input;
+  const tasks: Task<void>[] = [];
 
   for (let i = 0; i < transforms.length; i++) {
     const transform = transforms[i]!;
@@ -237,22 +248,21 @@ function* runTransformChain(
     const dest = next;
 
     // Spawn each transform as a concurrent child
-    yield* spawn(function* () {
-      yield* transform(source, dest);
-      // When transform completes (input closed), close the output
-      // so the next transform in chain knows to flush and finish
-      if (!isLast) {
-        yield* dest.close();
-      }
-    });
+    tasks.push(
+      yield* spawn(function* () {
+        yield* transform(source, dest);
+        // When transform completes (input closed), close the output
+        // so the next transform in chain knows to flush and finish
+        if (!isLast) {
+          yield* dest.close();
+        }
+      }),
+    );
 
     current = next;
   }
 
-  // Keep this operation alive until all transforms complete.
-  // The spawned children will finish when their inputs close.
-  // We suspend here so the parent scope (the resource) controls lifetime.
-  yield* suspend();
+  for (const task of tasks) yield* task;
 }
 
 /**

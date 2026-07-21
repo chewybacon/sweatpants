@@ -16,6 +16,21 @@ function upsertMessage(messages: Message[], message: Message): Message[] {
     : [...messages, message];
 }
 
+function upsertToolResult(messages: Message[], message: Message): Message[] {
+  if (!message.tool_call_id) return upsertMessage(messages, message);
+  const index = messages.findIndex(
+    (candidate) => candidate.role === "tool" && candidate.tool_call_id === message.tool_call_id,
+  );
+  if (index < 0) return [...messages, message];
+  return messages.map((candidate, candidateIndex) =>
+    candidateIndex === index
+      ? candidate.replay && !message.replay
+        ? candidate
+        : message
+      : candidate,
+  );
+}
+
 function parseArguments(value: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(value) as unknown;
@@ -123,17 +138,15 @@ function pendingElicitsFromActions(
     message: string;
     schema: Record<string, unknown>;
   }> = [],
+  current: Record<string, ElicitTrackingState> = {},
 ): Record<string, ElicitTrackingState> {
   const pending: Record<string, ElicitTrackingState> = {};
   for (const action of actions) {
-    const tracking = pending[action.toolCallId] ?? {
-      callId: action.toolCallId,
-      toolName: action.toolName,
-      elicitations: [],
-      status: "awaiting_elicit" as const,
-      startedAt: Date.now(),
-    };
-    tracking.elicitations.push({
+    const prior = current[action.toolCallId]?.elicitations.find(
+      (elicit) => elicit.elicitId === action.elicitId,
+    );
+    const tracking = pending[action.toolCallId];
+    const elicit = {
       elicitId: action.elicitId,
       sessionId: action.sessionId,
       callId: action.toolCallId,
@@ -142,12 +155,44 @@ function pendingElicitsFromActions(
       message: action.message,
       schema: action.schema,
       context: action.schema["x-elicit-context"],
-      status: "pending",
-      timestamp: Date.now(),
-    });
-    pending[action.toolCallId] = tracking;
+      status: prior?.status ?? ("pending" as const),
+      timestamp: prior?.timestamp ?? Date.now(),
+      ...(prior?.response !== undefined ? { response: prior.response } : {}),
+    };
+    pending[action.toolCallId] = tracking
+      ? { ...tracking, elicitations: [...tracking.elicitations, elicit] }
+      : {
+          callId: action.toolCallId,
+          toolName: action.toolName,
+          elicitations: [elicit],
+          status: "awaiting_elicit",
+          startedAt: current[action.toolCallId]?.startedAt ?? Date.now(),
+        };
   }
   return pending;
+}
+
+function attachPendingElicits(
+  part: MessagePart,
+  pending: Record<string, ElicitTrackingState>,
+): MessagePart {
+  if (part.type !== "tool-call") return part;
+  const tracking = pending[part.callId];
+  if (!tracking) return part;
+  return {
+    ...part,
+    pluginElicits: tracking.elicitations.map((elicit) => ({
+      id: elicit.elicitId,
+      key: elicit.key,
+      message: elicit.message,
+      context: elicit.context,
+      status: elicit.status === "pending" ? "pending" : "responded",
+      ...(elicit.response !== undefined ? { response: elicit.response } : {}),
+      sessionId: elicit.sessionId,
+      callId: elicit.callId,
+      toolName: elicit.toolName,
+    })),
+  };
 }
 
 function addInterrupts(
@@ -194,7 +239,20 @@ function addInterrupts(
       ],
     };
   }
-  return { ...state, pendingElicits: pending };
+  return {
+    ...state,
+    pendingElicits: pending,
+    streaming: {
+      ...state.streaming,
+      parts: state.streaming.parts.map((part) => attachPendingElicits(part, pending)),
+    },
+    finalizedParts: Object.fromEntries(
+      Object.entries(state.finalizedParts).map(([id, parts]) => [
+        id,
+        parts.map((part) => attachPendingElicits(part, pending)),
+      ]),
+    ),
+  };
 }
 
 /** Fold one canonical AG-UI event or explicit local-only action into ChatState. */
@@ -226,12 +284,27 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       return { ...state, messages, finalizedParts: projectedParts };
     }
 
-    case "STATE_SNAPSHOT":
+    case "STATE_SNAPSHOT": {
+      const pendingElicits = pendingElicitsFromActions(
+        event.snapshot.pendingClientActions,
+        state.pendingElicits,
+      );
       return {
         ...state,
-        pendingElicits: pendingElicitsFromActions(event.snapshot.pendingClientActions),
+        pendingElicits,
+        streaming: {
+          ...state.streaming,
+          parts: state.streaming.parts.map((part) => attachPendingElicits(part, pendingElicits)),
+        },
+        finalizedParts: Object.fromEntries(
+          Object.entries(state.finalizedParts).map(([id, parts]) => [
+            id,
+            parts.map((part) => attachPendingElicits(part, pendingElicits)),
+          ]),
+        ),
         ...(event.snapshot.replay ? { replay: event.snapshot.replay } : {}),
       };
+    }
 
     case "TEXT_MESSAGE_START":
       return {
@@ -243,8 +316,11 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       };
 
     case "TEXT_MESSAGE_CONTENT": {
-      const draft = state.messageDrafts[event.messageId];
-      if (!draft) return state;
+      const draft = state.messageDrafts[event.messageId] ?? {
+        id: event.messageId,
+        role: "assistant" as const,
+        content: "",
+      };
       const next = {
         ...state,
         messageDrafts: {
@@ -284,20 +360,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
         name: event.toolCallName,
         arguments: "",
         parentMessageId,
-      };
-      const existing = state.messages.find((message) => message.id === parentMessageId);
-      const host: Message = {
-        id: parentMessageId,
-        role: "assistant",
-        content: existing?.content ?? "",
-        tool_calls: [
-          ...(existing?.tool_calls ?? []).filter((call) => call.id !== event.toolCallId),
-          {
-            id: event.toolCallId,
-            type: "function",
-            function: { name: event.toolCallName, arguments: {} },
-          },
-        ],
+        ended: false,
       };
       const toolPart: ToolCallPart = {
         id: `${parentMessageId}:tool:${event.toolCallId}`,
@@ -311,7 +374,6 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       };
       return {
         ...state,
-        messages: upsertMessage(state.messages, host),
         toolCallDrafts: { ...state.toolCallDrafts, [event.toolCallId]: draft },
         streaming: {
           parts: [...state.streaming.parts, toolPart],
@@ -326,24 +388,12 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       if (!draft) return state;
       const args = draft.arguments + event.delta;
       const nextDraft = { ...draft, arguments: args };
-      const messages = state.messages.map((message): Message => {
-        if (message.id !== draft.parentMessageId || !message.tool_calls) return message;
-        return {
-          ...message,
-          tool_calls: message.tool_calls.map((call) =>
-            call.id === event.toolCallId
-              ? { ...call, function: { ...call.function, arguments: parseArguments(args) } }
-              : call,
-          ),
-        };
-      });
       const updatePart = (part: MessagePart): MessagePart =>
         part.type === "tool-call" && part.callId === event.toolCallId
           ? { ...part, arguments: parseArguments(args) }
           : part;
       return {
         ...state,
-        messages,
         toolCallDrafts: { ...state.toolCallDrafts, [event.toolCallId]: nextDraft },
         streaming: { ...state.streaming, parts: state.streaming.parts.map(updatePart) },
         finalizedParts: Object.fromEntries(
@@ -355,23 +405,53 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     case "TOOL_CALL_END": {
       const draft = state.toolCallDrafts[event.toolCallId];
       if (!draft) return state;
-      const host = state.messages.find((message) => message.id === draft.parentMessageId);
-      const part = state.streaming.parts.find(
-        (candidate) => candidate.type === "tool-call" && candidate.callId === event.toolCallId,
+      const toolCallDrafts = {
+        ...state.toolCallDrafts,
+        [event.toolCallId]: { ...draft, ended: true },
+      };
+      const siblings = Object.values(toolCallDrafts).filter(
+        (candidate) => candidate.parentMessageId === draft.parentMessageId,
+      );
+      if (!siblings.every((candidate) => candidate.ended)) {
+        return { ...state, toolCallDrafts };
+      }
+
+      const siblingIds = new Set(siblings.map((candidate) => candidate.id));
+      const toolParts = state.streaming.parts.filter(
+        (part): part is ToolCallPart => part.type === "tool-call" && siblingIds.has(part.callId),
+      );
+      const existing = state.messages.find((message) => message.id === draft.parentMessageId);
+      const host: Message = {
+        id: draft.parentMessageId,
+        role: "assistant",
+        content: existing?.content ?? "",
+        tool_calls: siblings.map((candidate) => ({
+          id: candidate.id,
+          type: "function",
+          function: { name: candidate.name, arguments: parseArguments(candidate.arguments) },
+        })),
+      };
+      const remainingParts = state.streaming.parts.filter(
+        (part) => part.type !== "tool-call" || !siblingIds.has(part.callId),
       );
       return {
         ...state,
-        finalizedParts:
-          host && part
-            ? {
-                ...state.finalizedParts,
-                [draft.parentMessageId]: [
-                  ...(state.finalizedParts[draft.parentMessageId] ?? []),
-                  part,
-                ],
-              }
-            : state.finalizedParts,
-        streaming: initialChatState.streaming,
+        messages: upsertMessage(state.messages, host),
+        toolCallDrafts,
+        finalizedParts: {
+          ...state.finalizedParts,
+          [draft.parentMessageId]: [
+            ...(state.finalizedParts[draft.parentMessageId] ?? []).filter(
+              (part) => part.type !== "tool-call" || !siblingIds.has(part.callId),
+            ),
+            ...toolParts,
+          ],
+        },
+        streaming: {
+          parts: remainingParts,
+          activePartId: null,
+          activePartType: null,
+        },
       };
     }
 
@@ -400,7 +480,7 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       const { [event.toolCallId]: _completed, ...pendingElicits } = state.pendingElicits;
       return {
         ...state,
-        messages: upsertMessage(state.messages, toolMessage),
+        messages: upsertToolResult(state.messages, toolMessage),
         pendingElicits,
         streaming: { ...state.streaming, parts: state.streaming.parts.map(updatePart) },
         finalizedParts: Object.fromEntries(
@@ -465,6 +545,17 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
     case "LOCAL_ELICIT_RESPONSE": {
       const tracking = state.pendingElicits[event.callId];
       if (!tracking) return state;
+      const updatePart = (part: MessagePart): MessagePart =>
+        part.type === "tool-call" && part.callId === event.callId
+          ? {
+              ...part,
+              pluginElicits: part.pluginElicits.map((elicit) =>
+                elicit.id === event.elicitId
+                  ? { ...elicit, status: "responded", response: event.response }
+                  : elicit,
+              ),
+            }
+          : part;
       return {
         ...state,
         pendingElicits: {
@@ -478,6 +569,10 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
             ),
           },
         },
+        streaming: { ...state.streaming, parts: state.streaming.parts.map(updatePart) },
+        finalizedParts: Object.fromEntries(
+          Object.entries(state.finalizedParts).map(([id, parts]) => [id, parts.map(updatePart)]),
+        ),
       };
     }
 
@@ -485,6 +580,12 @@ export function chatReducer(state: ChatState, event: ChatStateEvent): ChatState 
       return {
         ...state,
         toolEmissions: { ...state.toolEmissions, [event.tracking.callId]: event.tracking },
+      };
+
+    case "LOCAL_FINALIZED_PARTS":
+      return {
+        ...state,
+        finalizedParts: { ...state.finalizedParts, [event.messageId]: event.parts },
       };
 
     case "LOCAL_ABORT":

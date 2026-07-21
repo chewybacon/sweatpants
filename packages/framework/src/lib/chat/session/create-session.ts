@@ -235,12 +235,18 @@ export function* runChatSession(
 
     while (true) {
       const elicitResponsesToSend = pendingElicitResponses.splice(0);
-      result = yield* streamer([...history], streamEvents, {
-        ...options,
-        ...(conversationId ? { conversationId } : {}),
-        ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
-        ...(replayState ? { replayState } : {}),
-      });
+      try {
+        result = yield* streamer([...history], streamEvents, {
+          ...options,
+          ...(conversationId ? { conversationId } : {}),
+          ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
+          ...(replayState ? { replayState } : {}),
+        });
+      } catch (error) {
+        yield* streamEvents.close();
+        if (terminalForwarded) yield* call(waitForTerminalForwarded);
+        throw error;
+      }
 
       if (result.conversationId) {
         conversationId = result.conversationId;
@@ -302,8 +308,14 @@ export function* runChatSession(
       }
     }
 
-    yield* call(waitForTerminalForwarded);
+    // Closing drains every queued event through transforms. Check the terminal
+    // invariant only after the drain so custom streamers cannot deadlock us by
+    // returning without RUN_FINISHED/RUN_ERROR.
     yield* streamEvents.close();
+    if (!terminalForwarded) {
+      throw new Error("Streamer returned without a terminal AG-UI event");
+    }
+    yield* call(waitForTerminalForwarded);
     return result!;
   }
 

@@ -5,10 +5,24 @@ import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ElicitRequestStreamEvent, StreamEvent, StreamResult } from "./streaming.ts";
 import type { StreamEventEntry } from "./options.ts";
 
+interface RunToolCall {
+  id: string;
+  name: string;
+  arguments: string;
+}
+
+function parseArguments(value: string): unknown {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
 /**
- * Consume durable frames without translating their events. Every canonical
- * AG-UI event is forwarded unchanged to the state fold while this driver
- * derives the turn result needed by the session runtime.
+ * Forward canonical AG-UI events unchanged while deriving only the current
+ * run's result. Snapshot history remains in ConversationState but never leaks
+ * into the current turn's text/tool result fields.
  */
 export function* consumeAgUiEventStream(
   eventStream: Stream<unknown, void>,
@@ -16,42 +30,84 @@ export function* consumeAgUiEventStream(
   onStreamEvent?: (entry: StreamEventEntry) => void,
 ): Operation<StreamResult> {
   let state = initialChatState;
+  let runStarted = false;
+  let terminalSeen = false;
+  let runError: Error | null = null;
+  let assistantText = "";
+  const toolCalls = new Map<string, RunToolCall>();
+  const toolResults = new Map<string, { id: string; name: string; content: string }>();
 
   for (const rawFrame of yield* each(eventStream)) {
     const frame = rawFrame as { lsn: number; event: StreamEvent };
-    onStreamEvent?.({
-      lsn: frame.lsn,
-      event: frame.event,
-      phase: "live",
-      receivedAt: Date.now(),
-    });
-    state = chatReducer(state, frame.event);
-    yield* events.send(frame.event);
-    if (frame.event.type === "RUN_ERROR") throw new Error(frame.event.message);
+    const event = frame.event;
+    onStreamEvent?.({ lsn: frame.lsn, event, phase: "live", receivedAt: Date.now() });
+
+    if (event.type === "RUN_STARTED") {
+      runStarted = true;
+      terminalSeen = false;
+      runError = null;
+      assistantText = "";
+      toolCalls.clear();
+      toolResults.clear();
+    } else if (runStarted && !terminalSeen) {
+      switch (event.type) {
+        case "TEXT_MESSAGE_CONTENT":
+          assistantText += event.delta;
+          break;
+        case "TOOL_CALL_START":
+          // Text before a tool call belongs to the assistant tool-host. Only
+          // post-tool text is the final assistant response for this turn.
+          assistantText = "";
+          toolCalls.set(event.toolCallId, {
+            id: event.toolCallId,
+            name: event.toolCallName,
+            arguments: "",
+          });
+          break;
+        case "TOOL_CALL_ARGS": {
+          const call = toolCalls.get(event.toolCallId);
+          if (call)
+            toolCalls.set(event.toolCallId, { ...call, arguments: call.arguments + event.delta });
+          break;
+        }
+        case "TOOL_CALL_RESULT":
+          toolResults.set(event.toolCallId, {
+            id: event.toolCallId,
+            name: event.toolCallName ?? toolCalls.get(event.toolCallId)?.name ?? "unknown",
+            content: event.content,
+          });
+          break;
+        case "RUN_FINISHED":
+          terminalSeen = true;
+          break;
+        case "RUN_ERROR":
+          terminalSeen = true;
+          runError = new Error(event.message);
+          break;
+        default:
+          break;
+      }
+    }
+
+    state = chatReducer(state, event);
+    yield* events.send(event);
     yield* each.next();
   }
 
-  const toolCalls = Object.values(state.toolCallDrafts).map((call) => ({
+  if (!runStarted) throw new Error("AG-UI stream ended before RUN_STARTED");
+  if (!terminalSeen) throw new Error("AG-UI stream ended before RUN_FINISHED or RUN_ERROR");
+  if (runError) throw runError;
+
+  const currentToolCalls = [...toolCalls.values()].map((call) => ({
     id: call.id,
     name: call.name,
-    arguments: (() => {
-      try { return JSON.parse(call.arguments) as unknown; } catch { return call.arguments; }
-    })(),
+    arguments: parseArguments(call.arguments),
   }));
-  const toolResults = state.messages
-    .filter((message) => message.role === "tool" && message.tool_call_id)
-    .map((message) => ({
-      id: message.tool_call_id!,
-      name: message.replay?.toolName ?? state.toolCallDrafts[message.tool_call_id!]?.name ?? "unknown",
-      content: message.content,
-    }));
-  const assistantText = state.messages
-    .filter((message) => message.role === "assistant" && !message.tool_calls?.length)
-    .at(-1)?.content ?? "";
+  const currentToolResults = [...toolResults.values()];
   const conversationState = {
     messages: state.messages,
     assistantContent: assistantText,
-    toolCalls: toolCalls.map((call) => ({
+    toolCalls: currentToolCalls.map((call) => ({
       id: call.id,
       name: call.name,
       arguments:
@@ -59,7 +115,7 @@ export function* consumeAgUiEventStream(
           ? (call.arguments as Record<string, unknown>)
           : {},
     })),
-    serverToolResults: toolResults.map((result) => ({
+    serverToolResults: currentToolResults.map((result) => ({
       ...result,
       isError: result.content.startsWith("Error:"),
     })),
@@ -86,8 +142,8 @@ export function* consumeAgUiEventStream(
   return {
     type: "complete",
     text: assistantText,
-    ...(toolCalls.length > 0 ? { toolCalls } : {}),
-    ...(toolResults.length > 0 ? { toolResults } : {}),
+    ...(currentToolCalls.length > 0 ? { toolCalls: currentToolCalls } : {}),
+    ...(currentToolResults.length > 0 ? { toolResults: currentToolResults } : {}),
     conversationState,
   };
 }

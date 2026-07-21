@@ -64,7 +64,7 @@ function EventRow({ entry, baseTime }: { entry: StreamEventEntry; baseTime: numb
   const category = categorize(entry.event.type);
   const relMs = entry.receivedAt - baseTime;
 
-  const shortType = entry.event.type.replace(/^ag_ui_/, "").replace(/_/g, "_");
+  const shortType = entry.event.type;
 
   return (
     <div className={cn("group border-b border-slate-800/50", categoryBg[category])}>
