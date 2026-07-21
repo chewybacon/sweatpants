@@ -41,17 +41,9 @@ subset runs through a loopback server rather than a mocked fetch.
 | Successful durable history | Durable call/result exactly once; nested sample excluded | in-process + HTTP |
 | Failed history | Call/error pair persists for ordinary and durable failures | in-process + HTTP |
 | Cancel-on-send supersession | Parked ordinary/durable task is cancelled; replacement user turn continues in one activation | in-process + HTTP |
-| Nested durable cancellation | Pending nested provider request is aborted; child cancellation does not poison another conversation | in-process + HTTP |
+| Nested durable cancellation | Pending nested provider request is aborted; same durable conversation reopens in a fresh client session and completes | in-process + HTTP |
 | Concurrent conversations | Interleaved streams never cross; failure in A does not affect B | in-process + HTTP |
 | HTTP reconnect | Disconnect after first delta, reconnect from checkpoint, replay only unseen delta, model runs once | HTTP |
-
-## Known todo
-
-- Reusing the **same conversation** after explicitly cancelling a durable child
-  while its nested model sample is pending. Cancellation reaches and aborts the
-  provider correctly, but the client session does not dispatch a subsequent
-  send on that conversation. This document keeps the gap explicit; it is not
-  counted as passing coverage.
 
 ## Deliberately outside this matrix
 

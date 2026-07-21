@@ -94,6 +94,51 @@ describe("model semantic barriers", () => {
     }
   });
 
+  it("rejects conflicting terminal actions on a manual stream", async () => {
+    const simulator = await startModelSimulator();
+    try {
+      const expected = simulator.model.expectRequest({ model: "test" });
+      void fetch(`${simulator.baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "test", stream: true }),
+      }).catch(() => undefined);
+      const stream = await (
+        await expected
+      ).respond.text({
+        chunks: ["partial"],
+        release: "manual",
+      });
+      await stream.fail({ code: "planned", message: "planned" });
+      await expect(stream.finish()).rejects.toThrow(/already failed/);
+      expect(() => simulator.verify()).toThrow(/already failed/);
+    } finally {
+      await simulator.close();
+    }
+  });
+
+  it("rejects chunk release after a manual stream disconnect", async () => {
+    const simulator = await startModelSimulator();
+    try {
+      const expected = simulator.model.expectRequest({ model: "test" });
+      void fetch(`${simulator.baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "test", stream: true }),
+      }).catch(() => undefined);
+      const stream = await (
+        await expected
+      ).respond.text({
+        chunks: ["unreleased"],
+        release: "manual",
+      });
+      await stream.disconnect();
+      await expect(stream.releaseNext()).rejects.toThrow(/already disconnected/);
+    } finally {
+      await simulator.close();
+    }
+  });
+
   it("returns an immediate OpenAI-shaped error for an unexpected request", async () => {
     let poisoned: Error | undefined;
     const simulator = await startModelSimulator((error) => {

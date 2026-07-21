@@ -329,6 +329,8 @@ function* activateProgramDriverChatEngine(
     ...(params.initialToolChoice !== undefined ? { toolChoice: params.initialToolChoice } : {}),
   };
   // Replay of the accepted canonical input never reruns schema code (DR-023).
+  const replacementQueued =
+    active !== undefined && canonicalJson(active.input) !== canonicalJson(requestedInput);
   const input = active
     ? assertReplayedCanonicalValue<ChatProgramInput>(active.input)
     : requestedInput;
@@ -538,7 +540,7 @@ function* activateProgramDriverChatEngine(
       });
     }
   } else if (outcome.state === "cancelled") {
-    if (params.continueAfterCancellation) {
+    if (params.continueAfterCancellation || replacementQueued) {
       const {
         pluginAbort: _pluginAbort,
         continueAfterCancellation: _continueAfterCancellation,
@@ -1431,6 +1433,14 @@ function resolveOuterToolTarget(requested: string, tools: ReadonlyArray<{ name: 
   const aliases = tools.filter((tool) => tool.name.startsWith(`${requested}_`));
   if (aliases.length === 1) {
     return aliases[0]!.name;
+  }
+  if (aliases.length > 1) {
+    throw new CrankError(
+      "ambiguous_tool_alias",
+      `Tool name "${requested}" matches multiple catalog entries: ${aliases
+        .map((tool) => tool.name)
+        .join(", ")}`,
+    );
   }
   // Preserve the provider's requested target so the root program can emit a
   // normal tool_started record before rejecting it at the bound catalog. That

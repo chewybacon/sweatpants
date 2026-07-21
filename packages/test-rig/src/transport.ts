@@ -18,6 +18,7 @@ export interface OpenStreamTurnOptions {
 
 export interface StreamTurnHandle {
   readonly sessionId: string;
+  /** Frames consumed through expectEvent()/complete(), never merely prefetched frames. */
   readonly events: readonly StreamFrame[];
   expectEvent(
     type: string,
@@ -31,6 +32,11 @@ export interface StreamTurnHandle {
 export interface StreamTransportHandle {
   openTurn(options: OpenStreamTurnOptions): Promise<StreamTurnHandle>;
   reconnect(checkpoint: StreamCheckpoint): Promise<StreamTurnHandle>;
+}
+
+interface FrameWaiter {
+  resolve(frame: StreamFrame): void;
+  reject(error: unknown): void;
 }
 
 export function createStreamTransportHandle(
@@ -48,57 +54,126 @@ export function createStreamTransportHandle(
     if (!sessionId) {
       throw new Error("stream transport response omitted X-Session-Id");
     }
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    const events: StreamFrame[] = [];
     const queued: StreamFrame[] = [];
+    const consumed: StreamFrame[] = [];
+    const waiters: FrameWaiter[] = [];
     let buffer = "";
-    let terminal = false;
+    let ended = false;
     let disconnected = false;
+    let pumpError: unknown;
 
-    async function readFrame(): Promise<StreamFrame> {
-      while (queued.length === 0) {
-        const next = await reader.read();
-        if (next.done) {
-          throw new Error("stream transport ended before the expected event");
-        }
-        buffer += decoder.decode(next.value, { stream: true });
+    function parseFrame(line: string): StreamFrame {
+      const parsed = JSON.parse(line) as StreamFrame;
+      if (
+        typeof parsed.lsn !== "number" ||
+        typeof parsed.event !== "object" ||
+        parsed.event === null ||
+        typeof parsed.event.type !== "string"
+      ) {
+        throw new Error(`invalid stream frame: ${line.slice(0, 500)}`);
+      }
+      return parsed;
+    }
+
+    function deliver(frame: StreamFrame): void {
+      const waiter = waiters.shift();
+      if (waiter) {
+        consumed.push(frame);
+        waiter.resolve(frame);
+      } else {
+        queued.push(frame);
+      }
+    }
+
+    function rejectWaiters(error: unknown): void {
+      for (const waiter of waiters.splice(0)) {
+        waiter.reject(error);
+      }
+    }
+
+    // Exactly one pump owns reader.read(). Event consumers wait on queues and
+    // can time out/retry without creating concurrent Web Stream reads.
+    const pump = (async () => {
+      try {
         while (true) {
-          const newline = buffer.indexOf("\n");
-          if (newline < 0) {
+          if (disconnected) {
             break;
           }
-          const line = buffer.slice(0, newline).trim();
-          buffer = buffer.slice(newline + 1);
-          if (!line) {
-            continue;
+          const next = await reader.read();
+          if (next.done) {
+            break;
           }
-          const parsed = JSON.parse(line) as StreamFrame;
-          if (
-            typeof parsed.lsn !== "number" ||
-            typeof parsed.event !== "object" ||
-            parsed.event === null ||
-            typeof parsed.event.type !== "string"
-          ) {
-            throw new Error(`invalid stream frame: ${line.slice(0, 500)}`);
+          buffer += decoder.decode(next.value, { stream: true });
+          while (true) {
+            const newline = buffer.indexOf("\n");
+            if (newline < 0) {
+              break;
+            }
+            const line = buffer.slice(0, newline).trim();
+            buffer = buffer.slice(newline + 1);
+            if (line) {
+              deliver(parseFrame(line));
+            }
           }
-          events.push(parsed);
-          queued.push(parsed);
         }
+      } catch (error) {
+        if (!disconnected) {
+          pumpError = error;
+        }
+      } finally {
+        ended = true;
+        rejectWaiters(
+          pumpError ?? new Error(disconnected ? "stream transport disconnected" : "stream ended"),
+        );
       }
-      return queued.shift()!;
+    })();
+    void pump.catch(() => undefined);
+
+    function nextFrame(): { promise: Promise<StreamFrame>; cancel(): void } {
+      const available = queued.shift();
+      if (available) {
+        consumed.push(available);
+        return { promise: Promise.resolve(available), cancel() {} };
+      }
+      if (pumpError) {
+        return { promise: Promise.reject(pumpError), cancel() {} };
+      }
+      if (ended) {
+        return {
+          promise: Promise.reject(new Error("stream transport ended before the expected event")),
+          cancel() {},
+        };
+      }
+      let waiter: FrameWaiter;
+      const promise = new Promise<StreamFrame>((resolve, reject) => {
+        waiter = { resolve, reject };
+        waiters.push(waiter);
+      });
+      return {
+        promise,
+        cancel() {
+          const index = waiters.indexOf(waiter);
+          if (index >= 0) {
+            waiters.splice(index, 1);
+          }
+        },
+      };
     }
 
     async function boundedFrame(): Promise<StreamFrame> {
+      const pending = nextFrame();
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         return await Promise.race([
-          readFrame(),
+          pending.promise,
           new Promise<never>((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error(`barrier_timeout: stream event after ${barrierTimeoutMs}ms`)),
-              barrierTimeoutMs,
-            );
+            timer = setTimeout(() => {
+              pending.cancel();
+              reject(new Error(`barrier_timeout: stream event after ${barrierTimeoutMs}ms`));
+            }, barrierTimeoutMs);
           }),
         ]);
       } finally {
@@ -111,20 +186,19 @@ export function createStreamTransportHandle(
     return {
       sessionId,
       get events() {
-        return Object.freeze([...events]);
+        return Object.freeze([...consumed]);
       },
       async expectEvent(type, assertion) {
         while (true) {
           const frame = await boundedFrame();
-          if (frame.event.type !== type) {
-            continue;
+          if (frame.event.type === type) {
+            assertion?.(frame.event);
+            return frame;
           }
-          assertion?.(frame.event);
-          return frame;
         }
       },
       checkpoint() {
-        return { sessionId, offset: events.at(-1)?.lsn ?? 0 };
+        return { sessionId, offset: consumed.at(-1)?.lsn ?? 0 };
       },
       async disconnect() {
         if (disconnected) {
@@ -132,15 +206,15 @@ export function createStreamTransportHandle(
         }
         disconnected = true;
         await reader.cancel("test-rig transport disconnect");
+        await pump;
       },
       async complete() {
-        while (!terminal) {
+        while (true) {
           const frame = await boundedFrame();
           if (frame.event.type === "RUN_FINISHED" || frame.event.type === "RUN_ERROR") {
-            terminal = true;
+            return Object.freeze([...consumed]);
           }
         }
-        return Object.freeze([...events]);
       },
     };
   }

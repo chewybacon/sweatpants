@@ -74,7 +74,8 @@ export interface ElicitResponse {
 }
 
 export interface PluginAbortRequest {
-  sessionId: string;
+  /** Optional legacy runtime correlation; Program Runtime cancellation uses the active durable root. */
+  sessionId?: string;
   reason?: string;
 }
 

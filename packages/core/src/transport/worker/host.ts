@@ -151,7 +151,7 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
 
     // Spawn the forEach handler to process worker requests
     // This runs in the background and handles all requests from the worker
-    yield* spawn(function* () {
+    const requestTask = yield* spawn(function* () {
       try {
         // Use worker.forEach with the progress-enabled signature
         // WRequest = WorkerRequest (what worker sends)
@@ -215,10 +215,22 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
       },
     };
 
-    // Provide the result operation
-    yield* provide({
-      result: resultOperation,
-    });
+    // Provide the result operation. Stop the request pump before the worker
+    // resource finalizer runs; otherwise a parked request can keep worker
+    // teardown alive indefinitely after host-side cancellation.
+    try {
+      yield* provide({
+        result: resultOperation,
+      });
+    } finally {
+      try {
+        yield* requestTask.halt();
+      } catch (error) {
+        if (!(error instanceof Error) || error.message !== "halted") {
+          throw error;
+        }
+      }
+    }
   });
 }
 

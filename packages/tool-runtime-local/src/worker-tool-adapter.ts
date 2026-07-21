@@ -49,14 +49,17 @@ export function createWorkerTool(tool: RuntimeTool): WorkerTool {
     name: tool.name,
     elicits: tool.elicits,
     handler: function* (params: unknown, workerContext: WorkerToolContext) {
-      const canonicalContext = createCanonicalWorkerContext(workerContext);
+      const canonicalContext = createCanonicalWorkerContext(tool, workerContext);
       const invoke = yield* tool(canonicalContext);
       return yield* invoke(params);
     },
   };
 }
 
-function createCanonicalWorkerContext(worker: WorkerToolContext): CanonicalRuntimeContext {
+function createCanonicalWorkerContext(
+  tool: RuntimeTool,
+  worker: WorkerToolContext,
+): CanonicalRuntimeContext {
   const messages: ToolMessage[] = [];
 
   function track(exchange: { messages: ToolMessage[] }, automatic: boolean): void {
@@ -77,9 +80,13 @@ function createCanonicalWorkerContext(worker: WorkerToolContext): CanonicalRunti
     if (!request) {
       throw new Error("named sample requires a request");
     }
-    const config = isToolSampleConfig(request)
-      ? toWorkerSampleConfig(request)
-      : sampleRequestToWorkerConfig(request);
+    const namedOutput = named ? namedSampleOutput(tool, keyOrRequest) : undefined;
+    const config = withNamedOutputSchema(
+      isToolSampleConfig(request)
+        ? toWorkerSampleConfig(request)
+        : sampleRequestToWorkerConfig(request),
+      namedOutput,
+    );
     const automatic = "prompt" in config;
 
     return {
@@ -144,6 +151,21 @@ function createCanonicalWorkerContext(worker: WorkerToolContext): CanonicalRunti
     },
   };
   return context;
+}
+
+function namedSampleOutput(tool: RuntimeTool, key: string): unknown {
+  const definition = (tool.samples as Readonly<Record<string, { output?: unknown }>>)[key];
+  if (!definition) {
+    throw new Error(`Named sample "${key}" is not declared by tool "${tool.name}"`);
+  }
+  return definition.output;
+}
+
+function withNamedOutputSchema(config: WorkerSampleConfig, output: unknown): WorkerSampleConfig {
+  if (output === undefined) {
+    return config;
+  }
+  return { ...config, schema: output } as WorkerSampleConfig;
 }
 
 function isToolSampleConfig(value: ToolSampleConfig | SampleRequest): value is ToolSampleConfig {
@@ -227,6 +249,11 @@ function canonicalizeSchemaResult<T>(
   };
 }
 
+/**
+ * Canonical exchange summaries intentionally project the effective prompt and
+ * result text. Multi-message payloads remain authoritative on the transport;
+ * this compact pair is for tool-local history/display accumulation.
+ */
 function rawExchange(prompt: string, text: string): SampleExchange<undefined> {
   const request: ToolMessage & { role: "user" } = {
     role: "user",

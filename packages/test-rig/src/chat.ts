@@ -62,6 +62,8 @@ export interface ConversationHandle {
   readonly conversationId: string;
   send(message: string): TurnHandle;
   supersede(message: string): TurnHandle;
+  /** Recreate the client-session resource while retaining durable conversation identity. */
+  reopen(): Promise<ConversationHandle>;
   transcript(): ConversationTranscript;
 }
 
@@ -406,12 +408,14 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
                 error instanceof Error ? error : new Error(String(error ?? "request failed"));
             },
             onRequestFinished: () => {
-              serverCancellation?.resolve();
               if (pendingRunError && activeTurn) {
                 const error = pendingRunError;
                 pendingRunError = undefined;
                 failTurn(error);
               }
+            },
+            onCancellationSettled: () => {
+              serverCancellation?.resolve();
             },
           });
 
@@ -523,6 +527,11 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         supersede(message: string): TurnHandle {
           return startTurn(message, true);
         },
+        async reopen() {
+          await owned.close();
+          conversations.delete(conversationId);
+          return chatHandle.conversation({ ...conversationOptions, conversationId });
+        },
         transcript() {
           return {
             conversationId,
@@ -559,6 +568,9 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
           try {
             await destroyConversationScope();
           } catch (haltError) {
+            // Effection and Node surface explicit scope destruction differently
+            // (`halted` vs AbortError/DOM abort text); all are expected only
+            // after this conversation has entered its closed state.
             const expectedTermination =
               haltError instanceof Error &&
               (haltError.message === "halted" ||

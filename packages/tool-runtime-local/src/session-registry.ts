@@ -13,7 +13,7 @@
  *
  * @packageDocumentation
  */
-import { type Operation, spawn, resource, createQueue, createScope } from "effection";
+import { type Operation, spawn, resource, createQueue, useScope } from "effection";
 import type {
   ToolSessionRegistry,
   ToolSessionStore,
@@ -43,16 +43,6 @@ export function isWorkerBackedToolSessionRegistry(registry: ToolSessionRegistry)
       TOOL_SESSION_REGISTRY_EXECUTION_MODE
     ] === "worker"
   );
-}
-
-function startBackgroundTask(operation: () => Operation<void>): () => Operation<void> {
-  const [scope, destroy] = createScope();
-  const task = scope.run(operation);
-  void task.then(
-    () => destroy(),
-    () => destroy(),
-  );
-  return destroy;
 }
 
 function resolveWorkerUrl(workerUrl: string | URL, isDev?: boolean): string | URL {
@@ -128,10 +118,12 @@ export function createToolSessionRegistry(
 ): Operation<ToolSessionRegistry> {
   return resource<ToolSessionRegistry>(function* (provide) {
     const { defaultTimeout, worker } = options;
+    const ownerScope = yield* useScope();
 
-    // Track active session resources and detached scopes for host teardown.
+    // Tool sessions attach to the registry/application owner scope rather than
+    // the request that invoked create(), so they survive HTTP park/resume while
+    // retaining normal structured teardown.
     const activeSessions = new Map<string, ToolSession>();
-    const backgroundScopes = new Set<() => Operation<void>>();
 
     /**
      * Internal cleanup helper - removes session from store and active map.
@@ -166,13 +158,11 @@ export function createToolSessionRegistry(
         // the caller has subscribed.
         const sessionQueue = createQueue<ToolSession<TResult>, void>();
 
-        // CRITICAL: Run tool sessions in an independent background scope.
-        //
-        // The durable chat handler can end the current request scope immediately
-        // after emitting a plugin elicitation event. If the tool session lived in
-        // that request scope, it would be cancelled and could not be resumed on
-        // the next HTTP request.
-        const destroyBackground = startBackgroundTask(function* () {
+        // CRITICAL: Run tool sessions in the captured registry/application
+        // scope. The durable chat handler can end the current request scope
+        // immediately after emitting an elicitation; the owner scope survives
+        // that boundary and is cancelled exactly once with the application.
+        const backgroundTask = ownerScope.run(function* () {
           const resolvedWorkerUrl = worker
             ? resolveWorkerUrl(worker.workerUrl, worker.isDev)
             : undefined;
@@ -196,7 +186,7 @@ export function createToolSessionRegistry(
           // Keep this scope alive without timer polling until terminal state.
           yield* waitForSettlement(session);
         });
-        backgroundScopes.add(destroyBackground);
+        void backgroundTask.catch(() => undefined);
 
         // Receive the session from the spawned task
         const result = yield* sessionQueue.next();
@@ -303,8 +293,7 @@ export function createToolSessionRegistry(
     try {
       yield* provide(registry);
     } finally {
-      for (const destroy of backgroundScopes) yield* destroy();
-      backgroundScopes.clear();
+      activeSessions.clear();
     }
   });
 }
