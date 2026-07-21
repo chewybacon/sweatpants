@@ -30,6 +30,14 @@ runtime packages
   MCP bridge/runtime adapter
 ```
 
+## Client Event Fold
+
+Canonical AG-UI events are the durable wire format and the direct input to the client chat-state fold. Live streaming and durable hydration both call the same pure `chatReducer(state, event)` function; there is no intermediate framework patch vocabulary or replay-specific event mapper.
+
+Browser-only concerns use explicitly local actions (`LOCAL_*`) and never enter the durable log. These actions cover optimistic user messages, rendering frames, abort/reset state, and hydrated component attachments. Interactive component callbacks remain ephemeral React state keyed by durable tool-call and interrupt identifiers.
+
+AG-UI interrupts are the single mechanism for elicitation, approval, and permission requests. The framework does not maintain a separate client-tool approval protocol.
+
 ## Tool Inventory
 
 The framework stores tools as inventory entries. An entry has two sides:

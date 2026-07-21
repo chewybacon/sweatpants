@@ -46,7 +46,7 @@
  * }
  * ```
  */
-import type { Operation, Channel, Subscription } from 'effection'
+import type { Operation, Channel, Subscription } from "effection";
 import type {
   Frame,
   Processor,
@@ -54,16 +54,16 @@ import type {
   PipelineConfig,
   ParseContext,
   ProcessFn,
-} from './types.ts'
-import { emptyFrame } from './frame.ts'
-import { createParser } from './parser.ts'
-import { resolveProcessors } from './resolver.ts'
+} from "./types.ts";
+import { emptyFrame } from "./frame.ts";
+import { createParser } from "./parser.ts";
+import { resolveProcessors } from "./resolver.ts";
 
 // Import built-in processors to ensure they register themselves
-import { markdown } from './processors/markdown.ts'
-import { shiki } from './processors/shiki.ts'
-import { mermaid } from './processors/mermaid.ts'
-import { math } from './processors/math.ts'
+import { markdown } from "./processors/markdown.ts";
+import { shiki } from "./processors/shiki.ts";
+import { mermaid } from "./processors/mermaid.ts";
+import { math } from "./processors/math.ts";
 
 // =============================================================================
 // Presets
@@ -74,16 +74,16 @@ import { math } from './processors/math.ts'
  */
 function resolvePreset(preset: ProcessorPreset): readonly Processor[] {
   switch (preset) {
-    case 'markdown':
-      return [markdown]
-    case 'shiki':
-      return [markdown, shiki]
-    case 'mermaid':
-      return [markdown, mermaid]
-    case 'math':
-      return [markdown, math]
-    case 'full':
-      return [markdown, shiki, mermaid, math]
+    case "markdown":
+      return [markdown];
+    case "shiki":
+      return [markdown, shiki];
+    case "mermaid":
+      return [markdown, mermaid];
+    case "math":
+      return [markdown, math];
+    case "full":
+      return [markdown, shiki, mermaid, math];
   }
 }
 
@@ -99,44 +99,44 @@ function resolvePreset(preset: ProcessorPreset): readonly Processor[] {
  */
 export interface Pipeline {
   /** Current frame state (last pulled frame, or empty if never pulled) */
-  readonly frame: Frame
+  readonly frame: Frame;
 
   /** Whether there's buffered content that hasn't been processed yet */
-  readonly hasPending: boolean
+  readonly hasPending: boolean;
 
   /** Whether the stream has ended (flush was called) */
-  readonly isDone: boolean
+  readonly isDone: boolean;
 
   /**
    * Push a chunk of raw content into the buffer.
    * This is synchronous and does NOT trigger processing.
    */
-  push(chunk: string): void
+  push(chunk: string): void;
 
   /**
    * Pull the next frame by processing all buffered content.
    * Runs parser + all processors on accumulated buffer.
    * Returns the same frame if nothing new was buffered.
    */
-  pull(): Operation<Frame>
+  pull(): Operation<Frame>;
 
   /**
    * Signal end of stream and pull final frame.
    * After this, hasPending will be false and isDone will be true.
    */
-  flush(): Operation<Frame>
+  flush(): Operation<Frame>;
 
   /**
    * Reset the pipeline for a new stream.
    */
-  reset(): void
+  reset(): void;
 }
 
 /**
  * Internal configuration after resolving presets and dependencies.
  */
 interface ResolvedConfig {
-  processFns: readonly ProcessFn[]
+  processFns: readonly ProcessFn[];
 }
 
 /**
@@ -144,24 +144,24 @@ interface ResolvedConfig {
  */
 function resolveConfig(config: PipelineConfig): ResolvedConfig {
   // Handle preset string
-  if (typeof config.processors === 'string') {
-    const processors = resolvePreset(config.processors)
-    const resolved = resolveProcessors(processors)
+  if (typeof config.processors === "string") {
+    const processors = resolvePreset(config.processors);
+    const resolved = resolveProcessors(processors);
     return {
-      processFns: resolved.processors.map(p => p.process),
-    }
+      processFns: resolved.processors.map((p) => p.process),
+    };
   }
 
   // Handle array of processors
-  const processors = config.processors
+  const processors = config.processors;
   if (processors.length === 0) {
-    return { processFns: [] }
+    return { processFns: [] };
   }
 
-  const resolved = resolveProcessors(processors)
+  const resolved = resolveProcessors(processors);
   return {
-    processFns: resolved.processors.map(p => p.process),
-  }
+    processFns: resolved.processors.map((p) => p.process),
+  };
 }
 
 /**
@@ -171,106 +171,106 @@ function resolveConfig(config: PipelineConfig): ResolvedConfig {
  */
 export function createPipeline(config: PipelineConfig): Pipeline {
   // Resolve config
-  const resolved = resolveConfig(config)
+  const resolved = resolveConfig(config);
 
   // Create parser (internal) - maintains fence state across chunks
-  const parser = createParser()
+  const parser = createParser();
 
   // Get process functions
-  const processFns = resolved.processFns
+  const processFns = resolved.processFns;
 
   // Pipeline state
-  let currentFrame = emptyFrame()
-  let buffer = ''
-  let isDone = false
+  let currentFrame = emptyFrame();
+  let buffer = "";
+  let isDone = false;
 
   const instance: Pipeline = {
     get frame() {
-      return currentFrame
+      return currentFrame;
     },
 
     get hasPending() {
-      return buffer.length > 0
+      return buffer.length > 0;
     },
 
     get isDone() {
-      return isDone
+      return isDone;
     },
 
     push(chunk: string): void {
       if (isDone) {
-        throw new Error('Cannot push to a finished pipeline. Call reset() first.')
+        throw new Error("Cannot push to a finished pipeline. Call reset() first.");
       }
-      buffer += chunk
+      buffer += chunk;
     },
 
     *pull(): Operation<Frame> {
       // Nothing to process
       if (buffer.length === 0) {
-        return currentFrame
+        return currentFrame;
       }
 
       // Step 1: Parse buffered content into block structure
-      const ctx: ParseContext = { flush: false }
-      const chunkToProcess = buffer
-      buffer = '' // Clear buffer before processing
+      const ctx: ParseContext = { flush: false };
+      const chunkToProcess = buffer;
+      buffer = ""; // Clear buffer before processing
 
-      const parsedFrame = parser(currentFrame, chunkToProcess, ctx)
+      const parsedFrame = parser(currentFrame, chunkToProcess, ctx);
 
       // If parser changed the frame, run processors
       if (parsedFrame !== currentFrame) {
-        currentFrame = parsedFrame
+        currentFrame = parsedFrame;
 
         // Step 2: Run processors in sequence
         for (const processFn of processFns) {
-          const processedFrame = yield* processFn(currentFrame)
+          const processedFrame = yield* processFn(currentFrame);
           if (processedFrame !== currentFrame) {
-            currentFrame = processedFrame
+            currentFrame = processedFrame;
           }
         }
       }
 
-      return currentFrame
+      return currentFrame;
     },
 
     *flush(): Operation<Frame> {
       if (isDone) {
-        return currentFrame
+        return currentFrame;
       }
 
       // Process any remaining buffer first
       if (buffer.length > 0) {
-        yield* instance.pull()
+        yield* instance.pull();
       }
 
       // Parse with flush=true to handle any incomplete content
-      const ctx: ParseContext = { flush: true }
-      const parsedFrame = parser(currentFrame, '', ctx)
+      const ctx: ParseContext = { flush: true };
+      const parsedFrame = parser(currentFrame, "", ctx);
 
       if (parsedFrame !== currentFrame) {
-        currentFrame = parsedFrame
+        currentFrame = parsedFrame;
 
         // Run processors on flushed frame
         for (const processFn of processFns) {
-          const processedFrame = yield* processFn(currentFrame)
+          const processedFrame = yield* processFn(currentFrame);
           if (processedFrame !== currentFrame) {
-            currentFrame = processedFrame
+            currentFrame = processedFrame;
           }
         }
       }
 
-      isDone = true
-      return currentFrame
+      isDone = true;
+      return currentFrame;
     },
 
     reset(): void {
-      currentFrame = emptyFrame()
-      buffer = ''
-      isDone = false
+      currentFrame = emptyFrame();
+      buffer = "";
+      isDone = false;
     },
-  }
+  };
 
-  return instance
+  return instance;
 }
 
 // =============================================================================
@@ -283,14 +283,14 @@ export function createPipeline(config: PipelineConfig): Pipeline {
  */
 export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
   return function* (frame: Frame): Operation<Frame> {
-    let currentFrame = frame
+    let currentFrame = frame;
 
     for (const fn of fns) {
-      currentFrame = yield* fn(currentFrame)
+      currentFrame = yield* fn(currentFrame);
     }
 
-    return currentFrame
-  }
+    return currentFrame;
+  };
 }
 
 // =============================================================================
@@ -298,9 +298,11 @@ export function composeProcessFns(fns: ProcessFn[]): ProcessFn {
 // =============================================================================
 
 // Import patch types
-import type { ChatPatch } from '../types.ts'
-import type { ContentPartType, PartFramePatch, PartEndPatch } from '@sweatpants/framework/chat'
-import { generatePartId } from '@sweatpants/framework/chat'
+import type { ChatStateEvent } from "@sweatpants/framework/chat";
+
+import { generatePartId } from "@sweatpants/framework/chat";
+
+type ContentPartType = "text" | "reasoning";
 
 /**
  * Create a patch transform from a pipeline config.
@@ -311,8 +313,8 @@ import { generatePartId } from '@sweatpants/framework/chat'
  * ## Per-Segment Pipelines
  *
  * The transform manages a separate pipeline for each content segment:
- * - streaming_text → text segment
- * - streaming_reasoning → reasoning segment
+ * - TEXT_MESSAGE_CONTENT → text segment
+ * - REASONING_MESSAGE_CONTENT → reasoning segment
  *
  * When content type switches (reasoning → text, text → tool_call), the
  * current pipeline is flushed and a `part_end` patch is emitted. A new
@@ -323,49 +325,49 @@ import { generatePartId } from '@sweatpants/framework/chat'
  * - `part_frame` - Frame update for the current part
  * - `part_end` - Part finalized with its final frame
  *
- * Original patches (streaming_text, etc.) are passed through.
+ * Canonical AG-UI events are passed through unchanged.
  */
 export function createPipelineTransform(config: PipelineConfig) {
   return function* pipelineTransform(
-    input: Channel<ChatPatch, void>,
-    output: Channel<ChatPatch, void>
+    input: Channel<ChatStateEvent, void>,
+    output: Channel<ChatStateEvent, void>,
   ): Operation<void> {
     // Current segment state
-    let currentPartType: ContentPartType | null = null
-    let currentPartId: string | null = null
-    let pipeline: Pipeline | null = null
+    let currentPartType: ContentPartType | null = null;
+    let currentPartId: string | null = null;
+    let pipeline: Pipeline | null = null;
 
     /**
      * Flush the current segment and emit part_end.
      */
     function* flushCurrentSegment(): Operation<void> {
       if (!pipeline || !currentPartId || !currentPartType) {
-        return
+        return;
       }
 
-      const frame = yield* pipeline.flush()
+      const frame = yield* pipeline.flush();
 
-      const partEndPatch: PartEndPatch = {
-        type: 'part_end',
+      const partEndAction: ChatStateEvent = {
+        type: "LOCAL_RENDER_END",
         partType: currentPartType,
         partId: currentPartId,
         frame,
-      }
-      yield* output.send(partEndPatch)
+      };
+      yield* output.send(partEndAction);
 
       // Reset segment state
-      pipeline = null
-      currentPartId = null
-      currentPartType = null
+      pipeline = null;
+      currentPartId = null;
+      currentPartType = null;
     }
 
     /**
      * Start a new segment with the given type.
      */
     function startNewSegment(partType: ContentPartType): void {
-      currentPartType = partType
-      currentPartId = generatePartId()
-      pipeline = createPipeline(config)
+      currentPartType = partType;
+      currentPartId = generatePartId();
+      pipeline = createPipeline(config);
     }
 
     /**
@@ -373,88 +375,86 @@ export function createPipelineTransform(config: PipelineConfig) {
      */
     function* pushAndEmitFrame(content: string): Operation<void> {
       if (!pipeline || !currentPartId || !currentPartType) {
-        return
+        return;
       }
 
-      pipeline.push(content)
+      pipeline.push(content);
 
       if (pipeline.hasPending) {
-        const frame = yield* pipeline.pull()
+        const frame = yield* pipeline.pull();
 
-        const partFramePatch: PartFramePatch = {
-          type: 'part_frame',
+        const partFrameAction: ChatStateEvent = {
+          type: "LOCAL_RENDER_FRAME",
           partType: currentPartType,
           partId: currentPartId,
           frame,
-        }
-        yield* output.send(partFramePatch)
+        };
+        yield* output.send(partFrameAction);
       }
     }
 
     /**
      * Handle content streaming (text or reasoning).
      */
-    function* handleContentPatch(
-      content: string,
-      partType: ContentPartType
-    ): Operation<void> {
+    function* handleContentPatch(content: string, partType: ContentPartType): Operation<void> {
       // If content type changed, flush previous segment
       if (currentPartType !== null && currentPartType !== partType) {
-        yield* flushCurrentSegment()
+        yield* flushCurrentSegment();
       }
 
       // Start new segment if needed
       if (currentPartType !== partType) {
-        startNewSegment(partType)
+        startNewSegment(partType);
       }
 
       // Push content and emit frame
-      yield* pushAndEmitFrame(content)
+      yield* pushAndEmitFrame(content);
     }
 
     // Subscribe to input
-    const subscription: Subscription<ChatPatch, void> = yield* input
+    const subscription: Subscription<ChatStateEvent, void> = yield* input;
 
     // Process patches
     while (true) {
-      const next = yield* subscription.next()
+      const next = yield* subscription.next();
 
       if (next.done) {
         // Stream ended - flush current segment
-        yield* flushCurrentSegment()
-        break
+        yield* flushCurrentSegment();
+        break;
       }
 
-      const patch = next.value
+      const event = next.value;
 
-      if (patch.type === 'streaming_start') {
+      if (event.type === "RUN_STARTED") {
         // Reset for new stream
-        yield* flushCurrentSegment()
-        yield* output.send(patch)
-      } else if (patch.type === 'streaming_text') {
+        yield* flushCurrentSegment();
+        yield* output.send(event);
+      } else if (event.type === "TEXT_MESSAGE_CONTENT") {
         // Handle text content
-        yield* handleContentPatch(patch.content, 'text')
+        yield* handleContentPatch(event.delta, "text");
         // Pass through original patch
-        yield* output.send(patch)
-      } else if (patch.type === 'streaming_reasoning') {
+        yield* output.send(event);
+      } else if (event.type === "REASONING_MESSAGE_CONTENT") {
         // Handle reasoning content
-        yield* handleContentPatch(patch.content, 'reasoning')
+        yield* handleContentPatch(event.delta, "reasoning");
         // Pass through original patch
-        yield* output.send(patch)
-      } else if (patch.type === 'tool_call_start') {
-        // Tool calls interrupt content - flush current segment
-        yield* flushCurrentSegment()
-        yield* output.send(patch)
-      } else if (patch.type === 'streaming_end') {
+        yield* output.send(event);
+      } else if (event.type === "TEXT_MESSAGE_END" || event.type === "TOOL_CALL_START") {
+        // AG-UI closes text before the run terminal event. Flush first so the
+        // final rendered frame is folded into the message being closed.
+        yield* flushCurrentSegment();
+        yield* output.send(event);
+      } else if (event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") {
         // Flush current segment
-        yield* flushCurrentSegment()
-        yield* output.send(patch)
+        yield* flushCurrentSegment();
+        yield* output.send(event);
       } else {
         // Pass through other patches unchanged
-        yield* output.send(patch)
+        yield* output.send(event);
       }
     }
-  }
+  };
 }
 
 // =============================================================================
@@ -468,18 +468,15 @@ export function createPipelineTransform(config: PipelineConfig) {
  * @param config - Pipeline configuration
  * @returns Final frame
  */
-export function* runPipeline(
-  content: string,
-  config: PipelineConfig
-): Operation<Frame> {
-  const pipeline = createPipeline(config)
+export function* runPipeline(content: string, config: PipelineConfig): Operation<Frame> {
+  const pipeline = createPipeline(config);
 
   // Push all content
-  pipeline.push(content)
+  pipeline.push(content);
 
   // Pull and flush
-  yield* pipeline.pull()
-  return yield* pipeline.flush()
+  yield* pipeline.pull();
+  return yield* pipeline.flush();
 }
 
 /**
@@ -488,28 +485,28 @@ export function* runPipeline(
  */
 export function* runPipelineStreaming(
   content: string,
-  config: PipelineConfig
+  config: PipelineConfig,
 ): Operation<{ frames: Frame[]; final: Frame }> {
-  const frames: Frame[] = []
-  const pipeline = createPipeline(config)
+  const frames: Frame[] = [];
+  const pipeline = createPipeline(config);
 
   // Process content line by line
-  const lines = content.split('\n')
+  const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!
-    const isLast = i === lines.length - 1
-    const chunk = isLast ? line : line + '\n'
+    const line = lines[i]!;
+    const isLast = i === lines.length - 1;
+    const chunk = isLast ? line : line + "\n";
 
     if (chunk) {
-      pipeline.push(chunk)
-      const frame = yield* pipeline.pull()
-      frames.push(frame)
+      pipeline.push(chunk);
+      const frame = yield* pipeline.pull();
+      frames.push(frame);
     }
   }
 
   // Flush
-  const final = yield* pipeline.flush()
-  frames.push(final)
+  const final = yield* pipeline.flush();
+  frames.push(final);
 
-  return { frames, final }
+  return { frames, final };
 }

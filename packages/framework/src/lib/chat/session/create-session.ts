@@ -19,9 +19,9 @@ import { useTransformPipeline } from "./transforms.ts";
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ChatState } from "../state/chat-state.ts";
 import { StreamerContext, BaseUrlContext } from "./contexts.ts";
-import type { ChatPatch } from "../patches/index.ts";
+import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../types.ts";
-import type { ChatCommand, SessionOptions, Streamer, PatchTransform } from "./options.ts";
+import type { ChatCommand, SessionOptions, Streamer, ChatEventTransform } from "./options.ts";
 import type { ConversationReplayState, StreamResult } from "./streaming.ts";
 import {
   syncConversationStateForElicit,
@@ -77,7 +77,7 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
   return resource(function* (provide) {
     const scope = yield* useScope();
     const commands = createSignal<ChatCommand, void>();
-    const patches = createChannel<ChatPatch, void>();
+    const events = createChannel<ChatStateEvent, void>();
     const stateSignal = createBufferedStateSignal<ChatState>();
 
     if (options.baseUrl) {
@@ -87,14 +87,14 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
       yield* StreamerContext.set(options.streamer);
     }
 
-    yield* spawn(() => runChatSession(commands, patches, options));
+    yield* spawn(() => runChatSession(commands, events, options));
 
     yield* spawn(function* () {
       let currentState = initialChatState;
       stateSignal.send(currentState);
 
-      for (const patch of yield* each(patches)) {
-        currentState = chatReducer(currentState, patch);
+      for (const event of yield* each(events)) {
+        currentState = chatReducer(currentState, event);
         stateSignal.send(currentState);
         yield* each.next();
       }
@@ -113,30 +113,16 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
   });
 }
 
-function createStreamingEndAcknowledger(onForwarded: () => void): PatchTransform {
+function createRunTerminalAcknowledger(onForwarded: () => void): ChatEventTransform {
   return function* (input, output) {
-    for (const patch of yield* each(input)) {
-      yield* output.send(patch);
-      if (patch.type === "streaming_end") {
+    for (const event of yield* each(input)) {
+      yield* output.send(event);
+      if (event.type === "RUN_FINISHED" || event.type === "RUN_ERROR") {
         onForwarded();
       }
       yield* each.next();
     }
   };
-}
-
-function findAssistantToolCallHostMessage(
-  history: Message[],
-  pendingToolCalls: Array<{ id: string; name: string }>,
-): Message | undefined {
-  const pendingIds = new Set(pendingToolCalls.map((toolCall) => toolCall.id));
-  return [...history]
-    .reverse()
-    .find(
-      (message) =>
-        message.role === "assistant" &&
-        message.tool_calls?.some((toolCall) => pendingIds.has(toolCall.id)),
-    );
 }
 
 function finalAssistantMessage(
@@ -153,7 +139,7 @@ function finalAssistantMessage(
 
 export function* runChatSession(
   commands: Signal<ChatCommand, void>,
-  patches: Channel<ChatPatch, void>,
+  events: Channel<ChatStateEvent, void>,
   options: ClientToolSessionOptions = {},
 ): Operation<void> {
   const history: Message[] = [];
@@ -177,9 +163,9 @@ export function* runChatSession(
   // pre-provision a conversationId (flight/cards/etc).
   let conversationId = options.conversationId;
 
-  function* sendPatch(patch: ChatPatch): Operation<void> {
-    mirroredState = chatReducer(mirroredState, patch);
-    yield* patches.send(patch);
+  function* sendEvent(event: ChatStateEvent): Operation<void> {
+    mirroredState = chatReducer(mirroredState, event);
+    yield* events.send(event);
   }
 
   if (options.conversationId) {
@@ -206,42 +192,40 @@ export function* runChatSession(
     resetTranscriptState(transcriptState, history);
     replayState = durableHistory.replayState;
 
-    for (const patch of durableHistory.patches) {
-      yield* sendPatch(patch);
+    for (const event of durableHistory.events) {
+      yield* sendEvent(event);
     }
   }
 
   function* startRequest(): Operation<StreamResult> {
-    let streamingEndForwarded = false;
-    let streamingEndForwardedResolve: (() => void) | null = null;
-    let streamingEndSent = false;
+    let terminalForwarded = false;
+    let terminalForwardedResolve: (() => void) | null = null;
 
-    function waitForStreamingEndForwarded(): Promise<void> {
-      if (streamingEndForwarded) return Promise.resolve();
+    function waitForTerminalForwarded(): Promise<void> {
+      if (terminalForwarded) return Promise.resolve();
       return new Promise<void>((resolve) => {
-        streamingEndForwardedResolve = resolve;
+        terminalForwardedResolve = resolve;
       });
     }
 
-    const streamingEndAcknowledger = createStreamingEndAcknowledger(() => {
-      if (!streamingEndForwarded) {
-        streamingEndForwarded = true;
-        streamingEndForwardedResolve?.();
-        streamingEndForwardedResolve = null;
-      }
+    const terminalAcknowledger = createRunTerminalAcknowledger(() => {
+      if (terminalForwarded) return;
+      terminalForwarded = true;
+      terminalForwardedResolve?.();
+      terminalForwardedResolve = null;
     });
-    const mirrorPatchState: PatchTransform = function* (input, output) {
-      for (const patch of yield* each(input)) {
-        mirroredState = chatReducer(mirroredState, patch);
-        yield* output.send(patch);
+    const mirrorEventState: ChatEventTransform = function* (input, output) {
+      for (const event of yield* each(input)) {
+        mirroredState = chatReducer(mirroredState, event);
+        yield* output.send(event);
         yield* each.next();
       }
     };
 
-    const streamPatches = yield* useTransformPipeline(patches, [
-      mirrorPatchState,
+    const streamEvents = yield* useTransformPipeline(events, [
+      mirrorEventState,
       ...(options.transforms ?? []),
-      streamingEndAcknowledger,
+      terminalAcknowledger,
     ]);
 
     const contextStreamer = yield* StreamerContext.get();
@@ -251,7 +235,7 @@ export function* runChatSession(
 
     while (true) {
       const elicitResponsesToSend = pendingElicitResponses.splice(0);
-      result = yield* streamer([...history], streamPatches, {
+      result = yield* streamer([...history], streamEvents, {
         ...options,
         ...(conversationId ? { conversationId } : {}),
         ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
@@ -294,16 +278,6 @@ export function* runChatSession(
           elicitId: elicit.elicitId,
         }));
 
-        const assistantToolCallHostMessage = findAssistantToolCallHostMessage(
-          history,
-          pendingToolCalls,
-        );
-        if (assistantToolCallHostMessage) {
-          yield* sendPatch({
-            type: "assistant_message",
-            message: assistantToolCallHostMessage,
-          });
-        }
         break;
       }
 
@@ -324,23 +298,12 @@ export function* runChatSession(
 
       const finalContent = result.text || result.conversationState?.assistantContent || "";
       if (finalContent || originalHistoryLength === history.length) {
-        const assistantMessage = finalAssistantMessage(history, transcriptState, finalContent);
-        yield* sendPatch({
-          type: "assistant_message",
-          message: assistantMessage,
-        });
+        finalAssistantMessage(history, transcriptState, finalContent);
       }
     }
 
-    yield* streamPatches.send({ type: "streaming_end" });
-    streamingEndSent = true;
-    yield* call(waitForStreamingEndForwarded);
-    yield* streamPatches.close();
-
-    if (!streamingEndSent) {
-      yield* sendPatch({ type: "streaming_end" });
-    }
-
+    yield* call(waitForTerminalForwarded);
+    yield* streamEvents.close();
     return result!;
   }
 
@@ -355,9 +318,10 @@ export function* runChatSession(
               transcriptState,
               cmd.partialContent!,
             );
-            yield* sendPatch({
-              type: "assistant_message",
+            yield* sendEvent({
+              type: "LOCAL_ASSISTANT_MESSAGE",
               message: partialMessage,
+              partial: true,
             });
           }
           yield* currentRequestTask.halt();
@@ -390,8 +354,8 @@ export function* runChatSession(
               elicitId: elicit.elicitId,
               result: { action: "cancel" },
             });
-            yield* sendPatch({
-              type: "elicit_response",
+            yield* sendEvent({
+              type: "LOCAL_ELICIT_RESPONSE",
               callId: elicit.callId,
               elicitId: elicit.elicitId,
               response: { action: "cancel" },
@@ -401,21 +365,14 @@ export function* runChatSession(
         }
 
         const userMessage = appendUserMessage(history, transcriptState, cmd.content);
-        const rendered = options.renderer?.(cmd.content);
-        yield* sendPatch({
-          type: "user_message",
-          message: userMessage,
-          ...(rendered !== undefined ? { rendered } : {}),
-        });
-        yield* sendPatch({ type: "streaming_start" });
+        yield* sendEvent({ type: "LOCAL_USER_MESSAGE", message: userMessage });
 
         currentRequestTask = yield* spawn(function* () {
           try {
             return yield* startRequest();
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
-            yield* sendPatch({ type: "error", message });
-            yield* sendPatch({ type: "streaming_end" });
+            yield* sendEvent({ type: "LOCAL_ERROR", message });
             throw error;
           } finally {
             currentRequestTask = null;
@@ -430,14 +387,12 @@ export function* runChatSession(
           currentRequestTask = null;
         }
 
-        yield* sendPatch({ type: "streaming_start" });
         currentRequestTask = yield* spawn(function* () {
           try {
             return yield* startRequest();
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
-            yield* sendPatch({ type: "error", message });
-            yield* sendPatch({ type: "streaming_end" });
+            yield* sendEvent({ type: "LOCAL_ERROR", message });
             throw error;
           } finally {
             currentRequestTask = null;
@@ -462,13 +417,9 @@ export function* runChatSession(
             partial: true,
           };
           history.push(partialMessage);
-          yield* sendPatch({
-            type: "abort_complete",
-            message: partialMessage,
-            ...(cmd.partialHtml !== undefined ? { rendered: cmd.partialHtml } : {}),
-          });
+          yield* sendEvent({ type: "LOCAL_ABORT", message: partialMessage });
         } else {
-          yield* sendPatch({ type: "streaming_end" });
+          yield* sendEvent({ type: "LOCAL_ABORT" });
         }
         break;
       }
@@ -484,7 +435,7 @@ export function* runChatSession(
         openElicits = [];
         sentElicitResponseIds.clear();
         resetTranscriptState(transcriptState, history);
-        yield* sendPatch({ type: "reset" });
+        yield* sendEvent({ type: "LOCAL_RESET" });
         break;
       }
 
@@ -505,8 +456,8 @@ export function* runChatSession(
           ...(cmd.trace ? { trace: cmd.trace } : {}),
         });
 
-        yield* sendPatch({
-          type: "elicit_response",
+        yield* sendEvent({
+          type: "LOCAL_ELICIT_RESPONSE",
           callId: cmd.callId,
           elicitId: cmd.elicitId,
           response: cmd.result,

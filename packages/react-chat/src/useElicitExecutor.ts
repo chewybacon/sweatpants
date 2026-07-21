@@ -1,7 +1,7 @@
 /**
  * useElicitExecutor.ts
  *
- * Automatically executes plugin elicitation handlers when elicit patches arrive.
+ * Automatically executes plugin elicitation handlers when AG-UI interrupts arrive.
  * Routes handler emissions through tool emission tracking state.
  *
  * ## How It Works
@@ -9,7 +9,7 @@
  * 1. Watches `pendingElicits` for new pending elicitations
  * 2. Looks up the plugin by `toolName` in the registry
  * 3. Executes the handler (which uses `ctx.render()`)
- * 4. Handler emissions are forwarded as `tool_emission` patches
+ * 4. Handler emissions are forwarded as ephemeral browser actions
  * 5. When handler completes, sends `elicit_response` automatically
  */
 import { useEffect, useRef } from "react";
@@ -19,7 +19,7 @@ import type { Task, Operation } from "effection";
 import type { PluginRegistry } from "@sweatpants/framework/chat";
 import type { ElicitTrackingState } from "@sweatpants/framework/chat";
 import type { ElicitState } from "@sweatpants/framework/chat";
-import type { EmissionPatch } from "@sweatpants/framework/chat";
+import type { LocalEmissionAction } from "@sweatpants/framework/chat";
 import { executeElicitHandlerFromRequest } from "@sweatpants/framework/chat";
 import type { PluginClientContext } from "@sweatpants/framework/chat";
 import type { ElicitRequest, ElicitId } from "@sweatpants/framework/chat";
@@ -43,8 +43,8 @@ export interface UseElicitExecutorOptions {
   /** Registry of plugin client registrations */
   registry: PluginRegistry;
 
-  /** Dispatch an emission patch to add emission to state */
-  dispatchEmissionPatch: (patch: EmissionPatch) => void;
+  /** Apply an ephemeral browser emission action. */
+  dispatchLocalEmissionAction: (patch: LocalEmissionAction) => void;
 
   /** Send elicit response back to server */
   respondToElicit: (
@@ -62,14 +62,14 @@ export interface UseElicitExecutorOptions {
  * Hook that automatically executes plugin handlers when elicitations arrive.
  *
  * This bridges the gap between server-side plugin tools and client-side rendering:
- * - Server emits `elicit` when tool calls `ctx.elicit()`
+ * - AG-UI run finishes with an interrupt when a tool calls `ctx.elicit()`
  * - This hook runs the plugin's handler which uses `ctx.render()`
  * - Handler emissions are routed to `toolEmissions` state
  * - UI renders emissions with `onRespond` wired up automatically
  * - When handler completes, response is sent back to server
  */
 export function useElicitExecutor(options: UseElicitExecutorOptions): void {
-  const { pendingElicits, registry, dispatchEmissionPatch, respondToElicit } = options;
+  const { pendingElicits, registry, dispatchLocalEmissionAction, respondToElicit } = options;
 
   // Track which elicitations we've already started executing
   const executingRef = useRef<Set<string>>(new Set());
@@ -139,7 +139,7 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
 
         // Start the handler execution
         const task = run(function* () {
-          yield* executePluginHandler(plugin, elicit, dispatchEmissionPatch, respondToElicit);
+          yield* executePluginHandler(plugin, elicit, dispatchLocalEmissionAction, respondToElicit);
         });
 
         tasksRef.current.set(elicit.elicitId, task);
@@ -159,7 +159,7 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
           });
       }
     }
-  }, [pendingElicits, registry, dispatchEmissionPatch, respondToElicit]);
+  }, [pendingElicits, registry, dispatchLocalEmissionAction, respondToElicit]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -187,14 +187,14 @@ export function useElicitExecutor(options: UseElicitExecutorOptions): void {
 function* executePluginHandler(
   plugin: ReturnType<PluginRegistry["get"]>,
   elicit: ElicitState,
-  dispatchEmissionPatch: (patch: EmissionPatch) => void,
+  dispatchLocalEmissionAction: (patch: LocalEmissionAction) => void,
   respondToElicit: UseElicitExecutorOptions["respondToElicit"],
 ) {
   if (!plugin) return;
 
-  // Emit tool_emission_start patch so UI knows emissions are coming
-  dispatchEmissionPatch({
-    type: "tool_emission_start",
+  // Mark the ephemeral browser emission sequence as started
+  dispatchLocalEmissionAction({
+    type: "EMISSION_STARTED",
     callId: elicit.callId,
     toolName: elicit.toolName,
   });
@@ -239,8 +239,8 @@ function* executePluginHandler(
       traceEmission.response = value;
       traceEmission.status = "complete";
 
-      dispatchEmissionPatch({
-        type: "tool_emission_response",
+      dispatchLocalEmissionAction({
+        type: "EMISSION_RESPONDED",
         callId: elicit.callId,
         emissionId,
         response: value,
@@ -250,9 +250,9 @@ function* executePluginHandler(
     };
 
     // Dispatch the emission with the respond callback
-    // Include toolName in case tool_emission_start hasn't been processed yet (React batching)
-    dispatchEmissionPatch({
-      type: "tool_emission",
+    // Include toolName in case EMISSION_STARTED has not been processed yet (React batching)
+    dispatchLocalEmissionAction({
+      type: "EMISSION_ADDED",
       callId: elicit.callId,
       toolName: elicit.toolName,
       emission: {
@@ -347,9 +347,9 @@ function* executePluginHandler(
       trace,
     );
 
-    // Emit completion patch
-    dispatchEmissionPatch({
-      type: "tool_emission_complete",
+    // Mark the ephemeral browser emission sequence complete.
+    dispatchLocalEmissionAction({
+      type: "EMISSION_COMPLETED",
       callId: elicit.callId,
     });
   } catch (err) {
