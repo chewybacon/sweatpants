@@ -111,6 +111,8 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
           : JSON.stringify(toolOutput?.["output"] ?? "");
       expect(outputText).toContain(TOOL_RESULT_MARKER);
       expect(outputText).toContain('"isMainThread":false');
+      expect(outputText).toContain('"messagesBeforeSample":4');
+      expect(outputText).toContain('"messagesAfterSample":6');
 
       await finalRequest.respond.text(OUTER_TERMINAL_TEXT);
 
@@ -121,11 +123,97 @@ async function runInteractiveToolScenario(binding: Binding): Promise<void> {
   );
 }
 
+async function runDuplicateElicitScenario(binding: Binding): Promise<void> {
+  await withTestRig(
+    { binding, modelId: ACCEPTANCE_MODEL_ID, createApplication: createAcceptanceApplication },
+    async (rig) => {
+      const outerPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
+      const conversation = rig.chat.conversation({ tools: [acceptanceBookingTool] });
+      const turn = conversation.send("DUPLICATE_ELICIT_V1");
+      const elicitPromise = turn.expectElicit("pickFlight");
+      await (
+        await outerPromise
+      ).respond.toolCalls([
+        {
+          id: "duplicate-elicit-call",
+          name: ACCEPTANCE_TOOL_NAME,
+          arguments: { from: "NYC", destination: "LAX" },
+        },
+      ]);
+      const elicit = await elicitPromise;
+      await elicit.decline();
+      await expect(elicit.decline()).rejects.toThrow(/already answered/);
+      const finalRequest = await rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
+      await finalRequest.respond.text("DUPLICATE_ELICIT_TERMINAL_V1");
+      expect((await turn.complete()).text).toBe("DUPLICATE_ELICIT_TERMINAL_V1");
+      expect(rig.model.requests()).toHaveLength(2);
+    },
+  );
+}
+
+async function runElicitOutcomeScenario(
+  binding: Binding,
+  action: "decline" | "cancel",
+): Promise<void> {
+  await withTestRig(
+    {
+      binding,
+      modelId: ACCEPTANCE_MODEL_ID,
+      createApplication: createAcceptanceApplication,
+    },
+    async (rig) => {
+      const outerRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
+      const conversation = rig.chat.conversation({
+        tools: [acceptanceBookingTool],
+        enabledTools: true,
+        initialToolChoice: "required",
+      });
+      const turn = conversation.send(`ELICIT_${action.toUpperCase()}_V1`);
+      const pickFlightPromise = turn.expectElicit("pickFlight");
+
+      const outerRequest = await outerRequestPromise;
+      await outerRequest.respond.toolCalls([
+        {
+          id: CALL_ID,
+          name: ACCEPTANCE_TOOL_NAME,
+          arguments: { from: "NYC", destination: "LAX" },
+        },
+      ]);
+
+      const pickFlight = await pickFlightPromise;
+      const finalRequestPromise = rig.model.expectRequest({ model: ACCEPTANCE_MODEL_ID });
+      await pickFlight[action]();
+
+      const finalRequest = await finalRequestPromise;
+      const output = records(finalRequest.body.input).find(
+        (item) => item["type"] === "function_call_output" && item["call_id"] === CALL_ID,
+      );
+      expect(JSON.stringify(output)).toContain("flight_not_selected");
+
+      await finalRequest.respond.text(`ELICIT_${action.toUpperCase()}_TERMINAL_V1`);
+      const transcript = await turn.complete();
+      expect(transcript.outcome).toBe("success");
+      expect(transcript.text).toBe(`ELICIT_${action.toUpperCase()}_TERMINAL_V1`);
+    },
+  );
+}
+
 describe.each<Binding>(["in-process", "http"])(
   "interactive tool through the %s binding",
   (binding) => {
     it("controls tool call, two elicitations, nested sample, and final response", async () => {
       await runInteractiveToolScenario(binding);
     }, 30_000);
+
+    it.each(["decline", "cancel"] as const)(
+      "delivers a structured %s outcome and completes the outer turn",
+      async (action) => {
+        await runElicitOutcomeScenario(binding, action);
+      },
+    );
+
+    it("rejects a duplicate elicitation response without resuming twice", async () => {
+      await runDuplicateElicitScenario(binding);
+    });
   },
 );

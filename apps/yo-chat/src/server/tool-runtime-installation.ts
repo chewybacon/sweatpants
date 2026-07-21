@@ -30,7 +30,7 @@ import {
   ToolSessionSamplingProviderContext,
   createLocalWorkerDurableProgramDriver,
   createToolSessionForeignEffectRegistrations,
-  installLocalToolRuntime,
+  installLocalProgramToolRuntime,
 } from "@sweatpants/tool-runtime-local";
 import {
   createAgentCoreToolExecutionStrategy,
@@ -130,13 +130,6 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   yield* ToolInventoryContext.set(
     createToolInventory(availableContracts.map((tool) => createToolInventoryEntry(tool))),
   );
-  yield* ProgramDriverForeignEffectsContext.set(
-    createToolSessionForeignEffectRegistrations({
-      registry: options.registry,
-      tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
-    }),
-  );
-
   if (options.mode === "local") {
     const durableRegistry = createDurableToolRegistry(durablePrograms);
     yield* ProgramDriverNativeToolsContext.set({
@@ -165,6 +158,15 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   }
 
   if (options.mode === "agentcore") {
+    // Remote ordinary-tool execution still uses the ToolSession foreign-effect
+    // adapter for durable child sampling; only local composition is folded into
+    // installLocalProgramToolRuntime.
+    yield* ProgramDriverForeignEffectsContext.set(
+      createToolSessionForeignEffectRegistrations({
+        registry: options.registry,
+        tools: new Map(ordinaryTools.map((tool) => [tool.name, tool])),
+      }),
+    );
     if (readyPrograms.length > 0 && options.agentCoreDurable) {
       const agentCoreDurable = options.agentCoreDurable;
       yield* ProgramDriverNativeToolsContext.set({
@@ -204,7 +206,7 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     return;
   }
 
-  yield* installLocalToolRuntime({
+  yield* installLocalProgramToolRuntime({
     tools: ordinaryTools,
     registry: options.registry,
     samplingProvider: options.samplingProvider,

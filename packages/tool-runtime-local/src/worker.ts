@@ -59,6 +59,8 @@ export {
   runWorker,
   createWorkerToolRegistry,
 } from "./worker-runner.ts";
+export { createWorkerTool } from "./worker-tool-adapter.ts";
+export { runToolWorkerEntry } from "./worker-entry.ts";
 
 /** Runs pure crank-native durable programs inside an isolated worker. */
 export { runDurableProgramWorker } from "./durable-worker-runner.ts";

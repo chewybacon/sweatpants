@@ -5,6 +5,7 @@ export {
   type LocalSessionToolExecutionStrategyOptions,
   type LocalToolRuntimeDriverOptions,
 } from "./driver.ts";
+export { installLocalProgramToolRuntime } from "./program-runtime-installation.ts";
 
 export { createToolSession } from "./tool-session.ts";
 

@@ -10,8 +10,12 @@ import {
   createToolInventory,
   createToolInventoryEntry,
 } from "@sweatpants/framework/chat";
+import { ProgramDriverForeignEffectsContext } from "@sweatpants/framework/server";
 import {
+  createInMemoryToolSessionStore,
   createLocalToolRuntimeDriver,
+  createToolSessionRegistry,
+  installLocalProgramToolRuntime,
   installLocalToolRuntime,
 } from "../index.ts";
 
@@ -121,7 +125,11 @@ describe("local ToolRuntimeDriver", () => {
       try {
         yield* driver.execute({
           entry: {
-            definition: { name: "other", description: "Other tool", parameters: { type: "object" } },
+            definition: {
+              name: "other",
+              description: "Other tool",
+              parameters: { type: "object" },
+            },
           },
           call: {
             id: "call-mismatch",
@@ -189,6 +197,30 @@ describe("local ToolRuntimeDriver", () => {
     });
 
     expect(() => createToolInventory([entry, entry])).toThrow("Duplicate tool name");
+  });
+
+  it("program installer publishes matching durable foreign effects", async () => {
+    await run(function* () {
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
+        worker: localRuntimeWorkerConfig,
+      });
+
+      yield* installLocalProgramToolRuntime({
+        tools: [echoTool],
+        registry,
+        samplingProvider: {
+          *sample() {
+            return { text: "unused" };
+          },
+        },
+      });
+
+      const effects = yield* ProgramDriverForeignEffectsContext.get();
+      expect(effects?.map((registration) => registration.definition.name)).toEqual([
+        "foreign.tool.start",
+        "foreign.tool.continue",
+      ]);
+    });
   });
 
   it("installer sets ToolRuntimeContext for ToolRuntimeApi", async () => {

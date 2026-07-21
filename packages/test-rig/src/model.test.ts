@@ -41,6 +41,59 @@ describe("model semantic barriers", () => {
     }
   });
 
+  it("injects an expected provider error without poisoning verification", async () => {
+    const simulator = await startModelSimulator();
+    try {
+      const expected = simulator.model.expectRequest({ model: "test" });
+      const responsePromise = fetch(`${simulator.baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "test", stream: true }),
+      });
+      await (
+        await expected
+      ).respond.error({
+        code: "provider_unavailable",
+        message: "planned failure",
+        status: 503,
+      });
+      const response = await responsePromise;
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: { code: "provider_unavailable", message: "planned failure" },
+      });
+      simulator.verify();
+    } finally {
+      await simulator.close();
+    }
+  });
+
+  it("fails a stream after a released delta and clears pending verification", async () => {
+    const simulator = await startModelSimulator();
+    try {
+      const expected = simulator.model.expectRequest({ model: "test" });
+      const responsePromise = fetch(`${simulator.baseUrl}/responses`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "test", stream: true }),
+      });
+      const stream = await (
+        await expected
+      ).respond.text({
+        chunks: ["partial"],
+        release: "manual",
+      });
+      await stream.releaseNext();
+      await stream.fail({ code: "stream_failed", message: "planned stream failure" });
+      expect(await responsePromise.then((response) => response.text())).toContain(
+        '"type":"response.failed"',
+      );
+      simulator.verify();
+    } finally {
+      await simulator.close();
+    }
+  });
+
   it("returns an immediate OpenAI-shaped error for an unexpected request", async () => {
     let poisoned: Error | undefined;
     const simulator = await startModelSimulator((error) => {

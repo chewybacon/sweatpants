@@ -36,7 +36,8 @@ describe("import-aware ordinary/durable discovery", () => {
     expect(registry).toContain("export const ordinaryTools");
     expect(registry).toContain("export const durablePrograms");
     expect(registry).toContain("'durable_surface': durable");
-    expect(worker).toContain("name: 'same_surface'");
+    expect(worker).toContain("await runToolWorkerEntry([");
+    expect(worker).toContain("  ordinary");
     expect(worker).not.toContain("durable_surface");
   });
 

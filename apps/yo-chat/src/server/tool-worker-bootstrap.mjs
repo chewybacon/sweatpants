@@ -1,26 +1,11 @@
-// Plain-JS worker bootstrap for yo-chat local tool sessions.
+// Source-mode loader shim for the generated production worker entry.
 //
-// The worker thread must register tsx in-thread before importing workspace
-// TypeScript sources; loader hooks are not inherited automatically.
+// Node worker threads do not inherit tsx loader hooks early enough to parse all
+// workspace TypeScript dependencies. Register in-thread, then execute the exact
+// generated module used by the Vite ?modulePath production boundary. This file
+// contains no registry or tool invocation behavior.
 import { register } from "tsx/esm/api";
 
 register();
 
-const { runWorker, createWorkerToolRegistry } =
-    await import("../../../../packages/tool-runtime-local/src/worker.ts");
-const { toolList } = await import("../__generated__/tool-registry.gen.ts");
-
-function canonicalWorkerTool(tool) {
-    return {
-        name: tool.name,
-        elicits: tool.elicits,
-        handler: function* (params, ctx) {
-            const invoke = yield* tool(ctx);
-            return yield* invoke(params);
-        },
-    };
-}
-
-const registry = createWorkerToolRegistry(toolList.map(canonicalWorkerTool));
-
-await runWorker(registry);
+await import("../__generated__/tool-worker.gen.ts");

@@ -21,7 +21,13 @@ import type { ChatState } from "../state/chat-state.ts";
 import { StreamerContext, BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
 import type { Message } from "../types.ts";
-import type { ChatCommand, SessionOptions, Streamer, ChatEventTransform } from "./options.ts";
+import type {
+  ChatCommand,
+  SessionOptions,
+  StreamChatOptions,
+  Streamer,
+  ChatEventTransform,
+} from "./options.ts";
 import type { ConversationReplayState, StreamResult } from "./streaming.ts";
 import {
   syncConversationStateForElicit,
@@ -144,7 +150,7 @@ export function* runChatSession(
 ): Operation<void> {
   const history: Message[] = [];
   const transcriptState = createTranscriptState(history);
-  let currentRequestTask: Task<StreamResult> | null = null;
+  let currentRequestTask: Task<StreamResult | undefined> | null = null;
   const pendingElicitResponses: ElicitResponseData[] = [];
   const sentElicitResponseIds = new Set<string>();
   let pendingToolCalls: Array<{ id: string; name: string }> = [];
@@ -198,7 +204,9 @@ export function* runChatSession(
     }
   }
 
-  function* startRequest(): Operation<StreamResult> {
+  function* startRequest(
+    requestOptions: Pick<StreamChatOptions, "pluginAbort"> = {},
+  ): Operation<StreamResult> {
     let terminalForwarded = false;
     let terminalForwardedResolve: (() => void) | null = null;
 
@@ -242,10 +250,29 @@ export function* runChatSession(
           ...(conversationId ? { conversationId } : {}),
           ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
           ...(replayState ? { replayState } : {}),
+          ...requestOptions,
         });
       } catch (error) {
         yield* streamEvents.close();
         if (terminalForwarded) yield* call(waitForTerminalForwarded);
+        // RUN_ERROR may follow projected tool-call/error-result events. Persist
+        // those mirrored messages before surfacing the request failure so the
+        // next turn does not inherit an unexplained hanging tool call.
+        syncMessagesFromIndex(history, mirroredState.messages, originalHistoryLength);
+        const visiblePartial = mirroredState.streaming.parts
+          .filter((part) => part.type === "text")
+          .map((part) => part.content)
+          .join("");
+        if (
+          visiblePartial &&
+          !history.some(
+            (message) => message.role === "assistant" && message.content === visiblePartial,
+          )
+        ) {
+          const partial = appendAssistantFinalMessage(history, transcriptState, visiblePartial);
+          partial.partial = true;
+        }
+        resetTranscriptState(transcriptState, history);
         throw error;
       }
 
@@ -332,6 +359,22 @@ export function* runChatSession(
     return result!;
   }
 
+  function* monitorRequestTask(
+    task: Task<StreamResult | undefined>,
+    sessionOptions: ClientToolSessionOptions,
+  ): Operation<void> {
+    yield* spawn(function* () {
+      try {
+        yield* task;
+      } catch {
+        // RUN_ERROR is observed by the request task; joining is the lifecycle
+        // barrier regardless of the task's success arm.
+      } finally {
+        sessionOptions.onRequestFinished?.();
+      }
+    });
+  }
+
   for (const cmd of yield* each(commands)) {
     switch (cmd.type) {
       case "send": {
@@ -365,20 +408,16 @@ export function* runChatSession(
           pendingToolCalls = [];
         }
 
-        // Free-form send supersedes any still-open plugin elicits. Cancel them
-        // so the server interrupt registry does not reject the request with
-        // "Open interrupts require resume[]".
-        if (openElicits.length > 0) {
+        // Free-form send supersedes any still-open plugin elicits. Do not
+        // serialize these as ordinary `{ action: "cancel" }` responses: that
+        // resumes tool business logic and can trigger a terminal model sample.
+        // A response-free request lets the handler select its pluginAbort path
+        // and continue the replacement user turn in the same activation.
+        const supersedingOpenElicits = openElicits.length > 0;
+        if (supersedingOpenElicits) {
           for (const elicit of openElicits) {
             if (sentElicitResponseIds.has(elicit.elicitId)) continue;
             sentElicitResponseIds.add(elicit.elicitId);
-            pendingElicitResponses.push({
-              sessionId: elicit.sessionId,
-              callId: elicit.callId,
-              ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
-              elicitId: elicit.elicitId,
-              result: { action: "cancel" },
-            });
             yield* sendEvent({
               type: "LOCAL_ELICIT_RESPONSE",
               callId: elicit.callId,
@@ -392,7 +431,7 @@ export function* runChatSession(
         const userMessage = appendUserMessage(history, transcriptState, cmd.content);
         yield* sendEvent({ type: "LOCAL_USER_MESSAGE", message: userMessage });
 
-        currentRequestTask = yield* spawn(function* () {
+        const sendTask = yield* spawn(function* () {
           try {
             const result = yield* startRequest();
             options.onTurnSettled?.(result);
@@ -400,11 +439,14 @@ export function* runChatSession(
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             yield* sendEvent({ type: "LOCAL_ERROR", message });
-            throw error;
+            options.onRequestError?.(error);
+            return undefined;
           } finally {
             currentRequestTask = null;
           }
         });
+        currentRequestTask = sendTask;
+        yield* monitorRequestTask(sendTask, options);
         break;
       }
 
@@ -414,7 +456,7 @@ export function* runChatSession(
           currentRequestTask = null;
         }
 
-        currentRequestTask = yield* spawn(function* () {
+        const continueTask = yield* spawn(function* () {
           try {
             const result = yield* startRequest();
             options.onTurnSettled?.(result);
@@ -422,11 +464,14 @@ export function* runChatSession(
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             yield* sendEvent({ type: "LOCAL_ERROR", message });
-            throw error;
+            options.onRequestError?.(error);
+            return undefined;
           } finally {
             currentRequestTask = null;
           }
         });
+        currentRequestTask = continueTask;
+        yield* monitorRequestTask(continueTask, options);
         break;
       }
 
@@ -450,6 +495,37 @@ export function* runChatSession(
         } else {
           yield* sendEvent({ type: "LOCAL_ABORT" });
         }
+
+        const cancellationTask = yield* spawn(function* () {
+          try {
+            const result = yield* startRequest({
+              pluginAbort: {
+                sessionId: conversationId ?? "active-chat-turn",
+                reason: "cancelled_by_user",
+              },
+            });
+            options.onTurnSettled?.(result);
+            return result;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Unknown error";
+            yield* sendEvent({ type: "LOCAL_ERROR", message });
+            options.onRequestError?.(error);
+            return undefined;
+          } finally {
+            currentRequestTask = null;
+          }
+        });
+        currentRequestTask = cancellationTask;
+        yield* spawn(function* () {
+          try {
+            yield* cancellationTask;
+          } catch {
+            // Cancellation commonly terminates with RUN_ERROR; the joined task
+            // completion, not its success arm, is the lifecycle barrier.
+          } finally {
+            options.onRequestFinished?.();
+          }
+        });
         break;
       }
 

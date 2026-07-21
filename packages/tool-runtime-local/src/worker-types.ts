@@ -495,7 +495,7 @@ export interface WorkerToolContext {
    * Canonical session tools created with createTool() call ctx.notify(), so this alias
    * allows them to run in worker mode without modification.
    */
-  notify(message: string, progress?: number): Operation<void>;
+  notify(message: string, progress?: number, level?: LogLevel): Operation<void>;
 
   // ---------------------------------------------------------------------------
   // Sample overloads - mirror the canonical tool context signature
@@ -565,7 +565,7 @@ export interface WorkerToolContext {
     key: string,
     options: {
       message: string;
-      schema: Record<string, unknown>;
+      schema?: Record<string, unknown>;
       context?: Record<string, unknown>;
     },
   ): Operation<ToolElicitResult<unknown, T>>;

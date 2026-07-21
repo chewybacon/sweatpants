@@ -394,8 +394,8 @@ function createMcpWorkerContext(
     },
 
     // Alias for progress() - MCP tools call ctx.notify() instead of ctx.progress()
-    notify(message: string, progressValue?: number): Operation<void> {
-      return ctx.progress(message, progressValue);
+    notify(message: string, progressValue?: number, level?: LogLevel): Operation<void> {
+      return level ? ctx.log(level, message) : ctx.progress(message, progressValue);
     },
 
     // Sample - delegates to sampleImpl (overloads are defined in the interface)

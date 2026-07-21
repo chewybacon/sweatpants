@@ -54,12 +54,14 @@ export interface TurnHandle {
     expectation: string | RegExp | ((delta: string) => void),
   ): Promise<TextDeltaBarrier>;
   expectElicit(key: string): Promise<ElicitBarrier>;
+  cancel(): Promise<void>;
   complete(): Promise<TurnTranscript>;
 }
 
 export interface ConversationHandle {
   readonly conversationId: string;
   send(message: string): TurnHandle;
+  supersede(message: string): TurnHandle;
   transcript(): ConversationTranscript;
 }
 
@@ -185,6 +187,8 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
       const respondedElicits = new Set<string>();
       const elicitationBarriers = new Map<string, ElicitBarrier>();
       let turnSettled: Deferred<TurnTranscript> | undefined;
+      let pendingRunError: Error | undefined;
+      let serverCancellation: Deferred<void> | undefined;
 
       // Keep a stable conversation ID on chat POSTs without enabling
       // createChatSession's durable-history GET hydration path.
@@ -381,16 +385,32 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
                 resolveDeltaWaiters(event.delta, event.messageId);
               }
               if (event.type === "RUN_ERROR") {
-                failTurn(new Error(event.message));
+                pendingRunError = new Error(event.message);
               }
             },
             onTurnSettled: (result) => {
-              if (result.type === "complete") {
+              if (pendingRunError) {
+                const error = pendingRunError;
+                pendingRunError = undefined;
+                failTurn(error);
+              } else if (result.type === "complete") {
                 settleTurn();
               } else if (stateRef.current) {
                 // Publish elicit barriers only after createChatSession has
                 // persisted the interrupted request into client history.
                 publishElicits(stateRef.current);
+              }
+            },
+            onRequestError: (error) => {
+              pendingRunError ??=
+                error instanceof Error ? error : new Error(String(error ?? "request failed"));
+            },
+            onRequestFinished: () => {
+              serverCancellation?.resolve();
+              if (pendingRunError && activeTurn) {
+                const error = pendingRunError;
+                pendingRunError = undefined;
+                failTurn(error);
               }
             },
           });
@@ -418,59 +438,90 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
         }
       });
 
+      function retireOpenElicits(): void {
+        for (const barrier of elicitationBarriers.values()) {
+          respondedElicits.add(barrier.elicitId);
+        }
+        pendingElicits.splice(0);
+      }
+
+      function startTurn(message: string, supersede: boolean): TurnHandle {
+        assertOpen();
+        if (activeTurn) {
+          if (!supersede) {
+            throw new Error(`Complete active turn ${activeTurn.id} before sending another turn`);
+          }
+          retireOpenElicits();
+          failTurn(new Error(`turn_superseded: ${activeTurn.id}`));
+        }
+        const turnId = crypto.randomUUID();
+        const settled = deferred<TurnTranscript>();
+        turnSettled = settled;
+        activeTurnEvents = [];
+        pendingRunError = undefined;
+        activeTurn = {
+          id: turnId,
+          reject: (error) => settled.reject(error),
+        };
+
+        void sessionReady.promise
+          .then((session) => {
+            session.dispatch({ type: "send", content: message });
+            return undefined;
+          })
+          .catch((error) => {
+            failTurn(error);
+          });
+
+        return {
+          expectTextDelta(expectation) {
+            assertOpen();
+            const wait = deferred<TextDeltaBarrier>();
+            pendingDeltas.push({ expectation, wait });
+            return withBarrierTimeout(wait.promise, `text delta for turn ${turnId}`);
+          },
+          expectElicit(key) {
+            assertOpen();
+            const pendingIndex = pendingElicits.findIndex((barrier) => barrier.key === key);
+            if (pendingIndex !== -1) {
+              const [barrier] = pendingElicits.splice(pendingIndex, 1);
+              return Promise.resolve(barrier!);
+            }
+            const published = [...elicitationBarriers.values()].find(
+              (barrier) => barrier.key === key && !respondedElicits.has(barrier.elicitId),
+            );
+            if (published) {
+              return Promise.resolve(published);
+            }
+            const wait = deferred<ElicitBarrier>();
+            elicitWaiters.push({ key, wait });
+            return withBarrierTimeout(wait.promise, `elicit ${key} for turn ${turnId}`);
+          },
+          async cancel() {
+            assertOpen();
+            const session = await sessionReady.promise;
+            const cancelled = deferred<void>();
+            serverCancellation = cancelled;
+            session.dispatch({ type: "abort" });
+            failTurn(new Error(`turn_cancelled: ${turnId}`));
+            await withBarrierTimeout(cancelled.promise, `server cancellation for turn ${turnId}`);
+            if (serverCancellation === cancelled) {
+              serverCancellation = undefined;
+            }
+          },
+          complete() {
+            return withBarrierTimeout(settled.promise, `completion for turn ${turnId}`);
+          },
+        };
+      }
+
       const handle: ConversationHandle = {
         conversationId,
         send(message: string): TurnHandle {
-          assertOpen();
-          if (activeTurn) {
-            throw new Error(`Complete active turn ${activeTurn.id} before sending another turn`);
-          }
-          const turnId = crypto.randomUUID();
-          const settled = deferred<TurnTranscript>();
-          turnSettled = settled;
-          activeTurnEvents = [];
-          activeTurn = {
-            id: turnId,
-            reject: (error) => settled.reject(error),
-          };
-
-          void sessionReady.promise
-            .then((session) => {
-              session.dispatch({ type: "send", content: message });
-              return undefined;
-            })
-            .catch((error) => {
-              failTurn(error);
-            });
-
-          return {
-            expectTextDelta(expectation) {
-              assertOpen();
-              const wait = deferred<TextDeltaBarrier>();
-              pendingDeltas.push({ expectation, wait });
-              return withBarrierTimeout(wait.promise, `text delta for turn ${turnId}`);
-            },
-            expectElicit(key) {
-              assertOpen();
-              const pendingIndex = pendingElicits.findIndex((barrier) => barrier.key === key);
-              if (pendingIndex !== -1) {
-                const [barrier] = pendingElicits.splice(pendingIndex, 1);
-                return Promise.resolve(barrier!);
-              }
-              const published = [...elicitationBarriers.values()].find(
-                (barrier) => barrier.key === key && !respondedElicits.has(barrier.elicitId),
-              );
-              if (published) {
-                return Promise.resolve(published);
-              }
-              const wait = deferred<ElicitBarrier>();
-              elicitWaiters.push({ key, wait });
-              return withBarrierTimeout(wait.promise, `elicit ${key} for turn ${turnId}`);
-            },
-            complete() {
-              return withBarrierTimeout(settled.promise, `completion for turn ${turnId}`);
-            },
-          };
+          return startTurn(message, false);
+        },
+        supersede(message: string): TurnHandle {
+          return startTurn(message, true);
         },
         transcript() {
           return {
@@ -508,7 +559,12 @@ export function createChatRuntime(options: CreateChatRuntimeOptions): ChatRuntim
           try {
             await destroyConversationScope();
           } catch (haltError) {
-            if (!(haltError instanceof Error) || haltError.message !== "halted") {
+            const expectedTermination =
+              haltError instanceof Error &&
+              (haltError.message === "halted" ||
+                haltError.name === "AbortError" ||
+                /operation was aborted/i.test(haltError.message));
+            if (!expectedTermination) {
               throw haltError;
             }
           }

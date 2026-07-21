@@ -32,12 +32,18 @@ describe("AG-UI terminal draining", () => {
     });
   });
 
-  it("rejects a custom streamer that returns without a terminal event", async () => {
+  it("reports a custom streamer that returns without a terminal event without killing the session owner", async () => {
     const noTerminal: Streamer = function* () {
       return { type: "complete", text: "" };
     };
+    let requestError: unknown;
     const task = run(function* () {
-      const session = yield* createChatSession({ streamer: noTerminal });
+      const session = yield* createChatSession({
+        streamer: noTerminal,
+        onRequestError(error) {
+          requestError = error;
+        },
+      });
       yield* sleep(0);
       session.dispatch({ type: "send", content: "hello" });
       for (const state of yield* each(session.state)) {
@@ -54,6 +60,10 @@ describe("AG-UI terminal draining", () => {
           setTimeout(() => reject(new Error("custom streamer deadlocked")), 500),
         ),
       ]),
-    ).rejects.toThrow("Streamer returned without a terminal AG-UI event");
+    ).resolves.toBe("Streamer returned without a terminal AG-UI event");
+    expect(requestError).toBeInstanceOf(Error);
+    expect((requestError as Error).message).toBe(
+      "Streamer returned without a terminal AG-UI event",
+    );
   });
 });

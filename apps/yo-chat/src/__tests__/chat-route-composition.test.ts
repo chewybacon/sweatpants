@@ -122,7 +122,7 @@ describe("yo-chat chat application composition", () => {
 
     const serverSources = serverFiles.map((file) => read(file)).join("\n");
     expect(serverSources).toContain("installPiAiModelProvider");
-    expect(serverSources).toContain("installLocalToolRuntime");
+    expect(serverSources).toContain("installLocalProgramToolRuntime");
     expect(serverSources).toContain("createAgentCoreToolExecutionStrategy");
     expect(serverSources).toContain("withDefaultSystemPrompt");
   });
