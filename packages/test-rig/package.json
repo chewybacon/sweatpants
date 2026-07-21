@@ -1,0 +1,75 @@
+{
+    "name": "@sweatpants/test-rig",
+    "version": "0.1.0",
+    "private": true,
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        },
+        "./model": {
+            "development": {
+                "import": "./src/model.ts",
+                "types": "./src/model.ts"
+            },
+            "import": {
+                "types": "./dist/model.d.ts",
+                "default": "./dist/model.js"
+            }
+        },
+        "./chat": {
+            "development": {
+                "import": "./src/chat.ts",
+                "types": "./src/chat.ts"
+            },
+            "import": {
+                "types": "./dist/chat.d.ts",
+                "default": "./dist/chat.js"
+            }
+        },
+        "./history": {
+            "development": {
+                "import": "./src/history.ts",
+                "types": "./src/history.ts"
+            },
+            "import": {
+                "types": "./dist/history.d.ts",
+                "default": "./dist/history.js"
+            }
+        }
+    },
+    "scripts": {
+        "build": "tsup src/index.ts src/model.ts src/chat.ts src/history.ts --format esm --dts",
+        "typecheck": "tsc --noEmit",
+        "check": "pnpm typecheck",
+        "lint": "oxlint src",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@simulacrum/foundation-simulator": "0.8.0",
+        "@sweatpants/framework": "workspace:*",
+        "@sweatpants/model-provider-pi-ai": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    },
+    "engines": {
+        "node": ">=22.19.0"
+    }
+}

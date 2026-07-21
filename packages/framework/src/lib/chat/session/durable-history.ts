@@ -7,7 +7,7 @@ import type {
   ToolExecutionTrace,
 } from "../browser-rendering/emissions.ts";
 import type { Message } from "../types.ts";
-import type { ChatEventTransform, StreamEventEntry } from "./options.ts";
+import type { ChatEventTransform, ChatFetch, StreamEventEntry } from "./options.ts";
 import type { ConversationReplayState, StreamEvent } from "./streaming.ts";
 import { activitySnapshotToPluginReplayTrace } from "./plugin-replay.ts";
 import { renderReplayMessageParts } from "./replay-render.ts";
@@ -26,6 +26,7 @@ interface ReadDurableHistoryOptions {
   tools?: unknown[];
   transforms?: ChatEventTransform[];
   onStreamEvent?: (entry: StreamEventEntry) => void;
+  fetch?: ChatFetch;
 }
 export interface DurableHistoryReplay {
   events: ChatStateEvent[];
@@ -153,8 +154,9 @@ export function* readDurableHistory(
   const url = new URL(options.baseUrl, "http://localhost");
   url.searchParams.set("conversationId", options.conversationId);
   url.searchParams.set("offset", "0");
+  const chatFetch = options.fetch ?? globalThis.fetch;
   const response = yield* call(() =>
-    fetch(url.pathname + url.search, {
+    chatFetch(url.pathname + url.search, {
       method: "GET",
       headers: { Accept: "application/x-ndjson" },
     }),

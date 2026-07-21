@@ -16,6 +16,28 @@ import type { ModelSampleRequest, ModelSampleResult } from "./model-sample-contr
 import { CrankError, type Json } from "./types.ts";
 import type { DurableEffectRegistration, ForeignToolRequest } from "./durable-types.ts";
 
+/**
+ * Classification stamped onto every model.sample raised on behalf of a
+ * foreign tool's nested ctx.sample(). Hosts use it to keep tool-owned
+ * sampling out of outer-chat streaming and history.
+ */
+export const TOOL_OWNED_SAMPLE_CLASSIFICATION = "sweatpants.tool-owned-sample";
+
+function isRecord(value: Json): value is Record<string, Json> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function classifyToolOwnedSample(payload: Json): Json {
+  if (!isRecord(payload)) {
+    return payload;
+  }
+  const existing = Array.isArray(payload["classifications"]) ? payload["classifications"] : [];
+  if (existing.includes(TOOL_OWNED_SAMPLE_CLASSIFICATION)) {
+    return payload;
+  }
+  return { ...payload, classifications: [...existing, TOOL_OWNED_SAMPLE_CLASSIFICATION] };
+}
+
 /** Validated manifest for the built-in foreign adapter child program. */
 export const FOREIGN_TOOL_ADAPTER_MANIFEST = defineDurableProgramManifest<ForeignToolRequest, Json>(
   {
@@ -57,9 +79,13 @@ const adapterTool = createPinnedDurableProgram(
       while (disposition.type === "input_required") {
         const response =
           disposition.request.kind === "sample"
-            ? yield* context.effect(FOREIGN_MODEL_SAMPLE_EFFECT, disposition.request.payload, {
-                audience: "model-runtime",
-              })
+            ? yield* context.effect(
+                FOREIGN_MODEL_SAMPLE_EFFECT,
+                classifyToolOwnedSample(disposition.request.payload),
+                {
+                  audience: "model-runtime",
+                },
+              )
             : yield* context.elicit<Json>(
                 "foreign_input",
                 disposition.request.message,

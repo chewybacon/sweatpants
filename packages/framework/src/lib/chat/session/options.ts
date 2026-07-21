@@ -115,10 +115,18 @@ export type ChatEventTransform = (
 // SESSION OPTIONS
 // =============================================================================
 
+/** Fetch-compatible transport dependency used by chat POST and history reads. */
+export type ChatFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 /**
  * Configuration for a chat session.
  */
 export interface SessionOptions {
+  /**
+   * Optional transport dependency. Defaults to ambient `fetch`.
+   */
+  fetch?: ChatFetch;
+
   /**
    * Base URL for the chat API.
    * Defaults to '/api/chat'.
@@ -253,6 +261,13 @@ export interface SessionOptions {
    * ```
    */
   onStreamEvent?: (entry: StreamEventEntry) => void;
+
+  /**
+   * Called after one request has fully settled and its result has been folded
+   * into the persistent client-session history. Primarily supports semantic
+   * test drivers that must not race the next turn against history projection.
+   */
+  onTurnSettled?: (result: StreamResult) => void;
 }
 
 // =============================================================================

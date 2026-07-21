@@ -80,8 +80,9 @@ export function* executeChatFetch(
 ): Operation<Response> {
   const resumeForwardedProps = buildResumeForwardedProps(options);
 
+  const chatFetch = options.fetch ?? globalThis.fetch;
   const response = yield* call(() =>
-    fetch(baseUrl, {
+    chatFetch(baseUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

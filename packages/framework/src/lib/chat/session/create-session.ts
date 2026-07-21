@@ -184,6 +184,7 @@ export function* runChatSession(
       ...(replayTools.length > 0 ? { tools: replayTools } : {}),
       ...((options.transforms?.length ?? 0) > 0 ? { transforms: options.transforms } : {}),
       ...(options.onStreamEvent ? { onStreamEvent: options.onStreamEvent } : {}),
+      ...(options.fetch ? { fetch: options.fetch } : {}),
     });
 
     for (const message of durableHistory.history) {
@@ -265,6 +266,18 @@ export function* runChatSession(
         if (result.conversationState) {
           syncConversationStateForComplete(history, result.conversationState);
           replayState = result.conversationState.replay ?? replayState;
+        }
+        if ((result.toolResults?.length ?? 0) > 0) {
+          // The folded client state observes terminal assistant text before the
+          // request result exposes server tool results. Defer newly projected
+          // plain assistant messages so causal history remains call -> result ->
+          // terminal assistant, and append the terminal text exactly once below.
+          for (let index = history.length - 1; index >= originalHistoryLength; index -= 1) {
+            const message = history[index]!;
+            if (message.role === "assistant" && !message.tool_calls?.length) {
+              history.splice(index, 1);
+            }
+          }
         }
         resetTranscriptState(transcriptState, history);
         pendingToolCalls = [];
@@ -381,7 +394,9 @@ export function* runChatSession(
 
         currentRequestTask = yield* spawn(function* () {
           try {
-            return yield* startRequest();
+            const result = yield* startRequest();
+            options.onTurnSettled?.(result);
+            return result;
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             yield* sendEvent({ type: "LOCAL_ERROR", message });
@@ -401,7 +416,9 @@ export function* runChatSession(
 
         currentRequestTask = yield* spawn(function* () {
           try {
-            return yield* startRequest();
+            const result = yield* startRequest();
+            options.onTurnSettled?.(result);
+            return result;
           } catch (error) {
             const message = error instanceof Error ? error.message : "Unknown error";
             yield* sendEvent({ type: "LOCAL_ERROR", message });
