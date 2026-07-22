@@ -43,17 +43,22 @@ describe("yo-chat tool wiring", () => {
     expect(mcpToolRegistry.names().sort()).toEqual(ordinaryNames);
   });
 
-  it("excludes crank-native contracts from the ordinary generated worker", () => {
-    const workerEntry = readFileSync(
-      new URL("../__generated__/tool-worker.gen.ts", import.meta.url),
-      "utf8",
-    );
+  it("excludes crank-native contracts from the ordinary worker tool list", async () => {
+    const { workerTools } = await import("../server/worker-tools");
+    const workerNames = workerTools.map((tool) => tool.name).sort();
 
-    expect(workerEntry).toContain("await runToolWorkerEntry([");
-    expect(workerEntry).toContain("  askQuestion,");
-    expect(workerEntry).not.toContain("pickCard");
-    expect(workerEntry).toContain("  bookFlightTool,");
-    expect(workerEntry).not.toContain("playTttTool");
-    expect(workerEntry).toContain("  tictactoeTool");
+    expect(workerNames).toEqual(["ask_question", "book_flight", "calculator", "tictactoe"]);
+    // Crank-native programs execute through the Program Runtime, never the
+    // ordinary ToolSession worker.
+    expect(workerNames).not.toContain("pick_card");
+    expect(workerNames).not.toContain("play_ttt");
+    for (const tool of workerTools) {
+      expect(tool.execution).toBe("ordinary");
+    }
+
+    // The hand-authored worker entry runs exactly this list.
+    const workerEntry = readFileSync(new URL("../server/tool-worker.ts", import.meta.url), "utf8");
+    expect(workerEntry).toContain("runToolWorkerEntry([...workerTools])");
+    expect(workerEntry).toContain('from "./worker-tools.ts"');
   });
 });

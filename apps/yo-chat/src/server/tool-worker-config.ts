@@ -5,19 +5,17 @@ import durableProgramWorkerUrl from "./durable-program-worker.ts?modulePath";
 
 const serverDir = dirname(fileURLToPath(import.meta.url));
 
-export const YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL = pathToFileURL(
-  resolve(serverDir, "../__generated__/tool-worker.gen.ts"),
-);
+export const YO_CHAT_TOOL_WORKER_ENTRY_URL = pathToFileURL(resolve(serverDir, "./tool-worker.ts"));
 
 const yoChatWorkerExecArgv = ["--conditions=development", "--import", "tsx"];
 
-export const yoChatGeneratedToolSessionWorkerConfig: {
+export const yoChatToolSessionWorkerConfig: {
   workerUrl: URL;
   isDev: false;
   execArgv: string[];
 } = {
-  // Source-mode loader shim; its only payload is the exact generated entry
-  // represented by YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL.
+  // Source-mode loader shim; its only payload is the exact hand-authored entry
+  // represented by YO_CHAT_TOOL_WORKER_ENTRY_URL.
   workerUrl: pathToFileURL(resolve(serverDir, "./tool-worker-bootstrap.mjs")),
   isDev: false,
   execArgv: [...yoChatWorkerExecArgv],

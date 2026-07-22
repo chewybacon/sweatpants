@@ -8,7 +8,7 @@ COPY patches ./patches
 COPY packages ./packages
 COPY apps/agentcore-tool-session-tracer ./apps/agentcore-tool-session-tracer
 COPY apps/yo-chat/package.json ./apps/yo-chat/package.json
-COPY apps/yo-chat/src/__generated__/tool-registry.gen.ts ./apps/yo-chat/src/__generated__/tool-registry.gen.ts
+COPY apps/yo-chat/src/server/worker-tools.ts ./apps/yo-chat/src/server/worker-tools.ts
 COPY apps/yo-chat/src/tools ./apps/yo-chat/src/tools
 
 RUN pnpm install --frozen-lockfile

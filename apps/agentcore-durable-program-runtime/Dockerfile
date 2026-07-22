@@ -8,8 +8,10 @@ COPY patches ./patches
 COPY packages ./packages
 COPY apps/agentcore-durable-program-runtime ./apps/agentcore-durable-program-runtime
 COPY apps/yo-chat/package.json ./apps/yo-chat/package.json
-COPY apps/yo-chat/src/__generated__/agentcore-durable-program-registry.gen.ts ./apps/yo-chat/src/__generated__/agentcore-durable-program-registry.gen.ts
+COPY apps/yo-chat/src/server/agentcore-durable-programs.ts ./apps/yo-chat/src/server/agentcore-durable-programs.ts
 COPY apps/yo-chat/src/tools/pick-card ./apps/yo-chat/src/tools/pick-card
+COPY apps/yo-chat/src/tools/play-ttt/tool.ts ./apps/yo-chat/src/tools/play-ttt/tool.ts
+COPY apps/yo-chat/src/tools/tictactoe/types.ts ./apps/yo-chat/src/tools/tictactoe/types.ts
 
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @sweatpants/session-contract build \

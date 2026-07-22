@@ -8,14 +8,17 @@ import {
 } from "@sweatpants/framework/chat";
 import { createPluginRegistryFrom } from "@sweatpants/framework/chat/mcp-tools";
 import type { McpToolRegistry } from "@sweatpants/framework/server";
-import { ordinaryTools, toolList } from "../__generated__/tool-registry.gen";
+import { workerTools } from "./worker-tools";
 import { bookFlightPlugin, bookFlightTool } from "../tools/book-flight";
 import { askQuestion, askQuestionPlugin } from "../tools/general/ask_question";
 import { pickCard, pickCardPlugin } from "../tools/pick-card";
 import { playTttPlugin, playTttTool } from "../tools/play-ttt";
 import { tictactoePlugin, tictactoeTool } from "../tools/tictactoe";
 
-export const allTools = [...toolList];
+/** Complete tool inventory in stable (alphabetical) order. */
+export const allTools = [...workerTools, pickCard, playTttTool].sort((a, b) =>
+  a.name.localeCompare(b.name),
+);
 
 const pluginToolModules = [
   { tool: askQuestion, plugin: askQuestionPlugin },
@@ -47,7 +50,7 @@ function createToolRegistry(mcpTools: NamedTool[]): McpToolRegistry {
 /** Complete AgentCore inventory; pick_card appears only after exact program readiness. */
 export function activeAgentCoreToolNames(pickCardProgramReady = false): string[] {
   return [
-    ...Object.values(ordinaryTools).map((tool) => tool.name),
+    ...workerTools.map((tool) => tool.name),
     ...(pickCardProgramReady ? [pickCard.name] : []),
   ];
 }

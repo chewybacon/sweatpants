@@ -5,19 +5,11 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import viteTsConfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
-import { frameworkPlugin, nodeWorkerPlugin } from "@sweatpants/vite-plugin";
+import { nodeWorkerPlugin } from "@sweatpants/vite-plugin";
 import { imagetools } from "vite-imagetools";
 const isProd = process.env["NODE_ENV"] === "production";
 const nodeBuiltins = Array.from(new Set(builtinModules.flatMap((name) => [name, `node:${name}`])));
 const externalPackages = ["marked", "shiki", "katex", "mermaid", "@earendil-works/pi-ai"];
-
-const agentCoreToolDiscovery = {
-  dir: "src/tools",
-  outFile: "src/__generated__/tool-registry.gen.ts",
-  pattern: "**/*.{ts,tsx}",
-  generateWorker: true,
-  workerOutFile: "src/__generated__/tool-worker.gen.ts",
-};
 
 // Workspace packages that should hot-reload in dev
 // Note: No resolve.alias needed - framework package.json exports have
@@ -53,10 +45,6 @@ const config = defineConfig({
     imagetools(),
     tanstackStart(),
     viteReact(),
-    // Tool discovery: scan src/tools/ and generate registry
-    ...frameworkPlugin({
-      tools: agentCoreToolDiscovery,
-    }),
   ],
 
   build: {
