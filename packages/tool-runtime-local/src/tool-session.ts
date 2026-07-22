@@ -22,7 +22,7 @@ import type {
   ToolSessionEvent,
   ToolSessionOptions,
 } from "@sweatpants/framework/chat/mcp-tools";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { SamplesMap, ToolDefinition } from "@sweatpants/core";
 import type {
   WireElicitResult,
   WireSampleResult,
@@ -84,8 +84,9 @@ export function createToolSession<
   TParams,
   TResult,
   TElicits extends ElicitsMap,
+  TSamples extends SamplesMap | true | undefined = undefined,
 >(
-  tool: ToolDefinition<TName, TParams, TResult, TElicits>,
+  tool: ToolDefinition<TName, TParams, TResult, TElicits, TSamples>,
   params: TParams,
   options: ToolSessionOptions = {},
 ): Operation<ToolSession<TResult>> {

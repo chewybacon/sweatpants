@@ -9,6 +9,7 @@ import type {
   NormalizedElicitsMap,
   NormalizedSamplesMap,
   SamplesMap,
+  ToolDefinition,
   ToolExtensionMetadata,
 } from "./types.ts";
 
@@ -75,3 +76,56 @@ export interface ToolContract<
 
 /** Erased contract type for registries and heterogeneous collections. */
 export type AnyToolContract = ToolContract<string, any, any, any, any>;
+
+/**
+ * True when a contract value carries an executable ordinary factory (i.e. it
+ * is a full `ToolDefinition`, not a metadata-only projection). Substrates
+ * that run the tool in-process must check this before invoking.
+ */
+export function isExecutableToolContract<
+  TName extends string,
+  TParams,
+  TResult,
+  TElicits extends ElicitsMap,
+  TSamples extends SamplesMap | true | undefined,
+>(
+  contract: ToolContract<TName, TParams, TResult, TElicits, TSamples>,
+): contract is ToolContract<TName, TParams, TResult, TElicits, TSamples> &
+  ToolDefinition<TName, TParams, TResult, TElicits, TSamples> {
+  const candidate: unknown = contract;
+  return typeof candidate === "function" && contract.execution === "ordinary";
+}
+
+/**
+ * F4: project the portable, non-executable contract of an authored tool.
+ *
+ * The projection carries identity, runtime Standard Schemas, normalized
+ * elicit/sample declarations, portable schema artifacts, capabilities,
+ * annotations, and extensions — but no executable factory. Worker-backed and
+ * remote registrations can consume this projection so the host process never
+ * needs the implementation closure (or its implementation-only imports),
+ * while the worker entry imports the same single authored definition.
+ */
+export function projectToolContract<
+  TName extends string,
+  TParams,
+  TResult,
+  TElicits extends ElicitsMap,
+  TSamples extends SamplesMap | true | undefined,
+>(
+  tool: ToolContract<TName, TParams, TResult, TElicits, TSamples>,
+): ToolContract<TName, TParams, TResult, TElicits, TSamples> {
+  return Object.freeze({
+    execution: tool.execution,
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+    ...(tool.output !== undefined ? { output: tool.output } : {}),
+    elicits: tool.elicits,
+    samples: tool.samples,
+    artifacts: tool.artifacts,
+    capabilities: tool.capabilities,
+    annotations: tool.annotations,
+    extensions: tool.extensions,
+  }) as ToolContract<TName, TParams, TResult, TElicits, TSamples>;
+}

@@ -54,6 +54,8 @@ export {
   effectRuntimeValidators,
   buildToolSchemaArtifacts,
   isStandardSchema,
+  isExecutableToolContract,
+  projectToolContract,
   toPortableSchema,
   type AnyToolContract,
   type DefineEffectOptions,

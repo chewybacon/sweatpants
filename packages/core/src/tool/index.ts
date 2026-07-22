@@ -19,6 +19,7 @@ export {
   type DurableEffectRuntimeValidators,
 } from "./durable-effect.ts";
 export { buildToolSchemaArtifacts, type ToolSchemaArtifactInputs } from "./artifacts.ts";
+export { isExecutableToolContract, projectToolContract } from "./contract.ts";
 export type {
   AnyToolContract,
   ToolContract,

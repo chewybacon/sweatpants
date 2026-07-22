@@ -38,7 +38,7 @@ import type {
   LogLevel,
   ElicitsMap,
 } from "../mcp-tool-types.ts";
-import type { ToolDefinition } from "@sweatpants/core";
+import type { ToolContract } from "@sweatpants/core";
 
 // Re-export result types for convenience
 export type {
@@ -333,7 +333,7 @@ export interface ToolSessionRegistry {
    * @returns The created session
    */
   create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
-    tool: ToolDefinition<string, TParams, TResult, TElicits>,
+    tool: ToolContract<string, TParams, TResult, TElicits>,
     params: TParams,
     options?: ToolSessionOptions,
   ): Operation<ToolSession<TResult>>;

@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/core";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
@@ -32,7 +32,7 @@ export interface AgentCoreToolRuntimeDriverOptions {
   /** Stable runtime identifier stored on all execution refs. */
   id?: string;
   /** Executable tool contracts allowed through this runtime. */
-  tools: RuntimeTool[];
+  tools: AnyToolContract[];
   /** Existing AgentCore registry. If omitted, registryOptions are used to create one. */
   registry?: ToolSessionRegistry;
   /** Sampling provider used when remote tools emit sample_request events. */
@@ -41,8 +41,11 @@ export interface AgentCoreToolRuntimeDriverOptions {
   registryOptions?: AgentCoreToolSessionRegistryOptions;
 }
 
-function toolsByCanonicalName(tools: RuntimeTool[], owner: string): Map<string, RuntimeTool> {
-  const byName = new Map<string, RuntimeTool>();
+function toolsByCanonicalName(
+  tools: AnyToolContract[],
+  owner: string,
+): Map<string, AnyToolContract> {
+  const byName = new Map<string, AnyToolContract>();
   for (const tool of tools) {
     if (byName.has(tool.name)) {
       throw new ToolRuntimeError(
@@ -217,7 +220,7 @@ export interface AgentCoreToolExecutionStrategyOptions {
   id?: string;
   registry: ToolSessionRegistry;
   samplingProvider: ToolSessionSamplingProvider;
-  tools: RuntimeTool[];
+  tools: AnyToolContract[];
 }
 
 export function createAgentCoreToolExecutionStrategy(
