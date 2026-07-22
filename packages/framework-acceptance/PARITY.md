@@ -22,6 +22,8 @@ specification (REQ-045) before any generic yo-chat coverage is deleted.
 | `apps/yo-chat/acceptance/durable-pick-card-http.acceptance.test.ts` | `packages/framework-acceptance/src/durable-tool.acceptance.test.ts` | The same durable scenario runs on both in-process and HTTP bindings, asserts typed elicit context, nested sampling, native child journaling, and absence of foreign-tool fallback. |
 | `apps/yo-chat/src/__tests__/pick-card-history.test.ts` | `packages/framework-acceptance/src/durable-tool.acceptance.test.ts` | The follow-up provider request contains exactly one durable call/result pair and excludes nested sample prompt/response text; no fetch replacement, sleeps, or state polling. |
 
+The default `yo-mcp` landing gate no longer drives generic tool behavior through the third-party Inspector UI. `mcp-http.integration.test.ts` now owns real worker-backed Streamable HTTP routing for two elicitations plus sampling, while tool-runtime-local owns ordinary worker, decline/cancel, sampling, and complex-flow semantics. `apps/yo-mcp/src/cli.acceptance.test.ts` retains app-owned CORS, exact inventory, Node HTTP adaptation, and real worker-backed echo coverage. Inspector interoperability remains opt-in via `pnpm -C apps/yo-mcp test:inspector`.
+
 The spike-era additions to `apps/yo-chat/src/outside-in/lib/driver.ts`
 (async elicit responders, async turn sources) remain: they are generic driver
 capabilities now also used by non-spike flow tests.

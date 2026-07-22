@@ -29,7 +29,12 @@ import {
   type Context as ModelContext,
   type Message as ModelMessage,
 } from "@sweatpants/model-provider-pi-ai";
-import { createDurableToolRegistry, type ProgramDriver } from "@sweatpants/session-contract";
+import {
+  createDurableToolRegistry,
+  type DurableToolRegistry,
+  type ProgramDriver,
+  type ProgramRoute,
+} from "@sweatpants/session-contract";
 import {
   createInMemoryToolSessionStoreWithDebug,
   createLocalWorkerDurableProgramDriver,
@@ -184,6 +189,9 @@ export interface AcceptanceApplicationInspection {
 export interface AcceptanceApplicationOptions {
   maxToolIterations?: number;
   retainResponseStreams?: boolean;
+  durableDriverKind?: string;
+  durableRoute?: ProgramRoute;
+  createDurableDriver?(registry: DurableToolRegistry): ProgramDriver;
 }
 
 export function createAcceptanceApplication(
@@ -248,11 +256,13 @@ export function createAcceptanceApplication(
       });
 
       const durableRegistry = createDurableToolRegistry([acceptanceDurableTool]);
-      const concreteDurableDriver = createLocalWorkerDurableProgramDriver({
-        workerUrl: resolveFixtureBootstrapUrl("acceptance-durable-worker-bootstrap.mjs"),
-        name: "framework-acceptance-durable",
-        registry: durableRegistry,
-      });
+      const concreteDurableDriver = options.createDurableDriver
+        ? options.createDurableDriver(durableRegistry)
+        : createLocalWorkerDurableProgramDriver({
+            workerUrl: resolveFixtureBootstrapUrl("acceptance-durable-worker-bootstrap.mjs"),
+            name: "framework-acceptance-durable",
+            registry: durableRegistry,
+          });
       const durableDriver: ProgramDriver = {
         *attach(request) {
           const attachment = yield* concreteDurableDriver.attach(request);
@@ -285,11 +295,14 @@ export function createAcceptanceApplication(
             {
               publicName: acceptanceDurableTool.name,
               tool: acceptanceDurableTool,
-              route: { driverKind: "worker", profile: "framework-acceptance-durable" },
+              route: options.durableRoute ?? {
+                driverKind: options.durableDriverKind ?? "worker",
+                profile: "framework-acceptance-durable",
+              },
             },
           ],
         ]),
-        drivers: [["worker", durableDriver]],
+        drivers: [[options.durableDriverKind ?? "worker", durableDriver]],
         effects: [createDurableOptionsRegistration()],
       });
     },

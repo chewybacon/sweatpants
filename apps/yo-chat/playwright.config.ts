@@ -17,7 +17,6 @@ const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 const runFullE2E = process.env["E2E_FULL"] === "1";
 const deterministicBrowserSmokeSpecs = [
   "**/deterministic-elicit-rendering.spec.ts",
-  "**/interactors-playwright.spec.ts",
   "**/journal-inspector.spec.ts",
   "**/rendering-pipeline.spec.ts",
   "**/threaded-reconstruction.spec.ts",

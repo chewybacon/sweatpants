@@ -39,7 +39,7 @@ import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
 import { createPluginSamplingProvider } from "@/server/plugin-sampling-provider";
 import {
   YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL,
-  yoChatToolSessionWorkerConfig,
+  yoChatGeneratedToolSessionWorkerConfig,
 } from "@/server/tool-worker-config";
 
 import { handlerToChatFetch, type ChatBinding } from "./chat-fetch.ts";
@@ -55,7 +55,7 @@ function* setupTierAWorkerRuntime(): Operation<void> {
   const store = createInMemoryToolSessionStore();
   const samplingProvider = createPluginSamplingProvider();
   const registry: ToolSessionRegistry = yield* createToolSessionRegistry(store, {
-    worker: yoChatToolSessionWorkerConfig,
+    worker: yoChatGeneratedToolSessionWorkerConfig,
   });
   const manager = yield* createPluginSessionManager({
     registry,

@@ -23,9 +23,6 @@ export const yoChatGeneratedToolSessionWorkerConfig: {
   execArgv: [...yoChatWorkerExecArgv],
 };
 
-/** @deprecated Use yoChatGeneratedToolSessionWorkerConfig. */
-export const yoChatToolSessionWorkerConfig = yoChatGeneratedToolSessionWorkerConfig;
-
 export const yoChatDurableProgramWorkerUrl =
   durableProgramWorkerUrl instanceof URL
     ? durableProgramWorkerUrl

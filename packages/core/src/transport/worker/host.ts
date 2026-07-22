@@ -218,18 +218,24 @@ export function* createWorkerPrincipal<T = unknown, TInitData = WorkerInitData>(
     // Provide the result operation. Stop the request pump before the worker
     // resource finalizer runs; otherwise a parked request can keep worker
     // teardown alive indefinitely after host-side cancellation.
+    let primaryFailure: unknown;
     try {
       yield* provide({
         result: resultOperation,
       });
-    } finally {
-      try {
-        yield* requestTask.halt();
-      } catch (error) {
-        if (!(error instanceof Error) || error.message !== "halted") {
-          throw error;
-        }
+    } catch (error) {
+      primaryFailure = error;
+    }
+    try {
+      yield* requestTask.halt();
+    } catch (error) {
+      const expectedHalt = error instanceof Error && error.message === "halted";
+      if (!expectedHalt && primaryFailure === undefined) {
+        primaryFailure = error;
       }
+    }
+    if (primaryFailure !== undefined) {
+      throw primaryFailure;
     }
   });
 }

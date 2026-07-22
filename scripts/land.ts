@@ -17,6 +17,7 @@ async function main(): Promise<void> {
 
   const playwrightPort = Number(process.env["LAND_PLAYWRIGHT_PORT"] ?? "18110");
   const livePlaywrightPort = Number(process.env["LAND_LIVE_PLAYWRIGHT_PORT"] ?? "18111");
+  const packageTestConcurrency = Number(process.env["LAND_PACKAGE_TEST_CONCURRENCY"] ?? "3");
   const summary: RunSummary = { mode, startedAt: new Date().toISOString(), stages: [] };
 
   interface Stage {
@@ -45,62 +46,36 @@ async function main(): Promise<void> {
     stages: StageSummary[];
   }
 
-  async function packageTestStages(): Promise<Stage[]> {
+  async function appTestStages(): Promise<Stage[]> {
     const stages: Stage[] = [];
-    for (const parent of ["packages", "apps"]) {
-      for (const directory of (await readdir(join(root, parent), { withFileTypes: true })).filter(
-        (entry) => entry.isDirectory(),
-      )) {
-        const packageDir = join(root, parent, directory.name);
-        let packageJson: { name?: string; scripts?: Record<string, string> };
-        try {
-          packageJson = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
-        } catch {
-          continue;
-        }
-        const test = packageJson.scripts?.["test"];
-        if (!test) {
-          continue;
-        }
-        const label = packageJson.name ?? `${parent}/${directory.name}`;
-        if (test.includes("vitest")) {
-          stages.push({
-            name: `test:${label}`,
-            command: "pnpm",
-            args: ["-C", packageDir, "exec", "vitest", "run", "--bail=1", "--passWithNoTests"],
-            timeoutMs: 10 * 60_000,
-          });
-        } else if (test.includes("playwright")) {
-          stages.push({
-            name: `test:${label}`,
-            command: "pnpm",
-            args: [
-              "-C",
-              packageDir,
-              "exec",
-              "playwright",
-              "test",
-              "--max-failures=1",
-              "--retries=0",
-              "--reporter=line",
-            ],
-            timeoutMs: 15 * 60_000,
-            forbidSkips: true,
-          });
-        } else {
-          stages.push({
-            name: `test:${label}`,
-            command: "pnpm",
-            args: ["-C", packageDir, "test"],
-            timeoutMs: 10 * 60_000,
-          });
-        }
+    const parent = "apps";
+    for (const directory of (await readdir(join(root, parent), { withFileTypes: true })).filter(
+      (entry) => entry.isDirectory(),
+    )) {
+      const packageDir = join(root, parent, directory.name);
+      let packageJson: { name?: string; scripts?: Record<string, string> };
+      try {
+        packageJson = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
+      } catch {
+        continue;
       }
+      const test = packageJson.scripts?.["test"];
+      if (!test) {
+        continue;
+      }
+      const label = packageJson.name ?? `${parent}/${directory.name}`;
+      stages.push({
+        name: `test:${label}`,
+        command: "pnpm",
+        args: ["-C", packageDir, "test"],
+        timeoutMs: test.includes("playwright") ? 15 * 60_000 : 10 * 60_000,
+        ...(test.includes("playwright") ? { forbidSkips: true } : {}),
+      });
     }
     return stages;
   }
 
-  function deterministicStages(packageTests: Stage[]): Stage[] {
+  function deterministicStages(appTests: Stage[]): Stage[] {
     return [
       {
         name: "generated",
@@ -111,7 +86,20 @@ async function main(): Promise<void> {
       { name: "types", command: "pnpm", args: ["check"], timeoutMs: 10 * 60_000 },
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
       { name: "build", command: "pnpm", args: ["build"], timeoutMs: 15 * 60_000 },
-      ...packageTests,
+      {
+        name: "test:packages",
+        command: "pnpm",
+        args: [
+          "--filter",
+          "./packages/**",
+          `--workspace-concurrency=${packageTestConcurrency}`,
+          "--aggregate-output",
+          "run",
+          "test",
+        ],
+        timeoutMs: 15 * 60_000,
+      },
+      ...appTests,
       {
         name: "e2e:yo-chat:deterministic",
         command: "pnpm",
@@ -161,9 +149,9 @@ async function main(): Promise<void> {
   }
 
   await preflight(mode);
-  const packageTests = mode === "live" ? [] : await packageTestStages();
+  const appTests = mode === "live" ? [] : await appTestStages();
   const stages = [
-    ...(mode === "live" ? [] : deterministicStages(packageTests)),
+    ...(mode === "live" ? [] : deterministicStages(appTests)),
     ...(mode === "deterministic" ? [] : liveStages()),
   ];
 
@@ -192,7 +180,17 @@ async function main(): Promise<void> {
   console.log(`Summary: ${relativeArtifact(join(artifactDir, "summary.json"))}`);
 
   async function preflight(selectedMode: string): Promise<void> {
-    const deterministicPorts = [playwrightPort, 3001, 6274];
+    if (
+      !Number.isSafeInteger(packageTestConcurrency) ||
+      packageTestConcurrency < 1 ||
+      packageTestConcurrency > 8
+    ) {
+      failPreflight(
+        "PREFLIGHT_CONCURRENCY_INVALID",
+        `LAND_PACKAGE_TEST_CONCURRENCY must be an integer from 1 through 8; received ${packageTestConcurrency}`,
+      );
+    }
+    const deterministicPorts = [playwrightPort];
     const ports =
       selectedMode === "live"
         ? [livePlaywrightPort]
