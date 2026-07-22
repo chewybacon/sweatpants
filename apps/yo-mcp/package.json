@@ -13,7 +13,8 @@
         "check": "tsc --noEmit",
         "start": "node dist/cli.js",
         "inspect": "tsx --conditions=development src/cli.ts & sleep 1 && npx @modelcontextprotocol/inspector --transport http --server-url http://localhost:3001/mcp",
-        "test": "playwright test",
+        "test": "vitest run src",
+        "test:inspector": "playwright test",
         "test:ui": "playwright test --ui",
         "test:headed": "playwright test --headed"
     },
@@ -30,6 +31,7 @@
         "@types/node": "catalog:",
         "tsup": "catalog:",
         "tsx": "catalog:",
-        "typescript": "catalog:"
+        "typescript": "catalog:",
+        "vitest": "catalog:"
     }
 }

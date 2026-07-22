@@ -58,7 +58,10 @@
   },
   "devDependencies": {
     "@effectionx/raf": "catalog:",
+    "@sweatpants/core": "workspace:*",
     "@sweatpants/framework": "workspace:*",
+    "@sweatpants/test-rig": "workspace:*",
+    "@sweatpants/tool-runtime-local": "workspace:*",
     "@sweatpants/ts-config": "workspace:*",
     "@testing-library/react": "catalog:",
     "@types/react": "catalog:",
@@ -71,7 +74,8 @@
     "tailwind-merge": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   },
   "license": "MIT"
 }

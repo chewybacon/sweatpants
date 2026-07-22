@@ -1,5 +1,6 @@
 import { call, run, type Operation } from "effection";
 import type {
+  ChatFetch,
   ConversationHandle,
   ConversationOptions,
   ConversationTranscript,
@@ -144,6 +145,10 @@ export interface ScenarioContext {
     openTurn(options: OpenStreamTurnOptions): Operation<ScriptStreamTurn>;
     reconnect(checkpoint: StreamCheckpoint): Operation<ScriptStreamTurn>;
   };
+  /** Low-level binding seam for package-owned client adapters such as React. */
+  readonly transport: {
+    fetch: ChatFetch;
+  };
 }
 
 function op<T>(make: () => Promise<T>): Operation<T> {
@@ -283,6 +288,7 @@ export function scenario<T>(
         return toScriptStream(yield* op(() => rig.streams.reconnect(checkpoint)));
       },
     },
+    transport: { fetch: rig.fetch },
   };
   return run(() => script(context));
 }

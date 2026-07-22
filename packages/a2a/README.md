@@ -39,6 +39,15 @@ The adapter uses its own pinned program and effects. It does not modify `sweatpa
 
 The caller and callee retain separate journals and credentials. Grants are authenticated invocation-scoped references, not bearer credentials. Effect result delivery is disclosure to the callee, and cross-journal idempotent acceptance does not turn an unreconcilable external effect into a globally exactly-once transaction.
 
+## Assembled test-rig acceptance
+
+Package-local tests certify caller-authoritative drivers, foreign tasks, real HTTP/WSS bindings, independent-process recovery, and three-process peer delegated effects. `createControllableForeignA2AAgent()` from `@sweatpants/a2a/testing` provides buffered causal controls for initial dispatch, continuation, observation, and cancellation; package tests use it to drive `input_required` through terminal completion without pre-armed promise choreography. The higher-level assembled scenarios live in the private `@sweatpants/framework-acceptance` leaf to avoid an `a2a → test-rig → framework → a2a` dependency cycle:
+
+- `a2a-agent.acceptance.test.ts`: Agent Card discovery and standard HTTP+JSON invocation suspend on a rig-controlled real pi-ai model request and complete a task.
+- `a2a-subagent.acceptance.test.ts`: Outer chat delegates a crank-native child through the A2A driver/executor protocol, including nested sampling, durable elicitation, replay, and final outer response.
+
+Together these layers keep protocol ownership in this package while the leaf certifies the assembled product path.
+
 ## Third-party interoperability gate
 
 The deterministic suite uses project-owned protocol fixtures. Before a pre-1.0 release, run the opt-in conformance smoke test against at least one independent A2A 1.x server:

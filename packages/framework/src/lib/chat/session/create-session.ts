@@ -7,7 +7,6 @@ import {
   call,
   type Operation,
   type Channel,
-  type Signal,
   type Stream,
   type Subscription,
 } from "effection";
@@ -80,7 +79,7 @@ export interface ChatSession {
 export function createChatSession(options: ClientToolSessionOptions = {}): Operation<ChatSession> {
   return resource(function* (provide) {
     const scope = yield* useScope();
-    const commands = createSignal<ChatCommand, void>();
+    const commands = yield* useBufferedChannel<ChatCommand>();
     const events = yield* useBufferedChannel<ChatStateEvent>();
     const stateSignal = createBufferedStateSignal<ChatState>();
 
@@ -108,10 +107,7 @@ export function createChatSession(options: ClientToolSessionOptions = {}): Opera
       state: yield* stateSignal.subscribe(),
       dispatch: (cmd) =>
         scope.run(function* () {
-          yield* call(() => {
-            commands.send(cmd);
-            return undefined;
-          });
+          yield* commands.send(cmd);
         }),
     });
   });
@@ -142,7 +138,7 @@ function finalAssistantMessage(
 }
 
 export function* runChatSession(
-  commands: Signal<ChatCommand, void>,
+  commands: Channel<ChatCommand, void>,
   events: Channel<ChatStateEvent, void>,
   options: ClientToolSessionOptions = {},
 ): Operation<void> {
@@ -547,7 +543,7 @@ export function* runChatSession(
         });
 
         if (cmd.autoContinue !== false) {
-          commands.send({ type: "continue" });
+          yield* commands.send({ type: "continue" });
         }
         break;
       }

@@ -762,6 +762,9 @@ importers:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   apps/yo-slides:
     dependencies:
@@ -1066,6 +1069,9 @@ importers:
 
   packages/framework-acceptance:
     dependencies:
+      '@sweatpants/a2a':
+        specifier: workspace:*
+        version: link:../a2a
       '@sweatpants/core':
         specifier: workspace:*
         version: link:../core
@@ -1134,9 +1140,18 @@ importers:
       '@effectionx/raf':
         specifier: 'catalog:'
         version: 0.1.1
+      '@sweatpants/core':
+        specifier: workspace:*
+        version: link:../core
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../framework
+      '@sweatpants/test-rig':
+        specifier: workspace:*
+        version: link:../test-rig
+      '@sweatpants/tool-runtime-local':
+        specifier: workspace:*
+        version: link:../tool-runtime-local
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
@@ -1176,6 +1191,9 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
 
   packages/session-contract:
     dependencies:
