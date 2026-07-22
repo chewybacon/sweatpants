@@ -17,6 +17,7 @@ import {
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
+  assertJson,
   canonicalJson,
   canonicalSnapshot,
   createCapabilityKeyring,
@@ -49,6 +50,7 @@ import type { AgentDefinition, AgentProgramBinding } from "@sweatpants/core";
 import {
   acceptChatTurn,
   normalizeChatMessage,
+  normalizeChatTurnInput,
   normalizeChatTurnResult,
   type ChatMessageV1,
   type ChatProgramDefinition,
@@ -371,18 +373,20 @@ export function createStandardA2AHost(
   const taskDirectory = options.taskDirectory ?? createInMemoryStandardA2ATaskDirectory();
   return Object.freeze({
     kind: "standard-a2a-task-host.v1" as const,
-    services: Object.freeze({
-      binding: "HTTP+JSON",
-      operations: Object.freeze([
-        "agent-card",
-        "message/send",
-        "tasks/get",
-        "tasks/cancel",
-        "tasks/subscribe",
-      ]),
-      taskGenerating: true,
-      streaming: true,
-    }) as unknown as Json,
+    services: assertJson(
+      Object.freeze({
+        binding: "HTTP+JSON",
+        operations: Object.freeze([
+          "agent-card",
+          "message/send",
+          "tasks/get",
+          "tasks/cancel",
+          "tasks/subscribe",
+        ]),
+        taskGenerating: true,
+        streaming: true,
+      }),
+    ),
     bind(binding: StandardA2AHostBinding) {
       return bindStandardHost(binding, {
         ...options,
@@ -461,18 +465,20 @@ function bindStandardHost(
 
   const host: BoundStandardA2AHost = {
     kind: "standard-a2a-task-host.v1",
-    services: Object.freeze({
-      binding: "HTTP+JSON",
-      operations: Object.freeze([
-        "agent-card",
-        "message/send",
-        "tasks/get",
-        "tasks/cancel",
-        "tasks/subscribe",
-      ]),
-      taskGenerating: true,
-      streaming: true,
-    }) as unknown as Json,
+    services: assertJson(
+      Object.freeze({
+        binding: "HTTP+JSON",
+        operations: Object.freeze([
+          "agent-card",
+          "message/send",
+          "tasks/get",
+          "tasks/cancel",
+          "tasks/subscribe",
+        ]),
+        taskGenerating: true,
+        streaming: true,
+      }),
+    ),
     readiness: true,
     card: binding.card,
     bind() {
@@ -662,7 +668,7 @@ function bindStandardHost(
       const records = yield* readJournal(journal, sessionId);
       const tasks = rootOpenings(records).map((opened) => {
         const projected = projectTask(records, opened.taskId, contextId, 0, "task-only", []);
-        const input = opened.input as unknown as ChatTurnInputV1;
+        const input = openedTurnInput(opened);
         return Object.freeze({
           taskId: opened.taskId,
           state: projected.status.state,
@@ -852,7 +858,7 @@ function bindStandardHost(
       contextId,
       options.limits.maxHistoryLength,
     );
-    const digest = canonicalSnapshot(message as unknown as Json).sha;
+    const digest = canonicalSnapshot(assertJson(message)).sha;
     const prior = yield* options.taskDirectory.lookupContinuation(taskId, message.messageId);
     if (prior && prior.messageDigest !== digest) {
       throw hostError("message_idempotency_conflict", "Message identity was reused");
@@ -998,7 +1004,7 @@ function* openAndRun(input: RuntimeInput): Operation<ProgramRunResult> {
     turnId: "turn-0",
     taskId: input.taskId,
     manifest: input.conversation.program.manifest,
-    input: input.input as unknown as Json,
+    input: assertJson(input.input),
     executionEpoch: 1,
     attachmentId: stableProgramAttachmentId(attach),
     audience: "program-runtime",
@@ -1042,7 +1048,7 @@ function attachment(input: RuntimeInput) {
     sessionId: input.sessionId,
     taskId: input.taskId,
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
-    input: input.input as unknown as Json,
+    input: assertJson(input.input),
     route: { driverKind: "generator" } as Json,
     executionEpoch: 1,
   };
@@ -1158,24 +1164,36 @@ function rootOpenings(records: readonly DurableSemanticRecord[]) {
     );
 }
 function findRootByMessageId(records: readonly DurableSemanticRecord[], messageId: string) {
-  return rootOpenings(records).find((opened) => {
-    const input = opened.input as unknown as Partial<ChatTurnInputV1>;
-    return input.message?.id === messageId;
-  });
+  return rootOpenings(records).find((opened) => openedTurnInput(opened).message.id === messageId);
+}
+type RootOpening = ReturnType<typeof rootOpenings>[number];
+/**
+ * Decode a journal TaskOpened input as a validated chat turn. Journal records
+ * cross a persistence boundary, so shape is re-verified rather than cast.
+ */
+function openedTurnInput(opened: RootOpening): ChatTurnInputV1 {
+  try {
+    return normalizeChatTurnInput(opened.input);
+  } catch (error) {
+    throw hostError(
+      "request_invalid",
+      `Journal task input is not a valid chat turn: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }
 function taskInput(records: readonly DurableSemanticRecord[], taskId: string): ChatTurnInputV1 {
   const opened = rootOpenings(records).find((candidate) => candidate.taskId === taskId);
   if (!opened) {
     throw hostError("task_not_found", "Task is unavailable");
   }
-  return opened.input as unknown as ChatTurnInputV1;
+  return openedTurnInput(opened);
 }
 function assertIdempotentMessage(
   opened: ReturnType<typeof rootOpenings>[number],
   message: ForeignA2AMessage,
   contextId: string,
 ): void {
-  const input = opened.input as unknown as ChatTurnInputV1;
+  const input = openedTurnInput(opened);
   const accepted = {
     message: input.message,
     contextId,
@@ -1197,7 +1215,7 @@ function assertIdempotentMessage(
 function contextMessages(records: readonly DurableSemanticRecord[]): ChatMessageV1[] {
   const result: ChatMessageV1[] = [];
   for (const opened of rootOpenings(records)) {
-    const input = opened.input as unknown as Partial<ChatTurnInputV1>;
+    const input = openedTurnInput(opened);
     if (input.message) {
       result.push(input.message);
     }
@@ -1336,7 +1354,7 @@ function projectTask(
   if (!opened) {
     throw hostError("task_not_found", "Task is unavailable");
   }
-  const input = opened.input as unknown as ChatTurnInputV1;
+  const input = openedTurnInput(opened);
   const close = taskClose(records, taskId);
   const result = completedResult(close);
   const state = projectedState(records, taskId, close);
@@ -1406,10 +1424,12 @@ function projectTask(
     status: Object.freeze({ state, ...(statusMessage ? { message: statusMessage } : {}) }),
     artifacts,
     history,
-    metadata: Object.freeze({
-      referenceTaskIds: Object.freeze([...(input.context?.referenceTaskIds ?? [])]),
-      frontier: input.context?.frontier ?? "0",
-    }) as unknown as Json,
+    metadata: assertJson(
+      Object.freeze({
+        referenceTaskIds: Object.freeze([...(input.context?.referenceTaskIds ?? [])]),
+        frontier: input.context?.frontier ?? "0",
+      }),
+    ),
   });
 }
 
@@ -1939,7 +1959,7 @@ function wireMessage(value: ForeignA2AMessage, sdk03: boolean): Json {
 }
 function wireTask(task: ForeignA2ATask, sdk03 = false): Json {
   const state = wireState(task.status.state);
-  return {
+  return assertJson({
     ...task,
     status: {
       ...task.status,
@@ -1949,7 +1969,7 @@ function wireTask(task: ForeignA2ATask, sdk03 = false): Json {
     ...(task.history
       ? { history: task.history.map((message) => wireMessage(message, sdk03)) }
       : {}),
-  } as unknown as Json;
+  });
 }
 function safeErrorResponse(error: StandardA2AHostError, challenge = "Bearer"): Response {
   const headers: Record<string, string> = {};
