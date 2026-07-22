@@ -1,6 +1,7 @@
 import type { Operation, Stream } from "effection";
 import type { Model, Runtime, StreamOptions } from "../../lib/chat/runtime/index.ts";
 import type { ToolExecutionRef, ToolInventoryEntry, ToolRuntime } from "../../lib/chat/index.ts";
+import type { HistoryPolicy } from "../../lib/chat/history-policy.ts";
 import type { StreamEvent, ChatMessage } from "../types.ts";
 import type { ToolExecutionTrace } from "../../lib/chat/browser-rendering/index.ts";
 import type { ConversationReplayState, AgUiRunMetadata } from "../../lib/chat/session/streaming.ts";
@@ -28,6 +29,13 @@ export interface ProgramRuntimeChatEngineParams {
   initialToolChoice?: StreamOptions["toolChoice"];
   toolInventoryEntries?: ToolInventoryEntry[];
   toolRuntime?: ToolRuntime;
+  /**
+   * F5: explicit opt-in retention policy for outer-chat model requests.
+   * Resolved from HistoryPolicyContext at request time because the engine
+   * runs inside a background writer task that does not inherit the
+   * request-scoped contexts.
+   */
+  historyPolicy?: HistoryPolicy;
   maxIterations: number;
   /**
    * Durable conversation identity. This is the only key used for the fold

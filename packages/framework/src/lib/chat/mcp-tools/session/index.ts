@@ -29,3 +29,10 @@ export {
   useOptionalToolSessionRegistry,
   useOptionalToolSessionSamplingProvider,
 } from "./contexts.ts";
+
+export {
+  createToolSessionEventLog,
+  isTerminalToolSessionStatus,
+  statusForToolSessionEvent,
+} from "./event-log.ts";
+export type { ToolSessionEventLog } from "./event-log.ts";

@@ -1,58 +1,70 @@
-import { resource, type Operation, type Stream, type Subscription } from 'effection'
-import type { ToolSession, ToolSessionEvent, ToolSessionStatus, WireSampleResult } from '@sweatpants/framework/chat/mcp-tools'
-import type { WireElicitResult } from '@sweatpants/framework/chat/mcp-tools'
+import { resource, type Operation, type Stream, type Subscription } from "effection";
+import type {
+  ToolSession,
+  ToolSessionEvent,
+  ToolSessionStatus,
+  WireSampleResult,
+} from "@sweatpants/framework/chat/mcp-tools";
+import type { WireElicitResult } from "@sweatpants/framework/chat/mcp-tools";
+import { statusForToolSessionEvent } from "@sweatpants/framework/chat/mcp-tools";
 import {
   AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
   type AgentCoreToolEvent,
   type AgentCoreToolRuntimeResponse,
   type AgentCoreToolSessionFactoryOptions,
   type AgentCoreToolSessionHandle,
-} from './agentcore-types.ts'
+} from "./agentcore-types.ts";
 
-function stableCommandId(operation: 'respond_to_elicit' | 'respond_to_sample' | 'cancel_tool_session', sessionId: string, id?: string): string {
-  const parts = [operation, sessionId, id].filter((part): part is string => part !== undefined)
-  return parts.map((part) => encodeURIComponent(part)).join(':')
+function stableCommandId(
+  operation: "respond_to_elicit" | "respond_to_sample" | "cancel_tool_session",
+  sessionId: string,
+  id?: string,
+): string {
+  const parts = [operation, sessionId, id].filter((part): part is string => part !== undefined);
+  return parts.map((part) => encodeURIComponent(part)).join(":");
 }
 
-export function isTerminalStatus(status: AgentCoreToolSessionHandle['status']): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'orphaned'
+export function isTerminalStatus(status: AgentCoreToolSessionHandle["status"]): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "cancelled" || status === "orphaned"
+  );
 }
 
 export function* stopRuntimeSessionIfTerminal(options: {
-  stores: AgentCoreToolSessionFactoryOptions['stores']
-  runtimeClient: AgentCoreToolSessionFactoryOptions['runtimeClient']
-  handle: AgentCoreToolSessionHandle
-  now?: () => Date
+  stores: AgentCoreToolSessionFactoryOptions["stores"];
+  runtimeClient: AgentCoreToolSessionFactoryOptions["runtimeClient"];
+  handle: AgentCoreToolSessionHandle;
+  now?: () => Date;
 }): Operation<AgentCoreToolSessionHandle> {
-  const { stores, runtimeClient } = options
-  const now = options.now ?? (() => new Date())
-  const current = (yield* stores.handles.get(options.handle.sessionId)) ?? options.handle
+  const { stores, runtimeClient } = options;
+  const now = options.now ?? (() => new Date());
+  const current = (yield* stores.handles.get(options.handle.sessionId)) ?? options.handle;
 
-  if (!isTerminalStatus(current.status)) return current
-  if (current.stopRequestedAt || current.stoppedAt) return current
+  if (!isTerminalStatus(current.status)) return current;
+  if (current.stopRequestedAt || current.stoppedAt) return current;
 
-  const stopRequestedAt = now().toISOString()
+  const stopRequestedAt = now().toISOString();
   const requested = yield* stores.handles.update(current.sessionId, {
     stopRequestedAt,
     updatedAt: stopRequestedAt,
-  })
+  });
 
   try {
-    yield* runtimeClient.stopRuntimeSession(requested)
-    const stoppedAt = now().toISOString()
+    yield* runtimeClient.stopRuntimeSession(requested);
+    const stoppedAt = now().toISOString();
     return yield* stores.handles.update(requested.sessionId, {
       stoppedAt,
       updatedAt: stoppedAt,
-    })
+    });
   } catch {
     // Stop is best-effort cleanup. Terminal tool results/errors are already
     // persisted locally, so cleanup failure must not hide the terminal outcome.
-    return requested
+    return requested;
   }
 }
 
 function monotonicSeq(current: AgentCoreToolSessionHandle, incoming: number): number {
-  return Math.max(current.lastRuntimeEventSeq ?? 0, incoming)
+  return Math.max(current.lastRuntimeEventSeq ?? 0, incoming);
 }
 
 function toToolSessionEvent(lsn: number, event: AgentCoreToolEvent): ToolSessionEvent {
@@ -60,161 +72,179 @@ function toToolSessionEvent(lsn: number, event: AgentCoreToolEvent): ToolSession
     ...event,
     lsn,
     timestamp: Date.now(),
-  } as ToolSessionEvent
+  } as ToolSessionEvent;
 }
 
-export function statusFromAgentCoreToolEvent(event: AgentCoreToolEvent): Partial<AgentCoreToolSessionHandle> {
+export function statusFromAgentCoreToolEvent(
+  event: AgentCoreToolEvent,
+): Partial<AgentCoreToolSessionHandle> {
+  // Status transitions are the shared kernel mapping; this facade only adds
+  // the remote pending-request bookkeeping stored on the durable handle.
   switch (event.type) {
-    case 'elicit_request':
+    case "elicit_request":
       return {
-        status: 'awaiting_elicit',
-        pendingRequest: { type: 'elicit', elicitId: event.elicitId },
-      }
-    case 'sample_request':
+        status: "awaiting_elicit",
+        pendingRequest: { type: "elicit", elicitId: event.elicitId },
+      };
+    case "sample_request":
       return {
-        status: 'awaiting_sample',
-        pendingRequest: { type: 'sample', sampleId: event.sampleId },
-      }
-    case 'result':
-      return { status: 'completed', pendingRequest: undefined }
-    case 'error':
-      return { status: 'failed', pendingRequest: undefined }
-    case 'cancelled':
-      return { status: 'cancelled', pendingRequest: undefined }
-    case 'progress':
-    case 'log':
-      return { status: 'running' }
+        status: "awaiting_sample",
+        pendingRequest: { type: "sample", sampleId: event.sampleId },
+      };
+    case "result":
+    case "error":
+    case "cancelled":
+      return {
+        status: statusForToolSessionEvent(event, "running") as AgentCoreToolSessionHandle["status"],
+        pendingRequest: undefined,
+      };
+    case "progress":
+    case "log":
+      return { status: "running" };
     default:
-      return {}
+      return {};
   }
 }
 
-function toToolSessionStatus(status: AgentCoreToolSessionHandle['status']): ToolSessionStatus {
-  return status
+function toToolSessionStatus(status: AgentCoreToolSessionHandle["status"]): ToolSessionStatus {
+  return status;
 }
 
 export async function drainAsyncIterable<T>(iterable: AsyncIterable<T>): Promise<T[]> {
-  const result: T[] = []
-  for await (const item of iterable) result.push(item)
-  return result
+  const result: T[] = [];
+  for await (const item of iterable) result.push(item);
+  return result;
 }
 
-export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryOptions): ToolSession {
-  const { stores, runtimeClient } = options
-  const sessionId = options.handle.sessionId
-  const toolName = options.handle.toolName
+export function createAgentCoreToolSession(
+  options: AgentCoreToolSessionFactoryOptions,
+): ToolSession {
+  const { stores, runtimeClient } = options;
+  const sessionId = options.handle.sessionId;
+  const toolName = options.handle.toolName;
 
   function* getHandle(): Operation<AgentCoreToolSessionHandle> {
-    const handle = yield* stores.handles.get(sessionId)
-    if (!handle) throw new Error(`AgentCore tool session not found: ${sessionId}`)
-    return handle
+    const handle = yield* stores.handles.get(sessionId);
+    if (!handle) throw new Error(`AgentCore tool session not found: ${sessionId}`);
+    return handle;
   }
 
   function* markOrphan(reason: string): Operation<void> {
-    const handle = yield* getHandle()
+    const handle = yield* getHandle();
     const event: AgentCoreToolEvent = {
-      type: 'error',
-      name: 'AgentCoreToolSessionOrphaned',
+      type: "error",
+      name: "AgentCoreToolSessionOrphaned",
       message: reason,
-    }
-    const lsn = yield* stores.events.append(sessionId, event)
-    yield* stores.events.markTerminal(sessionId)
+    };
+    const lsn = yield* stores.events.append(sessionId, event);
+    yield* stores.events.markTerminal(sessionId);
     yield* stores.handles.update(sessionId, {
-      status: 'orphaned',
+      status: "orphaned",
       pendingRequest: undefined,
       lastEventLsn: lsn,
       updatedAt: new Date().toISOString(),
       lastRuntimeEventSeq: handle.lastRuntimeEventSeq,
-    })
+    });
   }
 
   function* ingestResponse(response: AgentCoreToolRuntimeResponse): Operation<void> {
-    if (response.type === 'tool_event') {
-      const current = yield* getHandle()
+    if (response.type === "tool_event") {
+      const current = yield* getHandle();
       const lsn = yield* stores.events.appendRemoteEvent(
         sessionId,
         response.runtimeEventSeq,
         response.runtimeEventId,
-        response.event
-      )
-      const isNewer = response.runtimeEventSeq > (current.lastRuntimeEventSeq ?? 0)
-      const patch = isNewer && !isTerminalStatus(current.status) ? statusFromAgentCoreToolEvent(response.event) : {}
+        response.event,
+      );
+      const isNewer = response.runtimeEventSeq > (current.lastRuntimeEventSeq ?? 0);
+      const patch =
+        isNewer && !isTerminalStatus(current.status)
+          ? statusFromAgentCoreToolEvent(response.event)
+          : {};
       yield* stores.handles.update(sessionId, {
         ...patch,
         lastEventLsn: Math.max(current.lastEventLsn ?? 0, lsn),
         lastRuntimeEventSeq: monotonicSeq(current, response.runtimeEventSeq),
         updatedAt: new Date().toISOString(),
-      })
-      if (response.event.type === 'result' || response.event.type === 'error' || response.event.type === 'cancelled') {
-        yield* stores.events.markTerminal(sessionId)
-        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() })
+      });
+      if (
+        response.event.type === "result" ||
+        response.event.type === "error" ||
+        response.event.type === "cancelled"
+      ) {
+        yield* stores.events.markTerminal(sessionId);
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() });
       }
-      return
+      return;
     }
 
-    if (response.type === 'session_status') {
-      const current = yield* getHandle()
-      const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0)
+    if (response.type === "session_status") {
+      const current = yield* getHandle();
+      const isNewerOrEqual = response.lastRuntimeEventSeq >= (current.lastRuntimeEventSeq ?? 0);
       const updated = yield* stores.handles.update(sessionId, {
-        ...(!isTerminalStatus(current.status) && isNewerOrEqual ? {
-          status: response.status,
-          pendingRequest: response.pendingRequest,
-        } : {}),
+        ...(!isTerminalStatus(current.status) && isNewerOrEqual
+          ? {
+              status: response.status,
+              pendingRequest: response.pendingRequest,
+            }
+          : {}),
         lastRuntimeEventSeq: monotonicSeq(current, response.lastRuntimeEventSeq),
         updatedAt: new Date().toISOString(),
-      })
+      });
       if (isTerminalStatus(updated.status)) {
-        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated })
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated });
       }
-      return
+      return;
     }
 
-    if (response.type === 'session_not_found') {
-      const current = yield* getHandle()
+    if (response.type === "session_not_found") {
+      const current = yield* getHandle();
       if (!isTerminalStatus(current.status)) {
-        yield* markOrphan(`AgentCore runtime session did not contain tool session ${response.toolSessionId}`)
-        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() })
+        yield* markOrphan(
+          `AgentCore runtime session did not contain tool session ${response.toolSessionId}`,
+        );
+        yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: yield* getHandle() });
       }
-      return
+      return;
     }
 
-    if (response.type === 'command_duplicate') {
-      yield* reconcileRuntimeState()
-      return
+    if (response.type === "command_duplicate") {
+      yield* reconcileRuntimeState();
+      return;
     }
 
-    if (response.type === 'protocol_error' || response.type === 'command_conflict') {
-      const current = yield* getHandle()
-      if (isTerminalStatus(current.status)) return
-      const message = response.type === 'protocol_error' ? response.message : response.message
-      const event: AgentCoreToolEvent = { type: 'error', name: response.type, message }
-      const lsn = yield* stores.events.append(sessionId, event)
-      yield* stores.events.markTerminal(sessionId)
+    if (response.type === "protocol_error" || response.type === "command_conflict") {
+      const current = yield* getHandle();
+      if (isTerminalStatus(current.status)) return;
+      const message = response.type === "protocol_error" ? response.message : response.message;
+      const event: AgentCoreToolEvent = { type: "error", name: response.type, message };
+      const lsn = yield* stores.events.append(sessionId, event);
+      yield* stores.events.markTerminal(sessionId);
       const updated = yield* stores.handles.update(sessionId, {
-        status: 'failed',
+        status: "failed",
         pendingRequest: undefined,
         lastEventLsn: lsn,
         updatedAt: new Date().toISOString(),
-      })
-      yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated })
+      });
+      yield* stopRuntimeSessionIfTerminal({ stores, runtimeClient, handle: updated });
     }
   }
 
   function* reconcileRuntimeState(): Operation<void> {
-    const handle = yield* getHandle()
-    if (isTerminalStatus(handle.status)) return
-    const stream = yield* runtimeClient.drainEvents(handle, handle.lastRuntimeEventSeq ?? 0)
-    yield* ingestStream(stream)
-    const inspected = yield* runtimeClient.inspect(yield* getHandle())
-    yield* ingestResponse(inspected)
+    const handle = yield* getHandle();
+    if (isTerminalStatus(handle.status)) return;
+    const stream = yield* runtimeClient.drainEvents(handle, handle.lastRuntimeEventSeq ?? 0);
+    yield* ingestStream(stream);
+    const inspected = yield* runtimeClient.inspect(yield* getHandle());
+    yield* ingestResponse(inspected);
   }
 
   function* ingestStream(stream: Stream<AgentCoreToolRuntimeResponse, void>): Operation<void> {
-    const subscription = yield* stream
-    let next = yield* subscription.next()
+    const subscription = yield* stream;
+    let next = yield* subscription.next();
     while (!next.done) {
-      yield* ingestResponse(next.value)
-      next = yield* subscription.next()
+      yield* ingestResponse(next.value);
+      next = yield* subscription.next();
     }
   }
 
@@ -223,105 +253,120 @@ export function createAgentCoreToolSession(options: AgentCoreToolSessionFactoryO
     toolName,
 
     *status(): Operation<ToolSessionStatus> {
-      let handle = yield* getHandle()
+      let handle = yield* getHandle();
       if (!isTerminalStatus(handle.status)) {
-        yield* reconcileRuntimeState()
-        handle = yield* getHandle()
+        yield* reconcileRuntimeState();
+        handle = yield* getHandle();
       }
-      return toToolSessionStatus(handle.status)
+      return toToolSessionStatus(handle.status);
     },
 
     events(afterLSN = 0): Stream<ToolSessionEvent, void> {
       return resource<Subscription<ToolSessionEvent, void>>(function* (provide) {
-        let cursor = afterLSN
-        let buffered: Array<{ lsn: number; event: AgentCoreToolEvent }> = []
-        let index = 0
-        let drainedBeforeWait = false
+        let cursor = afterLSN;
+        let buffered: Array<{ lsn: number; event: AgentCoreToolEvent }> = [];
+        let index = 0;
+        let drainedBeforeWait = false;
 
         yield* provide({
           *next(): Operation<IteratorResult<ToolSessionEvent, void>> {
             while (true) {
               if (index < buffered.length) {
-                const item = buffered[index++]!
-                cursor = item.lsn
-                drainedBeforeWait = false
-                return { done: false, value: toToolSessionEvent(item.lsn, item.event) }
+                const item = buffered[index++]!;
+                cursor = item.lsn;
+                drainedBeforeWait = false;
+                return { done: false, value: toToolSessionEvent(item.lsn, item.event) };
               }
 
-              const batch = yield* stores.events.readAfter(sessionId, cursor)
-              buffered = batch.events
-              index = 0
-              if (buffered.length > 0) continue
+              const batch = yield* stores.events.readAfter(sessionId, cursor);
+              buffered = batch.events;
+              index = 0;
+              if (buffered.length > 0) continue;
 
-              const terminal = yield* stores.events.isTerminal(sessionId)
-              if (terminal) return { done: true, value: undefined }
+              const terminal = yield* stores.events.isTerminal(sessionId);
+              if (terminal) return { done: true, value: undefined };
 
-              const handle = yield* getHandle()
+              const handle = yield* getHandle();
               if (!isTerminalStatus(handle.status) && !drainedBeforeWait) {
-                drainedBeforeWait = true
-                yield* reconcileRuntimeState()
-                continue
+                drainedBeforeWait = true;
+                yield* reconcileRuntimeState();
+                continue;
               }
 
-              yield* stores.events.waitForChange(sessionId, cursor)
-              drainedBeforeWait = false
+              yield* stores.events.waitForChange(sessionId, cursor);
+              drainedBeforeWait = false;
             }
           },
-        })
-      })
+        });
+      });
     },
 
     *respondToElicit(elicitId: string, response: WireElicitResult<unknown>): Operation<void> {
-      const handle = yield* getHandle()
-      if (handle.pendingRequest && (handle.pendingRequest.type !== 'elicit' || handle.pendingRequest.elicitId !== elicitId)) {
-        throw new Error(`Elicitation ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${elicitId}`)
+      const handle = yield* getHandle();
+      if (
+        handle.pendingRequest &&
+        (handle.pendingRequest.type !== "elicit" || handle.pendingRequest.elicitId !== elicitId)
+      ) {
+        throw new Error(
+          `Elicitation ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${elicitId}`,
+        );
       }
       const stream = yield* runtimeClient.respondToElicit(handle, {
-        op: 'respond_to_elicit',
+        op: "respond_to_elicit",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: stableCommandId('respond_to_elicit', sessionId, elicitId),
+        commandId: stableCommandId("respond_to_elicit", sessionId, elicitId),
         toolSessionId: sessionId,
         elicitId,
         response,
-      })
-      yield* ingestStream(stream)
+      });
+      yield* ingestStream(stream);
     },
 
     *respondToSample(sampleId: string, response: WireSampleResult): Operation<void> {
-      const handle = yield* getHandle()
-      if (handle.pendingRequest && (handle.pendingRequest.type !== 'sample' || handle.pendingRequest.sampleId !== sampleId)) {
-        throw new Error(`Sample ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${sampleId}`)
+      const handle = yield* getHandle();
+      if (
+        handle.pendingRequest &&
+        (handle.pendingRequest.type !== "sample" || handle.pendingRequest.sampleId !== sampleId)
+      ) {
+        throw new Error(
+          `Sample ID mismatch: expected ${JSON.stringify(handle.pendingRequest)}, got ${sampleId}`,
+        );
       }
       const stream = yield* runtimeClient.respondToSample(handle, {
-        op: 'respond_to_sample',
+        op: "respond_to_sample",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: stableCommandId('respond_to_sample', sessionId, sampleId),
+        commandId: stableCommandId("respond_to_sample", sessionId, sampleId),
         toolSessionId: sessionId,
         sampleId,
         response,
-      })
-      yield* ingestStream(stream)
+      });
+      yield* ingestStream(stream);
     },
 
     *emitWakeUp(): Operation<void> {
-      yield* stores.events.waitForChange(sessionId, -1, 0)
+      yield* stores.events.waitForChange(sessionId, -1, 0);
     },
 
     *cancel(reason?: string): Operation<void> {
-      const handle = yield* getHandle()
-      if (handle.status === 'completed' || handle.status === 'failed' || handle.status === 'cancelled' || handle.status === 'orphaned') {
-        return
+      const handle = yield* getHandle();
+      if (
+        handle.status === "completed" ||
+        handle.status === "failed" ||
+        handle.status === "cancelled" ||
+        handle.status === "orphaned"
+      ) {
+        return;
       }
       const stream = yield* runtimeClient.cancel(handle, {
-        op: 'cancel_tool_session',
+        op: "cancel_tool_session",
         protocolVersion: AGENTCORE_TOOL_SESSION_PROTOCOL_VERSION,
-        commandId: stableCommandId('cancel_tool_session', sessionId),
+        commandId: stableCommandId("cancel_tool_session", sessionId),
         toolSessionId: sessionId,
         ...(reason !== undefined && { reason }),
-      })
-      yield* ingestStream(stream)
+      });
+      yield* ingestStream(stream);
     },
-  }
+  };
 
-  return session
+  return session;
 }

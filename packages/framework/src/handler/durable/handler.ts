@@ -44,6 +44,7 @@ import {
   type ToolDefinition,
 } from "../../lib/chat/tool-inventory.ts";
 import { ToolRuntimeContext } from "../../lib/chat/tool-runtime.ts";
+import { HistoryPolicyContext } from "../../lib/chat/history-policy.ts";
 import { useLogger } from "../../lib/logger/index.ts";
 import { bindModel, createBindingSource, stringParam } from "../model-binder.ts";
 import { createStreamingHandler, useHandlerContext } from "../streaming.ts";
@@ -323,6 +324,9 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const agUiRunId = body.runId?.trim() || crypto.randomUUID();
 
       const activeToolRuntime = yield* ToolRuntimeContext.get();
+      // F5: resolve the optional history policy in request scope; the engine
+      // runs in a background writer task without these contexts.
+      const historyPolicy = yield* HistoryPolicyContext.get();
       // Resume validation is pure. Interrupt state is committed only after the
       // crank respond commands are durably accepted by the adapter.
       const plan = planTurn({
@@ -479,6 +483,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           ...(plan.initialToolChoice ? { initialToolChoice: plan.initialToolChoice } : {}),
           toolInventoryEntries: inventoryEntries,
           ...(activeToolRuntime ? { toolRuntime: activeToolRuntime } : {}),
+          ...(historyPolicy ? { historyPolicy } : {}),
           maxIterations,
           conversationId: requestedConversationId,
           agUiRun,
