@@ -19,26 +19,11 @@ const gates: Gate[] = [
     name: "deleted-result-types",
     pattern: "CoreElicitResult|RawElicitResult|RawSampleResult\\b",
     paths: ["packages", "apps"],
-    // temporary re-export aliases during migration still present in framework
-    exclude: [
-      "mcp-tool-types.ts",
-      "index.ts", // re-exports
-      "dist/",
-      "node_modules/",
-      "docs/",
-      "archive/",
-      "unified-tool-types",
-      // Temporary Raw* aliases still imported during migration
-      "packages/framework/",
-      "packages/tool-runtime-local/",
-      "packages/tool-runtime-agentcore/",
-    ],
   },
   {
     name: "dialect-shims",
     pattern: "legacyContextData|spreadContext",
     paths: ["packages", "apps"],
-    exclude: ["dist/", "node_modules/", "docs/", "unified-tool-types"],
   },
   {
     name: "full-cutover-shims",
@@ -56,7 +41,6 @@ const gates: Gate[] = [
       "apps/a2a-review/src",
       "apps/agentcore-tool-session-tracer/src",
     ],
-    exclude: ["dist/", "node_modules/", "__tests__", "docs/", "archive/"],
   },
   {
     name: "as-never-welds",
@@ -69,21 +53,13 @@ const gates: Gate[] = [
       "packages/tool-runtime-agentcore/src",
       "apps/yo-chat/src/server",
     ],
-    exclude: [
-      "dist/",
-      "node_modules/",
-      "__tests__",
-      "docs/",
-      // Temporary residual dual-path execute support in mock-runtime / bridge until McpRuntimeTool.execute is fully deleted
-      "mock-runtime.ts",
-      "bridge-runtime.ts",
-    ],
+    // Negative type tests deliberately construct invalid values with `as never`.
+    exclude: ["__tests__"],
   },
   {
     name: "call-site-casts",
     pattern: "as LocalSessionTool|as AgentCoreMcpTool|as ElicitResult\\b",
     paths: ["apps", "packages"],
-    exclude: ["dist/", "node_modules/", "docs/", "unified-tool-types"],
   },
   {
     name: "inline-type-imports",
@@ -99,20 +75,20 @@ const gates: Gate[] = [
       "apps/yo-chat/src",
       "apps/yo-mcp/src",
     ],
-    exclude: ["dist/", "node_modules/", "__tests__", ".test.ts"],
+    // Dynamic runtime `await import(...)` in tests is legitimate; the gate
+    // targets inline type references in production sources.
+    exclude: ["__tests__", ".test.ts"],
   },
   {
     name: "mcp-runtime-dual-dispatch",
     pattern: "isCanonicalCoreRuntimeTool",
     paths: ["packages", "apps"],
-    exclude: ["dist/", "node_modules/", "docs/", "unified-tool-types"],
   },
   {
     name: "deleted-fold-runtime",
     pattern:
       "spawnFoldDriver|fold-driver|runFoldTurn|resumeSuspendedCallBatch|reattachCall|waitForLogChange|call_batch|CheckpointRecord|FoldSession",
     paths: ["packages/session-contract/src", "packages/framework/src/handler/durable"],
-    exclude: ["dist/", "node_modules/", "__tests__"],
   },
   {
     name: "timer-polled-idle-runtime",
@@ -125,8 +101,6 @@ const gates: Gate[] = [
     // Durable clock.sleep is an authoring operation that reserves a wait pull;
     // it does not call an Effection or platform timer in the crank.
     exclude: [
-      "dist/",
-      "node_modules/",
       "__tests__",
       "packages/session-contract/src/durable-types.ts",
       "packages/session-contract/src/authoring.ts",
