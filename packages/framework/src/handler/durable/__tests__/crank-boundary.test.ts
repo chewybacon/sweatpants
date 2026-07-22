@@ -82,7 +82,11 @@ describe("single crank-turner architecture", () => {
 
     const handler = source("src/handler/durable/handler.ts");
     expect(handler).toContain("source: (_responseTokenBuffer, responseTokenWriter)");
-    expect(handler).toContain("responseTokenBuffer.append");
+    // The sole append site lives in the extracted serialized event stream; the
+    // handler wires it as the one session source.
+    const eventStream = source("src/handler/durable/session-event-stream.ts");
+    expect(eventStream.match(/responseTokenBuffer\.append/g)).toHaveLength(1);
+    expect(handler).not.toContain("responseTokenBuffer.append");
     expect(registry).toContain("buffer.claimWriter");
   });
 });

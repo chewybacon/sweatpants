@@ -15,8 +15,15 @@
  * - threadId: AG-UI wire alias of conversationId (always equal on the wire)
  * - runId: ephemeral AG-UI turn correlator (never keys crank state)
  * - sessionId (X-Session-Id): response-stream / reconnect buffer id only
+ *
+ * This module is the request orchestrator only. The seams it composes:
+ * - request-normalization.ts: body/message normalization, resume mapping
+ * - turn-plan.ts: pure supersession/resume/elicit decision logic
+ * - conversation-projection.ts: internal events -> public wire view
+ * - session-event-stream.ts: engine -> Host-owned buffer with persistence
+ * - hydrate-responses.ts: checkpoint/buffer replay read responses
  */
-import { call, resource, type Operation, type Stream, type Subscription } from "effection";
+import { call, resource, type Operation } from "effection";
 import {
   useSessionRegistryStore,
   useSessionRegistry,
@@ -24,7 +31,6 @@ import {
   type SessionHandle,
   type SessionRegistry,
   type TokenBufferStore,
-  type TokenBufferWriter,
 } from "../../lib/chat/durable-streams/index.ts";
 import { MaxIterationsContext, PersonaResolverContext } from "../../lib/chat/contexts.ts";
 import {
@@ -50,15 +56,8 @@ import {
   activitySnapshotsForMessages,
   toProviderHistorySnapshot,
 } from "../../lib/chat/session/ag-ui-projection.ts";
-import { agUiMessagesToInternalMessages } from "../../lib/chat/session/ag-ui-messages.ts";
-import {
-  replayFramesToConversation,
-  type DurableFrame,
-} from "../../lib/chat/session/durable-history.ts";
-import type { ElicitRequestStreamEvent } from "../../lib/chat/session/streaming.ts";
 import {
   readLatestConversationCheckpoint,
-  recordConversationCheckpoint,
   recordConversationSession,
   resolveLatestConversationSession,
 } from "./conversation-index.ts";
@@ -71,29 +70,35 @@ import {
   parseOffsetParam,
   parseSessionIdFromPath,
   parseTimeoutMs,
-  toOffsetString,
 } from "@sweatpants/durable-streams";
 import type {
   ChatRequestBody,
   DurableChatHandlerConfig,
-  ElicitResponse,
   ProgramRuntimeChatEngineParams,
   ToolSchema,
 } from "./types.ts";
 import type { Runtime } from "../../lib/chat/runtime/index.ts";
 import {
-  deriveResumeScopeFromEntries,
-  deriveResumeScopeId,
   interruptRecordsForThread,
   openInterruptsForThread,
-  registerInterruptsFromRunFinished,
   upsertInterruptRecords,
-  validateResumeEntries,
-  type OpenInterruptRecord,
 } from "./interrupt-registry.ts";
 import { resolvePrivateSystemPrompt } from "./model-context-registry.ts";
 import { readLatestThreadInterruptState, recordThreadInterruptState } from "./interrupt-store.ts";
 import { readLatestThreadSystemPrompt, recordThreadSystemPrompt } from "./model-context-store.ts";
+import { normalizeChatRequestBody } from "./request-normalization.ts";
+import { planTurn } from "./turn-plan.ts";
+import {
+  createEmptyChatEngine,
+  createSerializedEventStream,
+  type ChatEngineSource,
+} from "./session-event-stream.ts";
+import {
+  createConversationHydrateResponse,
+  createStoredConversationCheckpointResponse,
+} from "./hydrate-responses.ts";
+
+export { assertPendingResumeConsistency } from "./conversation-projection.ts";
 
 // =============================================================================
 // PROTOCOL PARAMETER BINDER
@@ -119,342 +124,6 @@ function definitionToToolSchema(definition: ToolDefinition): ToolSchema {
   };
 }
 
-/**
- * Create a serialized event stream from the chat engine.
- * Each event is JSON-serialized for storage in the buffer.
- */
-const PUBLIC_SWEATPANTS_METADATA_KEYS = new Set(["sweatpants/toolName", "sweatpants/key"]);
-
-function sanitizePublicMetadata(
-  metadata: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata ?? {})) {
-    if (!key.startsWith("sweatpants/") || PUBLIC_SWEATPANTS_METADATA_KEYS.has(key)) {
-      sanitized[key] = value;
-    }
-  }
-  return sanitized;
-}
-
-function withPublicMetadata<T extends { metadata?: Record<string, unknown> }>(
-  value: T,
-): Omit<T, "metadata"> & { metadata?: Record<string, unknown> } {
-  const { metadata: rawMetadata, ...rest } = value;
-  const metadata = sanitizePublicMetadata(rawMetadata);
-  return {
-    ...rest,
-    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-  };
-}
-
-function toStrictPublicEvent(event: StreamEvent): StreamEvent | null {
-  switch (event.type) {
-    case "RUN_FINISHED": {
-      const runFinished = event as Extract<StreamEvent, { type: "RUN_FINISHED" }>;
-      if (runFinished.outcome?.type !== "interrupt") {
-        return runFinished;
-      }
-      return {
-        ...runFinished,
-        outcome: {
-          ...runFinished.outcome,
-          interrupts: runFinished.outcome.interrupts.map((interrupt) =>
-            withPublicMetadata(interrupt),
-          ),
-        },
-      };
-    }
-    default:
-      return event;
-  }
-}
-
-/**
- * Create a serialized event stream from the chat engine.
- * Each event is JSON-serialized for storage in the buffer.
- */
-type LiveEventSink = (event: StreamEvent) => Operation<void>;
-type ChatEngineSource =
-  | Stream<StreamEvent, void>
-  | ((liveEvent: LiveEventSink) => Stream<StreamEvent, void>);
-
-function createSerializedEventStream(
-  engine: ChatEngineSource,
-  initialEvents: StreamEvent[] = [],
-  options?: {
-    conversationId?: string;
-    checkpointStore?: TokenBufferStore<string>;
-    responseTokenBuffer?: TokenBufferWriter<StreamEvent>;
-  },
-): Stream<StreamEvent, void> {
-  return resource(function* (provide) {
-    let initialIndex = 0;
-    let emittedCount = 0;
-    let checkpointPersisted = false;
-    const emittedFrames: DurableFrame[] = [];
-
-    function* persistCheckpointIfNeeded(): Operation<void> {
-      if (checkpointPersisted || !options?.conversationId || !options.checkpointStore) {
-        return;
-      }
-      checkpointPersisted = true;
-      const checkpointEvents = yield* buildCheckpointSnapshotEventsFromFrames(emittedFrames);
-      if (checkpointEvents.length === 0) {
-        return;
-      }
-      yield* recordConversationCheckpoint(
-        options.checkpointStore,
-        options.conversationId,
-        JSON.stringify(checkpointEvents),
-      );
-    }
-
-    function* persistInterruptStateIfNeeded(rawEvent: StreamEvent): Operation<void> {
-      if (
-        rawEvent.type !== "RUN_FINISHED" ||
-        !options?.conversationId ||
-        !options.checkpointStore
-      ) {
-        return;
-      }
-
-      yield* recordThreadInterruptState(
-        options.checkpointStore,
-        options.conversationId,
-        interruptRecordsForThread(options.conversationId),
-      );
-    }
-
-    const liveEvent: LiveEventSink = function* (rawEvent) {
-      if (!options?.responseTokenBuffer) {
-        throw new Error("Live event delivery requires the Host-owned token buffer");
-      }
-      registerInterruptsFromRunFinished(rawEvent);
-      yield* persistInterruptStateIfNeeded(rawEvent);
-      const event = toStrictPublicEvent(rawEvent);
-      if (!event) return;
-      const lsn = yield* options.responseTokenBuffer.append([event]);
-      emittedCount = Math.max(emittedCount, lsn);
-      emittedFrames.push({ lsn, event });
-    };
-    const selectedEngine = typeof engine === "function" ? engine(liveEvent) : engine;
-    const subscription = yield* selectedEngine;
-
-    yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, void>> {
-        while (initialIndex < initialEvents.length) {
-          const rawEvent = initialEvents[initialIndex++]!;
-          registerInterruptsFromRunFinished(rawEvent);
-          yield* persistInterruptStateIfNeeded(rawEvent);
-          const event = toStrictPublicEvent(rawEvent);
-          if (!event) {
-            continue;
-          }
-          emittedFrames.push({ lsn: ++emittedCount, event });
-          return { done: false, value: event };
-        }
-
-        while (true) {
-          const result = yield* subscription.next();
-          if (result.done) {
-            yield* persistCheckpointIfNeeded();
-            return { done: true, value: undefined };
-          }
-          registerInterruptsFromRunFinished(result.value);
-          yield* persistInterruptStateIfNeeded(result.value);
-          const event = toStrictPublicEvent(result.value);
-          if (!event) {
-            continue;
-          }
-          emittedFrames.push({ lsn: ++emittedCount, event });
-          return { done: false, value: event };
-        }
-      },
-    });
-  });
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function forwardedClientReplayTraces(forwardedProps: unknown): Record<string, unknown> {
-  if (!isRecord(forwardedProps)) {
-    return {};
-  }
-  const sweatpants = forwardedProps["sweatpants"];
-  if (!isRecord(sweatpants)) {
-    return {};
-  }
-  const traces = sweatpants["clientReplayTraces"];
-  return isRecord(traces) ? traces : {};
-}
-
-function parseToolArguments(value: unknown): Record<string, unknown> {
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      return isRecord(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return isRecord(value) ? value : {};
-}
-
-function normalizeIncomingMessages(messages: unknown): ChatRequestBody["messages"] {
-  if (!Array.isArray(messages)) {
-    return [];
-  }
-  const normalized: ChatRequestBody["messages"] = [];
-
-  for (let index = 0; index < messages.length; index++) {
-    const message = messages[index];
-    if (!isRecord(message)) {
-      continue;
-    }
-
-    const role = message["role"];
-    const id =
-      typeof message["id"] === "string" && message["id"].length > 0
-        ? message["id"]
-        : `${typeof role === "string" ? role : "message"}:${index}`;
-    const content =
-      typeof message["content"] === "string"
-        ? message["content"]
-        : message["content"] === undefined
-          ? ""
-          : JSON.stringify(message["content"]);
-
-    if (role === "assistant") {
-      const toolCalls = Array.isArray(message["tool_calls"])
-        ? message["tool_calls"]
-        : Array.isArray(message["toolCalls"])
-          ? message["toolCalls"]
-          : [];
-      normalized.push({
-        id,
-        role: "assistant" as const,
-        content,
-        ...(toolCalls.length > 0
-          ? {
-              tool_calls: toolCalls.filter(isRecord).map((toolCall) => {
-                const fn = isRecord(toolCall["function"]) ? toolCall["function"] : {};
-                return {
-                  id: typeof toolCall["id"] === "string" ? toolCall["id"] : `tool:${index}`,
-                  type: "function" as const,
-                  function: {
-                    name: typeof fn["name"] === "string" ? fn["name"] : "unknown",
-                    arguments: parseToolArguments(fn["arguments"]),
-                  },
-                };
-              }),
-            }
-          : {}),
-      });
-      continue;
-    }
-
-    if (role === "tool") {
-      const toolCallId =
-        typeof message["tool_call_id"] === "string"
-          ? message["tool_call_id"]
-          : typeof message["toolCallId"] === "string"
-            ? message["toolCallId"]
-            : "";
-      normalized.push({ id, role: "tool" as const, content, tool_call_id: toolCallId });
-      continue;
-    }
-
-    if (role === "activity") {
-      const activityType =
-        typeof message["activityType"] === "string"
-          ? message["activityType"]
-          : "sweatpants:activity";
-      normalized.push({ id, role: "activity" as const, activityType, content });
-      continue;
-    }
-
-    if (role === "developer") {
-      normalized.push({ id, role: "developer" as const, content });
-    } else if (role === "system") {
-      normalized.push({ id, role: "system" as const, content });
-    } else if (role === "reasoning") {
-      normalized.push({ id, role: "reasoning" as const, content });
-    } else if (role === "user") {
-      normalized.push({ id, role: "user" as const, content });
-    }
-  }
-
-  return normalized;
-}
-
-function normalizeChatRequestBody(body: ChatRequestBody): ChatRequestBody {
-  return {
-    ...body,
-    messages: normalizeIncomingMessages(body.messages),
-  };
-}
-
-function mapResumeEntriesToElicitResponses(
-  body: ChatRequestBody,
-  records: OpenInterruptRecord[],
-  runtimeId: string,
-): ElicitResponse[] {
-  const resume = body.resume ?? [];
-  if (resume.length === 0) {
-    return [];
-  }
-
-  const traces = forwardedClientReplayTraces(body.forwardedProps);
-  const recordsByInterruptId = new Map(records.map((record) => [record.interruptId, record]));
-  const mapped: ElicitResponse[] = [];
-
-  for (const entry of resume) {
-    const record = recordsByInterruptId.get(entry.interruptId);
-    if (!record?.toolCallId) {
-      continue;
-    }
-    const result =
-      entry.status === "cancelled"
-        ? { action: "cancel" as const }
-        : mapResolvedResumePayload(entry.payload);
-    const sessionId = record.sessionId ?? record.executionId ?? record.toolCallId;
-    const response: ElicitResponse = {
-      sessionId,
-      callId: record.toolCallId,
-      ...(record.toolName ? { toolName: record.toolName } : {}),
-      elicitId: entry.interruptId,
-      result,
-      ref: {
-        runtimeId: record.runtimeId ?? runtimeId,
-        executionId: record.executionId ?? sessionId,
-        sessionId,
-        callId: record.toolCallId,
-        toolName: record.toolName ?? "",
-      },
-    };
-    const trace = traces[entry.interruptId];
-    if (trace !== undefined) {
-      response.trace = trace as NonNullable<ElicitResponse["trace"]>;
-    }
-    mapped.push(response);
-  }
-
-  return mapped;
-}
-
-function mapResolvedResumePayload(payload: unknown): ElicitResponse["result"] {
-  if (isRecord(payload) && payload["action"] === "accept") {
-    return { action: "accept", content: payload["content"] };
-  }
-  if (isRecord(payload) && payload["action"] === "decline") {
-    return { action: "decline" };
-  }
-  return { action: "accept", content: payload };
-}
-
 function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runtime {
   return {
     stream(model, context, options) {
@@ -474,224 +143,6 @@ function createRuntimeFromModelProviderDriver(driver: ModelProviderDriver): Runt
   };
 }
 
-function recordToElicit(record: OpenInterruptRecord): ElicitRequestStreamEvent | null {
-  if (!record.toolCallId) {
-    return null;
-  }
-  return {
-    type: "elicit_request",
-    sessionId: record.toolCallId,
-    callId: record.toolCallId,
-    toolName: record.toolName ?? "unknown",
-    elicitId: record.interruptId,
-    key:
-      typeof record.publicMetadata?.["sweatpants/key"] === "string"
-        ? String(record.publicMetadata["sweatpants/key"])
-        : record.interruptId,
-    message: record.message ?? "Input required",
-    schema: record.responseSchema && isRecord(record.responseSchema) ? record.responseSchema : {},
-  };
-}
-
-function publicInterruptsFromRecords(records: OpenInterruptRecord[]) {
-  return records.map((record) => {
-    const metadata = sanitizePublicMetadata(record.publicMetadata);
-    return {
-      id: record.interruptId,
-      reason: record.reason,
-      ...(record.message ? { message: record.message } : {}),
-      ...(record.toolCallId ? { toolCallId: record.toolCallId } : {}),
-      ...(record.responseSchema && isRecord(record.responseSchema)
-        ? { responseSchema: record.responseSchema }
-        : {}),
-      ...(record.expiresAt ? { expiresAt: record.expiresAt } : {}),
-      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
-    };
-  });
-}
-
-/**
- * REQ-042: the RUN_FINISHED interrupt marker is the authoritative pending resume
- * source; STATE_SNAPSHOT.pendingClientActions is a derived compatibility view.
- * Both derive from the same open interrupt records, so any divergence is an
- * implementation error. This guard rejects contradictory pending state before
- * it can be emitted to clients.
- */
-export function assertPendingResumeConsistency(
-  elicits: ElicitRequestStreamEvent[],
-  openInterrupts: Pick<OpenInterruptRecord, "interruptId" | "toolCallId">[],
-): void {
-  const interruptIds = new Set(openInterrupts.map((record) => record.interruptId));
-  for (const elicit of elicits) {
-    if (!interruptIds.has(elicit.elicitId)) {
-      throw new Error(
-        `Pending resume state mismatch: derived pendingClientActions references interrupt "${elicit.elicitId}" that is not in the authoritative open interrupt set`,
-      );
-    }
-  }
-  const representable = openInterrupts.filter((record) => record.toolCallId);
-  if (elicits.length !== representable.length) {
-    throw new Error(
-      `Pending resume state mismatch: ${representable.length} open interrupt(s) with toolCallId but ${elicits.length} derived pendingClientActions`,
-    );
-  }
-}
-
-function createSyntheticFrameStream(frames: DurableFrame[]): Stream<string, void> {
-  return resource(function* (provide) {
-    let emitted = false;
-    const chunk = frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n";
-    yield* provide({
-      *next(): Operation<IteratorResult<string, void>> {
-        if (emitted) {
-          return { done: true, value: undefined };
-        }
-        emitted = true;
-        return { done: false, value: chunk };
-      },
-    });
-  });
-}
-
-function parseBufferedFrames(tokens: StreamEvent[]): DurableFrame[] {
-  return tokens.map((event, index) => ({ lsn: index + 1, event }));
-}
-
-function initialSnapshotBoundary(frames: DurableFrame[]): {
-  messages: Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }> | null;
-  activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>>;
-  state: Extract<StreamEvent, { type: "STATE_SNAPSHOT" }> | null;
-  nextIndex: number;
-} {
-  let index = 0;
-  if (frames[index]?.event.type === "RUN_STARTED") {
-    index += 1;
-  }
-
-  const messages =
-    frames[index]?.event.type === "MESSAGES_SNAPSHOT"
-      ? (frames[index++]!.event as Extract<StreamEvent, { type: "MESSAGES_SNAPSHOT" }>)
-      : null;
-
-  const activities: Array<Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>> = [];
-  while (frames[index]?.event.type === "ACTIVITY_SNAPSHOT") {
-    activities.push(frames[index++]!.event as Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>);
-  }
-
-  const state =
-    frames[index]?.event.type === "STATE_SNAPSHOT"
-      ? (frames[index++]!.event as Extract<StreamEvent, { type: "STATE_SNAPSHOT" }>)
-      : null;
-
-  return { messages, activities, state, nextIndex: index };
-}
-
-function sanitizeBoundarySnapshot(boundary: ReturnType<typeof initialSnapshotBoundary>) {
-  const internalMessages = boundary.messages
-    ? agUiMessagesToInternalMessages(boundary.messages.messages)
-    : [];
-  const messages = boundary.messages
-    ? {
-        type: "MESSAGES_SNAPSHOT" as const,
-        messages: toProviderHistorySnapshot(internalMessages, undefined),
-      }
-    : null;
-  const extractedActivities = activitySnapshotsForMessages(internalMessages, undefined);
-  const activitiesByMessageId = new Map<
-    string,
-    Extract<StreamEvent, { type: "ACTIVITY_SNAPSHOT" }>
-  >();
-  for (const activity of [...extractedActivities, ...boundary.activities]) {
-    activitiesByMessageId.set(activity.messageId, activity);
-  }
-  return {
-    messages,
-    activities: [...activitiesByMessageId.values()],
-    state: boundary.state,
-    nextIndex: boundary.nextIndex,
-  };
-}
-
-function* buildCheckpointSnapshotEventsFromFrames(
-  frames: DurableFrame[],
-): Operation<StreamEvent[]> {
-  const replay = yield* replayFramesToConversation(frames);
-  return [
-    {
-      type: "MESSAGES_SNAPSHOT",
-      messages: toProviderHistorySnapshot(replay.history, replay.replayState),
-    },
-    ...activitySnapshotsForMessages(replay.history, replay.replayState),
-  ];
-}
-
-function storedCheckpointHydrateEvents(
-  checkpointEvents: StreamEvent[],
-  conversationId: string,
-): StreamEvent[] {
-  const openInterrupts = openInterruptsForThread(conversationId);
-  const elicits = openInterrupts
-    .map(recordToElicit)
-    .filter((value): value is ElicitRequestStreamEvent => value !== null);
-  assertPendingResumeConsistency(elicits, openInterrupts);
-
-  return [
-    ...checkpointEvents,
-    {
-      type: "STATE_SNAPSHOT",
-      snapshot: buildAgUiCustomState({ elicits }),
-    },
-    ...(openInterrupts.length > 0
-      ? [
-          {
-            type: "RUN_FINISHED" as const,
-            threadId: conversationId,
-            runId: openInterrupts[0]?.interruptedRunId ?? conversationId,
-            outcome: {
-              type: "interrupt" as const,
-              interrupts: publicInterruptsFromRecords(openInterrupts),
-            },
-          },
-        ]
-      : []),
-  ];
-}
-
-function* createStoredConversationCheckpointResponse(params: {
-  ctx: { request: Request; headers: Headers; status?: number };
-  conversationId: string;
-  checkpointEvents: StreamEvent[];
-  parsedOffset: ReturnType<typeof parseOffsetParam>;
-}): Operation<{
-  subscription: Subscription<string, void>;
-  cleanup?: () => Operation<void>;
-}> {
-  const { ctx, conversationId, checkpointEvents, parsedOffset } = params;
-  const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
-  const resetRequested = offsetRequested && !parsedOffset.isNow && parsedOffset.value !== 0;
-  const emptyRequested = offsetRequested && (parsedOffset.isNow || parsedOffset.value === 0);
-
-  ctx.headers.set("Stream-Next-Offset", toOffsetString(0));
-  ctx.headers.set("Stream-Up-To-Date", "true");
-  if (resetRequested) {
-    ctx.headers.set("Stream-Cursor-Reset", "true");
-  }
-
-  if (ctx.request.method.toUpperCase() === "HEAD" || emptyRequested) {
-    const subscription = yield* createEmptyStream();
-    return { subscription };
-  }
-
-  const subscription = yield* createSyntheticFrameStream(
-    storedCheckpointHydrateEvents(checkpointEvents, conversationId).map((event, index) => ({
-      lsn: index + 1,
-      event,
-    })),
-  );
-
-  return { subscription };
-}
-
 function* restoreThreadInterruptStateIfNeeded(
   bufferStore: TokenBufferStore<string>,
   threadId: string | undefined,
@@ -704,108 +155,6 @@ function* restoreThreadInterruptStateIfNeeded(
     return;
   }
   upsertInterruptRecords(stored);
-}
-
-function* createConversationHydrateResponse(params: {
-  ctx: { request: Request; headers: Headers };
-  registry: SessionRegistry<StreamEvent>;
-  session: SessionHandle<StreamEvent>;
-  sessionId: string;
-  conversationId: string;
-  parsedOffset: ReturnType<typeof parseOffsetParam>;
-}): Operation<{
-  subscription: Subscription<string, void>;
-  cleanup?: () => Operation<void>;
-}> {
-  const { ctx, registry, session, sessionId, conversationId, parsedOffset } = params;
-  const { tokens, lsn } = yield* session.buffer.read(0);
-  const frames = parseBufferedFrames(tokens);
-  const complete = yield* session.buffer.isComplete();
-  const openInterrupts = openInterruptsForThread(conversationId);
-  const elicits = openInterrupts
-    .map(recordToElicit)
-    .filter((value): value is ElicitRequestStreamEvent => value !== null);
-  assertPendingResumeConsistency(elicits, openInterrupts);
-  const offsetRequested = new URL(ctx.request.url).searchParams.has("offset");
-  let resetRequested = false;
-
-  ctx.headers.set("Stream-Next-Offset", toOffsetString(lsn));
-
-  let syntheticEvents: StreamEvent[] = [];
-
-  if (complete) {
-    resetRequested = offsetRequested && !parsedOffset.isNow;
-    const replay = yield* replayFramesToConversation(frames);
-    syntheticEvents = [
-      {
-        type: "MESSAGES_SNAPSHOT",
-        messages: toProviderHistorySnapshot(replay.history, replay.replayState),
-      },
-      ...activitySnapshotsForMessages(replay.history, replay.replayState),
-      {
-        type: "STATE_SNAPSHOT",
-        snapshot: buildAgUiCustomState({ elicits }),
-      },
-      ...(openInterrupts.length > 0
-        ? [
-            {
-              type: "RUN_FINISHED" as const,
-              threadId: conversationId,
-              runId: openInterrupts[0]?.interruptedRunId ?? sessionId,
-              outcome: {
-                type: "interrupt" as const,
-                interrupts: publicInterruptsFromRecords(openInterrupts),
-              },
-            },
-          ]
-        : []),
-    ];
-  } else {
-    const boundary = sanitizeBoundarySnapshot(initialSnapshotBoundary(frames));
-    let tailStartIndex = boundary.nextIndex;
-
-    if (parsedOffset.isNow) {
-      tailStartIndex = lsn;
-    } else if (offsetRequested) {
-      if (
-        parsedOffset.value !== null &&
-        parsedOffset.value >= boundary.nextIndex &&
-        parsedOffset.value <= lsn
-      ) {
-        tailStartIndex = parsedOffset.value;
-      } else {
-        resetRequested = true;
-      }
-    }
-
-    syntheticEvents = [
-      ...(boundary.messages ? [boundary.messages] : []),
-      ...boundary.activities,
-      ...(boundary.state
-        ? [boundary.state]
-        : [
-            {
-              type: "STATE_SNAPSHOT" as const,
-              snapshot: buildAgUiCustomState({ elicits }),
-            },
-          ]),
-      ...frames.slice(tailStartIndex).map((frame) => frame.event),
-    ];
-  }
-
-  if (resetRequested) {
-    ctx.headers.set("Stream-Cursor-Reset", "true");
-  }
-
-  const syntheticFrames = syntheticEvents.map((event, index) => ({ lsn: index + 1, event }));
-
-  const subscription = yield* createSyntheticFrameStream(syntheticFrames);
-  return {
-    subscription,
-    cleanup: function* () {
-      yield* registry.release(sessionId);
-    },
-  };
 }
 
 // =============================================================================
@@ -824,16 +173,6 @@ function* createConversationHydrateResponse(params: {
  * @param config - Handler configuration
  * @returns Fetch handler function
  */
-function createEmptyChatEngine(): Stream<StreamEvent, void> {
-  return resource(function* (provide) {
-    yield* provide({
-      *next(): Operation<IteratorResult<StreamEvent, void>> {
-        return { done: true, value: undefined };
-      },
-    });
-  });
-}
-
 export function createDurableChatHandler(config: DurableChatHandlerConfig) {
   const { setup, maxToolIterations = 10 } = config;
 
@@ -982,52 +321,19 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const agUiThreadId = durableConversationId;
       yield* restoreThreadInterruptStateIfNeeded(bufferStore, agUiThreadId);
       const agUiRunId = body.runId?.trim() || crypto.randomUUID();
-      const requestedResumeScopeId = deriveResumeScopeId(agUiThreadId, body.parentRunId);
-      const resumeScopeFromEntries = deriveResumeScopeFromEntries(body.resume);
-      const openInterrupts = openInterruptsForThread(agUiThreadId);
-      const hasOpenInterrupts = openInterrupts.length > 0;
-      const supersedeOpenProgramTurn =
-        method === "POST" &&
-        hasOpenInterrupts &&
-        body.resume === undefined &&
-        body.elicitResponses === undefined &&
-        body.pluginAbort === undefined &&
-        body.messages.some((message) => message.role === "user");
-      const effectivePluginAbort =
-        body.pluginAbort ??
-        (supersedeOpenProgramTurn
-          ? {
-              sessionId:
-                openInterrupts[0]?.toolCallId ?? openInterrupts[0]?.interruptId ?? agUiRunId,
-              reason: "superseded_by_user_message",
-            }
-          : undefined);
-      const resumeValidation = effectivePluginAbort
-        ? null
-        : body.resume
-          ? requestedResumeScopeId || resumeScopeFromEntries
-            ? validateResumeEntries({
-                threadId: resumeScopeFromEntries?.threadId ?? agUiThreadId,
-                scopeId: requestedResumeScopeId ?? resumeScopeFromEntries!.scopeId,
-                runId: agUiRunId,
-                resume: body.resume,
-              })
-            : ({
-                ok: false,
-                code: "INVALID_RESUME",
-                message: "Unable to determine resume scope",
-              } as const)
-          : hasOpenInterrupts && requestedResumeScopeId
-            ? validateResumeEntries({
-                threadId: agUiThreadId,
-                scopeId: requestedResumeScopeId,
-                runId: agUiRunId,
-                resume: [],
-              })
-            : null;
+
+      const activeToolRuntime = yield* ToolRuntimeContext.get();
       // Resume validation is pure. Interrupt state is committed only after the
       // crank respond commands are durably accepted by the adapter.
-      const directElicitResponses = body.elicitResponses ?? [];
+      const plan = planTurn({
+        body,
+        method,
+        threadId: agUiThreadId,
+        runId: agUiRunId,
+        openInterrupts: openInterruptsForThread(agUiThreadId),
+        toolRuntimeId: activeToolRuntime?.id ?? "program-runtime",
+      });
+
       log.debug(
         { provider: model.provider, model: model.id, api: model.api },
         "model provider configured",
@@ -1045,21 +351,6 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       log.debug("getting session registry");
       const registry: SessionRegistry<StreamEvent> = yield* useSessionRegistry<StreamEvent>();
       log.debug("session registry acquired");
-
-      const activeToolRuntime = yield* ToolRuntimeContext.get();
-
-      const publicResumeResponses = resumeValidation?.ok
-        ? mapResumeEntriesToElicitResponses(
-            body,
-            resumeValidation.records,
-            activeToolRuntime?.id ?? "program-runtime",
-          )
-        : [];
-      const effectiveElicitResponses =
-        directElicitResponses.length > 0 ? directElicitResponses : publicResumeResponses;
-      const initialToolChoice = effectiveElicitResponses.length
-        ? undefined
-        : body.initialToolChoice;
 
       // Build tool schemas
       const enabledToolNames = new Set<string>();
@@ -1140,8 +431,8 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         {
           sessionId,
           isReconnect,
-          hasElicitResponses: effectiveElicitResponses.length > 0,
-          elicitResponseCount: effectiveElicitResponses.length,
+          hasElicitResponses: plan.effectiveElicitResponses.length > 0,
+          elicitResponseCount: plan.effectiveElicitResponses.length,
         },
         "determining path",
       );
@@ -1169,7 +460,11 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         const programDriverNativeTools = yield* useOptionalProgramDriverNativeTools();
 
         const resumePreflightError =
-          resumeValidation && !resumeValidation.ok ? resumeValidation : null;
+          plan.resumeValidation && !plan.resumeValidation.ok ? plan.resumeValidation : null;
+        const acceptedResume =
+          plan.resumeValidation?.ok && !plan.resumeValidation.idempotent
+            ? plan.resumeValidation
+            : null;
 
         // Create the chat engine. If public resume validation failed, use an
         // empty engine and expose the failure as a schema-valid RUN_ERROR before
@@ -1181,19 +476,19 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
           runtime,
           model,
           ...(streamOptions ? { streamOptions } : {}),
-          ...(initialToolChoice ? { initialToolChoice } : {}),
+          ...(plan.initialToolChoice ? { initialToolChoice: plan.initialToolChoice } : {}),
           toolInventoryEntries: inventoryEntries,
           ...(activeToolRuntime ? { toolRuntime: activeToolRuntime } : {}),
           maxIterations,
           conversationId: requestedConversationId,
           agUiRun,
-          ...(effectiveElicitResponses.length > 0 && {
-            elicitResponses: effectiveElicitResponses,
+          ...(plan.effectiveElicitResponses.length > 0 && {
+            elicitResponses: plan.effectiveElicitResponses,
           }),
-          ...(resumeValidation?.ok && !resumeValidation.idempotent
+          ...(acceptedResume
             ? {
                 onResumeAccepted: function* (): Operation<void> {
-                  upsertInterruptRecords(resumeValidation.records);
+                  upsertInterruptRecords(acceptedResume.records);
                   yield* recordThreadInterruptState(
                     bufferStore,
                     agUiThreadId,
@@ -1202,7 +497,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                 },
               }
             : {}),
-          ...(effectivePluginAbort && { pluginAbort: effectivePluginAbort }),
+          ...(plan.effectivePluginAbort && { pluginAbort: plan.effectivePluginAbort }),
         };
         const engineSource: ChatEngineSource = resumePreflightError
           ? createEmptyChatEngine()
@@ -1215,7 +510,7 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
                   ? { foreignEffects: programDriverForeignEffects }
                   : {}),
                 ...(programDriverNativeTools ? { nativeTools: programDriverNativeTools } : {}),
-                ...(supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
+                ...(plan.supersedeOpenProgramTurn ? { continueAfterCancellation: true } : {}),
               });
         log.debug({ sessionId }, "new session path: chat engine created");
 
