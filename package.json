@@ -27,7 +27,6 @@
         "check": "tsc -b && pnpm check:types-gates",
         "validate:exports": "tsx scripts/validate-package-exports.ts",
         "validate:product-surface": "tsx scripts/validate-product-surface.ts",
-        "verify:generated": "pnpm -C apps/yo-chat verify:generated",
         "copilot:auth": "tsx scripts/copilot-auth.ts status",
         "copilot:auth:status": "tsx scripts/copilot-auth.ts status",
         "copilot:auth:login": "tsx scripts/copilot-auth.ts login",

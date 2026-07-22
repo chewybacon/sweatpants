@@ -38,24 +38,22 @@ import { installYoChatToolRuntime } from "@/server/tool-runtime-installation";
 import { withDefaultSystemPrompt } from "@/server/default-system-prompt";
 import { createPluginSamplingProvider } from "@/server/plugin-sampling-provider";
 import {
-  YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL,
-  yoChatGeneratedToolSessionWorkerConfig,
+  YO_CHAT_TOOL_WORKER_ENTRY_URL,
+  yoChatToolSessionWorkerConfig,
 } from "@/server/tool-worker-config";
 
 import { handlerToChatFetch, type ChatBinding } from "./chat-fetch.ts";
 
 function* setupTierAWorkerRuntime(): Operation<void> {
-  const workerGenPath = fileURLToPath(YO_CHAT_GENERATED_TOOL_WORKER_ENTRY_URL);
-  if (!existsSync(workerGenPath)) {
-    throw new Error(
-      `[outside-in:tier-a] generated worker entry not found at ${workerGenPath}. Run \`pnpm -C apps/yo-chat generate:tools\`.`,
-    );
+  const workerEntryPath = fileURLToPath(YO_CHAT_TOOL_WORKER_ENTRY_URL);
+  if (!existsSync(workerEntryPath)) {
+    throw new Error(`[outside-in:tier-a] worker entry not found at ${workerEntryPath}.`);
   }
 
   const store = createInMemoryToolSessionStore();
   const samplingProvider = createPluginSamplingProvider();
   const registry: ToolSessionRegistry = yield* createToolSessionRegistry(store, {
-    worker: yoChatGeneratedToolSessionWorkerConfig,
+    worker: yoChatToolSessionWorkerConfig,
   });
   const manager = yield* createPluginSessionManager({
     registry,

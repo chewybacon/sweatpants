@@ -9,15 +9,22 @@
  *
  * Uses pipeline: 'math' (markdown + KaTeX math rendering)
  */
-import { createFileRoute } from '@tanstack/react-router'
-import { useState, useRef, useEffect } from 'react'
-import { useChat, type ChatMessage, type MessagePart, type TextPart, type ReasoningPart, type ToolCallPart } from '@sweatpants/react-chat'
-import { tools } from '@/__generated__/tool-registry.gen'
-import 'katex/dist/katex.min.css'
+import { createFileRoute } from "@tanstack/react-router";
+import { useState, useRef, useEffect } from "react";
+import {
+  useChat,
+  type ChatMessage,
+  type MessagePart,
+  type TextPart,
+  type ReasoningPart,
+  type ToolCallPart,
+} from "@sweatpants/react-chat";
+import { calculator } from "@/tools/calculator";
+import "katex/dist/katex.min.css";
 
-export const Route = createFileRoute('/chat/math/')({
+export const Route = createFileRoute("/chat/math/")({
   component: MathAssistantDemo,
-})
+});
 
 // =============================================================================
 // Message Part Components
@@ -28,11 +35,11 @@ export const Route = createFileRoute('/chat/math/')({
  * Collapsible by default, shows a preview when collapsed.
  */
 function ReasoningPartView({ part }: { part: ReasoningPart }) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  
+  const [isExpanded, setIsExpanded] = useState(false);
+
   // Get preview text (strip HTML for preview)
-  const previewText = part.content.slice(0, 60).replace(/\n/g, ' ')
-  
+  const previewText = part.content.slice(0, 60).replace(/\n/g, " ");
+
   return (
     <div className="group mb-3">
       <button
@@ -40,57 +47,53 @@ function ReasoningPartView({ part }: { part: ReasoningPart }) {
         className="w-full flex items-center gap-2 text-left hover:bg-slate-800/30 rounded transition-colors p-1 -m-1"
       >
         <div className="flex items-center gap-2 text-xs text-purple-400/70">
-          <span className="text-[10px] font-mono">{isExpanded ? 'v' : '>'}</span>
-          <span className="font-semibold uppercase tracking-wider">
-            Reasoning
-          </span>
+          <span className="text-[10px] font-mono">{isExpanded ? "v" : ">"}</span>
+          <span className="font-semibold uppercase tracking-wider">Reasoning</span>
           {!isExpanded && (
-            <span className="text-purple-400/50 truncate max-w-xs">
-              {previewText}...
-            </span>
+            <span className="text-purple-400/50 truncate max-w-xs">{previewText}...</span>
           )}
         </div>
       </button>
       {isExpanded && (
         <div className="mt-2 bg-purple-950/20 border border-purple-900/30 rounded-lg p-3">
-          <div 
+          <div
             className="prose prose-invert prose-sm prose-purple max-w-none text-purple-300/80 leading-relaxed"
             dangerouslySetInnerHTML={{ __html: part.rendered }}
           />
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /**
  * Renders a tool call part with expandable arguments and results.
  */
 function ToolCallPartView({ part }: { part: ToolCallPart }) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  
-  const isComplete = part.state === 'complete'
-  const isError = part.state === 'error'
-  const isPending = part.state === 'pending' || part.state === 'running'
-  
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const isComplete = part.state === "complete";
+  const isError = part.state === "error";
+  const isPending = part.state === "pending" || part.state === "running";
+
   // Format arguments for display
   const formatArgs = (args: unknown): string => {
-    if (typeof args === 'string') {
+    if (typeof args === "string") {
       try {
-        return JSON.stringify(JSON.parse(args), null, 2)
+        return JSON.stringify(JSON.parse(args), null, 2);
       } catch {
-        return args
+        return args;
       }
     }
-    return JSON.stringify(args, null, 2)
-  }
-  
+    return JSON.stringify(args, null, 2);
+  };
+
   // Format result for display
   const formatResult = (result: unknown): string => {
-    if (typeof result === 'string') return result
-    return JSON.stringify(result, null, 2)
-  }
-  
+    if (typeof result === "string") return result;
+    return JSON.stringify(result, null, 2);
+  };
+
   return (
     <div className="border border-slate-800 bg-slate-900/50 rounded overflow-hidden max-w-xl mb-3">
       <button
@@ -107,36 +110,28 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
         </div>
 
         {/* Tool Name */}
-        <div className="font-mono text-xs text-slate-300 font-medium">
-          {part.name}
-        </div>
+        <div className="font-mono text-xs text-slate-300 font-medium">{part.name}</div>
 
         {/* Args Preview */}
         <div className="flex-1 font-mono text-xs text-slate-500 truncate">
-          {typeof part.arguments === 'string' ? part.arguments : JSON.stringify(part.arguments)}
+          {typeof part.arguments === "string" ? part.arguments : JSON.stringify(part.arguments)}
         </div>
 
         {/* Toggle Icon */}
-        <div className="text-slate-600 text-[10px] font-mono">
-          {isExpanded ? 'v' : '>'}
-        </div>
+        <div className="text-slate-600 text-[10px] font-mono">{isExpanded ? "v" : ">"}</div>
       </button>
 
       {/* Expanded Details */}
       {isExpanded && (
         <div className="border-t border-slate-800 bg-slate-950 p-3 font-mono text-xs overflow-x-auto">
-          <div className="text-slate-500 mb-1 uppercase tracking-wider text-[10px]">
-            Arguments
-          </div>
+          <div className="text-slate-500 mb-1 uppercase tracking-wider text-[10px]">Arguments</div>
           <pre className="text-slate-300 mb-3 whitespace-pre-wrap">
             {formatArgs(part.arguments)}
           </pre>
 
           {isComplete && part.result !== undefined && (
             <>
-              <div className="text-green-600 mb-1 uppercase tracking-wider text-[10px]">
-                Result
-              </div>
+              <div className="text-green-600 mb-1 uppercase tracking-wider text-[10px]">Result</div>
               <pre className="text-green-400 whitespace-pre-wrap">
                 {String(formatResult(part.result))}
               </pre>
@@ -145,18 +140,14 @@ function ToolCallPartView({ part }: { part: ToolCallPart }) {
 
           {isError && part.error && (
             <>
-              <div className="text-red-600 mb-1 uppercase tracking-wider text-[10px]">
-                Error
-              </div>
-              <pre className="text-red-400 whitespace-pre-wrap">
-                {part.error}
-              </pre>
+              <div className="text-red-600 mb-1 uppercase tracking-wider text-[10px]">Error</div>
+              <pre className="text-red-400 whitespace-pre-wrap">{part.error}</pre>
             </>
           )}
         </div>
       )}
     </div>
-  )
+  );
 }
 
 /**
@@ -166,34 +157,32 @@ function TextPartView({ part, isStreaming = false }: { part: TextPart; isStreami
   return (
     <div className="prose prose-invert prose-sm max-w-none leading-relaxed">
       <div dangerouslySetInnerHTML={{ __html: part.rendered }} />
-      {isStreaming && (
-        <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />
-      )}
+      {isStreaming && <span className="inline-block w-2 h-4 bg-cyan-500 ml-0.5 animate-pulse" />}
     </div>
-  )
+  );
 }
 
 /**
  * Universal MessagePart renderer - handles all part types in timeline order.
  */
-function MessagePartView({ 
-  part, 
+function MessagePartView({
+  part,
   isStreaming = false,
   isActivePart = false,
-}: { 
-  part: MessagePart
-  isStreaming?: boolean
-  isActivePart?: boolean
+}: {
+  part: MessagePart;
+  isStreaming?: boolean;
+  isActivePart?: boolean;
 }) {
   switch (part.type) {
-    case 'reasoning':
-      return <ReasoningPartView part={part} />
-    case 'tool-call':
-      return <ToolCallPartView part={part} />
-    case 'text':
-      return <TextPartView part={part} isStreaming={isStreaming && isActivePart} />
+    case "reasoning":
+      return <ReasoningPartView part={part} />;
+    case "tool-call":
+      return <ToolCallPartView part={part} />;
+    case "text":
+      return <TextPartView part={part} isStreaming={isStreaming && isActivePart} />;
     default:
-      return null
+      return null;
   }
 }
 
@@ -205,19 +194,19 @@ function MessagePartView({
  * Renders a complete message with all its parts in timeline order.
  */
 function Message({ message }: { message: ChatMessage }) {
-  const isUser = message.role === 'user'
-  const isSystem = message.role === 'system'
+  const isUser = message.role === "user";
+  const isSystem = message.role === "system";
 
   return (
-    <div className={`mb-8 ${isUser ? 'text-right' : ''}`}>
-      <div className={`inline-block max-w-[85%] ${isUser ? '' : 'w-full'}`}>
+    <div className={`mb-8 ${isUser ? "text-right" : ""}`}>
+      <div className={`inline-block max-w-[85%] ${isUser ? "" : "w-full"}`}>
         {/* Role label */}
         <div
           className={`text-xs mb-1 font-bold tracking-wider uppercase ${
-            isUser ? 'text-cyan-500' : 'text-purple-500'
+            isUser ? "text-cyan-500" : "text-purple-500"
           }`}
         >
-          {isUser ? 'You' : isSystem ? 'System' : 'Assistant'}
+          {isUser ? "You" : isSystem ? "System" : "Assistant"}
           {message.isStreaming && (
             <span className="ml-2 text-emerald-500 animate-pulse">thinking...</span>
           )}
@@ -227,20 +216,20 @@ function Message({ message }: { message: ChatMessage }) {
         <div
           className={`p-4 rounded-lg ${
             isUser
-              ? 'bg-cyan-950/30 border border-cyan-900/50 text-cyan-100'
-              : 'bg-slate-800/50 text-slate-200'
+              ? "bg-cyan-950/30 border border-cyan-900/50 text-cyan-100"
+              : "bg-slate-800/50 text-slate-200"
           }`}
         >
           {/* Render all parts in timeline order */}
           {message.parts.map((part, index) => (
-            <MessagePartView 
-              key={part.id} 
+            <MessagePartView
+              key={part.id}
               part={part}
               isStreaming={message.isStreaming}
               isActivePart={index === message.parts.length - 1}
             />
           ))}
-          
+
           {/* Show loading if streaming but no parts yet */}
           {message.isStreaming && message.parts.length === 0 && (
             <div className="text-slate-500 flex items-center gap-2">
@@ -251,7 +240,7 @@ function Message({ message }: { message: ChatMessage }) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 
 // =============================================================================
@@ -259,35 +248,27 @@ function Message({ message }: { message: ChatMessage }) {
 // =============================================================================
 
 function MathAssistantDemo() {
-  const {
-    messages,
-    isStreaming,
-    pipelineReady,
-    send,
-    abort,
-    reset,
-    error,
-  } = useChat({
+  const { messages, isStreaming, pipelineReady, send, abort, reset, error } = useChat({
     // Use math pipeline: markdown + KaTeX
-    pipeline: 'math',
+    pipeline: "math",
     // Enable the calculator tool
-    tools: [tools.calculator],
-  })
+    tools: [calculator],
+  });
 
-  const [input, setInput] = useState('')
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isStreaming) return
-    send(input.trim())
-    setInput('')
-  }
+    e.preventDefault();
+    if (!input.trim() || isStreaming) return;
+    send(input.trim());
+    setInput("");
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 font-mono">
@@ -295,9 +276,7 @@ function MathAssistantDemo() {
         {/* Header */}
         <div className="mb-8 flex items-end justify-between border-b border-slate-800 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-cyan-400 mb-2">
-              Math Assistant
-            </h1>
+            <h1 className="text-3xl font-bold text-cyan-400 mb-2">Math Assistant</h1>
             <p className="text-slate-400 text-sm">
               Parts-based model with pipeline: 'math' (markdown + KaTeX)
             </p>
@@ -330,19 +309,19 @@ function MathAssistantDemo() {
               <p>Ask me a math question...</p>
               <div className="flex gap-2 text-xs flex-wrap justify-center">
                 <button
-                  onClick={() => setInput('Calculate sqrt(12345) * pi')}
+                  onClick={() => setInput("Calculate sqrt(12345) * pi")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "sqrt(12345) * pi"
                 </button>
                 <button
-                  onClick={() => setInput('Solve 2x + 5 = 15. Show your work.')}
+                  onClick={() => setInput("Solve 2x + 5 = 15. Show your work.")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "Solve 2x + 5 = 15"
                 </button>
                 <button
-                  onClick={() => setInput('What is the integral of x^2 from 0 to 1?')}
+                  onClick={() => setInput("What is the integral of x^2 from 0 to 1?")}
                   className="px-3 py-1 bg-slate-800 hover:bg-slate-700 rounded-full transition-colors"
                 >
                   "integral of x^2"
@@ -372,11 +351,7 @@ function MathAssistantDemo() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isStreaming
-                ? 'Waiting for response...'
-                : 'Type a math problem...'
-            }
+            placeholder={isStreaming ? "Waiting for response..." : "Type a math problem..."}
             disabled={isStreaming}
             className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-6 pr-32 py-4 text-lg text-slate-100 placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all disabled:opacity-50"
           />
@@ -413,14 +388,12 @@ function MathAssistantDemo() {
           <div className="flex items-center gap-4">
             <span>
               <span className="text-emerald-600">pipeline:</span>
-              {' math'}
+              {" math"}
             </span>
-            <span className="text-cyan-400">
-              {messages.length} messages
-            </span>
+            <span className="text-cyan-400">{messages.length} messages</span>
           </div>
         </div>
       </div>
     </div>
-  )
+  );
 }

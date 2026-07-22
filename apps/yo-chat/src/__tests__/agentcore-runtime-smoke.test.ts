@@ -34,7 +34,7 @@ describe("yo-chat AgentCore runtime smoke", () => {
       getSharedRedisClient: async () => null,
     }));
 
-    vi.doMock("../__generated__/tool-worker.gen.ts?modulePath", () => ({
+    vi.doMock("../server/tool-worker.ts?modulePath", () => ({
       default: "file:///tmp/tool-worker.js",
     }));
 

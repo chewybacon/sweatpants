@@ -55,18 +55,13 @@ Live-provider tests are separate because auth, provider availability, and model 
 - Full logs belong under `.artifacts/landing/<run>/`. Read the bounded failure tail first; do not load complete logs into agent context unless the bounded diagnostics are insufficient.
 - Timeout changes require concrete evidence of forward progress immediately before the deadline. Never escalate timeouts speculatively.
 
-### Generated Files
+### Tool Composition
 
-Generated files must be produced by their generator, not hand-edited.
-
-For yo-chat tool generation:
-
-```bash
-pnpm -C apps/yo-chat generate:tools
-pnpm verify:generated
-```
-
-If generated output is stale, regenerate it and review the generated diff. Do not patch generated artifacts manually as the primary fix.
+Tool composition is code-first: applications author explicit tool lists and a
+hand-written worker entry (see `apps/yo-chat/src/server/worker-tools.ts` and
+`tool-worker.ts`). The Vite plugin's discovery/codegen is optional convenience,
+not the blessed path; `@sweatpants/vite-plugin`'s `nodeWorkerPlugin` remains
+required for `?modulePath` worker URL resolution.
 
 ## Landing the Plane (Session Completion)
 

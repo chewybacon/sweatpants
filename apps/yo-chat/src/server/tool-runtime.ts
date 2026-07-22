@@ -35,9 +35,9 @@ import { allTools } from "./tools";
 import { createPluginSamplingProvider } from "./plugin-sampling-provider";
 import { installYoChatToolRuntime } from "./tool-runtime-installation";
 
-// The Vite plugin resolves this to the generated worker module. It is used only
-// when the single selected runtime is local.
-import toolWorkerUrl from "../__generated__/tool-worker.gen.ts?modulePath";
+// The Vite plugin resolves this to the hand-authored worker entry. It is used
+// only when the single selected runtime is local.
+import toolWorkerUrl from "./tool-worker.ts?modulePath";
 
 let sharedRegistry: ToolSessionRegistry | null = null;
 let sharedPluginSessionManager: PluginSessionManager | null = null;

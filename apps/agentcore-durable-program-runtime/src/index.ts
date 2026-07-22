@@ -12,7 +12,7 @@ import {
   parseHostProgramMessage,
   type RuntimeProgramMessage,
 } from "@sweatpants/tool-runtime-agentcore/evaluator-runtime";
-import { agentCoreDurablePrograms } from "../../yo-chat/src/__generated__/agentcore-durable-program-registry.gen.ts";
+import { agentCoreDurablePrograms } from "../../yo-chat/src/server/agentcore-durable-programs.ts";
 
 const releaseId = requiredEnvironment("AGENTCORE_DURABLE_RELEASE_ID");
 const expectedRegistryDigest = requiredEnvironment("AGENTCORE_DURABLE_REGISTRY_DIGEST");
@@ -22,7 +22,7 @@ const registry = createDurableToolRegistry(agentCoreDurablePrograms.values());
 const registryDigest = digest(JSON.stringify([...registry.keys()].sort()));
 
 if (registryDigest !== expectedRegistryDigest) {
-  throw new Error("Generated durable registry digest does not match release metadata");
+  throw new Error("Durable registry digest does not match release metadata");
 }
 
 const sandboxTasks = new Map<string, string>();

@@ -77,12 +77,6 @@ async function main(): Promise<void> {
 
   function deterministicStages(appTests: Stage[]): Stage[] {
     return [
-      {
-        name: "generated",
-        command: "pnpm",
-        args: ["verify:generated"],
-        timeoutMs: 2 * 60_000,
-      },
       { name: "types", command: "pnpm", args: ["check"], timeoutMs: 10 * 60_000 },
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
       { name: "build", command: "pnpm", args: ["build"], timeoutMs: 15 * 60_000 },
@@ -350,9 +344,6 @@ async function main(): Promise<void> {
     if (/eaddrinuse|address already in use|port .*occupied/.test(value)) {
       return "PORT_OCCUPIED";
     }
-    if (/generated.*stale|generated files.*differ|verify:generated/.test(value)) {
-      return "GENERATED_ARTIFACTS_STALE";
-    }
     if (/cannot find module|module_not_found|failed to resolve import/.test(value)) {
       return "MODULE_RESOLUTION_FAILED";
     }
@@ -378,8 +369,6 @@ async function main(): Promise<void> {
         return `refresh with \`pnpm copilot:auth:refresh\` (or login), then rerun once; details: ${log}`;
       case "PORT_OCCUPIED":
         return "identify the owning process or choose an isolated LAND_*_PLAYWRIGHT_PORT";
-      case "GENERATED_ARTIFACTS_STALE":
-        return "run the documented generator once, then rerun the failed stage once";
       case "APPLICATION_ASSERTION":
         return `inspect the failed assertion and trace artifact referenced near the end of ${log}`;
       case "TEST_TIMEOUT":
