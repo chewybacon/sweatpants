@@ -200,6 +200,13 @@ export type {
   AnyToolSession,
 } from "./session/types.ts";
 
+export {
+  createToolSessionEventLog,
+  isTerminalToolSessionStatus,
+  statusForToolSessionEvent,
+} from "./session/event-log.ts";
+export type { ToolSessionEventLog } from "./session/event-log.ts";
+
 // =============================================================================
 // MCP PROTOCOL (JSON-RPC encoding/decoding, SSE formatting)
 // =============================================================================

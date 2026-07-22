@@ -44,6 +44,8 @@ import type {
   Message as RuntimeMessage,
 } from "../../lib/chat/runtime/index.ts";
 import { runWithRenewedActivationLease } from "../activation-lease-coordinator.ts";
+import { useLogger } from "../../lib/logger/index.ts";
+import { applyHistoryPolicy } from "../../lib/chat/history-policy.ts";
 import { buildPluginReplayActivity } from "../../lib/chat/session/plugin-replay.ts";
 import type { StreamEvent } from "../../lib/chat/session/streaming.ts";
 import {
@@ -598,7 +600,7 @@ function* sampleModel(
   onText?: (text: string, delta: string) => Operation<void>,
 ): Operation<ChatSampleResult> {
   const foreignSamplingRequest = isForeignSamplingRequest(request);
-  const runtimeContext: RuntimeContext = {
+  const projectedContext: RuntimeContext = {
     ...(request.systemPrompt !== undefined
       ? { systemPrompt: modelSystemPromptText(request.systemPrompt) }
       : {}),
@@ -615,6 +617,21 @@ function* sampleModel(
             })),
           }),
   };
+  // F5: explicit opt-in history policy runs before provider adaptation. Only
+  // outer-chat requests are subject to retention policy; tool-owned foreign
+  // samples carry tool-curated context that the host must not rewrite.
+  const historyPolicy = foreignSamplingRequest ? undefined : params.historyPolicy;
+  const { context: runtimeContext, decisions } = applyHistoryPolicy(
+    historyPolicy,
+    projectedContext,
+  );
+  if (decisions.length > 0) {
+    const log = yield* useLogger("handler:durable:history-policy");
+    log.debug(
+      { policy: historyPolicy?.name, pullId, decisions },
+      "history policy compacted provider context",
+    );
+  }
   const stream = params.runtime.stream(params.model, runtimeContext, {
     ...params.streamOptions,
     signal: cancellation,

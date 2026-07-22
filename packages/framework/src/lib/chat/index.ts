@@ -14,6 +14,7 @@ export * from "./sse.ts";
 
 // Scope-driven driver contracts and APIs.
 export * from "./model-provider.ts";
+export * from "./history-policy.ts";
 export type { AssistantMessage, Model } from "./runtime/index.ts";
 export * from "./tool-inventory.ts";
 export * from "./tool-runtime.ts";
