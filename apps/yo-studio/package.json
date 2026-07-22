@@ -1,0 +1,19 @@
+{
+    "name": "yo-studio",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "check": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@sweatpants/core": "workspace:*",
+        "@sweatpants/framework": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "@types/node": "catalog:",
+        "typescript": "catalog:"
+    }
+}

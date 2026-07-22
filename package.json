@@ -12,6 +12,8 @@
         "build": "pnpm run -r build && pnpm validate:exports && pnpm validate:product-surface",
         "test": "pnpm run -r --workspace-concurrency=1 test",
         "test:e2e": "pnpm -C apps/yo-chat test:e2e && pnpm -C apps/yo-mcp test",
+        "test:e2e:manual": "pnpm -C apps/yo-chat test:e2e:manual",
+        "test:e2e:manual:ui": "pnpm -C apps/yo-chat test:e2e:manual:ui",
         "land": "tsx scripts/land.ts deterministic",
         "land:live": "tsx scripts/land.ts live",
         "land:full": "tsx scripts/land.ts full",

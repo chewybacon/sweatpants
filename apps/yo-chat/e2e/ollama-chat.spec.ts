@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  *
  * The tests use gemma4:12b-mlx by default which has good tool calling support.
  *
- * Run with: pnpm test:e2e
+ * Run with: pnpm -C apps/yo-chat test:e2e:manual:ollama
  */
 
 // Increase timeout for LLM responses (models can be slow)

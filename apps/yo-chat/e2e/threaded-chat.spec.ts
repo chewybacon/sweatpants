@@ -34,11 +34,16 @@ async function sendMessage(page: Page, text: string) {
   await input.fill(text);
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled({ timeout: 10000 });
   await page.getByRole("button", { name: "Send" }).click();
+  // `Thread ready` describes pipeline initialization and remains visible while
+  // a run is active. Observe the active-run UI before any idle assertion so a
+  // caller cannot accept the pre-send idle state.
+  await expect(page.getByRole("button", { name: "Stop" })).toBeVisible({ timeout: 10000 });
 }
 
 async function waitForIdle(page: Page) {
-  await expect(page.getByText("Thread ready")).toBeVisible({ timeout: 60000 });
-  await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByRole("button", { name: "Stop" })).not.toBeVisible({ timeout: 90000 });
+  await expect(threadInput(page)).toBeEnabled({ timeout: 90000 });
+  await expect(page.getByRole("button", { name: "Send" })).toBeVisible({ timeout: 90000 });
 }
 
 async function completeCardPick(page: Page) {

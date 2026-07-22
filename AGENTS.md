@@ -75,6 +75,8 @@ Before ending a coding session:
 
 A passing `pnpm land` is required before declaring broad work complete unless the user explicitly narrows the validation scope. Do not substitute `pnpm test`, `pnpm test:e2e`, an individual Playwright file, or an existing-server run for the deterministic landing gate.
 
+The broad live-provider Playwright suite is intentionally manual: refresh/sync Copilot auth and run `pnpm test:e2e:manual`. It is not part of `pnpm land`; see `apps/yo-chat/e2e/README.md`.
+
 ## Git Operations (When Requested)
 
 Git commits and pushes are **not automatic**. The agent will only perform git write operations when explicitly requested:
