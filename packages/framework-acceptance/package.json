@@ -23,7 +23,9 @@
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",
+        "@types/ws": "catalog:",
         "typescript": "catalog:",
-        "vitest": "catalog:"
+        "vitest": "catalog:",
+        "ws": "catalog:"
     }
 }

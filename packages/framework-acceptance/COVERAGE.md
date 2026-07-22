@@ -48,8 +48,8 @@ rather than introduce pre-armed promise choreography.
 | Nested durable cancellation | Pending nested provider request is aborted; same durable conversation reopens in a fresh client session and completes | in-process + HTTP |
 | Concurrent conversations | Interleaved streams never cross; failure in A does not affect B | in-process + HTTP |
 | HTTP reconnect | Disconnect after first delta, reconnect from checkpoint, replay only unseen delta, model runs once | HTTP |
-| Standard A2A agent | Real Agent Card discovery and HTTP+JSON send cross the standard host, rig-controlled pi-ai sample, and completed task history | in-process + HTTP |
-| Caller-authoritative A2A child | Outer chat delegates a crank-native child through the A2A driver/executor protocol; nested sample, elicit, replay, result, and final response complete | in-process + HTTP |
+| Standard A2A agent | Agent Card discovery and HTTP+JSON send cross both an assembled code handle and an independently hosted real-HTTP origin; the rig causally controls pi-ai sampling and verifies completed task history | in-process + HTTP |
+| Sub-agent composition postures | The same authored crank-native child runs as a mounted packaged handle and through a real A2A WebSocket driver/executor; nested sample, elicit, replay, result, and final response are equivalent | in-process + HTTP |
 | MCP Streamable HTTP backchannels | Real worker-backed tool crosses `createMcpHandler`; two elicitation responses and one sampling response route into the live session before terminal result | direct Request/Response + SSE |
 
 ## Deliberately outside this matrix

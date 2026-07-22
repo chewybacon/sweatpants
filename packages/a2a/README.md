@@ -43,8 +43,8 @@ The caller and callee retain separate journals and credentials. Grants are authe
 
 Package-local tests certify caller-authoritative drivers, foreign tasks, real HTTP/WSS bindings, independent-process recovery, and three-process peer delegated effects. `createControllableForeignA2AAgent()` from `@sweatpants/a2a/testing` provides buffered causal controls for initial dispatch, continuation, observation, and cancellation; package tests use it to drive `input_required` through terminal completion without pre-armed promise choreography. The higher-level assembled scenarios live in the private `@sweatpants/framework-acceptance` leaf to avoid an `a2a → test-rig → framework → a2a` dependency cycle:
 
-- `a2a-agent.acceptance.test.ts`: Agent Card discovery and standard HTTP+JSON invocation suspend on a rig-controlled real pi-ai model request and complete a task.
-- `a2a-subagent.acceptance.test.ts`: Outer chat delegates a crank-native child through the A2A driver/executor protocol, including nested sampling, durable elicitation, replay, and final outer response.
+- `a2a-agent.acceptance.test.ts`: The harness discovers and drives the same standard agent through an assembled code handle and an independently hosted real-HTTP origin, while causally controlling its pi-ai model request.
+- `a2a-subagent.acceptance.test.ts`: The same authored crank-native child runs as a mounted packaged handle and through a real A2A WebSocket driver/executor; both preserve nested sampling, durable elicitation, replay, and final outer response.
 
 Together these layers keep protocol ownership in this package while the leaf certifies the assembled product path.
 

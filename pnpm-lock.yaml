@@ -1100,12 +1100,18 @@ importers:
       '@sweatpants/ts-config':
         specifier: workspace:*
         version: link:../ts-config
+      '@types/ws':
+        specifier: 'catalog:'
+        version: 8.18.1
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
       vitest:
         specifier: 'catalog:'
         version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+      ws:
+        specifier: 'catalog:'
+        version: 8.19.0
 
   packages/model-provider-pi-ai:
     dependencies:
