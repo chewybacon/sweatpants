@@ -49,6 +49,7 @@ import {
   CHAT_TURN_RESULT_FORMAT,
   normalizeChatMessage,
   normalizeChatTurnResult,
+  normalizeContentPart,
   normalizeModelSampleOutput,
   type ChatContentPartV1,
   type ChatContextPolicyV1,
@@ -367,7 +368,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     ChatTurnInputV1 & Json,
     ChatTurnResultV1 & Json
   >(artifact, function* (input, context) {
-    const accepted = input as unknown as ChatTurnInputV1;
+    const accepted: ChatTurnInputV1 = input;
     const messages: ChatMessageV1[] = [];
     const seen = new Set<string>();
     for (const summary of accepted.context.referencedTasks) {
@@ -378,7 +379,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     }
     appendMessage(messages, seen, accepted.message);
     const promptPart: ChatContentPartV1 = {
-      value: `${systemPrompt.text}\n\nAvailable guidance (load explicitly with resources.read):\n${canonicalJson(index as unknown as Json)}`,
+      value: `${systemPrompt.text}\n\nAvailable guidance (load explicitly with resources.read):\n${canonicalJson(assertJson(index))}`,
       provenance: { classifications: [systemPrompt.classification], sourceDigests: [] },
     };
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
@@ -446,7 +447,7 @@ export function defineChatProgram(options: DefineChatProgramOptions): ChatProgra
     toolResultClassifications: Object.freeze(toolResultClassifications),
     configuration,
     contextPolicy,
-  }) as unknown as ChatProgramDefinition;
+  }) satisfies ChatProgramDefinition;
 }
 
 /** Deployment binding that enforces exact-payload classification before provider invocation. */
@@ -500,9 +501,11 @@ function decodeAuthoredModelRequest(value: ModelSampleRequest): ChatModelSampleI
   ) {
     throw new CrankError("invalid_manifest", "Authored model sampling metadata is missing");
   }
+  // The request crossed the durable effect boundary as Json; re-verify each
+  // authored contract shape instead of trusting the wire.
   return {
-    messages: value.messages as unknown as ChatMessageV1[],
-    systemPrompt: value.systemPrompt as unknown as ChatContentPartV1,
+    messages: value.messages.map((message) => normalizeChatMessage(message)),
+    systemPrompt: normalizeContentPart(value.systemPrompt),
     tools: value.tools ?? [],
     classifications: value.classifications as DataClassification[],
     sampling: value.sampling,
@@ -521,9 +524,15 @@ function encodeAuthoredModelResult(value: ChatModelSampleOutputV2): ModelSampleR
 }
 
 function decodeAuthoredModelResult(value: ModelSampleResult): ChatModelSampleOutputV2 {
-  const direct = value as unknown as Partial<ChatModelSampleOutputV2>;
-  if (direct.message && Array.isArray(direct.calls) && Array.isArray(direct.artifacts)) {
-    return normalizeModelSampleOutput(direct);
+  // Direct authored form: { message, calls, artifacts }. Detect by shape and
+  // let normalizeModelSampleOutput perform the actual validation.
+  const record = value as Record<string, unknown>;
+  if (record["message"] && Array.isArray(record["calls"]) && Array.isArray(record["artifacts"])) {
+    return normalizeModelSampleOutput({
+      message: record["message"],
+      calls: record["calls"],
+      artifacts: record["artifacts"],
+    });
   }
   const [message, ...artifacts] = value.content;
   return normalizeModelSampleOutput({

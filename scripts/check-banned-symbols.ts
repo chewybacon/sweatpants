@@ -62,6 +62,17 @@ const gates: Gate[] = [
     paths: ["apps", "packages"],
   },
   {
+    name: "a2a-authoring-unsound-welds",
+    // Journal/wire values must cross these boundaries through validated
+    // decoders (normalizeChatTurnInput, decodePinnedProgramCatalog,
+    // assertJson), never through as-unknown-as welds.
+    pattern: "as unknown as",
+    paths: [
+      "packages/framework/src/server/standard-a2a-host.ts",
+      "packages/framework/src/lib/chat/authoring/program.ts",
+    ],
+  },
+  {
     name: "inline-type-imports",
     // Inline `import("@sweatpants/...")` type references hide dependencies and
     // resolve outside the module graph — use top-level `import type` instead.

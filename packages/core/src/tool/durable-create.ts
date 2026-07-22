@@ -294,7 +294,9 @@ function builder(state: BuilderState): unknown {
         samplingDefinition &&
         effectContractDigest(samplingDefinition) !== effectContractDigest(MODEL_SAMPLE_EFFECT)
       ) {
-        throw new Error("Durable tool model.sample declaration differs from the canonical contract");
+        throw new Error(
+          "Durable tool model.sample declaration differs from the canonical contract",
+        );
       }
       return builder({ ...state, effects: { ...(state.effects ?? {}), ...effects } });
     },
@@ -305,7 +307,9 @@ function builder(state: BuilderState): unknown {
         samplingDefinition &&
         effectContractDigest(samplingDefinition) !== effectContractDigest(MODEL_SAMPLE_EFFECT)
       ) {
-        throw new Error("Durable tool model.sample declaration differs from the canonical contract");
+        throw new Error(
+          "Durable tool model.sample declaration differs from the canonical contract",
+        );
       }
       return builder({ ...state, samples: true });
     },
@@ -316,7 +320,7 @@ function builder(state: BuilderState): unknown {
         ".identity() or a version option",
         ".execute()",
       );
-      requireStage(state.parameters, ".parameters()", ".execute()");
+      const parameters = requireStage(state.parameters, ".parameters()", ".execute()");
       if (!state.effects && !state.samples) {
         throw new Error(
           `Durable tool "${state.name}": .effects() or .samples() must be called before .execute()`,
@@ -328,7 +332,7 @@ function builder(state: BuilderState): unknown {
       const catalog: DurableSchemaRegistryEntry[] = [];
       const identityPrefix = `program:${state.name}`;
 
-      const input = toPortableSchema(state.parameters as unknown as StandardSchemaV1, {
+      const input = toPortableSchema(parameters, {
         identity: `${identityPrefix}/input`,
         role: "program_input",
         version,
@@ -336,7 +340,7 @@ function builder(state: BuilderState): unknown {
       catalog.push(input.entry);
       let outputDescriptor: PortableSchemaDescriptor;
       if (state.output) {
-        const output = toPortableSchema(state.output as unknown as StandardSchemaV1, {
+        const output = toPortableSchema(state.output, {
           identity: `${identityPrefix}/output`,
           role: "program_output",
           version,
@@ -358,7 +362,7 @@ function builder(state: BuilderState): unknown {
         { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
       > = {};
       for (const [key, definition] of Object.entries(normalizedElicits)) {
-        const response = toPortableSchema(definition.response as unknown as StandardSchemaV1, {
+        const response = toPortableSchema(definition.response, {
           identity: `${identityPrefix}/elicits/${key}/response`,
           role: "elicit_response",
           version,
@@ -366,7 +370,7 @@ function builder(state: BuilderState): unknown {
         catalog.push(response.entry);
         let context;
         if (definition.context) {
-          context = toPortableSchema(definition.context as unknown as StandardSchemaV1, {
+          context = toPortableSchema(definition.context, {
             identity: `${identityPrefix}/elicits/${key}/context`,
             role: "elicit_context",
             version,
@@ -435,7 +439,7 @@ function builder(state: BuilderState): unknown {
         execution: "crank_native" as const,
         name: state.name,
         description,
-        parameters: state.parameters,
+        parameters,
         ...(state.output ? { output: state.output } : {}),
         elicits: normalizedElicits,
         samples: Object.freeze({}),
@@ -502,9 +506,7 @@ function contextForDeclarations(
               })),
             });
           },
-          sampleSchema<T>(
-            request: SamplingRequestBase & { schema: StandardSchemaV1<unknown, T> },
-          ) {
+          sampleSchema<T>(request: SamplingRequestBase & { schema: StandardSchemaV1<unknown, T> }) {
             return sampleStructured(context, request);
           },
         }
@@ -600,7 +602,9 @@ function assertSamplingRequest(
   }
 }
 
-function portableSamplingSchema(schema: StandardSchemaV1 | Readonly<Record<string, unknown>>): Json {
+function portableSamplingSchema(
+  schema: StandardSchemaV1 | Readonly<Record<string, unknown>>,
+): Json {
   if ("~standard" in schema) {
     try {
       return z.toJSONSchema(schema as z.ZodType) as Json;
@@ -647,10 +651,11 @@ function isElicitDefinition(value: unknown): value is ElicitDefinition<ZodSchema
   );
 }
 
-function requireStage(value: unknown, required: string, attempted: string): void {
-  if (value === undefined) {
+function requireStage<T>(value: T, required: string, attempted: string): NonNullable<T> {
+  if (value === undefined || value === null) {
     throw new Error(`Durable tool builder: ${required} must be called before ${attempted}`);
   }
+  return value as NonNullable<T>;
 }
 
 function requireNonEmpty(value: string, field: string): void {

@@ -69,7 +69,7 @@ export function defineEffect<
 > {
   const identity = `effect:${options.name}`;
   const catalog: DurableSchemaRegistryEntry[] = [];
-  const input = toPortableSchema(options.input as unknown as StandardSchemaV1, {
+  const input = toPortableSchema(options.input, {
     identity: `${identity}/input`,
     role: "effect_input",
     version: options.version,
@@ -78,7 +78,7 @@ export function defineEffect<
       : {}),
   });
   catalog.push(input.entry);
-  const output = toPortableSchema(options.output as unknown as StandardSchemaV1, {
+  const output = toPortableSchema(options.output, {
     identity: `${identity}/output`,
     role: "effect_output",
     version: options.version,
@@ -90,14 +90,14 @@ export function defineEffect<
   let cancellation;
   let partialValidator: StandardSchemaV1 | undefined;
   if (options.cancellationPartial) {
-    const partial = toPortableSchema(options.cancellationPartial as unknown as StandardSchemaV1, {
+    const partial = toPortableSchema(options.cancellationPartial, {
       identity: `${identity}/cancellation-partial`,
       role: "effect_cancellation_partial",
       version: options.version,
     });
     catalog.push(partial.entry);
     cancellation = { partialSchema: partial.descriptor };
-    partialValidator = options.cancellationPartial as unknown as StandardSchemaV1;
+    partialValidator = options.cancellationPartial;
   }
   const definition = defineDurableEffect({
     name: options.name,
@@ -109,8 +109,8 @@ export function defineEffect<
   });
   effectCatalogs.set(definition, Object.freeze(catalog));
   effectValidators.set(definition, {
-    input: options.input as unknown as StandardSchemaV1,
-    output: options.output as unknown as StandardSchemaV1,
+    input: options.input,
+    output: options.output,
     ...(partialValidator ? { cancellationPartial: partialValidator } : {}),
   });
   // SAFETY: JsonOutput type witnesses are pinned by the authored Zod schemas

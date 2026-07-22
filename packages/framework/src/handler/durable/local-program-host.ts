@@ -8,6 +8,7 @@ import {
   ModelSamplingRouterContext,
   ModelSamplingOutcomeAcknowledgerContext,
   ProgramDeliveryWriterContext,
+  assertJson,
   canonicalSnapshot,
   exactProgramKey,
   FOREIGN_TOOL_ADAPTER_PROGRAM,
@@ -284,13 +285,11 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       for (const task of activeTasks) {
         let taskEpoch = states.get(task.taskId)!;
         while (taskEpoch < targetEpoch) {
-          taskEpoch = (
-            yield* journal.replaceAttachment(
-              sessionId,
-              task.taskId,
-              `local-host-resume:${crypto.randomUUID()}`,
-            )
-          ).executionEpoch;
+          taskEpoch = (yield* journal.replaceAttachment(
+            sessionId,
+            task.taskId,
+            `local-host-resume:${crypto.randomUUID()}`,
+          )).executionEpoch;
         }
         if (task.taskId === opened.taskId) rootExecutionEpoch = taskEpoch;
       }
@@ -339,7 +338,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         executionEpoch: execution.executionEpoch,
         attachmentId: stableProgramAttachmentId(attach),
         audience: "program-runtime",
-        catalog: canonicalSnapshot(request.catalog as unknown as Json).value,
+        catalog: canonicalSnapshot(assertJson(request.catalog)).value,
         catalogDigest: request.catalog.digest,
         route,
       });
@@ -348,14 +347,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
         sessionId,
         turnId,
         taskId,
-        result: runTask(
-          journal,
-          sessionId,
-          taskId,
-          request.program,
-          request.input,
-          execution,
-        ),
+        result: runTask(journal, sessionId, taskId, request.program, request.input, execution),
       };
     },
 
@@ -366,30 +358,37 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
     *respond(request): Operation<ProgramRunResult> {
       const journal = yield* options.journalStore.open(request.sessionId);
       const records = yield* journal.readJournal(request.sessionId);
-      const pending = [...records].reverse().find(
-        (record) =>
-          record.payload.type === "PullRequested" &&
-          record.payload.taskId === request.taskId &&
-          record.payload.pullId === request.pullId &&
-          record.payload.descriptor.kind === "elicit",
-      );
-      if (!pending || pending.payload.type !== "PullRequested" || pending.payload.descriptor.kind !== "elicit") {
+      const pending = [...records]
+        .reverse()
+        .find(
+          (record) =>
+            record.payload.type === "PullRequested" &&
+            record.payload.taskId === request.taskId &&
+            record.payload.pullId === request.pullId &&
+            record.payload.descriptor.kind === "elicit",
+        );
+      if (
+        !pending ||
+        pending.payload.type !== "PullRequested" ||
+        pending.payload.descriptor.kind !== "elicit"
+      ) {
         throw new CrankError("unknown_target", "No matching pending elicitation");
       }
       const outcome: OperationOutcome =
         request.response.action === "cancel"
           ? { status: "cancelled" }
           : { status: "ok", value: canonicalSnapshot(request.response).value };
-      const alreadyResolved = [...records].reverse().find(
-        (record) =>
-          record.payload.type === "PullResolved" &&
-          record.payload.taskId === request.taskId &&
-          record.payload.pullId === request.pullId,
-      );
+      const alreadyResolved = [...records]
+        .reverse()
+        .find(
+          (record) =>
+            record.payload.type === "PullResolved" &&
+            record.payload.taskId === request.taskId &&
+            record.payload.pullId === request.pullId,
+        );
       if (alreadyResolved?.payload.type === "PullResolved") {
         if (
-          canonicalSnapshot(alreadyResolved.payload.outcome).sha !==
-          canonicalSnapshot(outcome).sha
+          canonicalSnapshot(alreadyResolved.payload.outcome).sha !== canonicalSnapshot(outcome).sha
         ) {
           throw new CrankError("resolution_conflict", "Elicitation response conflicts");
         }
@@ -432,25 +431,45 @@ export function createPinnedProgramCatalog(
 }
 
 export function validateCatalog(catalog: PinnedProgramCatalog): void {
+  decodePinnedProgramCatalog(catalog);
+}
+
+/**
+ * Decode an untrusted (e.g. journal-persisted) value as a pinned program
+ * catalog. The digest covers the canonical entries, so verifying it also
+ * authenticates the structural shape of every entry.
+ */
+export function decodePinnedProgramCatalog(value: unknown): PinnedProgramCatalog {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new CrankError("invalid_manifest", "Program catalog is not an object");
+  }
+  const candidate = value as { version?: unknown; digest?: unknown; entries?: unknown };
   if (
-    catalog.version !== 1 ||
-    catalog.digest !== canonicalSnapshot({ version: 1, entries: catalog.entries }).sha
+    candidate.version !== 1 ||
+    typeof candidate.digest !== "string" ||
+    typeof candidate.entries !== "object" ||
+    candidate.entries === null ||
+    Array.isArray(candidate.entries)
   ) {
+    throw new CrankError("invalid_manifest", "Program catalog shape is invalid");
+  }
+  if (candidate.digest !== canonicalSnapshot({ version: 1, entries: candidate.entries }).sha) {
     throw new CrankError("invalid_manifest", "Program catalog digest differs from entries");
   }
+  const catalog = candidate as unknown as PinnedProgramCatalog;
   for (const [target, entry] of Object.entries(catalog.entries)) {
     if (!target || target !== entry.target) {
       throw new CrankError("invalid_manifest", "Program catalog target differs from its key");
     }
   }
+  return catalog;
 }
 
 function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedProgram): void {
   const entries = Object.values(catalog.entries);
   const exact = entries.some(
     (entry) =>
-      entry.kind === "program" &&
-      exactProgramKey(entry.program) === exactProgramKey(program),
+      entry.kind === "program" && exactProgramKey(entry.program) === exactProgramKey(program),
   );
   if (exact) return;
 
@@ -461,8 +480,7 @@ function assertCatalogDispatch(catalog: PinnedProgramCatalog, program: PinnedPro
 
   const targetExists = entries.some(
     (entry) =>
-      entry.target === program.id ||
-      (entry.kind === "program" && entry.program.id === program.id),
+      entry.target === program.id || (entry.kind === "program" && entry.program.id === program.id),
   );
   throw new CrankError(
     targetExists ? "invalid_descriptor" : "unknown_target",
@@ -484,8 +502,10 @@ function* acceptedExecution(
   if (state.route === undefined) {
     throw new CrankError("invalid_journal", "Task has no authority-owned execution route");
   }
-  const catalog = opened.catalog as unknown as PinnedProgramCatalog;
-  validateCatalog(catalog);
+  // The journal stores the catalog as Json; decodePinnedProgramCatalog
+  // re-verifies the persisted shape (version, digest, entry keys) before it
+  // is trusted.
+  const catalog = decodePinnedProgramCatalog(opened.catalog);
   if (
     catalog.digest !== opened.catalogDigest ||
     state.catalogDigest !== opened.catalogDigest ||
@@ -530,7 +550,7 @@ export function normalizeProgramTrace(
       const operation = {
         actionIndex: payload.actionIndex,
         pullId: payload.pullId,
-        descriptor: structuredClone(payload.descriptor) as unknown as Json,
+        descriptor: assertJson(structuredClone(payload.descriptor)),
       };
       tasks.get(payload.taskId)?.operations.push(operation);
       operationByPull.set(payload.pullId, operation);
@@ -542,9 +562,9 @@ export function normalizeProgramTrace(
       continue;
     }
     if (payload.type === "DurableEmission") {
-      tasks.get(payload.taskId)?.semanticEmissions.push(
-        structuredClone(payload.descriptor) as unknown as Json,
-      );
+      tasks
+        .get(payload.taskId)
+        ?.semanticEmissions.push(assertJson(structuredClone(payload.descriptor)));
       continue;
     }
     if (payload.type === "CancellationRequested") {
@@ -589,8 +609,7 @@ function terminalOutcome(records: readonly DurableSemanticRecord[], taskId: stri
   const record = [...records]
     .reverse()
     .find(
-      (candidate) =>
-        candidate.payload.type === "TaskClosed" && candidate.payload.taskId === taskId,
+      (candidate) => candidate.payload.type === "TaskClosed" && candidate.payload.taskId === taskId,
     );
   return record?.payload.type === "TaskClosed" ? record.payload.outcome : undefined;
 }
