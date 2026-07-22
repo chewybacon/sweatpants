@@ -10,11 +10,15 @@ if (!Number.isSafeInteger(playwrightPort) || playwrightPort < 1 || playwrightPor
 }
 const playwrightBaseUrl = `http://localhost:${playwrightPort}`;
 
-// G7 (outside-in HTTP test tier): worker-exercising / live-model outcome
-// coverage lives in the headless outside-in tier (`pnpm test:outside-in`, see
-// src/outside-in/). Playwright's default job is a THIN deterministic browser /
-// rendering smoke layer, so only non-live specs run unless E2E_FULL=1.
+// Playwright has two deliberately separate gates:
+// - default: thin deterministic browser boundary used by `pnpm land`
+// - E2E_FULL=1: extensive, manually-invoked live Copilot suite
+//
+// The manual suite retains the historical threaded-chat, pick-card, play_ttt,
+// tictactoe, book-flight, durable-chat, and rendering/math coverage. Ollama is
+// a third opt-in because it requires a separate local service/model.
 const runFullE2E = process.env["E2E_FULL"] === "1";
+const includeOllama = process.env["E2E_INCLUDE_OLLAMA"] === "1";
 const deterministicBrowserSmokeSpecs = [
   "**/deterministic-elicit-rendering.spec.ts",
   "**/journal-inspector.spec.ts",
@@ -24,8 +28,12 @@ const deterministicBrowserSmokeSpecs = [
 
 export default defineConfig({
   testDir: "./e2e",
-  ...(runFullE2E ? {} : { testMatch: deterministicBrowserSmokeSpecs }),
-  ...(runFullE2E ? { globalSetup: "./e2e/global-setup.ts" } : {}),
+  ...(runFullE2E
+    ? {
+        globalSetup: "./e2e/global-setup.ts",
+        ...(includeOllama ? {} : { testIgnore: ["**/ollama-chat.spec.ts"] }),
+      }
+    : { testMatch: deterministicBrowserSmokeSpecs }),
   fullyParallel: true,
   forbidOnly: !!isCI,
   retries: isCI ? 2 : 0,

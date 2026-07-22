@@ -1,0 +1,16 @@
+{
+    "extends": "@sweatpants/ts-config/tsconfig.app.json",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["./src/*"]
+        },
+        "customConditions": ["development"]
+    },
+    "include": ["src/**/*"],
+    "exclude": ["node_modules", "dist"],
+    "references": [
+        { "path": "../../packages/core/tsconfig.json" },
+        { "path": "../../packages/framework/tsconfig.lib.json" }
+    ]
+}
