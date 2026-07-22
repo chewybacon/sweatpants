@@ -15,14 +15,25 @@ export interface StandardAgentScenarioHandle {
   send(message: ForeignA2AMessage): Operation<A2ATurnHandle>;
 }
 
-/** Connect a causal scenario to the standard A2A HTTP+JSON product boundary. */
+interface StandardAgentConnectionOptions {
+  /** Agent origin. Omit to use the test application's in-process transport. */
+  origin?: string;
+  interfacePath?: string;
+  /** Fetch implementation for a genuinely remote origin. */
+  fetch?: typeof globalThis.fetch;
+}
+
+/** Connect a causal scenario to a standard A2A HTTP+JSON boundary. */
 export function* connectStandardAgent(
   scenario: ScenarioContext,
-  interfacePath = "/a2a",
+  options: StandardAgentConnectionOptions | string = {},
 ): Operation<StandardAgentScenarioHandle> {
-  const discovery = yield* call(() =>
-    scenario.transport.fetch("http://test.invalid/.well-known/agent-card.json"),
-  );
+  const normalized = typeof options === "string" ? { interfacePath: options } : options;
+  const origin = normalized.origin ?? "http://test.invalid";
+  const interfacePath = normalized.interfacePath ?? "/a2a";
+  const fetcher =
+    normalized.fetch ?? (normalized.origin ? globalThis.fetch : scenario.transport.fetch);
+  const discovery = yield* call(() => fetcher(`${origin}/.well-known/agent-card.json`));
   if (!discovery.ok) {
     throw new Error(`A2A discovery failed with ${discovery.status}`);
   }
@@ -35,7 +46,7 @@ export function* connectStandardAgent(
       // that model request before awaiting the terminal A2A response.
       const request: Task<ForeignA2ASendResult> = yield* spawn(function* () {
         const response = yield* call(() =>
-          scenario.transport.fetch(`http://test.invalid${interfacePath}/message:send`, {
+          fetcher(`${origin}${interfacePath}/message:send`, {
             method: "POST",
             headers: { "content-type": "application/a2a+json" },
             body: JSON.stringify({ message }),
@@ -54,4 +65,20 @@ export function* connectStandardAgent(
       };
     },
   };
+}
+
+/**
+ * Harness-facing remote-agent posture: real HTTP discovery and message send,
+ * while model consequences remain causally controllable through the scenario.
+ */
+export function* connectRemoteStandardAgent(
+  scenario: ScenarioContext,
+  origin: string,
+  interfacePath = "/a2a",
+): Operation<StandardAgentScenarioHandle> {
+  return yield* connectStandardAgent(scenario, {
+    origin,
+    interfacePath,
+    fetch: globalThis.fetch,
+  });
 }
