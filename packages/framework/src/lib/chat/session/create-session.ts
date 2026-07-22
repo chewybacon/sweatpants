@@ -11,13 +11,11 @@ import {
   type Subscription,
 } from "effection";
 import { streamChatOnce } from "./stream-chat.ts";
-import type { ElicitResponseData } from "./options.ts";
 import { useBufferedChannel, useTransformPipeline } from "./transforms.ts";
 import { chatReducer, initialChatState } from "../state/reducer.ts";
 import type { ChatState } from "../state/chat-state.ts";
 import { StreamerContext, BaseUrlContext } from "./contexts.ts";
 import type { ChatStateEvent } from "../state/events.ts";
-import type { Message } from "../types.ts";
 import type {
   ChatCommand,
   SessionOptions,
@@ -25,19 +23,8 @@ import type {
   Streamer,
   ChatEventTransform,
 } from "./options.ts";
-import type { ConversationReplayState, StreamResult } from "./streaming.ts";
-import {
-  syncConversationStateForElicit,
-  syncConversationStateForComplete,
-  syncMessagesFromIndex,
-} from "./turn-manager.ts";
-import {
-  appendAssistantFinalMessage,
-  appendToolMessage,
-  appendUserMessage,
-  createTranscriptState,
-  resetTranscriptState,
-} from "./transcript.ts";
+import type { StreamResult } from "./streaming.ts";
+import { createChatTurnState } from "./turn-state.ts";
 import { readDurableHistory } from "./durable-history.ts";
 
 const defaultStreamer: Streamer = streamChatOnce;
@@ -125,49 +112,25 @@ function createRunTerminalAcknowledger(onForwarded: () => void): ChatEventTransf
   };
 }
 
-function finalAssistantMessage(
-  history: Message[],
-  transcriptState: ReturnType<typeof createTranscriptState>,
-  content: string,
-): Message {
-  const last = history[history.length - 1];
-  if (last && last.role === "assistant" && last.content === content && !last.tool_calls?.length) {
-    return last;
-  }
-  return appendAssistantFinalMessage(history, transcriptState, content);
-}
-
 export function* runChatSession(
   commands: Channel<ChatCommand, void>,
   events: Channel<ChatStateEvent, void>,
   options: ClientToolSessionOptions = {},
 ): Operation<void> {
-  const history: Message[] = [];
-  const transcriptState = createTranscriptState(history);
+  const turn = createChatTurnState(options.conversationId);
   const currentRequest: {
     owned: { token: symbol; halt: () => Operation<void> } | null;
   } = { owned: null };
-  const pendingElicitResponses: ElicitResponseData[] = [];
-  const sentElicitResponseIds = new Set<string>();
-  let pendingToolCalls: Array<{ id: string; name: string }> = [];
-  // Authoritative open elicits for this session. mirroredState can lag or be
-  // incomplete for cancel-on-send, so we track them explicitly when turns park.
-  let openElicits: Array<{
-    sessionId: string;
-    callId: string;
-    toolName?: string;
-    elicitId: string;
-  }> = [];
-  let replayState: ConversationReplayState | undefined;
-  let mirroredState = initialChatState;
-  // Capture/reuse the server-minted conversation identity so multi-turn
-  // requests stay on the same fold session even when the demo does not
-  // pre-provision a conversationId (flight/cards/etc).
-  let conversationId = options.conversationId;
 
   function* sendEvent(event: ChatStateEvent): Operation<void> {
-    mirroredState = chatReducer(mirroredState, event);
+    turn.fold(event);
     yield* events.send(event);
+  }
+
+  function* sendEvents(stateEvents: ChatStateEvent[]): Operation<void> {
+    for (const event of stateEvents) {
+      yield* sendEvent(event);
+    }
   }
 
   if (options.conversationId) {
@@ -189,15 +152,8 @@ export function* runChatSession(
       ...(options.fetch ? { fetch: options.fetch } : {}),
     });
 
-    for (const message of durableHistory.history) {
-      history.push(message);
-    }
-    resetTranscriptState(transcriptState, history);
-    replayState = durableHistory.replayState;
-
-    for (const event of durableHistory.events) {
-      yield* sendEvent(event);
-    }
+    turn.loadDurableHistory(durableHistory.history, durableHistory.replayState);
+    yield* sendEvents(durableHistory.events);
   }
 
   function* startRequest(
@@ -207,21 +163,25 @@ export function* runChatSession(
     let terminalForwardedResolve: (() => void) | null = null;
 
     function waitForTerminalForwarded(): Promise<void> {
-      if (terminalForwarded) return Promise.resolve();
+      if (terminalForwarded) {
+        return Promise.resolve();
+      }
       return new Promise<void>((resolve) => {
         terminalForwardedResolve = resolve;
       });
     }
 
     const terminalAcknowledger = createRunTerminalAcknowledger(() => {
-      if (terminalForwarded) return;
+      if (terminalForwarded) {
+        return;
+      }
       terminalForwarded = true;
       terminalForwardedResolve?.();
       terminalForwardedResolve = null;
     });
     const mirrorEventState: ChatEventTransform = function* (input, output) {
       for (const event of yield* each(input)) {
-        mirroredState = chatReducer(mirroredState, event);
+        turn.fold(event);
         yield* output.send(event);
         yield* each.next();
       }
@@ -235,113 +195,31 @@ export function* runChatSession(
 
     const contextStreamer = yield* StreamerContext.get();
     const streamer = contextStreamer ?? options.streamer ?? defaultStreamer;
-    const originalHistoryLength = history.length;
+    const request = turn.beginTurnRequest();
     let result: StreamResult;
 
-    while (true) {
-      const elicitResponsesToSend = pendingElicitResponses.splice(0);
-      try {
-        result = yield* streamer([...history], streamEvents, {
-          ...options,
-          ...(conversationId ? { conversationId } : {}),
-          ...(elicitResponsesToSend.length > 0 ? { elicitResponses: elicitResponsesToSend } : {}),
-          ...(replayState ? { replayState } : {}),
-          ...requestOptions,
-        });
-      } catch (error) {
-        yield* streamEvents.close();
-        if (terminalForwarded) yield* call(waitForTerminalForwarded);
-        // RUN_ERROR may follow projected tool-call/error-result events. Persist
-        // those mirrored messages before surfacing the request failure so the
-        // next turn does not inherit an unexplained hanging tool call.
-        syncMessagesFromIndex(history, mirroredState.messages, originalHistoryLength);
-        const visiblePartial = mirroredState.streaming.parts
-          .filter((part) => part.type === "text")
-          .map((part) => part.content)
-          .join("");
-        if (
-          visiblePartial &&
-          !history.some(
-            (message) => message.role === "assistant" && message.content === visiblePartial,
-          )
-        ) {
-          const partial = appendAssistantFinalMessage(history, transcriptState, visiblePartial);
-          partial.partial = true;
-        }
-        resetTranscriptState(transcriptState, history);
-        throw error;
+    try {
+      result = yield* streamer([...turn.history], streamEvents, {
+        ...options,
+        ...(request.conversationId ? { conversationId: request.conversationId } : {}),
+        ...(request.elicitResponses.length > 0 ? { elicitResponses: request.elicitResponses } : {}),
+        ...(request.replayState ? { replayState: request.replayState } : {}),
+        ...requestOptions,
+      });
+    } catch (error) {
+      yield* streamEvents.close();
+      if (terminalForwarded) {
+        yield* call(waitForTerminalForwarded);
       }
-
-      if (result.conversationId) {
-        conversationId = result.conversationId;
-      }
-
-      if (result.type === "complete") {
-        const toolResultsMap = new Map(
-          (result.toolResults ?? []).map((toolResult) => [toolResult.id, toolResult.content]),
-        );
-        syncMessagesFromIndex(
-          history,
-          mirroredState.messages,
-          originalHistoryLength,
-          toolResultsMap,
-        );
-        if (result.conversationState) {
-          syncConversationStateForComplete(history, result.conversationState);
-          replayState = result.conversationState.replay ?? replayState;
-        }
-        if ((result.toolResults?.length ?? 0) > 0) {
-          // The folded client state observes terminal assistant text before the
-          // request result exposes server tool results. Defer newly projected
-          // plain assistant messages so causal history remains call -> result ->
-          // terminal assistant, and append the terminal text exactly once below.
-          for (let index = history.length - 1; index >= originalHistoryLength; index -= 1) {
-            const message = history[index]!;
-            if (message.role === "assistant" && !message.tool_calls?.length) {
-              history.splice(index, 1);
-            }
-          }
-        }
-        resetTranscriptState(transcriptState, history);
-        pendingToolCalls = [];
-        openElicits = [];
-        break;
-      }
-
-      if (result.type === "elicit") {
-        syncMessagesFromIndex(history, mirroredState.messages, originalHistoryLength);
-        pendingToolCalls = syncConversationStateForElicit(history, result.conversationState);
-        resetTranscriptState(transcriptState, history);
-        replayState = result.conversationState.replay ?? replayState;
-        openElicits = result.pendingElicitations.map((elicit) => ({
-          sessionId: elicit.sessionId,
-          callId: elicit.callId,
-          ...(elicit.toolName ? { toolName: elicit.toolName } : {}),
-          elicitId: elicit.elicitId,
-        }));
-
-        break;
-      }
-
-      break;
+      turn.commitFailure(request.originalHistoryLength);
+      throw error;
     }
 
-    if (result!.type === "complete") {
-      for (const toolResult of result.toolResults ?? []) {
-        const exists = history.some(
-          (message) => message.role === "tool" && message.tool_call_id === toolResult.id,
-        );
-        if (!exists) {
-          appendToolMessage(history, transcriptState, toolResult.id, toolResult.content, {
-            toolName: toolResult.name,
-          });
-        }
-      }
-
-      const finalContent = result.text || result.conversationState?.assistantContent || "";
-      if (finalContent || originalHistoryLength === history.length) {
-        finalAssistantMessage(history, transcriptState, finalContent);
-      }
+    turn.recordConversationId(result);
+    if (result.type === "complete") {
+      turn.commitComplete(result, request.originalHistoryLength);
+    } else {
+      turn.commitElicit(result, request.originalHistoryLength);
     }
 
     // Closing drains every queued event through transforms. Check the terminal
@@ -352,7 +230,7 @@ export function* runChatSession(
       throw new Error("Streamer returned without a terminal AG-UI event");
     }
     yield* call(waitForTerminalForwarded);
-    return result!;
+    return result;
   }
 
   function* haltCurrentRequest(): Operation<void> {
@@ -408,58 +286,13 @@ export function* runChatSession(
   for (const cmd of yield* each(commands)) {
     switch (cmd.type) {
       case "send": {
+        // An interrupted partial is only meaningful when a request was actually
+        // in flight; otherwise there is nothing being superseded.
+        const supersededPartial = currentRequest.owned ? cmd.partialContent : undefined;
         if (currentRequest.owned) {
-          const partialContent = cmd.partialContent?.trim();
-          if (partialContent) {
-            const partialMessage = appendAssistantFinalMessage(
-              history,
-              transcriptState,
-              cmd.partialContent!,
-            );
-            yield* sendEvent({
-              type: "LOCAL_ASSISTANT_MESSAGE",
-              message: partialMessage,
-              partial: true,
-            });
-          }
           yield* haltCurrentRequest();
         }
-
-        if (pendingToolCalls.length > 0) {
-          for (const tc of pendingToolCalls) {
-            appendToolMessage(
-              history,
-              transcriptState,
-              tc.id,
-              "Tool execution was cancelled by user sending a new message.",
-            );
-          }
-          pendingToolCalls = [];
-        }
-
-        // Free-form send supersedes any still-open plugin elicits. Do not
-        // serialize these as ordinary `{ action: "cancel" }` responses: that
-        // resumes tool business logic and can trigger a terminal model sample.
-        // A response-free request lets the handler select its pluginAbort path
-        // and continue the replacement user turn in the same activation.
-        const supersedingOpenElicits = openElicits.length > 0;
-        if (supersedingOpenElicits) {
-          for (const elicit of openElicits) {
-            if (sentElicitResponseIds.has(elicit.elicitId)) continue;
-            sentElicitResponseIds.add(elicit.elicitId);
-            yield* sendEvent({
-              type: "LOCAL_ELICIT_RESPONSE",
-              callId: elicit.callId,
-              elicitId: elicit.elicitId,
-              response: { action: "cancel" },
-            });
-          }
-          openElicits = [];
-        }
-
-        const userMessage = appendUserMessage(history, transcriptState, cmd.content);
-        yield* sendEvent({ type: "LOCAL_USER_MESSAGE", message: userMessage });
-
+        yield* sendEvents(turn.send(cmd.content, supersededPartial));
         yield* launchRequest();
         break;
       }
@@ -468,7 +301,6 @@ export function* runChatSession(
         if (currentRequest.owned) {
           yield* haltCurrentRequest();
         }
-
         yield* launchRequest();
         break;
       }
@@ -483,20 +315,12 @@ export function* runChatSession(
           yield* haltCurrentRequest();
         }
 
-        const preservePartial = options.preservePartialOnAbort ?? true;
-        const suffix = options.abortSuffix ?? "";
-        if (preservePartial && cmd.partialContent?.trim()) {
-          const partialMessage: Message = {
-            id: crypto.randomUUID(),
-            role: "assistant",
-            content: cmd.partialContent + suffix,
-            partial: true,
-          };
-          history.push(partialMessage);
-          yield* sendEvent({ type: "LOCAL_ABORT", message: partialMessage });
-        } else {
-          yield* sendEvent({ type: "LOCAL_ABORT" });
-        }
+        yield* sendEvents(
+          turn.abort(cmd.partialContent, {
+            preservePartial: options.preservePartialOnAbort ?? true,
+            suffix: options.abortSuffix ?? "",
+          }),
+        );
 
         // Program Runtime cancellation targets the active durable root for the
         // conversation; no fabricated ToolSession identifier crosses the wire.
@@ -508,24 +332,12 @@ export function* runChatSession(
         if (currentRequest.owned) {
           yield* haltCurrentRequest();
         }
-        history.length = 0;
-        pendingElicitResponses.length = 0;
-        pendingToolCalls = [];
-        openElicits = [];
-        sentElicitResponseIds.clear();
-        resetTranscriptState(transcriptState, history);
-        yield* sendEvent({ type: "LOCAL_RESET" });
+        yield* sendEvents(turn.reset());
         break;
       }
 
       case "elicit_response": {
-        if (sentElicitResponseIds.has(cmd.elicitId)) {
-          break;
-        }
-        sentElicitResponseIds.add(cmd.elicitId);
-        openElicits = openElicits.filter((elicit) => elicit.elicitId !== cmd.elicitId);
-
-        pendingElicitResponses.push({
+        const stateEvents = turn.elicitResponse({
           sessionId: cmd.sessionId,
           callId: cmd.callId,
           ...(cmd.toolName ? { toolName: cmd.toolName } : {}),
@@ -534,14 +346,10 @@ export function* runChatSession(
           result: cmd.result,
           ...(cmd.trace ? { trace: cmd.trace } : {}),
         });
-
-        yield* sendEvent({
-          type: "LOCAL_ELICIT_RESPONSE",
-          callId: cmd.callId,
-          elicitId: cmd.elicitId,
-          response: cmd.result,
-        });
-
+        if (!stateEvents) {
+          break;
+        }
+        yield* sendEvents(stateEvents);
         if (cmd.autoContinue !== false) {
           yield* commands.send({ type: "continue" });
         }
