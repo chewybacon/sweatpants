@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/core";
 import type { Operation } from "effection";
 import type { ToolRuntime } from "@sweatpants/framework/chat";
 import { ProgramDriverForeignEffectsContext } from "@sweatpants/framework/server";
@@ -25,7 +25,7 @@ export function* installLocalProgramToolRuntime(
   yield* ProgramDriverForeignEffectsContext.set(
     createToolSessionForeignEffectRegistrations({
       registry: options.registry,
-      tools: new Map(options.tools.map((tool: RuntimeTool) => [tool.name, tool])),
+      tools: new Map(options.tools.map((tool: AnyToolContract) => [tool.name, tool])),
     }),
   );
   return runtime;

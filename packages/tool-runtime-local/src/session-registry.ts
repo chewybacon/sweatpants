@@ -23,7 +23,7 @@ import type {
   ToolSessionStatus,
   ElicitsMap,
 } from "@sweatpants/framework/chat/mcp-tools";
-import type { ToolDefinition } from "@sweatpants/core";
+import { isExecutableToolContract, type ToolContract } from "@sweatpants/core";
 import { validateToolParameters } from "@sweatpants/framework/chat";
 import { createToolSession } from "./tool-session.ts";
 import { createWorkerToolSession } from "./worker-tool-session.ts";
@@ -136,10 +136,20 @@ export function createToolSessionRegistry(
     const registry: ToolSessionRegistryWithExecutionMode = {
       [TOOL_SESSION_REGISTRY_EXECUTION_MODE]: worker ? "worker" : "inline",
       *create<TParams, _TInteraction, _TClient, TResult, TElicits extends ElicitsMap>(
-        tool: ToolDefinition<string, TParams, TResult, TElicits>,
+        tool: ToolContract<string, TParams, TResult, TElicits>,
         params: TParams,
         sessionOptions?: ToolSessionOptions,
       ): Operation<ToolSession<TResult>> {
+        // F4: worker mode executes in the worker identified by workerUrl and
+        // needs only the portable contract. Inline mode runs the closure in
+        // this process, so a metadata-only projection is rejected explicitly
+        // instead of failing deep inside session start.
+        const inlineTool = isExecutableToolContract(tool) ? tool : null;
+        if (!worker && !inlineTool) {
+          throw new Error(
+            `Tool "${tool.name}" is a metadata-only contract projection; inline execution requires the full ToolDefinition (or configure worker mode)`,
+          );
+        }
         const mergedOptions: ToolSessionOptions = {
           ...sessionOptions,
           ...(defaultTimeout !== undefined && { timeout: defaultTimeout }),
@@ -177,7 +187,7 @@ export function createToolSessionRegistry(
                     ? { execArgv: worker.execArgv }
                     : {}),
                 })
-              : yield* createToolSession(tool, validatedParams, mergedOptions)
+              : yield* createToolSession(inlineTool!, validatedParams, mergedOptions)
           ) as ToolSession<TResult>;
 
           // Send session back to caller

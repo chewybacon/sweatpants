@@ -65,6 +65,7 @@ import {
   createStructuredSampleExchange,
 } from "./mcp-tool-types.ts";
 import type {
+  SamplesMap,
   ToolDefinition,
   ToolElicitResult,
   ToolMessage,
@@ -287,9 +288,10 @@ export interface BridgeHostConfig<
   TParams = unknown,
   TResult = unknown,
   TElicits extends ElicitsMap = ElicitsMap,
+  TSamples extends SamplesMap | true | undefined = SamplesMap | true | undefined,
 > {
   /** Tool being executed */
-  tool: ToolDefinition<TName, TParams, TResult, TElicits>;
+  tool: ToolDefinition<TName, TParams, TResult, TElicits, TSamples>;
   /** Optional execution limits (host-level; not a tool property) */
   limits?: McpToolLimits;
 
@@ -1028,9 +1030,7 @@ function createBridgeContext<TElicits extends ElicitsMap>(
                 `Elicit response validation failed for key "${key}": ${safeSchemaIssues(
                   parseResult.issues,
                 )
-                  .map((issue) =>
-                    issue.path ? `${issue.path}: ${issue.message}` : issue.message,
-                  )
+                  .map((issue) => (issue.path ? `${issue.path}: ${issue.message}` : issue.message))
                   .join("; ")}`,
               );
             }
@@ -1154,7 +1154,8 @@ export function createBridgeHost<
   TParams,
   TResult,
   TElicits extends ElicitsMap,
->(config: BridgeHostConfig<TName, TParams, TResult, TElicits>): BridgeHost<TResult> {
+  TSamples extends SamplesMap | true | undefined = SamplesMap | true | undefined,
+>(config: BridgeHostConfig<TName, TParams, TResult, TElicits, TSamples>): BridgeHost<TResult> {
   // Use a buffered channel to avoid subscribe-before-send race condition.
   // Messages are queued until a subscriber starts iterating.
   const eventChannel = createBufferedChannel<BridgeEvent>();

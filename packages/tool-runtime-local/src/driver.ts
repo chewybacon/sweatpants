@@ -1,4 +1,4 @@
-import type { RuntimeTool } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/core";
 import { action, resource, spawn, type Operation, type Stream } from "effection";
 import {
   ToolRuntimeContext,
@@ -30,7 +30,7 @@ import {
 
 export interface LocalToolRuntimeDriverOptions {
   id?: string;
-  tools: RuntimeTool[];
+  tools: AnyToolContract[];
   registry?: ToolSessionRegistry;
   store?: ToolSessionStore;
   samplingProvider?: ToolSessionSamplingProvider;
@@ -45,8 +45,11 @@ function localRuntimeWorkerRequirementError(): ToolRuntimeError {
   );
 }
 
-function toolsByCanonicalName(tools: RuntimeTool[], owner: string): Map<string, RuntimeTool> {
-  const byName = new Map<string, RuntimeTool>();
+function toolsByCanonicalName(
+  tools: AnyToolContract[],
+  owner: string,
+): Map<string, AnyToolContract> {
+  const byName = new Map<string, AnyToolContract>();
   for (const tool of tools) {
     if (byName.has(tool.name)) {
       throw new ToolRuntimeError(
@@ -190,7 +193,7 @@ export interface LocalSessionToolExecutionStrategyOptions {
   id?: string;
   registry: ToolSessionRegistry;
   samplingProvider: ToolSessionSamplingProvider;
-  tools: RuntimeTool[];
+  tools: AnyToolContract[];
 }
 
 export function createLocalSessionToolExecutionStrategy(

@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 import { z } from "zod";
-import { createTool, type RuntimeTool } from "@sweatpants/core";
+import { createTool, type AnyToolContract } from "@sweatpants/core";
 import {
   DurableEffectRegistryContext,
   JournalAuthorityContext,
@@ -114,7 +114,7 @@ export function createInMemoryDurableToolFacadeStateStore(): DurableToolFacadeSt
  */
 export function createDurableToolSessionFacade<I extends Json, O extends Json>(
   options: DurableToolSessionFacadeOptions<I, O>,
-): RuntimeTool {
+): AnyToolContract {
   const name = options.name ?? options.tool.manifest.programId;
   return createTool(name)
     .description(
@@ -141,7 +141,7 @@ export function createDurableToolSessionFacade<I extends Json, O extends Json>(
 }
 
 /** Returns whether a runtime tool carries the durable-facade annotation. */
-export function isDurableToolSessionFacade(tool: RuntimeTool): boolean {
+export function isDurableToolSessionFacade(tool: AnyToolContract): boolean {
   const annotation = tool.annotations[DURABLE_TOOL_FACADE_ANNOTATION];
   return Boolean(annotation && typeof annotation === "object");
 }
@@ -165,8 +165,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
       journalId: `durable-tool-facade:${options.tool.manifest.programId}`,
       journalIncarnation: "1",
       keyring: options.keyring,
-      schemaRegistry:
-        options.schemaRegistry ?? createDurableSchemaRegistry(authoredCatalog ?? []),
+      schemaRegistry: options.schemaRegistry ?? createDurableSchemaRegistry(authoredCatalog ?? []),
       ...(snapshot ? { snapshot } : {}),
     });
     const taskId = "turn-0/root";

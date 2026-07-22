@@ -1,7 +1,7 @@
 import { action, race, type Operation } from "effection";
 
 import { isDurableToolSessionFacade } from "./durable-tool-session-facade.ts";
-import type { RuntimeTool } from "@sweatpants/core";
+import type { AnyToolContract } from "@sweatpants/core";
 import type {
   ToolSession,
   ToolSessionEvent,
@@ -36,7 +36,7 @@ type ToolSessionContinuationState = {
 /** Scoped ToolSession registry and immutable authored-tool inventory used by the adapter. */
 export interface ToolSessionForeignDriverOptions {
   registry: ToolSessionRegistry;
-  tools: ReadonlyMap<string, RuntimeTool>;
+  tools: ReadonlyMap<string, AnyToolContract>;
 }
 
 /**
