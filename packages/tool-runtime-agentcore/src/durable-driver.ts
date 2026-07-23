@@ -1,14 +1,17 @@
 import type { Operation } from "effection";
-import type {
-  AttachProgramRequest,
-  ProgramAttachment,
-  ProgramCommand,
-  ProgramDriver,
-  ProgramRestoreContext,
-  ProgramRestoreRequest,
-  ProgramShutdownReason,
-  ProgramStep,
-  RestoredProgramAttachment,
+import {
+  CrankError,
+  exactProgramKey,
+  type AttachProgramRequest,
+  type DurableProgramManifest,
+  type ProgramAttachment,
+  type ProgramCommand,
+  type ProgramDriver,
+  type ProgramRestoreContext,
+  type ProgramRestoreRequest,
+  type ProgramShutdownReason,
+  type ProgramStep,
+  type RestoredProgramAttachment,
 } from "@sweatpants/session-contract";
 
 /**
@@ -27,8 +30,25 @@ export interface AgentCoreDurableProgramTransport {
 /** Creates an AgentCore transport driver; the caller owns the scoped client and cancellation. */
 export function createAgentCoreDurableProgramDriver(
   transport: AgentCoreDurableProgramTransport,
+  options: {
+    readonly manifests?: ReadonlyMap<string, DurableProgramManifest>;
+  } = {},
 ): ProgramDriver {
   return {
+    ...(options.manifests
+      ? {
+          *manifest(program) {
+            const manifest = options.manifests!.get(exactProgramKey(program));
+            if (!manifest) {
+              throw new CrankError(
+                "unknown_target",
+                `AgentCore program manifest is unavailable for ${program.id}`,
+              );
+            }
+            return manifest;
+          },
+        }
+      : {}),
     *attach(request) {
       const attachment = yield* transport.attach(request);
       return { ...attachment, driverKind: "agentcore" };

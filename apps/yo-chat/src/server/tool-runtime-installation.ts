@@ -16,11 +16,12 @@ import {
   programDriverSchemaRegistry,
   type PluginSessionManager,
 } from "@sweatpants/framework/server";
-import { createDurableToolRegistry } from "@sweatpants/session-contract";
-import type {
-  AgentCoreRuntimeRelease,
-  ProgramDriver,
-  ProgramRoute,
+import {
+  createDurableToolRegistry,
+  type AgentCoreRuntimeRelease,
+  type Json,
+  type ProgramDriver,
+  type ProgramRoute,
 } from "@sweatpants/session-contract";
 import type {
   ToolSessionRegistry,
@@ -58,6 +59,12 @@ export interface YoChatToolRuntimeInstallation {
     readonly availablePrograms: ReadonlySet<string>;
     readonly availableEffects: ReadonlySet<string>;
     readonly availableSchemaDigests: ReadonlySet<string>;
+    readonly developmentPrograms?: readonly {
+      readonly publicKey: string;
+      readonly tool: typeof pickCard | typeof playTttTool;
+      readonly collection: Json;
+      readonly evaluatorAbi: string;
+    }[];
   };
 }
 
@@ -66,11 +73,20 @@ export interface YoChatToolRuntimeInstallation {
  * mode uses one worker-backed registry; AgentCore mode uses one remote registry.
  */
 export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation): Operation<void> {
-  const ordinaryContracts = options.tools.filter((tool) => tool.execution !== "crank_native");
+  const developmentPrograms = options.agentCoreDurable?.developmentPrograms;
+  const runtimeTools = developmentPrograms
+    ? options.tools.map(
+        (tool) => developmentPrograms.find((entry) => entry.tool.name === tool.name)?.tool ?? tool,
+      )
+    : options.tools;
+  const ordinaryContracts = runtimeTools.filter((tool) => tool.execution !== "crank_native");
   const ordinaryTools = ordinaryContracts.filter(
     (tool): tool is RuntimeTool => typeof tool === "function",
   );
-  const durablePrograms = [pickCard, playTttTool] as const;
+  const durablePrograms =
+    options.mode === "agentcore" && developmentPrograms
+      ? developmentPrograms.map((entry) => entry.tool)
+      : [pickCard, playTttTool];
   const schemaRegistry = programDriverSchemaRegistry(
     durablePrograms.flatMap((tool) => [...tool.artifacts.catalog]),
   );
@@ -86,7 +102,9 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
   );
   const readyDurableNames = new Set<string>();
   if (options.mode === "local") {
-    for (const tool of durablePrograms) readyDurableNames.add(tool.name);
+    for (const tool of durablePrograms) {
+      readyDurableNames.add(tool.name);
+    }
   } else if (options.agentCoreDurable) {
     for (const tool of durablePrograms) {
       const identity = programIdentities.get(tool.name)!;
@@ -107,12 +125,25 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
         schemaDigests: options.agentCoreDurable.availableSchemaDigests,
         manifest: tool.manifest,
       });
-      if (readiness.ready) readyDurableNames.add(tool.name);
+      console.info("[yo-chat] durable AgentCore readiness", {
+        program: tool.name,
+        identity,
+        ready: readiness.ready,
+        missing: readiness.missing,
+        schemaCatalogSize: options.agentCoreDurable.availableSchemaDigests.size,
+        missingSchemaDigests: manifestSchemaDigests(tool).filter(
+          (digest) => !options.agentCoreDurable!.availableSchemaDigests.has(digest),
+        ),
+        developmentCollection: developmentPrograms !== undefined,
+      });
+      if (readiness.ready) {
+        readyDurableNames.add(tool.name);
+      }
     }
   }
   const driverKind = options.mode === "local" ? "worker" : "agentcore";
   const readyPrograms = durablePrograms.filter((tool) => readyDurableNames.has(tool.name));
-  const availableContracts = projectAvailableToolContracts(options.tools, {
+  const availableContracts = projectAvailableToolContracts(runtimeTools, {
     ordinaryTools: new Set(ordinaryContracts.map((tool) => tool.name)),
     drivers: new Set(readyPrograms.length > 0 ? [driverKind] : []),
     programs: new Set(readyPrograms.map((tool) => programIdentities.get(tool.name)!)),
@@ -183,6 +214,21 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
                 driverKind: "agentcore",
                 journalId: agentCoreDurable.journalId,
                 release: agentCoreDurable.release,
+                ...(developmentPrograms
+                  ? {
+                      development: {
+                        collection: developmentPrograms.find(
+                          (entry) => entry.tool.name === tool.name,
+                        )!.collection,
+                        publicKey: developmentPrograms.find(
+                          (entry) => entry.tool.name === tool.name,
+                        )!.publicKey,
+                        evaluatorAbi: developmentPrograms.find(
+                          (entry) => entry.tool.name === tool.name,
+                        )!.evaluatorAbi,
+                      },
+                    }
+                  : {}),
               } as unknown as ProgramRoute,
             },
           ]),
@@ -211,4 +257,20 @@ export function* installYoChatToolRuntime(options: YoChatToolRuntimeInstallation
     registry: options.registry,
     samplingProvider: options.samplingProvider,
   });
+}
+
+function manifestSchemaDigests(tool: typeof pickCard | typeof playTttTool): string[] {
+  return [
+    tool.manifest.inputSchema.digest,
+    tool.manifest.outputSchema.digest,
+    ...Object.values(tool.manifest.elicits).flatMap((elicit) => [
+      elicit.response.digest,
+      ...(elicit.context ? [elicit.context.digest] : []),
+    ]),
+    ...Object.values(tool.manifest.effects).flatMap((effect) => [
+      effect.inputSchema.digest,
+      effect.outputSchema.digest,
+      ...(effect.cancellation ? [effect.cancellation.partialSchema.digest] : []),
+    ]),
+  ];
 }

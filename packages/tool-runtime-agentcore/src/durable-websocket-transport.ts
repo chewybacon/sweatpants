@@ -2,6 +2,7 @@ import { call, useAbortSignal, type Operation } from "effection";
 
 import {
   CrankError,
+  assertJson,
   canonicalSnapshot,
   type AgentCoreRuntimeRelease,
   type AgentCoreTaskPlacement,
@@ -109,7 +110,9 @@ export function createAgentCoreWebSocketProgramTransport(
         payload: { entryCount: count, replayChainDigest: previous },
       });
       const message = yield* receive(handle);
-      if (message.type !== "frontier") throw protocol("Expected restored frontier");
+      if (message.type !== "frontier") {
+        throw protocol("Expected restored frontier");
+      }
       const computed = computeFrontierDigest({
         releaseId: handle.placement.release.releaseId,
         taskId: handle.taskId,
@@ -137,13 +140,17 @@ export function createAgentCoreWebSocketProgramTransport(
       assertLive(handle, attachment);
       yield* send(handle.connection, commandEnvelope(handle, command));
       const response = yield* receive(handle);
-      if (response.type !== "step") throw protocol("Expected one program step");
+      if (response.type !== "step") {
+        throw protocol("Expected one program step");
+      }
       return response.payload.step;
     },
 
     *shutdown(attachment, reason): Operation<void> {
       const handle = attachmentHandle(attachment);
-      if (handle.shutdown) return;
+      if (handle.shutdown) {
+        return;
+      }
       handle.shutdown = true;
       try {
         yield* send(handle.connection, {
@@ -156,14 +163,16 @@ export function createAgentCoreWebSocketProgramTransport(
           payload: { reason },
         });
         const response = yield* receive(handle);
-        if (response.type !== "shutdown_complete")
+        if (response.type !== "shutdown_complete") {
           throw protocol("Expected shutdown acknowledgement");
+        }
       } catch (error) {
         if (
           reason !== "transport_lost" &&
           !(error instanceof CrankError && error.code === "agentcore_transport_lost")
-        )
+        ) {
           throw error;
+        }
       } finally {
         yield* handle.connection.close(1000, reason);
       }
@@ -192,7 +201,10 @@ function* openAndBegin(
     taskId: request.taskId,
     activationEpoch: request.executionEpoch,
     payload: {
-      attach: request,
+      attach: {
+        ...request,
+        route: assertJson({ driverKind: "agentcore", placement }),
+      },
       programInputDigest: canonicalSnapshot(request.input).sha,
       replayedThroughActionIndex,
       replayChainSeed,
@@ -201,12 +213,17 @@ function* openAndBegin(
   try {
     yield* send(connection, begin);
     const ready = parseRuntimeProgramMessage(yield* connection.receive());
-    if (ready.type === "rejected") throw rejected(ready);
+    if (ready.type === "rejected") {
+      throw rejected(ready);
+    }
     assertEnvelope(ready, placement, request.taskId, request.executionEpoch);
-    if (ready.type !== "restore_ready") throw protocol("Expected restore_ready");
+    if (ready.type !== "restore_ready") {
+      throw protocol("Expected restore_ready");
+    }
     const attachmentId = ready.payload.attachment.attachmentId;
-    if (!attachmentId || ready.payload.attachment.taskId !== request.taskId)
+    if (!attachmentId || ready.payload.attachment.taskId !== request.taskId) {
       throw protocol("Remote attachment identity mismatch");
+    }
     const handle = new AgentCoreAttachmentHandle(
       connection,
       placement,
@@ -232,9 +249,11 @@ function* openAndBegin(
 }
 
 function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
-  if (!request.route || typeof request.route !== "object" || Array.isArray(request.route))
+  if (!request.route || typeof request.route !== "object" || Array.isArray(request.route)) {
     throw new CrankError("placement_unavailable", "Missing AgentCore placement route");
+  }
   const placement = request.route["placement"] as unknown;
+  const development = request.route["development"] as unknown;
   const deploymentRelease = request.route["release"] as unknown;
   const journalId = request.route["journalId"];
   const result =
@@ -251,7 +270,9 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
             release: deploymentRelease as AgentCoreRuntimeRelease,
           })
         : undefined;
-  if (!result) throw new CrankError("placement_unavailable", "Missing AgentCore private placement");
+  if (!result) {
+    throw new CrankError("placement_unavailable", "Missing AgentCore private placement");
+  }
   validateAgentCoreRuntimeRelease(result.release);
   if (
     result.taskId !== request.taskId ||
@@ -265,7 +286,9 @@ function placementFrom(request: AttachProgramRequest): AgentCoreTaskPlacement {
       "AgentCore task placement does not match attach request",
     );
   }
-  return result;
+  return development && typeof development === "object" && !Array.isArray(development)
+    ? ({ ...result, development: canonicalSnapshot(development).value } as AgentCoreTaskPlacement)
+    : result;
 }
 
 function* send(
@@ -284,7 +307,9 @@ function* receive(handle: AgentCoreAttachmentHandle): Operation<RuntimeProgramMe
     handle.activationEpoch,
     handle.attachmentId,
   );
-  if (message.type === "rejected") throw rejected(message);
+  if (message.type === "rejected") {
+    throw rejected(message);
+  }
   return message;
 }
 
@@ -300,8 +325,9 @@ function assertEnvelope(
     message.taskId !== taskId ||
     message.activationEpoch !== epoch ||
     (attachmentId !== undefined && message.attachmentId !== attachmentId)
-  )
+  ) {
     throw protocol("Remote protocol identity mismatch");
+  }
 }
 
 function commandEnvelope(
@@ -348,7 +374,9 @@ function* streamReplay(
     const source = asyncIterator.call(replay);
     while (true) {
       const next = yield* call(() => source.next());
-      if (next.done) return;
+      if (next.done) {
+        return;
+      }
       yield* visit(next.value);
     }
   }
@@ -366,8 +394,9 @@ function* streamReplay(
 }
 
 function attachmentHandle(attachment: ProgramAttachment): AgentCoreAttachmentHandle {
-  if (!(attachment.handle instanceof AgentCoreAttachmentHandle))
+  if (!(attachment.handle instanceof AgentCoreAttachmentHandle)) {
     throw protocol("Foreign or serialized AgentCore attachment");
+  }
   return attachment.handle;
 }
 function assertLive(handle: AgentCoreAttachmentHandle, attachment: ProgramAttachment): void {
@@ -376,8 +405,9 @@ function assertLive(handle: AgentCoreAttachmentHandle, attachment: ProgramAttach
     attachment.taskId !== handle.taskId ||
     attachment.executionEpoch !== handle.activationEpoch ||
     attachment.attachmentId !== handle.attachmentId
-  )
+  ) {
     throw new CrankError("stale_activation", "Stale AgentCore attachment");
+  }
 }
 function rejected(message: Extract<RuntimeProgramMessage, { type: "rejected" }>): CrankError {
   return new CrankError(message.payload.code, message.payload.message);

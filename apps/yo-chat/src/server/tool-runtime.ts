@@ -7,7 +7,16 @@ import type {
   ToolSessionRegistry,
   ToolSessionSamplingProvider,
 } from "@sweatpants/framework/chat/mcp-tools";
-import type { AgentCoreRuntimeRelease } from "@sweatpants/session-contract";
+import {
+  PROGRAM_ARTIFACT_GENERATOR_VERSION,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  createDurableSchemaRegistry,
+  createGeneratedPinnedDurableProgram,
+  generateProgramArtifactIdentity,
+  type AgentCoreRuntimeRelease,
+  type DurableProgramManifest,
+  type Json,
+} from "@sweatpants/session-contract";
 import {
   createInMemoryToolSessionStore,
   createToolSessionRegistry,
@@ -31,6 +40,7 @@ import {
 import { env } from "@/env";
 import { getSharedRedisClient } from "@/lib/shared-redis";
 import { pickCard } from "../tools/pick-card/durable";
+import { playTttTool } from "../tools/play-ttt/tool";
 import { allTools } from "./tools";
 import { createPluginSamplingProvider } from "./plugin-sampling-provider";
 import { installYoChatToolRuntime } from "./tool-runtime-installation";
@@ -147,25 +157,113 @@ function durableAgentCoreInstallation() {
       maxLifetimeSeconds: env.AGENTCORE_DURABLE_MAX_LIFETIME_SECONDS,
     },
   };
-  const program = {
-    id: pickCard.manifest.programId,
-    version: pickCard.manifest.version,
-    digest: pickCard.manifest.digest,
-  };
+  const developmentPrograms = developmentProgramReleases();
+  const readyTools = developmentPrograms?.map((entry) => entry.tool) ?? [pickCard];
   return {
     journalId: "yo-chat",
     release,
     driver: createAgentCoreDurableProgramDriver(
       createAgentCoreWebSocketProgramTransport(createSigV4AgentCoreWebSocketConnector()),
+      {
+        manifests: new Map(
+          readyTools.map((tool) => [
+            exactProgramKey({
+              id: tool.manifest.programId,
+              version: tool.manifest.version,
+              digest: tool.manifest.digest,
+            }),
+            tool.manifest,
+          ]),
+        ),
+      },
     ),
-    availablePrograms: new Set<string>([exactProgramKey(program)]),
+    availablePrograms: new Set<string>(
+      readyTools.map((tool) =>
+        exactProgramKey({
+          id: tool.manifest.programId,
+          version: tool.manifest.version,
+          digest: tool.manifest.digest,
+        }),
+      ),
+    ),
     availableEffects: new Set<string>(
-      Object.values(pickCard.manifest.effects).map((effect) => `${effect.name}@${effect.version}`),
+      readyTools.flatMap((tool) =>
+        Object.values(tool.manifest.effects).map((effect) => `${effect.name}@${effect.version}`),
+      ),
     ),
-    availableSchemaDigests: new Set<string>(
-      pickCard.artifacts.catalog.map((entry) => entry.descriptor.digest),
-    ),
+    availableSchemaDigests: new Set<string>([
+      ...createDurableSchemaRegistry()
+        .descriptors()
+        .map((descriptor) => descriptor.digest),
+      ...readyTools.flatMap((tool) =>
+        tool.artifacts.catalog.map((entry) => entry.descriptor.digest),
+      ),
+    ]),
+    ...(developmentPrograms ? { developmentPrograms } : {}),
   };
+}
+
+function developmentProgramReleases():
+  | readonly {
+      readonly publicKey: string;
+      readonly tool: typeof playTttTool;
+      readonly collection: Json;
+      readonly evaluatorAbi: string;
+    }[]
+  | undefined {
+  const encoded = env.AGENTCORE_DEVELOPMENT_ACTIVE_RECORD_JSON;
+  if (!encoded) {
+    return undefined;
+  }
+  const active = JSON.parse(encoded) as {
+    readonly record: {
+      readonly collection: Json;
+      readonly evaluatorAbi: string;
+    };
+    readonly programs: Readonly<
+      Record<
+        string,
+        {
+          readonly programId: string;
+          readonly version: string;
+          readonly manifestDigest: string;
+          readonly implementationArtifactDigest: string;
+          readonly resourcePackageDigests: readonly string[];
+        }
+      >
+    >;
+  };
+  const entry = active.programs["play_ttt"];
+  if (
+    !entry ||
+    entry.programId !== playTttTool.manifest.programId ||
+    entry.version !== playTttTool.manifest.version
+  ) {
+    throw new Error("Active development collection does not contain compatible play_ttt");
+  }
+  const { digest: _authoredDigest, ...manifest } = playTttTool.manifest;
+  const generated = createGeneratedPinnedDurableProgram(
+    generateProgramArtifactIdentity({
+      format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+      generatorVersion: PROGRAM_ARTIFACT_GENERATOR_VERSION,
+      manifest: manifest as Omit<DurableProgramManifest, "digest">,
+      implementationArtifactDigest: entry.implementationArtifactDigest,
+      resourcePackageDigests: entry.resourcePackageDigests,
+    }),
+    playTttTool.program,
+  );
+  if (generated.manifest.digest !== entry.manifestDigest) {
+    throw new Error("Active development program identity does not re-derive");
+  }
+  const tool = Object.freeze({ ...playTttTool, ...generated });
+  return [
+    {
+      publicKey: "play_ttt",
+      tool,
+      collection: active.record.collection,
+      evaluatorAbi: active.record.evaluatorAbi,
+    },
+  ];
 }
 
 /** Installs all discovered tools into the single selected runtime. */

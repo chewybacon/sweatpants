@@ -83,6 +83,7 @@ export const appEnv = createEnv({
     AGENTCORE_DURABLE_REGISTRY_DIGEST: z.string().optional(),
     AGENTCORE_DURABLE_IAM_PROFILE: z.string().optional(),
     AGENTCORE_DURABLE_NETWORK_PROFILE: z.string().optional(),
+    AGENTCORE_DEVELOPMENT_ACTIVE_RECORD_JSON: z.string().optional(),
     AGENTCORE_DURABLE_IDLE_TIMEOUT_SECONDS: z.coerce.number().default(180),
     AGENTCORE_DURABLE_MAX_LIFETIME_SECONDS: z.coerce.number().default(28_800),
     AGENTCORE_TOOL_SESSION_TTL_MS: z.coerce.number().default(15 * 60 * 1000),

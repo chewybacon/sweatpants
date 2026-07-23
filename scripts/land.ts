@@ -81,6 +81,12 @@ async function main(): Promise<void> {
       { name: "lint", command: "pnpm", args: ["lint"], timeoutMs: 5 * 60_000 },
       { name: "build", command: "pnpm", args: ["build"], timeoutMs: 15 * 60_000 },
       {
+        name: "verify:yo-chat-remote-collection",
+        command: "pnpm",
+        args: ["verify:yo-chat-remote-collection"],
+        timeoutMs: 5 * 60_000,
+      },
+      {
         name: "test:packages",
         command: "pnpm",
         args: [
