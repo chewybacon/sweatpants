@@ -10,7 +10,9 @@ import {
 
 function required(name: string): string {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required`);
+  if (!value) {
+    throw new Error(`${name} is required`);
+  }
   return value;
 }
 
@@ -29,12 +31,16 @@ async function waitEndpoint(
         }),
       );
       console.log(`endpoint_status=${last.status}`);
-      if (last.status === "READY") return last;
+      if (last.status === "READY") {
+        return last;
+      }
       if (last.status === "CREATE_FAILED" || last.status === "UPDATE_FAILED") {
         throw new Error("AgentCore endpoint creation failed");
       }
     } catch (error) {
-      if ((error as { name?: string }).name !== "ResourceNotFoundException") throw error;
+      if ((error as { name?: string }).name !== "ResourceNotFoundException") {
+        throw error;
+      }
       console.log("endpoint_status=not-found");
     }
     await new Promise((resolve) => setTimeout(resolve, 5_000));
@@ -57,6 +63,9 @@ async function main(): Promise<void> {
   const registryDigest = required("AGENTCORE_DURABLE_REGISTRY_DIGEST");
   const imageUri = required("IMAGE_URI");
   const roleArn = required("AGENTCORE_EXECUTION_ROLE_ARN");
+  const developmentBucket = required("AGENTCORE_DEVELOPMENT_BUCKET");
+  const developmentPrefix = required("AGENTCORE_DEVELOPMENT_PREFIX");
+  const evaluatorAbi = required("AGENTCORE_DEVELOPMENT_EVALUATOR_ABI");
   if (!imageUri.includes("@sha256:")) {
     throw new Error("IMAGE_URI must pin an ECR image digest");
   }
@@ -82,11 +91,19 @@ async function main(): Promise<void> {
       environmentVariables: {
         AGENTCORE_DURABLE_RELEASE_ID: releaseId,
         AGENTCORE_DURABLE_REGISTRY_DIGEST: registryDigest,
+        AGENTCORE_DEVELOPMENT_BUCKET: developmentBucket,
+        AGENTCORE_DEVELOPMENT_PREFIX: developmentPrefix,
+        AGENTCORE_DEVELOPMENT_EVALUATOR_ABI: evaluatorAbi,
         AGENTCORE_WORKSPACE_PATH: "/mnt/workspace",
       },
       description: `Sweatpants immutable durable evaluator ${releaseId}`,
       tags: {
-        project: "sweatpants-agentcore-durable-program-runtime",
+        "sweatpants:format": "1",
+        "sweatpants:purpose": "remote-development",
+        "sweatpants:project": "sweatpants",
+        "sweatpants:owner": "rrauh",
+        "sweatpants:environment": "dev",
+        "sweatpants:managed": "true",
         release: releaseId,
       },
     }),
@@ -108,7 +125,8 @@ async function main(): Promise<void> {
     endpoint,
   };
   await writeFile(
-    "agentcore-durable-program-runtime-deploy-output.json",
+    process.env["AGENTCORE_DEPLOY_OUTPUT"] ??
+      "agentcore-durable-program-runtime-deploy-output.json",
     JSON.stringify(output, null, 2),
     "utf8",
   );

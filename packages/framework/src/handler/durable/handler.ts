@@ -346,7 +346,10 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
       const inventoryEntries = yield* ToolInventoryApi.list();
       const inventoryNames = new Set(inventoryEntries.map((entry) => entry.definition.name));
       const inventoryNameList = inventoryEntries.map((entry) => entry.definition.name);
-      log.debug({ toolCount: inventoryEntries.length }, "tool inventory configured");
+      log.debug(
+        { toolCount: inventoryEntries.length, toolNames: inventoryNameList },
+        "tool inventory configured",
+      );
 
       const resolvePersona = yield* PersonaResolverContext.get();
       const maxIterations = (yield* MaxIterationsContext.get()) ?? maxToolIterations;
@@ -418,6 +421,14 @@ export function createDurableChatHandler(config: DurableChatHandlerConfig) {
         enabledPlugins: body.enabledPlugins ?? [],
         metadata: { sessionId, conversationId: requestedConversationId },
       });
+
+      log.debug(
+        {
+          enabledPlugins: body.enabledPlugins ?? [],
+          exposedToolNames: exposedDefinitions.map((definition) => definition.name),
+        },
+        "tool exposure resolved",
+      );
 
       const seenNames = new Set<string>();
       const toolSchemas: ToolSchema[] = [];

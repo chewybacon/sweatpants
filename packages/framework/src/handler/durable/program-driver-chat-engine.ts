@@ -600,6 +600,16 @@ function* sampleModel(
   onText?: (text: string, delta: string) => Operation<void>,
 ): Operation<ChatSampleResult> {
   const foreignSamplingRequest = isForeignSamplingRequest(request);
+  const samplingLog = yield* useLogger("handler:durable:model-sample");
+  samplingLog.debug(
+    {
+      pullId,
+      toolChoice: request.toolChoice,
+      toolNames: params.toolSchemas.map((tool) => tool.name),
+      foreignSamplingRequest,
+    },
+    "sampling model with projected tool authority",
+  );
   const projectedContext: RuntimeContext = {
     ...(request.systemPrompt !== undefined
       ? { systemPrompt: modelSystemPromptText(request.systemPrompt) }

@@ -137,6 +137,40 @@ const agentRoute = {
 } as const;
 
 describe("AgentCore crank-native ProgramDriver integration", () => {
+  it("resolves exact generated manifests from Host-side readiness evidence", async () => {
+    let manifestCheck: Promise<void> | undefined;
+    await run(() =>
+      runDurableDriverRecoveryFixture({
+        driverKind: "agentcore",
+        route: agentRoute,
+        useActivationLease: true,
+        createDriver(registry) {
+          const transport = createReplacingAgentCoreTransport(registry).transport;
+          const manifests = new Map(
+            [...registry.values()].map((tool) => [
+              `${tool.manifest.programId}@${tool.manifest.version}#${tool.manifest.digest}`,
+              tool.manifest,
+            ]),
+          );
+          const driver = createAgentCoreDurableProgramDriver(transport, { manifests });
+          const first = registry.values().next().value;
+          if (!first || !driver.manifest) throw new Error("fixture manifest is unavailable");
+          manifestCheck = run(() =>
+            driver.manifest!({
+              id: first.manifest.programId,
+              version: first.manifest.version,
+              digest: first.manifest.digest,
+            }),
+          ).then((manifest) => {
+            expect(manifest).toEqual(first.manifest);
+          });
+          return driver;
+        },
+      }),
+    );
+    await manifestCheck;
+  });
+
   it("replaces the remote container after park and reconstructs execution from the crank journal", async () => {
     let transportEvidence: ReturnType<typeof createReplacingAgentCoreTransport> | undefined;
 

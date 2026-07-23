@@ -1,5 +1,5 @@
-import type { Operation } from 'effection'
-import type { ChatHandlerSetupContext } from '@sweatpants/framework/server'
+import type { Operation } from "effection";
+import type { ChatHandlerSetupContext } from "@sweatpants/framework/server";
 import {
   installPiAiModelProvider,
   parseAllowedModelsJson,
@@ -7,39 +7,41 @@ import {
   resolveModelSelection,
   resolvePiAiModel,
   type ModelSelection,
-} from '@sweatpants/model-provider-pi-ai'
-import { env } from '@/env'
-import { installScriptedRenderingModelProvider } from './scripted-rendering-provider'
+} from "@sweatpants/model-provider-pi-ai";
+import { env } from "@/env";
+import { installScriptedRenderingModelProvider } from "./scripted-rendering-provider";
 
 type ChatRequestModelBody = {
-  model?: unknown
-}
+  model?: unknown;
+};
 
 function defaultChatModel(): ModelSelection {
   return {
     provider: env.DEFAULT_CHAT_MODEL_PROVIDER,
     id: env.DEFAULT_CHAT_MODEL_ID,
-  }
+  };
 }
 
 export function* setupYoChatModelProvider(ctx: ChatHandlerSetupContext): Operation<void> {
-  const url = new URL(ctx.request.url)
-  if (url.searchParams.get('scripted') === 'rendering') {
-    if (env.ENABLE_SCRIPTED_RENDERING_PROVIDER !== 'yes') {
-      throw new Error('Scripted rendering provider is disabled. Set ENABLE_SCRIPTED_RENDERING_PROVIDER=yes for deterministic rendering tests.')
+  const url = new URL(ctx.request.url);
+  if (url.searchParams.get("scripted") === "rendering") {
+    if (env.ENABLE_SCRIPTED_RENDERING_PROVIDER !== "yes") {
+      throw new Error(
+        "Scripted rendering provider is disabled. Set ENABLE_SCRIPTED_RENDERING_PROVIDER=yes for deterministic rendering tests.",
+      );
     }
-    yield* installScriptedRenderingModelProvider()
-    return
+    yield* installScriptedRenderingModelProvider();
+    return;
   }
 
-  const body = ctx.body as ChatRequestModelBody
-  const requestModel = parseRequestModelSelection(body.model, 'model')
+  const body = ctx.body as ChatRequestModelBody;
+  const requestModel = parseRequestModelSelection(body.model, "model");
   const selection = resolveModelSelection({
     requestModel,
     defaultModel: defaultChatModel(),
     allowedModels: parseAllowedModelsJson(env.ALLOWED_CHAT_MODELS_JSON),
-    unsafeAllowAny: env.UNSAFE_ALLOW_ANY_CHAT_MODEL === 'yes',
-  })
+    unsafeAllowAny: env.UNSAFE_ALLOW_ANY_CHAT_MODEL === "yes",
+  });
 
-  yield* installPiAiModelProvider({ model: resolvePiAiModel(selection) })
+  yield* installPiAiModelProvider({ model: resolvePiAiModel(selection) });
 }
