@@ -45,6 +45,7 @@ import {
   createSseHeaders,
 } from '../protocol/sse-formatter.ts'
 import { JSON_RPC_ERROR_CODES } from '../protocol/types.ts'
+import { MCP_PROTOCOL_VERSION } from '@sweatpants/session-contract'
 
 // =============================================================================
 // HANDLER OPTIONS
@@ -89,9 +90,10 @@ function createErrorResponse(
   status: number,
   code: number,
   message: string,
+  id: string | number | null = null,
   headers?: Record<string, string>
 ): Response {
-  const body = createJsonRpcErrorResponse(code, message)
+  const body = createJsonRpcErrorResponse(code, message, id)
   return new Response(JSON.stringify(body), {
     status,
     headers: {
@@ -116,14 +118,11 @@ function createInitializeResponse(
     jsonrpc: '2.0',
     id: request.requestId,
     result: {
-      protocolVersion: '2024-11-05',
+      protocolVersion: MCP_PROTOCOL_VERSION,
       capabilities: {
         tools: {
           listChanged: false,
         },
-        // We support elicitation and sampling
-        elicitation: {},
-        sampling: {},
       },
       serverInfo: {
         name: 'mcp-durable-runtime',
@@ -297,8 +296,11 @@ export function createMcpHandler(options: McpHandlerOptions): {
         if (error instanceof McpHandlerError) {
           return createErrorResponse(
             error.httpStatus,
-            JSON_RPC_ERROR_CODES.INVALID_REQUEST,
-            error.message
+            error.code === 'INVALID_REQUEST'
+              ? JSON_RPC_ERROR_CODES.INVALID_PARAMS
+              : JSON_RPC_ERROR_CODES.INVALID_REQUEST,
+            error.message,
+            error.requestId,
           )
         }
         throw error
@@ -442,8 +444,11 @@ export function createMcpHandler(options: McpHandlerOptions): {
       if (error instanceof McpHandlerError) {
         return createErrorResponse(
           error.httpStatus,
-          JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
-          error.message
+          error.code === 'INVALID_REQUEST'
+            ? JSON_RPC_ERROR_CODES.INVALID_PARAMS
+            : JSON_RPC_ERROR_CODES.INTERNAL_ERROR,
+          error.message,
+          error.requestId,
         )
       }
 
@@ -865,7 +870,7 @@ export function generateMcpManifest(
     },
     mcp: {
       endpoint,
-      protocolVersion: '2024-11-05',
+      protocolVersion: MCP_PROTOCOL_VERSION,
     },
     tools: toolList,
   }

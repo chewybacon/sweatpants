@@ -4,16 +4,33 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "check": "tsc --noEmit"
+        "dev": "vite",
+        "check": "tsc --noEmit",
+        "build": "vite build",
+        "test": "vitest run"
     },
     "dependencies": {
         "@sweatpants/core": "workspace:*",
         "@sweatpants/framework": "workspace:*",
-        "effection": "catalog:"
+        "@sweatpants/model-provider-pi-ai": "workspace:*",
+        "@sweatpants/react-chat": "workspace:*",
+        "@sweatpants/session-contract": "workspace:*",
+        "@sweatpants/stream-bridge": "workspace:*",
+        "@sweatpants/workspace-runtime": "workspace:*",
+        "effection": "catalog:",
+        "react": "catalog:",
+        "react-dom": "catalog:",
+        "zod": "catalog:"
     },
     "devDependencies": {
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
-        "typescript": "catalog:"
+        "@types/react": "catalog:",
+        "@types/react-dom": "catalog:",
+        "@vitejs/plugin-react": "catalog:",
+        "typescript": "catalog:",
+        "vite": "catalog:",
+        "vite-tsconfig-paths": "catalog:",
+        "vitest": "catalog:"
     }
 }

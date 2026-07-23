@@ -113,6 +113,20 @@
                 "types": "./dist/lib/chat/mcp-tools/index.d.ts",
                 "default": "./dist/chat/mcp-tools.cjs"
             }
+        },
+        "./deployment": {
+            "development": {
+                "import": "./src/deployment/index.ts",
+                "types": "./src/deployment/index.ts"
+            },
+            "import": {
+                "types": "./dist/deployment/index.d.ts",
+                "default": "./dist/deployment.js"
+            },
+            "require": {
+                "types": "./dist/deployment/index.d.ts",
+                "default": "./dist/deployment.cjs"
+            }
         }
     },
     "scripts": {

@@ -7,11 +7,11 @@ import type {
 } from "./durable-types.ts";
 
 /** MCP extension identifier for durable effect authorization and commit. */
-export const MCP_DURABLE_EFFECTS_EXTENSION = "works.earendil/durable-effects-v1";
+export const MCP_DURABLE_EFFECTS_EXTENSION = "sweatpants.chat/durable-effects-v1";
 /** MRTR request type for durable pull authorization. */
-export const MCP_DURABLE_AUTHORIZE_REQUEST = "works.earendil/durable-effects/authorize";
+export const MCP_DURABLE_AUTHORIZE_REQUEST = "sweatpants.chat/durable-effects/authorize";
 /** MRTR request type for committing a durable pull outcome. */
-export const MCP_DURABLE_COMMIT_REQUEST = "works.earendil/durable-effects/commit";
+export const MCP_DURABLE_COMMIT_REQUEST = "sweatpants.chat/durable-effects/commit";
 /** Default encrypted MCP request-state plaintext limit. */
 export const MCP_REQUEST_STATE_MAX_BYTES = 1024 * 1024;
 

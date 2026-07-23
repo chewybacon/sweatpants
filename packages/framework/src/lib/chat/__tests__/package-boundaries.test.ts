@@ -27,6 +27,7 @@ describe("framework package boundaries", () => {
       "./chat/browser-rendering",
       "./chat/durable-streams",
       "./chat/mcp-tools",
+      "./deployment",
       "./server",
       "./server/testing",
     ]);
