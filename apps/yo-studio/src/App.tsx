@@ -203,11 +203,19 @@ export function App() {
 
         <section className="panel">
           <p className="eyebrow">Workspace placement</p>
-          <h2>Lambda MicroVM</h2>
+          <h2>
+            {__YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws"
+              ? "AWS Lambda MicroVM"
+              : "Local Effection runtime"}
+          </h2>
           <dl>
             <div>
               <dt>Runtime</dt>
-              <dd>Node {studioView.sandbox.image.node} · ARM64</dd>
+              <dd>
+                {__YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws"
+                  ? `Node ${studioView.sandbox.image.node} · ARM64`
+                  : "Node · loopback connector"}
+              </dd>
             </div>
             <div>
               <dt>Persistence</dt>

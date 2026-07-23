@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { createScope } from "effection";
 import { nodeRequestToWebRequest, sendWebResponse } from "@sweatpants/stream-bridge";
+import { createLambdaMicrovmWorkspaceManager } from "@sweatpants/sandbox-provider-aws";
 import { defineConfig, type Plugin } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
@@ -9,6 +10,7 @@ import {
   createStudioDevelopmentRuntime,
 } from "./src/server/development-api.ts";
 import { createStudioDurableChatApplication } from "./src/server/durable-chat-application.ts";
+import { codingSandbox, productWorkspace } from "./src/deployment.ts";
 
 function studioApi(): Plugin {
   return {
@@ -19,7 +21,37 @@ function studioApi(): Plugin {
         return yield* createStudioDevelopmentRuntime(process.cwd());
       });
       const api = createStudioDevelopmentApi(runtime);
-      const chat = createStudioDurableChatApplication(runtime);
+      const placement = process.env["YO_STUDIO_WORKSPACE_PLACEMENT"] ?? "local";
+      const awsManager =
+        placement === "aws"
+          ? createLambdaMicrovmWorkspaceManager({
+              imageArn:
+                process.env["YO_STUDIO_MICROVM_IMAGE_ARN"] ??
+                "arn:aws:lambda:us-east-1:988857891049:microvm-image:sweatpants-durable-sandbox",
+              imageVersion: codingSandbox.image.version,
+              executionRoleArn:
+                process.env["YO_STUDIO_MICROVM_EXECUTION_ROLE_ARN"] ??
+                "arn:aws:iam::988857891049:role/sweatpants-microvm-exec-f9fdea17",
+              profile: process.env["AWS_PROFILE"] ?? "EngineeringPowerUser-prototype",
+              region: process.env["AWS_REGION"] ?? "us-east-1",
+              scripts: productWorkspace.scripts,
+              idle: {
+                warmSeconds: codingSandbox.lifecycle.warmIdleSeconds,
+                suspendedSeconds: codingSandbox.lifecycle.suspendedLifetimeSeconds,
+                maximumSeconds: codingSandbox.lifecycle.suspendedLifetimeSeconds,
+              },
+              logging: { logGroup: "/aws/lambda-microvms/sweatpants-durable-sandbox" },
+            })
+          : undefined;
+      const chat = createStudioDurableChatApplication(
+        awsManager
+          ? {
+              resolveWorkspace: function* (context) {
+                return yield* awsManager.resolve(context);
+              },
+            }
+          : runtime,
+      );
 
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? "/", "http://yo-studio").pathname;
@@ -48,7 +80,15 @@ function studioApi(): Plugin {
           });
       });
       server.httpServer?.once("close", () => {
-        void chat.close().then(() => destroy());
+        void (async () => {
+          await chat.close();
+          if (awsManager) {
+            await scope.run(function* () {
+              yield* awsManager.close();
+            });
+          }
+          await destroy();
+        })();
       });
     },
   };
@@ -56,5 +96,10 @@ function studioApi(): Plugin {
 
 export default defineConfig({
   plugins: [tsconfigPaths(), react(), studioApi()],
+  define: {
+    __YO_STUDIO_WORKSPACE_PLACEMENT__: JSON.stringify(
+      process.env["YO_STUDIO_WORKSPACE_PLACEMENT"] ?? "local",
+    ),
+  },
   server: { port: 8_100 },
 });

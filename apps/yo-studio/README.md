@@ -307,8 +307,14 @@ changing either projection or the program. The conversation ID is retained in
 `localStorage`, so refresh hydrates the same durable handler conversation; only
 New session replaces that identity and remounts the hook.
 
-The next implementation slice is an AWS Host provider that allocates or resumes
-a task-affine MicroVM, mints short-lived request headers, binds the activation
-fence, and supplies `createHttpWorkspaceConnector()` to this same headless
-service. After that, the UI can select local or AWS placement from deployment
-configuration rather than running AWS certification separately.
+`@sweatpants/sandbox-provider-aws` now interprets the Lambda deployment in the
+Vite Host: the first workspace effect for each durable conversation allocates a
+task-affine MicroVM, waits for readiness, mints short-lived port-bound auth,
+binds the activation fence, and returns `createHttpWorkspaceConnector()`. New
+session therefore creates a new conversation and a distinct MicroVM lease. The
+Vite root scope terminates every owned lease on shutdown.
+
+Set `YO_STUDIO_WORKSPACE_PLACEMENT=aws` to use that path; the UI reports the
+actual selected placement. The next implementation slice is durable production
+journal storage plus workspace checkpoint materialization, so both Host restart
+and MicroVM termination recover rather than only suspend/resume within a lease.

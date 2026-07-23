@@ -46,7 +46,7 @@ export const productWorkspace = defineWorkspace({
 export const codingSandbox = lambdaMicrovm({
   image: {
     name: "sweatpants-durable-sandbox",
-    version: "6.0",
+    version: "7.0",
     node: "24",
     architecture: "arm64",
   },

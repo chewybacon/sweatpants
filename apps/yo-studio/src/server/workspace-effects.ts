@@ -1,3 +1,4 @@
+import type { Operation } from "effection";
 import { effectRuntimeValidators } from "@sweatpants/core";
 import {
   createDurableEffectRegistration,
@@ -14,9 +15,13 @@ import {
   writeWorkspaceFile,
 } from "../capabilities/workspace.ts";
 
-export interface WorkspaceEffectAdapterOptions {
+export interface WorkspaceEffectBinding {
   readonly connector: WorkspaceConnector;
-  readonly fenceFor: (context: DurableEffectContext) => WorkspaceFence;
+  readonly fence: WorkspaceFence;
+}
+
+export interface WorkspaceEffectAdapterOptions {
+  readonly resolve: (context: DurableEffectContext) => Operation<WorkspaceEffectBinding>;
 }
 
 /**
@@ -32,10 +37,11 @@ export function createWorkspaceEffectRegistrations(
       inspectWorkspace,
       { mode: "idempotent", mechanism: "inherent" },
       function* (_input, context) {
-        const response = yield* options.connector.request({
+        const binding = yield* options.resolve(context);
+        const response = yield* binding.connector.request({
           protocolVersion: 1,
           type: "inspect",
-          fence: options.fenceFor(context),
+          fence: binding.fence,
           operationId: context.pullId,
         });
         if (response.type !== "inspect-result") {
@@ -49,10 +55,11 @@ export function createWorkspaceEffectRegistrations(
       readWorkspaceFile,
       { mode: "idempotent", mechanism: "inherent" },
       function* (input, context) {
-        const response = yield* options.connector.request({
+        const binding = yield* options.resolve(context);
+        const response = yield* binding.connector.request({
           protocolVersion: 1,
           type: "read",
-          fence: options.fenceFor(context),
+          fence: binding.fence,
           operationId: context.pullId,
           workspaceVersion: input.workspaceVersion,
           path: input.path,
@@ -68,10 +75,11 @@ export function createWorkspaceEffectRegistrations(
       listWorkspace,
       { mode: "idempotent", mechanism: "inherent" },
       function* (input, context) {
-        const response = yield* options.connector.request({
+        const binding = yield* options.resolve(context);
+        const response = yield* binding.connector.request({
           protocolVersion: 1,
           type: "list",
-          fence: options.fenceFor(context),
+          fence: binding.fence,
           operationId: context.pullId,
           workspaceVersion: input.workspaceVersion,
           path: input.path,
@@ -87,10 +95,11 @@ export function createWorkspaceEffectRegistrations(
       writeWorkspaceFile,
       { mode: "idempotent", mechanism: "pull_id_key" },
       function* (input, context) {
-        const response = yield* options.connector.request({
+        const binding = yield* options.resolve(context);
+        const response = yield* binding.connector.request({
           protocolVersion: 1,
           type: "write",
-          fence: options.fenceFor(context),
+          fence: binding.fence,
           operationId: context.pullId,
           workspaceVersion: input.expectedWorkspaceVersion,
           path: input.path,
@@ -107,10 +116,11 @@ export function createWorkspaceEffectRegistrations(
       runWorkspaceScript,
       { mode: "idempotent", mechanism: "pull_id_key" },
       function* (input, context) {
-        const response = yield* options.connector.request({
+        const binding = yield* options.resolve(context);
+        const response = yield* binding.connector.request({
           protocolVersion: 1,
           type: "run-script",
-          fence: options.fenceFor(context),
+          fence: binding.fence,
           operationId: context.pullId,
           workspaceVersion: input.workspaceVersion,
           script: input.script,

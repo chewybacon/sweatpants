@@ -29,9 +29,11 @@ async function fixture() {
     scripts: { test: 'test "$(cat src/value.txt)" = after' },
   });
   service.bind(fence);
+  const connector = createLoopbackWorkspaceConnector(service);
   const registrations = createWorkspaceEffectRegistrations({
-    connector: createLoopbackWorkspaceConnector(service),
-    fenceFor: () => fence,
+    *resolve() {
+      return { connector, fence };
+    },
   });
   const byName = new Map(
     registrations.map((registration) => [registration.definition.name, registration]),

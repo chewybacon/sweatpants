@@ -2,6 +2,7 @@
   "version": 1,
   "facadePaths": [
     "@sweatpants/react-chat",
+    "@sweatpants/sandbox-provider-aws",
     "@sweatpants/react-chat/pipeline",
     "@sweatpants/framework/server",
     "@sweatpants/framework/server/testing",
