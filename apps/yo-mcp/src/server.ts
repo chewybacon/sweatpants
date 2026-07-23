@@ -71,7 +71,7 @@ async function startNodeServer(
     outgoing.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
     outgoing.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Mcp-Session-Id, Last-Event-ID, Accept",
+      "Content-Type, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID, Accept",
     );
     outgoing.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
     if (incoming.method === "OPTIONS") {

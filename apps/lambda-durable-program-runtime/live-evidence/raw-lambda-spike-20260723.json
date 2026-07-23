@@ -1,0 +1,38 @@
+{
+    "functionArn": "arn:aws:lambda:us-east-1:988857891049:function:sweatpants-raw-lambda-f9fdea17",
+    "runtime": "nodejs22.x",
+    "architecture": "arm64",
+    "memoryMb": 512,
+    "collectionDigest": "8d958a85f14b3797add92df1a82a28b83994b978422eaf4510416dd35e9e6a98",
+    "programArtifactDigest": "2e6512588fee1d32994d1e8102b027ba8121470f62e0e463157865fbd6a80cca",
+    "warm": {
+        "computeGeneration": "1707f4f7-89b5-40ec-8bfc-f7f1316feea0",
+        "durationMs": 271.08,
+        "billedDurationMs": 272,
+        "maxMemoryMb": 145,
+        "equalFrontier": true
+    },
+    "forcedCold": {
+        "computeGeneration": "61dfdec4-ba9a-485a-b550-290e3db1a357",
+        "generationReplaced": true,
+        "initDurationMs": 380.42,
+        "durationMs": 1832.74,
+        "billedDurationMs": 2214,
+        "maxMemoryMb": 143,
+        "equalFrontier": true
+    },
+    "replayToFrontier": {
+        "commandsReplayed": 3,
+        "stepType": "operation",
+        "operationKind": "elicit",
+        "elicitKey": "pickMove",
+        "message": "Your turn! You're playing as O.",
+        "board": [null, null, null, null, "X", null, null, null, null]
+    },
+    "hostAuthority": {
+        "journal": "local-only",
+        "effects": "local-only",
+        "modelCredentials": "not-granted-to-lambda"
+    },
+    "certifiedAt": "2026-07-23T10:34:00Z"
+}

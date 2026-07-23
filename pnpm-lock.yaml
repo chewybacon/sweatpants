@@ -654,7 +654,7 @@ importers:
         version: 4.1.18
       vite-tsconfig-paths:
         specifier: 'catalog:'
-        version: 5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.5)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       zod:
         specifier: 'catalog:'
         version: 4.1.13
@@ -706,7 +706,7 @@ importers:
         version: 19.2.3(@types/react@19.2.8)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 5.1.2(vite@7.3.1(@types/node@22.19.5)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+        version: 5.1.2(vite@7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       esbuild:
         specifier: ^0.24.0
         version: 0.24.2
@@ -796,9 +796,33 @@ importers:
       '@sweatpants/framework':
         specifier: workspace:*
         version: link:../../packages/framework
+      '@sweatpants/model-provider-pi-ai':
+        specifier: workspace:*
+        version: link:../../packages/model-provider-pi-ai
+      '@sweatpants/react-chat':
+        specifier: workspace:*
+        version: link:../../packages/react-chat
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../../packages/session-contract
+      '@sweatpants/stream-bridge':
+        specifier: workspace:*
+        version: link:../../packages/stream-bridge
+      '@sweatpants/workspace-runtime':
+        specifier: workspace:*
+        version: link:../../packages/workspace-runtime
       effection:
         specifier: 4.1.0-alpha.9
         version: 4.1.0-alpha.9
+      react:
+        specifier: 'catalog:'
+        version: 19.2.3
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.2.3(react@19.2.3)
+      zod:
+        specifier: 'catalog:'
+        version: 4.1.13
     devDependencies:
       '@sweatpants/ts-config':
         specifier: workspace:*
@@ -806,9 +830,27 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.5
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.8
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.8)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 5.1.2(vite@7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: 7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
+      vite-tsconfig-paths:
+        specifier: 'catalog:'
+        version: 5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/a2a:
     dependencies:
@@ -1474,6 +1516,31 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
+
+  packages/workspace-runtime:
+    dependencies:
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
 packages:
 
@@ -12798,7 +12865,7 @@ snapshots:
       unplugin-utils: 0.3.1
       vite: 6.4.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
-  '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@22.19.5)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
+  '@vitejs/plugin-react@5.1.2(vite@7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2))':
     dependencies:
       '@babel/core': 7.28.6
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.6)
@@ -14409,7 +14476,7 @@ snapshots:
     dependencies:
       duplexer: 0.1.2
 
-  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8)):
+  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16)):
     dependencies:
       rou3: 0.8.1
       srvx: 0.11.16
@@ -15433,7 +15500,7 @@ snapshots:
       crossws: 0.4.6(srvx@0.11.16)
       db0: 0.3.4
       env-runner: 0.1.14
-      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8))
+      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16))
       hookable: 6.1.1
       nf3: 0.3.17
       ocache: 0.1.5
@@ -17130,7 +17197,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  vite-tsconfig-paths@5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.5)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)):
+  vite-tsconfig-paths@5.1.4(typescript@5.9.3)(vite@7.3.1(@types/node@22.19.5)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)):
     dependencies:
       debug: 4.4.3
       globrex: 0.1.2

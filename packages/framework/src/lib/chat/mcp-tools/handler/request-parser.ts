@@ -22,6 +22,7 @@
  */
 import type { Operation } from "effection";
 import { call } from "effection";
+import { MCP_PROTOCOL_VERSION } from "@sweatpants/session-contract";
 import type {
   McpParsedRequest,
   McpRequestHeaders,
@@ -58,12 +59,14 @@ import type {
 export function parseHeaders(request: Request): McpRequestHeaders {
   const sessionId = request.headers.get("Mcp-Session-Id");
   const lastEventId = request.headers.get("Last-Event-ID");
+  const protocolVersion = request.headers.get("MCP-Protocol-Version");
   const accept = request.headers.get("Accept");
   const contentType = request.headers.get("Content-Type");
 
   return {
     ...(sessionId != null && { sessionId }),
     ...(lastEventId != null && { lastEventId }),
+    ...(protocolVersion != null && { protocolVersion }),
     ...(accept != null && { accept }),
     ...(contentType != null && { contentType }),
   };
@@ -225,12 +228,20 @@ function classifyPostBody(
           }
         | undefined;
 
+      if (typeof params?.protocolVersion !== "string" || params.protocolVersion.length === 0) {
+        throw new McpHandlerError(
+          MCP_HANDLER_ERRORS.INVALID_REQUEST,
+          "initialize requires params.protocolVersion",
+          400,
+          req.id,
+        );
+      }
       return {
         type: "initialize",
         requestId: req.id,
-        protocolVersion: params?.protocolVersion ?? "2024-11-05",
-        capabilities: params?.capabilities ?? {},
-        clientInfo: params?.clientInfo ?? { name: "unknown", version: "0.0.0" },
+        protocolVersion: params.protocolVersion,
+        capabilities: params.capabilities ?? {},
+        clientInfo: params.clientInfo ?? { name: "unknown", version: "0.0.0" },
       };
     }
 
@@ -438,8 +449,23 @@ function classifyDeleteRequest(headers: McpRequestHeaders): McpTerminateRequest 
  */
 export function classifyRequest(parsed: McpParsedRequest): McpClassifiedRequest {
   switch (parsed.method) {
-    case "POST":
-      return classifyPostBody(parsed.body, parsed.headers.sessionId);
+    case "POST": {
+      const classified = classifyPostBody(parsed.body, parsed.headers.sessionId);
+      if (
+        classified.type !== "initialize" &&
+        parsed.headers.protocolVersion !== undefined &&
+        parsed.headers.protocolVersion !== MCP_PROTOCOL_VERSION
+      ) {
+        const requestId = "requestId" in classified ? classified.requestId : null;
+        throw new McpHandlerError(
+          MCP_HANDLER_ERRORS.INVALID_REQUEST,
+          `MCP-Protocol-Version must be ${MCP_PROTOCOL_VERSION}`,
+          400,
+          requestId,
+        );
+      }
+      return classified;
+    }
 
     case "GET":
       return classifyGetRequest(parsed.headers);

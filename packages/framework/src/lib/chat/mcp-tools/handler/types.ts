@@ -85,6 +85,8 @@ export interface McpRequestHeaders {
   sessionId?: string | undefined
   /** Last-Event-ID header for resumability */
   lastEventId?: string | undefined
+  /** Negotiated MCP protocol version for post-initialize requests */
+  protocolVersion?: string | undefined
   /** Accept header */
   accept?: string | undefined
   /** Content-Type header */
@@ -311,7 +313,8 @@ export class McpHandlerError extends Error {
   constructor(
     public readonly code: McpHandlerErrorCode,
     message: string,
-    public readonly httpStatus: number = 400
+    public readonly httpStatus: number = 400,
+    public readonly requestId: JsonRpcId | null = null
   ) {
     super(message)
     this.name = 'McpHandlerError'

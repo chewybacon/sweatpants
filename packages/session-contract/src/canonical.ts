@@ -36,6 +36,36 @@ export function stableOpaqueId(prefix: string, value: unknown): string {
   return `${prefix}_${sha256(canonicalJson(value)).slice(0, 32)}`;
 }
 
+/** Unicode code-point ordering used by protocol sets that require it. */
+export function compareUnicodeCodePoints(left: string, right: string): number {
+  const leftPoints = [...left];
+  const rightPoints = [...right];
+  const count = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < count; index += 1) {
+    const difference = leftPoints[index]!.codePointAt(0)! - rightPoints[index]!.codePointAt(0)!;
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return leftPoints.length - rightPoints.length;
+}
+
+/** Non-mutating stable insertion sort for protocol-visible string sets. */
+export function sortStrings(
+  values: readonly string[],
+  compare: (left: string, right: string) => number = compareUnicodeCodePoints,
+): string[] {
+  const result: string[] = [];
+  for (const value of values) {
+    let index = 0;
+    while (index < result.length && compare(result[index]!, value) < 0) {
+      index += 1;
+    }
+    result.splice(index, 0, value);
+  }
+  return result;
+}
+
 /**
  * Parses unknown input into a fresh canonical-JSON projection, rejecting cycles,
  * accessors, sparse arrays, invalid Unicode, prototypes, and non-finite numbers.

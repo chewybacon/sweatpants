@@ -1,11 +1,14 @@
 # yo-studio
 
-> **Status: North-star vision.** Nothing in this app exists yet. This README is the
-> destination — a concrete, end-to-end picture of what a full sweatpants assembly
-> looks like when the current design memos (journal-native portable agents,
-> crank-native durable remote tools, callee-authoritative A2A peers, and a future
-> "code mode v2" over validated IR) have all landed. We build toward this; we
-> measure new designs against it.
+> **Status: First authored vertical.** The app now contains a real journal-native
+> coding harness, a closed workspace capability map, a portable workspace and
+> Lambda MicroVM deployment description, an Effection-native fenced finite-HTTP
+> workspace runtime, Host effect registrations, a finite headless task endpoint,
+> and a React UI built on `@sweatpants/react-chat/useChat` plus
+> `createDurableChatHandler`. Local development executes the real journal-native
+> program through a loopback connector; the same protocol has passed live Lambda
+> MicroVM write/test/suspend/resume certification. The remainder of this README
+> is the destination for the complete product-team assembly.
 
 yo-studio is a product team's sweatpants deployment: a few agents, a foreign MCP
 server, some leaf tools, and a chat surface — composed dynamically by the model
@@ -24,7 +27,7 @@ into durable, verifiable, human-gated workflows.
   journal, their credentials; we hold a grant set for two delegated effects)
 
 **Foreign MCP server:** Figma. No durable-effects extension, so every Figma call
-is an *opaque at-least-once effect* — read-heavy ops are naturally idempotent,
+is an _opaque at-least-once effect_ — read-heavy ops are naturally idempotent,
 and that classification is recorded in the adapter's contract.
 
 **Leaf tools:** `slack.post`, `jira.createIssue`, `contrast.check` (pure WCAG
@@ -54,51 +57,55 @@ and un-resumable as a unit. It emits a program against the projected SDK:
 
 ```ts
 export function* checkoutAudit(input: { figmaFileKey: string; screens: ScreenRef[] }) {
-  const frames = yield* figma.getFrames({ fileKey: input.figmaFileKey });
+    const frames = yield* figma.getFrames({ fileKey: input.figmaFileKey });
 
-  // fan out: one child per screen, bounded
-  const audits = yield* all(input.screens.map((screen) => audit(screen, frames)));
+    // fan out: one child per screen, bounded
+    const audits = yield* all(input.screens.map((screen) => audit(screen, frames)));
 
-  const flagged = audits.filter((a) => a.violations.length > 0);
-  if (flagged.length === 0) {
-    yield* slack.post({ channel: "#checkout-launch", text: summary(audits) });
-    return { filed: [], clean: true };
-  }
+    const flagged = audits.filter((a) => a.violations.length > 0);
+    if (flagged.length === 0) {
+        yield* slack.post({ channel: "#checkout-launch", text: summary(audits) });
+        return { filed: [], clean: true };
+    }
 
-  // HITL gate — may park for days
-  const decision = yield* elicit.review({
-    to: "dana",
-    title: "Checkout drift audit — confirm regressions",
-    items: flagged.map(toReviewCard),   // includes image.diff artifact refs
-  });
-
-  const tickets = [];
-  for (const item of decision.approved) {
-    const ticket = yield* jira.createIssue({
-      project: "CHK",
-      summary: item.title,
-      description: item.evidence,
-      idempotencyKey: item.screenId,     // at-least-once discipline
+    // HITL gate — may park for days
+    const decision = yield* elicit.review({
+        to: "dana",
+        title: "Checkout drift audit — confirm regressions",
+        items: flagged.map(toReviewCard), // includes image.diff artifact refs
     });
-    tickets.push(ticket);
-  }
-  yield* slack.post({ channel: "#checkout-launch", text: summary(audits, tickets) });
-  return { filed: tickets, clean: false };
+
+    const tickets = [];
+    for (const item of decision.approved) {
+        const ticket = yield* jira.createIssue({
+            project: "CHK",
+            summary: item.title,
+            description: item.evidence,
+            idempotencyKey: item.screenId, // at-least-once discipline
+        });
+        tickets.push(ticket);
+    }
+    yield* slack.post({ channel: "#checkout-launch", text: summary(audits, tickets) });
+    return { filed: tickets, clean: false };
 }
 
 function* audit(screen: ScreenRef, frames: FrameIndex) {
-  const spec = yield* figma.exportFrame({ frameId: frames.byName[screen.name], format: "png" });
-  const prodShot = yield* screenshot.capture({ url: screen.prodUrl });
-  const diff = yield* image.diff({ a: spec.ref, b: prodShot.ref });
-  const contrast = yield* contrast.check({ image: prodShot.ref });
-  const assessment = yield* designReviewer.assess({   // vision sub-agent
-    spec: spec.ref, prod: prodShot.ref, diff: diff.ref, contrast,
-  });
-  return { screen, violations: assessment.violations, evidence: diff.ref };
+    const spec = yield* figma.exportFrame({ frameId: frames.byName[screen.name], format: "png" });
+    const prodShot = yield* screenshot.capture({ url: screen.prodUrl });
+    const diff = yield* image.diff({ a: spec.ref, b: prodShot.ref });
+    const contrast = yield* contrast.check({ image: prodShot.ref });
+    const assessment = yield* designReviewer.assess({
+        // vision sub-agent
+        spec: spec.ref,
+        prod: prodShot.ref,
+        diff: diff.ref,
+        contrast,
+    });
+    return { screen, violations: assessment.violations, evidence: diff.ref };
 }
 ```
 
-Note what the model *didn't* have to think about: durability, replay, idempotent
+Note what the model _didn't_ have to think about: durability, replay, idempotent
 Jira retries beyond supplying the key, what happens if Dana takes 3 days. The
 pull boundary owns all of it.
 
@@ -157,7 +164,7 @@ session runnable; a fresh crank activation anywhere in the fleet:
 4. Files 4 Jira tickets (idempotency keys mean the one that raced a crash last
    Tuesday would still have filed once), posts to Slack, closes the turn
 
-Meanwhile — different session — the PM had *also* asked "get me an eng estimate
+Meanwhile — different session — the PM had _also_ asked "get me an eng estimate
 for whatever Dana confirms." That workflow's `engEstimator.estimate` call went
 out over the **peer protocol**: their journal owns their task, our journal holds
 the obligation; when their estimator needed our sprint-capacity data, it came
@@ -167,7 +174,7 @@ code for any of this.
 
 ## The compounding part
 
-PM, in chat: *"that audit was great — keep it."*
+PM, in chat: _"that audit was great — keep it."_
 
 ```
 Promoted: checkout-drift-audit@sha256:9f3a…
@@ -176,8 +183,8 @@ Promoted: checkout-drift-audit@sha256:9f3a…
 ```
 
 Next month someone types "run the drift audit on the onboarding flow" — the
-model doesn't recompose; it *calls the skill* with new inputs. And when the
-platform team's agent wants to run our audit against *their* Figma files, they
+model doesn't recompose; it _calls the skill_ with new inputs. And when the
+platform team's agent wants to run our audit against _their_ Figma files, they
 fetch the tree, statically verify its effect inventory against the grant set
 they're willing to offer, and evaluate it on their own kernel. They never
 trusted our code — they read our data.
@@ -198,19 +205,19 @@ double-filing Jira tickets.
 
 ## What this depends on
 
-| Capability in the story | Where it lives today |
-| --- | --- |
-| Durable sessions, parking, replay | `@sweatpants/session-contract`, replay-crank-driver design |
-| Crank-native durable tools, pull boundary | crank-native-durable-remote-tools design |
-| Closed capability maps, symbolic call-waits | wait-based-session-kernel design |
-| Agent manifests, pinned program identity | agent-resource-artifact-identity + durable-chat-agent-authoring specs |
-| Foreign MCP adapter (opaque at-least-once) | foreign-a2a-durable-task-adapter design, `session-contract/foreign-tool-*` |
-| A2A peer with delegated effects | callee-authoritative-sweatpants-a2a-peers design |
-| Placement-aware `model.sample` | placement-transparent-model-sampling spec |
-| Activity stream vs semantic journal | journal-native-portable-agents design |
-| **Code mode v1** (LLM-composed generator programs, admission pipeline, effect approval) | *not yet designed — next memo* |
-| **Code mode v2** (restricted subset → validated IR, effect-plan card, static policy predicates) | tisyn research (`protocols/tisyn/`), deliberately deferred |
-| Skill promotion (content-addressed workflow → manifest entrypoint) | future — builds on resource identity |
+| Capability in the story                                                                         | Where it lives today                                                       |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Durable sessions, parking, replay                                                               | `@sweatpants/session-contract`, replay-crank-driver design                 |
+| Crank-native durable tools, pull boundary                                                       | crank-native-durable-remote-tools design                                   |
+| Closed capability maps, symbolic call-waits                                                     | wait-based-session-kernel design                                           |
+| Agent manifests, pinned program identity                                                        | agent-resource-artifact-identity + durable-chat-agent-authoring specs      |
+| Foreign MCP adapter (opaque at-least-once)                                                      | foreign-a2a-durable-task-adapter design, `session-contract/foreign-tool-*` |
+| A2A peer with delegated effects                                                                 | callee-authoritative-sweatpants-a2a-peers design                           |
+| Placement-aware `model.sample`                                                                  | placement-transparent-model-sampling spec                                  |
+| Activity stream vs semantic journal                                                             | journal-native-portable-agents design                                      |
+| **Code mode v1** (LLM-composed generator programs, admission pipeline, effect approval)         | _not yet designed — next memo_                                             |
+| **Code mode v2** (restricted subset → validated IR, effect-plan card, static policy predicates) | tisyn research (`protocols/tisyn/`), deliberately deferred                 |
+| Skill promotion (content-addressed workflow → manifest entrypoint)                              | future — builds on resource identity                                       |
 
 The rows above the code-mode line are approved designs or shipping substrate.
 The rows below are what this app exists to pull into being.
@@ -226,3 +233,82 @@ The rows below are what this app exists to pull into being.
 4. **Phase 3** — skill promotion, cross-org tree exchange.
 
 yo-studio becomes real one phase at a time; this README stays the target.
+
+## What is implemented now
+
+The deployment uses the validated framework authoring surface rather than raw
+configuration objects:
+
+```ts
+const workspace = defineWorkspace({
+    source: workspaceSource.local("."),
+    packageManager: "pnpm",
+    scripts: { test: "pnpm test", typecheck: "pnpm check" },
+    policy: {
+        network: "trusted-development",
+        writes: "approval",
+        externalEffects: "host-only",
+    },
+    persistence: "sandbox_lease",
+});
+
+export default defineDeployment({
+    name: "yo-studio",
+    mode: "development",
+    authority: developmentJournal(),
+    modelProvider: codingModelProvider,
+    modelSampling: hostModelSampling(codingModelProvider),
+    programs: { code: codingHarness },
+    capabilities: codingCapabilities,
+    workspace,
+    sandbox: lambdaMicrovm({
+        image: {
+            /* exact immutable image */
+        },
+        lifecycle: {
+            /* ... */
+        },
+    }),
+    projections: [reactChat(), headlessHttp(), streamableMcp()],
+});
+```
+
+Definitions are closed, digest-addressed, and cross-validated. Production rejects
+an in-memory journal, mandatory deny-network policy rejects incapable providers,
+and checkpoint-recoverable workspaces reject providers without checkpoint restore.
+The current Lambda certification uses an explicit `trusted-development` network
+profile because the provider image still exposes `INTERNET_EGRESS`; it does not
+claim default-deny enforcement.
+
+- `src/programs/coding-harness.ts` — the existing durable chat authoring model
+  composed with workspace child programs.
+- `src/capabilities/workspace.ts` — journal-native inspect, read, list, write,
+  and named-script tools over explicit Host effects.
+- `src/config.ts` — provider-neutral workspace policy plus the Lambda MicroVM
+  placement profile, with no credentials or provider instance identity.
+- `src/deployment.ts` — the authored reference assembly.
+- `src/App.tsx` — a `useChat` consumer with structured tool-call cards, durable
+  conversation identity, and an explicit New session action; it renders the HTTP
+  projection without importing or owning the durable model loop.
+- `src/server/durable-chat-application.ts` — `createDurableChatHandler` composed
+  with ProgramRuntime-native workspace children and Host effect registrations.
+
+The primary UI calls `useChat({ baseUrl: "/api/chat" })`. The handler owns the
+conversation, model loop, journal, native child programs, and workspace effects.
+The deployment selects the `pi-ai` model provider (`github-copilot/gpt-5.5` by
+default) and explicitly assigns journal-native `model.sample` ownership to the
+Host. The headless projection consumes the same shape through an Effection-native
+`CodingModelSampleProvider` port.
+The separate `POST /api/tasks` endpoint remains as the finite headless projection;
+it enters one owned Effection scope and opens the authored chat program through
+`LocalProgramHost`. The built-in scripted model is deterministic demo
+infrastructure only; production injects the deployment's model service without
+changing either projection or the program. The conversation ID is retained in
+`localStorage`, so refresh hydrates the same durable handler conversation; only
+New session replaces that identity and remounts the hook.
+
+The next implementation slice is an AWS Host provider that allocates or resumes
+a task-affine MicroVM, mints short-lived request headers, binds the activation
+fence, and supplies `createHttpWorkspaceConnector()` to this same headless
+service. After that, the UI can select local or AWS placement from deployment
+configuration rather than running AWS certification separately.

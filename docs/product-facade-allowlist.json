@@ -9,12 +9,15 @@
     "@sweatpants/framework/chat/browser-rendering",
     "@sweatpants/framework/chat/mcp-tools",
     "@sweatpants/framework/chat/durable-streams",
+    "@sweatpants/framework/deployment",
+    "@sweatpants/workspace-runtime",
     "@sweatpants/core",
     "@sweatpants/core/tool",
     "@sweatpants/core/tools"
   ],
   "productApps": [
-    "apps/yo-chat"
+    "apps/yo-chat",
+    "apps/yo-studio"
   ],
   "experimentalPathPatterns": [
     "@sweatpants/framework/chat/isomorphic-tools",

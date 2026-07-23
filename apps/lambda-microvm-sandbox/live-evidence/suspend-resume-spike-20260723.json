@@ -1,0 +1,50 @@
+{
+    "imageArn": "arn:aws:lambda:us-east-1:988857891049:microvm-image:sweatpants-durable-sandbox",
+    "imageVersion": "1.0",
+    "imageBuild": {
+        "buildId": "1cfcaa65-187d-4990-ac1d-6f58ccd8415c",
+        "state": "SUCCESSFUL",
+        "architecture": "ARM_64",
+        "chipset": "GRAVITON",
+        "chipsetGeneration": "3",
+        "memorySnapshotSizeInBytes": 525381632,
+        "codeInstallSizeInBytes": 524038144,
+        "diskSnapshotSizeInBytes": 22450176
+    },
+    "microvmId": "microvm-87b20dd2-63cf-3980-a56f-daa95960d7ea",
+    "sandboxId": "966680bf-ebd5-473e-b1d4-d2fcd5524838",
+    "runtime": {
+        "maximumDurationSeconds": 3600,
+        "maxIdleDurationSeconds": 60,
+        "suspendedDurationSeconds": 600,
+        "autoResumeEnabled": true,
+        "ingress": ["HTTP_INGRESS", "SHELL_INGRESS"],
+        "egress": ["INTERNET_EGRESS"]
+    },
+    "persistence": {
+        "path": "/workspace/agent-memory.txt",
+        "marker": "persistent-after-suspend-1784803989",
+        "preservedAcrossSuspendResume": true,
+        "sandboxIdentityPreserved": true,
+        "resumeCount": 1,
+        "autoResumeLatencyMs": 1031
+    },
+    "shell": {
+        "connected": true,
+        "persistentMarkerVisible": true
+    },
+    "security": {
+        "buildRole": "sweatpants-microvm-build-f9fdea17",
+        "executionRole": "sweatpants-microvm-exec-f9fdea17",
+        "authTokenLogged": false,
+        "applicationTokenPort": 8080,
+        "shellPort": 8022
+    },
+    "durabilityBoundary": {
+        "survivesSuspendResume": true,
+        "survivesTermination": false,
+        "hardMaximumLifetimeHours": 8,
+        "externalCheckpointRequiredForReplacement": true
+    },
+    "certifiedAt": "2026-07-23T10:54:00Z"
+}

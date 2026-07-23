@@ -1,6 +1,9 @@
 packages:
   - packages/*
   - apps/*
+  # Historical Lambda placement spikes are intentionally not product workspaces.
+  - "!apps/lambda-durable-program-runtime"
+  - "!apps/lambda-microvm-sandbox"
 
 catalog:
   '@effectionx/context-api': ^0.2.1

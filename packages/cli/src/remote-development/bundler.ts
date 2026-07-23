@@ -182,7 +182,7 @@ function encodeSchemaCatalog(program: ConfiguredDurableTool, publicKey: string):
       `Program root ${bounded(publicKey)} has no runtime schema catalog`,
     );
   }
-  const descriptors = artifacts.catalog.map((entry) => {
+  const descriptors = artifacts.catalog.map((entry: unknown) => {
     if (!entry || typeof entry !== "object" || !("descriptor" in entry)) {
       throw new RemoteDevelopmentError(
         "invalid_program_root",
