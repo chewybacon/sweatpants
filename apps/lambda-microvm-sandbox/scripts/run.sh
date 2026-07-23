@@ -22,7 +22,7 @@ aws lambda-microvms run-microvm \
   --profile "$PROFILE" \
   --region "$REGION" \
   --image-identifier arn:aws:lambda:us-east-1:123456789012:microvm-image:sweatpants-durable-sandbox \
-  --image-version 6.0 \
+  --image-version 7.0 \
   --execution-role-arn arn:aws:iam::123456789012:role/sweatpants-microvm-exec-f9fdea17 \
   --ingress-network-connectors '["arn:aws:lambda:us-east-1:aws:network-connector:aws-network-connector:HTTP_INGRESS","arn:aws:lambda:us-east-1:aws:network-connector:aws-network-connector:SHELL_INGRESS"]' \
   --idle-policy '{"maxIdleDurationSeconds":300,"suspendedDurationSeconds":28800,"autoResumeEnabled":true}' \

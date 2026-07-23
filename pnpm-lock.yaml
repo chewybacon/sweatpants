@@ -802,6 +802,9 @@ importers:
       '@sweatpants/react-chat':
         specifier: workspace:*
         version: link:../../packages/react-chat
+      '@sweatpants/sandbox-provider-aws':
+        specifier: workspace:*
+        version: link:../../packages/sandbox-provider-aws
       '@sweatpants/session-contract':
         specifier: workspace:*
         version: link:../../packages/session-contract
@@ -1291,6 +1294,34 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.1.13
+
+  packages/sandbox-provider-aws:
+    dependencies:
+      '@sweatpants/session-contract':
+        specifier: workspace:*
+        version: link:../session-contract
+      '@sweatpants/workspace-runtime':
+        specifier: workspace:*
+        version: link:../workspace-runtime
+      effection:
+        specifier: 4.1.0-alpha.9
+        version: 4.1.0-alpha.9
+    devDependencies:
+      '@sweatpants/ts-config':
+        specifier: workspace:*
+        version: link:../ts-config
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.5
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.6)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 3.2.4(@types/debug@4.1.12)(@types/node@22.19.5)(jiti@2.6.1)(jsdom@27.4.0)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/session-contract:
     dependencies:
@@ -14476,7 +14507,7 @@ snapshots:
     dependencies:
       duplexer: 0.1.2
 
-  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16)):
+  h3@2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8)):
     dependencies:
       rou3: 0.8.1
       srvx: 0.11.16
@@ -15500,7 +15531,7 @@ snapshots:
       crossws: 0.4.6(srvx@0.11.16)
       db0: 0.3.4
       env-runner: 0.1.14
-      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.11.16))
+      h3: 2.0.1-rc.22(crossws@0.4.6(srvx@0.9.8))
       hookable: 6.1.1
       nf3: 0.3.17
       ocache: 0.1.5

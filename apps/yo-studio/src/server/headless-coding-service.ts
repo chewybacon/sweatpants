@@ -85,8 +85,9 @@ export function createHeadlessCodingService(options: {
         },
       }),
       ...createWorkspaceEffectRegistrations({
-        connector: options.connector,
-        fenceFor: () => options.fence,
+        resolve: function* () {
+          return { connector: options.connector, fence: options.fence };
+        },
       }),
     ]),
     drivers: createProgramDriverRegistry([["generator", createLocalGeneratorDriver(programs)]]),

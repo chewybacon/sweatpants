@@ -21,11 +21,7 @@ import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "@sweatpants/framework/server";
-import type {
-  WorkspaceConnector,
-  WorkspaceFence,
-  WorkspaceService,
-} from "@sweatpants/workspace-runtime";
+import type { WorkspaceConnector, WorkspaceFence } from "@sweatpants/workspace-runtime";
 import {
   createPiAiModelProviderDriver,
   installPiAiModelProvider,
@@ -34,7 +30,10 @@ import {
 
 import { codingCapabilities } from "../capabilities/workspace.ts";
 import { codingModelProvider } from "../deployment.ts";
-import { createWorkspaceEffectRegistrations } from "./workspace-effects.ts";
+import {
+  createWorkspaceEffectRegistrations,
+  type WorkspaceEffectAdapterOptions,
+} from "./workspace-effects.ts";
 
 const model: Model = {
   id: "yo-studio-scripted",
@@ -61,9 +60,9 @@ export function createPiAiStudioModelProvider(): StudioModelProviderRuntime {
 
 /** The actual durable chat handler consumed by @sweatpants/react-chat/useChat. */
 export function createStudioDurableChatApplication(options: {
-  readonly connector: WorkspaceConnector;
-  readonly workspace: WorkspaceService;
-  readonly fence: WorkspaceFence;
+  readonly connector?: WorkspaceConnector;
+  readonly fence?: WorkspaceFence;
+  readonly resolveWorkspace?: WorkspaceEffectAdapterOptions["resolve"];
   readonly modelProvider?: StudioModelProviderRuntime;
 }) {
   const definitions = Object.values(codingCapabilities);
@@ -75,10 +74,15 @@ export function createStudioDurableChatApplication(options: {
       definitions.flatMap((definition) => [...definition.artifacts.catalog]),
     ),
   });
-  const effects = createWorkspaceEffectRegistrations({
-    connector: options.connector,
-    fenceFor: () => options.fence,
-  });
+  const resolveWorkspace =
+    options.resolveWorkspace ??
+    function* () {
+      if (!options.connector || !options.fence) {
+        throw new Error("workspace effect resolver is not configured");
+      }
+      return { connector: options.connector, fence: options.fence };
+    };
+  const effects = createWorkspaceEffectRegistrations({ resolve: resolveWorkspace });
   const modelProvider = options.modelProvider ?? createPiAiStudioModelProvider();
   const handler = createDurableChatHandler({
     programDriverJournalStore: journalStore,
