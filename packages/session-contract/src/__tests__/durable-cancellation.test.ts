@@ -14,7 +14,7 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createDurableSchemaRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   defineDurableEffect,
   stableProgramAttachmentId,
@@ -144,7 +144,7 @@ function attach(sessionId: string) {
     taskId: "turn-0/root",
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
     input: null,
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: 1,
   } as const;
 }
@@ -276,7 +276,7 @@ describe("durable cancellation and partial results", () => {
       }
     });
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalGeneratorDriver(createDurableToolRegistry([tool]))],
+      ["program", createLocalProgramDriver(createDurableToolRegistry([tool]))],
     ]);
     const effects = createDurableEffectRegistry([
       createDurableEffectRegistration(

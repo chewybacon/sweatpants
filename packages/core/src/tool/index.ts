@@ -4,13 +4,13 @@ export {
   defineDurableContextExtension,
   type DurableContextExtension,
   type DurableContextExtensionOptions,
+  validateDurableExtensionDeclarations,
+  type DurableClientApi,
+  type DurableClientMethod,
+  type DurableClientShape,
   type DurableExtensionContext,
-  type DurableExtensionEffectCaller,
-  type DurableExtensionEffectMap,
   type DurableExtensionMap,
-  type DurableExtensionProvider,
   type ExtensionClient,
-  type ExtensionEffects,
 } from "./durable-context-extension.ts";
 export type {
   CreateDurableToolBuilderBase,

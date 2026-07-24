@@ -1,4 +1,8 @@
-import { run } from "effection";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { call, run, type Operation } from "effection";
+import { createApi } from "effection/experimental";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,7 +11,6 @@ import {
   DurableEffectRouting,
   ExecutionDurableEffectRegistryContext,
   JournalAuthorityContext,
-  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   ProgramDriverRegistryContext,
   ProgramPeer,
@@ -17,7 +20,7 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createModelSamplingEffectRegistration,
   createProgramDriverRegistry,
   parseDurableAuthoritySnapshot,
@@ -26,6 +29,7 @@ import {
   createDurableSchemaRegistry,
   type AttachProgramRequest,
   type DurableProgramManifest,
+  type Json,
 } from "../index.ts";
 import { anyGuard, booleanGuard, createSchemaFixture, stringGuard } from "../testing/index.ts";
 
@@ -110,6 +114,14 @@ const manifest: DurableProgramManifest = {
   },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
 };
+
+const OrdinaryFiles = createApi<{
+  read(path: string): Operation<string>;
+}>("ordinary-files-fixture", {
+  *read() {
+    throw new Error("Ordinary file provider is not installed");
+  },
+});
 
 const keyring = createCapabilityKeyring("test-issuer", [
   { keyId: "key-1", secret: "x".repeat(32) },
@@ -207,7 +219,7 @@ function attachRequest(sessionId = "session-1"): AttachProgramRequest {
     taskId: "turn-0/root",
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
     input: "hello",
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: 1,
   };
 }
@@ -225,31 +237,65 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
 }
 
 describe("crank-native durable runtime", () => {
-  it("coexists with legacy model.sample v1 while new authoring uses repeatable v2", () => {
-    expect(LEGACY_MODEL_SAMPLE_EFFECT).toMatchObject({
-      name: "model.sample",
-      version: "1",
-      retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-    });
+  it("uses one repeatable model.sample contract", () => {
     expect(MODEL_SAMPLE_EFFECT).toMatchObject({
       name: "model.sample",
       version: "2",
       retrySafety: { mode: "repeatable" },
     });
-    const registry = createDurableEffectRegistry([
-      createModelSamplingEffectRegistration(LEGACY_MODEL_SAMPLE_EFFECT),
-      createModelSamplingEffectRegistration(),
-    ]);
-    expect([...registry.keys()].toSorted()).toEqual(["model.sample@1", "model.sample@2"]);
+    const registry = createDurableEffectRegistry([createModelSamplingEffectRegistration()]);
+    expect([...registry.keys()]).toEqual(["model.sample@2"]);
   });
 
-  it("validates manifests and drives a disposable local generator with ordered actions", async () => {
+  it("rejects noncanonical and oversized terminal values before driver transport", async () => {
+    const terminalManifest: DurableProgramManifest = {
+      ...manifest,
+      programId: "fixture.terminal-bounds",
+      digest: "b".repeat(64),
+      outputSchema: createSchemaFixture(
+        "fixture.terminal-bounds/output",
+        "program_output",
+        true,
+        anyGuard,
+      ).descriptor,
+    };
+    const runTerminal = async (value: unknown) => {
+      const tool = createPinnedDurableProgram(terminalManifest, function* () {
+        return value as Json;
+      });
+      const driver = createLocalProgramDriver(createDurableToolRegistry([tool]));
+      return await run(function* () {
+        const attachment = yield* driver.attach({
+          ...attachRequest("terminal-bounds"),
+          program: {
+            id: terminalManifest.programId,
+            version: terminalManifest.version,
+            digest: terminalManifest.digest,
+          },
+        });
+        const step = yield* driver.step(attachment, { type: "start", input: "hello" });
+        yield* driver.shutdown(attachment, "failed");
+        return step;
+      });
+    };
+
+    await expect(runTerminal(() => undefined)).resolves.toMatchObject({
+      type: "failed",
+      error: { code: "schema_validation_failed" },
+    });
+    await expect(runTerminal("x".repeat(1024 * 1024 + 1))).resolves.toMatchObject({
+      type: "failed",
+      error: { code: "payload_too_large" },
+    });
+  });
+
+  it("validates manifests and drives a disposable local program task with ordered actions", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       yield* context.emit("progress", { input });
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const registry = createDurableToolRegistry([tool]);
-    const driver = createLocalGeneratorDriver(registry);
+    const driver = createLocalProgramDriver(registry);
 
     await run(function* () {
       const attachment = yield* driver.attach(attachRequest());
@@ -759,13 +805,324 @@ describe("crank-native durable runtime", () => {
     });
   });
 
+  it("reruns ordinary Effection file reads while replaying explicit recordings", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sweatpants-ordinary-replay-"));
+    const file = join(directory, "value.txt");
+    await writeFile(file, "ordinary-1", "utf8");
+    let ordinaryReads = 0;
+    let recordedReads = 0;
+    const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
+      const ordinary = yield* OrdinaryFiles.operations.read(file);
+      const recorded = yield* context.record("stable-read", function* () {
+        recordedReads += 1;
+        return `recorded-${recordedReads}`;
+      });
+      const approval = yield* context.elicit<boolean>(
+        "approval",
+        "Continue?",
+        approvalResponse.descriptor,
+      );
+      return `${ordinary}:${recorded}:${approval.action}`;
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const { authority, attach } = createAuthority("ordinary-operation-replay");
+
+    await run(function* () {
+      yield* OrdinaryFiles.around({
+        *read([path]) {
+          ordinaryReads += 1;
+          return yield* call(() => readFile(path, "utf8"));
+        },
+      });
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const activate = function* () {
+        return yield* ProgramDriverRegistryContext.with(drivers, function* () {
+          return yield* JournalAuthorityContext.with(authority, function* () {
+            return yield* DurableEffectRegistryContext.with(
+              createDurableEffectRegistry([]),
+              function* () {
+                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              },
+            );
+          });
+        });
+      };
+      expect(yield* activate()).toMatchObject({ state: "parked", reason: "elicit" });
+      yield* call(() => writeFile(file, "ordinary-2", "utf8"));
+      const pending = authority
+        .readJournal(attach.sessionId)
+        .find(
+          (record) =>
+            record.payload.type === "PullRequested" && record.payload.descriptor.kind === "elicit",
+        );
+      if (!pending || pending.payload.type !== "PullRequested") {
+        throw new Error("elicitation was not recorded");
+      }
+      const capability = authority.resolutionCapability(
+        attach.sessionId,
+        attach.taskId,
+        pending.payload.pullId,
+      );
+      expect(
+        yield* authority.resolve({
+          capability,
+          audience: "user:approval",
+          outcome: { status: "ok", value: { action: "accept", content: true } },
+        }),
+      ).toMatchObject({ status: "accepted" });
+      expect(yield* activate()).toEqual({
+        state: "completed",
+        value: "ordinary-2:recorded-1:accept",
+      });
+    });
+
+    expect(ordinaryReads).toBe(2);
+    expect(recordedReads).toBe(1);
+    await rm(directory, { recursive: true, force: true });
+  });
+
+  it("fences a changed replay descriptor without rewriting accepted history", async () => {
+    let label = "stable-a";
+    const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
+      yield* context.record(label, function* () {
+        return "accepted";
+      });
+      yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
+      return "done";
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const { authority, attach } = createAuthority("descriptor-divergence");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const activate = function* () {
+        return yield* ProgramDriverRegistryContext.with(drivers, function* () {
+          return yield* JournalAuthorityContext.with(authority, function* () {
+            return yield* DurableEffectRegistryContext.with(
+              createDurableEffectRegistry([]),
+              function* () {
+                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              },
+            );
+          });
+        });
+      };
+      expect(yield* activate()).toMatchObject({ state: "parked", reason: "elicit" });
+      const accepted = authority
+        .readJournal(attach.sessionId)
+        .map((record) => structuredClone(record));
+      label = "changed-b";
+      let caught: unknown;
+      try {
+        yield* activate();
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toMatchObject({ code: "nondeterminism_detected" });
+      const after = authority.readJournal(attach.sessionId);
+      expect(after.slice(0, accepted.length)).toEqual(accepted);
+      expect(after.at(-1)?.payload).toMatchObject({
+        type: "TaskOrphaned",
+        reason: "replay_diverged",
+      });
+    });
+  });
+
+  it("does not rerun a completed child tool while reconstructing its parent", async () => {
+    let childRuns = 0;
+    const childManifest: DurableProgramManifest = {
+      ...manifest,
+      programId: "fixture.ordinary-child",
+      digest: "b".repeat(64),
+      elicits: {},
+      effects: {},
+    };
+    const parentManifest: DurableProgramManifest = {
+      ...manifest,
+      programId: "fixture.ordinary-parent",
+      digest: "c".repeat(64),
+      effects: {},
+    };
+    const child = createPinnedDurableProgram(childManifest, function* () {
+      childRuns += 1;
+      return yield* (function* () {
+        return `child-${childRuns}`;
+      })();
+    });
+    const parent = createPinnedDurableProgram(parentManifest, function* (_input, context) {
+      const value = yield* context.invoke<string>({
+        id: childManifest.programId,
+        version: childManifest.version,
+        digest: childManifest.digest,
+        input: "child",
+      });
+      yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
+      return value;
+    });
+    const tools = createDurableToolRegistry([parent, child]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const authority = createInMemoryDurableJournalAuthority({
+      journalId: "ordinary-child-journal",
+      journalIncarnation: "ordinary-child-incarnation",
+      keyring,
+      schemaRegistry: fixtureSchemaRegistry(),
+    });
+    const attach = {
+      sessionId: "ordinary-child-session",
+      taskId: "turn-0/root",
+      program: {
+        id: parentManifest.programId,
+        version: parentManifest.version,
+        digest: parentManifest.digest,
+      },
+      input: "hello",
+      route: { driverKind: "program" },
+      executionEpoch: 1,
+    };
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest: parentManifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const activate = function* () {
+        return yield* ProgramDriverRegistryContext.with(drivers, function* () {
+          return yield* JournalAuthorityContext.with(authority, function* () {
+            return yield* DurableEffectRegistryContext.with(
+              createDurableEffectRegistry([]),
+              function* () {
+                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              },
+            );
+          });
+        });
+      };
+      expect(yield* activate()).toMatchObject({ state: "parked", reason: "elicit" });
+      const pending = authority
+        .readJournal(attach.sessionId)
+        .find(
+          (record) =>
+            record.payload.type === "PullRequested" &&
+            record.payload.taskId === attach.taskId &&
+            record.payload.descriptor.kind === "elicit",
+        );
+      if (!pending || pending.payload.type !== "PullRequested") {
+        throw new Error("parent elicitation was not recorded");
+      }
+      expect(
+        yield* authority.resolve({
+          capability: authority.resolutionCapability(
+            attach.sessionId,
+            attach.taskId,
+            pending.payload.pullId,
+          ),
+          audience: "user:approval",
+          outcome: { status: "ok", value: { action: "accept", content: true } },
+        }),
+      ).toMatchObject({ status: "accepted" });
+      expect(yield* activate()).toEqual({ state: "completed", value: "child-1" });
+    });
+    expect(childRuns).toBe(1);
+  });
+
+  it("fails safely when an ordinary operation is unavailable during reconstruction", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "sweatpants-missing-replay-"));
+    const file = join(directory, "value.txt");
+    await writeFile(file, "original-file", "utf8");
+    const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
+      const contents = yield* (function* () {
+        try {
+          return yield* call(() => readFile(file, "utf8"));
+        } catch (error) {
+          throw new CrankError(
+            "workspace_file_missing",
+            "The replayed file is unavailable",
+            undefined,
+            { cause: error },
+          );
+        }
+      })();
+      yield* context.record("checkpoint", function* () {
+        return "recorded";
+      });
+      yield* context.elicit<boolean>("approval", "Continue?", approvalResponse.descriptor);
+      return contents;
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
+    const { authority, attach } = createAuthority("ordinary-operation-failure");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const activate = function* () {
+        return yield* ProgramDriverRegistryContext.with(drivers, function* () {
+          return yield* JournalAuthorityContext.with(authority, function* () {
+            return yield* DurableEffectRegistryContext.with(
+              createDurableEffectRegistry([]),
+              function* () {
+                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              },
+            );
+          });
+        });
+      };
+      expect(yield* activate()).toMatchObject({ state: "parked", reason: "elicit" });
+      yield* call(() => rm(file));
+      const replayed = yield* activate();
+      expect(replayed).toMatchObject({
+        state: "failed",
+        error: { code: "workspace_file_missing" },
+      });
+      expect(authority.readJournal(attach.sessionId).at(-1)?.payload).toMatchObject({
+        type: "TaskOrphaned",
+        reason: "replay_execution_failed",
+      });
+    });
+    await rm(directory, { recursive: true, force: true });
+  });
+
   it("routes an installed effect to execution through scoped middleware", async () => {
     let executions = 0;
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       {
         definition: manifest.effects.echo!,
@@ -815,7 +1172,7 @@ describe("crank-native durable runtime", () => {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const hostEffects = createDurableEffectRegistry([
       {
         definition: manifest.effects.echo!,
@@ -874,7 +1231,7 @@ describe("crank-native durable runtime", () => {
       });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("record-runtime");
 
     await run(function* () {
@@ -931,7 +1288,7 @@ describe("crank-native durable runtime", () => {
       });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("oversized-record-runtime");
 
     await run(function* () {
@@ -971,7 +1328,7 @@ describe("crank-native durable runtime", () => {
       });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const { authority, attach } = createAuthority("nested-record-runtime");
 
     await run(function* () {
@@ -1013,7 +1370,7 @@ describe("crank-native durable runtime", () => {
       return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
     });
     const tools = createDurableToolRegistry([tool]);
-    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(tools)]]);
     const effects = createDurableEffectRegistry([
       {
         definition: manifest.effects.echo!,

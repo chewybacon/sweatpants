@@ -1,4 +1,4 @@
-import { createContext, type Operation } from "effection";
+import { createContext, useScope, type Operation } from "effection";
 import { createApi } from "effection/experimental";
 
 import type { StandardSchemaV1 } from "@standard-schema/spec";
@@ -9,7 +9,11 @@ import { CrankError, type Json } from "./types.ts";
 import { effectContractDigest } from "./effect-contract.ts";
 import { DurableEffectRouting } from "./effect-routing.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
-import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
+import {
+  ProgramDriverRegistryContext,
+  ProgramExecutionScopeContext,
+  type ProgramDriverRegistry,
+} from "./program-driver.ts";
 import { ProgramPlacementContext } from "./program-placement-context.ts";
 import { ModelSamplingOutcomeAcknowledgerContext } from "./model-sampling-acknowledgement.ts";
 import type {
@@ -346,10 +350,12 @@ export const DurableEffects = createApi("crank-durable-effects", {
 /** Structured runtime API that drives programs and their child topology to a durable boundary. */
 export const ProgramRuntime = createApi("crank-program-runtime", {
   *run(request: ProgramRunRequest): Operation<ProgramRunResult> {
+    yield* ProgramExecutionScopeContext.set(yield* useScope());
     let attachment: ProgramAttachment | undefined;
+    let authority: DurableJournalAuthorityService | undefined;
     let shutdownReason: ProgramShutdownReason = "scope_exit";
     try {
-      const authority = yield* useJournalAuthority();
+      authority = yield* useJournalAuthority();
       const acceptedInput = yield* authority.taskInput(
         request.attach.sessionId,
         request.attach.taskId,
@@ -490,14 +496,28 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
             frontierProof = undefined;
           }
           const proof = frontierProof;
-          yield* JournalAuthority.operations.complete({
-            sessionId: request.attach.sessionId,
-            taskId: request.attach.taskId,
-            actionIndex: step.actionIndex,
-            outcome: cancelled ? { status: "cancelled" } : { status: "error", error: step.error },
-            programCapability,
-            ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
-          });
+          try {
+            yield* JournalAuthority.operations.complete({
+              sessionId: request.attach.sessionId,
+              taskId: request.attach.taskId,
+              actionIndex: step.actionIndex,
+              outcome: cancelled ? { status: "cancelled" } : { status: "error", error: step.error },
+              programCapability,
+              ...(proof ? { restoredFrontier: proof, restoredFrontierStep: step } : {}),
+            });
+          } catch (error) {
+            if (!(error instanceof CrankError) || error.code !== "history_not_exhausted") {
+              throw error;
+            }
+            // Ordinary Effection operations are intentionally rerun during
+            // reconstruction. If one now fails before an accepted frontier,
+            // fence the unreconstructable task and propagate its original error.
+            yield* authority.forceOrphan(
+              request.attach.sessionId,
+              request.attach.taskId,
+              "replay_execution_failed",
+            );
+          }
           shutdownReason = cancelled ? "cancelled" : "failed";
           return cancelled ? { state: "cancelled" } : { state: "failed", error: step.error };
         }
@@ -837,6 +857,31 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           reason: reservation.status === "pending" ? reservation.reason : "external_effect",
         };
       }
+    } catch (error) {
+      if (
+        authority &&
+        error instanceof CrankError &&
+        (error.code === "nondeterminism_detected" ||
+          error.code === "history_not_exhausted" ||
+          error.code === "replay_diverged")
+      ) {
+        yield* authority.forceOrphan(
+          request.attach.sessionId,
+          request.attach.taskId,
+          "replay_diverged",
+        );
+        if (error.code === "history_not_exhausted") {
+          throw new CrankError(
+            "replay_diverged",
+            "Accepted replay history was not exhausted",
+            undefined,
+            {
+              cause: error,
+            },
+          );
+        }
+      }
+      throw error;
     } finally {
       if (attachment) {
         yield* ProgramPeer.operations.shutdown(attachment, shutdownReason);
@@ -876,10 +921,10 @@ function* driverFor(kind: string): Operation<ProgramDriver> {
 
 function driverKind(route: ProgramRoute): string {
   if (route === null || typeof route !== "object" || Array.isArray(route)) {
-    return "generator";
+    return "program";
   }
   const value = route["driverKind"] ?? route["kind"];
-  return typeof value === "string" && value ? value : "generator";
+  return typeof value === "string" && value ? value : "program";
 }
 
 function effectKey(name: string, version: string): string {

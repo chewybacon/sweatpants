@@ -161,7 +161,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     };
     const adapterTools = createDurableToolRegistry([foreignToolAdapter]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(adapterTools)],
+      ["program", createLocalDurableProgramDriver(adapterTools)],
     ]);
     const outerKeyring = createCapabilityKeyring("ordinary-harness-outer", [
       { keyId: "active", secret: "ordinary-harness-outer-key-32bytes" },
@@ -176,8 +176,7 @@ describe("durable tool behind an ordinary ToolSession harness", () => {
     const attach = attachRequest(sessionId, taskId, request);
 
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-      });
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({
           registry,
@@ -278,7 +277,7 @@ function attachRequest(
       digest: FOREIGN_TOOL_ADAPTER_MANIFEST.digest,
     },
     input,
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: 1,
   };
 }

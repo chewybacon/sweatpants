@@ -203,7 +203,15 @@ function* openAndBegin(
     payload: {
       attach: {
         ...request,
-        route: assertJson({ driverKind: "agentcore", placement }),
+        route: assertJson({
+          driverKind: "program",
+          execution: {
+            kind: "agentcore",
+            releaseId: placement.release.releaseId,
+            runtimeSessionId: placement.runtimeSessionId,
+          },
+        }),
+        affinity: placement.affinity,
       },
       programInputDigest: canonicalSnapshot(request.input).sha,
       replayedThroughActionIndex,

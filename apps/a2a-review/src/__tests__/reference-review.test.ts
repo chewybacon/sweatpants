@@ -2,7 +2,7 @@ import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   sha256,
   type ProgramAttachment,
 } from "@sweatpants/session-contract";
@@ -183,7 +183,7 @@ describe("reference authored consultation application", () => {
 
   it("keeps initial model context clean and introduces parent data only after the recorded effect", async () => {
     const registry = createDurableToolRegistry([REFERENCE_REVIEWER_TOOL]);
-    const driver = createLocalGeneratorDriver(registry);
+    const driver = createLocalProgramDriver(registry);
     const request = {
       sessionId: "session",
       taskId: "review-child",
@@ -197,7 +197,7 @@ describe("reference authored consultation application", () => {
         rubric: "EXPLICIT_RUBRIC",
         instructions: "EXPLICIT_INSTRUCTIONS",
       },
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     } as const;
     const evidence = await run(function* () {

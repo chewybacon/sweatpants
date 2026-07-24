@@ -9,11 +9,11 @@ import { CrankError, type Json } from "./types.ts";
 
 export const PROGRAM_ARTIFACT_IDENTITY_FORMAT = "sweatpants.program-artifact-identity.v1" as const;
 export const PROGRAM_ARTIFACT_IDENTITY_DOMAIN = `${PROGRAM_ARTIFACT_IDENTITY_FORMAT}\n`;
-export const PROGRAM_ARTIFACT_GENERATOR_VERSION = 1;
+export const PROGRAM_ARTIFACT_GENERATOR_VERSION = 2;
 export const PROGRAM_INTERFACE_IDENTITY_FORMAT =
   "sweatpants.program-interface-identity.v1" as const;
 export const PROGRAM_INTERFACE_IDENTITY_DOMAIN = `${PROGRAM_INTERFACE_IDENTITY_FORMAT}\n`;
-export const PROGRAM_INTERFACE_GENERATOR_VERSION = 1;
+export const PROGRAM_INTERFACE_GENERATOR_VERSION = 2;
 
 export interface ProgramArtifactIdentityInputV1 {
   readonly format: typeof PROGRAM_ARTIFACT_IDENTITY_FORMAT;

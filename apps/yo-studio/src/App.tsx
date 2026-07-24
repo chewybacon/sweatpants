@@ -131,7 +131,7 @@ function DurableChat({ conversationId }: { conversationId: string }) {
           )}
           <p>
             React owns presentation only. `useChat` talks to `createDurableChatHandler`; the handler
-            owns the model loop, journal, native child tools, and workspace effects.
+            owns the model loop, journal, native child tools, and workspace providers.
           </p>
         </div>
       </form>

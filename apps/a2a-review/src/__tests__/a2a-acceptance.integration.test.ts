@@ -14,7 +14,7 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   sha256,
   type Json,
@@ -202,7 +202,7 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
       },
     });
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalGeneratorDriver(createDurableToolRegistry([parentTool]))],
+      ["program", createLocalProgramDriver(createDurableToolRegistry([parentTool]))],
       ["a2a", a2aDriver],
     ]);
     const authority = createInMemoryDurableJournalAuthority({
@@ -222,7 +222,7 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
         digest: parentManifest.digest,
       },
       input: acceptedInput,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     };
     await run(function* () {
@@ -252,7 +252,7 @@ describe("authored chat reviewer composed through caller-authoritative A2A", () 
                       driverEndpoint: "wss://review.example/programs",
                       cardOrigin: "https://review.example",
                     }
-                  : { driverKind: "generator" };
+                  : { driverKind: "program" };
               },
               function* () {
                 const result = yield* ProgramRuntime.operations.run({

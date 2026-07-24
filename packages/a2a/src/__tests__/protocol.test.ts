@@ -35,7 +35,11 @@ describe("caller-authoritative A2A protocol", () => {
       program,
       executionEpoch: 1,
       type: "attach_begin" as const,
-      payload: { input: "hello", inputDigest: "b".repeat(64) },
+      payload: {
+        input: "hello",
+        inputDigest: "b".repeat(64),
+        affinity: { kind: "invocation", key: "remote-task" },
+      },
     };
     expect(parseClientProgramMessage(encodeA2AProgramMessage(message))).toEqual(message);
     expect(() => parseClientProgramMessage(JSON.stringify(message))).toThrowError(
@@ -103,7 +107,11 @@ describe("caller-authoritative A2A protocol", () => {
         program,
         executionEpoch: 1,
         type: "attach_begin",
-        payload: { input: "x".repeat(2 * 1024 * 1024), inputDigest: "b".repeat(64) },
+        payload: {
+          input: "x".repeat(2 * 1024 * 1024),
+          inputDigest: "b".repeat(64),
+          affinity: { kind: "invocation", key: "remote-task" },
+        },
       }),
     ).toThrowError(
       expect.objectContaining({ code: "payload_too_large" } satisfies Partial<CrankError>),

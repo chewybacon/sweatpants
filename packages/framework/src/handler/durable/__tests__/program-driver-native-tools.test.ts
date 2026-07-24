@@ -30,7 +30,7 @@ function composition(
         binding.publicName,
         {
           tool: stubTool(binding.publicName),
-          route: { driverKind: "generator" },
+          route: { driverKind: "program" },
           ...binding,
         } as ProgramDriverNativeToolBinding,
       ]),
@@ -50,7 +50,7 @@ describe("requiresFencedActivation", () => {
       requiresFencedActivation(
         composition([
           { publicName: "local_tool", route: { driverKind: "worker" } },
-          { publicName: "generator_tool", route: { driverKind: "generator" } },
+          { publicName: "generator_tool", route: { driverKind: "program" } },
         ]),
       ),
     ).toBe(false);

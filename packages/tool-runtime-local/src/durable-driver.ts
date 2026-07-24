@@ -1,6 +1,6 @@
 import type { Operation } from "effection";
 import {
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   type AttachProgramRequest,
   type DurableToolRegistry,
   type ProgramAttachment,
@@ -12,7 +12,7 @@ import {
 
 /** In-process canonical driver used as the semantic baseline. */
 export function createLocalDurableProgramDriver(registry?: DurableToolRegistry): ProgramDriver {
-  return createLocalGeneratorDriver(registry);
+  return createLocalProgramDriver(registry);
 }
 
 /** Typed worker binding. Implementations own serialization and worker lifetime. */

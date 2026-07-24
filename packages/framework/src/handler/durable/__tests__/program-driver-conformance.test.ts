@@ -26,13 +26,13 @@ describe("provider-neutral ProgramDriver conformance", () => {
   it("accepts an equivalent normalized trace without provider-specific fields", async () => {
     await expect(
       runProgramDriverConformance({
-        name: "generator",
+        name: "program",
         expected: trace,
         async execute() {
           return structuredClone(trace);
         },
       }),
-    ).resolves.toEqual({ name: "generator", trace });
+    ).resolves.toEqual({ name: "program", trace });
   });
 
   it("reports the first exact semantic divergence", async () => {

@@ -2,7 +2,7 @@ import type { Operation } from "effection";
 import {
   CrankError,
   canonicalSnapshot,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   type AttachProgramRequest,
   type DurableEffectRegistry,
   type DurableToolRegistry,
@@ -107,7 +107,7 @@ type Identity = {
 export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2AProgramExecutor {
   validateId(options.executorId, "executorId");
   validateId(options.computeGeneration, "computeGeneration");
-  const driver = createLocalGeneratorDriver(options.registry, {
+  const driver = createLocalProgramDriver(options.registry, {
     detachedScope: true,
     ...(options.executionEffects ? { executionEffects: options.executionEffects } : {}),
   });
@@ -433,8 +433,9 @@ function remoteAttachRequest(
     taskId: message.executionId,
     program: message.program,
     input: message.payload.input,
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: message.executionEpoch,
+    affinity: message.payload.affinity,
   };
 }
 function requireAttachment(

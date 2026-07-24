@@ -21,7 +21,14 @@ import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
 } from "@sweatpants/framework/server";
-import type { WorkspaceConnector, WorkspaceFence } from "@sweatpants/workspace-runtime";
+import {
+  installLocalWorkspaceFilesProvider,
+  installRemoteWorkspaceFilesProvider,
+  type WorkspaceConnector,
+  type WorkspaceFence,
+  type WorkspaceOperations,
+} from "@sweatpants/workspace-runtime";
+import { useProgramExecution, type ProgramExecutionValue } from "@sweatpants/session-contract";
 import {
   createPiAiModelProviderDriver,
   installPiAiModelProvider,
@@ -30,10 +37,6 @@ import {
 
 import { codingCapabilities } from "../capabilities/workspace.ts";
 import { codingModelProvider } from "../deployment.ts";
-import {
-  createWorkspaceEffectRegistrations,
-  type WorkspaceEffectAdapterOptions,
-} from "./workspace-effects.ts";
 
 const model: Model = {
   id: "yo-studio-scripted",
@@ -61,8 +64,11 @@ export function createPiAiStudioModelProvider(): StudioModelProviderRuntime {
 /** The actual durable chat handler consumed by @sweatpants/react-chat/useChat. */
 export function createStudioDurableChatApplication(options: {
   readonly connector?: WorkspaceConnector;
+  readonly operations?: WorkspaceOperations;
   readonly fence?: WorkspaceFence;
-  readonly resolveWorkspace?: WorkspaceEffectAdapterOptions["resolve"];
+  readonly resolveWorkspace?: (
+    execution: ProgramExecutionValue,
+  ) => Operation<{ readonly connector: WorkspaceConnector; readonly fence: WorkspaceFence }>;
   readonly modelProvider?: StudioModelProviderRuntime;
 }) {
   const definitions = Object.values(codingCapabilities);
@@ -78,11 +84,25 @@ export function createStudioDurableChatApplication(options: {
     options.resolveWorkspace ??
     function* () {
       if (!options.connector || !options.fence) {
-        throw new Error("workspace effect resolver is not configured");
+        throw new Error("workspace provider resolver is not configured");
       }
       return { connector: options.connector, fence: options.fence };
     };
-  const effects = createWorkspaceEffectRegistrations({ resolve: resolveWorkspace });
+  const installWorkspace = function* (): Operation<void> {
+    if (options.operations && options.fence) {
+      yield* installLocalWorkspaceFilesProvider({
+        resolve: function* () {
+          return { operations: options.operations!, fence: options.fence! };
+        },
+      });
+    } else {
+      yield* installRemoteWorkspaceFilesProvider({
+        resolve: function* () {
+          return yield* resolveWorkspace(yield* useProgramExecution());
+        },
+      });
+    }
+  };
   const modelProvider = options.modelProvider ?? createPiAiStudioModelProvider();
   const handler = createDurableChatHandler({
     programDriverJournalStore: journalStore,
@@ -109,12 +129,13 @@ export function createStudioDurableChatApplication(options: {
             {
               publicName: definition.name,
               tool: definition,
-              route: { driverKind: "generator" as const },
+              route: { driverKind: "program" as const },
             },
           ]),
         ),
         drivers: [],
-        effects,
+        effects: [],
+        setup: installWorkspace,
       });
     },
   });
@@ -139,7 +160,7 @@ function scriptedDriver(currentWorkspaceVersion: () => string): ModelProviderDri
 
 function scriptedMessage(
   request: ModelProviderStreamRequest,
-  workspaceVersion: string,
+  workspaceRevision: string,
 ): AssistantMessage {
   const toolResults = request.context.messages.filter((message) => message.role === "toolResult");
   if (toolResults.length === 0) {
@@ -161,8 +182,8 @@ function scriptedMessage(
           name: "workspace_write",
           arguments: {
             path: "demo.txt",
-            content: "hello from durable yo-studio\n",
-            expectedWorkspaceVersion: workspaceVersion,
+            contents: "hello from durable yo-studio\n",
+            expectedWorkspaceRevision: workspaceRevision,
           },
         },
       ],
@@ -177,7 +198,7 @@ function scriptedMessage(
           type: "toolCall",
           id: "studio-test",
           name: "workspace_test",
-          arguments: { script: "test", workspaceVersion },
+          arguments: { script: "test", expectedWorkspaceRevision: workspaceRevision },
         },
       ],
       stopReason: "toolUse",

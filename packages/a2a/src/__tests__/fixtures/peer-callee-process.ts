@@ -10,7 +10,7 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createPortableSchemaDescriptor,
   createProgramDriverRegistry,
   type Json,
@@ -190,7 +190,7 @@ async function activateCallee(): Promise<void> {
   await run(() =>
     ProgramDriverRegistryContext.with(
       createProgramDriverRegistry([
-        ["generator", createLocalGeneratorDriver(createDurableToolRegistry([calleeTool]))],
+        ["program", createLocalProgramDriver(createDurableToolRegistry([calleeTool]))],
       ]),
       function* () {
         return yield* JournalAuthorityContext.with(authority, function* () {
@@ -204,7 +204,7 @@ async function activateCallee(): Promise<void> {
                 digest: calleeTool.manifest.digest,
               },
               input: "peer invocation",
-              route: { driverKind: "generator" },
+              route: { driverKind: "program" },
               executionEpoch: 1,
             },
             executeHostEffects: false,

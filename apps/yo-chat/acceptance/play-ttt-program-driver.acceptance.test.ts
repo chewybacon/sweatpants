@@ -7,7 +7,7 @@ import {
   createDurableEffectRegistration,
   createDurableEffectRegistry,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   type Json,
 } from "@sweatpants/session-contract";
@@ -29,7 +29,7 @@ const pin = {
 
 describe("journal-native play_ttt through ProgramRuntime", () => {
   it.each([
-    ["generator", "generator"],
+    ["program", "program"],
     ["worker", "worker"],
   ] as const)("completes through the %s driver without ToolSession", async (_label, driverKind) => {
     let modelSamples = 0;
@@ -40,12 +40,6 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
         MODEL_SAMPLE_EFFECT.retrySafety,
         function* (request) {
           modelSamples += 1;
-          if (JSON.stringify(request.schema).includes('"symbol"')) {
-            return {
-              status: "ok",
-              value: { text: "X", calls: [], content: [], parsed: { symbol: "X" } },
-            };
-          }
           return {
             status: "ok",
             value: {
@@ -59,8 +53,8 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
       ),
     ]);
     const driver =
-      driverKind === "generator"
-        ? createLocalGeneratorDriver(programs)
+      driverKind === "program"
+        ? createLocalProgramDriver(programs)
         : createLocalWorkerDurableProgramDriver({
             workerUrl: new URL("./fixtures/durable-play-ttt-worker-bootstrap.mjs", import.meta.url),
             name: "play-ttt-conformance-worker",
@@ -119,6 +113,13 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
       expect(
         operations.filter((operation) => operation.descriptor["kind"] === "effect"),
       ).toHaveLength(modelSamples);
+      expect(
+        operations.filter(
+          (operation) =>
+            operation.descriptor["kind"] === "record" &&
+            operation.descriptor["label"] === "play-ttt-symbol-coin-flip",
+        ),
+      ).toHaveLength(1);
       expect(
         operations.filter((operation) => operation.descriptor["kind"] === "elicit"),
       ).toHaveLength(userResponses);

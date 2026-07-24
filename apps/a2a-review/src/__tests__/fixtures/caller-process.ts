@@ -13,7 +13,7 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   sha256,
   type DurableJournalAuthorityService,
@@ -224,7 +224,7 @@ const a2aDriver = createA2AProgramDriver({
   deadlines: { handshakeMs: 2_000, attachMs: 2_000, stepMs: 2_000, restoreProgressMs: 2_000 },
 });
 const drivers = createProgramDriverRegistry([
-  ["generator", createLocalGeneratorDriver(createDurableToolRegistry([parentTool]))],
+  ["program", createLocalProgramDriver(createDurableToolRegistry([parentTool]))],
   ["a2a", a2aDriver],
 ]);
 const rootAttach = {
@@ -236,7 +236,7 @@ const rootAttach = {
     digest: parentManifest.digest,
   },
   input,
-  route: { driverKind: "generator" },
+  route: { driverKind: "program" },
   executionEpoch: 1,
 };
 
@@ -276,7 +276,7 @@ await run(function* () {
                     driverEndpoint: endpoint,
                     cardOrigin: endpoint.replace("ws:", "http:"),
                   }
-                : { driverKind: "generator" };
+                : { driverKind: "program" };
             },
             function* () {
               yield* ProgramRuntime.operations.run({

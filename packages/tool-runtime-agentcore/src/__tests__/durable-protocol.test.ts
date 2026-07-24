@@ -80,7 +80,7 @@ describe("AgentCore durable placement and protocol", () => {
       taskId: attach.taskId,
       activationEpoch: attach.executionEpoch,
       payload: {
-        attach,
+        attach: { ...attach, affinity: { kind: "invocation" as const, key: attach.taskId } },
         programInputDigest: canonicalSnapshot(attach.input).sha,
         replayedThroughActionIndex: 0,
         replayChainSeed: "b".repeat(64),

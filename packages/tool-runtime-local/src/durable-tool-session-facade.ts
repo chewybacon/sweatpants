@@ -178,7 +178,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
         digest: options.tool.manifest.digest,
       },
       input,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     };
     if (!snapshot) {
@@ -198,7 +198,7 @@ function* runFacadeProgram<I extends Json, O extends Json>(
     // manifest schemas restore input/output types at attachment boundaries.
     const tools = createDurableToolRegistry([options.tool as unknown as DurableTool]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(tools)],
+      ["program", createLocalDurableProgramDriver(tools)],
     ]);
     const effects = createDurableEffectRegistry(
       effectRegistrations(options.tool.manifest, outerContext, options.effectHandlers),

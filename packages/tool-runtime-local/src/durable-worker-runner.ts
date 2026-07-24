@@ -4,7 +4,7 @@ import {
   CrankError,
   ExecutionDurableEffectRegistryContext,
   createDurableEffectRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   type DurableEffectRegistry,
   type DurableToolRegistry,
   type ProgramAttachment,
@@ -30,7 +30,10 @@ export async function runDurableProgramWorker(
     DurableProgramWorkerResult,
     void
   >(function* ({ messages }) {
-    const driver = createLocalGeneratorDriver(registry);
+    const driver = createLocalProgramDriver(registry, {
+      detachedScope: true,
+      executionEffects,
+    });
     let attachment: ProgramAttachment | undefined;
 
     yield* ExecutionDurableEffectRegistryContext.with(executionEffects, function* () {

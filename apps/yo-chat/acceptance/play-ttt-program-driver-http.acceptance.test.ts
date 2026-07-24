@@ -89,7 +89,10 @@ describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
         });
       }
 
-      expect(events.some((event) => event.type === "TOOL_CALL_RESULT"), JSON.stringify(events)).toBe(true);
+      expect(
+        events.some((event) => event.type === "TOOL_CALL_RESULT"),
+        JSON.stringify(events),
+      ).toBe(true);
       expect(
         events.some(
           (event) => event.type === "TEXT_MESSAGE_CONTENT" && event["delta"] === "Game complete.",
@@ -105,6 +108,14 @@ describe("journal-native play_ttt through the HTTP ProgramRuntime", () => {
       expect(effectNames).not.toContain("foreign.tool.start");
       expect(effectNames).not.toContain("foreign.tool.continue");
       expect(effectNames.filter((name) => name === "model.sample").length).toBeGreaterThan(2);
+      expect(
+        journal.filter(
+          (entry) =>
+            entry.payload.type === "PullRequested" &&
+            entry.payload.descriptor.kind === "record" &&
+            entry.payload.descriptor.label === "play-ttt-symbol-coin-flip",
+        ),
+      ).toHaveLength(1);
       expect(effectNames).not.toContain("tool.execute");
       expect(effectNames).not.toContain("tool.resume");
       expect(journal.at(-1)?.payload.type).toBe("TaskClosed");
@@ -142,7 +153,7 @@ function createApplication(driver: ModelProviderDriver, journalStore: ProgramDri
             {
               publicName: playTttTool.name,
               tool: playTttTool,
-              route: { driverKind: "generator" },
+              route: { driverKind: "program" },
             },
           ],
         ]),
@@ -170,8 +181,7 @@ function sampleMessage(request: ModelProviderStreamRequest, sequence: number): A
     };
   }
   if (request.options?.responseFormat) {
-    const isAssignment = JSON.stringify(request.options.responseFormat).includes('"symbol"');
-    const parsed = isAssignment ? { symbol: "X" } : { cell: firstEmptyPosition(request) };
+    const parsed = { cell: firstEmptyPosition(request) };
     return {
       role: "assistant",
       content: [{ type: "text", text: JSON.stringify(parsed) }],

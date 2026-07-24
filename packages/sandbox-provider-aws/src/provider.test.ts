@@ -55,6 +55,24 @@ function fakeRunner(
   return { runner, calls };
 }
 
+function programExecution(key: string) {
+  return {
+    format: "sweatpants.program-execution.v1" as const,
+    identity: {
+      sessionId: key,
+      taskId: "task",
+      program: { id: "program", version: "1", digest: "a".repeat(64) },
+    },
+    attempt: {
+      attachmentId: "attachment",
+      executionEpoch: 1,
+      route: { driverKind: "program" },
+    },
+    affinity: { kind: "workspace" as const, key },
+    operationId: (namespace: string) => `${namespace}:operation`,
+  };
+}
+
 const options = {
   imageArn: "arn:image",
   imageVersion: "6.0",
@@ -117,16 +135,9 @@ describe("Lambda MicroVM workspace provider", () => {
     const { runner, calls } = fakeRunner();
     const manager = createLambdaMicrovmWorkspaceManager({ ...options, runner, fetch: fakeFetch });
     await run(function* () {
-      const context = {
-        sessionId: "conversation-1",
-        taskId: "task",
-        pullId: "pull",
-        attemptId: "attempt",
-        cancellation: new AbortController().signal,
-        resolver: { audience: "workspace" },
-      };
+      const context = programExecution("conversation-1");
       const first = yield* manager.resolve(context);
-      const second = yield* manager.resolve({ ...context, pullId: "pull-2" });
+      const second = yield* manager.resolve(context);
       expect(second.fence).toEqual(first.fence);
       yield* manager.close();
       yield* manager.close();
@@ -138,21 +149,14 @@ describe("Lambda MicroVM workspace provider", () => {
   it("single-flights concurrent resolution for one conversation", async () => {
     const { runner, calls } = fakeRunner({ delayAllocation: true });
     const manager = createLambdaMicrovmWorkspaceManager({ ...options, runner, fetch: fakeFetch });
-    const context = {
-      sessionId: "conversation-concurrent",
-      taskId: "task",
-      pullId: "pull-1",
-      attemptId: "attempt",
-      cancellation: new AbortController().signal,
-      resolver: { audience: "workspace" },
-    };
+    const context = programExecution("conversation-concurrent");
 
     await run(function* () {
       const first = yield* spawn(function* () {
         return yield* manager.resolve(context);
       });
       const second = yield* spawn(function* () {
-        return yield* manager.resolve({ ...context, pullId: "pull-2" });
+        return yield* manager.resolve(context);
       });
       expect((yield* second).fence).toEqual((yield* first).fence);
       yield* manager.close();
@@ -221,19 +225,12 @@ describe("Lambda MicroVM workspace provider", () => {
     const report = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       await run(function* () {
-        const context = {
-          sessionId: "conversation-retry",
-          taskId: "task",
-          pullId: "pull",
-          attemptId: "attempt",
-          cancellation: new AbortController().signal,
-          resolver: { audience: "workspace" },
-        };
+        const context = programExecution("conversation-retry");
         yield* manager.resolve(context);
         yield* manager.close();
-        expect(yield* manager.inspect(context.sessionId)).toMatchObject({ state: "RUNNING" });
+        expect(yield* manager.inspect(context.affinity.key)).toMatchObject({ state: "RUNNING" });
         yield* manager.close();
-        expect(yield* manager.inspect(context.sessionId)).toBeUndefined();
+        expect(yield* manager.inspect(context.affinity.key)).toBeUndefined();
       });
     } finally {
       report.mockRestore();

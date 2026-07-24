@@ -1,0 +1,159 @@
+import { createContext, type Operation } from "effection";
+
+import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
+import type {
+  AttachProgramRequest,
+  PinnedProgram,
+  ProgramRoute,
+  SandboxAffinity,
+} from "./durable-types.ts";
+import { CrankError } from "./types.ts";
+
+export const PROGRAM_EXECUTION_FORMAT = "sweatpants.program-execution.v1" as const;
+
+/** Runtime-only identity and affinity for one program attachment attempt. */
+export interface ProgramExecutionValue {
+  readonly format: typeof PROGRAM_EXECUTION_FORMAT;
+  readonly identity: {
+    readonly sessionId: string;
+    readonly taskId: string;
+    readonly program: PinnedProgram;
+  };
+  readonly attempt: {
+    readonly attachmentId: string;
+    readonly executionEpoch: number;
+    readonly route: ProgramRoute;
+  };
+  readonly affinity: SandboxAffinity;
+  /** Returns a bounded ID unique to one ordinary call in this attachment attempt. */
+  operationId(namespace: string): string;
+}
+
+/** Well-known attachment-scoped operational context. It contains no authority capability. */
+export const ProgramExecutionContext = createContext<ProgramExecutionValue | undefined>(
+  "session-contract:program-execution-v1",
+  undefined,
+);
+
+/** Resolves the current program attachment identity. */
+export function* useProgramExecution(): Operation<ProgramExecutionValue> {
+  const value = yield* ProgramExecutionContext.get();
+  if (!value) {
+    throw new CrankError(
+      "program_execution_unavailable",
+      "Program execution context is unavailable outside a program attachment",
+    );
+  }
+  return value;
+}
+
+/** Creates the closed immutable context installed by an execution-owning ProgramDriver. */
+export function createProgramExecutionValue(
+  request: AttachProgramRequest,
+  attachmentId: string,
+): ProgramExecutionValue {
+  const route = canonicalSnapshot(request.route).value;
+  assertNoAuthorityMaterial(route);
+  const affinity = acceptedAffinity(request, route);
+  let callIndex = 0;
+  const identity = Object.freeze({
+    sessionId: boundedText(request.sessionId, "sessionId"),
+    taskId: boundedText(request.taskId, "taskId"),
+    program: Object.freeze({ ...request.program }),
+  });
+  const attempt = Object.freeze({
+    attachmentId: boundedText(attachmentId, "attachmentId"),
+    executionEpoch: request.executionEpoch,
+    route,
+  });
+  return Object.freeze({
+    format: PROGRAM_EXECUTION_FORMAT,
+    identity,
+    attempt,
+    affinity,
+    operationId(namespace: string) {
+      const acceptedNamespace = boundedNamespace(namespace);
+      callIndex += 1;
+      return stableOpaqueId("program-operation-attempt-v1", [
+        identity.sessionId,
+        identity.taskId,
+        identity.program.id,
+        identity.program.version,
+        identity.program.digest,
+        attempt.attachmentId,
+        attempt.executionEpoch,
+        acceptedNamespace,
+        callIndex,
+      ]);
+    },
+  });
+}
+
+function acceptedAffinity(request: AttachProgramRequest, route: ProgramRoute): SandboxAffinity {
+  if (request.affinity) {
+    return freezeAffinity(request.affinity);
+  }
+  if (route && typeof route === "object" && !Array.isArray(route)) {
+    const candidate = (route as Record<string, unknown>)["affinity"];
+    if (isAffinity(candidate)) {
+      return freezeAffinity(candidate);
+    }
+  }
+  // The local driver has no external trust-boundary binding. Its closed default
+  // is the logical task itself; remote drivers must project an accepted affinity
+  // onto AttachProgramRequest rather than trusting program-authored data.
+  return freezeAffinity({ kind: "invocation", key: request.taskId });
+}
+
+function isAffinity(value: unknown): value is SandboxAffinity {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      ["invocation", "conversation", "workspace"].includes(
+        String((value as Record<string, unknown>)["kind"]),
+      ) &&
+      typeof (value as Record<string, unknown>)["key"] === "string",
+  );
+}
+
+function freezeAffinity(value: SandboxAffinity): SandboxAffinity {
+  if (!isAffinity(value)) {
+    throw new CrankError("invalid_descriptor", "Program affinity is invalid");
+  }
+  return Object.freeze({
+    kind: value.kind,
+    key: boundedText(value.key, "affinity.key"),
+  });
+}
+
+function assertNoAuthorityMaterial(value: unknown, path = "route"): void {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => assertNoAuthorityMaterial(child, `${path}[${index}]`));
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (/(?:capabilit|credential|secret|password|signing|authorization|authToken)/i.test(key)) {
+      throw new CrankError(
+        "invalid_descriptor",
+        `Program execution route contains forbidden authority material at ${path}.${key}`,
+      );
+    }
+    assertNoAuthorityMaterial(child, `${path}.${key}`);
+  }
+}
+
+function boundedNamespace(value: string): string {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(value)) {
+    throw new CrankError("invalid_descriptor", "Operation namespace must be bounded text");
+  }
+  return value;
+}
+
+function boundedText(value: string, field: string): string {
+  if (typeof value !== "string" || value.length === 0 || new TextEncoder().encode(value).length > 512) {
+    throw new CrankError("invalid_descriptor", `${field} must be bounded text`);
+  }
+  return value;
+}

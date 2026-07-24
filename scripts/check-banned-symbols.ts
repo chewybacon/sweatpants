@@ -102,6 +102,12 @@ const gates: Gate[] = [
     paths: ["packages/session-contract/src", "packages/framework/src/handler/durable"],
   },
   {
+    name: "effection-native-durable-cutover",
+    pattern:
+      "DurableProgramGenerator|createLocalGeneratorDriver|LEGACY_MODEL_SAMPLE_EFFECT|workspace-effects\\.ts|\\.program\\([^\\n]*\\)\\.next\\(",
+    paths: ["packages", "apps"],
+  },
+  {
     name: "timer-polled-idle-runtime",
     pattern: "sleep\\(|setInterval\\(|setTimeout\\(",
     paths: [

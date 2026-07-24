@@ -98,6 +98,7 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
           envelope(request, opened.route, "attach_begin", {
             input: request.input,
             inputDigest,
+            affinity: request.affinity ?? { kind: "invocation", key: request.taskId },
           }),
         );
         const ready = yield* receiveWithin(opened.connection, deadlines.attachMs, "attach");
@@ -221,6 +222,10 @@ export function createA2AProgramDriver(options: A2AProgramDriverOptions): Progra
             inputDigest,
             replayedThroughActionIndex: request.replayedThroughActionIndex,
             replayChainSeed: request.replayChainSeed,
+            affinity: request.attach.affinity ?? {
+              kind: "invocation",
+              key: request.attach.taskId,
+            },
           }),
         );
         const ready = yield* receiveWithin(opened.connection, deadlines.attachMs, "restore attach");

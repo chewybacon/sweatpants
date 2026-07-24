@@ -30,6 +30,8 @@ export interface ProgramDriverNativeToolComposition {
   readonly bindings: ReadonlyMap<string, ProgramDriverNativeToolBinding>;
   readonly drivers: readonly (readonly [string, ProgramDriver])[];
   readonly effects: readonly DurableEffectRegistration[];
+  /** Installs ordinary scoped APIs for each local program attachment. */
+  readonly setup?: () => Operation<void>;
 }
 
 /** Scoped native durable-tool inventory supplied by application setup. */

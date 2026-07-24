@@ -4,7 +4,6 @@ import { canonicalSnapshot } from "./canonical.ts";
 import { createDurableEffectRegistration } from "./durable-apis.ts";
 import { effectContractDigest } from "./effect-contract.ts";
 import {
-  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   type ModelSampleCancellationPartial,
   type ModelSampleRequest,
@@ -55,13 +54,12 @@ export const ModelSamplingRouterContext = createContext<ModelSamplingRouter | un
   undefined,
 );
 
-/** Creates an exact model.sample registration; new authoring defaults to repeatable v2. */
-export function createModelSamplingEffectRegistration(
-  definition: typeof MODEL_SAMPLE_EFFECT | typeof LEGACY_MODEL_SAMPLE_EFFECT = MODEL_SAMPLE_EFFECT,
-) {
+/** Creates the one canonical repeatable model.sample registration. */
+export function createModelSamplingEffectRegistration() {
+  const definition = MODEL_SAMPLE_EFFECT;
   return createDurableEffectRegistration(
     definition,
-    definition.retrySafety,
+    { mode: "repeatable" },
     function* (request, effectContext) {
       const router = yield* ModelSamplingRouterContext.get();
       const placement = yield* ProgramPlacementContext.get();
