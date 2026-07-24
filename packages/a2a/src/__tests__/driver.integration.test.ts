@@ -108,7 +108,11 @@ describe("remote A2A ProgramDriver", () => {
         program,
         executionEpoch: epoch,
         type: "attach_begin" as const,
-        payload: { input: "hello", inputDigest: canonicalSnapshot("hello").sha },
+        payload: {
+          input: "hello",
+          inputDigest: canonicalSnapshot("hello").sha,
+          affinity: { kind: "invocation", key: "remote-task" },
+        },
       });
       const firstReadyRaw = yield* first.handle(encodeA2AProgramMessage(attach(1)));
       const firstReady = parseServerProgramMessage(firstReadyRaw!);
@@ -162,7 +166,11 @@ describe("remote A2A ProgramDriver", () => {
         program,
         executionEpoch: 1,
         type: "attach_begin" as const,
-        payload: { input: "hello", inputDigest: "" },
+        payload: {
+          input: "hello",
+          inputDigest: "",
+          affinity: { kind: "invocation", key: "remote-task" },
+        },
       };
       attach.payload.inputDigest = canonicalSnapshot("hello").sha;
       const readyRaw = yield* connection.handle(encodeA2AProgramMessage(attach));

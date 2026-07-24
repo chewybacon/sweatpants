@@ -8,6 +8,7 @@ import {
   createWorkspaceService,
   type WorkspaceConnector,
   type WorkspaceFence,
+  type WorkspaceOperations,
   type WorkspaceService,
 } from "@sweatpants/workspace-runtime";
 
@@ -16,6 +17,7 @@ import { createHeadlessCodingService } from "./headless-coding-service.ts";
 export interface StudioDevelopmentRuntime {
   readonly workspace: WorkspaceService;
   readonly connector: WorkspaceConnector;
+  readonly operations: WorkspaceOperations;
   readonly fence: WorkspaceFence;
 }
 
@@ -41,21 +43,26 @@ export function* createStudioDevelopmentRuntime(root: string): Operation<StudioD
     },
   });
   workspace.bind(fence);
-  return { workspace, connector: createLoopbackWorkspaceConnector(workspace), fence };
+  return {
+    workspace,
+    operations: workspace.operations,
+    connector: createLoopbackWorkspaceConnector(workspace),
+    fence,
+  };
 }
 
 export function createStudioDevelopmentApi(
   runtime: StudioDevelopmentRuntime,
 ): StudioDevelopmentApi {
-  const { workspace, connector, fence } = runtime;
-  const coding = createHeadlessCodingService({ connector, fence });
+  const { workspace, fence } = runtime;
+  const coding = createHeadlessCodingService({ operations: workspace.operations, fence });
   return {
     *handle(request, response, next) {
       const url = new URL(request.url ?? "/", "http://yo-studio");
       if (request.method === "GET" && url.pathname === "/api/tasks/status") {
         send(response, 200, {
           ready: true,
-          workspaceVersion: workspace.currentWorkspaceVersion(),
+          workspaceRevision: workspace.currentWorkspaceVersion(),
           placement: "local finite-HTTP semantic equivalent",
         });
         return;
@@ -72,7 +79,7 @@ export function createStudioDevelopmentApi(
         }
         const result = yield* coding.start({
           task,
-          workspaceVersion: workspace.currentWorkspaceVersion(),
+          workspaceRevision: workspace.currentWorkspaceVersion(),
         });
         const operations = result.trace.tasks.flatMap((taskTrace) =>
           taskTrace.operations.flatMap((operation) => {
@@ -99,7 +106,7 @@ export function createStudioDevelopmentApi(
           taskId: result.taskId,
           state: result.state,
           value: result.value,
-          workspaceVersion: workspace.currentWorkspaceVersion(),
+          workspaceRevision: workspace.currentWorkspaceVersion(),
           operations,
         });
       } catch (error) {

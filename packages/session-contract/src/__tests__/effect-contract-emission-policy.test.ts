@@ -15,7 +15,7 @@ import {
   createPinnedDurableProgram,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   effectContractDigest,
   stableProgramAttachmentId,
@@ -134,7 +134,7 @@ describe("whole-contract effect digest", () => {
     );
   });
 
-  it("does not conflict across different versions, matching model.sample@1 and @2", () => {
+  it("does not conflict across distinct effect versions", () => {
     const version1 = effect("1", true);
     const version2 = effect("2", false);
     const registrations = [
@@ -314,7 +314,7 @@ describe("semantic emission policy", () => {
       return null;
     });
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalGeneratorDriver(createDurableToolRegistry([tool]))],
+      ["program", createLocalProgramDriver(createDurableToolRegistry([tool]))],
     ]);
     const selected = authority({ emissionPolicy: { maxEmissionsPerTask: 1 } });
     const attach = {
@@ -326,7 +326,7 @@ describe("semantic emission policy", () => {
         digest: runtimeManifest.digest,
       },
       input: null,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     } as const;
 

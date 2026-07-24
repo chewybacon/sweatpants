@@ -40,7 +40,7 @@ describe("headless durable coding vertical", () => {
     const result = await run(function* () {
       return yield* service.start({
         task: "Create demo.txt and validate it",
-        workspaceVersion: workspace.currentWorkspaceVersion(),
+        workspaceRevision: workspace.currentWorkspaceVersion(),
       });
     });
 
@@ -49,17 +49,21 @@ describe("headless durable coding vertical", () => {
     await expect(readFile(join(root, "demo.txt"), "utf8")).resolves.toBe(
       "hello from durable yo-studio\n",
     );
-    const operationNames = result.trace.tasks.flatMap((task) =>
-      task.operations.map((operation) =>
+    const descriptors = result.trace.tasks.flatMap((task) =>
+      task.operations.flatMap((operation) =>
         typeof operation.descriptor === "object" &&
         operation.descriptor !== null &&
         !Array.isArray(operation.descriptor)
-          ? operation.descriptor["name"]
-          : undefined,
+          ? [operation.descriptor]
+          : [],
       ),
     );
-    expect(operationNames).toContain("model.sample");
-    expect(operationNames).toContain("yo-studio.workspace.write");
-    expect(operationNames).toContain("yo-studio.workspace.run-script");
+    expect(descriptors).toContainEqual(expect.objectContaining({ name: "model.sample" }));
+    expect(descriptors).toContainEqual(
+      expect.objectContaining({ kind: "record", label: "workspace-write" }),
+    );
+    expect(descriptors).toContainEqual(
+      expect.objectContaining({ kind: "record", label: "workspace-run-script" }),
+    );
   });
 });

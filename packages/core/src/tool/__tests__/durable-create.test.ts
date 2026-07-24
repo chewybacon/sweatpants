@@ -1,3 +1,4 @@
+import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -5,6 +6,8 @@ import {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   createDurableProgramContext,
+  type ProgramResume,
+  type ProgramStepProposal,
 } from "@sweatpants/session-contract";
 
 import { defineAgent, parseAgentManifest } from "../../agent/index.ts";
@@ -20,6 +23,37 @@ const echo = defineEffect({
 });
 
 describe("createDurableTool fluent builder", () => {
+  it("infers an ordinary Operation result without output or durable declarations", async () => {
+    const tool = createDurableTool("durable.inferred")
+      .description("Infer ordinary output")
+      .identity({ version: "1", digest: "9".repeat(64) })
+      .parameters(z.object({ value: z.string() }))
+      .execute(function* (input) {
+        return { value: input.value, nested: { accepted: true as const } };
+      });
+    expect(tool.manifest.outputSchema).toEqual(ANY_JSON_SCHEMA_DESCRIPTOR);
+    const result = await run(() =>
+      tool.program(
+        { value: "ok" },
+        createDurableProgramContext(() =>
+          (function* (): Operation<ProgramResume> {
+            throw new Error("unexpected durable proposal");
+          })(),
+        ),
+      ),
+    );
+    const exact: { value: string; nested: { accepted: true } } = result;
+    expect(exact).toEqual({ value: "ok", nested: { accepted: true } });
+
+    createDurableTool("durable.non-json")
+      .description("Compile-time negative")
+      .identity({ version: "1", digest: "8".repeat(64) })
+      .parameters(z.object({}))
+      // @ts-expect-error durable terminal results must be canonical JSON types
+      .execute(function* () {
+        return () => undefined;
+      });
+  });
   it("lowers inferred output to the built-in any descriptor and supplies a stable default effect audience", () => {
     const tool = createDurableTool("durable.echo")
       .description("Echo durably")
@@ -111,7 +145,7 @@ describe("createDurableTool fluent builder", () => {
     expect(digests).toContain(echo.inputSchema.digest);
   });
 
-  it("adds canonical sampling sugar without requiring an empty effects declaration", () => {
+  it("adds canonical sampling sugar without requiring an empty effects declaration", async () => {
     const tool = createDurableTool("durable.sample")
       .description("Sample durably")
       .identity({ version: "1", digest: "d".repeat(64) })
@@ -132,9 +166,25 @@ describe("createDurableTool fluent builder", () => {
       expect(tool.artifacts.catalog).toContain(entry);
     }
 
-    const program = tool.program({}, createDurableProgramContext());
-    const first = program.next();
-    expect(first.value).toMatchObject({
+    const proposals: ProgramStepProposal[] = [];
+    const outcomes: ProgramResume[] = [
+      { status: "ok", value: { text: "bad", calls: [], content: [], parsed: { value: "bad" } } },
+      {
+        status: "ok",
+        value: { text: '{"value": 7}', calls: [], content: [], parsed: { value: 7 } },
+      },
+    ];
+    const result = await run(function* () {
+      const context = createDurableProgramContext(
+        (proposal): Operation<ProgramResume> =>
+          (function* () {
+            proposals.push(proposal);
+            return outcomes.shift();
+          })(),
+      );
+      return yield* tool.program({}, context);
+    });
+    expect(proposals[0]).toMatchObject({
       type: "operation",
       descriptor: {
         kind: "effect",
@@ -146,19 +196,11 @@ describe("createDurableTool fluent builder", () => {
         },
       },
     });
-    const retry = program.next({
-      status: "ok",
-      value: { text: "bad", calls: [], content: [], parsed: { value: "bad" } },
-    });
-    expect(retry.value).toMatchObject({
+    expect(proposals[1]).toMatchObject({
       type: "operation",
       descriptor: { name: "model.sample" },
     });
-    const completed = program.next({
-      status: "ok",
-      value: { text: '{"value": 7}', calls: [], content: [], parsed: { value: 7 } },
-    });
-    expect(completed).toEqual({ done: true, value: { value: 7 } });
+    expect(result).toEqual({ value: 7 });
   });
 
   it("composes sampling and custom effects in either declaration order", () => {
@@ -185,7 +227,7 @@ describe("createDurableTool fluent builder", () => {
     expect(Object.keys(build(false).manifest.effects).sort()).toEqual(["echo", "model.sample"]);
   });
 
-  it("rejects invalid sampling request modes and retry counts before yielding", () => {
+  it("rejects invalid sampling request modes and retry counts before a proposal", async () => {
     const tool = createDurableTool("durable.invalid-sample")
       .description("Invalid sampling")
       .identity({ version: "1", digest: "1".repeat(64) })
@@ -199,9 +241,12 @@ describe("createDurableTool fluent builder", () => {
           retries: 11,
         } as never);
       });
-    expect(() => tool.program({}, createDurableProgramContext()).next()).toThrow(
-      /exactly one|retries/,
+    const context = createDurableProgramContext(() =>
+      (function* (): Operation<ProgramResume> {
+        throw new Error("unexpected proposal");
+      })(),
     );
+    await expect(run(() => tool.program({}, context))).rejects.toThrow(/exactly one|retries/);
   });
 
   it("publishes effect validator catalog entries beside authored definitions", () => {

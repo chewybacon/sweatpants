@@ -214,10 +214,12 @@ function validateHostPayload(type: string, envelope: Record<string, Json>): void
           "input",
           "route",
           "executionEpoch",
+          "affinity",
         ]) ||
         attach["taskId"] !== envelope["taskId"] ||
         attach["executionEpoch"] !== envelope["activationEpoch"] ||
-        !record(attach["program"])
+        !record(attach["program"]) ||
+        !validAffinity(attach["affinity"])
       )
         fail();
       break;
@@ -427,6 +429,14 @@ function integer(value: unknown): value is number {
 }
 function nonempty(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
+}
+function validAffinity(value: unknown): boolean {
+  return Boolean(
+    record(value) &&
+    exactKeys(value, ["kind", "key"]) &&
+    ["invocation", "conversation", "workspace"].includes(String(value["kind"])) &&
+    nonempty(value["key"]),
+  );
 }
 function digest(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);

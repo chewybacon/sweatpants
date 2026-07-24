@@ -87,7 +87,7 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(tools)],
+      ["program", createLocalDurableProgramDriver(tools)],
     ]);
     const keyring = createCapabilityKeyring("abort-signal-acceptance", [
       { keyId: "active", secret: "abort-signal-acceptance-key-32-bytes" },
@@ -109,13 +109,12 @@ describe("durable cancellation reaches an ordinary createTool AbortSignal", () =
         digest: parentManifest.digest,
       },
       input: null,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     };
 
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-      });
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({
           registry,

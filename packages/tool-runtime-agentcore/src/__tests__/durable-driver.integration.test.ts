@@ -2,7 +2,7 @@ import { run } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   canonicalSnapshot,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   type DurableToolRegistry,
   type ProgramAttachment,
   type ProgramShutdownReason,
@@ -25,7 +25,7 @@ function createReplacingAgentCoreTransport(registry: DurableToolRegistry): {
   shutdownReasons: ProgramShutdownReason[];
   replayEntryCounts: number[];
 } {
-  const evaluator = createLocalGeneratorDriver(registry);
+  const evaluator = createLocalProgramDriver(registry);
   const containerGenerations: number[] = [];
   const shutdownReasons: ProgramShutdownReason[] = [];
   const replayEntryCounts: number[] = [];
@@ -214,9 +214,9 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
   it("matches the local driver's normalized semantic journal", async () => {
     const local = await run(() =>
       runDurableDriverRecoveryFixture({
-        driverKind: "generator",
+        driverKind: "program",
         sessionId: "parity-session",
-        createDriver: createLocalGeneratorDriver,
+        createDriver: createLocalProgramDriver,
       }),
     );
     const agentcore = await run(() =>
@@ -240,9 +240,9 @@ describe("AgentCore crank-native ProgramDriver integration", () => {
   it("matches local cancellation-unwind semantics", async () => {
     const local = await run(() =>
       runDurableDriverCancellationFixture({
-        driverKind: "generator",
+        driverKind: "program",
         sessionId: "cancellation-parity-session",
-        createDriver: createLocalGeneratorDriver,
+        createDriver: createLocalProgramDriver,
       }),
     );
     const agentcore = await run(() =>

@@ -13,7 +13,7 @@ import {
   createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   type DurableJournalAuthorityService,
   type Json,
@@ -117,7 +117,7 @@ await run(function* () {
   const service = persistAfterOperations(authority, persist);
   const result = yield* ProgramDriverRegistryContext.with(
     createProgramDriverRegistry([
-      ["generator", createLocalGeneratorDriver(createDurableToolRegistry([bundle.tool]))],
+      ["program", createLocalProgramDriver(createDurableToolRegistry([bundle.tool]))],
     ]),
     function* () {
       return yield* JournalAuthorityContext.with(service, function* () {
@@ -134,7 +134,7 @@ await run(function* () {
                   digest: bundle.tool.manifest.digest,
                 },
                 input,
-                route: { driverKind: "generator" },
+                route: { driverKind: "program" },
                 executionEpoch: 1,
               },
               executeHostEffects: true,

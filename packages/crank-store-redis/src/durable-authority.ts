@@ -144,7 +144,12 @@ export interface RedisDurableJournalAuthority {
   forceOrphan(
     sessionId: string,
     taskId: string,
-    reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck",
+    reason:
+      | "program_version_unavailable"
+      | "program_corrupt"
+      | "cleanup_stuck"
+      | "replay_execution_failed"
+      | "replay_diverged",
   ): Operation<void>;
   /** Returns the current resolver capability for an existing pending pull. */
   resolutionCapability(sessionId: string, taskId: string, pullId: string): Operation<string>;

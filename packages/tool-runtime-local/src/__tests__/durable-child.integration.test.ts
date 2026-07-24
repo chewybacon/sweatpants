@@ -220,7 +220,7 @@ describe("automatic local durable parent/child recovery", () => {
         return yield* concrete.manifest(program);
       },
     };
-    const drivers = createProgramDriverRegistry([["generator", driver]]);
+    const drivers = createProgramDriverRegistry([["program", driver]]);
     const effects = createDurableEffectRegistry([
       createDurableEffectRegistration(
         sampleDefinition,
@@ -363,7 +363,7 @@ describe("automatic local durable parent/child recovery", () => {
     });
     const tools = createDurableToolRegistry([parent, child]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(tools)],
+      ["program", createLocalDurableProgramDriver(tools)],
     ]);
     const effects = createDurableEffectRegistry([
       createDurableEffectRegistration(
@@ -501,7 +501,7 @@ function attachRequest(sessionId: string, taskId: string): AttachProgramRequest 
       digest: parentManifest.digest,
     },
     input: null,
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: 1,
   };
 }

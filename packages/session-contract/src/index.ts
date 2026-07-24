@@ -76,7 +76,6 @@ export {
   type DurableEffectRoutingRequest,
 } from "./effect-routing.ts";
 export {
-  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_INPUT_DESCRIPTOR,
   MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
@@ -141,7 +140,6 @@ export type {
   DurableOperationDescriptor,
   DurableProgramContext,
   DurableProgramFactory,
-  DurableProgramGenerator,
   DurableProgramManifest,
   DurableRaceDescriptor,
   DurableSpawnDescriptor,
@@ -278,13 +276,19 @@ export {
   type CapabilityKey,
   type CapabilityKeyring,
 } from "./capabilities.ts";
-export { bindDurableProgramScope, durableProgramScope } from "./durable-program-scope.ts";
+export {
+  PROGRAM_EXECUTION_FORMAT,
+  ProgramExecutionContext,
+  createProgramExecutionValue,
+  useProgramExecution,
+  type ProgramExecutionValue,
+} from "./program-execution-context.ts";
 export {
   DurableToolRegistryContext,
   ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   exactProgramKey,
   createProgramDriverRegistry,
   stableProgramAttachmentId,

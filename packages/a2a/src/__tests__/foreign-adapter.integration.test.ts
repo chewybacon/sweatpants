@@ -10,7 +10,7 @@ import {
   createDurableSchemaRegistry,
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
 } from "@sweatpants/session-contract";
 import {
@@ -95,7 +95,7 @@ describe("pinned foreign A2A adapter program", () => {
           },
         },
       },
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     };
     const result = await run(function* () {
@@ -111,10 +111,7 @@ describe("pinned foreign A2A adapter program", () => {
       });
       return yield* ProgramDriverRegistryContext.with(
         createProgramDriverRegistry([
-          [
-            "generator",
-            createLocalGeneratorDriver(createDurableToolRegistry([foreignA2ATaskAdapter])),
-          ],
+          ["program", createLocalProgramDriver(createDurableToolRegistry([foreignA2ATaskAdapter]))],
         ]),
         function* () {
           return yield* JournalAuthorityContext.with(authority, function* () {

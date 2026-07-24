@@ -61,7 +61,12 @@ export interface JournalAuthorityConformancePort {
   forceOrphan(
     sessionId: string,
     taskId: string,
-    reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck",
+    reason:
+      | "program_version_unavailable"
+      | "program_corrupt"
+      | "cleanup_stuck"
+      | "replay_execution_failed"
+      | "replay_diverged",
   ): Operation<void>;
   /** Revokes one attempt while preserving its pull and competing attempts. */
   abandonAttempt(

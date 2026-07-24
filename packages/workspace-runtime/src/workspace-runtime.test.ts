@@ -55,6 +55,32 @@ afterEach(async () => {
 });
 
 describe("workspace runtime", () => {
+  it("exposes named direct operations with revision-free observations", async () => {
+    const { service } = await fixture();
+    const execution = { fence, operationId: "direct-inspect" };
+    const inspected = await run(function* () {
+      return yield* service.operations.inspect(execution);
+    });
+    const read = await run(function* () {
+      return yield* service.operations.readFile(
+        { path: "src/value.txt", startLine: 1, endLine: 1 },
+        { fence, operationId: "direct-read" },
+      );
+    });
+    const listed = await run(function* () {
+      return yield* service.operations.list({ path: "src" }, { fence, operationId: "direct-list" });
+    });
+    expect(read).toMatchObject({
+      contents: "before",
+      startLine: 1,
+      endLine: 1,
+      workspaceRevision: inspected.workspaceRevision,
+    });
+    expect(listed).toMatchObject({
+      entries: ["value.txt"],
+      workspaceRevision: inspected.workspaceRevision,
+    });
+  });
   it("reads, versions a write, deduplicates it, and runs a named script", async () => {
     const { root, service } = await fixture();
     const initial = service.currentWorkspaceVersion();
@@ -64,7 +90,6 @@ describe("workspace runtime", () => {
         type: "read",
         fence,
         operationId: "read-1",
-        workspaceVersion: initial,
         path: "src/value.txt",
       }),
     ).resolves.toMatchObject({ type: "read-result", content: "before", workspaceVersion: initial });
@@ -74,9 +99,9 @@ describe("workspace runtime", () => {
       type: "write" as const,
       fence,
       operationId: "write-1",
-      workspaceVersion: initial,
+      expectedWorkspaceRevision: initial,
       path: "src/value.txt",
-      content: "after",
+      contents: "after",
     };
     const written = await execute(service, write);
     expect(written.type).toBe("write-result");
@@ -91,7 +116,7 @@ describe("workspace runtime", () => {
         type: "run-script",
         fence,
         operationId: "test-1",
-        workspaceVersion: written.workspaceVersion,
+        expectedWorkspaceRevision: written.workspaceVersion,
         script: "test",
       }),
     ).resolves.toMatchObject({ type: "script-result", exitCode: 0 });
@@ -105,7 +130,7 @@ describe("workspace runtime", () => {
       type: "run-script" as const,
       fence,
       operationId: "mutate-1",
-      workspaceVersion: initial,
+      expectedWorkspaceRevision: initial,
       script: "mutate",
     };
 
@@ -121,11 +146,11 @@ describe("workspace runtime", () => {
         type: "write",
         fence,
         operationId: "stale-after-script",
-        workspaceVersion: initial,
+        expectedWorkspaceRevision: initial,
         path: "src/value.txt",
-        content: "stale-write",
+        contents: "stale-write",
       }),
-    ).rejects.toMatchObject({ code: "workspace_version_conflict" });
+    ).rejects.toMatchObject({ code: "workspace_conflict" });
   });
 
   it("kills the complete script process group on timeout", async () => {
@@ -135,7 +160,7 @@ describe("workspace runtime", () => {
       type: "run-script",
       fence,
       operationId: "background-1",
-      workspaceVersion: service.currentWorkspaceVersion(),
+      expectedWorkspaceRevision: service.currentWorkspaceVersion(),
       script: "background",
     });
     expect(result).toMatchObject({ type: "script-result", exitCode: 1 });
@@ -171,7 +196,7 @@ describe("workspace runtime", () => {
     ).resolves.toMatchObject({ type: "inspect-result" });
   });
 
-  it("rejects stale fences, stale workspace versions, traversal, and undeclared scripts", async () => {
+  it("rejects stale fences, stale mutation revisions, traversal, and undeclared scripts", async () => {
     const { service } = await fixture();
     const version = service.currentWorkspaceVersion();
     await expect(
@@ -180,7 +205,6 @@ describe("workspace runtime", () => {
         type: "read",
         fence: { ...fence, activationEpoch: 0 },
         operationId: "read-stale",
-        workspaceVersion: version,
         path: "src/value.txt",
       }),
     ).rejects.toMatchObject({ code: "invalid_mcp_request" });
@@ -190,27 +214,29 @@ describe("workspace runtime", () => {
         type: "read",
         fence: { ...fence, activationEpoch: 2 },
         operationId: "read-stale",
-        workspaceVersion: version,
         path: "src/value.txt",
       }),
     ).rejects.toMatchObject({ code: "sandbox_generation_stale" });
     await expect(
       execute(service, {
         protocolVersion: 1,
-        type: "read",
+        type: "write",
         fence,
-        operationId: "read-version",
-        workspaceVersion: "0".repeat(64),
+        operationId: "write-version",
+        expectedWorkspaceRevision: "0".repeat(64),
         path: "src/value.txt",
+        contents: "stale",
       }),
-    ).rejects.toMatchObject({ code: "workspace_version_conflict" });
+    ).rejects.toMatchObject({
+      code: "workspace_conflict",
+      details: { expected: "0".repeat(64), current: version },
+    });
     await expect(
       execute(service, {
         protocolVersion: 1,
         type: "read",
         fence,
         operationId: "read-traversal",
-        workspaceVersion: version,
         path: "../secret",
       }),
     ).rejects.toMatchObject({ code: "network_policy_denied" });
@@ -220,7 +246,7 @@ describe("workspace runtime", () => {
         type: "run-script",
         fence,
         operationId: "unknown-script",
-        workspaceVersion: version,
+        expectedWorkspaceRevision: version,
         script: "deploy",
       }),
     ).rejects.toMatchObject({ code: "policy_unavailable" });
@@ -249,7 +275,6 @@ describe("workspace runtime", () => {
           type: "list",
           fence,
           operationId: "list-1",
-          workspaceVersion: service.currentWorkspaceVersion(),
           path: "src",
         }),
       }),

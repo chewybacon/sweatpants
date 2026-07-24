@@ -38,8 +38,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
       });
 
     const result = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-      });
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
       const [start, continueRegistration] = createToolSessionForeignEffectRegistrations({
         registry,
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
@@ -135,7 +134,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     };
     const tools = createDurableToolRegistry([foreignToolAdapter]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(tools)],
+      ["program", createLocalDurableProgramDriver(tools)],
     ]);
     const keyring = createCapabilityKeyring("foreign-loss", [
       { keyId: "active", secret: "foreign-loss-secret-is-32-bytes!!" },
@@ -150,8 +149,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     const attach = attachRequest(sessionId, taskId, request);
 
     const firstRun = await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-      });
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
       const registrations = createToolSessionForeignEffectRegistrations({
         registry,
         tools: new Map<string, RuntimeTool>([[tool.name, tool]]),
@@ -191,8 +189,7 @@ describe("ToolSession foreign-tool durability boundary", () => {
     const recovered = await run(function* () {
       const replacementRegistry = yield* createToolSessionRegistry(
         createInMemoryToolSessionStore(),
-        {
-        },
+        {},
       );
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({
@@ -233,7 +230,7 @@ function attachRequest(
       digest: FOREIGN_TOOL_ADAPTER_MANIFEST.digest,
     },
     input,
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: 1,
   };
 }

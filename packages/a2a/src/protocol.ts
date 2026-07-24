@@ -283,7 +283,12 @@ function validateClientPayload(type: string, envelope: Record<string, Json>): vo
   const payload = envelope["payload"] as Record<string, Json>;
   switch (type) {
     case "attach_begin":
-      if (!exactKeys(payload, ["input", "inputDigest"]) || !digest(payload["inputDigest"])) fail();
+      if (
+        !exactKeys(payload, ["input", "inputDigest", "affinity"]) ||
+        !digest(payload["inputDigest"]) ||
+        !affinity(payload["affinity"])
+      )
+        fail();
       requireNoScope(envelope);
       break;
     case "restore_begin":
@@ -293,8 +298,10 @@ function validateClientPayload(type: string, envelope: Record<string, Json>): vo
           "inputDigest",
           "replayedThroughActionIndex",
           "replayChainSeed",
+          "affinity",
         ]) ||
         !digest(payload["inputDigest"]) ||
+        !affinity(payload["affinity"]) ||
         !replayPosition(payload["replayedThroughActionIndex"]) ||
         !digest(payload["replayChainSeed"])
       )
@@ -681,6 +688,14 @@ function identifier(value: unknown): value is string {
 }
 function digest(value: unknown): value is string {
   return typeof value === "string" && DIGEST.test(value);
+}
+function affinity(value: unknown): boolean {
+  return Boolean(
+    record(value) &&
+    exactKeys(value, ["kind", "key"]) &&
+    ["invocation", "conversation", "workspace"].includes(String(value["kind"])) &&
+    identifier(value["key"]),
+  );
 }
 function positiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;

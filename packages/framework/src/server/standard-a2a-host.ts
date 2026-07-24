@@ -23,7 +23,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   sha256,
   stableProgramAttachmentId,
@@ -433,9 +433,7 @@ function bindStandardHost(
   validateTransport(binding.deployment);
   const tools = allPrograms(conversation);
   const registry = createDurableToolRegistry(tools.map((item) => item.program));
-  const drivers = createProgramDriverRegistry([
-    ["generator", createLocalGeneratorDriver(registry)],
-  ]);
+  const drivers = createProgramDriverRegistry([["program", createLocalProgramDriver(registry)]]);
   const effects = createDurableEffectRegistry(binding.handlers);
   const journalStore =
     options.journalStore ??
@@ -1058,7 +1056,7 @@ function attachment(input: RuntimeInput) {
     taskId: input.taskId,
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
     input: assertJson(input.input),
-    route: { driverKind: "generator" } as Json,
+    route: { driverKind: "program" } as Json,
     executionEpoch: 1,
   };
 }

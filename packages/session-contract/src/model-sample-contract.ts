@@ -216,32 +216,20 @@ export const MODEL_SAMPLE_PARTIAL_DESCRIPTOR = schema(
       : "cancellation partial must be { text, interrupted: true }",
 );
 
-const legacyDefinition: EffectDefinition<
-  ModelSampleRequest,
-  ModelSampleResult,
-  ModelSampleCancellationPartial
-> = {
-  name: "model.sample",
-  version: "1",
-  inputSchema: MODEL_SAMPLE_INPUT_DESCRIPTOR,
-  outputSchema: MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
-  cancellation: { partialSchema: MODEL_SAMPLE_PARTIAL_DESCRIPTOR },
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-};
-
 const definition: EffectDefinition<
   ModelSampleRequest,
   ModelSampleResult,
   ModelSampleCancellationPartial
 > = {
-  ...legacyDefinition,
+  name: "model.sample",
   version: "2",
+  inputSchema: MODEL_SAMPLE_INPUT_DESCRIPTOR,
+  outputSchema: MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
+  cancellation: { partialSchema: MODEL_SAMPLE_PARTIAL_DESCRIPTOR },
   retrySafety: { mode: "repeatable" },
 };
 
-/** Legacy contract retained only for exact replay of already-pinned programs. */
-export const LEGACY_MODEL_SAMPLE_EFFECT = Object.freeze(legacyDefinition);
-/** One canonical repeatable sampling contract used by new authored programs. */
+/** One canonical repeatable sampling contract used by every authored program. */
 export const MODEL_SAMPLE_EFFECT = Object.freeze(definition);
 export const MODEL_SAMPLE_SCHEMA_ENTRIES: readonly DurableSchemaRegistryEntry[] = Object.freeze([
   ...schemaEntries,

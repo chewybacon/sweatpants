@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   type Json,
 } from "@sweatpants/session-contract";
 
@@ -262,7 +262,7 @@ describe("reader search safety and schemas", () => {
     expect(readers.read.manifest.outputSchema.digest).not.toBe(ANY_JSON_SCHEMA_DESCRIPTOR.digest);
     expect(readers.read.schemaCatalog).toHaveLength(2);
     const ref = { packageId: pkg.manifest.id, packageDigest: pkg.manifest.digest, path: "a.txt" };
-    const output = readers.read.program({ ref }, {} as never).next().value;
+    const output = await run(() => readers.read.program({ ref }, {} as never));
     const validInput = await readers.read.schemaCatalog[0]!.schema["~standard"].validate({ ref });
     expect(validInput.issues).toBeUndefined();
     const invalidInput = await readers.read.schemaCatalog[0]!.schema["~standard"].validate({
@@ -354,7 +354,7 @@ describe("reader search safety and schemas", () => {
       registry: install(pkg),
       consumer: { kind: "model" },
     });
-    const driver = createLocalGeneratorDriver(createDurableToolRegistry([readers.read]));
+    const driver = createLocalProgramDriver(createDurableToolRegistry([readers.read]));
     const input = {
       ref: { packageId: pkg.manifest.id, packageDigest: pkg.manifest.digest, path: "a.txt" },
     };
@@ -368,7 +368,7 @@ describe("reader search safety and schemas", () => {
           digest: readers.read.manifest.digest,
         },
         input,
-        route: { driverKind: "generator" },
+        route: { driverKind: "program" },
         executionEpoch: 1,
       });
       const step = yield* driver.step(attachment, { type: "start", input });

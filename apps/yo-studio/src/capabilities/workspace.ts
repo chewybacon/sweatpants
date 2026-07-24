@@ -1,112 +1,74 @@
-import { createDurableTool, defineDurableContextExtension, defineEffect } from "@sweatpants/core";
+import { createDurableTool, defineDurableContextExtension } from "@sweatpants/core";
+import { WorkspaceFiles } from "@sweatpants/workspace-runtime";
 import { z } from "zod";
 
 const RelativePath = z
   .string()
   .min(1)
   .max(1_024)
-  .refine((value) => !value.startsWith("/") && !value.split("/").includes(".."), {
+  .refine((value) => !value.startsWith("/") && !value.split(/[\\/]/).includes(".."), {
     message: "path must stay within the workspace",
   });
+const WorkspaceRevision = z.string().regex(/^[a-f0-9]{64}$/);
 
-const InspectWorkspaceOutput = z.object({ workspaceVersion: z.string() });
-const ReadWorkspaceInput = z.object({ path: RelativePath, workspaceVersion: z.string() });
-const ListWorkspaceInput = z.object({ path: RelativePath, workspaceVersion: z.string() });
+const InspectWorkspaceOutput = z.object({ workspaceRevision: WorkspaceRevision });
+const ReadWorkspaceInput = z.object({
+  path: RelativePath,
+  startLine: z.number().int().positive().max(10_000_000).optional(),
+  endLine: z.number().int().positive().max(10_000_000).optional(),
+});
+const ListWorkspaceInput = z.object({ path: RelativePath });
 const ListWorkspaceOutput = z.object({
   path: RelativePath,
-  entries: z.array(z.string()),
-  workspaceVersion: z.string(),
+  entries: z.array(z.string()).max(10_000),
+  workspaceRevision: WorkspaceRevision,
 });
 const ReadWorkspaceOutput = z.object({
   path: RelativePath,
-  content: z.string(),
-  workspaceVersion: z.string(),
+  contents: z.string().max(1024 * 1024),
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  workspaceRevision: WorkspaceRevision,
 });
 const WriteWorkspaceInput = z.object({
   path: RelativePath,
-  content: z.string().max(1024 * 1024),
-  expectedWorkspaceVersion: z.string(),
+  contents: z.string().max(1024 * 1024),
+  expectedWorkspaceRevision: WorkspaceRevision,
 });
 const WriteWorkspaceOutput = z.object({
   path: RelativePath,
   bytes: z.number().int().nonnegative(),
-  workspaceVersion: z.string(),
+  workspaceRevision: WorkspaceRevision,
 });
 const RunWorkspaceScriptInput = z.object({
   script: z.enum(["test", "typecheck", "lint"]),
-  workspaceVersion: z.string(),
+  expectedWorkspaceRevision: WorkspaceRevision,
 });
 const RunWorkspaceScriptOutput = z.object({
   script: z.string(),
   exitCode: z.number().int(),
   stdout: z.string(),
   stderr: z.string(),
-  workspaceVersion: z.string(),
+  workspaceRevision: WorkspaceRevision,
 });
 
-export const inspectWorkspace = defineEffect({
-  name: "yo-studio.workspace.inspect",
-  version: "1",
-  input: z.object({}),
-  output: InspectWorkspaceOutput,
-  retrySafety: { mode: "idempotent", mechanism: "inherent" },
-});
-
-export const readWorkspaceFile = defineEffect({
-  name: "yo-studio.workspace.read",
-  version: "1",
-  input: ReadWorkspaceInput,
-  output: ReadWorkspaceOutput,
-  retrySafety: { mode: "idempotent", mechanism: "inherent" },
-});
-
-export const listWorkspace = defineEffect({
-  name: "yo-studio.workspace.list",
-  version: "1",
-  input: ListWorkspaceInput,
-  output: ListWorkspaceOutput,
-  retrySafety: { mode: "idempotent", mechanism: "inherent" },
-});
-
-export const writeWorkspaceFile = defineEffect({
-  name: "yo-studio.workspace.write",
-  version: "1",
-  input: WriteWorkspaceInput,
-  output: WriteWorkspaceOutput,
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-});
-
-export const runWorkspaceScript = defineEffect({
-  name: "yo-studio.workspace.run-script",
-  version: "1",
-  input: RunWorkspaceScriptInput,
-  output: RunWorkspaceScriptOutput,
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
-});
-
-/** Authored workspace abstraction over generic durable context extensions. */
+/** Ordinary authored workspace namespace. Providers bind WorkspaceFiles per attachment. */
 export const workspace = defineDurableContextExtension({
   name: "yo-studio-workspace",
-  effects: {
-    inspect: inspectWorkspace,
-    readFile: readWorkspaceFile,
-    list: listWorkspace,
-    writeFile: writeWorkspaceFile,
-    runScript: runWorkspaceScript,
-  },
+  api: WorkspaceFiles.operations,
 });
 
-export const workspaceInspectTool = createDurableTool("workspace_inspect", { version: "1.0.0" })
-  .description("Return the current logical workspace version")
+export const workspaceInspectTool = createDurableTool("workspace_inspect", { version: "2.0.0" })
+  .description("Return the current logical workspace revision")
   .parameters(z.object({}))
   .output(InspectWorkspaceOutput)
   .uses({ workspace })
   .execute(function* (_input, context) {
-    return yield* context.workspace.inspect({});
+    return yield* context.workspace.inspect();
   });
 
-export const workspaceReadTool = createDurableTool("workspace_read", { version: "1.0.0" })
-  .description("Read one UTF-8 file from the task workspace")
+export const workspaceReadTool = createDurableTool("workspace_read", { version: "2.0.0" })
+  .description("Read a bounded line range from one UTF-8 task-workspace file")
   .parameters(ReadWorkspaceInput)
   .output(ReadWorkspaceOutput)
   .uses({ workspace })
@@ -114,8 +76,8 @@ export const workspaceReadTool = createDurableTool("workspace_read", { version: 
     return yield* context.workspace.readFile(input);
   });
 
-export const workspaceListTool = createDurableTool("workspace_list", { version: "1.0.0" })
-  .description("List one directory at an expected logical workspace version")
+export const workspaceListTool = createDurableTool("workspace_list", { version: "2.0.0" })
+  .description("List one task-workspace directory")
   .parameters(ListWorkspaceInput)
   .output(ListWorkspaceOutput)
   .uses({ workspace })
@@ -123,22 +85,38 @@ export const workspaceListTool = createDurableTool("workspace_list", { version: 
     return yield* context.workspace.list(input);
   });
 
-export const workspaceWriteTool = createDurableTool("workspace_write", { version: "1.0.0" })
-  .description("Replace one UTF-8 file at an expected logical workspace version")
+export const workspaceWriteTool = createDurableTool("workspace_write", { version: "2.0.0" })
+  .description("Replace one UTF-8 file at an expected logical workspace revision")
   .parameters(WriteWorkspaceInput)
   .output(WriteWorkspaceOutput)
   .uses({ workspace })
   .execute(function* (input, context) {
-    return yield* context.workspace.writeFile(input);
+    return yield* context.record(
+      {
+        label: "workspace-write",
+        retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+      },
+      function* ({ pullId }) {
+        return yield* context.workspace.writeFile(input, { operationId: pullId });
+      },
+    );
   });
 
-export const workspaceTestTool = createDurableTool("workspace_test", { version: "1.0.0" })
-  .description("Run one deployment-declared validation script in the task workspace")
+export const workspaceTestTool = createDurableTool("workspace_test", { version: "2.0.0" })
+  .description("Run one deployment-declared validation script at an expected workspace revision")
   .parameters(RunWorkspaceScriptInput)
   .output(RunWorkspaceScriptOutput)
   .uses({ workspace })
   .execute(function* (input, context) {
-    return yield* context.workspace.runScript(input);
+    return yield* context.record(
+      {
+        label: "workspace-run-script",
+        retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+      },
+      function* ({ pullId }) {
+        return yield* context.workspace.runScript(input, { operationId: pullId });
+      },
+    );
   });
 
 export const codingCapabilities = {

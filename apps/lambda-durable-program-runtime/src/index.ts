@@ -11,7 +11,7 @@ import {
 } from "@sweatpants/cli/remote-development-evaluator";
 import {
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   exactProgramKey,
   type Json,
   type PinnedProgram,
@@ -74,14 +74,14 @@ export async function handler(
     throw new Error("crank transcript must begin with start");
   }
   const registry = createDurableToolRegistry(loaded.programs.values());
-  const driver = createLocalGeneratorDriver(registry);
+  const driver = createLocalProgramDriver(registry);
   const step = await run(function* () {
     const attachment = yield* driver.attach({
       sessionId: `lambda:${event.taskId}`,
       taskId: event.taskId,
       program: event.program,
       input: event.input,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: event.executionEpoch,
     });
     let current: ProgramStep | undefined;

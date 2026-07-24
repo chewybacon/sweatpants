@@ -285,13 +285,14 @@ cancellation, but it does not claim default-deny network enforcement.
 
 - `src/programs/coding-harness.ts` — the existing durable chat authoring model
   composed with workspace child programs.
-- `src/capabilities/workspace.ts` — one authored `workspace` durable context
+- `src/capabilities/workspace.ts` — one ordinary `WorkspaceFiles` context
   extension plus model-facing inspect, read, list, write, and named-script tools.
-  Tool implementations read naturally as `yield* context.workspace.readFile(input)`;
-  the same token owns exact effect contracts and its typed provider factory.
-- `src/server/workspace-effects.ts` — the extension provider's protocol adapter;
-  `workspace.implement(...)` generates the durable registrations and Effection
-  runtime middleware instead of duplicating registration boilerplate.
+  Observations directly call `yield* context.workspace.readFile(input)` and return
+  the observed `workspaceRevision`; mutations use one inline pull-ID-idempotent
+  `context.record()` and pass its pull ID as the provider operation ID.
+- `@sweatpants/workspace-runtime` — named `WorkspaceOperations`, the ordinary
+  `WorkspaceFiles` API, direct local provider, remote connector provider, and a
+  thin finite-HTTP adapter. Authored tools contain no fence or protocol details.
 - `src/config.ts` — provider-neutral workspace policy plus the Lambda MicroVM
   placement profile, with no credentials or provider instance identity.
 - `src/deployment.ts` — the authored reference assembly.
@@ -299,10 +300,10 @@ cancellation, but it does not claim default-deny network enforcement.
   conversation identity, and an explicit New session action; it renders the HTTP
   projection without importing or owning the durable model loop.
 - `src/server/durable-chat-application.ts` — `createDurableChatHandler` composed
-  with ProgramRuntime-native workspace children and Host effect registrations.
+  with ProgramRuntime-native workspace children and attachment-scope ordinary providers.
 
 The primary UI calls `useChat({ baseUrl: "/api/chat" })`. The handler owns the
-conversation, model loop, journal, native child programs, and workspace effects.
+conversation, model loop, journal, native child programs, and workspace providers.
 The deployment selects the `pi-ai` model provider (`github-copilot/gpt-5.5` by
 default) and explicitly assigns journal-native `model.sample` ownership to the
 Host. The headless projection consumes the same shape through an Effection-native
@@ -316,7 +317,7 @@ changing either projection or the program. The conversation ID is retained in
 New session replaces that identity and remounts the hook.
 
 `@sweatpants/sandbox-provider-aws` now interprets the Lambda deployment in the
-Vite Host: the first workspace effect for each durable conversation allocates a
+Vite Host: the first ordinary workspace operation for each durable conversation allocates a
 task-affine MicroVM, waits for readiness, mints short-lived port-bound auth,
 binds the activation fence, and returns `createHttpWorkspaceConnector()`. New
 session therefore creates a new conversation and a distinct MicroVM lease. The

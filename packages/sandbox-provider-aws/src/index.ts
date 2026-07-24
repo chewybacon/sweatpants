@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { call, sleep, useAbortSignal, withResolvers, type Operation } from "effection";
 
-import { CrankError, type DurableEffectContext } from "@sweatpants/session-contract";
+import { CrankError, type ProgramExecutionValue } from "@sweatpants/session-contract";
 import {
   createHttpWorkspaceConnector,
   type WorkspaceConnector,
@@ -54,7 +54,7 @@ export interface LambdaMicrovmInspection {
 }
 
 export interface LambdaMicrovmWorkspaceManager {
-  resolve(context: DurableEffectContext): Operation<{
+  resolve(context: ProgramExecutionValue): Operation<{
     readonly connector: WorkspaceConnector;
     readonly fence: WorkspaceFence;
   }>;
@@ -121,7 +121,7 @@ export function createLambdaMicrovmWorkspaceManager(
 
   return {
     *resolve(context) {
-      const affinityId = context.sessionId;
+      const affinityId = context.affinity.key;
       let lease = leases.get(affinityId);
       if (!lease) {
         const inFlight = pending.get(affinityId);

@@ -182,12 +182,22 @@ export type DurableSemanticRecord = {
     | {
         type: "CleanupSkipped";
         taskId: string;
-        reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck";
+        reason:
+          | "program_version_unavailable"
+          | "program_corrupt"
+          | "cleanup_stuck"
+          | "replay_execution_failed"
+          | "replay_diverged";
       }
     | {
         type: "TaskOrphaned";
         taskId: string;
-        reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck";
+        reason:
+          | "program_version_unavailable"
+          | "program_corrupt"
+          | "cleanup_stuck"
+          | "replay_execution_failed"
+          | "replay_diverged";
       }
     | { type: "TaskClosed"; taskId: string; outcome: OperationOutcome };
 };
@@ -1055,6 +1065,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         outcome = { status: "cancelled" };
       }
     }
+    assertInlineSize(outcome, this.#options.maxOutcomeBytes);
     const digest = canonicalSnapshot(outcome).sha;
     if (task.close) {
       if (task.close.digest !== digest) {
@@ -1266,7 +1277,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
   *forceOrphan(
     sessionId: string,
     taskId: string,
-    reason: "program_version_unavailable" | "program_corrupt" | "cleanup_stuck",
+    reason:
+      | "program_version_unavailable"
+      | "program_corrupt"
+      | "cleanup_stuck"
+      | "replay_execution_failed"
+      | "replay_diverged",
   ): Operation<void> {
     const task = this.#task(sessionId, taskId);
     if (task.status === "orphaned") {
@@ -3077,7 +3093,9 @@ function isSemanticPayload(value: unknown): boolean {
         hasExactKeys(value, ["type", "taskId", "reason"]) &&
         (value["reason"] === "program_version_unavailable" ||
           value["reason"] === "program_corrupt" ||
-          value["reason"] === "cleanup_stuck")
+          value["reason"] === "cleanup_stuck" ||
+          value["reason"] === "replay_execution_failed" ||
+          value["reason"] === "replay_diverged")
       );
     case "TaskClosed":
       return (
@@ -3165,7 +3183,9 @@ function isCancellationStateSnapshot(value: unknown): boolean {
         hasExactKeys(value, ["type", "reason"]) &&
         (value["reason"] === "program_version_unavailable" ||
           value["reason"] === "program_corrupt" ||
-          value["reason"] === "cleanup_stuck")
+          value["reason"] === "cleanup_stuck" ||
+          value["reason"] === "replay_execution_failed" ||
+          value["reason"] === "replay_diverged")
       );
     default:
       return false;

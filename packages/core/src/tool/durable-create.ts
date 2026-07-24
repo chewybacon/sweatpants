@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { Operation } from "effection";
 import { z, type ZodSchema } from "zod";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
@@ -16,7 +17,6 @@ import {
   sha256,
   sortStrings,
   type DurableProgramContext,
-  type DurableProgramGenerator,
   type DurableProgramManifest,
   type DurableSchemaRegistryEntry,
   type DurableTool,
@@ -25,15 +25,13 @@ import {
   type ModelSampleRequest,
   type ModelSampleResult,
   type PortableSchemaDescriptor,
-  type ProgramResume,
-  type ProgramStepProposal,
   type WireElicitResultJson,
 } from "@sweatpants/session-contract";
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";
 import {
-  extensionEffectDefinitions,
+  validateDurableExtensionDeclarations,
   type DurableExtensionContext,
   type DurableExtensionMap,
 } from "./durable-context-extension.ts";
@@ -68,18 +66,16 @@ type SamplingRequestBase = {
   readonly retries?: number;
 };
 type DurableSamplingContext = {
-  sample(
-    request: SamplingRequestBase,
-  ): Generator<ProgramStepProposal, ModelSampleResult, ProgramResume>;
+  sample(request: SamplingRequestBase): Operation<ModelSampleResult>;
   sampleTools(
     request: SamplingRequestBase & {
       readonly tools: readonly SamplingTool[];
       readonly toolChoice?: Json;
     },
-  ): Generator<ProgramStepProposal, ModelSampleResult, ProgramResume>;
+  ): Operation<ModelSampleResult>;
   sampleSchema<T>(
     request: SamplingRequestBase & { readonly schema: StandardSchemaV1<unknown, T> },
-  ): Generator<ProgramStepProposal, ModelSampleResult & { parsed: T }, ProgramResume>;
+  ): Operation<ModelSampleResult & { parsed: T }>;
 };
 
 type ElicitRequestFor<E> =
@@ -98,7 +94,7 @@ export type DurableProgramContextFor<
     definition: D,
     input: EffectInput<D>,
     resolver?: { audience: string; route?: string },
-  ): Generator<ProgramStepProposal, EffectOutput<D>, ProgramResume>;
+  ): Operation<EffectOutput<D>>;
   /**
    * Proposes a declared elicitation with the canonical authored context only.
    * Resumes with the typed wire action envelope; an explicit task cancellation
@@ -107,11 +103,7 @@ export type DurableProgramContextFor<
   elicit<K extends keyof TElicits & string>(
     key: K,
     request: ElicitRequestFor<TElicits[K]>,
-  ): Generator<
-    ProgramStepProposal,
-    WireElicitResultJson<JsonOutput<ExtractElicitResponse<TElicits[K]>>>,
-    ProgramResume
-  >;
+  ): Operation<WireElicitResultJson<JsonOutput<ExtractElicitResponse<TElicits[K]>>>>;
 } & (TSamples extends true ? DurableSamplingContext : {}) &
   DurableExtensionContext<TExtensions>;
 
@@ -184,15 +176,10 @@ export interface CreateDurableToolBuilderWithParameters<
   samples(): CreateDurableToolBuilderReady<N, I, O, E, {}, true, {}>;
   uses<Extensions extends DurableExtensionMap>(
     extensions: Extensions,
-  ): CreateDurableToolBuilderReady<
-    N,
-    I,
-    O,
-    E,
-    ReturnType<typeof extensionEffectDefinitions>,
-    false,
-    Extensions
-  >;
+  ): CreateDurableToolBuilderReady<N, I, O, E, {}, false, Extensions>;
+  execute<Result extends O extends Json ? O : Json>(
+    program: (input: I, context: DurableProgramContextFor<{}, E, false, {}>) => Operation<Result>,
+  ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
 
 export interface CreateDurableToolBuilderReady<
@@ -215,7 +202,7 @@ export interface CreateDurableToolBuilderReady<
     program: (
       input: I,
       context: DurableProgramContextFor<Effects, E, Samples, Extensions>,
-    ) => DurableProgramGenerator<Result>,
+    ) => Operation<Result>,
   ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
 
@@ -321,7 +308,7 @@ function builder(state: BuilderState): unknown {
         }
       }
       const merged = { ...state.extensions, ...extensions };
-      extensionEffectDefinitions(merged);
+      validateDurableExtensionDeclarations(merged);
       return builder({ ...state, extensions: merged });
     },
     effects(effects: EffectMap) {
@@ -351,7 +338,7 @@ function builder(state: BuilderState): unknown {
       }
       return builder({ ...state, samples: true });
     },
-    execute(program: (input: Json, context: DurableProgramContext) => DurableProgramGenerator) {
+    execute(program: (input: Json, context: DurableProgramContext) => Operation<Json>) {
       requireStage(state.description, ".description()", ".execute()");
       requireStage(
         state.identity ?? state.version,
@@ -359,11 +346,6 @@ function builder(state: BuilderState): unknown {
         ".execute()",
       );
       const parameters = requireStage(state.parameters, ".parameters()", ".execute()");
-      if (!state.effects && !state.samples && !state.extensions) {
-        throw new Error(
-          `Durable tool "${state.name}": .effects(), .samples(), or .uses() must be called before .execute()`,
-        );
-      }
       const version = state.identity?.version ?? state.version!;
       const description = state.description!;
       const normalizedElicits = normalizeElicits(state.elicits ?? {});
@@ -428,7 +410,6 @@ function builder(state: BuilderState): unknown {
       // one canonical contract and its built-in validators.
       const declaredEffects: EffectMap = {
         ...(state.effects ?? {}),
-        ...extensionEffectDefinitions(state.extensions ?? {}),
         ...(state.samples ? { [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT } : {}),
       };
       for (const definition of Object.values(declaredEffects)) {
@@ -626,7 +607,7 @@ function contextForDeclarations(
 function* sampleModel(
   context: DurableProgramContext,
   request: SamplingRequestBase & { tools?: Json[]; toolChoice?: Json; schema?: Json },
-): Generator<ProgramStepProposal, ModelSampleResult, ProgramResume> {
+): Operation<ModelSampleResult> {
   const { retries: _retries, prompt, messages, ...options } = request;
   assertSamplingRequest(prompt, messages, request.retries);
   const canonicalRequest = {
@@ -642,7 +623,7 @@ function* sampleModel(
 function* sampleStructured<T>(
   context: DurableProgramContext,
   request: SamplingRequestBase & { schema: StandardSchemaV1<unknown, T> },
-): Generator<ProgramStepProposal, ModelSampleResult & { parsed: T }, ProgramResume> {
+): Operation<ModelSampleResult & { parsed: T }> {
   const { schema, retries = 0, ...base } = request;
   assertSamplingRequest(base.prompt, base.messages, retries);
   let lastMessage = "model sample did not satisfy schema";

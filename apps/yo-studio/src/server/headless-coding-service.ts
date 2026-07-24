@@ -18,19 +18,24 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   type Json,
 } from "@sweatpants/session-contract";
-import type { WorkspaceConnector, WorkspaceFence } from "@sweatpants/workspace-runtime";
+import {
+  installLocalWorkspaceFilesProvider,
+  installRemoteWorkspaceFilesProvider,
+  type WorkspaceConnector,
+  type WorkspaceFence,
+  type WorkspaceOperations,
+} from "@sweatpants/workspace-runtime";
 
 import { codingCapabilities } from "../capabilities/workspace.ts";
 import { codingHarness } from "../programs/coding-harness.ts";
-import { createWorkspaceEffectRegistrations } from "./workspace-effects.ts";
 
 export interface CodingTaskRequest {
   readonly task: string;
-  readonly workspaceVersion: string;
+  readonly workspaceRevision: string;
 }
 
 export interface CodingTaskResult {
@@ -55,7 +60,8 @@ export interface HeadlessCodingService {
  * A production composition swaps only the journal store and model service.
  */
 export function createHeadlessCodingService(options: {
-  readonly connector: WorkspaceConnector;
+  readonly connector?: WorkspaceConnector;
+  readonly operations?: WorkspaceOperations;
   readonly fence: WorkspaceFence;
   readonly modelSamplingProvider?: CodingModelSampleProvider;
 }): HeadlessCodingService {
@@ -69,6 +75,22 @@ export function createHeadlessCodingService(options: {
   });
   const modelSamplingProvider =
     options.modelSamplingProvider ?? createScriptedCodingModelSampleProvider();
+  const installWorkspace = function* (): Operation<void> {
+    if (options.operations) {
+      yield* installLocalWorkspaceFilesProvider({
+        resolve: function* () {
+          return { operations: options.operations!, fence: options.fence };
+        },
+      });
+    } else {
+      if (!options.connector) throw new Error("workspace provider is not configured");
+      yield* installRemoteWorkspaceFilesProvider({
+        resolve: function* () {
+          return { connector: options.connector!, fence: options.fence };
+        },
+      });
+    }
+  };
   const host: LocalProgramHost = createLocalProgramHost({
     journalStore: createInMemoryProgramDriverJournalStore({
       keyring: createCapabilityKeyring("yo-studio-headless", [
@@ -84,13 +106,10 @@ export function createHeadlessCodingService(options: {
           return yield* modelSamplingProvider.sample(request);
         },
       }),
-      ...createWorkspaceEffectRegistrations({
-        resolve: function* () {
-          return { connector: options.connector, fence: options.fence };
-        },
-      }),
     ]),
-    drivers: createProgramDriverRegistry([["generator", createLocalGeneratorDriver(programs)]]),
+    drivers: createProgramDriverRegistry([
+      ["program", createLocalProgramDriver(programs, { setup: installWorkspace })],
+    ]),
   });
   const rootPin = pin(codingHarness);
   const catalog = createPinnedProgramCatalog({
@@ -110,7 +129,7 @@ export function createHeadlessCodingService(options: {
         role: "user",
         parts: [
           {
-            value: `${request.task}\n\nWorkspace binding: ${JSON.stringify({ workspaceVersion: request.workspaceVersion })}`,
+            value: `${request.task}\n\nWorkspace binding: ${JSON.stringify({ workspaceRevision: request.workspaceRevision })}`,
             provenance: { classifications: [], sourceDigests: [] },
           },
         ],
@@ -123,7 +142,7 @@ export function createHeadlessCodingService(options: {
           messages: [],
         }) as unknown as Json,
         catalog,
-        route: { driverKind: "generator", location: "host" },
+        route: { driverKind: "program", location: "host" },
       });
       const outcome = yield* opened.result;
       return {
@@ -146,8 +165,8 @@ export function createScriptedCodingModelSampleProvider(): CodingModelSampleProv
     *sample(request) {
       const transcript = JSON.stringify(request.messages);
       const versions = [...transcript.matchAll(/[a-f0-9]{64}/g)].map((match) => match[0]);
-      const workspaceVersion = versions.at(-1);
-      if (!workspaceVersion) {
+      const workspaceRevision = versions.at(-1);
+      if (!workspaceRevision) {
         throw new Error("scripted coding model could not find a workspace version");
       }
       if (!transcript.includes('"bytes":29')) {
@@ -157,8 +176,8 @@ export function createScriptedCodingModelSampleProvider(): CodingModelSampleProv
             target: "workspace_write",
             input: {
               path: "demo.txt",
-              content: "hello from durable yo-studio\n",
-              expectedWorkspaceVersion: workspaceVersion,
+              contents: "hello from durable yo-studio\n",
+              expectedWorkspaceRevision: workspaceRevision,
             },
           },
         ]);
@@ -168,7 +187,7 @@ export function createScriptedCodingModelSampleProvider(): CodingModelSampleProv
           {
             id: "test-demo",
             target: "workspace_test",
-            input: { script: "test", workspaceVersion },
+            input: { script: "test", expectedWorkspaceRevision: workspaceRevision },
           },
         ]);
       }

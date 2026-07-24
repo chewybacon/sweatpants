@@ -19,8 +19,8 @@ describe("local crank-native ProgramDriver integration", () => {
   it("parks processlessly and completes from a fresh generator using only journal replay", async () => {
     const evidence = await run(() =>
       runDurableDriverRecoveryFixture({
-        driverKind: "generator",
-        route: { driverKind: "generator", runtime: "local-package" },
+        driverKind: "program",
+        route: { driverKind: "program", runtime: "local-package" },
         createDriver: (registry) => createLocalDurableProgramDriver(registry),
       }),
     );
@@ -48,8 +48,8 @@ describe("local crank-native ProgramDriver integration", () => {
   it("replays cancellation into typed catch/finally cleanup without allowing catch-return success", async () => {
     const evidence = await run(() =>
       runDurableDriverCancellationFixture({
-        driverKind: "generator",
-        route: { driverKind: "generator", runtime: "local-package" },
+        driverKind: "program",
+        route: { driverKind: "program", runtime: "local-package" },
         createDriver: (registry) => createLocalDurableProgramDriver(registry),
       }),
     );

@@ -7,6 +7,7 @@ import type {
   ProgramStep,
   ReplayEmissionEntry,
   ReplayOperationEntry,
+  SandboxAffinity,
 } from "@sweatpants/session-contract";
 
 export const CALLER_AUTHORITATIVE_EXTENSION_URI =
@@ -100,7 +101,10 @@ export type WireProgramCommandV1 =
   | Extract<ProgramCommand, { type: "start" | "resume" | "ack_emission" | "cancel" }>
   | Omit<Extract<ProgramCommand, { type: "authorize" }>, "resolutionCapability">;
 
-export type AttachBeginV1 = ProgramEnvelopeV1<"attach_begin", { input: Json; inputDigest: string }>;
+export type AttachBeginV1 = ProgramEnvelopeV1<
+  "attach_begin",
+  { input: Json; inputDigest: string; affinity: SandboxAffinity }
+>;
 export type ProgramCommandFrameV1 = ProgramEnvelopeV1<"command", { command: WireProgramCommandV1 }>;
 export type ShutdownFrameV1 = ProgramEnvelopeV1<"shutdown", { reason: ProgramShutdownReason }>;
 export type RestoreBeginV1 = ProgramEnvelopeV1<
@@ -110,6 +114,7 @@ export type RestoreBeginV1 = ProgramEnvelopeV1<
     inputDigest: string;
     replayedThroughActionIndex: number;
     replayChainSeed: string;
+    affinity: SandboxAffinity;
   }
 >;
 export type ReplayOperationFrameV1 = ProgramEnvelopeV1<"replay_operation", ReplayOperationEntry>;

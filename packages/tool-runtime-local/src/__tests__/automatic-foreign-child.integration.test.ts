@@ -134,7 +134,7 @@ describe("automatic foreign adapter child orchestration", () => {
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(tools)],
+      ["program", createLocalDurableProgramDriver(tools)],
     ]);
     const keyring = createCapabilityKeyring("automatic-child", [
       { keyId: "active", secret: "automatic-child-secret-is-32bytes" },
@@ -157,13 +157,12 @@ describe("automatic foreign adapter child orchestration", () => {
         digest: parentManifest.digest,
       },
       input: null,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     };
 
     await run(function* () {
-      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {
-      });
+      const registry = yield* createToolSessionRegistry(createInMemoryToolSessionStore(), {});
       const effects = createDurableEffectRegistry([
         ...createToolSessionForeignEffectRegistrations({
           registry,
@@ -268,7 +267,7 @@ describe("automatic foreign adapter child orchestration", () => {
     });
     const tools = createDurableToolRegistry([parent, foreignToolAdapter]);
     const drivers = createProgramDriverRegistry([
-      ["generator", createLocalDurableProgramDriver(tools)],
+      ["program", createLocalDurableProgramDriver(tools)],
     ]);
     const keyring = createCapabilityKeyring("immediate-child", [
       { keyId: "active", secret: "immediate-child-secret-is-32bytes" },
@@ -290,7 +289,7 @@ describe("automatic foreign adapter child orchestration", () => {
         digest: parentManifest.digest,
       },
       input: null,
-      route: { driverKind: "generator" },
+      route: { driverKind: "program" },
       executionEpoch: 1,
     };
 

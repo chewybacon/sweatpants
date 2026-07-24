@@ -1,43 +1,46 @@
-import { run, useScope } from "effection";
+import { run, type Operation } from "effection";
+import { createApi } from "effection/experimental";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
-  bindDurableProgramScope,
   createDurableProgramContext,
+  createDurableToolRegistry,
+  createLocalProgramDriver,
   sha256,
+  type Json,
+  type ProgramResume,
+  type ProgramStepProposal,
 } from "@sweatpants/session-contract";
 
 import { createDurableTool } from "../durable-create.ts";
 import { defineDurableContextExtension } from "../durable-context-extension.ts";
 import { defineEffect } from "../durable-effect.ts";
 
-const readValue = defineEffect({
-  name: "acceptance.data.read",
-  version: "1",
-  input: z.object({ key: z.string() }),
-  output: z.object({ value: z.string(), revision: z.string() }),
-  retrySafety: { mode: "repeatable" },
-});
+interface DataApi {
+  readValue(input: { key: string }): Operation<{ value: string; revision: string }>;
+  writeValue(input: {
+    key: string;
+    value: string;
+    expectedRevision: string;
+  }): Operation<{ revision: string }>;
+}
 
-const writeValue = defineEffect({
-  name: "acceptance.data.write",
-  version: "1",
-  input: z.object({ key: z.string(), value: z.string(), expectedRevision: z.string() }),
-  output: z.object({ revision: z.string() }),
-  retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+const Data = createApi<DataApi>("acceptance:data", {
+  *readValue() {
+    throw new Error("data provider unavailable");
+  },
+  *writeValue() {
+    throw new Error("data provider unavailable");
+  },
 });
 
 const data = defineDurableContextExtension({
   name: "data",
-  effects: { readValue, writeValue },
-  client({ effect, self }) {
+  api: Data.operations,
+  client({ api, self }) {
     return {
-      *readValue(input: { key: string }) {
-        return yield* effect(readValue, input);
-      },
-      *writeValue(input: { key: string; value: string; expectedRevision: string }) {
-        return yield* effect(writeValue, input);
-      },
+      readValue: api.readValue,
+      writeValue: api.writeValue,
       *replaceValue(input: { key: string; value: string }) {
         const current = yield* self.readValue({ key: input.key });
         return yield* self.writeValue({
@@ -52,23 +55,18 @@ const data = defineDurableContextExtension({
 
 const alternativeData = defineDurableContextExtension({
   name: "data",
-  effects: { readValue, writeValue },
-  client({ effect }) {
+  api: Data.operations,
+  client({ api }) {
     return {
       *readValue(input: { key: string }) {
-        return yield* effect(readValue, { key: `alternative:${input.key}` });
+        return yield* api.readValue({ key: `alternative:${input.key}` });
       },
-      *writeValue(input: { key: string; value: string; expectedRevision: string }) {
-        return yield* effect(writeValue, input);
-      },
+      writeValue: api.writeValue,
     };
   },
 });
 
-const otherData = defineDurableContextExtension({
-  name: "other-data",
-  effects: { readValue },
-});
+const otherData = defineDurableContextExtension({ name: "other-data", api: Data.operations });
 
 function compileOnlyTypeAssertions(): void {
   createDurableTool("extension_types")
@@ -81,63 +79,56 @@ function compileOnlyTypeAssertions(): void {
       void valid;
       // @ts-expect-error readValue requires a string key
       yield* context.data.readValue({ key: 1 });
-      // @ts-expect-error the token was not declared through .uses()
+      // @ts-expect-error token was not declared through .uses()
       yield* context.use(otherData).readValue({ key: "missing" });
-      // @ts-expect-error the output value is a string, not a number
+      // @ts-expect-error output value is a string, not a number
       const wrong: number = (yield* context.use(data).readValue({ key: "ok" })).value;
-      return wrong;
+      return { wrong };
     });
 }
 void compileOnlyTypeAssertions;
 
-function buildTool() {
+function buildTool(extension: typeof data = data) {
   return createDurableTool("extension_fixture")
-    .description("Exercises a typed durable context extension")
+    .description("Exercises an ordinary typed context extension")
     .identity({ version: "1", digest: sha256("extension-fixture") })
     .parameters(z.object({ key: z.string(), value: z.string() }))
-    .uses({ data })
+    .uses({ data: extension })
     .execute(function* (input, context) {
       const direct = yield* context.data.readValue({ key: input.key });
-      const explicit = yield* context.use(data).readValue({ key: input.key });
-      const replaced = yield* context.data.replaceValue(input);
-      return { direct, explicit, replaced };
+      const explicit = yield* context.use(extension).readValue({ key: input.key });
+      return { direct, explicit };
     });
 }
 
-describe("durable context extensions", () => {
-  it("adds exact effects and exposes alias and token clients", async () => {
-    const tool = buildTool();
-    expect(Object.keys(tool.manifest.effects).sort()).toEqual([
-      "acceptance.data.read",
-      "acceptance.data.write",
-    ]);
+function rejectBoundary(_proposal: ProgramStepProposal): Operation<ProgramResume> {
+  return (function* () {
+    throw new Error("ordinary extension unexpectedly proposed a durable boundary");
+  })();
+}
 
-    await run(function* () {
-      const context = createDurableProgramContext();
-      bindDurableProgramScope(context, yield* useScope());
-      const generator = tool.program({ key: "answer", value: "42" }, context);
-      const alias = generator.next();
-      expect(alias.value).toMatchObject({
-        type: "operation",
-        descriptor: {
-          kind: "effect",
-          name: "acceptance.data.read",
-          input: { key: "answer" },
-          resolver: { audience: "extension:data" },
-        },
-      });
-      const token = generator.next({
-        status: "ok",
-        value: { value: "old", revision: "r1" },
-      });
-      expect(token.value).toMatchObject({
-        type: "operation",
-        descriptor: { name: "acceptance.data.read" },
-      });
+describe("durable context extensions", () => {
+  it("projects alias and token clients without synthesizing effects", async () => {
+    const tool = buildTool();
+    expect(tool.manifest.effects).toEqual({});
+
+    await expect(
+      run(function* () {
+        yield* Data.around({
+          *readValue(args) {
+            return { value: `value:${args[0].key}`, revision: "r1" };
+          },
+        });
+        const context = createDurableProgramContext(rejectBoundary);
+        return yield* tool.program({ key: "answer", value: "42" }, context);
+      }),
+    ).resolves.toEqual({
+      direct: { value: "value:answer", revision: "r1" },
+      explicit: { value: "value:answer", revision: "r1" },
     });
   });
 
-  it("applies scoped middleware to composed methods and nested self calls", async () => {
+  it("applies middleware to composed methods and recursive self calls", async () => {
     const tool = createDurableTool("extension_middleware_fixture")
       .description("Exercises recursive extension middleware")
       .identity({ version: "1", digest: sha256("extension-middleware-fixture") })
@@ -148,7 +139,15 @@ describe("durable context extensions", () => {
       });
     const order: string[] = [];
 
-    await run(function* () {
+    const result = await run(function* () {
+      yield* Data.around({
+        *readValue() {
+          return { value: "old", revision: "r1" };
+        },
+        *writeValue() {
+          return { revision: "r2" };
+        },
+      });
       yield* data.clientApi.around({
         *replaceValue(args, next) {
           order.push("replace:before");
@@ -169,21 +168,11 @@ describe("durable context extensions", () => {
           return value;
         },
       });
-      const context = createDurableProgramContext();
-      bindDurableProgramScope(context, yield* useScope());
-      const generator = tool.program({ key: "answer", value: "42" }, context);
-      expect(generator.next().value).toMatchObject({
-        descriptor: { name: "acceptance.data.read" },
-      });
-      expect(
-        generator.next({ status: "ok", value: { value: "old", revision: "r1" } }).value,
-      ).toMatchObject({ descriptor: { name: "acceptance.data.write" } });
-      expect(generator.next({ status: "ok", value: { revision: "r2" } })).toMatchObject({
-        done: true,
-        value: { revision: "r2" },
-      });
+      const context = createDurableProgramContext(rejectBoundary);
+      return yield* tool.program({ key: "answer", value: "42" }, context);
     });
 
+    expect(result).toEqual({ revision: "r2" });
     expect(order).toEqual([
       "replace:before",
       "read:before",
@@ -194,55 +183,121 @@ describe("durable context extensions", () => {
     ]);
   });
 
-  it("creates scope-installed Effection providers and exact registrations", async () => {
-    const provider = data.implement({
-      name: "fixture-provider",
-      methods: {
-        *readValue(input) {
-          return { value: `value:${input.key}`, revision: "r1" };
-        },
-        *writeValue() {
-          return { revision: "r2" };
+  it("allows a semantic extension method to suspend at one explicit durable effect", async () => {
+    const lookup = defineEffect({
+      name: "extension.lookup",
+      version: "1",
+      input: z.object({ key: z.string() }),
+      output: z.object({ value: z.string() }),
+      retrySafety: { mode: "repeatable" },
+    });
+    const extension = defineDurableContextExtension({
+      name: "effectful-client",
+      api: {
+        *lookup(_input: { key: string }): Operation<{ value: string }> {
+          throw new Error("not installed");
         },
       },
-    });
-
-    expect(
-      provider.registrations.map((registration) => registration.definition.name).sort(),
-    ).toEqual(["acceptance.data.read", "acceptance.data.write"]);
-    await run(function* () {
-      yield* provider.install();
-      const read = provider.registrations.find(
-        (registration) => registration.definition.name === "acceptance.data.read",
-      )!;
-      expect(
-        yield* read.handler(
-          { key: "answer" },
-          {
-            sessionId: "session",
-            taskId: "task",
-            pullId: "pull",
-            attemptId: "attempt",
-            cancellation: new AbortController().signal,
-            resolver: { audience: "extension:data" },
+      client({ context }) {
+        return {
+          *lookup(input: { key: string }) {
+            return yield* context.effect(lookup, input, { audience: "test" });
           },
-        ),
-      ).toEqual({ status: "ok", value: { value: "value:answer", revision: "r1" } });
+        };
+      },
+    });
+    const tool = createDurableTool("effectful_extension")
+      .description("Explicit effect through extension")
+      .identity({ version: "1", digest: sha256("effectful-extension") })
+      .parameters(z.object({ key: z.string() }))
+      .uses({ extension })
+      .effects({ [lookup.name]: lookup })
+      .execute(function* (input, context) {
+        const first = yield* context.extension.lookup(input);
+        const second = yield* context.effect(
+          lookup,
+          { key: `${input.key}:second` },
+          {
+            audience: "test",
+          },
+        );
+        return { first, second };
+      });
+    const driver = createLocalProgramDriver(createDurableToolRegistry([tool]));
+    await run(function* () {
+      const attachment = yield* driver.attach({
+        sessionId: "session",
+        taskId: "task",
+        program: {
+          id: tool.manifest.programId,
+          version: tool.manifest.version,
+          digest: tool.manifest.digest,
+        },
+        input: { key: "answer" },
+        route: { driverKind: "program" },
+        executionEpoch: 1,
+      });
+      const effect = yield* driver.step(attachment, {
+        type: "start",
+        input: { key: "answer" },
+      });
+      expect(effect).toMatchObject({
+        type: "operation",
+        descriptor: { kind: "effect", input: { key: "answer" } },
+      });
+      if (effect.type !== "operation") throw new Error("expected effect");
+      const secondEffect = yield* driver.step(attachment, {
+        type: "resume",
+        actionIndex: effect.actionIndex,
+        outcome: { status: "ok", value: { value: "42" } },
+        receipt: {
+          sessionId: "session",
+          taskId: "task",
+          pullId: "pull",
+          resolutionOffset: "1",
+          outcomeDigest: "a".repeat(64),
+          status: "accepted",
+        },
+        replayed: false,
+      });
+      expect(secondEffect).toMatchObject({
+        type: "operation",
+        descriptor: { input: { key: "answer:second" } },
+      });
+      if (secondEffect.type !== "operation") throw new Error("expected second effect");
+      const completed = yield* driver.step(attachment, {
+        type: "resume",
+        actionIndex: secondEffect.actionIndex,
+        outcome: { status: "ok", value: { value: "43" } },
+        receipt: {
+          sessionId: "session",
+          taskId: "task",
+          pullId: "pull-2",
+          resolutionOffset: "2",
+          outcomeDigest: "b".repeat(64),
+          status: "accepted",
+        },
+        replayed: false,
+      });
+      expect(completed).toMatchObject({
+        type: "completed",
+        value: { first: { value: "42" }, second: { value: "43" } },
+      });
+      yield* driver.shutdown(attachment, "completed");
     });
   });
 
-  it("pins extension client identity into the durable program", () => {
-    const create = (extension: typeof data | typeof alternativeData) =>
-      createDurableTool("extension_identity")
-        .description("Pins extension client identity")
-        .identity({ version: "1", digest: sha256("extension-identity-base") })
-        .parameters(z.object({ key: z.string() }))
-        .uses({ data: extension })
-        .execute(function* (input, context) {
-          return yield* context.data.readValue(input);
-        });
-
-    expect(create(data).manifest.digest).not.toBe(create(alternativeData).manifest.digest);
+  it("pins semantic client identity but not provider middleware", async () => {
+    expect(buildTool(data).manifest.digest).not.toBe(buildTool(alternativeData).manifest.digest);
+    const digest = buildTool(data).manifest.digest;
+    await run(function* () {
+      yield* Data.around({
+        *readValue() {
+          return { value: "deployment-specific", revision: "r9" };
+        },
+      });
+    });
+    expect(buildTool(data).manifest.digest).toBe(digest);
   });
 
   it("rejects duplicate tokens and reserved aliases", () => {

@@ -3,7 +3,7 @@ import type { Operation } from "effection";
 import {
   CrankError,
   canonicalSnapshot,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   type DurableToolRegistry,
   type Json,
   type ProgramAttachment,
@@ -27,7 +27,7 @@ export interface AgentCoreDurableEvaluatorOptions {
 export function createAgentCoreDurableEvaluator(options: AgentCoreDurableEvaluatorOptions): {
   handle(message: HostProgramMessage): Operation<RuntimeProgramMessage | undefined>;
 } {
-  const driver = createLocalGeneratorDriver(options.registry);
+  const driver = createLocalProgramDriver(options.registry);
   let attachment: ProgramAttachment | undefined;
   let taskId: string | undefined;
   let activationEpoch: number | undefined;

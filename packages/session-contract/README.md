@@ -4,7 +4,7 @@ ProgramDriver durable runtime and journal contracts for Sweatpants.
 
 This package provides:
 
-- pinned crank-native program manifests and pure generator programs
+- pinned crank-native program manifests and scope-owned Effection program Operations
 - `ProgramDriver` attachment/step/shutdown ports
 - one append-only `DurableSemanticRecord` journal authority
 - in-memory journal authority for development and tests
@@ -49,36 +49,56 @@ Libraries can define typed durable context extensions through `@sweatpants/core`
 them explicitly with `.uses()`:
 
 ```ts
+const Data = createApi("example-data", {
+    *readValue(input: { key: string }) {
+        /* ordinary provider */
+    },
+    *writeValue(input: { key: string; value: string }, execution: { operationId: string }) {
+        /* ordinary provider */
+    },
+});
 const data = defineDurableContextExtension({
     name: "example-data",
-    effects: { readValue, writeValue },
+    api: Data.operations,
 });
 
 const tool = createDurableTool("example")
     // description, identity, and parameters omitted
     .uses({ data })
     .execute(function* (input, ctx) {
+        // Safe observation: it may run again on every attachment reconstruction.
         const value = yield* ctx.data.readValue(input);
         const sameValue = yield* ctx.use(data).readValue(input);
-        const recordedAt = yield* ctx.record("observed-at", function* () {
-            return new Date().toISOString();
-        });
-        return { value, sameValue, recordedAt };
+
+        // Unsafe/costly mutations must not be ordinary unrecorded calls.
+        const written = yield* ctx.record(
+            { retrySafety: { mode: "idempotent", mechanism: "pull_id_key" } },
+            function* ({ pullId }) {
+                return yield* ctx.data.writeValue(input, { operationId: pullId });
+            },
+        );
+        return { value, sameValue, written };
     });
 ```
 
-`ctx.effect()` invokes a runtime-installed, placement-neutral effect. `ctx.record()` instead keeps
-its implementation with the pinned program artifact and records the accepted result; a resolved
-recording replays without running its closure again. Recording closures cannot schedule nested
-durable operations.
+Durable tool bodies are ordinary Effection Operations. Calls such as `yield* Files.read(path)` run
+normally and run again once per attachment reconstruction, including park/resume and recovery.
+Frequent parking can therefore repeat observations and any unrecorded cost. Reads and other safe
+observations are appropriate ordinary calls. Costly calls and external mutations are unsafe as
+ordinary calls; wrap repeatable work or pull-ID-idempotent mutations in `ctx.record()`, and declare
+unsafe indeterminate policy when duplication cannot be tolerated. `ctx.effect()` invokes a
+runtime-installed, placement-neutral durable effect. `ctx.record()` keeps its implementation with
+the pinned program artifact and records the accepted result; a resolved recording replays without
+running its closure again. Recording closures cannot schedule nested durable operations. If an
+ordinary operation fails while reconstructing already-accepted history, the runtime fences the
+unreconstructable task, shuts down its scope, and propagates the original safe application error.
 
 ### Retry safety and model sampling
 
 `repeatable` means an unresolved attempt may run again and return a different value; it is not an
-idempotency or exactly-once guarantee. New `model.sample` authoring uses repeatable wire version 2.
-If a sample becomes indeterminate before its outcome is committed, retrying may produce a different
-response and may incur duplicate provider cost. Exact `model.sample@1` registration remains available
-only to replay already-pinned programs that declared pull-ID idempotency.
+idempotency or exactly-once guarantee. The single `model.sample` contract is repeatable wire version 2. If a sample becomes indeterminate before its outcome is committed, retrying may produce a
+different response and may incur duplicate provider cost. There is no legacy sampling registration
+or replay compatibility path.
 
 ## Journal authority
 

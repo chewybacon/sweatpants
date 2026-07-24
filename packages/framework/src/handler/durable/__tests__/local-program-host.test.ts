@@ -5,7 +5,7 @@ import {
   createCapabilityKeyring,
   createDurableEffectRegistry,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createModelSamplingEffectRegistration,
   createModelSamplingRouter,
   createProgramDriverRegistry,
@@ -13,10 +13,7 @@ import {
 } from "@sweatpants/session-contract";
 import { z } from "zod";
 
-import {
-  createLocalProgramHost,
-  createPinnedProgramCatalog,
-} from "../local-program-host.ts";
+import { createLocalProgramHost, createPinnedProgramCatalog } from "../local-program-host.ts";
 import {
   createInMemoryProgramDriverJournalStore,
   programDriverSchemaRegistry,
@@ -58,7 +55,7 @@ function fixture(journalStore = sharedApprovalStore()) {
     journalStore,
     programs,
     effects,
-    drivers: createProgramDriverRegistry([["generator", createLocalGeneratorDriver(programs)]]),
+    drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
   });
 }
 
@@ -134,13 +131,17 @@ describe("LocalProgramHost", () => {
         manifest: approvalProgram.manifest,
         input: { prompt: "Replace host?" },
         catalog,
-        route: { driverKind: "generator", acceptedPlacement: "zone-a" },
+        route: { driverKind: "program", acceptedPlacement: "zone-a" },
       });
       expect(yield* opened.result).toMatchObject({ state: "parked" });
       const journal = yield* store.open(opened.sessionId);
-      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(1);
+      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
+        1,
+      );
       expect(yield* firstHost.resume(opened.sessionId)).toMatchObject({ state: "parked" });
-      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(1);
+      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
+        1,
+      );
 
       const trace = yield* replacementHost.trace(opened.sessionId);
       expect(trace.tasks[0]?.catalogDigest).toBe(catalog.digest);
@@ -154,7 +155,9 @@ describe("LocalProgramHost", () => {
           response: { action: "accept", content: { approved: true } },
         }),
       ).toEqual({ state: "completed", value: "approved" });
-      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(2);
+      expect((yield* journal.executionState(opened.sessionId, opened.taskId)).executionEpoch).toBe(
+        2,
+      );
     });
   });
 
@@ -235,7 +238,7 @@ describe("LocalProgramHost", () => {
       }),
       programs,
       effects: createDurableEffectRegistry([]),
-      drivers: createProgramDriverRegistry([["generator", createLocalGeneratorDriver(programs)]]),
+      drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
     });
     const parentCatalog = createPinnedProgramCatalog({
       host_parent: { kind: "program", target: "host_parent", program: parentPin },
@@ -290,7 +293,7 @@ describe("LocalProgramHost", () => {
       }),
       programs,
       effects: createDurableEffectRegistry([]),
-      drivers: createProgramDriverRegistry([["generator", createLocalGeneratorDriver(programs)]]),
+      drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
     });
     await run(function* () {
       const opened = yield* host.open({
@@ -345,7 +348,9 @@ describe("LocalProgramHost", () => {
     const observed: string[] = [];
     const router = createModelSamplingRouter({
       policy: (placement) => {
-        observed.push(`route:${String((placement.route as Record<string, unknown>)["driverKind"])}`);
+        observed.push(
+          `route:${String((placement.route as Record<string, unknown>)["driverKind"])}`,
+        );
         return { ownership: "host" };
       },
       host: {
@@ -364,7 +369,7 @@ describe("LocalProgramHost", () => {
       }),
       programs,
       effects: createDurableEffectRegistry([createModelSamplingEffectRegistration()]),
-      drivers: createProgramDriverRegistry([["generator", createLocalGeneratorDriver(programs)]]),
+      drivers: createProgramDriverRegistry([["program", createLocalProgramDriver(programs)]]),
       modelSamplingRouter: router,
       modelSamplingOutcomeAcknowledger: function* ({ outcomeDigest }) {
         expect(outcomeDigest).toMatch(/^[0-9a-f]{64}$/);
@@ -381,15 +386,16 @@ describe("LocalProgramHost", () => {
         program: samplePin,
         manifest: sampledProgram.manifest,
         input: {},
-        route: { driverKind: "generator", location: "host" },
+        route: { driverKind: "program", location: "host" },
         catalog: createPinnedProgramCatalog({
           host_sample: { kind: "program", target: "host_sample", program: samplePin },
         }),
       });
       expect(yield* opened.result).toEqual({ state: "completed", value: "sampled" });
-      expect(observed).toEqual(["route:generator", "provider", "acknowledged"]);
-      expect((yield* host.trace(opened.sessionId)).tasks[0]?.operations[0]?.descriptor)
-        .toMatchObject({ kind: "effect", name: "model.sample" });
+      expect(observed).toEqual(["route:program", "provider", "acknowledged"]);
+      expect(
+        (yield* host.trace(opened.sessionId)).tasks[0]?.operations[0]?.descriptor,
+      ).toMatchObject({ kind: "effect", name: "model.sample" });
     });
   });
 

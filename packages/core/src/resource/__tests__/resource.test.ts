@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { run } from "effection";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -107,7 +108,7 @@ describe("resource packages", () => {
 });
 
 describe("views, guidance, and readers", () => {
-  it("enforces exact mount scopes and deterministic reader behavior", () => {
+  it("enforces exact mount scopes and deterministic reader behavior", async () => {
     const pkg = fixture();
     const registry = new ResourcePackageRegistry();
     registry.install(pkg);
@@ -140,9 +141,8 @@ describe("views, guidance, and readers", () => {
     const readers = generateResourceReaders({ view, registry, consumer: { kind: "model" } });
     expect(readers.read.manifest.effects).toEqual({});
     expect(readers.read.identityProvenance.kind).toBe("generated-artifact");
-    const outcome = readers.read.program({ ref }, {} as never).next();
-    expect(outcome.done).toBe(true);
-    expect(outcome.value).toMatchObject({ kind: "text", text: expect.stringContaining("Skill") });
+    const outcome = await run(() => readers.read.program({ ref }, {} as never));
+    expect(outcome).toMatchObject({ kind: "text", text: expect.stringContaining("Skill") });
     expect(() =>
       readResource(view, registry, { kind: "model" }, { ...ref, path: "raw.bin" }),
     ).toThrowError(expect.objectContaining({ code: "unsupported_resource_projection" }));

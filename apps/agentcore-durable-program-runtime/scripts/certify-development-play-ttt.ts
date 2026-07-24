@@ -116,15 +116,9 @@ async function main(): Promise<void> {
   const effects = createDurableEffectRegistry([
     createDurableEffectRegistration(
       MODEL_SAMPLE_EFFECT,
-      { mode: "idempotent", mechanism: "pull_id_key" },
+      MODEL_SAMPLE_EFFECT.retrySafety,
       function* (request) {
         modelSamples += 1;
-        if (JSON.stringify(request.schema).includes('"symbol"')) {
-          return {
-            status: "ok" as const,
-            value: { text: "X", calls: [], content: [], parsed: { symbol: "X" } },
-          };
-        }
         return {
           status: "ok" as const,
           value: {

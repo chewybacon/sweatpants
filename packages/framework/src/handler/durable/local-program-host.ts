@@ -318,7 +318,7 @@ export function createLocalProgramHost(options: LocalProgramHostOptions): LocalP
       ).length;
       const turnId = request.turnId ?? `turn-${rootCount}`;
       const taskId = request.taskId ?? `${turnId}/root`;
-      const route = request.route ?? { driverKind: "generator" };
+      const route = request.route ?? { driverKind: "program" };
       const execution: AcceptedExecution = {
         route,
         executionEpoch: 1,

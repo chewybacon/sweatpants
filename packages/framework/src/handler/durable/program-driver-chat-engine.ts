@@ -2,7 +2,6 @@ import { resource, type Operation, type Stream } from "effection";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   CrankError,
-  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   ProgramRuntime,
@@ -18,7 +17,7 @@ import {
   createModelSamplingRouter,
   createPinnedDurableProgram,
   createDurableToolRegistry,
-  createLocalGeneratorDriver,
+  createLocalProgramDriver,
   createProgramDriverRegistry,
   defineDurableProgramManifest,
   foreignToolAdapter,
@@ -342,7 +341,7 @@ function* activateProgramDriverChatEngine(
     taskId,
     program: { id: manifest.programId, version: manifest.version, digest: manifest.digest },
     input,
-    route: { driverKind: "generator" },
+    route: { driverKind: "program" },
     executionEpoch: 1,
   };
   if (!active) {
@@ -390,7 +389,13 @@ function* activateProgramDriverChatEngine(
     ...[...(params.nativeTools?.bindings.values() ?? [])].map((binding) => binding.tool),
   ]);
   const drivers = createProgramDriverRegistry([
-    ["generator", createLocalGeneratorDriver(tools)],
+    [
+      "program",
+      createLocalProgramDriver(
+        tools,
+        params.nativeTools?.setup ? { setup: params.nativeTools.setup } : {},
+      ),
+    ],
     ...(params.nativeTools?.drivers ?? []),
   ]);
   let streamedTerminal = false;
@@ -465,7 +470,6 @@ function* activateProgramDriverChatEngine(
   const effects = createDurableEffectRegistry(
     [
       createModelSamplingEffectRegistration(),
-      createModelSamplingEffectRegistration(LEGACY_MODEL_SAMPLE_EFFECT),
       ...foreignEffects,
       ...(params.nativeTools?.effects ?? []),
     ],

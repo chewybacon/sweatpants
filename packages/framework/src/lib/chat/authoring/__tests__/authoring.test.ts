@@ -1,9 +1,11 @@
-import { run } from "effection";
+import { run, type Operation } from "effection";
 import { describe, expect, it } from "vitest";
 import {
   MODEL_SAMPLE_EFFECT,
   createDurableProgramContext,
   type Json,
+  type ProgramResume,
+  type ProgramStepProposal,
 } from "@sweatpants/session-contract";
 import {
   DURABLE_DRIVER_FIXTURE_SCHEMA_ENTRIES,
@@ -50,6 +52,34 @@ const guidance = defineGuidance({
   package: resources,
   entryPath: "SKILL.md",
 });
+
+class BoundaryReached extends Error {}
+
+async function drive(
+  program: ReturnType<typeof chat>,
+  input: Json,
+  outcomes: ProgramResume[],
+): Promise<{ proposals: ProgramStepProposal[]; result?: Json }> {
+  const proposals: ProgramStepProposal[] = [];
+  const remaining = [...outcomes];
+  let result: Json | undefined;
+  try {
+    result = await run(function* () {
+      const context = createDurableProgramContext(
+        (proposal): Operation<ProgramResume> =>
+          (function* () {
+            proposals.push(proposal);
+            if (remaining.length === 0) throw new BoundaryReached();
+            return remaining.shift();
+          })(),
+      );
+      return yield* program.program(input as never, context);
+    });
+  } catch (error) {
+    if (!(error instanceof BoundaryReached)) throw error;
+  }
+  return { proposals, ...(result === undefined ? {} : { result }) };
+}
 
 function chat(
   prompt = "You are a reviewer",
@@ -114,37 +144,29 @@ describe("durable chat authoring", () => {
     );
   });
 
-  it("produces a generated program whose first durable boundary is classified model.sample", () => {
+  it("produces a generated program whose first durable boundary is classified model.sample", async () => {
     const program = chat();
     const input = acceptChatTurn(program.contextPolicy, message("current", "user", "Review this"), {
       frontier: "f",
     });
-    const generator = program.program(
-      input as unknown as Json & typeof input,
-      createDurableProgramContext(),
-    );
-    const first = generator.next();
-    expect(first.done).toBe(false);
-    if (
-      first.done ||
-      first.value.type !== "operation" ||
-      first.value.descriptor.kind !== "effect"
-    ) {
-      throw new Error("expected effect");
-    }
-    expect(first.value.descriptor.name).toBe("model.sample");
-    expect(first.value.descriptor.version).toBe("2");
-    expect((first.value.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
-      "internal",
-    ]);
     const output: ChatModelSampleOutputV2 = {
       message: message("answer", "assistant", "Looks good"),
       calls: [],
       artifacts: [],
     };
-    const terminal = generator.next({ status: "ok", value: output as unknown as Json });
-    expect(terminal.done).toBe(true);
-    expect(terminal.value).toEqual({
+    const driven = await drive(program, input as unknown as Json, [
+      { status: "ok", value: output as unknown as Json },
+    ]);
+    const first = driven.proposals[0];
+    if (first?.type !== "operation" || first.descriptor.kind !== "effect") {
+      throw new Error("expected effect");
+    }
+    expect(first.descriptor.name).toBe("model.sample");
+    expect(first.descriptor.version).toBe("2");
+    expect((first.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
+      "internal",
+    ]);
+    expect(driven.result).toEqual({
       format: "sweatpants.chat-turn-result.v1",
       message: output.message,
       artifacts: [],
@@ -152,161 +174,126 @@ describe("durable chat authoring", () => {
     expect(program.identityProvenance.kind).toBe("generated-artifact");
   });
 
-  it("loads guidance through an exact durable reader child before the next classified sample", () => {
+  it("loads guidance through an exact durable reader child before the next classified sample", async () => {
     const program = chat();
     const input = acceptChatTurn(
       program.contextPolicy,
       message("current", "user", "Load the review guidance"),
       { frontier: "f" },
     );
-    const generator = program.program(
-      input as unknown as Json & typeof input,
-      createDurableProgramContext(),
-    );
-    generator.next();
     const readerCall: ChatModelSampleOutputV2 = {
       message: message("assistant-call", "assistant", "Loading guidance"),
       calls: [{ id: "read-1", target: "resources.read", input: { uri: guidance.entryUri } }],
       artifacts: [],
     };
-    const child = generator.next({ status: "ok", value: readerCall as unknown as Json });
-    expect(child.done).toBe(false);
-    if (
-      child.done ||
-      child.value.type !== "operation" ||
-      child.value.descriptor.kind !== "invoke"
-    ) {
+    const readerResult = {
+      kind: "text",
+      text: "Check authority boundaries",
+      mediaType: "text/markdown",
+      packageDigest: resources.manifest.digest,
+      fileDigest: resources.manifest.files["SKILL.md"]!.digest,
+      classifications: ["internal"],
+      sources: [
+        {
+          packageDigest: resources.manifest.digest,
+          fileDigest: resources.manifest.files["SKILL.md"]!.digest,
+        },
+      ],
+    } as unknown as Json;
+    const driven = await drive(program, input as unknown as Json, [
+      { status: "ok", value: readerCall as unknown as Json },
+      { status: "ok", value: readerResult },
+    ]);
+    const child = driven.proposals[1];
+    if (child?.type !== "operation" || child.descriptor.kind !== "invoke") {
       throw new Error("expected resource reader child");
     }
-    expect(child.value.descriptor.child.digest).toBe(program.resourceReaders.read.manifest.digest);
-    const nextSample = generator.next({
-      status: "ok",
-      value: {
-        kind: "text",
-        text: "Check authority boundaries",
-        mediaType: "text/markdown",
-        packageDigest: resources.manifest.digest,
-        fileDigest: resources.manifest.files["SKILL.md"]!.digest,
-        classifications: ["internal"],
-        sources: [
-          {
-            packageDigest: resources.manifest.digest,
-            fileDigest: resources.manifest.files["SKILL.md"]!.digest,
-          },
-        ],
-      },
-    });
-    expect(nextSample.done).toBe(false);
-    if (
-      nextSample.done ||
-      nextSample.value.type !== "operation" ||
-      nextSample.value.descriptor.kind !== "effect"
-    ) {
+    expect(child.descriptor.child.digest).toBe(program.resourceReaders.read.manifest.digest);
+    const nextSample = driven.proposals[2];
+    if (nextSample?.type !== "operation" || nextSample.descriptor.kind !== "effect") {
       throw new Error("expected second model sample");
     }
-    expect((nextSample.value.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
+    expect((nextSample.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
       "internal",
     ]);
-    expect(JSON.stringify(nextSample.value.descriptor.input)).toContain(
-      "Check authority boundaries",
-    );
+    expect(JSON.stringify(nextSample.descriptor.input)).toContain("Check authority boundaries");
   });
 
-  it("taints arbitrary tool results from the declared binding ceiling, not payload shape", () => {
-    const restrictedProgram = chat("You are a reviewer", {
-      inspect: modelTool(durableFixtureBinding, { resultClassification: "restricted" }),
-    });
-    const restrictedGenerator = restrictedProgram.program(
-      acceptChatTurn(restrictedProgram.contextPolicy, message("current", "user", "inspect"), {
+  it("taints arbitrary tool results from the declared binding ceiling, not payload shape", async () => {
+    const sampleAfter = async (
+      classification: "restricted" | "public",
+      id: string,
+      value: Json,
+    ) => {
+      const program = chat("You are a reviewer", {
+        inspect: modelTool(durableFixtureBinding, { resultClassification: classification }),
+      });
+      const input = acceptChatTurn(program.contextPolicy, message("current", "user", "inspect"), {
         frontier: "f",
-      }) as unknown as Json & ReturnType<typeof acceptChatTurn>,
-      createDurableProgramContext(),
-    );
-    restrictedGenerator.next();
-    restrictedGenerator.next({
-      status: "ok",
-      value: {
+      });
+      const call = {
         message: message("call", "assistant", "inspecting"),
-        calls: [{ id: "inspect-1", target: "inspect", input: "derived" }],
+        calls: [{ id, target: "inspect", input: classification === "public" ? "safe" : "derived" }],
         artifacts: [],
-      },
-    });
-    const restrictedSample = restrictedGenerator.next({
-      status: "ok",
-      value: { derivedText: "restricted source without voluntary provenance" },
-    });
-    if (
-      restrictedSample.done ||
-      restrictedSample.value.type !== "operation" ||
-      restrictedSample.value.descriptor.kind !== "effect"
-    ) {
-      throw new Error("expected classified sample");
-    }
-    expect(
-      (restrictedSample.value.descriptor.input as Record<string, Json>)["classifications"],
-    ).toEqual(["internal", "restricted"]);
+      } as unknown as Json;
+      const driven = await drive(program, input as unknown as Json, [
+        { status: "ok", value: call },
+        { status: "ok", value },
+      ]);
+      const proposal = driven.proposals[2];
+      if (proposal?.type !== "operation" || proposal.descriptor.kind !== "effect") {
+        throw new Error("expected classified sample");
+      }
+      return proposal.descriptor;
+    };
 
-    const publicProgram = chat("You are a reviewer", {
-      inspect: modelTool(durableFixtureBinding, { resultClassification: "public" }),
+    const restricted = await sampleAfter("restricted", "inspect-1", {
+      derivedText: "restricted source without voluntary provenance",
     });
-    const publicGenerator = publicProgram.program(
-      acceptChatTurn(publicProgram.contextPolicy, message("current", "user", "inspect"), {
-        frontier: "f",
-      }) as unknown as Json & ReturnType<typeof acceptChatTurn>,
-      createDurableProgramContext(),
-    );
-    publicGenerator.next();
-    publicGenerator.next({
-      status: "ok",
-      value: {
-        message: message("call", "assistant", "inspecting"),
-        calls: [{ id: "inspect-2", target: "inspect", input: "safe" }],
-        artifacts: [],
-      },
+    expect((restricted.input as Record<string, Json>)["classifications"]).toEqual([
+      "internal",
+      "restricted",
+    ]);
+
+    const publicDescriptor = await sampleAfter("public", "inspect-2", {
+      classifications: ["restricted"],
+      ordinaryBusinessField: true,
     });
-    const shapeCollisionSample = publicGenerator.next({
-      status: "ok",
-      value: { classifications: ["restricted"], ordinaryBusinessField: true },
-    });
-    if (
-      shapeCollisionSample.done ||
-      shapeCollisionSample.value.type !== "operation" ||
-      shapeCollisionSample.value.descriptor.kind !== "effect"
-    ) {
-      throw new Error("expected public sample");
-    }
-    expect(
-      (shapeCollisionSample.value.descriptor.input as Record<string, Json>)["classifications"],
-    ).toEqual(["internal", "public"]);
+    expect((publicDescriptor.input as Record<string, Json>)["classifications"]).toEqual([
+      "internal",
+      "public",
+    ]);
   });
 
-  it("uses an explicit classified-result envelope to raise a declared ceiling", () => {
+  it("uses an explicit classified-result envelope to raise a declared ceiling", async () => {
     const program = chat("You are a reviewer", {
       inspect: modelTool(durableFixtureBinding, { resultClassification: "public" }),
     });
-    const generator = program.program(
-      acceptChatTurn(program.contextPolicy, message("current", "user", "inspect"), {
-        frontier: "f",
-      }) as unknown as Json & ReturnType<typeof acceptChatTurn>,
-      createDurableProgramContext(),
-    );
-    generator.next();
-    generator.next({
-      status: "ok",
-      value: {
-        message: message("call", "assistant", "inspecting"),
-        calls: [{ id: "inspect-3", target: "inspect", input: "safe" }],
-        artifacts: [],
+    const input = acceptChatTurn(program.contextPolicy, message("current", "user", "inspect"), {
+      frontier: "f",
+    });
+    const driven = await drive(program, input as unknown as Json, [
+      {
+        status: "ok",
+        value: {
+          message: message("call", "assistant", "inspecting"),
+          calls: [{ id: "inspect-3", target: "inspect", input: "safe" }],
+          artifacts: [],
+        } as unknown as Json,
       },
-    });
-    const next = generator.next({
-      status: "ok",
-      value: classifiedToolResult({ text: "derived" }, { classifications: ["restricted"] }),
-    });
-    if (next.done || next.value.type !== "operation" || next.value.descriptor.kind !== "effect") {
+      {
+        status: "ok",
+        value: classifiedToolResult(
+          { text: "derived" },
+          { classifications: ["restricted"] },
+        ) as Json,
+      },
+    ]);
+    const next = driven.proposals[2];
+    if (next?.type !== "operation" || next.descriptor.kind !== "effect") {
       throw new Error("expected raised classification");
     }
-    expect((next.value.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
+    expect((next.descriptor.input as Record<string, Json>)["classifications"]).toEqual([
       "internal",
       "restricted",
     ]);
@@ -402,7 +389,7 @@ describe("durable chat authoring", () => {
 
   it("matches the independently frozen chat-program digest vector", () => {
     expect(chat().manifest.digest).toBe(
-      "0ee4b70f7abc07527f715334ccd1af8dded3a1a38e9f9c24d7a1e66fe1161e37",
+      "b66230c7aab573660649f86cfa9351e12d8485da943bd16f3afb147b7f0daf07",
     );
   });
 

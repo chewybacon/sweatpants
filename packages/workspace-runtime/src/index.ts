@@ -11,8 +11,10 @@ import {
   sortStrings,
   type Json,
   type SandboxActivationFence,
+  useProgramExecution,
 } from "@sweatpants/session-contract";
 import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
+import { createApi } from "effection/experimental";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FILE_BYTES = 1024 * 1024;
@@ -33,7 +35,10 @@ interface RequestBase {
   readonly protocolVersion: 1;
   readonly fence: WorkspaceFence;
   readonly operationId: string;
-  readonly workspaceVersion: string;
+}
+
+interface MutationRequestBase extends RequestBase {
+  readonly expectedWorkspaceRevision: string;
 }
 
 export type WorkspaceRequest =
@@ -43,10 +48,19 @@ export type WorkspaceRequest =
       readonly fence: WorkspaceFence;
       readonly operationId: string;
     }
-  | (RequestBase & { readonly type: "read"; readonly path: string })
+  | (RequestBase & {
+      readonly type: "read";
+      readonly path: string;
+      readonly startLine?: number;
+      readonly endLine?: number;
+    })
   | (RequestBase & { readonly type: "list"; readonly path: string })
-  | (RequestBase & { readonly type: "write"; readonly path: string; readonly content: string })
-  | (RequestBase & { readonly type: "run-script"; readonly script: string });
+  | (MutationRequestBase & {
+      readonly type: "write";
+      readonly path: string;
+      readonly contents: string;
+    })
+  | (MutationRequestBase & { readonly type: "run-script"; readonly script: string });
 
 export type WorkspaceResponse =
   | {
@@ -57,6 +71,8 @@ export type WorkspaceResponse =
       readonly type: "read-result";
       readonly path: string;
       readonly content: string;
+      readonly startLine: number;
+      readonly endLine: number;
       readonly workspaceVersion: string;
     }
   | {
@@ -84,8 +100,102 @@ export interface WorkspaceConnector {
   request(request: WorkspaceRequest): Operation<WorkspaceResponse>;
 }
 
+export interface WorkspaceOperationExecution {
+  readonly fence: WorkspaceFence;
+  readonly operationId: string;
+}
+
+export interface WorkspaceObservation {
+  readonly workspaceRevision: string;
+}
+
+export interface WorkspaceOperations {
+  inspect(execution: WorkspaceOperationExecution): Operation<WorkspaceObservation>;
+  readFile(
+    input: { readonly path: string; readonly startLine?: number; readonly endLine?: number },
+    execution: WorkspaceOperationExecution,
+  ): Operation<{
+    readonly path: string;
+    readonly contents: string;
+    readonly startLine: number;
+    readonly endLine: number;
+    readonly workspaceRevision: string;
+  }>;
+  list(
+    input: { readonly path: string },
+    execution: WorkspaceOperationExecution,
+  ): Operation<{
+    readonly path: string;
+    readonly entries: readonly string[];
+    readonly workspaceRevision: string;
+  }>;
+  writeFile(
+    input: {
+      readonly path: string;
+      readonly contents: string;
+      readonly expectedWorkspaceRevision: string;
+    },
+    execution: WorkspaceOperationExecution,
+  ): Operation<{
+    readonly path: string;
+    readonly bytes: number;
+    readonly workspaceRevision: string;
+  }>;
+  runScript(
+    input: { readonly script: string; readonly expectedWorkspaceRevision: string },
+    execution: WorkspaceOperationExecution,
+  ): Operation<{
+    readonly script: string;
+    readonly exitCode: number;
+    readonly stdout: string;
+    readonly stderr: string;
+    readonly workspaceRevision: string;
+  }>;
+}
+
+export interface WorkspaceFilesApi {
+  inspect(): Operation<WorkspaceObservation>;
+  readFile(input: {
+    readonly path: string;
+    readonly startLine?: number;
+    readonly endLine?: number;
+  }): ReturnType<WorkspaceOperations["readFile"]>;
+  list(input: { readonly path: string }): ReturnType<WorkspaceOperations["list"]>;
+  writeFile(
+    input: {
+      readonly path: string;
+      readonly contents: string;
+      readonly expectedWorkspaceRevision: string;
+    },
+    execution: { readonly operationId: string },
+  ): ReturnType<WorkspaceOperations["writeFile"]>;
+  runScript(
+    input: { readonly script: string; readonly expectedWorkspaceRevision: string },
+    execution: { readonly operationId: string },
+  ): ReturnType<WorkspaceOperations["runScript"]>;
+}
+
+export const WorkspaceFiles = createApi<WorkspaceFilesApi>("sweatpants:workspace-files", {
+  *inspect() {
+    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
+  },
+  *readFile() {
+    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
+  },
+  *list() {
+    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
+  },
+  *writeFile() {
+    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
+  },
+  *runScript() {
+    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
+  },
+});
+
 export interface WorkspaceService {
   readonly initialWorkspaceVersion: string;
+  readonly operations: WorkspaceOperations;
   bind(fence: WorkspaceFence, scripts?: Readonly<Record<string, string>>): void;
   currentFence(): WorkspaceFence | undefined;
   currentWorkspaceVersion(): string;
@@ -141,126 +251,248 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
     }
   }
 
-  function* execute(request: WorkspaceRequest): Operation<WorkspaceResponse> {
-    validateRequest(request);
-    assertFence(activeFence, request.fence);
-    const requestDigest = canonicalSnapshot(assertJson(request)).sha;
-    const previous = committed.get(request.operationId);
-    if (previous) {
-      if (previous.requestDigest !== requestDigest) {
-        throw new CrankError("nondeterminism_detected", "operation ID was reused with new input");
+  const operations: WorkspaceOperations = {
+    *inspect(execution) {
+      assertExecution(execution);
+      return { workspaceRevision: workspaceVersion };
+    },
+    *readFile(input, execution) {
+      assertExecution(execution);
+      const path = yield* workspacePath(input.path, false);
+      const stat = yield* call(() => lstat(path));
+      if (!stat.isFile() || stat.size > MAX_FILE_BYTES) {
+        throw new CrankError("payload_too_large", "workspace file is not a bounded regular file");
       }
-      return structuredClone(previous.response);
-    }
-    if (request.type === "inspect") {
-      return { type: "inspect-result", workspaceVersion };
-    }
-    if (request.workspaceVersion !== workspaceVersion) {
-      throw new CrankError("workspace_version_conflict", "workspace version is stale", {
-        expected: workspaceVersion,
-        received: request.workspaceVersion,
-      });
-    }
-
-    switch (request.type) {
-      case "read": {
-        const path = yield* workspacePath(request.path, false);
-        const stat = yield* call(() => lstat(path));
-        if (!stat.isFile() || stat.size > MAX_FILE_BYTES) {
-          throw new CrankError("payload_too_large", "workspace file is not a bounded regular file");
+      const fullContents = yield* call(() => readFile(path, "utf8"));
+      const lines = fullContents.split("\n");
+      const startLine = lineNumber(input.startLine ?? 1, "startLine");
+      const requestedEnd = lineNumber(input.endLine ?? lines.length, "endLine");
+      if (requestedEnd < startLine || requestedEnd - startLine > 10_000) {
+        throw new CrankError("invalid_descriptor", "workspace line range is invalid or too large");
+      }
+      const endLine = Math.min(requestedEnd, lines.length);
+      const contents = lines.slice(startLine - 1, endLine).join("\n");
+      if (Buffer.byteLength(contents) > MAX_OUTPUT_BYTES) {
+        throw new CrankError("payload_too_large", "workspace read exceeds the result limit");
+      }
+      return {
+        path: relative(yield* call(() => realpath(root)), path),
+        contents,
+        startLine,
+        endLine,
+        workspaceRevision: workspaceVersion,
+      };
+    },
+    *list(input, execution) {
+      assertExecution(execution);
+      const path = yield* workspacePath(input.path, false);
+      const entries = sortStrings(yield* call(() => readdir(path)));
+      if (
+        entries.length > MAX_LIST_ENTRIES ||
+        Buffer.byteLength(JSON.stringify(entries)) > MAX_OUTPUT_BYTES
+      ) {
+        throw new CrankError("payload_too_large", "workspace listing exceeds the result limit");
+      }
+      return {
+        path: relative(yield* call(() => realpath(root)), path) || ".",
+        entries,
+        workspaceRevision: workspaceVersion,
+      };
+    },
+    *writeFile(input, execution) {
+      const { requestDigest, previous } = beginMutation("write", input, execution);
+      if (previous) {
+        if (previous.response.type !== "write-result") {
+          throw new CrankError("nondeterminism_detected", "operation ID changed mutation kind");
         }
         return {
+          path: previous.response.path,
+          bytes: previous.response.bytes,
+          workspaceRevision: previous.response.workspaceVersion,
+        };
+      }
+      assertExpectedRevision(input.expectedWorkspaceRevision);
+      if (Buffer.byteLength(input.contents) > MAX_FILE_BYTES) {
+        throw new CrankError("payload_too_large", "workspace write exceeds the file limit");
+      }
+      const path = yield* workspacePath(input.path, true);
+      yield* call(() => mkdir(dirname(path), { recursive: true }));
+      const temporary = `${path}.sweatpants-${sha256(execution.operationId).slice(0, 12)}.tmp`;
+      try {
+        yield* call(() => writeFile(temporary, input.contents, { encoding: "utf8", flag: "wx" }));
+        yield* call(() => rename(temporary, path));
+      } finally {
+        yield* call(() => rm(temporary, { force: true }));
+      }
+      workspaceVersion = nextWorkspaceVersion(workspaceVersion, requestDigest, {
+        path: input.path,
+        contentDigest: sha256(input.contents),
+      });
+      const response: WorkspaceResponse = {
+        type: "write-result",
+        path: relative(yield* call(() => realpath(root)), path),
+        bytes: Buffer.byteLength(input.contents),
+        workspaceVersion,
+      };
+      commitOperation(execution.operationId, { requestDigest, response });
+      return { path: response.path, bytes: response.bytes, workspaceRevision: workspaceVersion };
+    },
+    *runScript(input, execution) {
+      const { requestDigest, previous } = beginMutation("run-script", input, execution);
+      if (previous) {
+        if (previous.response.type !== "script-result") {
+          throw new CrankError("nondeterminism_detected", "operation ID changed mutation kind");
+        }
+        return {
+          script: previous.response.script,
+          exitCode: previous.response.exitCode,
+          stdout: previous.response.stdout,
+          stderr: previous.response.stderr,
+          workspaceRevision: previous.response.workspaceVersion,
+        };
+      }
+      assertExpectedRevision(input.expectedWorkspaceRevision);
+      const command = scripts[input.script];
+      if (!command) {
+        throw new CrankError("policy_unavailable", `script is not declared: ${input.script}`);
+      }
+      let stdout = "";
+      let stderr = "";
+      let exitCode = 0;
+      try {
+        const signal = yield* useAbortSignal();
+        const result = yield* call(() =>
+          executeScript(command, root, signal, options.maximumCommandMs ?? 120_000),
+        );
+        stdout = boundedOutput(result.stdout);
+        stderr = boundedOutput(result.stderr);
+      } catch (error) {
+        const failure = error as { code?: number | string; stdout?: string; stderr?: string };
+        exitCode = typeof failure.code === "number" ? failure.code : 1;
+        stdout = boundedOutput(failure.stdout ?? "");
+        stderr = boundedOutput(
+          failure.stderr ?? (error instanceof Error ? error.message : String(error)),
+        );
+      }
+      workspaceVersion = nextWorkspaceVersion(workspaceVersion, requestDigest, {
+        script: input.script,
+        outcome: "executed",
+      });
+      const response: WorkspaceResponse = {
+        type: "script-result",
+        script: input.script,
+        exitCode,
+        stdout,
+        stderr,
+        workspaceVersion,
+      };
+      commitOperation(execution.operationId, { requestDigest, response });
+      return {
+        script: input.script,
+        exitCode,
+        stdout,
+        stderr,
+        workspaceRevision: workspaceVersion,
+      };
+    },
+  };
+
+  function* execute(request: WorkspaceRequest): Operation<WorkspaceResponse> {
+    validateRequest(request);
+    const execution = { fence: request.fence, operationId: request.operationId };
+    switch (request.type) {
+      case "inspect": {
+        const result = yield* operations.inspect(execution);
+        return { type: "inspect-result", workspaceVersion: result.workspaceRevision };
+      }
+      case "read": {
+        const result = yield* operations.readFile(
+          {
+            path: request.path,
+            ...(request.startLine === undefined ? {} : { startLine: request.startLine }),
+            ...(request.endLine === undefined ? {} : { endLine: request.endLine }),
+          },
+          execution,
+        );
+        return {
           type: "read-result",
-          path: relative(yield* call(() => realpath(root)), path),
-          content: yield* call(() => readFile(path, "utf8")),
-          workspaceVersion,
+          path: result.path,
+          content: result.contents,
+          startLine: result.startLine,
+          endLine: result.endLine,
+          workspaceVersion: result.workspaceRevision,
         };
       }
       case "list": {
-        const path = yield* workspacePath(request.path, false);
-        const entries = sortStrings(yield* call(() => readdir(path)));
-        if (
-          entries.length > MAX_LIST_ENTRIES ||
-          Buffer.byteLength(JSON.stringify(entries)) > MAX_OUTPUT_BYTES
-        ) {
-          throw new CrankError("payload_too_large", "workspace listing exceeds the result limit");
-        }
+        const result = yield* operations.list({ path: request.path }, execution);
         return {
           type: "list-result",
-          path: relative(yield* call(() => realpath(root)), path) || ".",
-          entries,
-          workspaceVersion,
+          path: result.path,
+          entries: result.entries,
+          workspaceVersion: result.workspaceRevision,
         };
       }
       case "write": {
-        if (Buffer.byteLength(request.content) > MAX_FILE_BYTES) {
-          throw new CrankError("payload_too_large", "workspace write exceeds the file limit");
-        }
-        const path = yield* workspacePath(request.path, true);
-        yield* call(() => mkdir(dirname(path), { recursive: true }));
-        const temporary = `${path}.sweatpants-${sha256(request.operationId).slice(0, 12)}.tmp`;
-        try {
-          yield* call(() =>
-            writeFile(temporary, request.content, { encoding: "utf8", flag: "wx" }),
-          );
-          yield* call(() => rename(temporary, path));
-        } finally {
-          yield* call(() => rm(temporary, { force: true }));
-        }
-        workspaceVersion = nextWorkspaceVersion(workspaceVersion, requestDigest, {
-          path: request.path,
-          contentDigest: sha256(request.content),
-        });
-        const response: WorkspaceResponse = {
+        const result = yield* operations.writeFile(
+          {
+            path: request.path,
+            contents: request.contents,
+            expectedWorkspaceRevision: request.expectedWorkspaceRevision,
+          },
+          execution,
+        );
+        return {
           type: "write-result",
-          path: relative(yield* call(() => realpath(root)), path),
-          bytes: Buffer.byteLength(request.content),
-          workspaceVersion,
+          path: result.path,
+          bytes: result.bytes,
+          workspaceVersion: result.workspaceRevision,
         };
-        commitOperation(request.operationId, { requestDigest, response });
-        return structuredClone(response);
       }
       case "run-script": {
-        const command = scripts[request.script];
-        if (!command) {
-          throw new CrankError("policy_unavailable", `script is not declared: ${request.script}`);
-        }
-        let stdout = "";
-        let stderr = "";
-        let exitCode = 0;
-        try {
-          const signal = yield* useAbortSignal();
-          const result = yield* call(() =>
-            executeScript(command, root, signal, options.maximumCommandMs ?? 120_000),
-          );
-          stdout = boundedOutput(result.stdout);
-          stderr = boundedOutput(result.stderr);
-        } catch (error) {
-          const failure = error as { code?: number | string; stdout?: string; stderr?: string };
-          exitCode = typeof failure.code === "number" ? failure.code : 1;
-          stdout = boundedOutput(failure.stdout ?? "");
-          stderr = boundedOutput(
-            failure.stderr ?? (error instanceof Error ? error.message : String(error)),
-          );
-        }
-        // Declared scripts are opaque guest execution and may mutate any workspace
-        // byte. Advance the mutation frontier conservatively even when the script
-        // fails so a caller holding the pre-script version cannot CAS over it.
-        workspaceVersion = nextWorkspaceVersion(workspaceVersion, requestDigest, {
-          script: request.script,
-          outcome: "executed",
-        });
-        const response: WorkspaceResponse = {
+        const result = yield* operations.runScript(
+          {
+            script: request.script,
+            expectedWorkspaceRevision: request.expectedWorkspaceRevision,
+          },
+          execution,
+        );
+        return {
           type: "script-result",
-          script: request.script,
-          exitCode,
-          stdout,
-          stderr,
-          workspaceVersion,
+          script: result.script,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          workspaceVersion: result.workspaceRevision,
         };
-        commitOperation(request.operationId, { requestDigest, response });
-        return structuredClone(response);
       }
+    }
+  }
+
+  function assertExecution(execution: WorkspaceOperationExecution): void {
+    assertFence(activeFence, execution.fence);
+    text(execution.operationId, "operation ID");
+  }
+
+  function beginMutation(
+    kind: "write" | "run-script",
+    input: unknown,
+    execution: WorkspaceOperationExecution,
+  ): { requestDigest: string; previous?: CommittedOperation } {
+    assertExecution(execution);
+    const requestDigest = canonicalSnapshot(assertJson({ kind, input, execution })).sha;
+    const previous = committed.get(execution.operationId);
+    if (previous && previous.requestDigest !== requestDigest) {
+      throw new CrankError("nondeterminism_detected", "operation ID was reused with new input");
+    }
+    return { requestDigest, ...(previous ? { previous } : {}) };
+  }
+
+  function assertExpectedRevision(expected: string): void {
+    if (expected !== workspaceVersion) {
+      throw new CrankError("workspace_conflict", "workspace revision is stale", {
+        expected,
+        current: workspaceVersion,
+      });
     }
   }
 
@@ -293,7 +525,12 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
       const code = error instanceof CrankError ? error.code : "internal_error";
       const status =
         code === "sandbox_generation_stale" ? 409 : code === "internal_error" ? 500 : 400;
-      return errorResponse(status, code, boundedMessage(error));
+      return errorResponse(
+        status,
+        code,
+        boundedMessage(error),
+        error instanceof CrankError ? error.details : undefined,
+      );
     }
   }
 
@@ -321,6 +558,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
 
   return {
     initialWorkspaceVersion,
+    operations,
     bind,
     currentFence: () => (activeFence ? structuredClone(activeFence) : undefined),
     currentWorkspaceVersion: () => workspaceVersion,
@@ -410,6 +648,158 @@ export function createLoopbackWorkspaceConnector(service: WorkspaceService): Wor
   };
 }
 
+/** Installs a direct attachment-scope provider over named semantic operations. */
+export function installLocalWorkspaceFilesProvider(options: {
+  readonly resolve: () => Operation<{
+    readonly operations: WorkspaceOperations;
+    readonly fence: WorkspaceFence;
+  }>;
+}): Operation<void> {
+  return WorkspaceFiles.around({
+    *inspect() {
+      const execution = yield* useProgramExecution();
+      const binding = yield* options.resolve();
+      return yield* binding.operations.inspect({
+        fence: binding.fence,
+        operationId: execution.operationId("workspace.inspect"),
+      });
+    },
+    *readFile(args) {
+      const execution = yield* useProgramExecution();
+      const binding = yield* options.resolve();
+      return yield* binding.operations.readFile(args[0], {
+        fence: binding.fence,
+        operationId: execution.operationId("workspace.read-file"),
+      });
+    },
+    *list(args) {
+      const execution = yield* useProgramExecution();
+      const binding = yield* options.resolve();
+      return yield* binding.operations.list(args[0], {
+        fence: binding.fence,
+        operationId: execution.operationId("workspace.list"),
+      });
+    },
+    *writeFile(args) {
+      const binding = yield* options.resolve();
+      return yield* binding.operations.writeFile(args[0], {
+        fence: binding.fence,
+        operationId: args[1].operationId,
+      });
+    },
+    *runScript(args) {
+      const binding = yield* options.resolve();
+      return yield* binding.operations.runScript(args[0], {
+        fence: binding.fence,
+        operationId: args[1].operationId,
+      });
+    },
+  });
+}
+
+/** Installs a transport-hiding provider over a finite workspace connector. */
+export function installRemoteWorkspaceFilesProvider(options: {
+  readonly resolve: () => Operation<{
+    readonly connector: WorkspaceConnector;
+    readonly fence: WorkspaceFence;
+  }>;
+}): Operation<void> {
+  return WorkspaceFiles.around({
+    *inspect() {
+      const execution = yield* useProgramExecution();
+      const binding = yield* options.resolve();
+      const response = yield* binding.connector.request({
+        protocolVersion: 1,
+        type: "inspect",
+        fence: binding.fence,
+        operationId: execution.operationId("workspace.inspect"),
+      });
+      if (response.type !== "inspect-result") throw wrongWorkspaceResponse("inspect");
+      return { workspaceRevision: response.workspaceVersion };
+    },
+    *readFile(args) {
+      const execution = yield* useProgramExecution();
+      const binding = yield* options.resolve();
+      const input = args[0];
+      const response = yield* binding.connector.request({
+        protocolVersion: 1,
+        type: "read",
+        fence: binding.fence,
+        operationId: execution.operationId("workspace.read-file"),
+        path: input.path,
+        ...(input.startLine === undefined ? {} : { startLine: input.startLine }),
+        ...(input.endLine === undefined ? {} : { endLine: input.endLine }),
+      });
+      if (response.type !== "read-result") throw wrongWorkspaceResponse("readFile");
+      return {
+        path: response.path,
+        contents: response.content,
+        startLine: response.startLine,
+        endLine: response.endLine,
+        workspaceRevision: response.workspaceVersion,
+      };
+    },
+    *list(args) {
+      const execution = yield* useProgramExecution();
+      const binding = yield* options.resolve();
+      const response = yield* binding.connector.request({
+        protocolVersion: 1,
+        type: "list",
+        fence: binding.fence,
+        operationId: execution.operationId("workspace.list"),
+        path: args[0].path,
+      });
+      if (response.type !== "list-result") throw wrongWorkspaceResponse("list");
+      return {
+        path: response.path,
+        entries: [...response.entries],
+        workspaceRevision: response.workspaceVersion,
+      };
+    },
+    *writeFile(args) {
+      const binding = yield* options.resolve();
+      const response = yield* binding.connector.request({
+        protocolVersion: 1,
+        type: "write",
+        fence: binding.fence,
+        operationId: args[1].operationId,
+        expectedWorkspaceRevision: args[0].expectedWorkspaceRevision,
+        path: args[0].path,
+        contents: args[0].contents,
+      });
+      if (response.type !== "write-result") throw wrongWorkspaceResponse("writeFile");
+      return {
+        path: response.path,
+        bytes: response.bytes,
+        workspaceRevision: response.workspaceVersion,
+      };
+    },
+    *runScript(args) {
+      const binding = yield* options.resolve();
+      const response = yield* binding.connector.request({
+        protocolVersion: 1,
+        type: "run-script",
+        fence: binding.fence,
+        operationId: args[1].operationId,
+        expectedWorkspaceRevision: args[0].expectedWorkspaceRevision,
+        script: args[0].script,
+      });
+      if (response.type !== "script-result") throw wrongWorkspaceResponse("runScript");
+      return {
+        script: response.script,
+        exitCode: response.exitCode,
+        stdout: response.stdout,
+        stderr: response.stderr,
+        workspaceRevision: response.workspaceVersion,
+      };
+    },
+  });
+}
+
+function wrongWorkspaceResponse(method: string): CrankError {
+  return new CrankError("sandbox_unavailable", `Workspace ${method} returned the wrong response`);
+}
+
 export function createHttpWorkspaceConnector(options: {
   readonly endpoint: string;
   readonly headers?: () => Operation<Readonly<Record<string, string>>>;
@@ -433,10 +823,11 @@ export function createHttpWorkspaceConnector(options: {
       );
       const body = yield* readBoundedResponseBody(response, MAX_BODY_BYTES);
       if (!response.ok) {
-        const error = body as { error?: { code?: string; message?: string } };
+        const error = body as { error?: { code?: string; message?: string; details?: Json } };
         throw new CrankError(
           error.error?.code ?? "sandbox_unavailable",
           error.error?.message ?? `workspace request failed with ${response.status}`,
+          error.error?.details,
         );
       }
       return parseWorkspaceResponse(body);
@@ -459,38 +850,48 @@ export function parseWorkspaceRequest(value: unknown): WorkspaceRequest {
     exactKeys(input, ["protocolVersion", "type", "fence", "operationId"]);
     return { ...common, protocolVersion: 1, type };
   }
-  const base = {
-    ...common,
-    workspaceVersion: sha(input["workspaceVersion"], "workspace version"),
-  };
   switch (type) {
     case "read":
+      exactOptionalKeys(
+        input,
+        ["protocolVersion", "type", "fence", "operationId", "path"],
+        ["startLine", "endLine"],
+      );
+      return {
+        ...common,
+        protocolVersion: 1,
+        type,
+        path: safeRelativePath(input["path"]),
+        ...(input["startLine"] === undefined
+          ? {}
+          : { startLine: positiveInteger(input["startLine"], "start line") }),
+        ...(input["endLine"] === undefined
+          ? {}
+          : { endLine: positiveInteger(input["endLine"], "end line") }),
+      };
     case "list":
-      exactKeys(input, [
-        "protocolVersion",
-        "type",
-        "fence",
-        "operationId",
-        "workspaceVersion",
-        "path",
-      ]);
-      return { ...base, protocolVersion: 1, type, path: safeRelativePath(input["path"]) };
+      exactKeys(input, ["protocolVersion", "type", "fence", "operationId", "path"]);
+      return { ...common, protocolVersion: 1, type, path: safeRelativePath(input["path"]) };
     case "write":
       exactKeys(input, [
         "protocolVersion",
         "type",
         "fence",
         "operationId",
-        "workspaceVersion",
+        "expectedWorkspaceRevision",
         "path",
-        "content",
+        "contents",
       ]);
       return {
-        ...base,
+        ...common,
         protocolVersion: 1,
         type,
+        expectedWorkspaceRevision: sha(
+          input["expectedWorkspaceRevision"],
+          "expected workspace revision",
+        ),
         path: safeRelativePath(input["path"]),
-        content: text(input["content"], "workspace content"),
+        contents: text(input["contents"], "workspace contents"),
       };
     case "run-script":
       exactKeys(input, [
@@ -498,10 +899,19 @@ export function parseWorkspaceRequest(value: unknown): WorkspaceRequest {
         "type",
         "fence",
         "operationId",
-        "workspaceVersion",
+        "expectedWorkspaceRevision",
         "script",
       ]);
-      return { ...base, protocolVersion: 1, type, script: text(input["script"], "script") };
+      return {
+        ...common,
+        protocolVersion: 1,
+        type,
+        expectedWorkspaceRevision: sha(
+          input["expectedWorkspaceRevision"],
+          "expected workspace revision",
+        ),
+        script: text(input["script"], "script"),
+      };
     default:
       throw new CrankError("invalid_mcp_request", "unknown workspace request type");
   }
@@ -518,6 +928,8 @@ export function parseWorkspaceResponse(value: unknown): WorkspaceResponse {
         type: "read-result",
         path: safeRelativePath(input["path"]),
         content: text(input["content"], "workspace content"),
+        startLine: positiveInteger(input["startLine"], "start line"),
+        endLine: positiveInteger(input["endLine"], "end line"),
         workspaceVersion,
       };
     case "list-result":
@@ -789,8 +1201,11 @@ function boundedMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 4_096);
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
-  return Response.json({ error: { code, message } }, { status });
+function errorResponse(status: number, code: string, message: string, details?: Json): Response {
+  return Response.json(
+    { error: { code, message, ...(details === undefined ? {} : { details }) } },
+    { status },
+  );
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -803,6 +1218,20 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function exactKeys(value: Record<string, unknown>, allowed: readonly string[]): void {
   const actual = Object.keys(value);
   if (actual.length !== allowed.length || actual.some((key) => !allowed.includes(key))) {
+    throw new CrankError("invalid_mcp_request", "unknown or missing workspace message field");
+  }
+}
+
+function exactOptionalKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+): void {
+  const actual = Object.keys(value);
+  if (
+    required.some((key) => !actual.includes(key)) ||
+    actual.some((key) => !required.includes(key) && !optional.includes(key))
+  ) {
     throw new CrankError("invalid_mcp_request", "unknown or missing workspace message field");
   }
 }
@@ -841,4 +1270,11 @@ function positiveInteger(value: unknown, label: string): number {
     throw new CrankError("invalid_mcp_request", `${label} must be positive`);
   }
   return number;
+}
+
+function lineNumber(value: number, label: string): number {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 10_000_000) {
+    throw new CrankError("invalid_descriptor", `${label} must be a bounded positive integer`);
+  }
+  return value;
 }
