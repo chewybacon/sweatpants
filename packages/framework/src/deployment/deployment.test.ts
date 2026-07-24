@@ -23,8 +23,12 @@ const provider = defineModelProvider({
 });
 const sampling = hostModelSampling(provider);
 
+const capability = {
+  manifest: { programId: "fixture.read", version: "1.0.0", digest: sha256("read") },
+};
 const program = {
   manifest: { programId: "fixture.program", version: "1.0.0", digest: sha256("program") },
+  childPrograms: { read: capability },
 };
 
 function workspace(persistence: "sandbox_lease" | "checkpoint_restore" = "sandbox_lease") {
@@ -66,7 +70,7 @@ describe("deployment authoring", () => {
       modelProvider: provider,
       modelSampling: sampling,
       programs: { chat: program },
-      capabilities: { read: program },
+      capabilities: { read: capability },
       workspace: workspace(),
       sandbox: sandbox(),
       projections: [reactChat(), headlessHttp(), streamableMcp()],
@@ -78,7 +82,7 @@ describe("deployment authoring", () => {
       modelProvider: provider,
       modelSampling: sampling,
       programs: { chat: program },
-      capabilities: { read: program },
+      capabilities: { read: capability },
       workspace: workspace(),
       sandbox: sandbox(),
       projections: [reactChat(), headlessHttp(), streamableMcp()],
@@ -144,6 +148,52 @@ describe("deployment authoring", () => {
         projections: [headlessHttp()],
       }),
     ).toThrow(/deny-network enforcement/);
+  });
+
+  it("rejects dangling child capabilities and projection path collisions", () => {
+    expect(() =>
+      defineDeployment({
+        name: "dangling-capability",
+        mode: "development",
+        authority: developmentJournal(),
+        modelProvider: provider,
+        modelSampling: sampling,
+        programs: { chat: program },
+        capabilities: { orphan: capability },
+        workspace: workspace(),
+        sandbox: sandbox(),
+        projections: [headlessHttp()],
+      }),
+    ).toThrow(/capability orphan is not referenced/);
+
+    expect(() =>
+      defineDeployment({
+        name: "colliding-projections",
+        mode: "development",
+        authority: developmentJournal(),
+        modelProvider: provider,
+        modelSampling: sampling,
+        programs: { chat: program },
+        capabilities: {},
+        workspace: workspace(),
+        sandbox: sandbox(),
+        projections: [reactChat("/shared"), headlessHttp("/shared")],
+      }),
+    ).toThrow(/projection paths must be unique/);
+  });
+
+  it("rejects invalid Lambda MicroVM lifecycle bounds", () => {
+    expect(() =>
+      lambdaMicrovm({
+        image: {
+          name: "sandbox",
+          version: "3.0",
+          node: "24",
+          architecture: "arm64",
+        },
+        lifecycle: { warmIdleSeconds: 30, suspendedLifetimeSeconds: 28_800, autoResume: true },
+      }),
+    ).toThrow(/at least 60/);
   });
 
   it("keeps only secret references and rejects raw/unknown definition fields", () => {

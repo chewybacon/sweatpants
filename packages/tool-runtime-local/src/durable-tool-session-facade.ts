@@ -284,7 +284,9 @@ function effectRegistrations(
     satisfies:
       definition.retrySafety.mode === "idempotent"
         ? { mode: "idempotent", mechanism: definition.retrySafety.mechanism }
-        : { mode: "unsafe" },
+        : definition.retrySafety.mode === "repeatable"
+          ? { mode: "repeatable" }
+          : { mode: "unsafe" },
     handler(input, context) {
       const configuredHandler = configured?.get(definition.name);
       if (configuredHandler) {

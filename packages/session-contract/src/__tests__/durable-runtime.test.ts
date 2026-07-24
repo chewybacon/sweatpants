@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 import {
   CrankError,
   DurableEffectRegistryContext,
+  DurableEffectRouting,
+  ExecutionDurableEffectRegistryContext,
   JournalAuthorityContext,
+  LEGACY_MODEL_SAMPLE_EFFECT,
+  MODEL_SAMPLE_EFFECT,
   ProgramDriverRegistryContext,
   ProgramPeer,
   ProgramRuntime,
@@ -14,6 +18,7 @@ import {
   createDurableToolRegistry,
   createInMemoryDurableJournalAuthority,
   createLocalGeneratorDriver,
+  createModelSamplingEffectRegistration,
   createProgramDriverRegistry,
   parseDurableAuthoritySnapshot,
   signCapability,
@@ -54,7 +59,12 @@ const echoOutput = createSchemaFixture(
   { type: "string" },
   stringGuard,
 );
-const mutateInput = createSchemaFixture("fixture.basic/mutate-input", "effect_input", true, anyGuard);
+const mutateInput = createSchemaFixture(
+  "fixture.basic/mutate-input",
+  "effect_input",
+  true,
+  anyGuard,
+);
 const mutateOutput = createSchemaFixture(
   "fixture.basic/mutate-output",
   "effect_output",
@@ -215,6 +225,24 @@ function createAuthority(sessionId = "session-1", now: () => number = () => 1_00
 }
 
 describe("crank-native durable runtime", () => {
+  it("coexists with legacy model.sample v1 while new authoring uses repeatable v2", () => {
+    expect(LEGACY_MODEL_SAMPLE_EFFECT).toMatchObject({
+      name: "model.sample",
+      version: "1",
+      retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
+    });
+    expect(MODEL_SAMPLE_EFFECT).toMatchObject({
+      name: "model.sample",
+      version: "2",
+      retrySafety: { mode: "repeatable" },
+    });
+    const registry = createDurableEffectRegistry([
+      createModelSamplingEffectRegistration(LEGACY_MODEL_SAMPLE_EFFECT),
+      createModelSamplingEffectRegistration(),
+    ]);
+    expect([...registry.keys()].toSorted()).toEqual(["model.sample@1", "model.sample@2"]);
+  });
+
   it("validates manifests and drives a disposable local generator with ordered actions", async () => {
     const tool = createPinnedDurableProgram(manifest, function* (input, context) {
       yield* context.emit("progress", { input });
@@ -481,6 +509,139 @@ describe("crank-native durable runtime", () => {
     });
   });
 
+  it("retries a detached repeatable recording with one pull and distinct attempts", async () => {
+    const { authority, attach } = createAuthority("repeatable-record");
+    await run(function* () {
+      const opened = yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const descriptor = {
+        kind: "record" as const,
+        label: "random-value",
+        retrySafety: { mode: "repeatable" as const },
+      };
+      const first = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor,
+        programCapability: opened.programCapability,
+      });
+      if (first.status !== "authorized") {
+        throw new Error("first recording was not authorized");
+      }
+      const replacement = yield* authority.replaceAttachment(
+        attach.sessionId,
+        attach.taskId,
+        "repeatable-replacement",
+      );
+      const second = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor,
+        programCapability: replacement.programCapability,
+      });
+      if (second.status !== "authorized") {
+        throw new Error("retry was not authorized");
+      }
+      expect(second.pullId).toBe(first.pullId);
+      expect(second.attemptId).not.toBe(first.attemptId);
+      expect(
+        yield* authority.resolve({
+          capability: second.resolutionCapability,
+          audience: "program-execution",
+          outcome: { status: "ok", value: "second-value" },
+        }),
+      ).toMatchObject({ status: "accepted" });
+      expect(
+        yield* authority.resolve({
+          capability: first.resolutionCapability,
+          audience: "program-execution",
+          outcome: { status: "ok", value: "first-value" },
+        }),
+      ).toMatchObject({ status: "rejected" });
+      const replayed = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor,
+        programCapability: replacement.programCapability,
+      });
+      expect(replayed).toMatchObject({
+        status: "resolved",
+        outcome: { status: "ok", value: "second-value" },
+      });
+    });
+  });
+
+  it("fails a detached unsafe recording without retrying", async () => {
+    const { authority, attach } = createAuthority("unsafe-record");
+    await run(function* () {
+      const opened = yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const descriptor = {
+        kind: "record" as const,
+        label: "unsafe-send",
+        retrySafety: { mode: "unsafe" as const, onIndeterminate: "fail" as const },
+      };
+      const first = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor,
+        programCapability: opened.programCapability,
+      });
+      expect(first.status).toBe("authorized");
+      const replacement = yield* authority.replaceAttachment(
+        attach.sessionId,
+        attach.taskId,
+        "unsafe-replacement",
+      );
+      const replayed = yield* authority.reserve({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        actionIndex: 0,
+        pullIndex: 0,
+        descriptor,
+        programCapability: replacement.programCapability,
+      });
+      expect(replayed).toMatchObject({
+        status: "resolved",
+        outcome: { status: "error", error: { code: "effect_outcome_indeterminate" } },
+      });
+      expect(
+        authority
+          .readJournal(attach.sessionId)
+          .filter((record) => record.payload.type === "AttemptStarted"),
+      ).toHaveLength(1);
+    });
+  });
+
   it("persists relative wait deadlines once and rejects early scheduler resolution", async () => {
     let now = 10_000;
     const { authority, attach } = createAuthority("wait", () => now);
@@ -596,6 +757,254 @@ describe("crank-native durable runtime", () => {
         ),
       ).toMatchObject({ accepted: true });
     });
+  });
+
+  it("routes an installed effect to execution through scoped middleware", async () => {
+    let executions = 0;
+    const tool = createPinnedDurableProgram(manifest, function* (input, context) {
+      return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const effects = createDurableEffectRegistry([
+      {
+        definition: manifest.effects.echo!,
+        satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
+        handler: (input) =>
+          (function* () {
+            executions += 1;
+            return { status: "ok" as const, value: `${input}:execution` };
+          })(),
+      },
+    ]);
+    const { authority, attach } = createAuthority("execution-route");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      yield* DurableEffectRouting.around({
+        *route() {
+          return { placement: "execution" as const };
+        },
+      });
+      const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* DurableEffectRegistryContext.with(effects, function* () {
+            return yield* ExecutionDurableEffectRegistryContext.with(effects, function* () {
+              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+            });
+          });
+        });
+      });
+      expect(result).toEqual({ state: "completed", value: "hello:execution" });
+    });
+    expect(executions).toBe(1);
+  });
+
+  it("fails closed when execution placement has no implementation", async () => {
+    let hostExecutions = 0;
+    const tool = createPinnedDurableProgram(manifest, function* (input, context) {
+      return yield* context.effect<string>("echo", "1", input, { audience: "host-effects" });
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const hostEffects = createDurableEffectRegistry([
+      {
+        definition: manifest.effects.echo!,
+        satisfies: { mode: "idempotent", mechanism: "pull_id_key" },
+        handler: (input) =>
+          (function* () {
+            hostExecutions += 1;
+            return { status: "ok" as const, value: input };
+          })(),
+      },
+    ]);
+    const { authority, attach } = createAuthority("missing-execution-route");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      yield* DurableEffectRouting.around({
+        *route() {
+          return { placement: "execution" as const };
+        },
+      });
+      const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* DurableEffectRegistryContext.with(hostEffects, function* () {
+            return yield* ExecutionDurableEffectRegistryContext.with(
+              createDurableEffectRegistry([]),
+              function* () {
+                return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+              },
+            );
+          });
+        });
+      });
+      expect(result).toMatchObject({
+        state: "failed",
+        error: { code: "effect_placement_unavailable" },
+      });
+    });
+    expect(hostExecutions).toBe(0);
+  });
+
+  it("authorizes and records one execution-owned repeatable operation", async () => {
+    let executions = 0;
+    const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
+      return yield* context.record("draw-card", function* () {
+        executions += 1;
+        return "ace-of-spades";
+      });
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const { authority, attach } = createAuthority("record-runtime");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* DurableEffectRegistryContext.with(
+            createDurableEffectRegistry([]),
+            function* () {
+              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+            },
+          );
+        });
+      });
+      expect(result).toEqual({ state: "completed", value: "ace-of-spades" });
+    });
+
+    expect(executions).toBe(1);
+    expect(authority.readJournal(attach.sessionId).map((record) => record.payload.type)).toEqual([
+      "TaskOpened",
+      "PullRequested",
+      "AttemptStarted",
+      "PullResolved",
+      "TaskClosed",
+    ]);
+    expect(
+      authority
+        .readJournal(attach.sessionId)
+        .find((record) => record.payload.type === "PullRequested"),
+    ).toMatchObject({
+      payload: {
+        descriptor: {
+          kind: "record",
+          label: "draw-card",
+          retrySafety: { mode: "repeatable" },
+        },
+      },
+    });
+  });
+
+  it("records an oversized inline value as a typed replayable failure", async () => {
+    const tool = createPinnedDurableProgram(manifest, function* (_input, context) {
+      return yield* context.record(function* () {
+        return "x".repeat(1024 * 1024 + 1);
+      });
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const { authority, attach } = createAuthority("oversized-record-runtime");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* DurableEffectRegistryContext.with(
+            createDurableEffectRegistry([]),
+            function* () {
+              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+            },
+          );
+        });
+      });
+      expect(result).toMatchObject({
+        state: "failed",
+        error: { code: "record_value_too_large" },
+      });
+    });
+  });
+
+  it("rejects nested durable scheduling inside a recorded operation", async () => {
+    const tool = createPinnedDurableProgram(manifest, function* (input, context) {
+      return yield* context.record(function* () {
+        return yield* context.effect<string>("echo", "1", input, {
+          audience: "host-effects",
+        });
+      });
+    });
+    const tools = createDurableToolRegistry([tool]);
+    const drivers = createProgramDriverRegistry([["generator", createLocalGeneratorDriver(tools)]]);
+    const { authority, attach } = createAuthority("nested-record-runtime");
+
+    await run(function* () {
+      yield* authority.openTask({
+        sessionId: attach.sessionId,
+        turnId: "turn-0",
+        taskId: attach.taskId,
+        manifest,
+        input: attach.input,
+        executionEpoch: 1,
+        attachmentId: stableProgramAttachmentId(attach),
+        audience: "program-host",
+      });
+      const result = yield* ProgramDriverRegistryContext.with(drivers, function* () {
+        return yield* JournalAuthorityContext.with(authority, function* () {
+          return yield* DurableEffectRegistryContext.with(
+            createDurableEffectRegistry([]),
+            function* () {
+              return yield* ProgramRuntime.operations.run({ attach, executeHostEffects: true });
+            },
+          );
+        });
+      });
+      expect(result).toMatchObject({
+        state: "failed",
+        error: { code: "nested_durable_operation" },
+      });
+    });
+    expect(
+      authority
+        .readJournal(attach.sessionId)
+        .filter((record) => record.payload.type === "PullRequested"),
+    ).toHaveLength(1);
   });
 
   it("uses native createApi max/min middleware and runs host effects through durable receipt gating", async () => {

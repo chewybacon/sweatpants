@@ -1,19 +1,11 @@
 import type { Operation } from "effection";
-import { effectRuntimeValidators } from "@sweatpants/core";
 import {
-  createDurableEffectRegistration,
   type DurableEffectContext,
   type DurableEffectRegistration,
 } from "@sweatpants/session-contract";
 import type { WorkspaceConnector, WorkspaceFence } from "@sweatpants/workspace-runtime";
 
-import {
-  inspectWorkspace,
-  listWorkspace,
-  readWorkspaceFile,
-  runWorkspaceScript,
-  writeWorkspaceFile,
-} from "../capabilities/workspace.ts";
+import { workspace } from "../capabilities/workspace.ts";
 
 export interface WorkspaceEffectBinding {
   readonly connector: WorkspaceConnector;
@@ -25,18 +17,17 @@ export interface WorkspaceEffectAdapterOptions {
 }
 
 /**
- * Binds authored workspace contracts to one fenced finite-HTTP connector.
- * Program code remains provider-neutral and the connector receives no journal
- * capability or terminal authority.
+ * Implements the authored workspace extension over one dynamically resolved,
+ * fenced connector. The generic extension owns registration and middleware;
+ * this provider contains only workspace protocol adaptation.
  */
 export function createWorkspaceEffectRegistrations(
   options: WorkspaceEffectAdapterOptions,
 ): readonly DurableEffectRegistration[] {
-  return [
-    createDurableEffectRegistration(
-      inspectWorkspace,
-      { mode: "idempotent", mechanism: "inherent" },
-      function* (_input, context) {
+  return workspace.implement({
+    name: "yo-studio-workspace-provider",
+    methods: {
+      *inspect(_input, context) {
         const binding = yield* options.resolve(context);
         const response = yield* binding.connector.request({
           protocolVersion: 1,
@@ -47,14 +38,9 @@ export function createWorkspaceEffectRegistrations(
         if (response.type !== "inspect-result") {
           throw new Error("workspace inspect returned the wrong response type");
         }
-        return { status: "ok", value: response };
+        return response;
       },
-      effectRuntimeValidators(inspectWorkspace),
-    ),
-    createDurableEffectRegistration(
-      readWorkspaceFile,
-      { mode: "idempotent", mechanism: "inherent" },
-      function* (input, context) {
+      *readFile(input, context) {
         const binding = yield* options.resolve(context);
         const response = yield* binding.connector.request({
           protocolVersion: 1,
@@ -67,14 +53,9 @@ export function createWorkspaceEffectRegistrations(
         if (response.type !== "read-result") {
           throw new Error("workspace read returned the wrong response type");
         }
-        return { status: "ok", value: response };
+        return response;
       },
-      effectRuntimeValidators(readWorkspaceFile),
-    ),
-    createDurableEffectRegistration(
-      listWorkspace,
-      { mode: "idempotent", mechanism: "inherent" },
-      function* (input, context) {
+      *list(input, context) {
         const binding = yield* options.resolve(context);
         const response = yield* binding.connector.request({
           protocolVersion: 1,
@@ -87,14 +68,9 @@ export function createWorkspaceEffectRegistrations(
         if (response.type !== "list-result") {
           throw new Error("workspace list returned the wrong response type");
         }
-        return { status: "ok", value: { ...response, entries: [...response.entries] } };
+        return { ...response, entries: [...response.entries] };
       },
-      effectRuntimeValidators(listWorkspace),
-    ),
-    createDurableEffectRegistration(
-      writeWorkspaceFile,
-      { mode: "idempotent", mechanism: "pull_id_key" },
-      function* (input, context) {
+      *writeFile(input, context) {
         const binding = yield* options.resolve(context);
         const response = yield* binding.connector.request({
           protocolVersion: 1,
@@ -108,14 +84,9 @@ export function createWorkspaceEffectRegistrations(
         if (response.type !== "write-result") {
           throw new Error("workspace write returned the wrong response type");
         }
-        return { status: "ok", value: response };
+        return response;
       },
-      effectRuntimeValidators(writeWorkspaceFile),
-    ),
-    createDurableEffectRegistration(
-      runWorkspaceScript,
-      { mode: "idempotent", mechanism: "pull_id_key" },
-      function* (input, context) {
+      *runScript(input, context) {
         const binding = yield* options.resolve(context);
         const response = yield* binding.connector.request({
           protocolVersion: 1,
@@ -128,9 +99,8 @@ export function createWorkspaceEffectRegistrations(
         if (response.type !== "script-result") {
           throw new Error("workspace script returned the wrong response type");
         }
-        return { status: "ok", value: response };
+        return response;
       },
-      effectRuntimeValidators(runWorkspaceScript),
-    ),
-  ];
+    },
+  }).registrations;
 }

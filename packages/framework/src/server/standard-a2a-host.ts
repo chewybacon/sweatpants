@@ -209,7 +209,16 @@ export interface StandardA2AEvidence {
   readonly operations: readonly {
     readonly taskId: string;
     readonly pullId: string;
-    readonly kind: "effect" | "invoke" | "elicit" | "wait" | "all" | "race" | "spawn" | "join";
+    readonly kind:
+      | "effect"
+      | "record"
+      | "invoke"
+      | "elicit"
+      | "wait"
+      | "all"
+      | "race"
+      | "spawn"
+      | "join";
     readonly target: string;
     readonly state: "pending" | "resolved";
   }[];

@@ -139,7 +139,7 @@ describe("createDurableTool fluent builder", () => {
       descriptor: {
         kind: "effect",
         name: "model.sample",
-        version: "1",
+        version: "2",
         input: {
           messages: [{ role: "user", content: "Choose a value" }],
           schema: { type: "object" },
@@ -171,11 +171,15 @@ describe("createDurableTool fluent builder", () => {
         ? parameters
             .samples()
             .effects({ echo })
-            .execute(function* () { return null; })
+            .execute(function* () {
+              return null;
+            })
         : parameters
             .effects({ echo })
             .samples()
-            .execute(function* () { return null; });
+            .execute(function* () {
+              return null;
+            });
     };
     expect(Object.keys(build(true).manifest.effects).sort()).toEqual(["echo", "model.sample"]);
     expect(Object.keys(build(false).manifest.effects).sort()).toEqual(["echo", "model.sample"]);
@@ -195,7 +199,9 @@ describe("createDurableTool fluent builder", () => {
           retries: 11,
         } as never);
       });
-    expect(() => tool.program({}, createDurableProgramContext()).next()).toThrow(/exactly one|retries/);
+    expect(() => tool.program({}, createDurableProgramContext()).next()).toThrow(
+      /exactly one|retries/,
+    );
   });
 
   it("publishes effect validator catalog entries beside authored definitions", () => {

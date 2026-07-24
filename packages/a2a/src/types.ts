@@ -98,7 +98,7 @@ export interface ProgramEnvelopeV1<TType extends string, TPayload> {
 /** Transport-safe ProgramCommand projection. Authorization capabilities never cross this boundary. */
 export type WireProgramCommandV1 =
   | Extract<ProgramCommand, { type: "start" | "resume" | "ack_emission" | "cancel" }>
-  | { type: "authorize"; actionIndex: number; pullId: string; attemptId: string };
+  | Omit<Extract<ProgramCommand, { type: "authorize" }>, "resolutionCapability">;
 
 export type AttachBeginV1 = ProgramEnvelopeV1<"attach_begin", { input: Json; inputDigest: string }>;
 export type ProgramCommandFrameV1 = ProgramEnvelopeV1<"command", { command: WireProgramCommandV1 }>;

@@ -1,3 +1,5 @@
+import type { Operation } from "effection";
+
 import { canonicalSnapshot } from "./canonical.ts";
 import { foreignToolAdapterChild } from "./foreign-tool-contract.ts";
 import {
@@ -22,6 +24,9 @@ import type {
   EffectDefinition,
   OperationOutcome,
   ProgramResume,
+  RecordAttemptContext,
+  RecordOptions,
+  RetrySafety,
   ProgramStepProposal,
   WireElicitResultJson,
 } from "./durable-types.ts";
@@ -138,17 +143,22 @@ export function validateEffectDefinition(definition: EffectDefinition<Json, Json
     );
   }
   const safety = definition.retrySafety;
+  validateRetrySafety(safety, `${definition.name}.retrySafety`);
+}
+
+function validateRetrySafety(safety: RetrySafety, path: string): void {
   if (
     !safety ||
+    (safety.mode === "repeatable" && Object.keys(safety).length !== 1) ||
     (safety.mode === "unsafe" &&
-      safety.onIndeterminate !== "await_decision" &&
-      safety.onIndeterminate !== "fail") ||
+      (Object.keys(safety).length !== 2 ||
+        (safety.onIndeterminate !== "await_decision" && safety.onIndeterminate !== "fail"))) ||
     (safety.mode === "idempotent" &&
-      safety.mechanism !== "pull_id_key" &&
-      safety.mechanism !== "inherent") ||
-    (safety.mode !== "unsafe" && safety.mode !== "idempotent")
+      (Object.keys(safety).length !== 2 ||
+        (safety.mechanism !== "pull_id_key" && safety.mechanism !== "inherent"))) ||
+    (safety.mode !== "repeatable" && safety.mode !== "unsafe" && safety.mode !== "idempotent")
   ) {
-    invalidManifest(`${definition.name}.retrySafety`);
+    invalidManifest(path);
   }
 }
 
@@ -204,14 +214,83 @@ function* durableEffect(
 
 /** Creates the immutable authoring context that yields only durable operation proposals. */
 export function createDurableProgramContext(): DurableProgramContext {
+  let recording = false;
+  const assertSchedulingAllowed = () => {
+    if (recording) {
+      throw new CrankError(
+        "nested_durable_operation",
+        "A recorded operation cannot schedule another durable operation",
+      );
+    }
+  };
+  const effect = ((...args: Parameters<DurableProgramContext["effect"]>) => {
+    assertSchedulingAllowed();
+    return durableEffect(...args);
+  }) as DurableProgramContext["effect"];
+  const record = ((
+    optionsOrOperation: string | RecordOptions | (() => Operation<Json>),
+    explicitOperation?: (context: RecordAttemptContext) => Operation<Json>,
+  ) => {
+    assertSchedulingAllowed();
+    const options =
+      typeof optionsOrOperation === "function"
+        ? {}
+        : typeof optionsOrOperation === "string"
+          ? { label: optionsOrOperation }
+          : optionsOrOperation;
+    if (
+      typeof optionsOrOperation === "object" &&
+      Object.keys(optionsOrOperation).some((key) => key !== "label" && key !== "retrySafety")
+    ) {
+      throw new CrankError("invalid_descriptor", "Recorded operation options are not closed");
+    }
+    const operation =
+      typeof optionsOrOperation === "function" ? optionsOrOperation : explicitOperation;
+    if (!operation) {
+      throw new CrankError("invalid_descriptor", "Recorded operation is required");
+    }
+    const label = options.label;
+    if (
+      label !== undefined &&
+      (typeof label !== "string" ||
+        label.length === 0 ||
+        new TextEncoder().encode(label).byteLength > 128)
+    ) {
+      throw new CrankError("invalid_descriptor", "Record label must be 1 to 128 UTF-8 bytes");
+    }
+    const retrySafety = options.retrySafety ?? { mode: "repeatable" as const };
+    validateRetrySafety(retrySafety, "record.retrySafety");
+    return (function* () {
+      const outcome = yield {
+        type: "operation" as const,
+        descriptor: {
+          kind: "record" as const,
+          ...(label === undefined ? {} : { label }),
+          retrySafety,
+        },
+        execute: function* (context: RecordAttemptContext) {
+          recording = true;
+          try {
+            return yield* operation(context);
+          } finally {
+            recording = false;
+          }
+        },
+      };
+      return unwrapOutcome(outcome);
+    })();
+  }) as DurableProgramContext["record"];
+
   return Object.freeze({
-    effect: durableEffect,
+    effect,
+    record,
     *elicit<T extends Json = Json>(
       key: string,
       message: string,
       response: PortableSchemaDescriptor,
       context?: Json,
     ): Generator<ProgramStepProposal, WireElicitResultJson<T>, ProgramResume> {
+      assertSchedulingAllowed();
       const descriptor = parsePortableSchemaDescriptor(response);
       const outcome = yield {
         type: "operation",
@@ -226,6 +305,7 @@ export function createDurableProgramContext(): DurableProgramContext {
       return unwrapOutcome<WireElicitResultJson<T>>(outcome);
     },
     *emit(eventType: string, payload: Json): Generator<ProgramStepProposal, void, ProgramResume> {
+      assertSchedulingAllowed();
       yield {
         type: "emission",
         descriptor: {
@@ -239,6 +319,7 @@ export function createDurableProgramContext(): DurableProgramContext {
         instant: string,
         key = "waitUntil",
       ): Generator<ProgramStepProposal, void, ProgramResume> {
+        assertSchedulingAllowed();
         const parsed = Date.parse(instant);
         if (!Number.isFinite(parsed)) {
           throw new CrankError("invalid_descriptor", "Invalid wait instant");
@@ -257,6 +338,7 @@ export function createDurableProgramContext(): DurableProgramContext {
         durationMs: number,
         key = "sleep",
       ): Generator<ProgramStepProposal, void, ProgramResume> {
+        assertSchedulingAllowed();
         if (!Number.isSafeInteger(durationMs) || durationMs < 0) {
           throw new CrankError(
             "invalid_descriptor",
@@ -273,6 +355,7 @@ export function createDurableProgramContext(): DurableProgramContext {
     *invoke<T extends Json = Json>(
       child: DurableChildDescriptor,
     ): Generator<ProgramStepProposal, T, ProgramResume> {
+      assertSchedulingAllowed();
       const outcome = yield {
         type: "operation",
         descriptor: { kind: "invoke", child: snapshotChild(child) },
@@ -282,6 +365,7 @@ export function createDurableProgramContext(): DurableProgramContext {
     *all<T extends readonly Json[] = readonly Json[]>(
       children: DurableChildDescriptor[],
     ): Generator<ProgramStepProposal, T, ProgramResume> {
+      assertSchedulingAllowed();
       const outcome = yield {
         type: "operation",
         descriptor: { kind: "all", children: children.map(snapshotChild) },
@@ -291,6 +375,7 @@ export function createDurableProgramContext(): DurableProgramContext {
     *race<T extends Json = Json>(
       children: DurableChildDescriptor[],
     ): Generator<ProgramStepProposal, T, ProgramResume> {
+      assertSchedulingAllowed();
       if (children.length === 0) {
         throw new CrankError("invalid_descriptor", "race requires a child");
       }
@@ -303,6 +388,7 @@ export function createDurableProgramContext(): DurableProgramContext {
     *spawn(
       child: DurableChildDescriptor,
     ): Generator<ProgramStepProposal, DurableTaskHandle, ProgramResume> {
+      assertSchedulingAllowed();
       const outcome = yield {
         type: "operation",
         descriptor: { kind: "spawn", child: snapshotChild(child) },
@@ -312,6 +398,7 @@ export function createDurableProgramContext(): DurableProgramContext {
     *join<T extends Json = Json>(
       handle: DurableTaskHandle,
     ): Generator<ProgramStepProposal, T, ProgramResume> {
+      assertSchedulingAllowed();
       if (
         !isRecord(handle) ||
         typeof handle.__durableTask !== "string" ||
@@ -328,6 +415,7 @@ export function createDurableProgramContext(): DurableProgramContext {
     *foreignTool<T extends Json = Json>(
       request: ForeignToolRequest,
     ): Generator<ProgramStepProposal, T, ProgramResume> {
+      assertSchedulingAllowed();
       const outcome = yield {
         type: "operation",
         descriptor: { kind: "invoke", child: foreignToolAdapterChild(request) },

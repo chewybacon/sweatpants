@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createWorkspaceService,
+  parseWorkspaceResponse,
   type WorkspaceFence,
   type WorkspaceRequest,
   type WorkspaceService,
@@ -18,7 +19,7 @@ const fence: WorkspaceFence = {
   activationEpoch: 1,
 };
 
-async function fixture() {
+async function fixture(maximumCommandMs = 1_000) {
   const root = await mkdtemp(join(tmpdir(), "sweatpants-workspace-"));
   roots.push(root);
   await mkdir(join(root, "src"));
@@ -26,7 +27,12 @@ async function fixture() {
   const service = createWorkspaceService({
     root,
     workspaceId: "workspace-1",
-    scripts: { test: 'test "$(cat src/value.txt)" = after' },
+    scripts: {
+      test: 'test "$(cat src/value.txt)" = after',
+      mutate: 'printf "script-change" > src/value.txt',
+      background: "sh -c 'trap \"\" TERM; sleep 0.2; printf escaped > src/background.txt' & wait",
+    },
+    maximumCommandMs,
   });
   service.bind(fence);
   return { root, service };
@@ -91,6 +97,80 @@ describe("workspace runtime", () => {
     ).resolves.toMatchObject({ type: "script-result", exitCode: 0 });
   });
 
+  it("advances the mutation frontier after an opaque script", async () => {
+    const { root, service } = await fixture();
+    const initial = service.currentWorkspaceVersion();
+    const request = {
+      protocolVersion: 1 as const,
+      type: "run-script" as const,
+      fence,
+      operationId: "mutate-1",
+      workspaceVersion: initial,
+      script: "mutate",
+    };
+
+    const result = await execute(service, request);
+    expect(result).toMatchObject({ type: "script-result", exitCode: 0 });
+    expect(result.workspaceVersion).not.toBe(initial);
+    await expect(readFile(join(root, "src", "value.txt"), "utf8")).resolves.toBe("script-change");
+    await expect(execute(service, request)).resolves.toEqual(result);
+
+    await expect(
+      execute(service, {
+        protocolVersion: 1,
+        type: "write",
+        fence,
+        operationId: "stale-after-script",
+        workspaceVersion: initial,
+        path: "src/value.txt",
+        content: "stale-write",
+      }),
+    ).rejects.toMatchObject({ code: "workspace_version_conflict" });
+  });
+
+  it("kills the complete script process group on timeout", async () => {
+    const { root, service } = await fixture(50);
+    const result = await execute(service, {
+      protocolVersion: 1,
+      type: "run-script",
+      fence,
+      operationId: "background-1",
+      workspaceVersion: service.currentWorkspaceVersion(),
+      script: "background",
+    });
+    expect(result).toMatchObject({ type: "script-result", exitCode: 1 });
+
+    await new Promise((resolveWait) => setTimeout(resolveWait, 300));
+    await expect(readFile(join(root, "src", "background.txt"), "utf8")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("keeps scripts immutable and fences out an older activation epoch", async () => {
+    const { service } = await fixture();
+    expect(() => service.bind(fence, { test: "false" })).toThrow(/cannot change/);
+
+    const resumedFence = { ...fence, activationEpoch: 2 };
+    service.bind(resumedFence);
+    expect(service.currentFence()).toEqual(resumedFence);
+    await expect(
+      execute(service, {
+        protocolVersion: 1,
+        type: "inspect",
+        fence,
+        operationId: "inspect-old-activation",
+      }),
+    ).rejects.toMatchObject({ code: "sandbox_generation_stale" });
+    await expect(
+      execute(service, {
+        protocolVersion: 1,
+        type: "inspect",
+        fence: resumedFence,
+        operationId: "inspect-new-activation",
+      }),
+    ).resolves.toMatchObject({ type: "inspect-result" });
+  });
+
   it("rejects stale fences, stale workspace versions, traversal, and undeclared scripts", async () => {
     const { service } = await fixture();
     const version = service.currentWorkspaceVersion();
@@ -144,6 +224,17 @@ describe("workspace runtime", () => {
         script: "deploy",
       }),
     ).rejects.toMatchObject({ code: "policy_unavailable" });
+  });
+
+  it("rejects oversized listing responses before they reach a journal consumer", () => {
+    expect(() =>
+      parseWorkspaceResponse({
+        type: "list-result",
+        path: ".",
+        entries: Array.from({ length: 10_001 }, (_, index) => `entry-${index}`),
+        workspaceVersion: "a".repeat(64),
+      }),
+    ).toThrow(/bounded string list/);
   });
 
   it("serves the same closed protocol over finite HTTP", async () => {

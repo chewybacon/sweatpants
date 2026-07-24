@@ -4,6 +4,7 @@ import { canonicalSnapshot } from "./canonical.ts";
 import { createDurableEffectRegistration } from "./durable-apis.ts";
 import { effectContractDigest } from "./effect-contract.ts";
 import {
+  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   type ModelSampleCancellationPartial,
   type ModelSampleRequest,
@@ -54,11 +55,13 @@ export const ModelSamplingRouterContext = createContext<ModelSamplingRouter | un
   undefined,
 );
 
-/** The one canonical model.sample registration installed by a Host assembly. */
-export function createModelSamplingEffectRegistration() {
+/** Creates an exact model.sample registration; new authoring defaults to repeatable v2. */
+export function createModelSamplingEffectRegistration(
+  definition: typeof MODEL_SAMPLE_EFFECT | typeof LEGACY_MODEL_SAMPLE_EFFECT = MODEL_SAMPLE_EFFECT,
+) {
   return createDurableEffectRegistration(
-    MODEL_SAMPLE_EFFECT,
-    { mode: "idempotent", mechanism: "pull_id_key" },
+    definition,
+    definition.retrySafety,
     function* (request, effectContext) {
       const router = yield* ModelSamplingRouterContext.get();
       const placement = yield* ProgramPlacementContext.get();
@@ -75,7 +78,7 @@ export function createModelSamplingEffectRegistration() {
         taskId: effectContext.taskId,
         pullId: effectContext.pullId,
         attemptId: effectContext.attemptId,
-        effectContractDigest: effectContractDigest(MODEL_SAMPLE_EFFECT),
+        effectContractDigest: effectContractDigest(definition),
         cancellation: effectContext.cancellation,
         ...(delivery ? { delivery } : {}),
       });

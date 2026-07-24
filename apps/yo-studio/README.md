@@ -247,7 +247,7 @@ const workspace = defineWorkspace({
     policy: {
         network: "trusted-development",
         writes: "approval",
-        externalEffects: "host-only",
+        externalEffects: "trusted-development",
     },
     persistence: "sandbox_lease",
 });
@@ -276,14 +276,22 @@ export default defineDeployment({
 Definitions are closed, digest-addressed, and cross-validated. Production rejects
 an in-memory journal, mandatory deny-network policy rejects incapable providers,
 and checkpoint-recoverable workspaces reject providers without checkpoint restore.
-The current Lambda certification uses an explicit `trusted-development` network
-profile because the provider image still exposes `INTERNET_EGRESS`; it does not
-claim default-deny enforcement.
+The current Lambda certification uses explicit `trusted-development` network and
+external-effect profiles because the provider image exposes `INTERNET_EGRESS` and
+named `pnpm` scripts execute workspace-controlled code. Script names are policy
+selectors, not a narrow code-execution boundary. The runtime contains each script
+in a dedicated process group and kills the group on completion, timeout, or
+cancellation, but it does not claim default-deny network enforcement.
 
 - `src/programs/coding-harness.ts` — the existing durable chat authoring model
   composed with workspace child programs.
-- `src/capabilities/workspace.ts` — journal-native inspect, read, list, write,
-  and named-script tools over explicit Host effects.
+- `src/capabilities/workspace.ts` — one authored `workspace` durable context
+  extension plus model-facing inspect, read, list, write, and named-script tools.
+  Tool implementations read naturally as `yield* context.workspace.readFile(input)`;
+  the same token owns exact effect contracts and its typed provider factory.
+- `src/server/workspace-effects.ts` — the extension provider's protocol adapter;
+  `workspace.implement(...)` generates the durable registrations and Effection
+  runtime middleware instead of duplicating registration boilerplate.
 - `src/config.ts` — provider-neutral workspace policy plus the Lambda MicroVM
   placement profile, with no credentials or provider instance identity.
 - `src/deployment.ts` — the authored reference assembly.
@@ -314,7 +322,9 @@ binds the activation fence, and returns `createHttpWorkspaceConnector()`. New
 session therefore creates a new conversation and a distinct MicroVM lease. The
 Vite root scope terminates every owned lease on shutdown.
 
-Set `YO_STUDIO_WORKSPACE_PLACEMENT=aws` to use that path; the UI reports the
-actual selected placement. The next implementation slice is durable production
+Set `YO_STUDIO_WORKSPACE_PLACEMENT=aws` together with
+`YO_STUDIO_MICROVM_IMAGE_ARN` and `YO_STUDIO_MICROVM_EXECUTION_ROLE_ARN` to use
+that path; there are no personal-account defaults. `AWS_PROFILE` is optional and
+the UI reports the actual selected placement. The next implementation slice is durable production
 journal storage plus workspace checkpoint materialization, so both Host restart
 and MicroVM termination recover rather than only suspend/resume within a lease.

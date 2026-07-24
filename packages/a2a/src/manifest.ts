@@ -228,8 +228,13 @@ function parseClosedEffect(value: Json): EffectDefinition<Json, Json, Json> {
     parseDescriptor(value["cancellation"]["partialSchema"]);
   }
   if (!record(value["retrySafety"])) throw mismatch("Effect retry safety is invalid");
+  const retryMode = value["retrySafety"]["mode"];
   const retryKeys =
-    value["retrySafety"]["mode"] === "unsafe" ? ["mode", "onIndeterminate"] : ["mode", "mechanism"];
+    retryMode === "repeatable"
+      ? ["mode"]
+      : retryMode === "unsafe"
+        ? ["mode", "onIndeterminate"]
+        : ["mode", "mechanism"];
   if (!exactKeys(value["retrySafety"], retryKeys))
     throw mismatch("Effect retry safety fields are not closed");
   return value as unknown as EffectDefinition<Json, Json, Json>;

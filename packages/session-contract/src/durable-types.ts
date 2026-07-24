@@ -12,6 +12,7 @@ export type JsonSchema = Json;
 
 /** Retry policy declaring whether duplicate host execution is safe. */
 export type RetrySafety =
+  | { mode: "repeatable" }
   | { mode: "unsafe"; onIndeterminate: "await_decision" | "fail" }
   | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
 
@@ -393,9 +394,17 @@ export interface DurableJoinDescriptor {
   handle: DurableTaskHandle;
 }
 
+/** Execution-owned operation whose implementation remains with the program attachment. */
+export interface RecordedOperationDescriptor {
+  kind: "record";
+  label?: string;
+  retrySafety: RetrySafety;
+}
+
 /** Exhaustive journaled operation descriptor algebra. */
 export type DurableOperationDescriptor =
   | EffectDescriptor
+  | RecordedOperationDescriptor
   | DurableElicitDescriptor
   | WaitDescriptor
   | DurableInvokeDescriptor
@@ -506,13 +515,21 @@ export type ProgramCommand =
       pullId: string;
       attemptId: string;
       resolutionCapability: string;
+      descriptor?: EffectDescriptor | RecordedOperationDescriptor;
+      effectContractDigest?: string;
     }
   | { type: "ack_emission"; actionIndex: number; offset: string }
   | { type: "cancel"; reason?: string };
 
 /** Exhaustive observable step returned by a program driver. */
 export type ProgramStep =
-  | { type: "operation"; actionIndex: number; descriptor: DurableOperationDescriptor }
+  | {
+      type: "operation";
+      actionIndex: number;
+      descriptor: DurableOperationDescriptor;
+      /** Transient authorize response; never persisted as a replay frontier. */
+      authorizedOutcome?: OperationOutcome;
+    }
   | { type: "emission"; actionIndex: number; descriptor: EmissionDescriptor }
   | { type: "completed"; actionIndex: number; value: Json }
   | { type: "failed"; actionIndex: number; error: SerializedApplicationError };
@@ -602,8 +619,21 @@ export type DurableProgramGenerator<O extends Json = Json> = Generator<
 
 /** Closed set of proposals an authored durable generator may yield. */
 export type ProgramStepProposal =
-  | { type: "operation"; descriptor: DurableOperationDescriptor }
+  | { type: "operation"; descriptor: DurableOperationDescriptor; execute?: RecordedOperation }
   | { type: "emission"; descriptor: EmissionDescriptor };
+
+export interface RecordAttemptContext {
+  readonly pullId: string;
+  readonly attemptId: string;
+  readonly cancellation: AbortSignal;
+}
+
+export type RecordedOperation = (context: RecordAttemptContext) => Operation<Json>;
+
+export interface RecordOptions {
+  readonly label?: string;
+  readonly retrySafety?: RetrySafety;
+}
 
 /** Authoring API that constructs only declared, serializable durable proposals. */
 export interface DurableProgramContext {
@@ -618,6 +648,18 @@ export interface DurableProgramContext {
     version: string,
     input: Json,
     resolver: { audience: string; route?: string },
+  ): Generator<ProgramStepProposal, T, ProgramResume>;
+  /** Records one execution-owned Effection operation; replay returns the accepted outcome. */
+  record<T extends Json>(
+    operation: () => Operation<T>,
+  ): Generator<ProgramStepProposal, T, ProgramResume>;
+  record<T extends Json>(
+    label: string,
+    operation: () => Operation<T>,
+  ): Generator<ProgramStepProposal, T, ProgramResume>;
+  record<T extends Json>(
+    options: RecordOptions,
+    operation: (context: RecordAttemptContext) => Operation<T>,
   ): Generator<ProgramStepProposal, T, ProgramResume>;
   /** Proposes user input; accepted content must satisfy the descriptor's registered validator. */
   elicit<T extends Json = Json>(
@@ -744,10 +786,12 @@ export type ReserveOperationResult =
       status: "authorized";
       pullId: string;
       attemptId: string;
-      /** Canonical parsed effect descriptor accepted by the authority. */
-      descriptor: EffectDescriptor;
-      /** Authority-derived whole-contract digest for handler compatibility checks. */
-      effectContractDigest: string;
+      /** Canonical effect or execution-owned record accepted by the authority. */
+      descriptor: EffectDescriptor | RecordedOperationDescriptor;
+      /** Present only for installed effects. */
+      effectContractDigest?: string;
+      /** Exact manifest definition present only for installed effects. */
+      effectDefinition?: EffectDefinition<Json, Json, Json>;
       resolutionCapability: string;
       notBefore?: string;
       restoredFrontierConsumed?: true;
@@ -939,7 +983,10 @@ export type DurableEffectHandler<
 export interface DurableEffectRegistration {
   definition: EffectDefinition<Json, Json, Json>;
   handler: DurableEffectHandler<Json, Json, Json>;
-  satisfies: { mode: "unsafe" } | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
+  satisfies:
+    | { mode: "repeatable" }
+    | { mode: "unsafe" }
+    | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
 }
 
 /** Immutable symbolic effect registry installed at composition. */

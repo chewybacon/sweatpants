@@ -38,7 +38,7 @@ export const productWorkspace = defineWorkspace({
   policy: {
     network: "trusted-development",
     writes: "approval",
-    externalEffects: "host-only",
+    externalEffects: "trusted-development",
   },
   persistence: "sandbox_lease",
 });

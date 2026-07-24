@@ -1,5 +1,17 @@
 export { createTool } from "./create.ts";
 export { createDurableTool } from "./durable-create.ts";
+export {
+  defineDurableContextExtension,
+  type DurableContextExtension,
+  type DurableContextExtensionOptions,
+  type DurableExtensionContext,
+  type DurableExtensionEffectCaller,
+  type DurableExtensionEffectMap,
+  type DurableExtensionMap,
+  type DurableExtensionProvider,
+  type ExtensionClient,
+  type ExtensionEffects,
+} from "./durable-context-extension.ts";
 export type {
   CreateDurableToolBuilderBase,
   CreateDurableToolBuilderReady,

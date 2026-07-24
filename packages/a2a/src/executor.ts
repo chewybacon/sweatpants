@@ -4,6 +4,7 @@ import {
   canonicalSnapshot,
   createLocalGeneratorDriver,
   type AttachProgramRequest,
+  type DurableEffectRegistry,
   type DurableToolRegistry,
   type Json,
   type PinnedProgram,
@@ -47,6 +48,7 @@ export interface A2AProgramExecutorOptions {
   readonly executorId: string;
   readonly computeGeneration: string;
   readonly registry: DurableToolRegistry;
+  readonly executionEffects?: DurableEffectRegistry;
   readonly streamedRestore?: boolean;
   readonly resourceLimits?: Partial<A2AExecutorResourceLimits>;
   readonly authorize?: (principal: A2AExecutorPrincipal, program: PinnedProgram) => boolean;
@@ -105,7 +107,10 @@ type Identity = {
 export function createA2AProgramExecutor(options: A2AProgramExecutorOptions): A2AProgramExecutor {
   validateId(options.executorId, "executorId");
   validateId(options.computeGeneration, "computeGeneration");
-  const driver = createLocalGeneratorDriver(options.registry);
+  const driver = createLocalGeneratorDriver(options.registry, {
+    detachedScope: true,
+    ...(options.executionEffects ? { executionEffects: options.executionEffects } : {}),
+  });
   const latestEpochs = new Map<string, { epoch: number; lastSeenAt: number; active: number }>();
   const states = new Set<ConnectionState>();
   const streamedRestore = options.streamedRestore ?? true;

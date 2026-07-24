@@ -1,16 +1,28 @@
-import { createContext, type Operation } from "effection";
+import {
+  createContext,
+  createScope,
+  useAbortSignal,
+  useScope,
+  type Operation,
+  type Scope,
+} from "effection";
 
 import {
+  assertInlineSize,
   assertReplayedCanonicalValue,
   createDurableProgramContext,
   serializeDurableError,
   DurableProgramCancellation,
 } from "./authoring.ts";
 import { canonicalSnapshot, stableOpaqueId } from "./canonical.ts";
+import { bindDurableProgramScope } from "./durable-program-scope.ts";
+import { effectContractDigest } from "./effect-contract.ts";
 import { validateProgramIdentityProvenance } from "./program-identity.ts";
 import { CrankError, type Json } from "./types.ts";
 import type {
   AttachProgramRequest,
+  DurableEffectRegistry,
+  DurableProgramContext,
   DurableProgramGenerator,
   DurableProgramManifest,
   DurableTool,
@@ -39,6 +51,10 @@ export const ProgramDriverRegistryContext = createContext<ProgramDriverRegistry 
   "session-contract:program-driver-registry",
   undefined,
 );
+/** Execution-local installed effects used only when routing selects program placement. */
+export const ExecutionDurableEffectRegistryContext = createContext<
+  DurableEffectRegistry | undefined
+>("session-contract:execution-durable-effect-registry", undefined);
 
 /** Builds a registry and rejects duplicate program IDs. */
 export function createDurableToolRegistry(
@@ -89,6 +105,9 @@ type GeneratorState = {
   request: AttachProgramRequest;
   tool: DurableTool<any, any>;
   generator?: DurableProgramGenerator;
+  context?: DurableProgramContext;
+  scope: Scope;
+  destroyScope: () => Operation<void>;
   pending?: ProgramStepProposal;
   actionIndex: number;
   started: boolean;
@@ -104,7 +123,13 @@ class RuntimeAttachmentHandle {
 }
 
 /** Creates the process-local reference driver; generator state never crosses a process boundary. */
-export function createLocalGeneratorDriver(registry?: DurableToolRegistry): ProgramDriver {
+export function createLocalGeneratorDriver(
+  registry?: DurableToolRegistry,
+  options: {
+    readonly detachedScope?: boolean;
+    readonly executionEffects?: DurableEffectRegistry;
+  } = {},
+): ProgramDriver {
   return {
     *attach(request: AttachProgramRequest): Operation<ProgramAttachment> {
       const tools = registry ?? (yield* useDurableToolRegistry());
@@ -118,8 +143,14 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
       const input = assertReplayedCanonicalValue(request.input, "invalid_descriptor");
       const canonicalRoute = canonicalSnapshot(request.route).value;
       const attachmentId = nextProgramAttachmentId(request);
+      const attachmentScope = options.detachedScope
+        ? createScope()
+        : createScope(yield* useScope());
+      const [scope, destroyScope] = attachmentScope;
       const state: GeneratorState = {
         request: { ...request, input, route: canonicalRoute },
+        scope,
+        destroyScope,
         tool,
         actionIndex: 0,
         started: false,
@@ -152,7 +183,10 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
         }
         state.started = true;
         try {
-          const generator = state.tool.program(input, createDurableProgramContext());
+          const context = createDurableProgramContext();
+          bindDurableProgramScope(context, state.scope);
+          state.context = context;
+          const generator = state.tool.program(input, context);
           if (!generator || typeof generator.next !== "function") {
             throw new CrankError("invalid_manifest", "Program factory did not return a generator");
           }
@@ -166,16 +200,106 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
         throw protocol("command before a pending action");
       }
       const generator = state.generator;
+      if (state.context) {
+        bindDurableProgramScope(state.context, state.scope);
+      }
       if (command.type === "authorize") {
-        if (command.actionIndex !== state.actionIndex) {
+        if (command.actionIndex !== state.actionIndex || state.pending.type !== "operation") {
           throw protocol("authorization action index mismatch");
         }
-        if (state.pending.type !== "operation" || state.pending.descriptor.kind !== "effect") {
-          throw protocol("authorization for non-effect action");
+        if (state.pending.descriptor.kind === "effect") {
+          const registry =
+            options.executionEffects ?? (yield* ExecutionDurableEffectRegistryContext.get());
+          const descriptor = command.descriptor ?? state.pending.descriptor;
+          const cancellation = yield* useAbortSignal();
+          let outcome: OperationOutcome;
+          try {
+            if (!registry || descriptor.kind !== "effect" || !command.effectContractDigest) {
+              throw new CrankError(
+                "effect_placement_unavailable",
+                "Execution effect implementation is unavailable",
+              );
+            }
+            const registration = registry.get(`${descriptor.name}@${descriptor.version}`);
+            if (
+              !registration ||
+              effectContractDigest(registration.definition) !== command.effectContractDigest
+            ) {
+              throw new CrankError(
+                "effect_placement_unavailable",
+                "Execution effect contract is unavailable",
+              );
+            }
+            const disposition = yield* registration.handler(descriptor.input, {
+              sessionId: state.request.sessionId,
+              taskId: state.request.taskId,
+              pullId: command.pullId,
+              attemptId: command.attemptId,
+              cancellation,
+              resolver: descriptor.resolver,
+            });
+            outcome =
+              disposition.status === "ok"
+                ? {
+                    status: "ok",
+                    value: assertReplayedCanonicalValue(
+                      disposition.value,
+                      "schema_validation_failed",
+                    ),
+                  }
+                : disposition.status === "cancelled"
+                  ? disposition.partial === undefined
+                    ? { status: "cancelled" }
+                    : { status: "cancelled", partial: disposition.partial }
+                  : { status: "error", error: disposition.error };
+          } catch (error) {
+            outcome = cancellation.aborted
+              ? { status: "cancelled" }
+              : { status: "error", error: serializeDurableError(error) };
+          }
+          return {
+            type: "operation",
+            actionIndex: state.actionIndex,
+            descriptor: structuredClone(state.pending.descriptor),
+            authorizedOutcome: outcome,
+          };
         }
-        // Authorization does not resume a pure generator. Remote drivers may execute
-        // the effect here; the local host executes through DurableEffects.
-        return proposalStep(state.pending, state.actionIndex);
+        if (state.pending.descriptor.kind !== "record" || !state.pending.execute) {
+          throw protocol("authorization for non-executable action");
+        }
+        const cancellation = yield* useAbortSignal();
+        let outcome: OperationOutcome;
+        try {
+          const value = yield* state.pending.execute({
+            pullId: command.pullId,
+            attemptId: command.attemptId,
+            cancellation,
+          });
+          const recorded = assertReplayedCanonicalValue(value, "record_value_invalid");
+          try {
+            assertInlineSize(recorded);
+          } catch (error) {
+            throw new CrankError(
+              "record_value_too_large",
+              "Recorded value exceeds inline limit",
+              undefined,
+              {
+                cause: error,
+              },
+            );
+          }
+          outcome = { status: "ok", value: recorded };
+        } catch (error) {
+          outcome = cancellation.aborted
+            ? { status: "cancelled" }
+            : { status: "error", error: serializeDurableError(error) };
+        }
+        return {
+          type: "operation",
+          actionIndex: state.actionIndex,
+          descriptor: structuredClone(state.pending.descriptor),
+          authorizedOutcome: outcome,
+        };
       }
       if (command.type === "resume") {
         if (command.actionIndex !== state.actionIndex || state.pending.type !== "operation") {
@@ -217,7 +341,9 @@ export function createLocalGeneratorDriver(registry?: DurableToolRegistry): Prog
       // cancellation. Cancellation must be sent explicitly and driven through
       // all yielded finally operations before shutdown.
       delete state.generator;
+      delete state.context;
       delete state.pending;
+      yield* state.destroyScope();
     },
 
     *manifest(program): Operation<DurableProgramManifest> {
@@ -249,7 +375,7 @@ function advance(
       return { type: "completed", actionIndex: state.actionIndex, value };
     }
     validateProposal(result.value);
-    state.pending = structuredClone(result.value);
+    state.pending = result.value;
     return proposalStep(state.pending, state.actionIndex);
   } catch (error) {
     return fail(state, error);
@@ -284,7 +410,11 @@ function validateProposal(proposal: ProgramStepProposal): void {
   ) {
     throw protocol("invalid program proposal");
   }
-  canonicalSnapshot(proposal);
+  canonicalSnapshot(
+    proposal.type === "operation"
+      ? { type: proposal.type, descriptor: proposal.descriptor }
+      : proposal,
+  );
 }
 
 function attachmentState(attachment: ProgramAttachment): GeneratorState {

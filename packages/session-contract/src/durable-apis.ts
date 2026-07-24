@@ -7,6 +7,7 @@ import { assertInlineSize, serializeDurableError } from "./authoring.ts";
 import { assertJson, canonicalSnapshot } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 import { effectContractDigest } from "./effect-contract.ts";
+import { DurableEffectRouting } from "./effect-routing.ts";
 import { registerLiveDurableEffect } from "./durable-cancellation-live.ts";
 import { ProgramDriverRegistryContext, type ProgramDriverRegistry } from "./program-driver.ts";
 import { ProgramPlacementContext } from "./program-placement-context.ts";
@@ -321,11 +322,7 @@ export const DurableEffects = createApi("crank-durable-effects", {
       audience: authorization.resolver.audience,
       outcome,
     });
-    if (
-      resolution.status !== "rejected" &&
-      authorization.descriptor.name === "model.sample" &&
-      authorization.descriptor.version === "1"
-    ) {
+    if (resolution.status !== "rejected" && authorization.descriptor.name === "model.sample") {
       const acknowledge = yield* ModelSamplingOutcomeAcknowledgerContext.get();
       if (acknowledge) {
         try {
@@ -650,33 +647,164 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
           });
           continue;
         }
+        if (reservation.status === "authorized" && step.descriptor.kind === "record") {
+          const authorized = yield* ProgramPeer.operations.step(attachment, {
+            type: "authorize",
+            actionIndex: step.actionIndex,
+            pullId: reservation.pullId,
+            attemptId: reservation.attemptId,
+            resolutionCapability: reservation.resolutionCapability,
+            descriptor: reservation.descriptor,
+          });
+          if (
+            authorized.type !== "operation" ||
+            authorized.actionIndex !== step.actionIndex ||
+            !authorized.authorizedOutcome
+          ) {
+            throw new CrankError("program_protocol_error", "Driver did not settle recorded work");
+          }
+          let resolution = yield* JournalAuthority.operations.resolve({
+            capability: reservation.resolutionCapability,
+            audience: "program-execution",
+            outcome: authorized.authorizedOutcome,
+          });
+          if (resolution.status === "rejected" && resolution.code === "payload_too_large") {
+            resolution = yield* JournalAuthority.operations.resolve({
+              capability: reservation.resolutionCapability,
+              audience: "program-execution",
+              outcome: {
+                status: "error",
+                error: serializeDurableError(
+                  new CrankError("record_value_too_large", "Recorded value exceeds inline limit"),
+                ),
+              },
+            });
+          }
+          if (resolution.status === "rejected") {
+            throw new CrankError(resolution.code);
+          }
+          const replayed = yield* authority.reserve({
+            sessionId: request.attach.sessionId,
+            turnId: turnIdFor(request.attach.taskId),
+            taskId: request.attach.taskId,
+            actionIndex: step.actionIndex,
+            pullIndex,
+            descriptor: step.descriptor,
+            programCapability,
+          });
+          if (replayed.status !== "resolved") {
+            throw new CrankError("runtime_error", "Resolved recording was not replayable");
+          }
+          pullIndex += 1;
+          step = yield* ProgramPeer.operations.step(attachment, {
+            type: "resume",
+            actionIndex: step.actionIndex,
+            outcome: replayed.outcome,
+            receipt: replayed.receipt,
+            replayed: false,
+          });
+          continue;
+        }
         if (
           reservation.status === "authorized" &&
           step.descriptor.kind === "effect" &&
           request.executeHostEffects
         ) {
+          if (reservation.descriptor.kind !== "effect" || !reservation.effectContractDigest) {
+            throw new CrankError("runtime_error", "Installed effect authorization is malformed");
+          }
+          const authorizationDescriptor = reservation.descriptor;
+          const authorizationDigest = reservation.effectContractDigest;
+          const definition = reservation.effectDefinition;
+          if (!definition) {
+            throw new CrankError("invalid_manifest", "Installed effect definition is unavailable");
+          }
+          const route = yield* DurableEffectRouting.operations.route({
+            definition,
+            effectContractDigest: authorizationDigest,
+            sessionId: request.attach.sessionId,
+            taskId: request.attach.taskId,
+            pullId: reservation.pullId,
+            attemptId: reservation.attemptId,
+            program: request.attach.program,
+            programRoute: request.attach.route,
+          });
+          if (route.placement !== "host" && route.placement !== "execution") {
+            throw new CrankError("effect_placement_unavailable", "Effect route is invalid");
+          }
           const journal = authority.journalIdentity();
           const effectResolver = step.descriptor.resolver;
-          const resolution = yield* ProgramPlacementContext.with(
-            {
-              journal,
-              program: request.attach.program,
-              route: request.attach.route,
-              driverKind: driverKind(request.attach.route),
-            },
-            function* () {
-              return yield* DurableEffects.operations.execute({
-                sessionId: request.attach.sessionId,
-                taskId: request.attach.taskId,
-                pullId: reservation.pullId,
-                attemptId: reservation.attemptId,
-                descriptor: reservation.descriptor,
-                effectContractDigest: reservation.effectContractDigest,
-                resolutionCapability: reservation.resolutionCapability,
-                resolver: effectResolver,
+          let resolution: ResolveOperationResult;
+          if (route.placement === "execution") {
+            const authorized = yield* ProgramPeer.operations.step(attachment, {
+              type: "authorize",
+              actionIndex: step.actionIndex,
+              pullId: reservation.pullId,
+              attemptId: reservation.attemptId,
+              resolutionCapability: reservation.resolutionCapability,
+              descriptor: authorizationDescriptor,
+              effectContractDigest: authorizationDigest,
+            });
+            if (
+              authorized.type !== "operation" ||
+              authorized.actionIndex !== step.actionIndex ||
+              !authorized.authorizedOutcome
+            ) {
+              throw new CrankError(
+                "effect_placement_unavailable",
+                "Execution effect implementation did not settle",
+              );
+            }
+            resolution = yield* JournalAuthority.operations.resolve({
+              capability: reservation.resolutionCapability,
+              audience: effectResolver.audience,
+              outcome: authorized.authorizedOutcome,
+            });
+          } else {
+            const hostRegistry = yield* useDurableEffectRegistry();
+            const hostRegistration = hostRegistry.get(
+              effectKey(authorizationDescriptor.name, authorizationDescriptor.version),
+            );
+            if (
+              !hostRegistration ||
+              effectContractDigest(hostRegistration.definition) !== authorizationDigest
+            ) {
+              resolution = yield* JournalAuthority.operations.resolve({
+                capability: reservation.resolutionCapability,
+                audience: effectResolver.audience,
+                outcome: {
+                  status: "error",
+                  error: serializeDurableError(
+                    new CrankError(
+                      "effect_placement_unavailable",
+                      "Host effect implementation is unavailable",
+                    ),
+                  ),
+                },
               });
-            },
-          );
+            } else {
+              resolution = yield* ProgramPlacementContext.with(
+                {
+                  journal,
+                  program: request.attach.program,
+                  route: request.attach.route,
+                  driverKind: driverKind(request.attach.route),
+                },
+                function* () {
+                  return yield* DurableEffects.operations.execute({
+                    sessionId: request.attach.sessionId,
+                    taskId: request.attach.taskId,
+                    pullId: reservation.pullId,
+                    attemptId: reservation.attemptId,
+                    descriptor: authorizationDescriptor,
+                    effectContractDigest: authorizationDigest,
+                    resolutionCapability: reservation.resolutionCapability,
+                    resolver: effectResolver,
+                  });
+                },
+              );
+            }
+          }
           if (resolution.status === "rejected") {
             throw new CrankError(resolution.code);
           }

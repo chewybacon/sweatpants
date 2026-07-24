@@ -45,7 +45,7 @@ import type { TestApplication, TestApplicationFactoryContext } from "@sweatpants
 import { acceptanceBookingTool } from "../fixtures/acceptance-booking.tool.ts";
 import {
   acceptanceDurableTool,
-  createDurableOptionsRegistration,
+  durableOptionsProvider,
 } from "../fixtures/acceptance-durable.tool.ts";
 import { acceptanceImmediateTool } from "../fixtures/acceptance-immediate.tool.ts";
 
@@ -68,6 +68,7 @@ export {
   DURABLE_SAMPLE_PROMPT_MARKER,
   DURABLE_SAMPLE_RESPONSE_MARKER,
   DURABLE_TOOL_RESULT_MARKER,
+  DURABLE_RECORDED_MARKER,
 } from "../fixtures/acceptance-durable.tool.ts";
 
 export const ACCEPTANCE_MODEL_ID = "sweatpants-acceptance";
@@ -238,6 +239,7 @@ export function createAcceptanceApplication(
         options.retainResponseStreams ? { retentionPolicy: { mode: "retain_forever" } } : {},
       );
       yield* ToolInventoryContext.set(inventory);
+      yield* durableOptionsProvider.install();
 
       toolSessionStore = createInMemoryToolSessionStoreWithDebug();
       const registry = yield* createToolSessionRegistry(toolSessionStore, {
@@ -303,7 +305,7 @@ export function createAcceptanceApplication(
           ],
         ]),
         drivers: [[options.durableDriverKind ?? "worker", durableDriver]],
-        effects: [createDurableOptionsRegistration()],
+        effects: [...durableOptionsProvider.registrations],
       });
     },
     handler: createChatHandler({

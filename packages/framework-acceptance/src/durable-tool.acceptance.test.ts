@@ -10,6 +10,7 @@ import {
   ACCEPTANCE_MODEL_ID,
   DURABLE_EFFECT_NAME,
   DURABLE_SAMPLE_PROMPT_MARKER,
+  DURABLE_RECORDED_MARKER,
   DURABLE_SAMPLE_RESPONSE_MARKER,
   DURABLE_TOOL_RESULT_MARKER,
   acceptanceDurableTool,
@@ -66,9 +67,15 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
         },
       ]);
 
-      const nestedSample = yield* s.model.request((request) => {
-        expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
-      });
+      const nestedSample = yield* race([
+        s.model.request((request) => {
+          expect(JSON.stringify(request.body.input)).toContain(DURABLE_SAMPLE_PROMPT_MARKER);
+        }),
+        (function* () {
+          const failure = yield* turn.failure();
+          throw new Error(`durable tool failed before nested sampling: ${failure.message}`);
+        })(),
+      ]);
       expect(nestedSample.pullId).not.toBe(outerRequest.pullId);
       yield* nestedSample.respond.text(`${DURABLE_SAMPLE_RESPONSE_MARKER} Prefer the express.`);
 
@@ -98,6 +105,7 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
       );
       expect(durableResult).toMatchObject({
         marker: DURABLE_TOOL_RESULT_MARKER,
+        recorded: `${DURABLE_RECORDED_MARKER}:trains`,
         selected: "trains-beta",
         sampleText: `${DURABLE_SAMPLE_RESPONSE_MARKER} Prefer the express.`,
       });
@@ -129,6 +137,15 @@ async function runDurableToolScenario(binding: Binding): Promise<void> {
             entry.payload.descriptor.name === DURABLE_EFFECT_NAME,
         ),
       ).toHaveLength(1);
+      expect(
+        journal.filter(
+          (entry) =>
+            entry.payload.type === "PullRequested" &&
+            entry.payload.descriptor.kind === "record" &&
+            entry.payload.descriptor.label === "acceptance-recorded-value",
+        ),
+      ).toHaveLength(1);
+      expect(JSON.stringify(journal)).not.toContain("function* ()");
       expect(JSON.stringify(journal)).not.toContain("foreign.tool.start");
 
       const followUpTurn = yield* conversation.send("DURABLE_FOLLOW_UP_V1 What did I select?");
