@@ -362,10 +362,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     return { id: this.#options.journalId, incarnation: this.#options.journalIncarnation };
   }
 
-  *taskExecutionState(
-    sessionId: string,
-    taskId: string,
-  ): Operation<DurableTaskExecutionState> {
+  *taskExecutionState(sessionId: string, taskId: string): Operation<DurableTaskExecutionState> {
     const task = this.#task(sessionId, taskId);
     return {
       executionEpoch: task.executionEpoch,
@@ -395,21 +392,18 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     this.#assertEffectContractsCompatible(request.manifest);
     assertInlineSize(input, this.#options.maxOutcomeBytes);
     if ((request.catalog === undefined) !== (request.catalogDigest === undefined)) {
-      throw new CrankError("invalid_manifest", "Catalog and catalog digest must be supplied together");
+      throw new CrankError(
+        "invalid_manifest",
+        "Catalog and catalog digest must be supplied together",
+      );
     }
-    const catalog = request.catalog === undefined
-      ? undefined
-      : canonicalSnapshot(request.catalog).value;
-    if (
-      catalog &&
-      (!isJsonRecord(catalog) || catalog["digest"] !== request.catalogDigest)
-    ) {
+    const catalog =
+      request.catalog === undefined ? undefined : canonicalSnapshot(request.catalog).value;
+    if (catalog && (!isJsonRecord(catalog) || catalog["digest"] !== request.catalogDigest)) {
       throw new CrankError("invalid_manifest", "Accepted catalog digest differs");
     }
     if (catalog) assertInlineSize(catalog, this.#options.maxOutcomeBytes);
-    const route = request.route === undefined
-      ? undefined
-      : canonicalSnapshot(request.route).value;
+    const route = request.route === undefined ? undefined : canonicalSnapshot(request.route).value;
     const emissionPolicy = this.#options.emissionPolicy
       ? structuredClone(this.#options.emissionPolicy)
       : undefined;
@@ -522,9 +516,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       executionEpoch: request.executionEpoch,
       attachmentId: "unattached-child",
       audience: request.audience,
-      ...(parent.catalog
-        ? { catalog: parent.catalog, catalogDigest: parent.catalogDigest! }
-        : {}),
+      ...(parent.catalog ? { catalog: parent.catalog, catalogDigest: parent.catalogDigest! } : {}),
       ...(request.route !== undefined ? { route: request.route } : {}),
       parentTaskId: request.parentTaskId,
       parentPullId: request.parentPullId,
@@ -594,7 +586,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       if (existing.indeterminate) {
         return { status: "pending", pullId: existing.pullId, reason: "indeterminate" };
       }
-      if (descriptor.kind === "effect") {
+      if (descriptor.kind === "effect" || descriptor.kind === "record") {
         return this.#authorizeExisting(task, existing);
       }
       existing.capability ??= this.#resolutionCapability(task, existing, undefined);
@@ -702,7 +694,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       descriptor: effectiveDescriptor,
       descriptorDigest,
     });
-    if (descriptor.kind === "effect") {
+    if (descriptor.kind === "effect" || descriptor.kind === "record") {
       return {
         ...this.#startAttempt(task, pull),
         ...(restoredFrontierConsumed ? { restoredFrontierConsumed: true as const } : {}),
@@ -1178,7 +1170,8 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       } else {
         const started = frontierPull.attempts.find((attempt) => attempt.state === "started");
         const live =
-          frontierPull.descriptor.kind === "effect" &&
+          (frontierPull.descriptor.kind === "effect" ||
+            frontierPull.descriptor.kind === "record") &&
           started !== undefined &&
           hasLiveDurableEffect(sessionId, taskId, frontierPull.pullId);
         if (live) {
@@ -1259,7 +1252,10 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     }
     const task = this.#task(sessionId, taskId);
     const pull = this.#pull(task, pullId);
-    if (!pull.indeterminate || pull.descriptor.kind !== "effect") {
+    if (
+      !pull.indeterminate ||
+      (pull.descriptor.kind !== "effect" && pull.descriptor.kind !== "record")
+    ) {
       throw new CrankError("invalid_command");
     }
     pull.indeterminate = false;
@@ -1897,14 +1893,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       }
     }
     if (active) {
-      return {
-        status: "authorized",
-        pullId: pull.pullId,
-        attemptId: active.attemptId,
-        descriptor: effectDescriptor(pull.effectiveDescriptor),
-        effectContractDigest: effectDigestForPull(task, pull),
-        resolutionCapability: active.capability,
-      };
+      return this.#authorizedAttempt(task, pull, active.attemptId, active.capability);
     }
     return this.#startAttempt(task, pull);
   }
@@ -1922,13 +1911,28 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       attemptId,
       attemptIndex,
     });
+    return this.#authorizedAttempt(task, pull, attemptId, capability);
+  }
+
+  #authorizedAttempt(
+    task: Task,
+    pull: Pull,
+    attemptId: string,
+    resolutionCapability: string,
+  ): Extract<ReserveOperationResult, { status: "authorized" }> {
+    const descriptor = installedOrRecordedDescriptor(pull.effectiveDescriptor);
     return {
       status: "authorized",
       pullId: pull.pullId,
       attemptId,
-      descriptor: effectDescriptor(pull.effectiveDescriptor),
-      effectContractDigest: effectDigestForPull(task, pull),
-      resolutionCapability: capability,
+      descriptor,
+      ...(descriptor.kind === "effect"
+        ? {
+            effectContractDigest: effectDigestForPull(task, pull),
+            effectDefinition: structuredClone(task.manifest.effects[descriptor.name]!),
+          }
+        : {}),
+      resolutionCapability,
     };
   }
 
@@ -1990,9 +1994,12 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
         attemptId: attempt.attemptId,
         reason,
       });
-      if (pull.descriptor.kind === "effect") {
-        const definition = task.manifest.effects[pull.descriptor.name];
-        if (definition?.retrySafety.mode === "unsafe") {
+      if (pull.descriptor.kind === "effect" || pull.descriptor.kind === "record") {
+        const retrySafety =
+          pull.descriptor.kind === "effect"
+            ? task.manifest.effects[pull.descriptor.name]?.retrySafety
+            : pull.descriptor.retrySafety;
+        if (retrySafety?.mode === "unsafe") {
           pull.indeterminate = true;
           this.#append(task.sessionId, undefined, {
             type: "PullIndeterminate",
@@ -2000,7 +2007,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
             pullId: pull.pullId,
             attemptId: attempt.attemptId,
           });
-          if (definition.retrySafety.onIndeterminate === "fail") {
+          if (retrySafety.onIndeterminate === "fail") {
             this.#failIndeterminatePull(task, pull, attempt, reason);
           }
         }
@@ -2685,6 +2692,9 @@ function isRetrySafetySnapshot(value: unknown): boolean {
   if (!isJsonRecord(value) || typeof value["mode"] !== "string") {
     return false;
   }
+  if (value["mode"] === "repeatable") {
+    return hasExactKeys(value, ["mode"]);
+  }
   if (value["mode"] === "unsafe") {
     return (
       hasExactKeys(value, ["mode", "onIndeterminate"]) &&
@@ -2789,6 +2799,15 @@ function isDescriptorSnapshot(value: unknown): boolean {
     return false;
   }
   switch (value["kind"]) {
+    case "record":
+      return (
+        hasOnlyKeys(value, ["kind", "retrySafety"], ["label"]) &&
+        isRetrySafetySnapshot(value["retrySafety"]) &&
+        (value["label"] === undefined ||
+          (typeof value["label"] === "string" &&
+            value["label"].length > 0 &&
+            new TextEncoder().encode(value["label"]).byteLength <= 128))
+      );
     case "effect":
       return (
         hasExactKeys(value, ["kind", "name", "version", "input", "resolver"]) &&
@@ -2931,12 +2950,7 @@ function isSemanticPayload(value: unknown): boolean {
             "input",
             "inputDigest",
           ],
-          [
-            "parentTaskId",
-            "parentPullId",
-            "catalog",
-            "catalogDigest",
-          ],
+          ["parentTaskId", "parentPullId", "catalog", "catalogDigest"],
         ) &&
         ["turnId", "programId", "programVersion", "programDigest", "inputDigest"].every(
           (key) => typeof value[key] === "string",
@@ -3260,7 +3274,10 @@ function effectContractKey(name: string, version: string): string {
 }
 
 function effectDigestForPull(task: Task, pull: Pull): string {
-  const descriptor = effectDescriptor(pull.effectiveDescriptor);
+  const descriptor = pull.effectiveDescriptor;
+  if (descriptor.kind !== "effect") {
+    throw new CrankError("invalid_manifest", "Authorized pull is not an installed effect");
+  }
   const definition = task.manifest.effects[descriptor.name];
   if (!definition || definition.version !== descriptor.version) {
     throw new CrankError("invalid_manifest", "Authorized effect contract is unavailable");
@@ -3305,6 +3322,15 @@ function operationPolicy(
   contextDigest?: string;
 } {
   switch (descriptor.kind) {
+    case "record":
+      if (
+        descriptor.label !== undefined &&
+        (descriptor.label.length === 0 ||
+          new TextEncoder().encode(descriptor.label).byteLength > 128)
+      ) {
+        throw new CrankError("invalid_descriptor", "Invalid record label");
+      }
+      return { resultDescriptor: ANY_JSON_SCHEMA_DESCRIPTOR, audience: "program-execution" };
     case "effect": {
       const definition = manifest.effects[descriptor.name];
       if (!definition || definition.version !== descriptor.version) {
@@ -3371,11 +3397,11 @@ function operationPolicy(
   }
 }
 
-function effectDescriptor(
+function installedOrRecordedDescriptor(
   descriptor: DurableOperationDescriptor,
-): Extract<DurableOperationDescriptor, { kind: "effect" }> {
-  if (descriptor.kind !== "effect") {
-    throw new CrankError("invalid_descriptor", "Authorized pull is not an effect");
+): Extract<DurableOperationDescriptor, { kind: "effect" | "record" }> {
+  if (descriptor.kind !== "effect" && descriptor.kind !== "record") {
+    throw new CrankError("invalid_descriptor", "Authorized pull is not executable");
   }
   return descriptor;
 }
@@ -3416,7 +3442,9 @@ function snapshotDescriptor(descriptor: DurableOperationDescriptor): DurableOper
   if (
     !snapshot ||
     typeof snapshot !== "object" ||
-    !["effect", "elicit", "wait", "invoke", "all", "race", "spawn", "join"].includes(snapshot.kind)
+    !["effect", "record", "elicit", "wait", "invoke", "all", "race", "spawn", "join"].includes(
+      snapshot.kind,
+    )
   ) {
     throw new CrankError("invalid_descriptor");
   }

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { call, sleep, useAbortSignal, type Operation } from "effection";
+import { call, sleep, useAbortSignal, withResolvers, type Operation } from "effection";
 
 import { CrankError, type DurableEffectContext } from "@sweatpants/session-contract";
 import {
@@ -10,6 +10,7 @@ import {
 } from "@sweatpants/workspace-runtime";
 
 const execFileAsync = promisify(execFile);
+const MAX_HTTP_RESPONSE_BYTES = 2 * 1024 * 1024;
 
 export interface AwsCommandRunner {
   run(service: string, operation: string, args: readonly string[]): Operation<unknown>;
@@ -61,6 +62,12 @@ export interface LambdaMicrovmWorkspaceManager {
   close(): Operation<void>;
 }
 
+type LeaseOutcome =
+  | { readonly ok: true; readonly lease: LambdaMicrovmWorkspaceLease }
+  | { readonly ok: false; readonly error: Error };
+
+type TerminationOutcome = { readonly ok: true } | { readonly ok: false; readonly error: Error };
+
 export function createAwsCliCommandRunner(options: {
   readonly profile?: string;
   readonly region: string;
@@ -110,13 +117,46 @@ export function createLambdaMicrovmWorkspaceManager(
       region: options.region,
     });
   const leases = new Map<string, LambdaMicrovmWorkspaceLease>();
+  const pending = new Map<string, Operation<LeaseOutcome>>();
 
   return {
     *resolve(context) {
-      let lease = leases.get(context.sessionId);
+      const affinityId = context.sessionId;
+      let lease = leases.get(affinityId);
       if (!lease) {
-        lease = yield* createLambdaMicrovmWorkspaceLease(options, runner, context.sessionId);
-        leases.set(context.sessionId, lease);
+        const inFlight = pending.get(affinityId);
+        if (inFlight) {
+          const outcome = yield* inFlight;
+          if (!outcome.ok) {
+            throw outcome.error;
+          }
+          lease = outcome.lease;
+        } else {
+          const deferred = withResolvers<LeaseOutcome>("allocate Lambda MicroVM workspace");
+          pending.set(affinityId, deferred.operation);
+          let settled = false;
+          try {
+            lease = yield* createLambdaMicrovmWorkspaceLease(options, runner, affinityId);
+            leases.set(affinityId, lease);
+            deferred.resolve({ ok: true, lease });
+            settled = true;
+          } catch (error) {
+            const failure = asError(error);
+            deferred.resolve({ ok: false, error: failure });
+            settled = true;
+            throw error;
+          } finally {
+            if (!settled) {
+              deferred.resolve({
+                ok: false,
+                error: new CrankError("sandbox_unavailable", "MicroVM allocation was cancelled"),
+              });
+            }
+            if (pending.get(affinityId) === deferred.operation) {
+              pending.delete(affinityId);
+            }
+          }
+        }
       }
       return { connector: lease.connector, fence: lease.fence };
     },
@@ -125,11 +165,12 @@ export function createLambdaMicrovmWorkspaceManager(
       return lease ? yield* lease.inspect() : undefined;
     },
     *close() {
-      const active = [...leases.values()];
-      leases.clear();
-      for (const lease of active) {
+      for (const [affinityId, lease] of leases) {
         try {
           yield* lease.terminate();
+          if (leases.get(affinityId) === lease) {
+            leases.delete(affinityId);
+          }
         } catch (error) {
           console.error("[lambda-microvm] termination failed", {
             microvmId: lease.microvmId,
@@ -177,64 +218,123 @@ export function* createLambdaMicrovmWorkspaceLease(
     "run MicroVM response",
   );
   const microvmId = text(created["microvmId"], "MicroVM ID");
-  const endpoint = `https://${text(created["endpoint"], "MicroVM endpoint")}`;
-  yield* waitForState(runner, microvmId, "RUNNING");
+  let ownershipTransferred = false;
+  try {
+    const endpoint = `https://${text(created["endpoint"], "MicroVM endpoint")}`;
+    yield* waitForState(runner, microvmId, "RUNNING");
 
-  const fence: WorkspaceFence = {
-    taskId,
-    sandboxGeneration: microvmId,
-    activationEpoch: 1,
-  };
-  const headers = createTokenHeaders(runner, microvmId);
-  const fetchImplementation = options.fetch ?? globalThis.fetch;
-  const bound = record(
-    yield* fetchJson(fetchImplementation, new URL("/activation/bind", endpoint), headers, {
-      ...fence,
-      scripts: options.scripts,
-    }),
-    "activation bind response",
-  );
-  const initialWorkspaceVersion = sha(bound["workspaceVersion"], "workspace version");
-  const connector = createHttpWorkspaceConnector({ endpoint, headers, fetch: fetchImplementation });
-  let terminated = false;
-
-  const lease: LambdaMicrovmWorkspaceLease = {
-    taskId,
-    microvmId,
-    endpoint,
-    fence,
-    connector,
-    initialWorkspaceVersion,
-    *inspect() {
-      return parseInspection(
-        yield* runner.run("lambda-microvms", "get-microvm", ["--microvm-identifier", microvmId]),
-      );
-    },
-    *suspend() {
-      yield* runner.run("lambda-microvms", "suspend-microvm", ["--microvm-identifier", microvmId]);
-      yield* waitForState(runner, microvmId, "SUSPENDED");
-    },
-    *resume() {
-      yield* runner.run("lambda-microvms", "resume-microvm", ["--microvm-identifier", microvmId]);
-      yield* waitForState(runner, microvmId, "RUNNING");
+    let fence: WorkspaceFence = {
+      taskId,
+      sandboxGeneration: microvmId,
+      activationEpoch: 1,
+    };
+    const headers = createTokenHeaders(runner, microvmId);
+    const fetchImplementation = options.fetch ?? globalThis.fetch;
+    const bound = record(
       yield* fetchJson(fetchImplementation, new URL("/activation/bind", endpoint), headers, {
         ...fence,
         scripts: options.scripts,
-      });
-    },
-    *terminate() {
-      if (terminated) {
-        return;
+      }),
+      "activation bind response",
+    );
+    const initialWorkspaceVersion = sha(bound["workspaceVersion"], "workspace version");
+    const connector = createHttpWorkspaceConnector({
+      endpoint,
+      headers,
+      fetch: fetchImplementation,
+    });
+    let terminated = false;
+    let termination: Operation<TerminationOutcome> | undefined;
+
+    const lease: LambdaMicrovmWorkspaceLease = {
+      taskId,
+      microvmId,
+      endpoint,
+      get fence() {
+        return structuredClone(fence);
+      },
+      connector,
+      initialWorkspaceVersion,
+      *inspect() {
+        return parseInspection(
+          yield* runner.run("lambda-microvms", "get-microvm", ["--microvm-identifier", microvmId]),
+        );
+      },
+      *suspend() {
+        yield* runner.run("lambda-microvms", "suspend-microvm", [
+          "--microvm-identifier",
+          microvmId,
+        ]);
+        yield* waitForState(runner, microvmId, "SUSPENDED");
+      },
+      *resume() {
+        yield* runner.run("lambda-microvms", "resume-microvm", ["--microvm-identifier", microvmId]);
+        yield* waitForState(runner, microvmId, "RUNNING");
+        fence = { ...fence, activationEpoch: fence.activationEpoch + 1 };
+        yield* fetchJson(fetchImplementation, new URL("/activation/bind", endpoint), headers, {
+          ...fence,
+          scripts: options.scripts,
+        });
+      },
+      *terminate() {
+        if (terminated) {
+          return;
+        }
+        if (termination) {
+          const outcome = yield* termination;
+          if (!outcome.ok) {
+            throw outcome.error;
+          }
+          return;
+        }
+
+        const deferred = withResolvers<TerminationOutcome>("terminate Lambda MicroVM workspace");
+        termination = deferred.operation;
+        let settled = false;
+        try {
+          yield* runner.run("lambda-microvms", "terminate-microvm", [
+            "--microvm-identifier",
+            microvmId,
+          ]);
+          yield* waitForState(runner, microvmId, "TERMINATED");
+          terminated = true;
+          deferred.resolve({ ok: true });
+          settled = true;
+        } catch (error) {
+          const failure = asError(error);
+          deferred.resolve({ ok: false, error: failure });
+          settled = true;
+          throw error;
+        } finally {
+          if (!settled) {
+            deferred.resolve({
+              ok: false,
+              error: new CrankError("sandbox_unavailable", "MicroVM termination was cancelled"),
+            });
+          }
+          if (!terminated && termination === deferred.operation) {
+            termination = undefined;
+          }
+        }
+      },
+    };
+    ownershipTransferred = true;
+    return lease;
+  } finally {
+    if (!ownershipTransferred) {
+      try {
+        yield* runner.run("lambda-microvms", "terminate-microvm", [
+          "--microvm-identifier",
+          microvmId,
+        ]);
+      } catch (error) {
+        console.error("[lambda-microvm] allocation cleanup failed", {
+          microvmId,
+          error: bounded(asError(error).message),
+        });
       }
-      terminated = true;
-      yield* runner.run("lambda-microvms", "terminate-microvm", [
-        "--microvm-identifier",
-        microvmId,
-      ]);
-      yield* waitForState(runner, microvmId, "TERMINATED");
-    },
-  };
-  return lease;
+    }
+  }
 }
 
 function createTokenHeaders(
@@ -303,7 +403,7 @@ function* fetchJson(
       body: JSON.stringify(body),
     }),
   );
-  const value = (yield* call(() => response.json())) as unknown;
+  const value = yield* readBoundedJsonResponse(response);
   if (!response.ok) {
     const error = value as { error?: { code?: string; message?: string } };
     throw new CrankError(
@@ -312,6 +412,47 @@ function* fetchJson(
     );
   }
   return value;
+}
+
+function* readBoundedJsonResponse(response: Response): Operation<unknown> {
+  try {
+    return yield* call(async () => {
+      if (!response.body) {
+        throw new Error("response body is empty");
+      }
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      try {
+        while (true) {
+          const next = await reader.read();
+          if (next.done) {
+            break;
+          }
+          total += next.value.byteLength;
+          if (total > MAX_HTTP_RESPONSE_BYTES) {
+            await reader.cancel("response limit exceeded");
+            throw new Error("response exceeds the body limit");
+          }
+          chunks.push(next.value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const bytes = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+    });
+  } catch (error) {
+    throw new CrankError(
+      "sandbox_unavailable",
+      `MicroVM HTTP response was not bounded JSON: ${bounded(asError(error).message)}`,
+    );
+  }
 }
 
 function parseInspection(value: unknown): LambdaMicrovmInspection {
@@ -344,6 +485,10 @@ function sha(value: unknown, label: string): string {
     throw new CrankError("sandbox_unavailable", `${label} must be lowercase SHA-256`);
   }
   return digest;
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function bounded(value: string): string {

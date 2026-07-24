@@ -156,13 +156,10 @@ export function reconcileAgentCoreDurableReadiness(
   if (schemaDigests.some((digest) => !input.schemaDigests.has(digest))) missing.add("schema");
   if (input.sampling?.required) {
     const modelSample = Object.values(input.manifest.effects).find(
-      (effect) => effect.name === "model.sample" && effect.version === "1",
+      (effect) => effect.name === "model.sample",
     );
     if (input.sampling.protocolVersion !== 1) missing.add("sampling_protocol");
-    if (
-      !modelSample ||
-      input.sampling.effectContractDigest !== effectContractDigest(modelSample)
-    ) {
+    if (!modelSample || input.sampling.effectContractDigest !== effectContractDigest(modelSample)) {
       missing.add("sampling_effect");
     }
     if (!input.sampling.deliveryAvailable) missing.add("sampling_delivery");

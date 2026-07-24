@@ -2,6 +2,8 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z, type ZodSchema } from "zod";
 import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
+  CrankError,
+  canonicalJson,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   PROGRAM_ARTIFACT_GENERATOR_VERSION,
@@ -11,6 +13,8 @@ import {
   effectContractDigest,
   createPinnedDurableProgram as createLowLevelDurableTool,
   generateProgramArtifactIdentity,
+  sha256,
+  sortStrings,
   type DurableProgramContext,
   type DurableProgramGenerator,
   type DurableProgramManifest,
@@ -28,6 +32,11 @@ import {
 
 import { toPortableSchema } from "../schema/zod-adapter.ts";
 import { effectCatalogEntries } from "./durable-effect.ts";
+import {
+  extensionEffectDefinitions,
+  type DurableExtensionContext,
+  type DurableExtensionMap,
+} from "./durable-context-extension.ts";
 import type { ToolSchemaArtifacts } from "./contract.ts";
 import type {
   ElicitDefinition,
@@ -83,7 +92,8 @@ export type DurableProgramContextFor<
   E extends EffectMap,
   TElicits extends ElicitsMap = {},
   TSamples extends boolean = false,
-> = Omit<DurableProgramContext, "effect" | "elicit"> & {
+  TExtensions extends DurableExtensionMap = {},
+> = Omit<DurableProgramContext, "effect" | "elicit" | "use"> & {
   effect<D extends EffectFromMap<E>>(
     definition: D,
     input: EffectInput<D>,
@@ -102,7 +112,8 @@ export type DurableProgramContextFor<
     WireElicitResultJson<JsonOutput<ExtractElicitResponse<TElicits[K]>>>,
     ProgramResume
   >;
-} & (TSamples extends true ? DurableSamplingContext : {});
+} & (TSamples extends true ? DurableSamplingContext : {}) &
+  DurableExtensionContext<TExtensions>;
 
 /**
  * Crank-native durable tool definition satisfying the execution-neutral
@@ -169,8 +180,19 @@ export interface CreateDurableToolBuilderWithParameters<
   ): CreateDurableToolBuilderWithParameters<N, I, O, Next>;
   effects<Effects extends EffectMap>(
     effects: Effects,
-  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, false>;
-  samples(): CreateDurableToolBuilderReady<N, I, O, E, {}, true>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, false, {}>;
+  samples(): CreateDurableToolBuilderReady<N, I, O, E, {}, true, {}>;
+  uses<Extensions extends DurableExtensionMap>(
+    extensions: Extensions,
+  ): CreateDurableToolBuilderReady<
+    N,
+    I,
+    O,
+    E,
+    ReturnType<typeof extensionEffectDefinitions>,
+    false,
+    Extensions
+  >;
 }
 
 export interface CreateDurableToolBuilderReady<
@@ -180,15 +202,19 @@ export interface CreateDurableToolBuilderReady<
   E extends ElicitsMap,
   Effects extends EffectMap,
   Samples extends boolean = false,
+  Extensions extends DurableExtensionMap = {},
 > {
   effects<Next extends EffectMap>(
     effects: Next,
-  ): CreateDurableToolBuilderReady<N, I, O, E, Effects & Next, Samples>;
-  samples(): CreateDurableToolBuilderReady<N, I, O, E, Effects, true>;
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects & Next, Samples, Extensions>;
+  samples(): CreateDurableToolBuilderReady<N, I, O, E, Effects, true, Extensions>;
+  uses<Next extends DurableExtensionMap>(
+    extensions: Next,
+  ): CreateDurableToolBuilderReady<N, I, O, E, Effects, Samples, Extensions & Next>;
   execute<Result extends O extends Json ? O : Json>(
     program: (
       input: I,
-      context: DurableProgramContextFor<Effects, E, Samples>,
+      context: DurableProgramContextFor<Effects, E, Samples, Extensions>,
     ) => DurableProgramGenerator<Result>,
   ): DurableToolDefinition<N, I, O extends Json ? O : Result, E>;
 }
@@ -205,6 +231,7 @@ type BuilderState = {
   elicits?: ElicitsMap;
   effects?: EffectMap;
   samples?: boolean;
+  extensions?: DurableExtensionMap;
 };
 
 /** Creates a type-staged Zod authoring adapter over the low-level durable manifest API. */
@@ -286,6 +313,17 @@ function builder(state: BuilderState): unknown {
       requireStage(state.parameters, ".parameters()", ".elicits()");
       return builder({ ...state, elicits: { ...elicits } });
     },
+    uses(extensions: DurableExtensionMap) {
+      requireStage(state.parameters, ".parameters()", ".uses()");
+      for (const alias of Object.keys(extensions)) {
+        if (state.extensions?.[alias]) {
+          throw new Error(`Durable context extension alias ${alias} is already declared`);
+        }
+      }
+      const merged = { ...state.extensions, ...extensions };
+      extensionEffectDefinitions(merged);
+      return builder({ ...state, extensions: merged });
+    },
     effects(effects: EffectMap) {
       requireStage(state.parameters, ".parameters()", ".effects()");
       const samplingDefinition = effects[MODEL_SAMPLE_EFFECT.name];
@@ -321,9 +359,9 @@ function builder(state: BuilderState): unknown {
         ".execute()",
       );
       const parameters = requireStage(state.parameters, ".parameters()", ".execute()");
-      if (!state.effects && !state.samples) {
+      if (!state.effects && !state.samples && !state.extensions) {
         throw new Error(
-          `Durable tool "${state.name}": .effects() or .samples() must be called before .execute()`,
+          `Durable tool "${state.name}": .effects(), .samples(), or .uses() must be called before .execute()`,
         );
       }
       const version = state.identity?.version ?? state.version!;
@@ -390,6 +428,7 @@ function builder(state: BuilderState): unknown {
       // one canonical contract and its built-in validators.
       const declaredEffects: EffectMap = {
         ...(state.effects ?? {}),
+        ...extensionEffectDefinitions(state.extensions ?? {}),
         ...(state.samples ? { [MODEL_SAMPLE_EFFECT.name]: MODEL_SAMPLE_EFFECT } : {}),
       };
       for (const definition of Object.values(declaredEffects)) {
@@ -413,21 +452,52 @@ function builder(state: BuilderState): unknown {
         },
       };
       const factory = (rawInput: Json, context: DurableProgramContext) =>
-        program(rawInput, contextForDeclarations(context, manifestElicits, state.samples === true));
+        program(
+          rawInput,
+          contextForDeclarations(
+            context,
+            manifestElicits,
+            state.samples === true,
+            state.extensions ?? {},
+          ),
+        );
+      const extensionIdentity = sortStrings(Object.keys(state.extensions ?? {})).map((alias) => {
+        const extension = state.extensions![alias]!;
+        return { alias, name: extension.name, digest: extension.digest };
+      });
+      const bindExtensions = (baseDigest: string) =>
+        extensionIdentity.length === 0
+          ? baseDigest
+          : sha256(
+              `sweatpants.durable-extension-program.v1\0${canonicalJson({
+                baseDigest,
+                extensions: extensionIdentity,
+              })}`,
+            );
+      const generatedIdentity = (implementationArtifactDigest: string) =>
+        generateProgramArtifactIdentity({
+          format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+          generatorVersion: PROGRAM_ARTIFACT_GENERATOR_VERSION,
+          manifest,
+          implementationArtifactDigest: bindExtensions(implementationArtifactDigest),
+          resourcePackageDigests: [...(state.resourcePackageDigests ?? [])],
+        });
       const tool = state.identity
-        ? createLowLevelDurableTool({ ...manifest, digest: state.identity.digest }, factory)
+        ? createLowLevelDurableTool(
+            { ...manifest, digest: bindExtensions(state.identity.digest) },
+            factory,
+          )
         : state.implementationArtifactDigest
           ? createGeneratedPinnedDurableProgram(
-              generateProgramArtifactIdentity({
-                format: PROGRAM_ARTIFACT_IDENTITY_FORMAT,
-                generatorVersion: PROGRAM_ARTIFACT_GENERATOR_VERSION,
-                manifest,
-                implementationArtifactDigest: state.implementationArtifactDigest,
-                resourcePackageDigests: [...(state.resourcePackageDigests ?? [])],
-              }),
+              generatedIdentity(state.implementationArtifactDigest),
               factory,
             )
-          : createInterfaceDerivedPinnedDurableProgram(manifest, factory);
+          : extensionIdentity.length > 0
+            ? createGeneratedPinnedDurableProgram(
+                generatedIdentity(sha256("sweatpants.durable-extension-client.v1")),
+                factory,
+              )
+            : createInterfaceDerivedPinnedDurableProgram(manifest, factory);
       const artifacts: ToolSchemaArtifacts = Object.freeze({
         parameters: input.descriptor,
         output: outputDescriptor,
@@ -462,9 +532,24 @@ function contextForDeclarations(
     { response: PortableSchemaDescriptor; context?: PortableSchemaDescriptor }
   >,
   sampling: boolean,
+  extensions: DurableExtensionMap,
 ): DurableProgramContext {
+  const clients = new Map<unknown, ReturnType<DurableExtensionMap[string]["createClient"]>>(
+    Object.values(extensions).map((extension) => [extension, extension.createClient(context)]),
+  );
+  const aliases = Object.fromEntries(
+    Object.entries(extensions).map(([alias, extension]) => [alias, clients.get(extension)!]),
+  );
   const adapted = Object.freeze({
     ...context,
+    ...aliases,
+    use(extension: unknown) {
+      const client = clients.get(extension);
+      if (!client) {
+        throw new CrankError("undeclared_extension", "Durable context extension is not declared");
+      }
+      return client;
+    },
     effect(
       definitionOrName: EffectDefinition<Json, Json, Json> | string,
       inputOrVersion: Json,

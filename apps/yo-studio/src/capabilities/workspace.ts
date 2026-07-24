@@ -1,4 +1,4 @@
-import { createDurableTool, defineEffect } from "@sweatpants/core";
+import { createDurableTool, defineDurableContextExtension, defineEffect } from "@sweatpants/core";
 import { z } from "zod";
 
 const RelativePath = z
@@ -84,49 +84,61 @@ export const runWorkspaceScript = defineEffect({
   retrySafety: { mode: "idempotent", mechanism: "pull_id_key" },
 });
 
+/** Authored workspace abstraction over generic durable context extensions. */
+export const workspace = defineDurableContextExtension({
+  name: "yo-studio-workspace",
+  effects: {
+    inspect: inspectWorkspace,
+    readFile: readWorkspaceFile,
+    list: listWorkspace,
+    writeFile: writeWorkspaceFile,
+    runScript: runWorkspaceScript,
+  },
+});
+
 export const workspaceInspectTool = createDurableTool("workspace_inspect", { version: "1.0.0" })
   .description("Return the current logical workspace version")
   .parameters(z.object({}))
   .output(InspectWorkspaceOutput)
-  .effects({ [inspectWorkspace.name]: inspectWorkspace })
+  .uses({ workspace })
   .execute(function* (_input, context) {
-    return yield* context.effect(inspectWorkspace, {});
+    return yield* context.workspace.inspect({});
   });
 
 export const workspaceReadTool = createDurableTool("workspace_read", { version: "1.0.0" })
   .description("Read one UTF-8 file from the task workspace")
   .parameters(ReadWorkspaceInput)
   .output(ReadWorkspaceOutput)
-  .effects({ [readWorkspaceFile.name]: readWorkspaceFile })
+  .uses({ workspace })
   .execute(function* (input, context) {
-    return yield* context.effect(readWorkspaceFile, input);
+    return yield* context.workspace.readFile(input);
   });
 
 export const workspaceListTool = createDurableTool("workspace_list", { version: "1.0.0" })
   .description("List one directory at an expected logical workspace version")
   .parameters(ListWorkspaceInput)
   .output(ListWorkspaceOutput)
-  .effects({ [listWorkspace.name]: listWorkspace })
+  .uses({ workspace })
   .execute(function* (input, context) {
-    return yield* context.effect(listWorkspace, input);
+    return yield* context.workspace.list(input);
   });
 
 export const workspaceWriteTool = createDurableTool("workspace_write", { version: "1.0.0" })
   .description("Replace one UTF-8 file at an expected logical workspace version")
   .parameters(WriteWorkspaceInput)
   .output(WriteWorkspaceOutput)
-  .effects({ [writeWorkspaceFile.name]: writeWorkspaceFile })
+  .uses({ workspace })
   .execute(function* (input, context) {
-    return yield* context.effect(writeWorkspaceFile, input);
+    return yield* context.workspace.writeFile(input);
   });
 
 export const workspaceTestTool = createDurableTool("workspace_test", { version: "1.0.0" })
   .description("Run one deployment-declared validation script in the task workspace")
   .parameters(RunWorkspaceScriptInput)
   .output(RunWorkspaceScriptOutput)
-  .effects({ [runWorkspaceScript.name]: runWorkspaceScript })
+  .uses({ workspace })
   .execute(function* (input, context) {
-    return yield* context.effect(runWorkspaceScript, input);
+    return yield* context.workspace.runScript(input);
   });
 
 export const codingCapabilities = {

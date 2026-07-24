@@ -1,5 +1,7 @@
 import { canonicalJson, canonicalSnapshot, sha256, sha256Bytes, sortStrings } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
+import type { Operation } from "effection";
+
 import type { Sha256 } from "./portable-durable-mcp.ts";
 
 export type WorkspacePersistence =
@@ -61,7 +63,7 @@ export interface SandboxInstanceKeyInput {
 
 export interface SandboxActivationFence {
   readonly taskId: string;
-  readonly generation: string;
+  readonly sandboxGeneration: string;
   readonly activationEpoch: number;
 }
 
@@ -76,17 +78,17 @@ export interface RestoreSandboxRequest extends CreateSandboxRequest {
 }
 
 export interface SandboxConnector {
-  request(message: Json): Promise<Json>;
+  request(message: Json): Operation<Json>;
 }
 
 export interface SandboxProvider {
-  create(request: CreateSandboxRequest): Promise<SandboxInspection>;
-  inspect(logicalSandboxId: string): Promise<SandboxInspection | null>;
-  connect(inspection: SandboxInspection): Promise<SandboxConnector>;
-  suspend?(inspection: SandboxInspection): Promise<void>;
-  resume?(inspection: SandboxInspection): Promise<SandboxInspection>;
-  restore?(request: RestoreSandboxRequest): Promise<SandboxInspection>;
-  terminate(inspection: SandboxInspection): Promise<void>;
+  create(request: CreateSandboxRequest): Operation<SandboxInspection>;
+  inspect(logicalSandboxId: string): Operation<SandboxInspection | null>;
+  connect(inspection: SandboxInspection): Operation<SandboxConnector>;
+  suspend?(inspection: SandboxInspection): Operation<void>;
+  resume?(inspection: SandboxInspection): Operation<SandboxInspection>;
+  restore?(request: RestoreSandboxRequest): Operation<SandboxInspection>;
+  terminate(inspection: SandboxInspection): Operation<void>;
 }
 
 export type SandboxRecoveryDecision =
@@ -234,7 +236,7 @@ export function assertSandboxFence(
     throw new CrankError("sandbox_generation_stale", "Sandbox task fence mismatch");
   }
   if (
-    expected.generation !== received.generation ||
+    expected.sandboxGeneration !== received.sandboxGeneration ||
     expected.activationEpoch !== received.activationEpoch
   ) {
     throw new CrankError("sandbox_generation_stale", "Sandbox generation or epoch is stale");

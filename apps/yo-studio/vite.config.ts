@@ -25,14 +25,10 @@ function studioApi(): Plugin {
       const awsManager =
         placement === "aws"
           ? createLambdaMicrovmWorkspaceManager({
-              imageArn:
-                process.env["YO_STUDIO_MICROVM_IMAGE_ARN"] ??
-                "arn:aws:lambda:us-east-1:123456789012:microvm-image:sweatpants-durable-sandbox",
+              imageArn: requiredEnvironment("YO_STUDIO_MICROVM_IMAGE_ARN"),
               imageVersion: codingSandbox.image.version,
-              executionRoleArn:
-                process.env["YO_STUDIO_MICROVM_EXECUTION_ROLE_ARN"] ??
-                "arn:aws:iam::123456789012:role/sweatpants-microvm-exec-f9fdea17",
-              profile: process.env["AWS_PROFILE"] ?? "default",
+              executionRoleArn: requiredEnvironment("YO_STUDIO_MICROVM_EXECUTION_ROLE_ARN"),
+              ...(process.env["AWS_PROFILE"] ? { profile: process.env["AWS_PROFILE"] } : {}),
               region: process.env["AWS_REGION"] ?? "us-east-1",
               scripts: productWorkspace.scripts,
               idle: {
@@ -88,10 +84,23 @@ function studioApi(): Plugin {
             });
           }
           await destroy();
-        })();
+        })().catch((error: unknown) => {
+          console.error(
+            "[yo-studio] development runtime cleanup failed",
+            error instanceof Error ? error.message : String(error),
+          );
+        });
       });
     },
   };
+}
+
+function requiredEnvironment(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required for AWS workspace placement`);
+  }
+  return value;
 }
 
 export default defineConfig({

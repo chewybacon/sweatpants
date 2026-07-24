@@ -139,7 +139,7 @@ describe("provider-neutral sandbox and workspace", () => {
     const running: SandboxInspection = {
       logicalSandboxId: "logical",
       providerSandboxId: "private",
-      generation: "2",
+      sandboxGeneration: "2",
       state: "running",
       workspace: "present",
       capabilities,
@@ -167,8 +167,8 @@ describe("provider-neutral sandbox and workspace", () => {
     ).toThrow(expect.objectContaining({ code: "workspace_unavailable" }));
     expect(() =>
       assertSandboxFence(
-        { taskId: "task", generation: "2", activationEpoch: 3 },
-        { taskId: "task", generation: "1", activationEpoch: 3 },
+        { taskId: "task", sandboxGeneration: "2", activationEpoch: 3 },
+        { taskId: "task", sandboxGeneration: "1", activationEpoch: 3 },
       ),
     ).toThrow(expect.objectContaining({ code: "sandbox_generation_stale" }));
   });

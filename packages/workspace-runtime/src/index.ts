@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
+import { spawn as spawnProcess } from "node:child_process";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-import { promisify } from "node:util";
-
 import {
   CrankError,
   assertJson,
@@ -12,19 +10,17 @@ import {
   sha256,
   sortStrings,
   type Json,
+  type SandboxActivationFence,
 } from "@sweatpants/session-contract";
-import { call, resource, useAbortSignal, useScope, type Operation } from "effection";
+import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
 
-const execFileAsync = promisify(execFile);
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
+const MAX_LIST_ENTRIES = 10_000;
+const MAX_COMMITTED_OPERATIONS = 128;
 
-export interface WorkspaceFence {
-  readonly taskId: string;
-  readonly sandboxGeneration: string;
-  readonly activationEpoch: number;
-}
+export type WorkspaceFence = SandboxActivationFence;
 
 export interface WorkspaceServiceOptions {
   readonly root: string;
@@ -118,6 +114,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
 
   function bind(fence: WorkspaceFence, nextScripts?: Readonly<Record<string, string>>): void {
     validateFence(fence);
+    const normalizedScripts = nextScripts ? normalizeScripts(nextScripts) : undefined;
     if (activeFence) {
       if (activeFence.taskId !== fence.taskId) {
         throw new CrankError(
@@ -131,10 +128,16 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
       if (activeFence.sandboxGeneration !== fence.sandboxGeneration) {
         throw new CrankError("sandbox_generation_stale", "generation cannot change in one service");
       }
+      if (normalizedScripts && canonicalJson(normalizedScripts) !== canonicalJson(scripts)) {
+        throw new CrankError(
+          "nondeterminism_detected",
+          "declared scripts cannot change within a sandbox generation",
+        );
+      }
     }
     activeFence = structuredClone(fence);
-    if (nextScripts) {
-      scripts = normalizeScripts(nextScripts);
+    if (normalizedScripts) {
+      scripts = normalizedScripts;
     }
   }
 
@@ -176,6 +179,12 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
       case "list": {
         const path = yield* workspacePath(request.path, false);
         const entries = sortStrings(yield* call(() => readdir(path)));
+        if (
+          entries.length > MAX_LIST_ENTRIES ||
+          Buffer.byteLength(JSON.stringify(entries)) > MAX_OUTPUT_BYTES
+        ) {
+          throw new CrankError("payload_too_large", "workspace listing exceeds the result limit");
+        }
         return {
           type: "list-result",
           path: relative(yield* call(() => realpath(root)), path) || ".",
@@ -208,7 +217,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
           bytes: Buffer.byteLength(request.content),
           workspaceVersion,
         };
-        committed.set(request.operationId, { requestDigest, response });
+        commitOperation(request.operationId, { requestDigest, response });
         return structuredClone(response);
       }
       case "run-script": {
@@ -222,13 +231,7 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
         try {
           const signal = yield* useAbortSignal();
           const result = yield* call(() =>
-            execFileAsync("/bin/sh", ["-lc", command], {
-              cwd: root,
-              signal,
-              timeout: options.maximumCommandMs ?? 120_000,
-              maxBuffer: MAX_OUTPUT_BYTES,
-              encoding: "utf8",
-            }),
+            executeScript(command, root, signal, options.maximumCommandMs ?? 120_000),
           );
           stdout = boundedOutput(result.stdout);
           stderr = boundedOutput(result.stderr);
@@ -240,6 +243,13 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
             failure.stderr ?? (error instanceof Error ? error.message : String(error)),
           );
         }
+        // Declared scripts are opaque guest execution and may mutate any workspace
+        // byte. Advance the mutation frontier conservatively even when the script
+        // fails so a caller holding the pre-script version cannot CAS over it.
+        workspaceVersion = nextWorkspaceVersion(workspaceVersion, requestDigest, {
+          script: request.script,
+          outcome: "executed",
+        });
         const response: WorkspaceResponse = {
           type: "script-result",
           script: request.script,
@@ -248,9 +258,20 @@ export function createWorkspaceService(options: WorkspaceServiceOptions): Worksp
           stderr,
           workspaceVersion,
         };
-        committed.set(request.operationId, { requestDigest, response });
+        commitOperation(request.operationId, { requestDigest, response });
         return structuredClone(response);
       }
+    }
+  }
+
+  function commitOperation(operationId: string, operation: CommittedOperation): void {
+    committed.set(operationId, operation);
+    while (committed.size > MAX_COMMITTED_OPERATIONS) {
+      const oldest = committed.keys().next();
+      if (oldest.done) {
+        break;
+      }
+      committed.delete(oldest.value);
     }
   }
 
@@ -322,21 +343,34 @@ export function useNodeHttpServer(options: {
   return resource(function* (provide) {
     const scope = yield* useScope();
     const server = createServer((request, response) => {
-      scope
-        .run(function* () {
+      const taskReference: { current?: Task<void> } = {};
+      const disconnect = () => {
+        if (!response.writableEnded) {
+          void taskReference.current?.halt().catch(() => undefined);
+        }
+      };
+      request.once("aborted", disconnect);
+      response.once("close", disconnect);
+      const task = scope.run(function* () {
+        try {
           yield* options.handle(request, response);
-        })
-        .catch((error) => {
-          if (!response.headersSent && !response.destroyed) {
-            response.statusCode = 500;
-            response.setHeader("content-type", "application/json");
-            response.end(
-              JSON.stringify({
-                error: { code: "internal_error", message: boundedMessage(error) },
-              }),
-            );
-          }
-        });
+        } finally {
+          request.off("aborted", disconnect);
+          response.off("close", disconnect);
+        }
+      });
+      taskReference.current = task;
+      task.catch((error) => {
+        if (!response.headersSent && !response.destroyed) {
+          response.statusCode = 500;
+          response.setHeader("content-type", "application/json");
+          response.end(
+            JSON.stringify({
+              error: { code: "internal_error", message: boundedMessage(error) },
+            }),
+          );
+        }
+      });
     });
     yield* call(
       () =>
@@ -361,6 +395,7 @@ export function useNodeHttpServer(options: {
               }
               resolveClose();
             });
+            server.closeIdleConnections();
           }),
       );
     }
@@ -396,7 +431,7 @@ export function createHttpWorkspaceConnector(options: {
           body: JSON.stringify(request),
         }),
       );
-      const body = (yield* call(() => response.json())) as unknown;
+      const body = yield* readBoundedResponseBody(response, MAX_BODY_BYTES);
       if (!response.ok) {
         const error = body as { error?: { code?: string; message?: string } };
         throw new CrankError(
@@ -488,9 +523,14 @@ export function parseWorkspaceResponse(value: unknown): WorkspaceResponse {
     case "list-result":
       if (
         !Array.isArray(input["entries"]) ||
+        input["entries"].length > MAX_LIST_ENTRIES ||
+        Buffer.byteLength(JSON.stringify(input["entries"])) > MAX_OUTPUT_BYTES ||
         input["entries"].some((entry) => typeof entry !== "string")
       ) {
-        throw new CrankError("invalid_mcp_request", "workspace entries must be strings");
+        throw new CrankError(
+          "invalid_mcp_request",
+          "workspace entries must be a bounded string list",
+        );
       }
       return {
         type: "list-result",
@@ -561,7 +601,7 @@ function assertFence(expected: WorkspaceFence | undefined, received: WorkspaceFe
 
 function nextWorkspaceVersion(parent: string, operationDigest: string, mutation: Json): string {
   return sha256(
-    `sweatpants.workspace-version.v1\0${canonicalJson({ parent, operationDigest, mutation })}`,
+    `sweatpants.workspace-mutation-version.v1\0${canonicalJson({ parent, operationDigest, mutation })}`,
   );
 }
 
@@ -574,11 +614,169 @@ function safeRelativePath(value: unknown): string {
 }
 
 function* readBoundedBody(request: Request, maximum: number): Operation<unknown> {
-  const bytes = new Uint8Array(yield* call(() => request.arrayBuffer()));
-  if (bytes.byteLength > maximum) {
-    throw new CrankError("payload_too_large", "workspace request body is too large");
+  try {
+    return yield* readBoundedJsonStream(request.body, maximum);
+  } catch (error) {
+    if (error instanceof CrankError) {
+      throw error;
+    }
+    throw new CrankError("invalid_mcp_request", "workspace request body must be JSON");
   }
-  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+}
+
+function* readBoundedResponseBody(response: Response, maximum: number): Operation<unknown> {
+  try {
+    return yield* readBoundedJsonStream(response.body, maximum);
+  } catch (error) {
+    if (error instanceof CrankError && error.code === "payload_too_large") {
+      throw new CrankError("sandbox_unavailable", "workspace response exceeds the body limit");
+    }
+    throw new CrankError("sandbox_unavailable", "workspace response body must be bounded JSON");
+  }
+}
+
+function* readBoundedJsonStream(
+  stream: ReadableStream<Uint8Array> | null,
+  maximum: number,
+): Operation<unknown> {
+  return yield* call(async () => {
+    if (!stream) {
+      throw new Error("body is empty");
+    }
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      while (true) {
+        const next = await reader.read();
+        if (next.done) {
+          break;
+        }
+        total += next.value.byteLength;
+        if (total > maximum) {
+          await reader.cancel("body limit exceeded");
+          throw new CrankError("payload_too_large", "HTTP body exceeds the limit");
+        }
+        chunks.push(next.value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  });
+}
+
+function executeScript(
+  command: string,
+  cwd: string,
+  signal: AbortSignal,
+  maximumCommandMs: number,
+): Promise<{ readonly stdout: string; readonly stderr: string }> {
+  return new Promise((resolveResult, rejectResult) => {
+    const child = spawnProcess("/bin/sh", ["-lc", command], {
+      cwd,
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let timedOut = false;
+    let aborted = false;
+    let outputExceeded = false;
+    let settled = false;
+
+    const killGroup = () => {
+      if (child.pid === undefined) {
+        return;
+      }
+      try {
+        process.kill(-child.pid, "SIGKILL");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") {
+          child.kill("SIGKILL");
+        }
+      }
+    };
+    const append = (chunks: Buffer[], chunk: Buffer, currentBytes: number): number => {
+      const remaining = Math.max(0, MAX_OUTPUT_BYTES - currentBytes);
+      if (remaining > 0) {
+        chunks.push(chunk.subarray(0, remaining));
+      }
+      const nextBytes = currentBytes + chunk.byteLength;
+      if (nextBytes > MAX_OUTPUT_BYTES) {
+        outputExceeded = true;
+        killGroup();
+      }
+      return nextBytes;
+    };
+    const cleanup = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener("abort", onAbort);
+      // A successful shell may have daemonized descendants. The process group
+      // belongs exclusively to this operation, so clean it up on every exit.
+      killGroup();
+    };
+    const output = () => ({
+      stdout: Buffer.concat(stdout).toString("utf8"),
+      stderr: Buffer.concat(stderr).toString("utf8"),
+    });
+    const reject = (error: Error & { code?: number | string }) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      rejectResult(Object.assign(error, output()));
+    };
+    const onAbort = () => {
+      aborted = true;
+      killGroup();
+    };
+
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutBytes = append(stdout, chunk, stdoutBytes);
+    });
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBytes = append(stderr, chunk, stderrBytes);
+    });
+    child.once("error", (error) => reject(error));
+    child.once("close", (code) => {
+      if (timedOut) {
+        reject(Object.assign(new Error("workspace script timed out"), { code: 1 }));
+      } else if (aborted) {
+        reject(Object.assign(new Error("workspace script was cancelled"), { code: 1 }));
+      } else if (outputExceeded) {
+        reject(Object.assign(new Error("workspace script output exceeded the limit"), { code: 1 }));
+      } else if (code !== 0) {
+        reject(
+          Object.assign(new Error(`workspace script exited with ${code ?? "signal"}`), {
+            code: code ?? 1,
+          }),
+        );
+      } else if (!settled) {
+        settled = true;
+        cleanup();
+        resolveResult(output());
+      }
+    });
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      killGroup();
+    }, maximumCommandMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) {
+      onAbort();
+    }
+  });
 }
 
 function boundedOutput(value: string): string {

@@ -85,7 +85,7 @@ describe("yo-chat chat application composition", () => {
 
     expect(envSchema).toContain("ENABLE_SCRIPTED_RENDERING_PROVIDER");
     expect(envSchema).toContain("VITE_ENABLE_SCRIPTED_RENDERING");
-    expect(modelProvider).toContain("env.ENABLE_SCRIPTED_RENDERING_PROVIDER !== 'yes'");
+    expect(modelProvider).toMatch(/env\.ENABLE_SCRIPTED_RENDERING_PROVIDER !== ["']yes["']/);
     expect(modelProvider).toContain("Scripted rendering provider is disabled");
     expect(modelProvider).toContain("installScriptedRenderingModelProvider");
     expect(basicRoute).toContain("import.meta.env['VITE_ENABLE_SCRIPTED_RENDERING'] === '1'");

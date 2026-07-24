@@ -2,6 +2,7 @@ import { resource, type Operation, type Stream } from "effection";
 import { encodeElicitContext } from "@sweatpants/elicit-context";
 import {
   CrankError,
+  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   ProgramRuntime,
@@ -464,6 +465,7 @@ function* activateProgramDriverChatEngine(
   const effects = createDurableEffectRegistry(
     [
       createModelSamplingEffectRegistration(),
+      createModelSamplingEffectRegistration(LEGACY_MODEL_SAMPLE_EFFECT),
       ...foreignEffects,
       ...(params.nativeTools?.effects ?? []),
     ],

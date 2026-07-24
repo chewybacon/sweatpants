@@ -37,7 +37,7 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
     const effects = createDurableEffectRegistry([
       createDurableEffectRegistration(
         MODEL_SAMPLE_EFFECT,
-        { mode: "idempotent", mechanism: "pull_id_key" },
+        MODEL_SAMPLE_EFFECT.retrySafety,
         function* (request) {
           modelSamples += 1;
           if (JSON.stringify(request.schema).includes('"symbol"')) {
@@ -116,10 +116,12 @@ describe("journal-native play_ttt through ProgramRuntime", () => {
       expect(outcome.value as PlayTttResult).toMatchObject({ success: true });
       const trace = yield* host.trace(opened.sessionId);
       const operations = trace.tasks[0]!.operations;
-      expect(operations.filter((operation) => operation.descriptor["kind"] === "effect"))
-        .toHaveLength(modelSamples);
-      expect(operations.filter((operation) => operation.descriptor["kind"] === "elicit"))
-        .toHaveLength(userResponses);
+      expect(
+        operations.filter((operation) => operation.descriptor["kind"] === "effect"),
+      ).toHaveLength(modelSamples);
+      expect(
+        operations.filter((operation) => operation.descriptor["kind"] === "elicit"),
+      ).toHaveLength(userResponses);
       expect(JSON.stringify(trace)).not.toContain("foreign.tool");
       expect(JSON.stringify(trace)).not.toContain("tool.execute");
     });
@@ -144,7 +146,10 @@ function containsGameOver(value: Json): boolean {
 
 function firstEmptyBoardPosition(value: Json): number {
   if (Array.isArray(value)) {
-    if (value.length === 9 && value.every((cell) => cell === null || cell === "X" || cell === "O")) {
+    if (
+      value.length === 9 &&
+      value.every((cell) => cell === null || cell === "X" || cell === "O")
+    ) {
       return value.findIndex((cell) => cell === null);
     }
     for (const child of value) {

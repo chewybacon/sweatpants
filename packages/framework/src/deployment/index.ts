@@ -3,6 +3,7 @@ import {
   canonicalSnapshot,
   sortStrings,
   type Json,
+  type SandboxCapabilities,
   type WorkspacePersistence,
 } from "@sweatpants/session-contract";
 
@@ -63,19 +64,7 @@ export interface SandboxProviderDefinition {
     readonly suspendedLifetimeSeconds: number;
     readonly autoResume: boolean;
   };
-  readonly capabilities: {
-    readonly requestResponse: true;
-    readonly websocket: boolean;
-    readonly warmAttachments: boolean;
-    readonly memorySuspend: boolean;
-    readonly localDisk: boolean;
-    readonly workspacePersistence: WorkspacePersistence;
-    readonly checkpointRestore: boolean;
-    readonly shell: boolean;
-    readonly processExecution: boolean;
-    readonly ports: boolean;
-    readonly networkPolicy: boolean;
-  };
+  readonly capabilities: SandboxCapabilities;
 }
 
 export interface LambdaMicrovmOptions {
@@ -115,6 +104,9 @@ interface ProgramDefinition {
     readonly version: string;
     readonly digest: string;
   };
+  readonly childPrograms?: Readonly<
+    Record<string, ProgramDefinition | { readonly program: ProgramDefinition }>
+  >;
 }
 
 export interface DeploymentDefinition<
@@ -246,6 +238,15 @@ export function lambdaMicrovm(options: LambdaMicrovmOptions): SandboxProviderDef
   }
   positiveInteger(options.lifecycle.warmIdleSeconds, "warm idle seconds");
   positiveInteger(options.lifecycle.suspendedLifetimeSeconds, "suspended lifetime seconds");
+  if (options.lifecycle.warmIdleSeconds < 60) {
+    invalid("Lambda MicroVM warm idle seconds must be at least 60");
+  }
+  if (options.lifecycle.suspendedLifetimeSeconds > 28_800) {
+    invalid("Lambda MicroVM suspended lifetime cannot exceed eight hours");
+  }
+  if (options.lifecycle.warmIdleSeconds >= options.lifecycle.suspendedLifetimeSeconds) {
+    invalid("Lambda MicroVM suspended lifetime must exceed its warm idle lifetime");
+  }
   const checkpointRestore = options.checkpointRestore ?? false;
   const document = {
     format: "sweatpants.sandbox-provider.v1" as const,
@@ -366,9 +367,16 @@ export function defineDeployment<
     invalid("model sampling provider does not match the deployment model provider");
   }
   validateWorkspaceProvider(options.workspace, options.sandbox);
+  validateProgramCapabilities(options.programs, options.capabilities);
   const projectionKinds = options.projections.map((projection) => projection.kind);
   if (new Set(projectionKinds).size !== projectionKinds.length) {
     invalid("deployment projections must be unique by kind");
+  }
+  const projectionPaths = options.projections
+    .map((projection) => projection.path)
+    .filter((path): path is string => path !== undefined);
+  if (new Set(projectionPaths).size !== projectionPaths.length) {
+    invalid("deployment projection paths must be unique");
   }
   const identity = {
     format: "sweatpants.deployment.v1" as const,
@@ -397,6 +405,31 @@ export function defineDeployment<
     sandbox: options.sandbox,
     projections: Object.freeze([...options.projections]),
   });
+}
+
+function validateProgramCapabilities(
+  programs: Readonly<Record<string, ProgramDefinition>>,
+  capabilities: Readonly<Record<string, ProgramDefinition>>,
+): void {
+  for (const [capabilityName, capability] of Object.entries(capabilities)) {
+    const references = Object.entries(programs).flatMap(([programName, program]) => {
+      const binding = program.childPrograms?.[capabilityName];
+      return binding ? [{ programName, binding }] : [];
+    });
+    if (references.length === 0) {
+      invalid(`deployment capability ${capabilityName} is not referenced by any program`);
+    }
+    for (const { programName, binding } of references) {
+      const bindingProgram = "program" in binding ? binding.program : binding;
+      if (
+        capability.manifest.programId !== bindingProgram.manifest.programId ||
+        capability.manifest.version !== bindingProgram.manifest.version ||
+        capability.manifest.digest !== bindingProgram.manifest.digest
+      ) {
+        invalid(`program ${programName} capability ${capabilityName} does not match its binding`);
+      }
+    }
+  }
 }
 
 function validateWorkspaceProvider(

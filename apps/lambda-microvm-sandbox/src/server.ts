@@ -80,9 +80,10 @@ await main(function* () {
         }
         sendJson(response, 404, { error: { code: "invalid_request", message: "not found" } });
       } catch (error) {
-        sendJson(response, 400, {
+        const code = errorCode(error);
+        sendJson(response, errorStatus(code), {
           error: {
-            code: errorCode(error),
+            code,
             message: bounded(error),
           },
         });
@@ -252,6 +253,23 @@ function* appendLifecycle(event: string): Operation<void> {
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(value));
+}
+
+function errorStatus(code: string): number {
+  switch (code) {
+    case "sandbox_generation_stale":
+    case "workspace_version_conflict":
+    case "nondeterminism_detected":
+      return 409;
+    case "payload_too_large":
+      return 413;
+    case "sandbox_unavailable":
+      return 503;
+    case "internal_error":
+      return 500;
+    default:
+      return 400;
+  }
 }
 
 function errorCode(error: unknown): string {

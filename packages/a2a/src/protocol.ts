@@ -151,6 +151,10 @@ export function projectProgramCommand(command: ProgramCommand): WireProgramComma
       actionIndex: command.actionIndex,
       pullId: command.pullId,
       attemptId: command.attemptId,
+      ...(command.descriptor ? { descriptor: command.descriptor } : {}),
+      ...(command.effectContractDigest
+        ? { effectContractDigest: command.effectContractDigest }
+        : {}),
     };
   }
   return canonicalSnapshot(command).value;
@@ -411,8 +415,18 @@ function validateCommand(command: Record<string, Json>, envelope: Record<string,
       requireMatchingAction(command, envelope);
       break;
     case "authorize":
-      if (!exactKeys(command, ["type", "actionIndex", "pullId", "attemptId"])) fail();
+      if (
+        !onlyKeys(
+          command,
+          ["type", "actionIndex", "pullId", "attemptId"],
+          ["descriptor", "effectContractDigest"],
+        )
+      )
+        fail();
       if (!identifier(command["pullId"]) || !identifier(command["attemptId"])) fail();
+      if (command["descriptor"] !== undefined) validateOperationDescriptor(command["descriptor"]);
+      if (command["effectContractDigest"] !== undefined && !digest(command["effectContractDigest"]))
+        fail();
       requireMatchingAction(command, envelope);
       break;
     case "ack_emission":
@@ -433,8 +447,9 @@ function validateStep(value: Json | undefined): asserts value is Json {
   if (!record(value) || !nonnegativeInteger(value["actionIndex"])) fail();
   switch (value["type"]) {
     case "operation":
-      if (!exactKeys(value, ["type", "actionIndex", "descriptor"])) fail();
+      if (!onlyKeys(value, ["type", "actionIndex", "descriptor"], ["authorizedOutcome"])) fail();
       validateOperationDescriptor(value["descriptor"]);
+      if (value["authorizedOutcome"] !== undefined) validateOutcome(value["authorizedOutcome"]);
       break;
     case "emission":
       if (!exactKeys(value, ["type", "actionIndex", "descriptor"])) fail();
@@ -460,6 +475,34 @@ function validateStep(value: Json | undefined): asserts value is Json {
 function validateOperationDescriptor(value: Json | undefined): void {
   if (!record(value)) fail();
   switch (value["kind"]) {
+    case "record": {
+      if (!onlyKeys(value, ["kind", "retrySafety"], ["label"])) fail();
+      if (
+        value["label"] !== undefined &&
+        (typeof value["label"] !== "string" ||
+          value["label"].length === 0 ||
+          new TextEncoder().encode(value["label"]).byteLength > 128)
+      )
+        fail();
+      const safety = value["retrySafety"];
+      if (!record(safety)) fail();
+      if (safety["mode"] === "repeatable") {
+        if (!exactKeys(safety, ["mode"])) fail();
+      } else if (safety["mode"] === "idempotent") {
+        if (
+          !exactKeys(safety, ["mode", "mechanism"]) ||
+          (safety["mechanism"] !== "pull_id_key" && safety["mechanism"] !== "inherent")
+        )
+          fail();
+      } else if (safety["mode"] === "unsafe") {
+        if (
+          !exactKeys(safety, ["mode", "onIndeterminate"]) ||
+          (safety["onIndeterminate"] !== "await_decision" && safety["onIndeterminate"] !== "fail")
+        )
+          fail();
+      } else fail();
+      break;
+    }
     case "effect":
       if (!exactKeys(value, ["kind", "name", "version", "input", "resolver"])) fail();
       if (!identifier(value["name"]) || !identifier(value["version"]) || !record(value["resolver"]))

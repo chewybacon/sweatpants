@@ -467,7 +467,7 @@ export function createChatModelEffectRegistration(options: {
   )!;
   return createDurableEffectRegistration(
     CHAT_MODEL_SAMPLE_EFFECT,
-    { mode: "idempotent", mechanism: "pull_id_key" },
+    CHAT_MODEL_SAMPLE_EFFECT.retrySafety,
     function* (request, context): Operation<DurableEffectDisposition<ModelSampleResult>> {
       const authored = decodeAuthoredModelRequest(request);
       if (authored.classifications.some((classification) => !allowed.has(classification))) {

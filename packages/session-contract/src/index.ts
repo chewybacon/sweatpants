@@ -71,6 +71,12 @@ export {
 } from "./canonical.ts";
 export { effectContractDigest, type EffectContractDigestDocumentV1 } from "./effect-contract.ts";
 export {
+  DurableEffectRouting,
+  type DurableEffectRoute,
+  type DurableEffectRoutingRequest,
+} from "./effect-routing.ts";
+export {
+  LEGACY_MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_INPUT_DESCRIPTOR,
   MODEL_SAMPLE_OUTPUT_DESCRIPTOR,
@@ -272,8 +278,10 @@ export {
   type CapabilityKey,
   type CapabilityKeyring,
 } from "./capabilities.ts";
+export { bindDurableProgramScope, durableProgramScope } from "./durable-program-scope.ts";
 export {
   DurableToolRegistryContext,
+  ExecutionDurableEffectRegistryContext,
   ProgramDriverRegistryContext,
   createDurableToolRegistry,
   createLocalGeneratorDriver,

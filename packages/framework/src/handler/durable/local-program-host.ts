@@ -5,6 +5,7 @@ import {
   ProgramDriverRegistryContext,
   ProgramRouteResolverContext,
   ProgramRuntime,
+  ExecutionDurableEffectRegistryContext,
   ModelSamplingRouterContext,
   ModelSamplingOutcomeAcknowledgerContext,
   ProgramDeliveryWriterContext,
@@ -142,14 +143,16 @@ export function runLocalProgramActivation<T>(
   return ProgramDriverRegistryContext.with(scope.drivers, function* () {
     return yield* JournalAuthorityContext.with(scope.authority, function* () {
       return yield* DurableEffectRegistryContext.with(scope.effects, function* () {
-        return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
-          return yield* ModelSamplingRouterContext.with(scope.modelSamplingRouter, function* () {
-            return yield* ModelSamplingOutcomeAcknowledgerContext.with(
-              scope.modelSamplingOutcomeAcknowledger,
-              function* () {
-                return yield* ProgramDeliveryWriterContext.with(scope.deliveryWriter, operation);
-              },
-            );
+        return yield* ExecutionDurableEffectRegistryContext.with(scope.effects, function* () {
+          return yield* ProgramRouteResolverContext.with(scope.routeResolver, function* () {
+            return yield* ModelSamplingRouterContext.with(scope.modelSamplingRouter, function* () {
+              return yield* ModelSamplingOutcomeAcknowledgerContext.with(
+                scope.modelSamplingOutcomeAcknowledger,
+                function* () {
+                  return yield* ProgramDeliveryWriterContext.with(scope.deliveryWriter, operation);
+                },
+              );
+            });
           });
         });
       });
