@@ -19,6 +19,7 @@ export const studioView = Object.freeze({
     "workspace_list",
     "workspace_write",
     "workspace_test",
+    "play_ttt",
   ]),
   workspace: Object.freeze({
     scripts: Object.freeze({ test: "pnpm test", typecheck: "pnpm check", lint: "pnpm lint" }),

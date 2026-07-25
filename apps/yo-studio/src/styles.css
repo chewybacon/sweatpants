@@ -1,383 +1,47 @@
-:root {
-    color: #e8edf2;
-    background: #0a1014;
-    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-    font-synthesis: none;
+/*
+ * Astryx (@astryxdesign/core + @astryxdesign/theme-neutral) supplies layout,
+ * typography, color, and component styling. This file only covers the two
+ * things components can't express directly:
+ *
+ * 1. Raw sanitized HTML injected from the chat markdown pipeline — Astryx
+ *    components intentionally omit dangerouslySetInnerHTML, so the pipeline's
+ *    pre-rendered HTML lands in a plain <span>, styled here with tokens.
+ * 2. The tic-tac-toe board's win/last-move rings — a game-specific affordance
+ *    with no equivalent component prop.
+ *
+ * Every value below is a design token (var(--color-*), var(--spacing-*),
+ * var(--radius-*)); no raw hex or pixel literals per AGENTS.md conventions.
+ */
+
+.chat-html-content {
+    display: block;
+}
+.chat-html-content :first-child {
+    margin-block-start: 0;
+}
+.chat-html-content :last-child {
+    margin-block-end: 0;
+}
+.chat-html-content p {
+    margin-block: var(--spacing-2);
+}
+.chat-html-content pre {
+    overflow: auto;
+    border-radius: var(--radius-inner);
+    padding: var(--spacing-3);
+    background: var(--color-background-muted);
+}
+.chat-html-content code {
+    border-radius: var(--radius-inner);
+    background: var(--color-background-muted);
 }
 
-* {
-    box-sizing: border-box;
-}
-body {
-    margin: 0;
-    min-width: 320px;
-    min-height: 100vh;
-}
-button,
-textarea {
-    font: inherit;
-}
-main {
-    width: min(1120px, calc(100% - 32px));
-    margin: 0 auto;
-    padding: 48px 0 80px;
-}
-header {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    gap: 32px;
-    margin-bottom: 32px;
-}
-h1 {
-    margin: 0;
-    font-size: clamp(3rem, 8vw, 6.5rem);
-    letter-spacing: -0.07em;
-    line-height: 0.9;
-}
-h2 {
-    margin: 4px 0 24px;
-    font-size: 1.5rem;
-}
-h3 {
-    margin: 28px 0 12px;
-    color: #aab7c2;
-    font-size: 0.82rem;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-}
-.lede {
-    max-width: 680px;
-    color: #9caab5;
-    font-size: 1.1rem;
-    line-height: 1.6;
-}
-.eyebrow {
-    margin: 0 0 10px;
-    color: #66e3b4;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.13em;
-    text-transform: uppercase;
-}
-.secondary {
-    color: #bdebd9;
-    border: 1px solid #35584a;
-    background: #15251f;
-    white-space: nowrap;
-}
-.secondary:hover {
-    background: #1d342a;
-}
-.status {
-    border: 1px solid #275d4b;
-    border-radius: 999px;
-    padding: 8px 12px;
-    color: #78e6bd;
-    white-space: nowrap;
-}
-.panel {
-    border: 1px solid #24313a;
-    border-radius: 18px;
-    background: #10181e;
-    padding: 24px;
-    box-shadow: 0 20px 70px #0005;
-}
-.chat {
-    margin-bottom: 18px;
-}
-.chat-heading {
-    display: flex;
-    align-items: start;
-    justify-content: space-between;
-    gap: 18px;
-    margin-bottom: 16px;
-}
-.chat-heading code {
-    color: #71838d;
-    font-size: 0.72rem;
-}
-.hero {
-    margin: 18px 0 0;
-}
-.transcript {
-    display: grid;
-    gap: 12px;
-    min-height: 180px;
-    max-height: 440px;
-    overflow-y: auto;
-    border: 1px solid #202d35;
-    border-radius: 12px;
-    padding: 16px;
-    background: #0b1217;
-}
-.empty,
-.streaming {
-    color: #7f8d97;
-}
-.message {
-    max-width: 85%;
-    border-radius: 12px;
-    padding: 12px 14px;
-    color: #dbe4e9;
-    background: #172129;
-}
-.message.user {
-    justify-self: end;
-    color: #d7f7eb;
-    background: #173126;
-}
-.message strong {
-    display: block;
-    margin-bottom: 6px;
-    color: #66e3b4;
-    font-size: 0.7rem;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-}
-.message p {
-    margin: 0;
-}
-.tool-event {
-    margin-top: 6px;
-    color: #a6b9c3;
-    font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
-}
-.tool-call {
-    margin-top: 10px;
-    border: 1px solid #30424d;
-    border-radius: 10px;
-    overflow: hidden;
-    background: #0c151a;
-}
-.tool-call.complete {
-    border-color: #2b604c;
-}
-.tool-call.error {
-    border-color: #7a3d3d;
-}
-.tool-call-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin: 0;
-    padding: 10px 12px;
-    background: #142027;
-}
-.tool-call-header div {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.tool-call-header strong {
-    display: inline;
-    margin: 0;
-    color: #c7d6dd;
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-    letter-spacing: 0;
-    text-transform: none;
-}
-.tool-glyph {
-    color: #66e3b4;
-    font-weight: 800;
-}
-.tool-state {
-    border-radius: 999px;
-    padding: 3px 7px;
-    color: #9eafb8;
-    background: #202d35;
-    font-size: 0.65rem;
-    text-transform: uppercase;
-}
-.tool-state.complete {
-    color: #7ce8bd;
-    background: #18362b;
-}
-.tool-state.error {
-    color: #ffb1b1;
-    background: #452424;
-}
-.tool-call details,
-.tool-result,
-.reasoning {
-    padding: 9px 12px;
-    border-top: 1px solid #24323a;
-}
-.tool-call summary,
-.tool-result summary,
-.reasoning summary {
-    color: #8798a2;
-    cursor: pointer;
-    font-size: 0.72rem;
-}
-.tool-call pre,
-.tool-result pre {
-    margin-top: 8px;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-}
-.tool-error {
-    margin: 0;
-    padding: 10px 12px;
-    color: #ffb1b1;
-}
-label {
-    display: block;
-    margin-bottom: 10px;
-    color: #b9c5ce;
-    font-size: 0.85rem;
-    font-weight: 650;
-}
-textarea {
-    width: 100%;
-    min-height: 104px;
-    resize: vertical;
-    border: 1px solid #354650;
-    border-radius: 12px;
-    padding: 14px;
-    color: #eef5f7;
-    background: #0b1217;
-}
-textarea:focus {
-    outline: 2px solid #48b991;
-    outline-offset: 2px;
-}
-.action-row {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-top: 14px;
-}
-.action-row p {
-    margin: 0;
-    max-width: 620px;
-    color: #7f8d97;
-    font-size: 0.82rem;
-    line-height: 1.45;
-}
-button {
-    border: 0;
-    border-radius: 10px;
-    padding: 11px 16px;
-    font-weight: 700;
-    color: #08110d;
-    background: #66e3b4;
-}
-button:disabled {
-    color: #718079;
-    background: #26352f;
-    cursor: not-allowed;
-}
-.result {
-    margin-bottom: 18px;
-}
-.result h2 {
-    color: #66e3b4;
-    text-transform: capitalize;
-}
-.result code {
-    color: #8fa399;
-    font-size: 0.76rem;
-}
-.error {
-    color: #ff9c9c;
-}
-.activity {
-    display: grid;
-    gap: 6px;
-    padding-left: 20px;
-    color: #a9b8c1;
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-}
-.grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
-}
-dl {
-    display: grid;
-    gap: 10px;
-    margin: 0;
-}
-dl div {
-    display: flex;
-    justify-content: space-between;
-    gap: 20px;
-    border-bottom: 1px solid #202d35;
-    padding-bottom: 9px;
-}
-dt {
-    color: #7f8d97;
-}
-dd {
-    margin: 0;
-    text-align: right;
-}
-.tools {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-.tools li {
-    border-radius: 8px;
-    padding: 7px 10px;
-    color: #bdebd9;
-    background: #172a23;
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-}
-pre {
-    overflow: auto;
-    margin: 0;
-    border-radius: 10px;
-    padding: 14px;
-    color: #aac8ba;
-    background: #0a1115;
-    font-size: 0.76rem;
-}
-.architecture {
-    margin-top: 18px;
-}
-.flow {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    text-align: center;
-}
-.flow span,
-.flow strong {
-    border: 1px solid #2c3c45;
-    border-radius: 10px;
-    padding: 14px;
-}
-.flow strong {
-    grid-column: 1 / -1;
-    color: #68e2b5;
-    background: #14271f;
-}
-.flow span:last-child {
-    grid-column: 2;
-}
-@media (max-width: 760px) {
-    header,
-    .action-row {
-        flex-direction: column;
-    }
-    .grid {
-        grid-template-columns: 1fr;
-    }
-    .flow {
-        grid-template-columns: 1fr;
-    }
-    .flow strong,
-    .flow span:last-child {
-        grid-column: auto;
-    }
+.ttt-cell-winner {
+    box-shadow: inset 0 0 0 var(--border-width) var(--color-success);
+    outline: var(--border-width) solid var(--color-success);
+    outline-offset: calc(var(--border-width) * -1);
+}
+.ttt-cell-last {
+    outline: var(--border-width) solid var(--color-accent);
+    outline-offset: calc(var(--border-width) * -1);
 }

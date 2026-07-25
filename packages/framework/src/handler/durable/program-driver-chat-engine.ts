@@ -343,6 +343,7 @@ function* activateProgramDriverChatEngine(
     input,
     route: { driverKind: "program" },
     executionEpoch: 1,
+    affinity: { kind: "conversation" as const, key: params.conversationId },
   };
   if (!active) {
     try {

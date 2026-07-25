@@ -60,4 +60,43 @@ describe("yo-studio durable chat HTTP projection", () => {
       await application.close();
     }
   });
+
+  it("propagates one conversation affinity through every workspace child", async () => {
+    const root = await mkdtemp(join(tmpdir(), "yo-studio-chat-affinity-"));
+    roots.push(root);
+    const runtime = await run(function* () {
+      return yield* createStudioDevelopmentRuntime(root);
+    });
+    const affinities: Array<{ readonly kind: string; readonly key: string }> = [];
+    const application = createStudioDurableChatApplication({
+      resolveWorkspace: function* (execution) {
+        affinities.push(execution.affinity);
+        return { connector: runtime.connector, fence: runtime.fence };
+      },
+      modelProvider: createScriptedStudioModelProvider(() =>
+        runtime.workspace.currentWorkspaceVersion(),
+      ),
+    });
+    try {
+      const response = await application.handle(
+        new Request("http://localhost/api/chat?conversationId=shared-workspace-conversation", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            conversationId: "shared-workspace-conversation",
+            messages: [{ id: "user-1", role: "user", content: "Create demo.txt and test it" }],
+            enabledTools: true,
+          }),
+        }),
+      );
+      expect(response.status).toBe(200);
+      await response.text();
+      expect(affinities.length).toBeGreaterThanOrEqual(3);
+      expect(affinities).toEqual(
+        affinities.map(() => ({ kind: "conversation", key: "shared-workspace-conversation" })),
+      );
+    } finally {
+      await application.close();
+    }
+  });
 });

@@ -10,14 +10,11 @@ export { studioView } from "./config.ts";
 export { codingHarness } from "./programs/coding-harness.ts";
 export {
   codingCapabilities,
-  inspectWorkspace,
-  listWorkspace,
-  readWorkspaceFile,
-  runWorkspaceScript,
+  playTttTool,
+  workspace,
   workspaceInspectTool,
   workspaceListTool,
   workspaceReadTool,
   workspaceTestTool,
   workspaceWriteTool,
-  writeWorkspaceFile,
-} from "./capabilities/workspace.ts";
+} from "./capabilities/index.ts";

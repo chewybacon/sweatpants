@@ -1,5 +1,5 @@
 import { createDurableTool, defineDurableContextExtension } from "@sweatpants/core";
-import { WorkspaceFiles } from "@sweatpants/workspace-runtime";
+import { WorkspaceFiles } from "@sweatpants/workspace-runtime/api";
 import { z } from "zod";
 
 const RelativePath = z
@@ -12,10 +12,11 @@ const RelativePath = z
 const WorkspaceRevision = z.string().regex(/^[a-f0-9]{64}$/);
 
 const InspectWorkspaceOutput = z.object({ workspaceRevision: WorkspaceRevision });
+const WorkspaceLine = z.number().int().positive().max(10_000_000);
 const ReadWorkspaceInput = z.object({
   path: RelativePath,
-  startLine: z.number().int().positive().max(10_000_000).optional(),
-  endLine: z.number().int().positive().max(10_000_000).optional(),
+  startLine: WorkspaceLine.optional(),
+  endLine: WorkspaceLine.optional(),
 });
 const ListWorkspaceInput = z.object({ path: RelativePath });
 const ListWorkspaceOutput = z.object({
@@ -118,11 +119,3 @@ export const workspaceTestTool = createDurableTool("workspace_test", { version: 
       },
     );
   });
-
-export const codingCapabilities = {
-  workspace_inspect: workspaceInspectTool,
-  workspace_read: workspaceReadTool,
-  workspace_list: workspaceListTool,
-  workspace_write: workspaceWriteTool,
-  workspace_test: workspaceTestTool,
-} as const;

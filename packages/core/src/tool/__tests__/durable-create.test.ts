@@ -54,6 +54,42 @@ describe("createDurableTool fluent builder", () => {
         return () => undefined;
       });
   });
+  it("accepts optional object properties without producing a non-object tool schema", async () => {
+    const tool = createDurableTool("durable.optional-input")
+      .description("Optional canonical object properties")
+      .identity({ version: "1", digest: "7".repeat(64) })
+      .parameters(
+        z.object({
+          required: z.string(),
+          optionalCount: z.number().int().optional(),
+        }),
+      )
+      .output(z.object({ required: z.string(), optionalCount: z.number().int().optional() }))
+      .execute(function* (input) {
+        const optionalCount: number | undefined = input.optionalCount;
+        return optionalCount === undefined
+          ? { required: input.required }
+          : { required: input.required, optionalCount };
+      });
+
+    expect(tool.manifest.inputSchema.inputProjection).toMatchObject({
+      type: "object",
+      required: ["required"],
+    });
+    expect(tool.manifest.inputSchema.inputProjection).not.toHaveProperty("anyOf");
+    const result = await run(() =>
+      tool.program(
+        { required: "present" },
+        createDurableProgramContext(() =>
+          (function* (): Operation<ProgramResume> {
+            throw new Error("unexpected durable proposal");
+          })(),
+        ),
+      ),
+    );
+    expect(result).toEqual({ required: "present" });
+  });
+
   it("lowers inferred output to the built-in any descriptor and supplies a stable default effect audience", () => {
     const tool = createDurableTool("durable.echo")
       .description("Echo durably")

@@ -35,7 +35,7 @@ import {
   resolvePiAiModel,
 } from "@sweatpants/model-provider-pi-ai";
 
-import { codingCapabilities } from "../capabilities/workspace.ts";
+import { codingCapabilities } from "../capabilities/index.ts";
 import { codingModelProvider } from "../deployment.ts";
 
 const model: Model = {

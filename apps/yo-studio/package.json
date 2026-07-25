@@ -10,6 +10,8 @@
         "test": "vitest run"
     },
     "dependencies": {
+        "@astryxdesign/core": "^0.1.8",
+        "@astryxdesign/theme-neutral": "^0.1.8",
         "@sweatpants/core": "workspace:*",
         "@sweatpants/framework": "workspace:*",
         "@sweatpants/model-provider-pi-ai": "workspace:*",
@@ -24,6 +26,7 @@
         "zod": "catalog:"
     },
     "devDependencies": {
+        "@astryxdesign/cli": "^0.1.8",
         "@sweatpants/ts-config": "workspace:*",
         "@types/node": "catalog:",
         "@types/react": "catalog:",

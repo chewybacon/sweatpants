@@ -1,12 +1,13 @@
 import { defineChatProgram, modelTool } from "@sweatpants/framework/chat";
 
 import {
+  playTttTool,
   workspaceInspectTool,
   workspaceListTool,
   workspaceReadTool,
   workspaceTestTool,
   workspaceWriteTool,
-} from "../capabilities/workspace.ts";
+} from "../capabilities/index.ts";
 import { CODING_HARNESS_ID, CODING_HARNESS_ITERATIONS, CODING_HARNESS_VERSION } from "../config.ts";
 
 /**
@@ -23,6 +24,8 @@ export const codingHarness = defineChatProgram({
       "Inspect files before changing them; observations return their current workspaceRevision.",
       "Pass the latest observed workspaceRevision as expectedWorkspaceRevision to every write and validation operation.",
       "Use only deployment-declared validation scripts.",
+      "Use play_ttt when asked to play tic-tac-toe; it persists the complete game and cumulative record in the workspace.",
+      "After play_ttt completes, read both returned paths before reporting the game result.",
       "Never claim a change is complete until the relevant validation script succeeds.",
       "Summarize changed files and validation results when you finish.",
     ].join("\n"),
@@ -34,6 +37,7 @@ export const codingHarness = defineChatProgram({
     workspace_list: modelTool(workspaceListTool, { resultClassification: "internal" }),
     workspace_write: modelTool(workspaceWriteTool, { resultClassification: "internal" }),
     workspace_test: modelTool(workspaceTestTool, { resultClassification: "internal" }),
+    play_ttt: modelTool(playTttTool, { resultClassification: "internal" }),
   },
   sampling: { toolChoice: "auto", maxTokens: 4_096 },
   maxIterations: CODING_HARNESS_ITERATIONS,

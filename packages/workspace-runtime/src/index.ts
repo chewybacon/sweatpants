@@ -10,19 +10,31 @@ import {
   sha256,
   sortStrings,
   type Json,
-  type SandboxActivationFence,
   useProgramExecution,
 } from "@sweatpants/session-contract";
 import { call, resource, useAbortSignal, useScope, type Operation, type Task } from "effection";
-import { createApi } from "effection/experimental";
+
+import {
+  WorkspaceFiles,
+  type WorkspaceFence,
+  type WorkspaceOperationExecution,
+  type WorkspaceOperations,
+} from "./api.ts";
+
+export {
+  WorkspaceFiles,
+  type WorkspaceFence,
+  type WorkspaceFilesApi,
+  type WorkspaceObservation,
+  type WorkspaceOperationExecution,
+  type WorkspaceOperations,
+} from "./api.ts";
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 const MAX_LIST_ENTRIES = 10_000;
 const MAX_COMMITTED_OPERATIONS = 128;
-
-export type WorkspaceFence = SandboxActivationFence;
 
 export interface WorkspaceServiceOptions {
   readonly root: string;
@@ -99,99 +111,6 @@ export type WorkspaceResponse =
 export interface WorkspaceConnector {
   request(request: WorkspaceRequest): Operation<WorkspaceResponse>;
 }
-
-export interface WorkspaceOperationExecution {
-  readonly fence: WorkspaceFence;
-  readonly operationId: string;
-}
-
-export interface WorkspaceObservation {
-  readonly workspaceRevision: string;
-}
-
-export interface WorkspaceOperations {
-  inspect(execution: WorkspaceOperationExecution): Operation<WorkspaceObservation>;
-  readFile(
-    input: { readonly path: string; readonly startLine?: number; readonly endLine?: number },
-    execution: WorkspaceOperationExecution,
-  ): Operation<{
-    readonly path: string;
-    readonly contents: string;
-    readonly startLine: number;
-    readonly endLine: number;
-    readonly workspaceRevision: string;
-  }>;
-  list(
-    input: { readonly path: string },
-    execution: WorkspaceOperationExecution,
-  ): Operation<{
-    readonly path: string;
-    readonly entries: readonly string[];
-    readonly workspaceRevision: string;
-  }>;
-  writeFile(
-    input: {
-      readonly path: string;
-      readonly contents: string;
-      readonly expectedWorkspaceRevision: string;
-    },
-    execution: WorkspaceOperationExecution,
-  ): Operation<{
-    readonly path: string;
-    readonly bytes: number;
-    readonly workspaceRevision: string;
-  }>;
-  runScript(
-    input: { readonly script: string; readonly expectedWorkspaceRevision: string },
-    execution: WorkspaceOperationExecution,
-  ): Operation<{
-    readonly script: string;
-    readonly exitCode: number;
-    readonly stdout: string;
-    readonly stderr: string;
-    readonly workspaceRevision: string;
-  }>;
-}
-
-export interface WorkspaceFilesApi {
-  inspect(): Operation<WorkspaceObservation>;
-  readFile(input: {
-    readonly path: string;
-    readonly startLine?: number;
-    readonly endLine?: number;
-  }): ReturnType<WorkspaceOperations["readFile"]>;
-  list(input: { readonly path: string }): ReturnType<WorkspaceOperations["list"]>;
-  writeFile(
-    input: {
-      readonly path: string;
-      readonly contents: string;
-      readonly expectedWorkspaceRevision: string;
-    },
-    execution: { readonly operationId: string },
-  ): ReturnType<WorkspaceOperations["writeFile"]>;
-  runScript(
-    input: { readonly script: string; readonly expectedWorkspaceRevision: string },
-    execution: { readonly operationId: string },
-  ): ReturnType<WorkspaceOperations["runScript"]>;
-}
-
-export const WorkspaceFiles = createApi<WorkspaceFilesApi>("sweatpants:workspace-files", {
-  *inspect() {
-    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
-  },
-  *readFile() {
-    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
-  },
-  *list() {
-    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
-  },
-  *writeFile() {
-    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
-  },
-  *runScript() {
-    throw new CrankError("workspace_unavailable", "Workspace provider is not installed");
-  },
-});
 
 export interface WorkspaceService {
   readonly initialWorkspaceVersion: string;

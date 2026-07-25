@@ -24,12 +24,14 @@ describe("yo-studio authored deployment", () => {
       "workspace_list",
       "workspace_write",
       "workspace_test",
+      "play_ttt",
     ]);
     expect(studioDeployment.programs.code.childPrograms).toHaveProperty("workspace_inspect");
     expect(studioDeployment.programs.code.childPrograms).toHaveProperty("workspace_read");
     expect(studioDeployment.programs.code.childPrograms).toHaveProperty("workspace_list");
     expect(studioDeployment.programs.code.childPrograms).toHaveProperty("workspace_write");
     expect(studioDeployment.programs.code.childPrograms).toHaveProperty("workspace_test");
+    expect(studioDeployment.programs.code.childPrograms).toHaveProperty("play_ttt");
   });
 
   it("keeps provider identity and secret values out of authored program configuration", () => {

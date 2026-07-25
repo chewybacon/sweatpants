@@ -11,7 +11,7 @@ import {
   workspaceSource,
 } from "@sweatpants/framework/deployment";
 
-import { codingCapabilities } from "./capabilities/workspace.ts";
+import { codingCapabilities } from "./capabilities/index.ts";
 import { codingHarness } from "./programs/coding-harness.ts";
 
 export const codingModelProvider = defineModelProvider({
@@ -46,7 +46,7 @@ export const productWorkspace = defineWorkspace({
 export const codingSandbox = lambdaMicrovm({
   image: {
     name: "sweatpants-durable-sandbox",
-    version: "7.0",
+    version: "9.0",
     node: "24",
     architecture: "arm64",
   },
