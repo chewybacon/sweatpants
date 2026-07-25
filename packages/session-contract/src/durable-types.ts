@@ -13,7 +13,7 @@ export type JsonSchema = Json;
 /** Retry policy declaring whether duplicate host execution is safe. */
 export type RetrySafety =
   | { mode: "repeatable" }
-  | { mode: "unsafe"; onIndeterminate: "await_decision" | "fail" }
+  | { mode: "unsafe" }
   | { mode: "idempotent"; mechanism: "pull_id_key" | "inherent" };
 
 declare const effectInputType: unique symbol;
@@ -784,7 +784,7 @@ export type ReserveOperationResult =
   | {
       status: "pending";
       pullId: string;
-      reason: "elicit" | "wait" | "child" | "indeterminate";
+      reason: "elicit" | "wait" | "child";
       resolutionCapability?: string;
       restoredFrontierConsumed?: true;
     };

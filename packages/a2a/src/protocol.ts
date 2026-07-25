@@ -502,11 +502,7 @@ function validateOperationDescriptor(value: Json | undefined): void {
         )
           fail();
       } else if (safety["mode"] === "unsafe") {
-        if (
-          !exactKeys(safety, ["mode", "onIndeterminate"]) ||
-          (safety["onIndeterminate"] !== "await_decision" && safety["onIndeterminate"] !== "fail")
-        )
-          fail();
+        if (!exactKeys(safety, ["mode"])) fail();
       } else fail();
       break;
     }

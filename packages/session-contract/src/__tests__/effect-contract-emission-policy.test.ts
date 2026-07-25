@@ -112,7 +112,7 @@ describe("whole-contract effect digest", () => {
     expect(effectContractDigest(effect("1", true))).not.toBe(effectContractDigest(first));
     expect(
       effectContractDigest(
-        effect("1", false, { mode: "unsafe", onIndeterminate: "await_decision" }),
+        effect("1", false, { mode: "unsafe" }),
       ),
     ).not.toBe(effectContractDigest(first));
     expect(effectContractDigest(effect("2"))).not.toBe(effectContractDigest(first));
