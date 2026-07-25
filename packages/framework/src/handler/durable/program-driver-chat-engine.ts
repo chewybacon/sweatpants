@@ -5,6 +5,7 @@ import {
   MODEL_SAMPLE_EFFECT,
   MODEL_SAMPLE_SCHEMA_ENTRIES,
   ProgramRuntime,
+  PullApplicationError,
   TOOL_OWNED_SAMPLE_CLASSIFICATION,
   assertJson,
   assertReplayedCanonicalValue,
@@ -25,6 +26,7 @@ import {
   stableProgramAttachmentId,
   type DurableEffectRegistration,
   type DurableJournalAuthorityService,
+  type DurableProgramContext,
   type DurableSchemaRegistryEntry,
   type DurableSemanticRecord,
   type DurableTool,
@@ -263,34 +265,97 @@ const rootTool = createPinnedDurableProgram(manifest, function* (input, context)
       if (!catalogEntry) {
         throw new CrankError("foreign_tool_not_found", `Tool not found: ${call.target}`);
       }
-      const result =
-        catalogEntry.kind === "program"
-          ? yield* context.invoke<Json>({
-              ...catalogEntry.program,
-              input: durableToolInput(call),
-            })
-          : yield* context.foreignTool<Json>({
-              driver: catalogEntry.driver,
-              tool: catalogEntry.tool,
-              input: call.input,
-              durability: catalogEntry.durability,
-              route: call.id,
-            });
+      const outcome = yield* invokeCatalogTool(context, catalogEntry, call);
       yield* context.emit("tool_completed", {
         callId: call.id,
         tool: call.target,
-        result,
+        result: outcome.result,
       });
       messages.push({
         role: "tool",
         tool_call_id: call.id,
         tool_name: call.target,
-        content: result,
+        content: outcome.result,
+        ...(outcome.failed ? { is_error: true } : {}),
       });
     }
   }
   throw new CrankError("max_tool_iterations", "Maximum tool iterations reached");
 });
+
+type CatalogToolCall = ChatCall;
+
+/**
+ * Failures that mean "the foreign process is gone or unreachable".
+ *
+ * These are outside the durable program's control: a non-journal-native tool
+ * holds its continuation in its own process, and that process may vanish
+ * between an elicitation and the human's answer. No amount of replay revives
+ * it, so the conversation is told what happened and decides what to do next.
+ *
+ * `effect_outcome_indeterminate` is the authority's own verdict when a host
+ * died with an unsafe attempt in flight: the call may or may not have landed,
+ * and nobody can find out. That is the same class of fact.
+ *
+ * Everything else stays fatal on purpose — cancellation must keep unwinding,
+ * and contract violations such as parameter validation must surface as run
+ * errors rather than being narrated to the model as ordinary results.
+ */
+const RECOVERABLE_FOREIGN_FAILURES: ReadonlySet<string> = new Set([
+  "foreign_session_ended",
+  "foreign_tool_start_failed",
+  "effect_outcome_indeterminate",
+]);
+
+/**
+ * Runs one catalog tool call and converts an application-level failure into an
+ * ordinary tool result.
+ *
+ * A foreign tool is not journal-native: its process may vanish between an
+ * elicitation and the human's answer, and no amount of durable replay can
+ * revive it. When that happens the adapter reports a typed failure and the
+ * authority journals it. That is information the conversation can act on — the
+ * model may restart the flow now that the human is engaged — not a reason to
+ * destroy the turn.
+ *
+ * The substituted result is derived from the journaled error, so replay
+ * reproduces it exactly. Cancellation and `CrankError` still propagate: durable
+ * unwinding and authored contract violations must remain fatal.
+ */
+function* invokeCatalogTool(
+  context: DurableProgramContext,
+  entry: ThinCatalogEntry,
+  call: CatalogToolCall,
+): Operation<{ result: Json; failed: boolean }> {
+  try {
+    const result =
+      entry.kind === "program"
+        ? yield* context.invoke<Json>({ ...entry.program, input: durableToolInput(call) })
+        : yield* context.foreignTool<Json>({
+            driver: entry.driver,
+            tool: entry.tool,
+            input: call.input,
+            durability: entry.durability,
+            route: call.id,
+          });
+    return { result, failed: false };
+  } catch (error) {
+    if (!(error instanceof PullApplicationError)) {
+      throw error;
+    }
+    const { code, message, details } = error.applicationError;
+    if (!RECOVERABLE_FOREIGN_FAILURES.has(code)) {
+      throw error;
+    }
+    return {
+      result: {
+        status: "error",
+        error: { code, message, ...(details === undefined ? {} : { details }) },
+      },
+      failed: true,
+    };
+  }
+}
 
 /** Runs one HTTP chat activation through the crank-native ProgramRuntime. */
 export function createProgramDriverChatEngine(
@@ -1326,7 +1391,7 @@ function toRuntimeMessage(value: Json): RuntimeMessage {
       toolCallId: String(message["tool_call_id"] ?? "tool"),
       toolName: String(message["tool_name"] ?? "tool"),
       content: [{ type: "text", text: content }],
-      isError: false,
+      isError: message["is_error"] === true,
     };
   }
   if (role === "system") {
