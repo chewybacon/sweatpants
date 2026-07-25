@@ -276,7 +276,8 @@ export default defineDeployment({
 Definitions are closed, digest-addressed, and cross-validated. Production rejects
 an in-memory journal, mandatory deny-network policy rejects incapable providers,
 and checkpoint-recoverable workspaces reject providers without checkpoint restore.
-The current Lambda certification uses explicit `trusted-development` network and
+The current Lambda certification uses immutable image `sweatpants-durable-sandbox:9.0`
+(Node 24, ARM64, Graviton 3/4) with explicit `trusted-development` network and
 external-effect profiles because the provider image exposes `INTERNET_EGRESS` and
 named `pnpm` scripts execute workspace-controlled code. Script names are policy
 selectors, not a narrow code-execution boundary. The runtime contains each script
@@ -290,6 +291,13 @@ cancellation, but it does not claim default-deny network enforcement.
   Observations directly call `yield* context.workspace.readFile(input)` and return
   the observed `workspaceRevision`; mutations use one inline pull-ID-idempotent
   `context.record()` and pass its pull ID as the provider operation ID.
+- `src/capabilities/tic-tac-toe.ts` — a complete interactive `play_ttt` durable
+  program with an execution-owned recorded symbol coin flip, model-sampled
+  moves, one `pickMove` elicitation per user turn, and pull-ID-idempotent
+  persistence of both the complete game and cumulative model/user win-loss-draw
+  record. `tic-tac-toe-plugin.ts` and `tic-tac-toe-game.tsx` render the move
+  history and clickable board through React `useChat`; the outer agent reads the
+  returned workspace paths before reporting the result.
 - `@sweatpants/workspace-runtime` — named `WorkspaceOperations`, the ordinary
   `WorkspaceFiles` API, direct local provider, remote connector provider, and a
   thin finite-HTTP adapter. Authored tools contain no fence or protocol details.
@@ -318,8 +326,10 @@ New session replaces that identity and remounts the hook.
 
 `@sweatpants/sandbox-provider-aws` now interprets the Lambda deployment in the
 Vite Host: the first ordinary workspace operation for each durable conversation allocates a
-task-affine MicroVM, waits for readiness, mints short-lived port-bound auth,
-binds the activation fence, and returns `createHttpWorkspaceConnector()`. New
+conversation-affine MicroVM, waits for readiness, mints short-lived port-bound auth,
+binds the activation fence, and returns `createHttpWorkspaceConnector()`. The
+conversation affinity propagates through every native child so inspect, write,
+read, validation, and `play_ttt` share one workspace. New
 session therefore creates a new conversation and a distinct MicroVM lease. The
 Vite root scope terminates every owned lease on shutdown.
 

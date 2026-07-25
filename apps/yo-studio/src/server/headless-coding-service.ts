@@ -30,7 +30,7 @@ import {
   type WorkspaceOperations,
 } from "@sweatpants/workspace-runtime";
 
-import { codingCapabilities } from "../capabilities/workspace.ts";
+import { codingCapabilities } from "../capabilities/index.ts";
 import { codingHarness } from "../programs/coding-harness.ts";
 
 export interface CodingTaskRequest {

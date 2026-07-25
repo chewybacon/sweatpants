@@ -18,6 +18,16 @@
                 "types": "./dist/index.d.ts",
                 "default": "./dist/index.js"
             }
+        },
+        "./api": {
+            "development": {
+                "import": "./src/api.ts",
+                "types": "./src/api.ts"
+            },
+            "import": {
+                "types": "./dist/api.d.ts",
+                "default": "./dist/api.js"
+            }
         }
     },
     "scripts": {

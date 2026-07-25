@@ -627,6 +627,7 @@ export const ProgramRuntime = createApi("crank-program-runtime", {
                 input: child.input,
                 route: childRoute,
                 executionEpoch: request.attach.executionEpoch,
+                ...(request.attach.affinity ? { affinity: request.attach.affinity } : {}),
               },
               ...(request.executeHostEffects !== undefined
                 ? { executeHostEffects: request.executeHostEffects }

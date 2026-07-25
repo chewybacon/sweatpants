@@ -45,7 +45,31 @@ import type {
   ToolExtensionMetadata,
 } from "./types.ts";
 
-type JsonOutput<T> = T extends Json ? T : never;
+type JsonCompatible<T> = [T] extends [null | boolean | number | string | undefined]
+  ? true
+  : [T] extends [readonly (infer Item)[]]
+    ? JsonCompatible<Item>
+    : [T] extends [object]
+      ? false extends {
+          [Key in keyof T]-?: JsonCompatible<T[Key]>;
+        }[keyof T]
+        ? false
+        : true
+      : false;
+
+/**
+ * Zod represents an optional object property as `property?: T | undefined`.
+ * Canonical JSON permits the property to be absent, but never persists an
+ * explicit `undefined`. Preserve the optional modifier while removing
+ * `undefined` from the parsed value type.
+ */
+type JsonOutput<T> = T extends Json
+  ? T
+  : T extends readonly (infer Item)[]
+    ? JsonOutput<Exclude<Item, undefined>>[]
+    : T extends object
+      ? { [Key in keyof T]: JsonOutput<Exclude<T[Key], undefined>> } & Json
+      : never;
 type EffectInput<D> = D extends EffectDefinition<infer I, Json, Json> ? I : never;
 type EffectOutput<D> = D extends EffectDefinition<Json, infer O, Json> ? O : never;
 type EffectMap = Record<string, EffectDefinition<Json, Json, Json>>;
@@ -154,7 +178,7 @@ export interface CreateDurableToolBuilderWithDescription<N extends string> {
 
 export interface CreateDurableToolBuilderWithIdentity<N extends string> {
   parameters<S extends ZodSchema>(
-    schema: S & (z.infer<S> extends Json ? unknown : never),
+    schema: S & (JsonCompatible<z.infer<S>> extends true ? unknown : never),
   ): CreateDurableToolBuilderWithParameters<N, JsonOutput<z.infer<S>>, undefined, {}>;
 }
 
@@ -165,7 +189,7 @@ export interface CreateDurableToolBuilderWithParameters<
   E extends ElicitsMap,
 > {
   output<S extends ZodSchema>(
-    schema: S & (z.infer<S> extends Json ? unknown : never),
+    schema: S & (JsonCompatible<z.infer<S>> extends true ? unknown : never),
   ): CreateDurableToolBuilderWithParameters<N, I, JsonOutput<z.infer<S>>, E>;
   elicits<Next extends ElicitsMap>(
     elicits: Next,

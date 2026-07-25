@@ -1,73 +1,111 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useChat, type ChatMessage, type ChatToolCall } from "@sweatpants/react-chat";
+import { AppShell } from "@astryxdesign/core/AppShell";
+import { Badge } from "@astryxdesign/core/Badge";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import {
+  ChatComposer,
+  ChatMessage as AstryxChatMessage,
+  ChatMessageBubble,
+  ChatMessageList,
+  ChatToolCalls,
+  type ChatToolCallItem,
+} from "@astryxdesign/core/Chat";
+import { CodeBlock } from "@astryxdesign/core/CodeBlock";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { Divider } from "@astryxdesign/core/Divider";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Grid } from "@astryxdesign/core/Grid";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Layout, LayoutContent, LayoutFooter, LayoutHeader } from "@astryxdesign/core/Layout";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
+import { TopNav, TopNavHeading } from "@astryxdesign/core/TopNav";
+import { VStack } from "@astryxdesign/core/VStack";
 
 import { studioView } from "./config.ts";
+import { playTttPlugin } from "./capabilities/tic-tac-toe-plugin.ts";
 import { getOrCreateConversationId, replaceConversationId } from "./session-id.ts";
 
-function JsonBlock({ value }: { value: unknown }) {
-  return <pre>{JSON.stringify(value, null, 2)}</pre>;
-}
+const CHAT_PANEL_HEIGHT = 560;
+const TRANSCRIPT_TARGET_MAX_LENGTH = 96;
 
-function formatted(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
+function compactTarget(value: unknown): string {
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  if (!text) {
+    return "";
   }
-  return JSON.stringify(value, null, 2);
+  return text.length > TRANSCRIPT_TARGET_MAX_LENGTH
+    ? `${text.slice(0, TRANSCRIPT_TARGET_MAX_LENGTH)}…`
+    : text;
 }
 
-function ToolCallCard({ part }: { part: ChatToolCall }) {
-  const complete = part.state === "complete";
+function ToolCallGroup({ part }: { part: ChatToolCall }) {
+  const item: ChatToolCallItem = {
+    key: part.id,
+    name: part.name,
+    status: part.state,
+    target: compactTarget(part.arguments),
+    ...(part.result !== undefined
+      ? {
+          resultDetail: (
+            <CodeBlock code={JSON.stringify(part.result, null, 2)} language="json" maxHeight="40vh" />
+          ),
+        }
+      : {}),
+    ...(part.error ? { errorMessage: part.error } : {}),
+  };
   return (
-    <section className={`tool-call ${part.state}`}>
-      <header className="tool-call-header">
-        <div>
-          <span className="tool-glyph">{complete ? "✓" : part.state === "error" ? "!" : "→"}</span>
-          <strong>{part.name}</strong>
-        </div>
-        <span className={`tool-state ${part.state}`}>{part.state}</span>
-      </header>
-      <details open={part.state === "running" || part.state === "error"}>
-        <summary>Input</summary>
-        <pre>{formatted(part.arguments)}</pre>
-      </details>
-      {part.result !== undefined ? (
-        <details>
-          <summary>Result</summary>
-          <pre>{formatted(part.result)}</pre>
-        </details>
-      ) : null}
-      {part.error ? <p className="tool-error">{part.error}</p> : null}
-    </section>
+    <Fragment>
+      <ChatToolCalls calls={[item]} />
+      {part.emissions.map((emission) => {
+        const Component = emission.component;
+        if (!Component) {
+          return null;
+        }
+        return (
+          <Component
+            key={emission.id}
+            {...emission.props}
+            onRespond={emission.onRespond}
+            disabled={emission.status !== "pending"}
+            response={emission.response}
+          />
+        );
+      })}
+    </Fragment>
   );
 }
 
 function Message({ message }: { message: ChatMessage }) {
   return (
-    <article className={`message ${message.role}`}>
-      <strong>{message.role === "user" ? "You" : "Harness"}</strong>
+    <AstryxChatMessage sender={message.role}>
       {message.parts.map((part) => {
         switch (part.type) {
           case "text":
-            return <div key={part.id} dangerouslySetInnerHTML={{ __html: part.rendered }} />;
+            return (
+              <ChatMessageBubble key={part.id} variant={message.role === "user" ? "filled" : "ghost"}>
+                <span className="chat-html-content" dangerouslySetInnerHTML={{ __html: part.rendered }} />
+              </ChatMessageBubble>
+            );
           case "reasoning":
             return (
-              <details key={part.id} className="reasoning">
-                <summary>Reasoning</summary>
-                <div dangerouslySetInnerHTML={{ __html: part.rendered }} />
-              </details>
+              <ChatMessageBubble key={part.id} variant="ghost">
+                <Collapsible trigger="Reasoning" defaultIsOpen={false}>
+                  <span className="chat-html-content" dangerouslySetInnerHTML={{ __html: part.rendered }} />
+                </Collapsible>
+              </ChatMessageBubble>
             );
           case "tool-call":
-            return <ToolCallCard key={part.id} part={part} />;
+            return <ToolCallGroup key={part.id} part={part} />;
           case "tool-result":
-            return (
-              <details key={part.id} className="tool-result">
-                <summary>Tool result</summary>
-                <pre>{formatted(part.result)}</pre>
-              </details>
-            );
+            return null;
         }
       })}
-    </article>
+    </AstryxChatMessage>
   );
 }
 
@@ -78,64 +116,73 @@ function DurableChat({ conversationId }: { conversationId: string }) {
     conversationId,
     enabledTools: true,
     pipeline: "markdown",
+    plugins: [playTttPlugin],
   });
 
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    if (task.trim().length === 0 || isStreaming) {
+  function submit(value: string) {
+    if (value.trim().length === 0 || isStreaming) {
       return;
     }
-    send(task.trim());
+    send(value.trim());
     setTask("");
   }
 
   return (
-    <section className="panel chat" aria-live="polite">
-      <div className="chat-heading">
-        <div>
-          <p className="eyebrow">Durable coding harness</p>
-          <code>conversation {conversationId.slice(0, 8)}</code>
-        </div>
-        <span className="status">
-          {pipelineReady ? "useChat · durable handler ready" : "loading chat projection"}
-        </span>
-      </div>
-      <div className="transcript">
-        {messages.length === 0 ? (
-          <p className="empty">Send a task to the journal-native coding harness.</p>
-        ) : null}
-        {messages.map((message) => (
-          <Message key={message.id} message={message} />
-        ))}
-        {isStreaming ? <p className="streaming">Durable activation running…</p> : null}
-        {error ? <p className="error">{error}</p> : null}
-      </div>
-
-      <form className="hero" onSubmit={submit}>
-        <label htmlFor="task">Coding task</label>
-        <textarea
-          id="task"
-          value={task}
-          onChange={(event) => setTask(event.target.value)}
-          disabled={isStreaming}
-        />
-        <div className="action-row">
-          {isStreaming ? (
-            <button type="button" onClick={abort}>
-              Cancel
-            </button>
-          ) : (
-            <button type="submit" disabled={task.trim().length === 0}>
-              Send with useChat
-            </button>
-          )}
-          <p>
-            React owns presentation only. `useChat` talks to `createDurableChatHandler`; the handler
-            owns the model loop, journal, native child tools, and workspace providers.
-          </p>
-        </div>
-      </form>
-    </section>
+    <Card padding={0} height={CHAT_PANEL_HEIGHT}>
+      <Layout
+        height="fill"
+        header={
+          <LayoutHeader hasDivider>
+            <HStack padding={4} justify="between" vAlign="center">
+              <VStack gap={0}>
+                <Text type="label" color="secondary">
+                  Durable coding harness
+                </Text>
+                <Text type="supporting" color="secondary">
+                  conversation {conversationId.slice(0, 8)}
+                </Text>
+              </VStack>
+              <Badge
+                variant={pipelineReady ? "success" : "neutral"}
+                label={pipelineReady ? "Handler ready" : "Loading"}
+              />
+            </HStack>
+          </LayoutHeader>
+        }
+        content={
+          <LayoutContent padding={4}>
+            <ChatMessageList
+              isStreaming={isStreaming}
+              emptyState={
+                <EmptyState
+                  isCompact
+                  title="No messages yet"
+                  description="Send a task to the journal-native coding harness."
+                />
+              }
+            >
+              {messages.map((message) => (
+                <Message key={message.id} message={message} />
+              ))}
+            </ChatMessageList>
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter hasDivider>
+            <ChatComposer
+              value={task}
+              onChange={setTask}
+              onSubmit={submit}
+              isStopShown={isStreaming}
+              onStop={abort}
+              isDisabled={!pipelineReady}
+              placeholder="Send a task to the journal-native coding harness…"
+              {...(error ? { status: { type: "error" as const, message: error } } : {})}
+            />
+          </LayoutFooter>
+        }
+      />
+    </Card>
   );
 }
 
@@ -144,103 +191,135 @@ export function App() {
     getOrCreateConversationId(window.localStorage),
   );
   const toolNames = useMemo(() => [...studioView.capabilityNames], []);
+  const placement = __YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws" ? "AWS Lambda MicroVM" : "Local Effection runtime";
+  const runtimeLabel =
+    __YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws"
+      ? `Node ${studioView.sandbox.image.node} · ARM64`
+      : "Node · loopback connector";
 
   function newSession() {
     setConversationId(replaceConversationId(window.localStorage));
   }
 
   return (
-    <main>
-      <header>
-        <div>
-          <p className="eyebrow">Sweatpants reference assembly</p>
-          <h1>yo-studio</h1>
-          <p className="lede">
-            Author processless durable programs once, then project them through React, HTTP, and MCP
-            onto replaceable workspace compute.
-          </p>
-        </div>
-        <button type="button" className="secondary" onClick={newSession}>
-          New session
-        </button>
-      </header>
+    <AppShell
+      contentPadding={4}
+      height="auto"
+      topNav={
+        <TopNav
+          heading={
+            <TopNavHeading superheading="Sweatpants reference assembly" heading="yo-studio" />
+          }
+          endContent={<Button label="New session" variant="secondary" onClick={newSession} />}
+        />
+      }
+    >
+      <VStack gap={6}>
+        <Text type="body" color="secondary">
+          Author processless durable programs once, then project them through React, HTTP, and
+          MCP onto replaceable workspace compute.
+        </Text>
 
-      <DurableChat key={conversationId} conversationId={conversationId} />
+        <DurableChat key={conversationId} conversationId={conversationId} />
 
-      <div className="grid">
-        <section className="panel">
-          <p className="eyebrow">Durable program</p>
-          <h2>{studioView.program.id}</h2>
-          <dl>
-            <div>
-              <dt>Version</dt>
-              <dd>{studioView.program.version}</dd>
-            </div>
-            <div>
-              <dt>Model loop</dt>
-              <dd>{studioView.program.modelLoop}</dd>
-            </div>
-            <div>
-              <dt>Model provider</dt>
-              <dd>{studioView.modelProvider.model}</dd>
-            </div>
-            <div>
-              <dt>Sampling authority</dt>
-              <dd>{studioView.modelSampling.ownership}</dd>
-            </div>
-            <div>
-              <dt>Iterations</dt>
-              <dd>{studioView.program.maxIterations}</dd>
-            </div>
-          </dl>
-          <h3>Closed capability map</h3>
-          <ul className="tools">
-            {toolNames.map((name) => (
-              <li key={name}>{name}</li>
-            ))}
-          </ul>
-        </section>
+        <Grid columns={{ minWidth: 320 }} gap={4}>
+          <Card>
+            <VStack gap={4}>
+              <VStack gap={1}>
+                <Text type="label" color="secondary">
+                  Durable program
+                </Text>
+                <Heading level={3}>{studioView.program.id}</Heading>
+              </VStack>
+              <List hasDividers density="compact">
+                <ListItem
+                  label="Version"
+                  endContent={<Text type="body">{studioView.program.version}</Text>}
+                />
+                <ListItem
+                  label="Model loop"
+                  endContent={<Text type="body">{studioView.program.modelLoop}</Text>}
+                />
+                <ListItem
+                  label="Model provider"
+                  endContent={<Text type="body">{studioView.modelProvider.model}</Text>}
+                />
+                <ListItem
+                  label="Sampling authority"
+                  endContent={<Text type="body">{studioView.modelSampling.ownership}</Text>}
+                />
+                <ListItem
+                  label="Iterations"
+                  endContent={<Text type="body">{studioView.program.maxIterations}</Text>}
+                />
+              </List>
+              <Divider />
+              <VStack gap={2}>
+                <Text type="label" color="secondary">
+                  Closed capability map
+                </Text>
+                <HStack gap={2} wrap="wrap">
+                  {toolNames.map((name) => (
+                    <Token key={name} label={name} />
+                  ))}
+                </HStack>
+              </VStack>
+            </VStack>
+          </Card>
 
-        <section className="panel">
-          <p className="eyebrow">Workspace placement</p>
-          <h2>
-            {__YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws"
-              ? "AWS Lambda MicroVM"
-              : "Local Effection runtime"}
-          </h2>
-          <dl>
-            <div>
-              <dt>Runtime</dt>
-              <dd>
-                {__YO_STUDIO_WORKSPACE_PLACEMENT__ === "aws"
-                  ? `Node ${studioView.sandbox.image.node} · ARM64`
-                  : "Node · loopback connector"}
-              </dd>
-            </div>
-            <div>
-              <dt>Persistence</dt>
-              <dd>{studioView.sandbox.capabilities.workspacePersistence}</dd>
-            </div>
-            <div>
-              <dt>Network</dt>
-              <dd>{studioView.workspace.policy.network}</dd>
-            </div>
-          </dl>
-          <h3>Named scripts</h3>
-          <JsonBlock value={studioView.workspace.scripts} />
-        </section>
-      </div>
+          <Card>
+            <VStack gap={4}>
+              <VStack gap={1}>
+                <Text type="label" color="secondary">
+                  Workspace placement
+                </Text>
+                <Heading level={3}>{placement}</Heading>
+              </VStack>
+              <List hasDividers density="compact">
+                <ListItem label="Runtime" endContent={<Text type="body">{runtimeLabel}</Text>} />
+                <ListItem
+                  label="Persistence"
+                  endContent={
+                    <Text type="body">{studioView.sandbox.capabilities.workspacePersistence}</Text>
+                  }
+                />
+                <ListItem
+                  label="Network"
+                  endContent={<Badge variant="neutral" label={studioView.workspace.policy.network} />}
+                />
+              </List>
+              <Divider />
+              <VStack gap={2}>
+                <Text type="label" color="secondary">
+                  Named scripts
+                </Text>
+                <CodeBlock
+                  code={JSON.stringify(studioView.workspace.scripts, null, 2)}
+                  language="json"
+                  size="sm"
+                />
+              </VStack>
+            </VStack>
+          </Card>
+        </Grid>
 
-      <section className="panel architecture">
-        <p className="eyebrow">One program, multiple projections</p>
-        <div className="flow">
-          <span>React useChat</span>
-          <span>Headless HTTP</span>
-          <span>MCP</span>
-          <strong>Durable chat handler + ProgramRuntime</strong>
-          <span>MicroVM workspace</span>
-        </div>
-      </section>
-    </main>
+        <Card variant="muted">
+          <VStack gap={3} hAlign="center">
+            <Text type="label" color="secondary">
+              One program, multiple projections
+            </Text>
+            <HStack gap={2} wrap="wrap" justify="center">
+              <Token label="React useChat" />
+              <Token label="Headless HTTP" />
+              <Token label="MCP" />
+            </HStack>
+            <Text type="body" weight="semibold">
+              Durable chat handler + ProgramRuntime
+            </Text>
+            <Token label="MicroVM workspace" color="blue" />
+          </VStack>
+        </Card>
+      </VStack>
+    </AppShell>
   );
 }
