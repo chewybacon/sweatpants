@@ -225,7 +225,6 @@ type Pull = {
   outcome?: OperationOutcome;
   outcomeDigest?: string;
   receipt?: ResolutionReceipt;
-  indeterminate: boolean;
   revoked: boolean;
 };
 
@@ -593,9 +592,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
           receipt: { ...existing.receipt, status: "duplicate" },
         };
       }
-      if (existing.indeterminate) {
-        return { status: "pending", pullId: existing.pullId, reason: "indeterminate" };
-      }
       if (descriptor.kind === "effect" || descriptor.kind === "record") {
         return this.#authorizeExisting(task, existing);
       }
@@ -689,7 +685,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       audience: policy.audience,
       maxOutcomeBytes: this.#options.maxOutcomeBytes,
       attempts: [],
-      indeterminate: false,
       revoked: false,
     };
     task.pullsByAction.set(request.actionIndex, pull);
@@ -963,7 +958,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     pull.outcome = outcome;
     pull.outcomeDigest = digest;
     pull.receipt = receipt;
-    pull.indeterminate = false;
     task.nextActionIndex = Math.max(task.nextActionIndex, pull.actionIndex + 1);
     if (task.cancellation.type === "settling_effect" && task.cancellation.pullId === pull.pullId) {
       task.cancellation = {
@@ -1209,7 +1203,7 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     };
   }
 
-  /** Detaches a live attempt and applies its declared indeterminate policy. */
+  /** Detaches a live attempt, settling unsafe work as an indeterminate outcome. */
   *detachAttempt(
     sessionId: string,
     taskId: string,
@@ -1249,28 +1243,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       attemptId,
       reason,
     });
-  }
-
-  /** Retries an unsafe indeterminate effect only with explicit duplicate-risk acknowledgement. */
-  *retryIndeterminateEffect(
-    sessionId: string,
-    taskId: string,
-    pullId: string,
-    acknowledgeDuplicateRisk: boolean,
-  ): Operation<ReserveOperationResult> {
-    if (!acknowledgeDuplicateRisk) {
-      throw new CrankError("retry_ack_required");
-    }
-    const task = this.#task(sessionId, taskId);
-    const pull = this.#pull(task, pullId);
-    if (
-      !pull.indeterminate ||
-      (pull.descriptor.kind !== "effect" && pull.descriptor.kind !== "record")
-    ) {
-      throw new CrankError("invalid_command");
-    }
-    pull.indeterminate = false;
-    return this.#startAttempt(task, pull);
   }
 
   /** Orphans a task whose pinned program cannot be recovered safely. */
@@ -1993,7 +1965,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
     pull.outcome = outcome;
     pull.outcomeDigest = digest;
     pull.receipt = receipt;
-    pull.indeterminate = false;
     task.nextActionIndex = Math.max(task.nextActionIndex, pull.actionIndex + 1);
   }
 
@@ -2016,16 +1987,17 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
             ? task.manifest.effects[pull.descriptor.name]?.retrySafety
             : pull.descriptor.retrySafety;
         if (retrySafety?.mode === "unsafe") {
-          pull.indeterminate = true;
+          // The attempt is gone and no resolver can prove what happened. Record
+          // the uncertainty, then settle it as a coded outcome so the authored
+          // program can decide. Keeping the pull open would only be sound if a
+          // capability holder survived the host, which none currently does.
           this.#append(task.sessionId, undefined, {
             type: "PullIndeterminate",
             taskId: task.taskId,
             pullId: pull.pullId,
             attemptId: attempt.attemptId,
           });
-          if (retrySafety.onIndeterminate === "fail") {
-            this.#failIndeterminatePull(task, pull, attempt, reason);
-          }
+          this.#failIndeterminatePull(task, pull, attempt, reason);
         }
       }
     }
@@ -2077,7 +2049,6 @@ export class InMemoryDurableJournalAuthority implements DurableJournalAuthorityS
       outcomeDigest,
       status: "accepted",
     };
-    pull.indeterminate = false;
     task.nextActionIndex = Math.max(task.nextActionIndex, pull.actionIndex + 1);
     if (task.cancellation.type === "settling_effect" && task.cancellation.pullId === pull.pullId) {
       task.cancellation = {
@@ -2712,10 +2683,7 @@ function isRetrySafetySnapshot(value: unknown): boolean {
     return hasExactKeys(value, ["mode"]);
   }
   if (value["mode"] === "unsafe") {
-    return (
-      hasExactKeys(value, ["mode", "onIndeterminate"]) &&
-      (value["onIndeterminate"] === "await_decision" || value["onIndeterminate"] === "fail")
-    );
+    return hasExactKeys(value, ["mode"]);
   }
   return (
     value["mode"] === "idempotent" &&
@@ -2757,7 +2725,6 @@ function isIndexedPullTuple(value: Json): boolean {
         "audience",
         "maxOutcomeBytes",
         "attempts",
-        "indeterminate",
         "revoked",
       ],
       ["capability", "outcome", "outcomeDigest", "receipt"],
@@ -2780,7 +2747,6 @@ function isIndexedPullTuple(value: Json): boolean {
     isNonNegativeInteger(pull["maxOutcomeBytes"]) &&
     Array.isArray(pull["attempts"]) &&
     pull["attempts"].every(isAttemptSnapshot) &&
-    typeof pull["indeterminate"] === "boolean" &&
     typeof pull["revoked"] === "boolean" &&
     (pull["capability"] === undefined || typeof pull["capability"] === "string") &&
     (pull["outcome"] === undefined || isOperationOutcomeJson(pull["outcome"])) &&

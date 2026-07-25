@@ -248,7 +248,9 @@ const startDefinition: EffectDefinition<ForeignToolRequest, ForeignToolDispositi
   version: "1",
   inputSchema: FOREIGN_TOOL_START_INPUT_DESCRIPTOR,
   outputSchema: FOREIGN_TOOL_START_OUTPUT_DESCRIPTOR,
-  retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+  // Resolved by the in-host effect registry: no resolver survives host loss, so
+  // a detached attempt settles as a coded indeterminate outcome.
+  retrySafety: { mode: "unsafe" },
 };
 /** Effect contract for starting a foreign driver invocation exactly once. */
 export const FOREIGN_TOOL_START_EFFECT = Object.freeze(startDefinition);
@@ -258,7 +260,8 @@ const continueDefinition: EffectDefinition<ForeignToolContinueRequest, ForeignTo
   version: "1",
   inputSchema: FOREIGN_TOOL_CONTINUE_INPUT_DESCRIPTOR,
   outputSchema: FOREIGN_TOOL_CONTINUE_OUTPUT_DESCRIPTOR,
-  retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+  // See `foreign.tool.start`: the resolver is in-host and cannot outlive it.
+  retrySafety: { mode: "unsafe" },
 };
 /** Effect contract for applying one response to foreign continuation state. */
 export const FOREIGN_TOOL_CONTINUE_EFFECT = Object.freeze(continueDefinition);

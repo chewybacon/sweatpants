@@ -133,13 +133,6 @@ export interface RedisDurableJournalAuthority {
     attemptId: string,
     reason?: string,
   ): Operation<void>;
-  /** Retries unsafe ambiguity only after explicit duplicate-risk acknowledgement. */
-  retryIndeterminateEffect(
-    sessionId: string,
-    taskId: string,
-    pullId: string,
-    acknowledgeDuplicateRisk: boolean,
-  ): Operation<ReserveOperationResult>;
   /** Orphans a task whose pinned program is unavailable or corrupt. */
   forceOrphan(
     sessionId: string,
@@ -337,11 +330,6 @@ export function createRedisDurableJournalAuthority(
     },
     *abandonAttempt(sessionId, taskId, pullId, attemptId, reason) {
       yield* mutate((value) => value.abandonAttempt(sessionId, taskId, pullId, attemptId, reason));
-    },
-    *retryIndeterminateEffect(sessionId, taskId, pullId, acknowledgeDuplicateRisk) {
-      return yield* mutate((value) =>
-        value.retryIndeterminateEffect(sessionId, taskId, pullId, acknowledgeDuplicateRisk),
-      );
     },
     *forceOrphan(sessionId, taskId, reason) {
       yield* mutate((value) => value.forceOrphan(sessionId, taskId, reason));

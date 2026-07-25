@@ -233,7 +233,7 @@ function parseClosedEffect(value: Json): EffectDefinition<Json, Json, Json> {
     retryMode === "repeatable"
       ? ["mode"]
       : retryMode === "unsafe"
-        ? ["mode", "onIndeterminate"]
+        ? ["mode"]
         : ["mode", "mechanism"];
   if (!exactKeys(value["retrySafety"], retryKeys))
     throw mismatch("Effect retry safety fields are not closed");

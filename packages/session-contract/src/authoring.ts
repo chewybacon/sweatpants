@@ -150,9 +150,7 @@ function validateRetrySafety(safety: RetrySafety, path: string): void {
   if (
     !safety ||
     (safety.mode === "repeatable" && Object.keys(safety).length !== 1) ||
-    (safety.mode === "unsafe" &&
-      (Object.keys(safety).length !== 2 ||
-        (safety.onIndeterminate !== "await_decision" && safety.onIndeterminate !== "fail"))) ||
+    (safety.mode === "unsafe" && Object.keys(safety).length !== 1) ||
     (safety.mode === "idempotent" &&
       (Object.keys(safety).length !== 2 ||
         (safety.mechanism !== "pull_id_key" && safety.mechanism !== "inherent"))) ||

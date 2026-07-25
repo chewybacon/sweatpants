@@ -106,7 +106,7 @@ export const FOREIGN_A2A_START_SURFACE_EFFECT = defineDurableEffect<
   version: "1.0.0",
   inputSchema: START_INPUT,
   outputSchema: TRANSITION_OUTPUT,
-  retrySafety: { mode: "unsafe", onIndeterminate: "fail" },
+  retrySafety: { mode: "unsafe" },
 });
 export const FOREIGN_A2A_START_INTERVENE_EFFECT = defineDurableEffect<
   ForeignA2AStartRequest,
@@ -116,7 +116,10 @@ export const FOREIGN_A2A_START_INTERVENE_EFFECT = defineDurableEffect<
   version: "1.0.0",
   inputSchema: START_INPUT,
   outputSchema: TRANSITION_OUTPUT,
-  retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+  // Intervention is a transition-layer decision made through
+  // FOREIGN_A2A_AMBIGUITY_DECISION_EFFECT. This effect stays distinct from its
+  // `.surface` twin for audience and program branching, not retry policy.
+  retrySafety: { mode: "unsafe" },
 });
 export const FOREIGN_A2A_OBSERVE_EFFECT = defineDurableEffect<
   ForeignA2AObservationState,
@@ -136,7 +139,7 @@ export const FOREIGN_A2A_RESPOND_SURFACE_EFFECT = defineDurableEffect<
   version: "1.0.0",
   inputSchema: RESPOND_INPUT,
   outputSchema: TRANSITION_OUTPUT,
-  retrySafety: { mode: "unsafe", onIndeterminate: "fail" },
+  retrySafety: { mode: "unsafe" },
 });
 export const FOREIGN_A2A_RESPOND_INTERVENE_EFFECT = defineDurableEffect<
   { state: ForeignA2AObservationState; request: ForeignA2AContinueRequest },
@@ -146,7 +149,9 @@ export const FOREIGN_A2A_RESPOND_INTERVENE_EFFECT = defineDurableEffect<
   version: "1.0.0",
   inputSchema: RESPOND_INPUT,
   outputSchema: TRANSITION_OUTPUT,
-  retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+  // See `a2a.foreign.start.intervene`: intervention is a transition-layer
+  // decision, and this handler's resolver cannot outlive the host.
+  retrySafety: { mode: "unsafe" },
 });
 export const FOREIGN_A2A_INTERRUPTION_DECISION_EFFECT = defineDurableEffect<
   ForeignA2AInterruption,

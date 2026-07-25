@@ -195,14 +195,14 @@ const idempotentManifest: DurableProgramManifest = {
       version: "1",
       inputSchema: conformanceMutateInput.descriptor,
       outputSchema: conformanceMutateOutput.descriptor,
-      retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+      retrySafety: { mode: "unsafe" },
     },
     fail_mutate: {
       name: "fail_mutate",
       version: "1",
       inputSchema: conformanceMutateInput.descriptor,
       outputSchema: conformanceMutateOutput.descriptor,
-      retrySafety: { mode: "unsafe", onIndeterminate: "fail" },
+      retrySafety: { mode: "unsafe" },
     },
   },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
@@ -452,27 +452,28 @@ function* takeover(
   );
   assert(
     caseName,
-    parked.status === "pending" && parked.reason === "indeterminate",
-    "unsafe detached work must remain indeterminate",
+    parked.status === "resolved" &&
+      parked.outcome.status === "error" &&
+      parked.outcome.error.code === "effect_outcome_indeterminate",
+    "detaching an unsafe attempt must settle it as a coded indeterminate outcome",
   );
-  requireAccepted(
+  assertEqual(
     caseName,
     yield* authority.resolve({
       capability: first.resolutionCapability,
       audience: "mutator",
       outcome: { status: "ok", value: { committed: true } },
     }),
+    { status: "rejected", code: "capability_revoked" },
+    "the detached resolver must be fenced once the outcome is settled",
   );
-  const replay = yield* authority.reserve(
-    effectRequest(replacement.programCapability, "mutate", "mutator"),
-  );
-  assert(caseName, replay.status === "resolved", "new owner must replay the old resolver outcome");
   assertTypes(caseName, yield* authority.readJournal(sessionId), [
     "TaskOpened",
     "PullRequested",
     "AttemptStarted",
     "AttemptDetached",
     "PullIndeterminate",
+    "AttemptAbandoned",
     "PullResolved",
   ]);
 }

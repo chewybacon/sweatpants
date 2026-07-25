@@ -109,7 +109,7 @@ const manifest: DurableProgramManifest = {
       version: "1",
       inputSchema: mutateInput.descriptor,
       outputSchema: mutateOutput.descriptor,
-      retrySafety: { mode: "unsafe", onIndeterminate: "await_decision" },
+      retrySafety: { mode: "unsafe" },
     },
   },
   capabilities: { durableEmissions: true, structuredChildren: true, replay: "strict" },
@@ -474,7 +474,7 @@ describe("crank-native durable runtime", () => {
     });
   });
 
-  it("keeps detached attempt capabilities valid, fences old program authority, and parks unsafe ambiguity", async () => {
+  it("fences old program authority and settles a detached unsafe attempt as indeterminate", async () => {
     const { authority, attach } = createAuthority("takeover");
     await run(function* () {
       const opened = yield* authority.openTask({
@@ -544,14 +544,17 @@ describe("crank-native durable runtime", () => {
         },
         programCapability: replacement.programCapability,
       });
-      expect(parked).toMatchObject({ status: "pending", reason: "indeterminate" });
+      expect(parked).toMatchObject({
+        status: "resolved",
+        outcome: { status: "error", error: { code: "effect_outcome_indeterminate" } },
+      });
       expect(
         yield* authority.resolve({
           capability: first.resolutionCapability,
           audience: "mutator",
           outcome: { status: "ok", value: { committed: true } },
         }),
-      ).toMatchObject({ status: "accepted" });
+      ).toMatchObject({ status: "rejected", code: "capability_revoked" });
     });
   });
 
@@ -650,7 +653,7 @@ describe("crank-native durable runtime", () => {
       const descriptor = {
         kind: "record" as const,
         label: "unsafe-send",
-        retrySafety: { mode: "unsafe" as const, onIndeterminate: "fail" as const },
+        retrySafety: { mode: "unsafe" as const },
       };
       const first = yield* authority.reserve({
         sessionId: attach.sessionId,
