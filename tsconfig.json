@@ -15,6 +15,9 @@
             "path": "./packages/durable-execution"
         },
         {
+            "path": "./packages/journal-authority"
+        },
+        {
             "path": "./packages/a2a"
         },
         {
