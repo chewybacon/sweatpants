@@ -2,7 +2,31 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type { Operation } from "effection";
 import type { z, ZodSchema } from "zod";
 
-import type { ToolSchemaArtifacts } from "./contract.ts";
+import type {
+  DurableSchemaRegistryEntry,
+  PortableSchemaDescriptor,
+} from "@sweatpants/session-contract";
+
+/** Portable descriptors for one declared elicitation (content-schema semantics). */
+export interface ToolElicitSchemaArtifact {
+  /** Accepted-content descriptor; never the outer wire action envelope. */
+  readonly response: PortableSchemaDescriptor;
+  readonly context?: PortableSchemaDescriptor;
+}
+
+/**
+ * Retained portable schema projections plus the digest-keyed runtime
+ * validator catalog for one tool. Consumers (inventory, providers, browser
+ * forms) use the projections without re-lowering the runtime schema;
+ * authorities merge `catalog` entries into scope-local registries.
+ */
+export interface ToolSchemaArtifacts {
+  readonly parameters: PortableSchemaDescriptor;
+  readonly output?: PortableSchemaDescriptor;
+  readonly elicits: Readonly<Record<string, ToolElicitSchemaArtifact>>;
+  /** Runtime validators; never persisted or transported. */
+  readonly catalog: readonly DurableSchemaRegistryEntry[];
+}
 
 // =============================================================================
 // Canonical core tool substrate

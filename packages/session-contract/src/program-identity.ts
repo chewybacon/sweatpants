@@ -1,55 +1,21 @@
-import type {
-  DurableProgramFactory,
-  DurableProgramManifest,
-  DurableTool,
+import {
+  PROGRAM_ARTIFACT_IDENTITY_DOMAIN,
+  PROGRAM_ARTIFACT_IDENTITY_FORMAT,
+  PROGRAM_INTERFACE_IDENTITY_DOMAIN,
+  PROGRAM_INTERFACE_IDENTITY_FORMAT,
+  PROGRAM_INTERFACE_GENERATOR_VERSION,
+  type DurableProgramFactory,
+  type DurableProgramManifest,
+  type DurableTool,
+  type GeneratedProgramArtifactIdentityV1,
+  type GeneratedProgramInterfaceIdentityV1,
+  type ProgramArtifactIdentityInputV1,
+  type ProgramIdentityProvenanceV1,
 } from "./durable-types.ts";
 import { canonicalJson, canonicalSnapshot, sha256 } from "./canonical.ts";
 import { createPinnedDurableProgram, validateDurableManifest } from "./authoring.ts";
 import { CrankError, type Json } from "./types.ts";
 
-export const PROGRAM_ARTIFACT_IDENTITY_FORMAT = "sweatpants.program-artifact-identity.v1" as const;
-export const PROGRAM_ARTIFACT_IDENTITY_DOMAIN = `${PROGRAM_ARTIFACT_IDENTITY_FORMAT}\n`;
-export const PROGRAM_ARTIFACT_GENERATOR_VERSION = 2;
-export const PROGRAM_INTERFACE_IDENTITY_FORMAT =
-  "sweatpants.program-interface-identity.v1" as const;
-export const PROGRAM_INTERFACE_IDENTITY_DOMAIN = `${PROGRAM_INTERFACE_IDENTITY_FORMAT}\n`;
-export const PROGRAM_INTERFACE_GENERATOR_VERSION = 2;
-
-export interface ProgramArtifactIdentityInputV1 {
-  readonly format: typeof PROGRAM_ARTIFACT_IDENTITY_FORMAT;
-  readonly generatorVersion: number;
-  readonly manifest: Omit<DurableProgramManifest, "digest">;
-  readonly implementationArtifactDigest: string;
-  readonly resourcePackageDigests: readonly string[];
-}
-
-export type ProgramIdentityProvenanceV1 =
-  | {
-      /** Covers declared schemas, effects, elicitations, capabilities, name, and version. */
-      readonly kind: "generated-interface";
-      readonly format: typeof PROGRAM_INTERFACE_IDENTITY_FORMAT;
-      readonly generatorVersion: number;
-      readonly identityInputDigest: string;
-    }
-  | {
-      /** Covers the declared interface plus a separately generated implementation artifact. */
-      readonly kind: "generated-artifact";
-      readonly format: typeof PROGRAM_ARTIFACT_IDENTITY_FORMAT;
-      readonly generatorVersion: number;
-      readonly identityInputDigest: string;
-    }
-  | { readonly kind: "asserted" };
-
-export interface GeneratedProgramInterfaceIdentityV1 {
-  readonly digest: string;
-  readonly provenance: Extract<ProgramIdentityProvenanceV1, { kind: "generated-interface" }>;
-}
-
-export interface GeneratedProgramArtifactIdentityV1 {
-  readonly digest: string;
-  readonly input: ProgramArtifactIdentityInputV1;
-  readonly provenance: Extract<ProgramIdentityProvenanceV1, { kind: "generated-artifact" }>;
-}
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const INPUT_KEYS = [

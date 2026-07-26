@@ -1,0 +1,15 @@
+[
+    "module cycle in framework: handler/durable/program-driver-journal.ts -> handler/durable/program-driver-chat-engine.ts -> handler/durable/local-program-host.ts -> handler/durable/program-driver-journal.ts",
+    "module cycle in framework: handler/durable/program-driver-journal.ts -> handler/durable/program-driver-chat-engine.ts -> handler/durable/program-driver-journal.ts",
+    "module cycle in framework: handler/durable/types.ts -> handler/durable/program-driver-journal.ts -> handler/durable/program-driver-chat-engine.ts -> handler/durable/types.ts",
+    "module cycle in framework: handler/durable/types.ts -> lib/chat/index.ts -> lib/chat/contexts.ts -> handler/durable/types.ts",
+    "module cycle in framework: lib/chat/mcp-tools/mcp-tool-types.ts -> lib/chat/mcp-tools/model-context.ts -> lib/chat/mcp-tools/mcp-tool-types.ts",
+    "module cycle in framework: lib/chat/session/streaming.ts -> lib/chat/session/ag-ui-messages.ts -> lib/chat/session/plugin-replay.ts -> lib/chat/session/streaming.ts",
+    "module cycle in framework: lib/chat/types.ts -> lib/chat/session/options.ts -> lib/chat/session/streaming.ts -> lib/chat/session/ag-ui-messages.ts -> lib/chat/types.ts",
+    "module cycle in framework: lib/chat/types.ts -> lib/chat/session/options.ts -> lib/chat/session/streaming.ts -> lib/chat/types.ts",
+    "module cycle in framework: lib/chat/types.ts -> lib/chat/session/options.ts -> lib/chat/state/events.ts -> lib/chat/types.ts",
+    "module cycle in framework: lib/chat/types.ts -> lib/chat/session/options.ts -> lib/chat/types.ts",
+    "module cycle in framework: lib/chat/types.ts -> lib/chat/state/index.ts -> lib/chat/state/chat-state.ts -> lib/chat/types.ts",
+    "module cycle in framework: lib/chat/types.ts -> lib/chat/state/index.ts -> lib/chat/state/reducer.ts -> lib/chat/types.ts",
+    "module cycle in framework: server/agent-profiles.ts -> server/standard-a2a-host.ts -> server/agent-profiles.ts"
+]

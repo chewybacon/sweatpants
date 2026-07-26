@@ -250,6 +250,12 @@ export {
   PROGRAM_INTERFACE_GENERATOR_VERSION,
   PROGRAM_INTERFACE_IDENTITY_DOMAIN,
   PROGRAM_INTERFACE_IDENTITY_FORMAT,
+  type GeneratedProgramArtifactIdentityV1,
+  type GeneratedProgramInterfaceIdentityV1,
+  type ProgramArtifactIdentityInputV1,
+  type ProgramIdentityProvenanceV1,
+} from "./durable-types.ts";
+export {
   createGeneratedPinnedDurableProgram,
   createInterfaceDerivedPinnedDurableProgram,
   deriveProgramArtifactDigest,
@@ -258,10 +264,6 @@ export {
   normalizeProgramArtifactIdentityInput,
   validateProgramBindingsForRelease,
   validateProgramIdentityProvenance,
-  type GeneratedProgramArtifactIdentityV1,
-  type GeneratedProgramInterfaceIdentityV1,
-  type ProgramArtifactIdentityInputV1,
-  type ProgramIdentityProvenanceV1,
 } from "./program-identity.ts";
 export {
   createCapabilityKeyring,

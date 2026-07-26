@@ -32,12 +32,14 @@ export type {
   StreamResult,
   StreamCompleteResult,
   StreamEvent,
+} from "./session/streaming.ts";
+export type {
   Streamer,
   MessageRenderer,
   ChatEventTransform,
   SessionOptions,
   ChatCommand,
-} from "./session/index.ts";
+} from "./session/options.ts";
 
 export type {
   TimelineUserMessage,

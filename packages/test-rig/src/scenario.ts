@@ -22,7 +22,7 @@ import type {
   StreamFrame,
   StreamTurnHandle,
 } from "./transport.ts";
-import type { TestRig } from "./index.ts";
+import type { TestRig } from "./rig-types.ts";
 
 /**
  * Scenario scripts: causal-order, generator-driven test choreography.
