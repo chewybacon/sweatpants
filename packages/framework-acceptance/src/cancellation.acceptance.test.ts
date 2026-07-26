@@ -56,6 +56,9 @@ async function supersedeParkedOrdinaryTool(binding: Binding): Promise<void> {
       if (!inspection?.toolSessionRegistry) {
         throw new Error("tool session registry inspection unavailable");
       }
+      // Registry cleanup runs when the released session settles, so wait on that
+      // semantic boundary instead of sampling the store as the Turn settles.
+      yield* inspection.toolSessionsDrained();
       const leaked = yield* inspection.toolSessionRegistry.get(
         `foreign:${conversation.conversationId}:turn-0/root.0`,
       );

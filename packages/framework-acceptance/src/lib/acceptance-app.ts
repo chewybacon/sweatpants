@@ -185,6 +185,8 @@ export interface AcceptanceApplicationInspection {
   durableWorker: DurableWorkerMetrics;
   get toolSessionRegistry(): ToolSessionRegistry | undefined;
   get toolSessionIds(): readonly string[];
+  /** Event-driven wait until registry cleanup has removed every tool session. */
+  toolSessionsDrained(): Operation<void>;
 }
 
 export interface AcceptanceApplicationOptions {
@@ -234,6 +236,11 @@ export function createAcceptanceApplication(
     },
     get toolSessionIds() {
       return toolSessionStore?.getSessionIds() ?? [];
+    },
+    *toolSessionsDrained(): Operation<void> {
+      if (toolSessionStore) {
+        yield* toolSessionStore.drained();
+      }
     },
   });
 
