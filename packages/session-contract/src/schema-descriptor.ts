@@ -1,3 +1,4 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { assertJson, canonicalJson, canonicalSnapshot, sha256 } from "./canonical.ts";
 import { CrankError, type Json } from "./types.ts";
 
@@ -219,4 +220,16 @@ function deepFreeze<T>(value: T): T {
     }
   }
   return value;
+}
+
+/**
+ * One descriptor paired with the validator that enforces it.
+ *
+ * Declared here rather than in `schema-registry.ts` so that contract modules
+ * can describe their own entries without depending on the registry that
+ * consumes them.
+ */
+export interface DurableSchemaRegistryEntry {
+  readonly descriptor: PortableSchemaDescriptor;
+  readonly schema: StandardSchemaV1;
 }

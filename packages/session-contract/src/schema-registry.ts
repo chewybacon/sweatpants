@@ -7,8 +7,11 @@ import {
   ANY_JSON_SCHEMA_DESCRIPTOR,
   NULL_RESULT_SCHEMA_DESCRIPTOR,
   parsePortableSchemaDescriptor,
+  type DurableSchemaRegistryEntry,
   type PortableSchemaDescriptor,
 } from "./schema-descriptor.ts";
+
+export type { DurableSchemaRegistryEntry } from "./schema-descriptor.ts";
 import { CrankError, type Json } from "./types.ts";
 
 /**
@@ -21,11 +24,6 @@ import { CrankError, type Json } from "./types.ts";
  */
 
 /** One digest-addressable validator paired with its portable descriptor. */
-export interface DurableSchemaRegistryEntry {
-  readonly descriptor: PortableSchemaDescriptor;
-  readonly schema: StandardSchemaV1;
-}
-
 /**
  * Versioned validator-bundle catalog published alongside each exact
  * program/effect bundle. Catalogs from concurrent releases are merged into one

@@ -5,7 +5,7 @@ import {
   type PortableSchemaRole,
 } from "./schema-descriptor.ts";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import type { DurableSchemaRegistryEntry } from "./schema-registry.ts";
+import type { DurableSchemaRegistryEntry } from "./schema-descriptor.ts";
 import type { EffectDefinition } from "./durable-types.ts";
 import type { Json } from "./types.ts";
 

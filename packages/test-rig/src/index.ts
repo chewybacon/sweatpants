@@ -12,14 +12,14 @@ import {
   type StreamOptions,
 } from "@sweatpants/model-provider-pi-ai";
 import { call, createScope, type Operation } from "effection";
-import { createChatRuntime, type ChatFetch, type ChatHandle, type ChatRuntime } from "./chat.ts";
+import { createChatRuntime, type ChatFetch, type ChatRuntime } from "./chat.ts";
 import {
   startModelSimulator,
   type ModelHandle,
   type ModelSimulator,
   type PendingModelRequest,
 } from "./model.ts";
-import { createStreamTransportHandle, type StreamTransportHandle } from "./transport.ts";
+import { createStreamTransportHandle } from "./transport.ts";
 import { scenario, type ScenarioContext } from "./scenario.ts";
 
 export interface TestApplication {
@@ -60,15 +60,8 @@ export interface TestRigOptions {
   unmatchedRequests?: "poison" | "buffer";
 }
 
-export interface TestRig {
-  readonly model: ModelHandle;
-  readonly chat: ChatHandle;
-  readonly streams: StreamTransportHandle;
-  readonly fetch: ChatFetch;
-  readonly state: "active" | "poisoned" | "cancelling" | "closed";
-  verifyAndClose(): Promise<void>;
-  [Symbol.asyncDispose](): Promise<void>;
-}
+import type { TestRig } from "./rig-types.ts";
+export type { TestRig } from "./rig-types.ts";
 
 export interface TestRigBodyContext {
   signal: AbortSignal;

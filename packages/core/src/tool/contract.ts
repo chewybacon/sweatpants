@@ -1,17 +1,15 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type {
-  DurableSchemaRegistryEntry,
-  PortableSchemaDescriptor,
-} from "@sweatpants/session-contract";
-
-import type {
   ElicitsMap,
   NormalizedElicitsMap,
   NormalizedSamplesMap,
   SamplesMap,
   ToolDefinition,
   ToolExtensionMetadata,
+  ToolSchemaArtifacts,
 } from "./types.ts";
+
+export type { ToolElicitSchemaArtifact, ToolSchemaArtifacts } from "./types.ts";
 
 /**
  * Execution-neutral public tool contract.
@@ -30,26 +28,6 @@ import type {
 /** Closed execution-kind discriminant shared by contract implementations. */
 export type ToolExecutionKind = "ordinary" | "crank_native";
 
-/** Portable descriptors for one declared elicitation (content-schema semantics). */
-export interface ToolElicitSchemaArtifact {
-  /** Accepted-content descriptor; never the outer wire action envelope. */
-  readonly response: PortableSchemaDescriptor;
-  readonly context?: PortableSchemaDescriptor;
-}
-
-/**
- * Retained portable schema projections plus the digest-keyed runtime
- * validator catalog for one tool. Consumers (inventory, providers, browser
- * forms) use the projections without re-lowering the runtime schema;
- * authorities merge `catalog` entries into scope-local registries.
- */
-export interface ToolSchemaArtifacts {
-  readonly parameters: PortableSchemaDescriptor;
-  readonly output?: PortableSchemaDescriptor;
-  readonly elicits: Readonly<Record<string, ToolElicitSchemaArtifact>>;
-  /** Runtime validators; never persisted or transported. */
-  readonly catalog: readonly DurableSchemaRegistryEntry[];
-}
 
 /** Execution-neutral public tool metadata and schema contract. */
 export interface ToolContract<
