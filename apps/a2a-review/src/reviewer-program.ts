@@ -8,8 +8,6 @@ import {
   type DurableSchemaRegistryEntry,
   type EffectDefinition,
   type Json,
-  type ProgramResume,
-  type ProgramStepProposal,
   type StandardSchemaV1,
 } from "@sweatpants/session-contract";
 
@@ -95,7 +93,7 @@ function* reviewerGenerator(
   input: ReviewInput,
   context: DurableProgramContext,
   askParentEffect: EffectDefinition<Json, Json, Json>,
-): Generator<ProgramStepProposal, ReviewOutput, ProgramResume> {
+) {
   const questionSample = yield* context.effect(
     FOREIGN_MODEL_SAMPLE_EFFECT,
     {
