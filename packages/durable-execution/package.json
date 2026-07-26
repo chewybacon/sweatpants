@@ -1,0 +1,73 @@
+{
+    "name": "@sweatpants/durable-execution",
+    "version": "0.1.0",
+    "description": "Pure structured durable-execution aggregate and replay protocol",
+    "license": "MIT",
+    "files": [
+        "dist",
+        "src"
+    ],
+    "type": "module",
+    "exports": {
+        ".": {
+            "development": {
+                "import": "./src/index.ts",
+                "types": "./src/index.ts"
+            },
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            },
+            "default": "./src/index.ts"
+        },
+        "./contract": {
+            "development": {
+                "import": "./src/contract.ts",
+                "types": "./src/contract.ts"
+            },
+            "import": {
+                "types": "./dist/contract.d.ts",
+                "default": "./dist/contract.js"
+            },
+            "default": "./src/contract.ts"
+        },
+        "./transitions": {
+            "development": {
+                "import": "./src/transitions.ts",
+                "types": "./src/transitions.ts"
+            },
+            "import": {
+                "types": "./dist/transitions.d.ts",
+                "default": "./dist/transitions.js"
+            },
+            "default": "./src/transitions.ts"
+        },
+        "./program-driver": {
+            "development": {
+                "import": "./src/program-driver.ts",
+                "types": "./src/program-driver.ts"
+            },
+            "import": {
+                "types": "./dist/program-driver.d.ts",
+                "default": "./dist/program-driver.js"
+            },
+            "default": "./src/program-driver.ts"
+        }
+    },
+    "scripts": {
+        "build": "tsup",
+        "check": "tsc -b",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@sweatpants/durable-effects": "workspace:*",
+        "@sweatpants/foundation": "workspace:*",
+        "effection": "catalog:"
+    },
+    "devDependencies": {
+        "@sweatpants/ts-config": "workspace:*",
+        "tsup": "catalog:",
+        "typescript": "catalog:",
+        "vitest": "catalog:"
+    }
+}

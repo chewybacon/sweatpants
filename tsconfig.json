@@ -12,6 +12,9 @@
             "path": "./packages/durable-effects"
         },
         {
+            "path": "./packages/durable-execution"
+        },
+        {
             "path": "./packages/a2a"
         },
         {
